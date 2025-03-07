@@ -1,0 +1,4 @@
+.env
+notebooks/.env
+
+src/rag/content_store/data/*
