@@ -1,7 +1,0 @@
-{
-    "docwriter.style": "NumPy",
-    "docwriter.progress.trackTypes": false,
-    "docwriter.progress.trackClasses": false,
-    "docwriter.progress.trackMethods": false,
-    "docwriter.progress.trackFunctions": true
-}

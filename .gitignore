@@ -1,4 +1,5 @@
-.env
 notebooks/.env
+.vscode/*
 
-src/rag/content_store/data/*
+src/multi_agent/rag/data/*
+src/multi_agent/rag/knowledge_base/*
