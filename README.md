@@ -83,13 +83,6 @@ python main.py
 
 
 
-## 📜 License
-
-MIT License
-
-
-
 ## 🙏 Contributions Welcome
 
 Contributions, ideas, and theological guidance are all welcome to help OrthodoxAI grow.
-
