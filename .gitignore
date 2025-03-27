@@ -1,5 +1,9 @@
 notebooks/.env
 .vscode/*
+.virtual_documents/
+notebooks/.ipynb_checkpoints/
+src/multi_agent/chains/.ipynb_checkpoints/
+
 
 src/multi_agent/rag/data/*
 src/multi_agent/rag/knowledge_base/*
