@@ -48,5 +48,5 @@ jupyter lab
 
 ## 📌 Disclaimer
 
-These notebooks are **work-in-progress** tools for research and development. Final, production-ready versions of the logic are integrated into the main pipeline (`OrthodoxAI/main.py`, `agents/`, etc.).
+These notebooks are **work-in-progress** tools for research and development. Final, production-ready versions of the logic are integrated into the main pipeline (`OrthodoxAI/src`).
 

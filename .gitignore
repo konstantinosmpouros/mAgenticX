@@ -1,4 +1,4 @@
-notebooks/.env
+.env
 .vscode/*
 .virtual_documents/
 notebooks/.ipynb_checkpoints/
