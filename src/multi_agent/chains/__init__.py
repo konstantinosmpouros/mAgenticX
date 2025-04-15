@@ -1,62 +1,58 @@
-from typing import List, Literal
-
-from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+
+from .structured_outputs import (
+    AnalyzerOutput,
+    RetrievalQueriesOutput,
+    ReflectionOutput
+)
+
+from .. import config
+from ..tools import financial_tools, search_tools
+
+from ..prompt_templates import (
+    analyzer_template,
+    reflection_template,
+    retrieval_template,
+    summarizer_template,
+    generation_template
+)
+
+# ANALYZER CHAIN 
+analyzer_llm = ChatOpenAI(
+    model=config.OPENAI_LLM_NAME,
+    name=config.AGENT_NAMES['Analyzer']
+).with_structured_output(AnalyzerOutput)
+analyzer_chain = analyzer_template | analyzer_llm
 
 
-def analyzer_chain():
-    # Initialize the structured output for the Analyzer Agent
-    class AnalyzerOutput(BaseModel):
-        classification: Literal["Religious", "Non-Religious"] = Field(..., description="Either 'Religious' or 'Non-Religious'")
-        key_topics: List[str] = Field(..., description="List of key topics/areas related to the user's question (e.g., theology, jesus, humility, virtues)",)
-        context_requirements: str = Field(..., description="A clear explanation of the query's context needs")
-        query_complexity: Literal["Low", "Medium", "High"] = Field(..., description="'Low', 'Medium', or 'High' complexity")
-
-    # Initialize OpenAI model with structured output
-    structured_llm = ChatOpenAI(model="o3-mini", temperature=0).with_structured_output(AnalyzerOutput)
-
-    # Initialize the Chat Template
-    analyzer_prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are an AI assistant that classifies user queries as either religious or non-religious and extracts key topics.",
-            ),
-            (
-                "human",
-                "Classify the following query and extract key concepts:\n\nQuery: {query}",
-            ),
-        ]
-    )
-
-    # Wrap the structured llm with the chat template
-    chain = analyzer_prompt | structured_llm
-    return chain
+# SUMMARIZER CHAIN 
+summarizer_llm = ChatOpenAI(
+    model=config.OPENAI_REASONING_MODEL_NAME2,
+    name=config.AGENT_NAMES['Summarizer'],
+    streaming=True)
+summarizer_chain = summarizer_template | summarizer_llm
 
 
-def summarizer_chain():
-    # Initialize the structured output for the Summarizer Agent
-    class SummarizerOutput(BaseModel):
-        summary: str = Field(..., description="")
+# RETRIEVAL CHAIN 
+retrieval_llm = ChatOpenAI(
+    model=config.OPENAI_REASONING_MODEL_NAME2,
+    name=config.AGENT_NAMES['Retrieval'],
+).with_structured_output(RetrievalQueriesOutput)
+retrieval_chain = retrieval_template | retrieval_llm
 
-    # Initialize OpenAI model with structured output
-    structured_llm = ChatOpenAI(model="gpt-4o-2024-11-20", temperature=0).with_structured_output(SummarizerOutput)
 
-    # Initialize the Chat Template for summarization
-    summarizer_prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are an AI assistant that summarizes the retrieved chunks in a concise and coherent manner, providing a clear description of what was retrieved.",
-            ),
-            (
-                "human",
-                "Please provide a brief summary of the following retrieved chunks:\n\nText: {text}",
-            ),
-        ]
-    )
+# REFLECTION CHAIN 
+reflection_llm = ChatOpenAI(
+    model=config.OPENAI_REASONING_MODEL_NAME1,
+    name=config.AGENT_NAMES['Reflection'],
+).with_structured_output(ReflectionOutput)
+reflection_chain = reflection_template | reflection_llm
 
-    # Wrap the structured LLM with the chat template
-    chain = summarizer_prompt | structured_llm
-    return chain
+
+# GENERATION CHAIN 
+generation_llm = ChatOpenAI(
+    model=config.OPENAI_REASONING_MODEL_NAME2,
+    name=config.AGENT_NAMES['Generation'],
+    streaming=True)
+generation_chain = generation_template | generation_llm
+

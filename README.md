@@ -1,21 +1,24 @@
-
 # OrthodoxAI 🕊️
 
-**OrthodoxAI** is an AI-powered multi-agent system designed to understand, retrieve, and contextualize knowledge from religious texts and audio content (e.g., the Bible, sermons, patristic writings). It leverages transcription, vector search, and agentic reasoning to provide meaningful responses and deep scriptural insight.
+**OrthodoxAI** is an AI-powered multi-agent system designed to understand, retrieve, and contextualize knowledge from religious texts and audio content such as the Bible, sermons, and patristic writings. It leverages transcription, vector search, and agentic reasoning to provide meaningful, context-rich responses and deep scriptural insight.
 
 
 
 ## 🧠 Agentic Workflow
 
-OrthodoxAI is composed of specialized agents, each handling a specific task in the pipeline:
+OrthodoxAI utilizes a modular multi-agent architecture. Each agent is specialized in handling a specific task within the reasoning pipeline. Below is a high-level overview of the agent workflow:
 
-- **TranscriberAgent**: Converts religious audio to text (e.g., using Whisper).
-- **CleanerAgent**: Cleans and formats transcripts or text files for embedding.
-- **IndexerAgent**: Embeds and stores texts in a vector database (e.g., Qdrant, FAISS).
-- **RetrieverAgent**: Retrieves contextually relevant passages based on queries.
-- **ContextualizerAgent**: Adds historical and theological depth to responses.
-- **DialogueAgent**: Interfaces with the user and manages the query-response flow.
-- **MemoryAgent**: Stores long-term memory and learned insights.
+![OrthodoxAI Workflow](docs/OrthodoxAI%20Workflow.png)
+
+### Key Agents
+
+- **Analyzer Agent**: Interprets user intent and routes the query appropriately.
+- **Retrieval Agent**: Fetches contextually relevant information from knowledge base.
+- **Summarizer Agent**: Condenses lengthy content into concise, interpretable formats.
+- **Generator Agent**: Produces responses based on contextualized knowledge.
+- **Reflection Agent**: Reviews and improves generated responses based on higher-order reasoning.
+
+Each agent operates within a broader framework, using LLMs, memory modules, prompt templates, structured outputs and specialized tools to reason over religious content.
 
 
 
@@ -23,66 +26,32 @@ OrthodoxAI is composed of specialized agents, each handling a specific task in t
 
 - Semantic search across the Bible, patristic texts, and sermon transcriptions  
 - Interactive Q&A with historical and theological context  
-- Agentic reasoning over multi-modal content (text + audio)  
-- Long-term memory for personalized religious exploration
+- Multi-modal understanding combining text and audio sources  
+- Long-term memory for personalized theological dialogue  
 
 
 
-## 📦 Project Structure
+## 📦 Project Structure (Overview)
 
-```
-OrthodoxAI/
-│
-├── audio/                  # Raw audio sermons
-├── books/                  # Religious texts (e.g., PDFs, TXT)
-├── transcriptions/         # Output from Whisper or ASR models
-├── embeddings/             # Vector representations
-├── agents/                 # Agent logic and workflows
-├── db/                     # Vector DB setup and metadata storage
-├── rag_pipeline/           # Full RAG system orchestration
-└── main.py                 # Entry point
-```
+The project follows a modular design with the following major components:
 
-
-
-## 🚀 Getting Started
-
-### Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Transcribe an audio file
-
-```bash
-python agents/transcriber_agent.py --file audio/sermon1.mp3
-```
-
-### Index your data
-
-```bash
-python agents/indexer_agent.py --input transcriptions/
-```
-
-### Ask a question
-
-```bash
-python main.py
-```
+- **docs/**: Documentation and workflow visuals  
+- **notebooks/**: Exploratory analysis and prototyping  
+- **src/multi_agent/**: Core implementation of agents, workflows, RAG, memory, and tools  
+- **src/ui/**: Frontend or user interface layer  
 
 
 
 ## 🛠️ Tech Stack
 
-- 🧠 **LLMs**: OpenAI, Mistral, or Gemma
-- 🔊 **ASR**: Whisper / OpenAI WhisperX
-- 📚 **RAG**: Custom pipeline using FAISS or Qdrant
-- 🤖 **Multi-Agent Framework**: LangGraph (optional)
-- 🧠 **Memory**: Redis / Chroma for persistent chat memory
+- 🧠 **LLMs**: OpenAI
+- 🔊 **ASR**: Whisper / WhisperX  
+- 📚 **RAG**: Custom retrieval pipeline using FAISS or Qdrant  
+- 🤖 **Multi-Agent Framework**: LangGraph 
+- 🧠 **Memory**: Redis / Chroma for persistent long-term storage  
 
 
 
 ## 🙏 Contributions Welcome
 
-Contributions, ideas, and theological guidance are all welcome to help OrthodoxAI grow.
+We welcome theological insights, code contributions, and feedback to help OrthodoxAI grow into a valuable tool for deep religious exploration.

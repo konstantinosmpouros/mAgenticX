@@ -1,6 +1,0 @@
-1. Check how to add long-term memory according to the user
-2. The chains of prompt template and llm can be created with langchain.chains.LLMChain and 2 chains can be run in a sequence with the langchain.chains.SimpleSequentialChain
-3. Check if the langchain.debug can help identify problems in the workflow
-4. There are prebuilded tools in the langchain.agents.load_tools like Wikipedia search, llm math to use math functions, PythonREPLTool to execute code and more
-5. To create a new tool with langchain we need to add the decorator from langchain.agents.tool above the def
-6. 

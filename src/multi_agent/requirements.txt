@@ -1,0 +1,8 @@
+langchain
+langgraph
+langgraph-prebuilt #pip install --upgrade langgraph-prebuilt
+langchain-opanai
+langchain-community
+pydantic
+crewai[tools]
+PyPDF2
