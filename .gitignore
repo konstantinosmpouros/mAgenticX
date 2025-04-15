@@ -1,6 +1,7 @@
 .env
 .vscode/*
-.virtual_documents/
+.virtual_documents/*
+.idea/*
 notebooks/.ipynb_checkpoints/
 src/multi_agent/chains/.ipynb_checkpoints/
 
