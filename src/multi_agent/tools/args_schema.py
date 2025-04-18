@@ -60,7 +60,8 @@ class ExecutesPythonCodeInput(BaseModel):
         description="A list of Python libraries to install before execution.",
     )
 
+
 class ImageGenerationInput(BaseModel):
-    prompt: str = Field(..., description="The prompt that describes the image and will be passed to the image gen model")
+    description: str = Field(..., description="A prompt that describes the image and will be passed to the Image Gen Model")
 
 

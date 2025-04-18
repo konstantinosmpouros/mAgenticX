@@ -1,14 +1,19 @@
 # OrthodoxAI 🕊️
 
-**OrthodoxAI** is an AI-powered multi-agent system designed to understand, retrieve, and contextualize knowledge from religious texts and audio content such as the Bible, sermons, and patristic writings. It leverages transcription, vector search, and agentic reasoning to provide meaningful, context-rich responses and deep scriptural insight.
+**OrthodoxAI** is an AI-powered multi-agent system designed to understand, retrieve,
+and contextualize knowledge from religious texts and audio content such as the Bible, sermons, and patristic writings.
+It leverages transcription, vector search, and agentic reasoning to provide meaningful, 
+context-rich responses and deep scriptural insight.
 
 
 
 ## 🧠 Agentic Workflow
 
-OrthodoxAI utilizes a modular multi-agent architecture. Each agent is specialized in handling a specific task within the reasoning pipeline. Below is a high-level overview of the agent workflow:
+OrthodoxAI utilizes a modular multi-agent architecture.
+Each agent is specialized in handling a specific task within the reasoning pipeline.
+Below is a high-level overview of the agent workflow:
 
-![OrthodoxAI Workflow](docs/OrthodoxAI%20Workflow.png)
+<img alt="OrthodoxAI Workflow" height="432" src="docs/OrthodoxAI%20Workflow.png" width="768"/>
 
 ### Key Agents
 
@@ -18,7 +23,8 @@ OrthodoxAI utilizes a modular multi-agent architecture. Each agent is specialize
 - **Generator Agent**: Produces responses based on contextualized knowledge.
 - **Reflection Agent**: Reviews and improves generated responses based on higher-order reasoning.
 
-Each agent operates within a broader framework, using LLMs, memory modules, prompt templates, structured outputs and specialized tools to reason over religious content.
+Each agent operates within a broader framework, using LLMs, memory modules, prompt templates,
+structured outputs and specialized tools to reason over religious content.
 
 
 
@@ -45,7 +51,7 @@ The project follows a modular design with the following major components:
 ## 🛠️ Tech Stack
 
 - 🧠 **LLMs**: OpenAI
-- 🔊 **ASR**: Whisper / WhisperX  
+- 🔊 **ASR**: Whisper
 - 📚 **RAG**: Custom retrieval pipeline using FAISS or Qdrant  
 - 🤖 **Multi-Agent Framework**: LangGraph 
 - 🧠 **Memory**: Redis / Chroma for persistent long-term storage  
@@ -54,4 +60,5 @@ The project follows a modular design with the following major components:
 
 ## 🙏 Contributions Welcome
 
-We welcome theological insights, code contributions, and feedback to help OrthodoxAI grow into a valuable tool for deep religious exploration.
+We welcome theological insights, code contributions, 
+and feedback to help OrthodoxAI grow into a valuable tool for deep religious exploration.

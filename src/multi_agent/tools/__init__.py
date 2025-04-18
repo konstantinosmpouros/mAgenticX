@@ -1,5 +1,5 @@
 from .tools import (
-    get_current_stock_data,
+    get_current_exchange_rate,
     get_daily_stock_data,
     get_stock_market_news,
     get_top_gainers_losers_stock_data,
@@ -8,18 +8,15 @@ from .tools import (
     search_pubmed,
     search_wikidata,
     search_wikipedia,
-    dalle_tool,
+    image_generation,
     executes_python_code,
     retrieve_arxiv_articles_content,
     retrieve_arxiv_articles_summaries,
 )
 
-# TODO: create lists of tools per agent
-# TODO: create dictionaries like {tool.name: tool for tool in tools}
-
 
 financial_tools = {
-    get_current_stock_data.name : get_current_stock_data,
+    get_current_exchange_rate.name : get_current_exchange_rate,
     get_daily_stock_data.name: get_daily_stock_data,
     get_weekly_stock_data.name: get_weekly_stock_data,
     get_stock_market_news.name: get_stock_market_news,
@@ -39,7 +36,7 @@ articles_tools = {
 }
 
 computer_vision_tools = {
-    dalle_tool.name: dalle_tool,
+    image_generation.name: image_generation,
 }
 
 code_tools = {

@@ -12,15 +12,17 @@ import textwrap
 from pytrends.request import TrendReq
 from langchain_community.utilities.wikipedia import WikipediaAPIWrapper
 from langchain_community.tools.wikidata.tool import WikidataAPIWrapper, WikidataQueryRun
-from langchain_community.tools.openai_dalle_image_generation import OpenAIDALLEImageGenerationTool
-from langchain_community.utilities.dalle_image_generator import DallEAPIWrapper
+from crewai_tools import DallETool
 from langchain_community.utilities import (
     PubMedAPIWrapper,
     AlphaVantageAPIWrapper,
     ArxivAPIWrapper
 )
 from langchain_community.retrievers import ArxivRetriever
+
+# Tools from creawai
 from crewai_tools import CodeInterpreterTool
+from crewai_tools import DallETool
 
 # Input schemas for all the tools
 from .args_schema import (
@@ -114,8 +116,8 @@ def search_google_trends(keywords: List[str], timeframe: str = 'today 12-m') -> 
             return "No Google Trends data found for the given keywords."
 
         # Convert data to a readable format
-        data.reset_index(inplace=True)
-        trends_data = data.to_string(index=False)
+        data.drop(columns=['isPartial'], inplace=True)
+        trends_data = data.to_csv()
 
         return f"Google Trends Data:\n{trends_data}"
     
@@ -217,7 +219,7 @@ def retrieve_arxiv_articles_content(query: str) -> list:
     return results
 
 @tool("retrieve_arxiv_articles_summaries", args_schema=RetrieveArxivArticlesSummariesInput)
-def retrieve_arxiv_articles_summaries(query: str) -> list:
+def retrieve_arxiv_articles_summaries(query: str) -> str:
     """
     Retrieve academic papers summaries from ArXiv based on a search query.
 
@@ -225,16 +227,11 @@ def retrieve_arxiv_articles_summaries(query: str) -> list:
         query (str): The search string to query ArXiv (e.g., keywords or title).
 
     Returns:
-        list: A list of article summaries in string format
+        str: Article summaries in string format
     """
     # Initialize the ArXiv Api Wrapper and get the summaries
     arxiv = ArxivAPIWrapper()
-    docs = arxiv.run(query)
-
-    # Format the summaries and return them
-    chunks = docs.split("Published: ")
-    papers = ["Published: " + chunk.strip() for chunk in chunks if chunk.strip()]
-    return papers
+    return arxiv.run(query)
 
 @tool("get_stock_market_news", args_schema=GetStockMarketNewsInput)
 def get_stock_market_news(stock: str) -> str:
@@ -305,8 +302,8 @@ def get_daily_stock_data(stock: str) -> str:
     except Exception as e:
         return f"Error retrieving daily historical stock data: {str(e)}"
 
-@tool("get_current_stock_data", args_schema=GetCurrentStockDataInput)
-def get_current_stock_data(stock: str, currency: str) -> str:
+@tool("get_current_exchange_rate", args_schema=GetCurrentStockDataInput)
+def get_current_exchange_rate(stock: str, currency: str) -> str:
     """
     Fetches the latest exchange rate for a given stock and currency.
 
@@ -325,7 +322,7 @@ def get_current_stock_data(stock: str, currency: str) -> str:
         return f"Error retrieving current stock data: {str(e)}"
 
 @tool("executes_python_code", args_schema=ExecutesPythonCodeInput)
-def executes_python_code(code: str, libraries: List[str] = []) -> str:
+def executes_python_code(code: str, libraries: List[str]) -> str:
     """
     Executes a Python code snippet inside the CrewAI CodeInterpreterTool environment.
 
@@ -353,10 +350,27 @@ def executes_python_code(code: str, libraries: List[str] = []) -> str:
 
     return result
 
-dalle_tool = OpenAIDALLEImageGenerationTool(api_wrapper=DallEAPIWrapper(model='dall-e-3',
-                                                                        size="1024x1024"),
-                                            args_schema=ImageGenerationInput)
+@tool("image_generation", args_schema=ImageGenerationInput)
+def image_generation(description: str) -> str:
+    """
+    Generates an image using the CrewAI Dall-E Tool based on a text prompt.
 
+    Parameters:
+        description (str): A description of the scene to generate.
 
+    Returns:
+        str: A dictionary in string format with keys:
+            - 'image_url': URL of the generated image
+            - 'image_description': The full natural language scene description
+            - or an error message if generation fails
+    """
+    dalle = DallETool()
+    
+    try:
+        response = dalle.run(image_description=description)
+        return response
+    
+    except Exception as e:
+        return {"error": str(e)}
 
 
