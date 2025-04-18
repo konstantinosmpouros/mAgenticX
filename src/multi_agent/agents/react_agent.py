@@ -13,7 +13,7 @@ class ReAct_Agent:
     """
     A ReAct-style agent that interacts with an LLM and invokes tools when needed.
 
-    Attributes:
+    Args:
         name (str): The name of the agent.
         llm (Union[ChatOpenAI, ChatAnthropic]): The language model used for generation.
         system_prompt (SystemMessage): The system prompt wrapped in a SystemMessage.
@@ -49,12 +49,14 @@ class ReAct_Agent:
         chat_template = ChatPromptTemplate.from_messages(chat_template.messages + [response])
 
         while self._is_tool_call(response):
-            tool_results = self._execute_tool(response.tool_calls[0])
+            while response.tool_calls:
+                call = response.tool_calls.pop(0)
+                tool_results = self._execute_tool(call)
 
-            # Build a *new* template that includes everything so far plus the tool result
-            chat_template = ChatPromptTemplate.from_messages(
-                chat_template.messages + [tool_results]
-            )
+                # Build a *new* template that includes everything so far plus the tool result
+                chat_template = ChatPromptTemplate.from_messages(
+                    chat_template.messages + [AIMessage(content="", tool_calls=[call]), tool_results]
+                )
 
             # Run the inference again.
             response = self.llm.invoke(chat_template.messages)
@@ -180,7 +182,7 @@ class ReAct_Agent:
             tool_calls (Dict[int, Dict]): Existing partial tool call data indexed by chunk index.
 
         Returns:
-            Dict[int, Dict]: Updated mapping of chunk index to complete tool call info.
+            Dict ([int, Dict]): Updated mapping of chunk index to complete tool call info.
         """
         for tool_chunk in chunk.tool_call_chunks:
             index = tool_chunk['index']
