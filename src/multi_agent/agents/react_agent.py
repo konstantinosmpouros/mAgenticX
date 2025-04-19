@@ -1,15 +1,14 @@
 import json
-from typing import Dict, Union, List, Any
+from typing import Dict, Union
 
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
+from .agent import Agent
 
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from langchain.schema import HumanMessage, AIMessage
 from langchain_core.messages import ToolMessage, AIMessageChunk
 from langchain_core.tools import Tool
 
-class ReAct_Agent:
+class ReAct_Agent(Agent):
     """
     A ReAct-style agent that interacts with an LLM and invokes tools when needed.
 
@@ -20,16 +19,10 @@ class ReAct_Agent:
         tools (Dict[str, Tool]): A mapping of tool names to Tool instances.
     """
     
-    def __init__(self,
-                name: str,
-                llm: Union[ChatOpenAI, ChatAnthropic],
-                system_prompt: str,
-                tools: Dict[str, Tool] = []):
+    def __init__(self, *, tools: Dict[str, Tool], **kwargs):
         # Initialize basic attributes of the agent
-        self.name = name
-        self.llm = llm
+        super().__init__(**kwargs)
         self.tools = tools
-        self.system_prompt = SystemMessage(system_prompt.format(name=self.name))
 
         # Bind the LLM with the give tools if passed
         self.llm = self.llm.bind_tools(tools.values()) if tools else self.llm
@@ -49,6 +42,14 @@ class ReAct_Agent:
         chat_template = ChatPromptTemplate.from_messages(chat_template.messages + [response])
 
         while self._is_tool_call(response):
+            # Execute once the first tool and add it to the history
+            call = response.tool_calls.pop(0)
+            tool_results = self._execute_tool(call)
+            chat_template = ChatPromptTemplate.from_messages(
+                chat_template.messages + [tool_results]
+            )
+            
+            # If there are more tools to execute, repeat the process but add in the middle of an AIMessage
             while response.tool_calls:
                 call = response.tool_calls.pop(0)
                 tool_results = self._execute_tool(call)
@@ -118,35 +119,6 @@ class ReAct_Agent:
                 if getattr(chunk, "content", None):
                     ai_msg.content += chunk.content
                     yield chunk.content
-
-    def _build_chat_template(self,
-                            message: Union[str, HumanMessage, ChatPromptTemplate]) -> ChatPromptTemplate:
-        """
-        Construct a ChatPromptTemplate from a user message, prepending the system prompt.
-
-        Args:
-            message (Union[str, HumanMessage, ChatPromptTemplate]): The incoming message.
-
-        Returns:
-            ChatPromptTemplate: Combined system prompt and user message template.
-        """
-        if isinstance(message, str):
-            user_msg = HumanMessage(content=message)
-            return ChatPromptTemplate.from_messages([self.system_prompt, user_msg])
-        
-        if isinstance(message, HumanMessage):
-            return ChatPromptTemplate.from_messages([self.system_prompt, message])
-        
-        if isinstance(message, ChatPromptTemplate):
-            # Avoid duplicating a system prompt if the caller already supplied one.
-            non_system: List[Any] = [m for m in message.messages if not isinstance(m, SystemMessage)]
-            chat_template = ChatPromptTemplate.from_messages([self.system_prompt, *non_system])
-            return ChatPromptTemplate(chat_template.format_messages())
-
-        raise TypeError(
-            "message must be str, HumanMessage or ChatPromptTemplate, "
-            f"got {type(message).__name__}"
-        )
 
     def _is_tool_call(self, ai_message: AIMessage) -> bool:
         """

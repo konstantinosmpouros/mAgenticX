@@ -1,13 +1,12 @@
-from typing import Any, List, Union
+from typing import Union
 
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
+from .agent import Agent
 
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from langchain.schema import HumanMessage, AIMessage
 from pydantic import BaseModel
 
-class Structured_Agent:
+class Structured_Agent(Agent):
     """
     A structured-output agent that interacts with an LLM, prepends a system prompt,
     and optionally validates its response against a Pydantic schema.
@@ -22,15 +21,9 @@ class Structured_Agent:
         structure_response (Optional[Type[BaseModel]]): 
             A Pydantic model class to parse and validate the LLM's structured output.
     """
-    def __init__(self,
-                name: str,
-                llm: Union[ChatOpenAI, ChatAnthropic],
-                system_prompt: str,
-                structure_response = None):
+    def __init__(self, *, structure_response, **kwargs):
         # Initialize basic attributes of the agent
-        self.name = name
-        self.llm = llm
-        self.system_prompt = SystemMessage(system_prompt.format(name=self.name))
+        super().__init__(**kwargs)
         self.structure_response = structure_response
         
         # Bind the llm with a structured output if passed
@@ -66,32 +59,4 @@ class Structured_Agent:
         """
         return self.invoke(message)
 
-    def _build_chat_template(self,
-                            message: Union[str, HumanMessage, ChatPromptTemplate]) -> ChatPromptTemplate:
-        """
-        Construct a ChatPromptTemplate from a user message, prepending the system prompt.
-
-        Args:
-            message (Union[str, HumanMessage, ChatPromptTemplate]): The incoming message.
-
-        Returns:
-            ChatPromptTemplate: Combined system prompt and user message template.
-        """
-        if isinstance(message, str):
-            user_msg = HumanMessage(content=message)
-            return ChatPromptTemplate.from_messages([self.system_prompt, user_msg])
-        
-        if isinstance(message, HumanMessage):
-            return ChatPromptTemplate.from_messages([self.system_prompt, message])
-        
-        if isinstance(message, ChatPromptTemplate):
-            # Avoid duplicating a system prompt if the caller already supplied one.
-            non_system: List[Any] = [m for m in message.messages if not isinstance(m, SystemMessage)]
-            chat_template = ChatPromptTemplate.from_messages([self.system_prompt, *non_system])
-            return ChatPromptTemplate(chat_template.format_messages())
-
-        raise TypeError(
-            "message must be str, HumanMessage or ChatPromptTemplate, "
-            f"got {type(message).__name__}"
-        )
 
