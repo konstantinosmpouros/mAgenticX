@@ -3,6 +3,7 @@
 .virtual_documents/*
 .idea/*
 notebooks/.ipynb_checkpoints/
+notebooks/vectorstore/*
 src/multi_agent/chains/.ipynb_checkpoints/
 
 

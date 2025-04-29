@@ -11,14 +11,10 @@ def react_agent(model_name: str, tools: List[Tool]):
     def call_model(state: MessagesState):
         messages = state['messages']
         response = llm.invoke(messages)
-        return {"message": [response]}
+        return {"messages": [response]}
     
     def should_continue(state: MessagesState) -> Literal["tools", END]: # type: ignore
-        messages = state["messages"]
-        last_message = messages[-1]
-        if last_message.tool_calls:
-            return "tools"
-        return END
+        return "tools" if state["messages"][-1].tool_calls else END
     
     # Initialize the llm that we will use
     llm = ChatOpenAI(model=model_name).bind_tools(tools)
@@ -39,9 +35,7 @@ def react_agent(model_name: str, tools: List[Tool]):
     )
     workflow.add_edge("tools", "react_agent")
     
-    # Compile the graph
-    workflow.compile()
-    return workflow
-    
+    # Compile and return the graph
+    return workflow.compile()
     
     

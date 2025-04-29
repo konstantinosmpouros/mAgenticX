@@ -3,6 +3,8 @@ langgraph
 langgraph-prebuilt #pip install --upgrade langgraph-prebuilt
 langchain-opanai
 langchain-community
+langchain-core
+langchain-supervisor
 pydantic
 crewai[tools]
 PyPDF2

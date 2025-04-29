@@ -248,7 +248,7 @@ class ReAct_Agent(Agent):
 class Structured_Agent(Agent):
     """
     A structured-output agent that interacts with an LLM, prepends a system prompt,
-    and optionally validates its response against a Pydantic schema.
+    and validates its response against a Pydantic schema.
 
     Args:
         name (str): 
@@ -257,7 +257,7 @@ class Structured_Agent(Agent):
             The language model used for generation.
         system_prompt (str): 
             A template string for the system prompt, must include a `{name}` placeholder.
-        structure_response (Optional[Type[BaseModel]]): 
+        structure_response (Type[BaseModel]): 
             A Pydantic model class to parse and validate the LLM's structured output.
     """
     def __init__(self, *, structure_response, **kwargs):

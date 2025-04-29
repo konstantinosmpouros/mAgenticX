@@ -82,7 +82,8 @@ a = """
         </introduction>
 
         <main_content>
-        Provide a detailed answer to the user's question, broken down into logical paragraphs or bullet points as appropriate. Each point should be supported by information from the summary.
+        Provide a detailed answer to the user's question, broken down into logical paragraphs or bullet points as appropriate.
+        Each point should be supported by information from the summary.
         </main_content>
 
         <conclusion>
@@ -100,5 +101,6 @@ a = """
         - Do not introduce any external knowledge or personal opinions
         - Be thorough in your explanation while remaining concise and clear
 
-    Please proceed with your analysis and response. Your final output should consist only of the response and should not duplicate or rehash any of the work you did in the thinking block.
+    Please proceed with your analysis and response.
+    Your final output should consist only of the response and should not duplicate or rehash any of the work you did in the thinking block.
     """
