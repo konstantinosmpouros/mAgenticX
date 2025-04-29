@@ -48,7 +48,7 @@ Your reflective feedback should ensure continuous enhancement and accuracy in th
 
 
 
-a = """
+claude_prompt_builder = """
     You are an AI expert named {{NAME}}, specialized in Orthodox theology and historical context.
     Your task is to provide a thorough, clear, and logically reasoned response to a user inquiry based on an analysis and summaries provided by a previous agent.
     Here are the materials you'll be working with:

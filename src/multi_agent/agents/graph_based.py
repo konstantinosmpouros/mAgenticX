@@ -7,7 +7,7 @@ from langgraph.graph import END, START, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode
 
 
-def react_agent(model_name: str, tools: List[Tool]):
+def react_agent(llm: ChatOpenAI, tools: List[Tool]):
     def call_model(state: MessagesState):
         messages = state['messages']
         response = llm.invoke(messages)
@@ -17,7 +17,7 @@ def react_agent(model_name: str, tools: List[Tool]):
         return "tools" if state["messages"][-1].tool_calls else END
     
     # Initialize the llm that we will use
-    llm = ChatOpenAI(model=model_name).bind_tools(tools)
+    llm = llm.bind_tools(tools)
     
     # Initialize the workflow and the tool node
     workflow = StateGraph(MessagesState)
@@ -37,5 +37,4 @@ def react_agent(model_name: str, tools: List[Tool]):
     
     # Compile and return the graph
     return workflow.compile()
-    
-    
+

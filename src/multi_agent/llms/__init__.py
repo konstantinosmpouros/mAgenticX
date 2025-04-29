@@ -1,35 +1,20 @@
-from langchain_openai import ChatOpenAI
-
-from .. import config
-
-# ANALYZER LLM 
-analyzer_llm = ChatOpenAI(
-    model=config.OPENAI_REASONING_LLM_3,
-    name=config.AGENT_NAMES['Analyzer']
+from .llm import (
+    llm_1,
+    resoning_llm_1,
+    resoning_llm_2,
+    resoning_llm_3
 )
-
-# SUMMARIZER LLM 
-summarizer_llm = ChatOpenAI(
-    model=config.OPENAI_REASONING_LLM_2,
-    name=config.AGENT_NAMES['Summarizer'],
-    streaming=True)
-
-# RETRIEVAL LLM 
-retrieval_llm = ChatOpenAI(
-    model=config.OPENAI_REASONING_LLM_2,
-    name=config.AGENT_NAMES['Retrieval'],
+from .structured_outputs import (
+    AnalyzerOutput,
+    ReflectionOutput,
+    RetrievalQueriesOutput
 )
 
 # REFLECTION LLM 
-reflection_llm = ChatOpenAI(
-    model=config.OPENAI_REASONING_LLM_1,
-    name=config.AGENT_NAMES['Reflection'],
-)
+reflection_llm = resoning_llm_1.with_structured_output(ReflectionOutput)
 
-# GENERATION LLM 
-generation_llm = ChatOpenAI(
-    model=config.OPENAI_REASONING_LLM_2,
-    name=config.AGENT_NAMES['Generation'],
-    streaming=True
-)
+# RETRIEVAL LLM 
+retrieval_llm = resoning_llm_2.with_structured_output(RetrievalQueriesOutput)
 
+# ANALYZER LLM 
+analyzer_llm = resoning_llm_3.with_structured_output(AnalyzerOutput)
