@@ -7,14 +7,14 @@ class AnalyzerOutput(BaseModel):
         ...,
         description="True if the query relates explicitly to religious or theological matters of orthodox christianity, otherwise, False.",
     )
-    clarification_needed: bool = Field(
-        ...,
-        description="True if further clarification from the user is needed; otherwise, False.",
-    )
-    clarification_instructions: Optional[str] = Field(
-        None,
-        description="Specific instructions on what clarification is required from the user, if applicable.",
-    )
+    # clarification_needed: bool = Field(
+    #     ...,
+    #     description="True if further clarification from the user is needed; otherwise, False.",
+    # )
+    # clarification_instructions: Optional[str] = Field(
+    #     None,
+    #     description="Specific instructions on what clarification is required from the user, if applicable.",
+    # )
     key_topics: List[str] = Field(
         ...,
         description="List of key topics/areas related to the user's question (e.g., theology, jesus, humility, virtues)",
@@ -55,3 +55,4 @@ class ReflectionOutput(BaseModel):
         None,
         description="Clear and actionable recommendations detailing precisely what additional retrieval or clarifications are required, provided only if 'requires_additional_retrieval' is True.",
     )
+
