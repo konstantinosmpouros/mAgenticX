@@ -1,6 +1,13 @@
+from pathlib import Path
+import os
+import sys
+
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
+sys.path.append(str(PACKAGE_ROOT))
+
 from langchain_openai import ChatOpenAI
 
-from ..config import (
+from config import (
     OPENAI_LLM_1,
     OPENAI_LLM_2,
     OPENAI_LLM_3,

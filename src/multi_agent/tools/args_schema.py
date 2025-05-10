@@ -36,10 +36,6 @@ class GetStockMarketNewsInput(BaseModel):
     stock: str = Field(..., description="The stock ticker symbol (e.g., 'AAPL').")
 
 
-class GetTopGainersLosersStockDataInput(BaseModel):
-    pass
-
-
 class GetWeeklyStockDataInput(BaseModel):
     stock: str = Field(..., description="The stock ticker symbol (e.g., 'AAPL').")
 

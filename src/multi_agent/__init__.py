@@ -1,32 +1,19 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+from pathlib import Path
+import os
+import sys
 
-from .workflows.orthodoxai import agent
-from .states import Orthodox_State
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
+sys.path.append(str(PACKAGE_ROOT))
 
+from dotenv import find_dotenv, load_dotenv
+_ = load_dotenv(find_dotenv())
 
-app = FastAPI()
+from workflows.orthodoxai import agent
 
-class ChatRequest(BaseModel):
-    user_input: str
+initial_inputs = {"user_input": "Tell me about Psalm 23"}
 
-
-class ChatResponse(BaseModel):
-    response: str
-
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(req: ChatRequest):
-    """
-    Accepts a JSON body {"user_input": "..."} and returns
-    {"response": "..."} once the workflow terminates.
-    """
-    # 1) Build the initial state
-    initial_state = Orthodox_State(user_input=req.user_input)
-
-    # 2) Run the agent to completion
-    final_state = agent.run(initial_state)
-
-    # 3) Extract the generated response
-    return ChatResponse(response=final_state["response"])
-
+for state in agent.stream(initial_inputs, stream_mode="values"):
+    print(state)
+    print()
+    print()
+    print()

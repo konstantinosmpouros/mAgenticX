@@ -1,5 +1,13 @@
-from ..states import Orthodox_State
-from ..agents.orthodox_agent import (
+from pathlib import Path
+import os
+import sys
+
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
+sys.path.append(str(PACKAGE_ROOT))
+
+import json
+from states import Orthodox_State
+from agents.orthodox_agent import (
     analysis_agent,
     reflection_agent,
     query_gen_agent,
@@ -11,8 +19,8 @@ from langgraph.types import Command
 from langgraph.graph import END
 from typing import Literal
 
-from ..rag import get_openai_retriever
-from ..prompts.templates import (
+from rag import get_openai_retriever
+from prompts.templates import (
     summarization_prompt,
     nonreligious_gen_template,
     religious_gen_template,
@@ -20,7 +28,6 @@ from ..prompts.templates import (
     with_reflection_template,
     reflection_template
 )
-import json
 
 
 def analysis(state: Orthodox_State) -> Orthodox_State:
@@ -29,10 +36,22 @@ def analysis(state: Orthodox_State) -> Orthodox_State:
     return {'analysis_results': analysis_result}
 
 
-def check_if_religious(state: Orthodox_State) -> Command[Literal["node_b", "node_c"]]:
-    return Command(
-        goto='query_gen' if state['analysis_results'].is_religious == "Religious" else 'generation'
+def check_if_religious(state: Orthodox_State):
+    return 'query_gen' if state['analysis_results'].is_religious == "Religious" else 'simple_generation'
+
+
+def simple_generation(state: Orthodox_State) -> Orthodox_State:
+    analysis = state["analysis_results"]
+    analysis_str = analysis.json()
+
+    # non-religious branch
+    prompt = nonreligious_gen_template.format_prompt(
+        analysis_results=analysis_str,
     )
+    
+    # invoke the generation agent
+    response = generation_agent.invoke(prompt)
+    return {"response": response.content}
 
 
 def query_gen(state: Orthodox_State) -> Orthodox_State:
@@ -76,38 +95,23 @@ def summarization(state: Orthodox_State) -> Orthodox_State:
     return {"summarization": summarization.content}
 
 
-def generation(state: Orthodox_State):
+def complex_generation(state: Orthodox_State) -> Orthodox_State:
     analysis = state["analysis_results"]
     analysis_str = analysis.json()
+    summary = state["summarization"]
     
-    if analysis.is_religious == "Religious":
-        # pull in the summary from state
-        summary = state["summarization"]
-        # render the chat prompt
-        prompt = religious_gen_template.format_prompt(
-            summarization=summary,
-            analysis_results=analysis_str,
-        )
-        goto='reflection'
-    else:
-        # non-religious branch
-        prompt = nonreligious_gen_template.format_prompt(
-            analysis_results=analysis_str,
-        )
-        goto=END
+    # render the chat prompt
+    prompt = religious_gen_template.format_prompt(
+        summarization=summary,
+        analysis_results=analysis_str,
+    )
     
     # invoke the generation agent
     response = generation_agent.invoke(prompt)
     return {"response": response.content}
 
 
-def check_generation(state: Orthodox_State):
-    return Command(
-        goto='reflection' if state['analysis_results'].is_religious == "Religious" else END
-    )
-
-
-def reflection(state: Orthodox_State):
+def reflection(state: Orthodox_State) -> Orthodox_State:
     analysis_json = state["analysis_results"].json()
     gen_resp = state["response"]
     
@@ -122,6 +126,4 @@ def reflection(state: Orthodox_State):
 
 
 def check_reflection(state: Orthodox_State):
-    return Command(
-        goto='query_gen' if state['reflection'].requires_additional_retrieval else END
-    )
+    return 'query_gen' if state['reflection'].requires_additional_retrieval else 'end'

@@ -1,3 +1,10 @@
+from pathlib import Path
+import os
+import sys
+
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
+sys.path.append(str(PACKAGE_ROOT))
+
 # Annotations
 from langchain.tools import tool
 from typing import List
@@ -12,7 +19,6 @@ import textwrap
 from pytrends.request import TrendReq
 from langchain_community.utilities.wikipedia import WikipediaAPIWrapper
 from langchain_community.tools.wikidata.tool import WikidataAPIWrapper, WikidataQueryRun
-from crewai_tools import DallETool
 from langchain_community.utilities import (
     PubMedAPIWrapper,
     AlphaVantageAPIWrapper,
@@ -25,7 +31,7 @@ from crewai_tools import CodeInterpreterTool
 from crewai_tools import DallETool
 
 # Input schemas for all the tools
-from .args_schema import (
+from tools.args_schema import (
     SearchGoogleTrendsInput,
     SearchPubmedInput,
     SearchWikidataInput,
@@ -35,7 +41,6 @@ from .args_schema import (
     GetCurrentStockDataInput,
     GetDailyStockDataInput,
     GetStockMarketNewsInput,
-    GetTopGainersLosersStockDataInput,
     GetWeeklyStockDataInput,
     ExecutesPythonCodeInput,
     ImageGenerationInput
@@ -251,7 +256,7 @@ def get_stock_market_news(stock: str) -> str:
     except Exception as e:
         return f"Error retrieving stock market news data: {str(e)}"
 
-@tool("get_top_gainers_losers_stock_data", args_schema=GetTopGainersLosersStockDataInput)
+@tool("get_top_gainers_losers_stock_data")
 def get_top_gainers_losers_stock_data() -> str:
     """
     Fetches the top gainers and losers in the stock market.

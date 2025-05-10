@@ -1,6 +1,13 @@
+from pathlib import Path
+import os
+import sys
+
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
+sys.path.append(str(PACKAGE_ROOT))
+
 from langchain_anthropic import ChatAnthropic
 
-from ..config import (
+from config import (
     ANTHROPIC_LLM_1,
     ANTHROPIC_LLM_2,
     ANTHROPIC_REASONING_LLM_1
