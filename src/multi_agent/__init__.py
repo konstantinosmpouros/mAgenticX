@@ -10,9 +10,13 @@ _ = load_dotenv(find_dotenv())
 
 from workflows.orthodoxai import agent
 
-initial_inputs = {"user_input": "Tell me about Psalm 23"}
+theological_inputs = {"user_input": "Tell me about Psalm 23"}
+simple_input = {"user_input": "Do you know what is langgraph?"}
 
-for state in agent.stream(initial_inputs, stream_mode="values"):
+for state in agent.stream(simple_input, stream_mode="values"):
+    print()
+    print()
+    print()
     print(state)
     print()
     print()

@@ -3,6 +3,7 @@ from typing import List, Union, Dict
 from langchain_openai import ChatOpenAI
 
 from langchain.prompts import ChatPromptTemplate
+from langchain.prompts.chat import ChatPromptValue
 from langchain.schema import SystemMessage, HumanMessage, BaseMessage, AIMessage
 from langchain_core.messages import ToolMessage, AIMessageChunk
 from langchain_core.tools import Tool
@@ -35,9 +36,7 @@ class Agent:
             ChatPromptTemplate: The final chat template containing the full conversation.
         """
         chat_template = self._build_chat_template(message)
-        response = self.llm.invoke(chat_template.messages)
-        chat_template = ChatPromptTemplate.from_messages(chat_template.messages + [response])
-        return chat_template
+        return self.llm.invoke(chat_template.messages)
 
     def stream(self, message: Union[str, HumanMessage, ChatPromptTemplate]):
         """
@@ -53,7 +52,7 @@ class Agent:
         for chunk in self.llm.stream(chat_template.messages):
             yield chunk.content
 
-    def _build_chat_template(self, message: Union[str, HumanMessage, ChatPromptTemplate]) -> ChatPromptTemplate:
+    def _build_chat_template(self, message: Union[str, HumanMessage, ChatPromptTemplate, ChatPromptValue]) -> ChatPromptTemplate:
         """
         Construct a ChatPromptTemplate from a user message, prepending the system prompt.
 
@@ -75,7 +74,14 @@ class Agent:
             non_system: List[BaseMessage] = [m for m in message.messages if not isinstance(m, SystemMessage)]
             chat_template = ChatPromptTemplate.from_messages([self.system_prompt, *non_system])
             return ChatPromptTemplate(chat_template.format_messages())
-
+        
+        if isinstance(message, ChatPromptValue):
+            # pull out the messages it formatted for us
+            msgs = message.to_messages()
+            # strip out any system messages so we don't duplicate
+            non_system = [m for m in msgs if not isinstance(m, SystemMessage)]
+            return ChatPromptTemplate.from_messages([self.system_prompt, *non_system])
+        
         raise TypeError(
             "message must be str, HumanMessage or ChatPromptTemplate, "
             f"got {type(message).__name__}"
