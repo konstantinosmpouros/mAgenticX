@@ -16,7 +16,6 @@ from tools.tools import (
     search_wikidata,
     search_wikipedia,
     image_generation,
-    executes_python_code,
     retrieve_arxiv_articles_content,
     retrieve_arxiv_articles_summaries,
 )
@@ -44,8 +43,4 @@ articles_tools = {
 
 computer_vision_tools = {
     image_generation.name: image_generation,
-}
-
-code_tools = {
-    executes_python_code.name: executes_python_code,
 }

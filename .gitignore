@@ -4,7 +4,7 @@
 .idea/*
 
 **/__pycache__/
-
+**/agent_venv/
 
 notebooks/.ipynb_checkpoints/
 notebooks/vectorstore/*

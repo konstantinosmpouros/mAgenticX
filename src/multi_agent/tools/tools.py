@@ -13,7 +13,6 @@ from typing import List
 import requests
 import PyPDF2
 import io
-import textwrap
 
 # Main libraries to create the tools
 from pytrends.request import TrendReq
@@ -24,11 +23,9 @@ from langchain_community.utilities import (
     AlphaVantageAPIWrapper,
     ArxivAPIWrapper
 )
+from langchain_community.tools.openai_dalle_image_generation import OpenAIDALLEImageGenerationTool
+from langchain_community.utilities.dalle_image_generator import DallEAPIWrapper
 from langchain_community.retrievers import ArxivRetriever
-
-# Tools from creawai
-from crewai_tools import CodeInterpreterTool
-from crewai_tools import DallETool
 
 # Input schemas for all the tools
 from tools.args_schema import (
@@ -42,7 +39,6 @@ from tools.args_schema import (
     GetDailyStockDataInput,
     GetStockMarketNewsInput,
     GetWeeklyStockDataInput,
-    ExecutesPythonCodeInput,
     ImageGenerationInput
 )
 
@@ -326,39 +322,10 @@ def get_current_exchange_rate(stock: str, currency: str) -> str:
     except Exception as e:
         return f"Error retrieving current stock data: {str(e)}"
 
-@tool("executes_python_code", args_schema=ExecutesPythonCodeInput)
-def executes_python_code(code: str, libraries: List[str]) -> str:
-    """
-    Executes a Python code snippet inside the CrewAI CodeInterpreterTool environment.
-
-    This function allows running arbitrary Python code and optionally installs 
-    libraries inside a secure containerized interpreter environment provided by CrewAI.
-
-    Args:
-        code (str): The Python code to execute.
-        libraries (List[str]): A list of Python libraries to install before execution (e.g., ['pandas', 'numpy']).
-
-    Returns:
-        str: The output or result of the executed code, or an error message if execution fails.
-    """
-    # Dedent the code to prevent indentation errors
-    clean_code = textwrap.dedent(code)
-
-    # Initialize the interpreter tool
-    code_exec = CodeInterpreterTool()
-
-    # Run the code
-    try:
-        result = code_exec.run(code=clean_code, libraries_used=libraries)
-    except Exception as e:
-        result = f"Execution failed with error: {e}"
-
-    return result
-
 @tool("image_generation", args_schema=ImageGenerationInput)
 def image_generation(description: str) -> str:
     """
-    Generates an image using the CrewAI Dall-E Tool based on a text prompt.
+    Generates an image using the Langchain Tool based on a text prompt.
 
     Parameters:
         description (str): A description of the scene to generate.
@@ -366,13 +333,13 @@ def image_generation(description: str) -> str:
     Returns:
         str: A dictionary in string format with keys:
             - 'image_url': URL of the generated image
-            - 'image_description': The full natural language scene description
             - or an error message if generation fails
     """
-    dalle = DallETool()
+    dalle_tool = OpenAIDALLEImageGenerationTool(api_wrapper=DallEAPIWrapper(model='dall-e-3',
+                                                                        size="1024x1024"))
     
     try:
-        response = dalle.run(image_description=description)
+        response = dalle_tool.invoke(description)
         return response
     
     except Exception as e:

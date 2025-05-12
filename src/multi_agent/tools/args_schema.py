@@ -49,14 +49,6 @@ class GetCurrentStockDataInput(BaseModel):
     currency: str = Field(..., description="The currency to convert to (e.g., 'USD').")
 
 
-class ExecutesPythonCodeInput(BaseModel):
-    code: str = Field(..., description="The Python code to execute.")
-    libraries: List[str] = Field(
-        default_factory=list,
-        description="A list of Python libraries to install before execution.",
-    )
-
-
 class ImageGenerationInput(BaseModel):
     description: str = Field(..., description="A prompt that describes the image and will be passed to the Image Gen Model")
 

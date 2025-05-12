@@ -7,7 +7,7 @@ sys.path.append(str(PACKAGE_ROOT))
 
 # System prompts and Agentic names
 from config import AGENT_NAMES
-from prompts.system import (
+from prompts.system.orthodox_system import (
     ANALYZER_SYSTEM_PROMPT,
     SUMMARIZER_SYSTEM_PROMPT,
     GENERATION_SYSTEM_PROMPT,

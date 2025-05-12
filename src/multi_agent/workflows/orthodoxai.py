@@ -20,7 +20,6 @@ from nodes.orthodox_nodes import (
 from langgraph.graph import START, END, StateGraph
 from states import Orthodox_State
 
-from IPython.display import Image
 import base64
 import os
 

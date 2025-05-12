@@ -15,12 +15,10 @@ from agents.orthodox_agent import (
     summarizer_agent
 )
 
-from langgraph.types import Command
-from langgraph.graph import END
 from typing import Literal
 
 from rag import get_openai_retriever
-from prompts.templates import (
+from prompts.templates.orthodox_templates import (
     summarization_prompt,
     nonreligious_gen_template,
     religious_gen_template,
@@ -36,7 +34,7 @@ def analysis(state: Orthodox_State) -> Orthodox_State:
     return {'analysis_results': analysis_result}
 
 
-def check_if_religious(state: Orthodox_State):
+def check_if_religious(state: Orthodox_State) -> Literal["query_gen", "simple_generation"]:
     return 'query_gen' if state['analysis_results'].is_religious == "Religious" else 'simple_generation'
 
 
@@ -125,5 +123,5 @@ def reflection(state: Orthodox_State) -> Orthodox_State:
     return {"reflection": reflection}
 
 
-def check_reflection(state: Orthodox_State):
+def check_reflection(state: Orthodox_State) -> Literal["query_gen", "end"]:
     return 'query_gen' if state['reflection'].requires_additional_retrieval else 'end'
