@@ -12,11 +12,17 @@ from langchain.prompts import ChatPromptTemplate
 
 class Orthodox_State(BaseModel):
     user_input: Union[str, HumanMessage, ChatPromptTemplate]
+    
     analysis_results: Any = None
+    analysis_str: str = None
+    
     vector_queries: List[str] = None
     retrieved_content: List[Dict] = None
     summarization: str = None
+    
     reflection: Any = None
+    reflection_str: str = None
+    
     response: str = None
     
     def __getitem__(self, key: str) -> Any:

@@ -1,8 +1,37 @@
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+from pathlib import Path
+import os
+import sys
 
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
+sys.path.append(str(PACKAGE_ROOT))
 
-summarization_prompt = ChatPromptTemplate(
+from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
+from system.orthodox_system import (
+    ANALYZER_SYSTEM_PROMPT,
+    GENERATION_SYSTEM_PROMPT,
+    REFLECTION_SYSTEM_PROMPT,
+    RETRIEVAL_SYSTEM_PROMPT,
+    SUMMARIZER_SYSTEM_PROMPT,
+)
+
+analyzer_template = ChatPromptTemplate(
     messages=[
+        SystemMessagePromptTemplate.from_template(ANALYZER_SYSTEM_PROMPT),
+        HumanMessagePromptTemplate.from_template(
+            """The message to analyze is the following:
+
+            {user_msg}
+            
+            """
+        )
+    ],
+    input_variables=["user_msg"],
+)
+
+
+summarization_template = ChatPromptTemplate(
+    messages=[
+        SystemMessagePromptTemplate.from_template(SUMMARIZER_SYSTEM_PROMPT),
         HumanMessagePromptTemplate.from_template(
             """Below is a JSON array of retrieved documents (each with metadata and content):
 
@@ -21,6 +50,7 @@ summarization_prompt = ChatPromptTemplate(
 
 religious_gen_template = ChatPromptTemplate(
     messages=[
+        SystemMessagePromptTemplate.from_template(GENERATION_SYSTEM_PROMPT),
         HumanMessagePromptTemplate.from_template(
             """Here is the summary of the documents retrieved relevant to the user question content:
             {summarization}
@@ -37,6 +67,7 @@ religious_gen_template = ChatPromptTemplate(
 
 nonreligious_gen_template = ChatPromptTemplate(
     messages=[
+        SystemMessagePromptTemplate.from_template(GENERATION_SYSTEM_PROMPT),
         HumanMessagePromptTemplate.from_template(
             """The content was analyzed as non-religious. These are the structured analysis results of the user query to answer:
             {analysis_results}
@@ -47,8 +78,10 @@ nonreligious_gen_template = ChatPromptTemplate(
     input_variables=["analysis_results"],
 )
 
-no_reflection_template = ChatPromptTemplate(
+
+query_gen_no_reflection_template = ChatPromptTemplate(
     messages=[
+        SystemMessagePromptTemplate.from_template(RETRIEVAL_SYSTEM_PROMPT),
         HumanMessagePromptTemplate.from_template(
             """Here are the structured analysis results of the user query (in JSON):
             {analysis_results}
@@ -60,8 +93,10 @@ no_reflection_template = ChatPromptTemplate(
     input_variables=["analysis_results"],
 )
 
-with_reflection_template = ChatPromptTemplate(
+
+query_gen_with_reflection_template = ChatPromptTemplate(
     messages=[
+        SystemMessagePromptTemplate.from_template(RETRIEVAL_SYSTEM_PROMPT),
         HumanMessagePromptTemplate.from_template(
             """Here are the structured analysis results of the user query (in JSON):
             {analysis_results}
@@ -76,8 +111,10 @@ with_reflection_template = ChatPromptTemplate(
     input_variables=["analysis_results", "reflection"],
 )
 
+
 reflection_template = ChatPromptTemplate(
     messages=[
+        SystemMessagePromptTemplate.from_template(REFLECTION_SYSTEM_PROMPT),
         HumanMessagePromptTemplate.from_template(
             """Below are the structured analysis results of the user query (in JSON form):
             

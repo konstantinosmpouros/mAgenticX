@@ -107,7 +107,7 @@ class ReAct_Agent(Agent):
         # Bind the LLM with the give tools if passed
         self.llm = self.llm.bind_tools(tools.values()) if tools else self.llm
 
-    def invoke(self, message: Union[str, HumanMessage, ChatPromptTemplate]):
+    def invoke(self, *args):
         """
         Invoke the agent with the given message, handling tool calls in a ReAct loop.
 
@@ -117,6 +117,7 @@ class ReAct_Agent(Agent):
         Returns:
             ChatPromptTemplate: The final chat template containing the full conversation.
         """
+        message = args[0]
         chat_template = self._build_chat_template(message)
         response = self.llm.invoke(chat_template.messages)
         chat_template = ChatPromptTemplate.from_messages(chat_template.messages + [response])
@@ -148,7 +149,7 @@ class ReAct_Agent(Agent):
         
         return chat_template
 
-    def stream(self, message: Union[str, HumanMessage, ChatPromptTemplate]):
+    def stream(self, *args):
         """
         Stream the agent's response content, handling tool calls incrementally.
 
@@ -158,6 +159,7 @@ class ReAct_Agent(Agent):
         Yields:
             str: Content chunks from the LLM's streaming output.
         """
+        message = args[0]
         chat_template = self._build_chat_template(message)
 
         tool_calls = {}
@@ -274,7 +276,7 @@ class Structured_Agent(Agent):
         # Bind the llm with a structured output if passed
         self.llm = self.llm.with_structured_output(self.structure_response) if self.structure_response else self.llm
 
-    def invoke(self, message: Union[str, HumanMessage, ChatPromptTemplate]) -> Union[AIMessage, BaseModel]:
+    def invoke(self, *args) -> Union[AIMessage, BaseModel]:
         """
         Run a single, non-streaming chat turn through the agent.
 
@@ -286,10 +288,11 @@ class Structured_Agent(Agent):
             If no `structure_response` was provided, the raw LLM response as an AIMessage.
             Otherwise, an instance of the Pydantic `structure_response` model.
         """
+        message = args[0]
         chat_template = self._build_chat_template(message)
         return self.llm.invoke(chat_template.messages)
     
-    def stream(self, message: Union[str, HumanMessage, ChatPromptTemplate]) -> Union[AIMessage, BaseModel]:
+    def stream(self, *args) -> Union[AIMessage, BaseModel]:
         """
         This default implementation **does not** perform true token-level streaming;
         it simply delegates to :meth:`invoke` and returns the fully-formed response.
@@ -302,6 +305,7 @@ class Structured_Agent(Agent):
             If no `structure_response` was provided, the raw LLM response as an AIMessage.
             Otherwise, an instance of the Pydantic `structure_response` model.
         """
+        message = args[0]
         return self.invoke(message)
 
 

@@ -9,14 +9,6 @@ ANTHROPIC_REASONING_LLM_1 = "claude-3-7-sonnet-latest"
 ANTHROPIC_LLM_1 = "claude-3-5-sonnet-latest"
 ANTHROPIC_LLM_2 = "claude-3-5-haiku-latest"
 
-AGENT_NAMES = {
-    "Analyzer": "Analyzer Agent",
-    "Retrieval": "Retrieval Agent",
-    "Summarizer": "Summarizer Agent",
-    "Reflection": "Reflection Agent",
-    "Generator": "Generator Agent"
-}
-
 vector_store_collections = [
     'athanasios-muthlinaios'
 ]

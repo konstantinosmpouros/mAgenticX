@@ -7,20 +7,10 @@ PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
 from dotenv import find_dotenv, load_dotenv
-
 _ = load_dotenv(find_dotenv())
 
 # Load agents
-from workflows.orthodoxai import agent
-
-# Import libraries for the server to expose the endpoints
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-
-class StrUserInput(BaseModel):
-    """Schema for the inbound payload."""
-    user_input: str
+from workflows import agent
 
 
 theological_inputs = {"user_input": "Tell me about Psalm 23"}
@@ -44,7 +34,7 @@ for message, meta in agent.stream(simple_input, stream_mode="messages"):
     if node in STRUCTURED:
         parsed = message.additional_kwargs.get("parsed")
         if parsed is not None:
-            print(f"[{node}] parsed → {parsed}")
+            print(f"\n\n\n[{node}] parsed → {parsed}")
         continue
 
     # 2) retrieval just signals completion ------------------------------
