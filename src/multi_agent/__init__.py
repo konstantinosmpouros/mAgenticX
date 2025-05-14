@@ -12,38 +12,19 @@ _ = load_dotenv(find_dotenv())
 # Load agents
 from workflows import agent
 
+import asyncio
 
-theological_inputs = {"user_input": "Tell me about Psalm 23"}
-simple_input = {"user_input": "Do you know what is langgraph?"}
+async def call(input):
+    
+    # Use the async streaming API
+    async for message in agent.astream(input, stream_mode="custom"):
+        print(message, '\n\n')
 
 
-STRUCTURED = {"analysis", "query_gen", "reflectioner"}
-CHUNKED_TEXT = {"summarizer", "simple_generation", "complex_generation"}
-last_node = None
-
-for message, meta in agent.stream(simple_input, stream_mode="messages"):
-    node = meta["langgraph_node"]
-
-    if node != last_node:
-        print("\n\n\n")
-        print(node)
-        last_node = node
-        print("\n\n\n")
-
-    # 1) nodes that eventually emit a structured result -----------------
-    if node in STRUCTURED:
-        parsed = message.additional_kwargs.get("parsed")
-        if parsed is not None:
-            print(f"\n\n\n[{node}] parsed → {parsed}")
-        continue
-
-    # 2) retrieval just signals completion ------------------------------
-    if node == "retrieval":
-        print("✅ Retrieved content completed")
-        continue
-
-    # 3) nodes whose textual content we stream live ---------------------
-    if node in CHUNKED_TEXT:
-        for ch in message.content:
-            print(ch, end="", flush=True)
-        continue
+if __name__ == '__main__':
+    
+    # Define your inputs
+    theological_inputs = {"user_input": "Tell me about Psalm 23"}
+    simple_input = {"user_input": "Do you know what is langgraph?"}
+    
+    asyncio.run(call(simple_input))

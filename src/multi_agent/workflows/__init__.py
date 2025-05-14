@@ -33,7 +33,7 @@ workflow.add_node('summarizer', summarization)
 workflow.add_node('complex_generation', complex_generation)
 workflow.add_node('reflectioner', reflection)
 
-# Wire up the two analysis branches
+# Entry edge
 workflow.add_edge(START, "analysis")
 workflow.add_conditional_edges(
     "analysis",
