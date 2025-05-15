@@ -10,3 +10,5 @@ pydantic==2.11.4
 PyPDF2==3.0.1
 python-dotenv==1.1.0
 pytrends==4.9.2
+fastapi==0.115.5
+uvicorn==0.32.0

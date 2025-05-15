@@ -12,19 +12,23 @@ _ = load_dotenv(find_dotenv())
 # Load agents
 from workflows import agent
 
-import asyncio
-
-async def call(input):
-    
-    # Use the async streaming API
-    async for message in agent.astream(input, stream_mode="custom"):
-        print(message, '\n\n')
+import json
+from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
 
 
-if __name__ == '__main__':
-    
-    # Define your inputs
-    theological_inputs = {"user_input": "Tell me about Psalm 23"}
-    simple_input = {"user_input": "Do you know what is langgraph?"}
-    
-    asyncio.run(call(simple_input))
+app = FastAPI()
+
+class StrRequest(BaseModel):
+    user_input: str
+
+
+@app.post("/OrthodoxAI/v1/stream")
+async def stream_agent(req: StrRequest):
+    async def event_stream():
+        async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
+            yield json.dumps(msg).encode("utf-8")
+
+    return StreamingResponse(event_stream(), media_type="application/json")
+
