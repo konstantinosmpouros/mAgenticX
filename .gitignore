@@ -9,6 +9,8 @@
 notebooks/.ipynb_checkpoints/
 notebooks/vectorstore/*
 
-src/multi_agent/rag/data/*
-src/multi_agent/rag/knowledge_base/*
-src/multi_agent/rag/vectorstores/*
+src/orthodox_agents/rag/data/*
+src/orthodox_agents/rag/knowledge_base/*
+src/orthodox_agents/rag/vectorstores/*
+
+data/*

@@ -1,0 +1,14 @@
+services:
+  orthodoxai:
+    container_name: orthodox_agents
+    image: orthodox_agents
+    build:
+      context: ./orthodox_agents
+      dockerfile: Dockerfile
+    ports:
+      - '8081:8081'
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    restart: unless-stopped
+
+
