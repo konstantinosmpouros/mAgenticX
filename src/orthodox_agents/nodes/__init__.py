@@ -22,9 +22,14 @@ from agents import (
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
+from langchain_core.messages.ai import AIMessageChunk
 
 from rag import get_openai_retriever
 
+from prompts.templates.orthodox_templates import (
+    nonreligious_gen_template,
+    religious_gen_template
+)
 
 async def analysis(state: Orthodox_State, config: RunnableConfig, writer: StreamWriter) -> Orthodox_State:
     """Parse the user question and classify it.
@@ -54,14 +59,35 @@ def check_if_religious(state: Orthodox_State) -> Literal["query_gen", "simple_ge
 
 
 async def simple_generation(state: Orthodox_State, config: RunnableConfig, writer: StreamWriter) -> Orthodox_State:
-    analysis_str = state["analysis_str"]
+    payload = {"analysis_results": state["analysis_str"]}
+    prompt = nonreligious_gen_template.invoke(payload)
     response = ''
-    async for token in simple_gen_agent.astream(analysis_str, config):
-        writer({
-            "type": "response",
-            "content": token.content
-        })
-        response += token.content
+    async for mode, chunk in simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
+        if mode == 'messages':
+            message_chunk, _ = chunk
+            if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
+                writer({
+                    "type": "response",
+                    "content": message_chunk.content
+                })
+                response += message_chunk.content
+
+        elif mode == 'updates':
+            # chunk is a dict, containing updates per node
+            if "agent" in chunk:
+                agent_msg = chunk['agent']['messages'][0]
+                if getattr(agent_msg, "tool_calls", None):
+                    for tool_call in agent_msg.tool_calls:
+                        writer({
+                            "type": "tool_call",
+                            "content": f"Using the {tool_call['name']} tool"
+                        })
+            elif "tools" in chunk:
+                tool_msg = chunk['tools']['messages'][0]
+                writer({
+                    "type": "tool_response",
+                    "content": f"The tool call responded the following: {tool_msg.content}"
+                })
     return {"response": response}
 
 
@@ -140,23 +166,40 @@ async def summarization(state: Orthodox_State, config: RunnableConfig, writer: S
 
 
 async def complex_generation(state: Orthodox_State, config: RunnableConfig, writer: StreamWriter) -> Orthodox_State:
-    analysis_str = state["analysis_str"]
-    summary = state["summarization"]
-    
-    # render the chat prompt
     payload = {
-        "summarization": summary,
-        "analysis_results": analysis_str,
+        "summarization": state["summarization"],
+        "analysis_results": state["analysis_str"],
     }
+    prompt = religious_gen_template.invoke(payload)
     
     # invoke the generation agent
     response = ''
-    async for token in complex_gen_agent.astream(payload, config):
-        writer({
-            "type": "reasoning_chunk",
-            "content": token.content
-        })
-        response += token.content
+    async for mode, chunk in complex_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
+        if mode == 'messages':
+            message_chunk, _ = chunk
+            if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
+                writer({
+                    "type": "response",
+                    "content": message_chunk.content
+                })
+                response += message_chunk.content
+
+        elif mode == 'updates':
+            # chunk is a dict, containing updates per node
+            if "agent" in chunk:
+                agent_msg = chunk['agent']['messages'][0]
+                if getattr(agent_msg, "tool_calls", None):
+                    for tool_call in agent_msg.tool_calls:
+                        writer({
+                            "type": "tool_call",
+                            "content": f"Using the {tool_call['name']} tool"
+                        })
+            elif "tools" in chunk:
+                tool_msg = chunk['tools']['messages'][0]
+                writer({
+                    "type": "tool_response",
+                    "content": f"The tool call responded the following: {tool_msg.content}"
+                })
     return {"response": response}
 
 

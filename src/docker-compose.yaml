@@ -1,7 +1,7 @@
 services:
   orthodoxai:
-    container_name: orthodox_agents
-    image: orthodox_agents
+    container_name: orthodox_agent
+    image: orthodox_agent
     build:
       context: ./orthodox_agents
       dockerfile: Dockerfile
