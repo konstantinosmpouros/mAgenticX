@@ -1,4 +1,7 @@
+version: '3.9'
+
 services:
+
   orthodoxai:
     container_name: orthodox_agent
     image: orthodox_agent
@@ -9,6 +12,56 @@ services:
       - '8081:8081'
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RAG_HOST=rag_service
+      - RAG_PORT=8001
+    depends_on:
+      - rag_service
     restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  rag_service:
+    container_name: rag_service
+    image: rag_service
+    build: 
+      context: ./rag_service
+      dockerfile: Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RAG_HOST=vectordb
+      - RAG_PORT=8000
+      - COLLECTION_NAME=athanasios-muthlinaios
+    depends_on:
+      - vectordb
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  vectordb:
+    image: chromadb/chroma:0.6.3
+    container_name: vectordb
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - vectorestore:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - backend
 
 
+networks:
+  backend:
+    internal: true
+  frontend: 
+
+volumes:
+  vectorestore:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./vectorstores/chroma_db_openai

@@ -1,0 +1,6 @@
+fastapi==0.115.5
+uvicorn==0.32.0
+langchain==0.3.25
+langchain-chroma==0.2.3
+chromadb==0.6.3
+langchain-openai==0.3.16

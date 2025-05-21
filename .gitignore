@@ -5,12 +5,12 @@
 
 **/__pycache__/
 **/agent_venv/
+**/.ipynb_checkpoints/
 
 notebooks/.ipynb_checkpoints/
 notebooks/vectorstore/*
+notebooks/knowledge_base/*
 
-src/orthodox_agents/rag/data/*
-src/orthodox_agents/rag/knowledge_base/*
-src/orthodox_agents/rag/vectorstores/*
+src/vectorstores/*
 
 data/*

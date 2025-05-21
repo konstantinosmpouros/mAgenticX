@@ -14,16 +14,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # 5. Copy & install Python dependencies
-COPY ./requirements.txt /app/requirements.txt
+COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 6. Copy the agent code
-COPY . /app
-
-# Expose the necessary port (default for FastAPI)
-EXPOSE 8081
+COPY . .
 
 # Command to run the FastAPI server
+EXPOSE 8081
 CMD ["uvicorn", "__init__:app", "--host", "0.0.0.0", "--port", "8081", "--reload"]
 
 

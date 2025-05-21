@@ -7,6 +7,7 @@ sys.path.append(str(PACKAGE_ROOT))
 
 import json
 import asyncio
+import httpx
 
 from states import Orthodox_State
 from typing import Literal
@@ -23,8 +24,6 @@ from agents import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
-
-from rag import get_openai_retriever
 
 from prompts.templates.orthodox_templates import (
     nonreligious_gen_template,
@@ -120,30 +119,27 @@ async def query_gen(state: Orthodox_State, config: RunnableConfig, writer: Strea
     return {"vector_queries": response.queries}
 
 
-retriever = get_openai_retriever(k=10)
-async def retrieval(state: Orthodox_State, writer: StreamWriter) -> Orthodox_State:
-    """Retrieve documents in parallel for each generated query."""
-    retrieved_docs = []
+async def retrieval(state: Orthodox_State, writer):
+    RAG_HOST = os.getenv("RAG_HOST", "rag_service")
+    RAG_PORT = os.getenv("RAG_PORT", "8001")
+    ENDPOINT = f"http://{RAG_HOST}:{RAG_PORT}/retrieve"
     
-    async def fetch_single(query: str):
-        docs = await retriever.ainvoke(query)
-        for doc in docs:
-            retrieved_docs.append(
-                {
-                    "Content:": doc.page_content.replace("\n", " "),
-                    "Metadata:": doc.metadata,
-                }
-            )
+    retrieved_docs = []
 
-    # Fire off all retrieval calls concurrently
+    async def fetch_single(query: str):
+        async with httpx.AsyncClient() as client:
+            r = await client.post(ENDPOINT, json={"query": query, "k": 10}, timeout=30)
+            r.raise_for_status()
+            for doc in r.json()["documents"]:
+                retrieved_docs.append({
+                    "Content":  doc["text"].replace("\n", " "),
+                    "Metadata": doc["metadata"],
+                })
+
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
 
-    docs_json = json.dumps(retrieved_docs, ensure_ascii=False, indent=2)
-    writer({
-        "type": "reasoning_rag",
-        "content": f"Retrieved content done"
-    })
-    return {"retrieved_content": docs_json}
+    writer({"type": "reasoning_rag", "content": "Retrieved content done"})
+    return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
 
 
 async def summarization(state: Orthodox_State, config: RunnableConfig, writer: StreamWriter) -> Orthodox_State:
