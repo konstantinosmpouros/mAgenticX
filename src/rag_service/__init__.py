@@ -50,6 +50,6 @@ async def retrieve(request: Query):
         "query": request.query,
         "k": request.k,
         "documents": [
-            {"text": d.page_content, "metadata": d.metadata} for d in docs
+            {"Content": d.page_content, "Metadata": d.metadata} for d in docs
         ],
     }

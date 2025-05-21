@@ -127,14 +127,11 @@ async def retrieval(state: Orthodox_State, writer):
     retrieved_docs = []
 
     async def fetch_single(query: str):
+        nonlocal retrieved_docs
         async with httpx.AsyncClient() as client:
             r = await client.post(ENDPOINT, json={"query": query, "k": 10}, timeout=30)
             r.raise_for_status()
-            for doc in r.json()["documents"]:
-                retrieved_docs.append({
-                    "Content":  doc["text"].replace("\n", " "),
-                    "Metadata": doc["metadata"],
-                })
+            retrieved_docs.extend(r.json()["documents"])
 
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
 
@@ -175,7 +172,7 @@ async def complex_generation(state: Orthodox_State, config: RunnableConfig, writ
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
                 writer({
-                    "type": "response",
+                    "type": "reasoning_response",
                     "content": message_chunk.content
                 })
                 response += message_chunk.content
@@ -231,5 +228,6 @@ def check_reflection(state: Orthodox_State, writer: StreamWriter) -> Literal["qu
             'type': 'response',
             'content': state['response']
         })
+        return 'end'
 
 
