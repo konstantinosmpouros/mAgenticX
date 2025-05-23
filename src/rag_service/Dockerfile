@@ -20,4 +20,4 @@ COPY . .
 
 # Expose the needed port and run
 EXPOSE 8001
-CMD ["uvicorn", "__init__:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]

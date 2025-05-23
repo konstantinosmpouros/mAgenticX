@@ -1,10 +1,8 @@
-version: '3.9'
-
 services:
 
-  orthodoxai:
-    container_name: orthodox_agent
-    image: orthodox_agent
+  orthodox_agents:
+    container_name: orthodox_agents
+    image: orthodox_agents
     build:
       context: ./orthodox_agents
       dockerfile: Dockerfile
@@ -47,9 +45,36 @@ services:
       - PERSIST_DIRECTORY=/chroma/chroma
       - ANONYMIZED_TELEMETRY=FALSE
     volumes:
-      - vectorestore:/chroma/chroma
+      - vectorstore:/chroma/chroma
     restart: unless-stopped
     networks:
+      - backend
+
+  dialog_bridge:
+    container_name: dialog_bridge
+    build:
+      context: ./dialog_bridge
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - CHAT_TTL=86400
+    depends_on: 
+      - orthodox_agents
+      - redis
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+    networks: 
+      - backend
+      - frontend
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    networks: 
       - backend
 
 
@@ -60,9 +85,13 @@ networks:
 
 
 volumes:
-  vectorestore:
+  vectorstore:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: ./vectorstores/chroma_db_openai
+
+  redisdata:
+
+
