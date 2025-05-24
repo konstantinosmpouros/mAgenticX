@@ -32,6 +32,9 @@ class ChatRequest(BaseModel):
     conversation: List[dict[str, Any]]
     agent_name: str = Field(..., description="Must exist in AGENT_MAP")
 
+class AddMessagesRequest(BaseModel):
+    """Payload for the unit‑test‑friendly add/upsert endpoint."""
+    messages: List[Dict[str, Any]]
 
 # Redis helpers
 async def _redis_key(user_id: str, conv_id: str) -> str:
@@ -50,29 +53,11 @@ async def fetch_conversation(user_id: str, conv_id: str) -> List[dict[str, Any]]
     """Retrieve a conversation as a list of message dicts (oldest → newest)."""
     key = await _redis_key(user_id, conv_id)
     raw = await redis_client.lrange(key, 0, -1)
-    if not raw:
-        return []
-    return [json.loads(item) for item in raw]
-
-async def fetch_all_conversations(user_id: str) -> Dict[str, List[dict[str, Any]]]:
-    """Return **every** conversation for a user keyed by conversation_id."""
-    pattern = f"chat:{user_id}:*"
-    cursor = "0"
-    conversations: Dict[str, List[dict[str, Any]]] = {}
-
-    while True:
-        cursor, keys = await redis_client.scan(cursor=cursor, match=pattern, count=100)
-        for key in keys:
-            *_, conv_id = key.split(":", 2)
-            raw = await redis_client.lrange(key, 0, -1)
-            conversations[conv_id] = [json.loads(item) for item in raw]
-        if cursor == "0":
-            break
-    return conversations
+    return [json.loads(item) for item in raw] if raw else []
 
 
 # FastApi server
-app = FastAPI(title="DialogBridge", version="0.2.0")
+app = FastAPI()
 
 
 @app.get("/conversations/{user_id}/{conversation_id}")
@@ -83,7 +68,6 @@ async def get_conversation(user_id: str, conversation_id: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     return JSONResponse(content={"conversation_id": conversation_id, "messages": convo})
 
-
 @app.delete("/conversations/{user_id}/{conversation_id}")
 async def delete_conversation(user_id: str, conversation_id: str):
     """Delete an entire conversation thread from Redis."""
@@ -93,6 +77,42 @@ async def delete_conversation(user_id: str, conversation_id: str):
     if removed == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     return {"status": "deleted", "conversation_id": conversation_id}
+
+@app.post("/conversations/{user_id}/{conversation_id}", status_code=status.HTTP_201_CREATED)
+async def append_to_conversation(user_id: str, conversation_id: str, payload: AddMessagesRequest):
+    """Append messages to the specified conversation."""
+    await append_history(user_id, conversation_id, payload.messages)
+    return {"status": "ok", "added": len(payload.messages)}
+
+
+
+
+
+
+
+
+# ---------------------------------------------------------------------------
+# Redis endpoints for test
+# ---------------------------------------------------------------------------
+
+async def fetch_all_conversations(user_id: str) -> Dict[str, List[Dict[str, Any]]]:
+    """Return every conversation for a user. Uses SCAN_ITER to avoid cursor bugs."""
+
+    pattern = f"chat:{user_id}:*"
+    conversations: Dict[str, List[Dict[str, Any]]] = {}
+
+    async for key in redis_client.scan_iter(match=pattern, count=100):
+        *_, conv_id = key.split(":", 2)
+        raw = await redis_client.lrange(key, 0, -1)
+        conversations[conv_id] = [json.loads(item) for item in raw]
+
+    return conversations
+
+@app.get("/conversations/{user_id}")
+async def list_conversations(user_id: str):
+    """Return **all** conversations (and their messages) for `user_id`."""
+    return JSONResponse(content=await fetch_all_conversations(user_id))
+
 
 
 @app.post("/chat", response_class=StreamingResponse)
@@ -131,36 +151,3 @@ async def chat_endpoint(payload: ChatRequest):
             await append_history(payload.user_id, payload.conversation_id, collected)
 
     return StreamingResponse(_proxy_stream(), media_type="application/json")
-
-
-
-
-
-
-
-
-# ---------------------------------------------------------------------------
-# Minimal add & delete endpoints – enables isolated Redis tests
-# ---------------------------------------------------------------------------
-
-class AddMessagesRequest(BaseModel):
-    """Payload for the unit‑test‑friendly add/upsert endpoint."""
-    messages: List[Dict[str, Any]]
-
-@app.post("/conversations/{user_id}/{conversation_id}/messages", status_code=status.HTTP_201_CREATED)
-async def add_messages(user_id: str, conversation_id: str, payload: AddMessagesRequest):
-    """Append messages to the specified conversation.
-
-    • Creates the Redis list if it doesn't exist (acts as *upsert*).
-    • Keeps the TTL fresh (same as the main chat workflow).
-    """
-
-    await append_history(user_id, conversation_id, payload.messages)
-    return {"status": "ok", "added": len(payload.messages)}
-
-
-@app.get("/conversations/{user_id}")
-async def list_conversations(user_id: str):
-    """Return **all** conversations (and their messages) for `user_id`."""
-    conversations = await fetch_all_conversations(user_id)
-    return JSONResponse(content=conversations)

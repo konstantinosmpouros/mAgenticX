@@ -52,6 +52,7 @@ services:
 
   dialog_bridge:
     container_name: dialog_bridge
+    image: dialog_bridge
     build:
       context: ./dialog_bridge
       dockerfile: Dockerfile
