@@ -57,11 +57,10 @@ services:
       context: ./dialog_bridge
       dockerfile: Dockerfile
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - CHAT_TTL=86400
+      - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
     depends_on: 
       - orthodox_agents
-      - redis
+      - chat_postgres
     ports:
       - "8002:8002"
     restart: unless-stopped
@@ -69,13 +68,16 @@ services:
       - backend
       - frontend
 
-  redis:
-    image: redis:7-alpine
-    container_name: redis
+  chat_postgres:
+    image: postgres:latest
+    container_name: chat_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: chat_db
     volumes:
-      - redisdata:/data
-    restart: unless-stopped
-    networks: 
+      - chat_convs:/var/lib/postgresql/data
+    networks:
       - backend
 
 
@@ -93,6 +95,6 @@ volumes:
       o: bind
       device: ./vectorstores/chroma_db_openai
 
-  redisdata:
+  chat_convs:
 
 

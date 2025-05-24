@@ -11,9 +11,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps – FastAPI stack + Redis + HTTPX.
-RUN pip install --no-cache-dir fastapi uvicorn httpx redis
+RUN pip install --no-cache-dir fastapi uvicorn sqlalchemy[asyncio] asyncpg aiosqlite pydantic
 
 WORKDIR /app
-COPY . /app
+COPY . .
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
