@@ -7,7 +7,7 @@ PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
 # Load agents
-from workflows import agent
+from workflows import orthodoxai_v1
 
 import json
 from fastapi import FastAPI
@@ -24,7 +24,7 @@ class StrRequest(BaseModel):
 @app.post("/OrthodoxAI/v1/stream")
 async def stream_agent(req: StrRequest):
     async def event_stream():
-        async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
+        async for msg in orthodoxai_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
             yield json.dumps(msg).encode("utf-8")
 
     return StreamingResponse(event_stream(), media_type="application/json")

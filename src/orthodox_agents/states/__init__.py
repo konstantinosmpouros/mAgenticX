@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from langchain.schema import HumanMessage
 from langchain.prompts import ChatPromptTemplate
 
-class Orthodox_State(BaseModel):
+class OrthodoxV1_State(BaseModel):
     user_input: Union[str, HumanMessage, ChatPromptTemplate]
     
     analysis_results: Any = None
