@@ -19,4 +19,5 @@ RUN apt-get update \
 COPY . .
 
 # Expose the needed port and run
-EXPOSE 8080
+EXPOSE 8501
+CMD [ "streamlit", "run", "app.py" ]

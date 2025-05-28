@@ -50,11 +50,11 @@ services:
     networks:
       - backend
 
-  dialog_bridge:
-    container_name: dialog_bridge
-    image: dialog_bridge
+  dialogue_bridge:
+    container_name: dialogue_bridge
+    image: dialogue_bridge
     build:
-      context: ./dialog_bridge
+      context: ./dialogue_bridge
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
@@ -80,6 +80,23 @@ services:
     networks:
       - backend
 
+  streamlit_app:
+    image: streamlit_app
+    container_name: streamlit_app
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    environment:
+      - BFF_HOST=dialogue_bridge
+      - BFF_PORT=8002
+    depends_on: 
+      - dialogue_bridge
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    networks: 
+      - backend
+      - frontend
 
 networks:
   backend:
