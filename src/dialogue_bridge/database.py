@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy import Column, String, JSON, ForeignKey
+from sqlalchemy import DateTime, func
+
 
 # configurations
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./app.db")
@@ -50,5 +52,18 @@ class ConversationTable(Base):
     conversation_id = Column(String, primary_key=True)
     title = Column(String, nullable=True)
     messages = Column(JSON, nullable=False)
+    agents = Column(JSON, nullable=False, default=list)
+    
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
 
     user = relationship("UserTable", back_populates="conversations")

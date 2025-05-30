@@ -11,7 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps – FastAPI stack + Redis + HTTPX.
-RUN pip install --no-cache-dir fastapi uvicorn sqlalchemy[asyncio] asyncpg aiosqlite pydantic
+RUN pip install --no-cache-dir fastapi httpx uvicorn sqlalchemy[asyncio] asyncpg aiosqlite pydantic
 
 WORKDIR /app
 COPY . .

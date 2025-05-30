@@ -1,10 +1,10 @@
 services:
 
-  orthodox_agents:
-    container_name: orthodox_agents
-    image: orthodox_agents
+  agents:
+    container_name: agents
+    image: agents
     build:
-      context: ./orthodox_agents
+      context: ./agents
       dockerfile: Dockerfile
     ports:
       - '8081:8081'
@@ -59,7 +59,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
     depends_on: 
-      - orthodox_agents
+      - agents
       - chat_postgres
     ports:
       - "8002:8002"
@@ -97,6 +97,7 @@ services:
     networks: 
       - backend
       - frontend
+
 
 networks:
   backend:

@@ -7,11 +7,12 @@ sys.path.append(str(PACKAGE_ROOT))
 
 from typing import List, Any, Dict, Union
 from pydantic import BaseModel
-from langchain.schema import HumanMessage
+from langchain.schema import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 
+
 class OrthodoxV1_State(BaseModel):
-    user_input: Union[str, HumanMessage, ChatPromptTemplate]
+    user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
     
     analysis_results: Any = None
     analysis_str: str = None

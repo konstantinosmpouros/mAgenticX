@@ -7,18 +7,20 @@ PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
 # Load agents
-from workflows import orthodoxai_v1
+from orthodox_agents import orthodoxai_v1
 
 import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 
+from typing import List, Dict
+
 
 app = FastAPI()
 
 class StrRequest(BaseModel):
-    user_input: str
+    user_input: List[Dict[str, str]]
 
 
 @app.post("/OrthodoxAI/v1/stream")

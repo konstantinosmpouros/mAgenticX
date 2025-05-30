@@ -16,13 +16,6 @@ from prompts.system.orthodoxai_v1 import (
 
 analyzer_template = ChatPromptTemplate.from_messages([
     ("system", ANALYZER_SYSTEM_PROMPT),
-    ("human",
-    """
-        The message to analyze is the following:
-
-        {user_msg}
-    """
-    ),
 ])
 
 
