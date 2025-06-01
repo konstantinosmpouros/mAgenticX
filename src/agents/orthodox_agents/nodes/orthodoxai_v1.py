@@ -46,8 +46,9 @@ async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: Stre
         f"Reasoning: {analysis_results.reasoning}"
     )
     writer({
-        "type": "reasoning_bullet",
-        "content": analysis_str
+        "type": "reasoning",
+        "content": analysis_str,
+        "node": "analysis"
     })
     return {'analysis_results': analysis_results, 'analysis_str': analysis_str}
 
@@ -66,7 +67,7 @@ async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, wri
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
                 writer({
-                    "type": "response",
+                    "type": "response_chunk",
                     "content": message_chunk.content
                 })
                 response += message_chunk.content
@@ -78,14 +79,16 @@ async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, wri
                 if getattr(agent_msg, "tool_calls", None):
                     for tool_call in agent_msg.tool_calls:
                         writer({
-                            "type": "tool_call",
-                            "content": f"Using the {tool_call['name']} tool"
+                            "type": "reasoning",
+                            "content": f"Using the {tool_call['name']} tool",
+                            "node": "simple_gen"
                         })
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
                 writer({
-                    "type": "tool_response",
-                    "content": f"The tool call responded the following: {tool_msg.content}"
+                    "type": "reasoning",
+                    "content": f"The tool call responded the following: {tool_msg.content}",
+                    "node": "simple_gen"
                 })
     return {"response": response}
 
@@ -109,12 +112,13 @@ async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: Str
     # Emit a reasoning header via the writer
     lines = ["I will perform a research in the database for the following fields:"]
     for idx, q in enumerate(response.queries, start=1):
-        lines.append(f"- {q}")
+        lines.append(f"{idx}. {q}")
     header_content = "\n".join(lines)
     
     writer({
-        "type": "reasoning_bullet",
-        "content": header_content
+        "type": "reasoning",
+        "content": header_content,
+        "node": "query_gen"
     })
     return {"vector_queries": response.queries}
 
@@ -135,7 +139,11 @@ async def retrieval(state: OrthodoxV1_State, writer):
 
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
 
-    writer({"type": "reasoning_rag", "content": "Retrieved content done"})
+    writer({
+        "type": "reasoning",
+        "content": "Retrieved content done",
+        "node": "retrieval"
+    })
     return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
 
 
@@ -152,7 +160,8 @@ async def summarization(state: OrthodoxV1_State, config: RunnableConfig, writer:
     async for token in summarizer_agent.astream(payload, config):
         writer({
             "type": "reasoning_chunk",
-            "content": token.content
+            "content": token.content,
+            "node": "summarization"
         })
         summarization += token.content
     return {"summarization": summarization}
@@ -172,7 +181,7 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
                 writer({
-                    "type": "reasoning_response",
+                    "type": "response_chunk",
                     "content": message_chunk.content
                 })
                 response += message_chunk.content
@@ -184,14 +193,16 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
                 if getattr(agent_msg, "tool_calls", None):
                     for tool_call in agent_msg.tool_calls:
                         writer({
-                            "type": "tool_call",
-                            "content": f"Using the {tool_call['name']} tool"
+                            "type": "reasoning",
+                            "content": f"Using the {tool_call['name']} tool",
+                            "node": "complex_gen"
                         })
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
                 writer({
-                    "type": "tool_response",
-                    "content": f"The tool call responded the following: {tool_msg.content}"
+                    "type": "reasoning",
+                    "content": f"The tool call responded the following: {tool_msg.content}",
+                    "node": "complex_gen"
                 })
     return {"response": response}
 
@@ -214,8 +225,9 @@ async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: St
         else "No additional retrieval is required."
     )
     writer({
-        "type": "reasoning_bullet",
-        "content": reflection_str
+        "type": "reasoning",
+        "content": reflection_str,
+        "node": "reflection"
     })
     return {"reflection": reflection, 'reflection_str': reflection_str}
 

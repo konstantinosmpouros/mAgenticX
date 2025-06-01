@@ -23,11 +23,11 @@ class StrRequest(BaseModel):
     user_input: List[Dict[str, str]]
 
 
-@app.post("/OrthodoxAI/v1/stream")
+@app.post("/OrthodoxAI/v1/stream", status_code=200)
 async def stream_agent(req: StrRequest):
     async def event_stream():
         async for msg in orthodoxai_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
-            yield json.dumps(msg).encode("utf-8")
+            yield (json.dumps(msg) + "\n").encode(encoding="utf-8")
 
-    return StreamingResponse(event_stream(), media_type="application/json")
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 

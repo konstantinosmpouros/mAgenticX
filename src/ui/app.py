@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import time
 import uuid
 import streamlit as st
-from utils import list_conversations, fetch_conversation, auth_request
+from utils import list_conversations, fetch_conversation, authenticate_user
 
 
 AGENTS = ["OrthodoxAI_v1"]
@@ -13,7 +12,7 @@ def ensure_core_session_keys() -> None:
     """Seed mandatory session keys once."""
     defaults = {
         "user_id": None,
-        "conversation_id": None,
+        "conversation_id": uuid.uuid4().hex,
         "title": None,
         "messages": [],
         "selected_agent": AGENTS[0],
@@ -24,7 +23,7 @@ def ensure_core_session_keys() -> None:
 
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data()
 def get_conversations(user_id: str):
     """Return the user’s past conversations, cached."""
     return list_conversations(user_id)
@@ -51,7 +50,7 @@ def render_sidebar() -> None:
             "Choose an agent",
             AGENTS,
             key="selected_agent",
-            on_change=lambda: None,  # forces sync to session_state
+            on_change=lambda: None,
         )
 
         st.divider()
@@ -98,55 +97,8 @@ def render_chat() -> None:
 
 
 
-def creds_entered():
-    user   = st.session_state.get("user", "").strip()
-    st.session_state["user"] = ""
-    
-    passwd = st.session_state.get("passwd", "").strip()
-    st.session_state["passwd"] = ""
-    
-    user_obj = auth_request(user, passwd)
-    
-    if user_obj['authenticated']:
-        st.session_state["authenticated"] = True
-        st.session_state["login_warning"] = None
-        st.session_state['user_id'] = user_obj['user_id']
-    else:
-        if not user:
-            st.session_state["login_warning"] = "Please enter username."
-        elif not passwd:
-            st.session_state["login_warning"] = "Please enter password."
-        else:
-            st.session_state["login_warning"] = "Invalid username / password 😒"
-
-def authenticate_user():
-    # -------- initialise state fields once -------- 
-    st.session_state.setdefault("authenticated", False)
-    st.session_state.setdefault("login_warning", None)
-    
-    # -------- already authenticated? stop rendering login UI -------- 
-    if st.session_state["authenticated"]:
-        return True
-
-    # -------- login UI -------- 
-    st.title("Login to Agentic Chat")
-    st.text_input("Username", key="user")
-    st.text_input("Password", key="passwd", type="password", on_change=creds_entered)
-
-    # -------- transient warning message -------- 
-    if st.session_state["login_warning"]:
-        st.warning(st.session_state["login_warning"])
-        time.sleep(3)
-        st.session_state["login_warning"] = None
-
-    return False
-
-
 def main() -> None:
-    st.set_page_config(
-        page_title="Agentic Chat",
-        page_icon="🕊️",
-    )
+    st.set_page_config(page_title="Agentic Chat", page_icon="🕊️")
     ensure_core_session_keys()
     
     if not authenticate_user():

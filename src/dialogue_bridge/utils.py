@@ -41,8 +41,8 @@ async def upsert_conversation(payload: Conversation, db: AsyncSession) -> Conver
             )
             db.add(convo)
         else:
-            convo.messages = payload.messages
-            convo.agents += payload.agents
+            convo.messages = convo.messages + payload.messages
+            convo.agents = convo.agents + payload.agents
             if payload.title and payload.title != convo.title:
                 convo.title = payload.title
 

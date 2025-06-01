@@ -2,7 +2,7 @@ import json
 import httpx
 from typing import List
 from uuid import uuid4
-from fastapi import FastAPI, Depends, HTTPException, status, Response
+from fastapi import FastAPI, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 
@@ -32,7 +32,7 @@ app = FastAPI(title="Bridge Service", lifespan=lifespan)
 #-----------------------------------------------------------------------------------
 # USER APIS
 #-----------------------------------------------------------------------------------
-@app.post("/authenticate", response_model=AuthResponse)
+@app.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
     """
     Simple credential check. Returns True + user_id on success, False otherwise.
@@ -80,17 +80,17 @@ async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
     # 2. Delete; the cascade rule wipes conversations too
     await db.delete(user)
     await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=204)
 
 
 
 #-----------------------------------------------------------------------------------
-# CONVERSATIONS APIS
+# CONVERSATION APIS
 #-----------------------------------------------------------------------------------
 @app.post(
     "/users/{user_id}/conversations/{conversation_id}/messages",
     response_model=Conversation,
-    status_code=201
+    status_code=status.HTTP_201_CREATED
 )
 async def update_conv(
     payload: Conversation,
@@ -104,7 +104,7 @@ async def update_conv(
 @app.get(
     "/users/{user_id}/conversations",
     response_model=List[ConversationSummary],
-    status_code=200
+    status_code=status.HTTP_200_OK
 )
 async def list_conversations(
     user_id: str,
@@ -129,7 +129,7 @@ async def list_conversations(
 @app.get(
     "/users/{user_id}/conversations/{conversation_id}",
     response_model=Conversation,
-    status_code=200
+    status_code=status.HTTP_200_OK
 )
 async def get_conversation(
     user_id: str,
@@ -151,7 +151,7 @@ async def get_conversation(
 
 @app.delete(
     "/users/{user_id}/conversations/{conversation_id}",
-    status_code=204
+    status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_conversation(
     user_id: str,
@@ -186,45 +186,110 @@ async def inference(
     db: AsyncSession = Depends(get_db)
 ):
     # Validate agent name & URL
-    if not payload.agents:
-        raise HTTPException(400, "No agent was specified")
-
+    if not payload.agents or len(payload.agents) != 1:
+        raise HTTPException(400, "No agent was specified or more than one was given")
+    
     agent_name = payload.agents[0]
     agent_url = AGENT_MAPPING.get(agent_name)
     if agent_url is None:
         raise HTTPException(400, f"Unknown agent: {agent_name}")
-
+    
     # Persist conversation (create or update)
     conv = await upsert_conversation(payload, db)
     
     # Create an async generator that forwards the stream
     async def agent_stream():
+        current_node: str | None = None
+        reasoning_cells: list[dict[str, list[str]]] = []
+        response_accum: str = ""
+        
         try:
+            # Make the streaming request to the agent
             async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("POST", agent_url, json={"user_input": conv.messages}) as resp:
-                    resp.raise_for_status()
+                async with client.stream(
+                    "POST",
+                    agent_url,
+                    headers={"Content-Type":"application/json"},
+                    json={"user_input": conv.messages}
+                ) as resp:
+                    
+                    # If the agent immediately errors, bubble that up
+                    # if resp.status_code != 200:
+                    #     detail = await resp.text()
+                    #     raise HTTPException(502, f"Agent {agent_name} error: {detail}")
+                    
+                    # Iterate over each line of the agent’s streaming response
                     async for line in resp.aiter_lines():
-                        if not line:
+                        if line:
+                            try:
+                                chunk = json.loads(line)
+                                
+                                ctype = chunk.get('type')
+                                content = chunk.get("content")
+                                
+                                if ctype in ("reasoning", "reasoning_chunk"):
+                                    node = chunk.get("node_name", "unknown_node")
+                                    
+                                    if node != current_node:
+                                        reasoning_cells.append({
+                                            "node_name": node,
+                                            "chunks": []
+                                        })
+                                        current_node = node
+                                    
+                                    reasoning_cells[-1]["chunks"].append(content)
+                                    
+                                    yield (json.dumps({
+                                        "role": "assistant",
+                                        "type": "reasoning",
+                                        "node_name": node,
+                                        "content": content
+                                    }) + "\n").encode("utf-8")
+                                    
+                                elif ctype in ("response", "response_chunk"):
+                                    response_accum += content
+                                    
+                                    yield (json.dumps({
+                                        "role": "assistant",
+                                        "type": "response",
+                                        "content": content
+                                    }) + "\n").encode("utf-8")
+                                    
+                                else:
+                                    continue
+                                    
+                            except Exception as ex:
+                                print("Line: ", line)
+                                print("Chunk: ", chunk)
+                                raise HTTPException(500, ex)
+                        else:
                             continue
-                        # Optionally validate line is JSON:
-                        try:
-                            json.dumps(line).encode("utf-8")
-                        except json.JSONDecodeError:
-                            # wrap raw text inside {type:content}
-                            line = json.dumps({"type": "raw", "content": line})
-                        yield line + "\n"  # newline keeps the UI happy
-        except httpx.HTTPError as exc:
-            # Bubble up a meaningful error to the UI
-            err_msg = json.dumps(
-                {"type": "error", "content": f"Agent call failed: {exc}"}
+            
+            assistant_message = {
+                "role": "assistant",
+                "content": response_accum,
+                "reasoning": json.dumps(reasoning_cells)
+            }
+                
+            new_payload = Conversation(
+                user_id=payload.user_id,
+                conversation_id=payload.conversation_id,
+                title=payload.title,
+                messages=[assistant_message],
+                agents=payload.agents
             )
-            yield err_msg + "\n"
-
+            await upsert_conversation(new_payload, db)
+            
+        except httpx.HTTPError as exc:
+            raise Exception(exc)
+        finally:
+            await client.aclose()
+    
     # Return a streaming response
     return StreamingResponse(
         agent_stream(),
         media_type="application/x-ndjson",
-        status_code=status.HTTP_200_OK,
+        status_code=200,
     )
 
 
