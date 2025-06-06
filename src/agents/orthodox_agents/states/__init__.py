@@ -26,6 +26,8 @@ class OrthodoxV1_State(BaseModel):
     
     response: str = None
     
+    cycle_numbers: int = 0
+    
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
 

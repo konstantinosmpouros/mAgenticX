@@ -1,5 +1,3 @@
-import json
-import httpx
 from typing import List
 from uuid import uuid4
 from fastapi import FastAPI, Depends, HTTPException, Response, status
@@ -13,10 +11,10 @@ from schemas import (
     Conversation, ConversationSummary,
     UserCreate, UserOut, AuthRequest, AuthResponse
 )
-from utils import authenticate_id, upsert_conversation
+from utils import authenticate_id, upsert_conversation, agent_stream
 
 AGENT_MAPPING = {
-    "OrthodoxAI_v1": "http://agents:8081/OrthodoxAI/v1/stream",
+    "OrthodoxAI_v1": "http://agents:8003/OrthodoxAI/v1/stream",
 }
 
 @asynccontextmanager
@@ -172,11 +170,29 @@ async def delete_conversation(
     return
 
 
+@app.delete(
+    "/users/{user_id}/conversations",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_all_conversations(
+    user_id: str,
+    current_user: UserTable = Depends(authenticate_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete all conversations for the specified user."""
+    result = await db.execute(
+        delete(ConversationTable).where(ConversationTable.user_id == user_id)
+    )
+    await db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(404, "No conversations found for this user")
+    return
+
 
 #-----------------------------------------------------------------------------------
 # INFERENCE APIS
 #-----------------------------------------------------------------------------------
-@app.get(
+@app.post(
     "/user/{user_id}/inference",
     status_code=status.HTTP_200_OK
 )
@@ -195,105 +211,13 @@ async def inference(
         raise HTTPException(400, f"Unknown agent: {agent_name}")
     
     # Persist conversation (create or update)
-    conv = await upsert_conversation(payload, db)
-    
-    # Create an async generator that forwards the stream
-    async def agent_stream():
-        current_node: str | None = None
-        reasoning_cells: list[dict[str, list[str]]] = []
-        response_accum: str = ""
-        
-        try:
-            # Make the streaming request to the agent
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    agent_url,
-                    headers={"Content-Type":"application/json"},
-                    json={"user_input": conv.messages}
-                ) as resp:
-                    
-                    # If the agent immediately errors, bubble that up
-                    # if resp.status_code != 200:
-                    #     detail = await resp.text()
-                    #     raise HTTPException(502, f"Agent {agent_name} error: {detail}")
-                    
-                    # Iterate over each line of the agent’s streaming response
-                    async for line in resp.aiter_lines():
-                        if line:
-                            try:
-                                chunk = json.loads(line)
-                                
-                                ctype = chunk.get('type')
-                                content = chunk.get("content")
-                                
-                                if ctype in ("reasoning", "reasoning_chunk"):
-                                    node = chunk.get("node_name", "unknown_node")
-                                    
-                                    if node != current_node:
-                                        reasoning_cells.append({
-                                            "node_name": node,
-                                            "chunks": []
-                                        })
-                                        current_node = node
-                                    
-                                    reasoning_cells[-1]["chunks"].append(content)
-                                    
-                                    yield (json.dumps({
-                                        "role": "assistant",
-                                        "type": "reasoning",
-                                        "node_name": node,
-                                        "content": content
-                                    }) + "\n").encode("utf-8")
-                                    
-                                elif ctype in ("response", "response_chunk"):
-                                    response_accum += content
-                                    
-                                    yield (json.dumps({
-                                        "role": "assistant",
-                                        "type": "response",
-                                        "content": content
-                                    }) + "\n").encode("utf-8")
-                                    
-                                else:
-                                    continue
-                                    
-                            except Exception as ex:
-                                print("Line: ", line)
-                                print("Chunk: ", chunk)
-                                raise HTTPException(500, ex)
-                        else:
-                            continue
-            
-            assistant_message = {
-                "role": "assistant",
-                "content": response_accum,
-                "reasoning": json.dumps(reasoning_cells)
-            }
-                
-            new_payload = Conversation(
-                user_id=payload.user_id,
-                conversation_id=payload.conversation_id,
-                title=payload.title,
-                messages=[assistant_message],
-                agents=payload.agents
-            )
-            await upsert_conversation(new_payload, db)
-            
-        except httpx.HTTPError as exc:
-            raise Exception(exc)
-        finally:
-            await client.aclose()
+    _ = await upsert_conversation(payload, db)
     
     # Return a streaming response
     return StreamingResponse(
-        agent_stream(),
-        media_type="application/x-ndjson",
+        agent_stream(agent_url, payload, db),
+        media_type="text/event-stream",
         status_code=200,
     )
-
-
-
-
 
 

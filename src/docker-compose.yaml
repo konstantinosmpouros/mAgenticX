@@ -1,13 +1,11 @@
 services:
 
-  agents:
+  agents: # 8003
     container_name: agents
     image: agents
     build:
       context: ./agents
       dockerfile: Dockerfile
-    ports:
-      - '8081:8081'
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
@@ -19,7 +17,8 @@ services:
       - backend
       - frontend
 
-  rag_service:
+
+  rag_service: # 8001
     container_name: rag_service
     image: rag_service
     build: 
@@ -37,7 +36,8 @@ services:
       - backend
       - frontend
 
-  vectordb:
+
+  vectordb: # 8000
     image: chromadb/chroma:0.6.3
     container_name: vectordb
     environment:
@@ -50,7 +50,8 @@ services:
     networks:
       - backend
 
-  dialogue_bridge:
+
+  dialogue_bridge: # 8002
     container_name: dialogue_bridge
     image: dialogue_bridge
     build:
@@ -68,7 +69,8 @@ services:
       - backend
       - frontend
 
-  chat_postgres:
+
+  chat_postgres: # 5432
     image: postgres:latest
     container_name: chat_postgres
     environment:
@@ -80,7 +82,8 @@ services:
     networks:
       - backend
 
-  streamlit_app:
+
+  streamlit_app: # 8501
     image: streamlit_app
     container_name: streamlit_app
     build:

@@ -24,6 +24,6 @@ COPY . .
 
 # Command to run the FastAPI server
 EXPOSE 8081
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8081", "--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003", "--reload"]
 
 

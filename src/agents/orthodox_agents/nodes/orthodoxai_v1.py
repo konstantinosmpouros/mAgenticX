@@ -40,10 +40,11 @@ async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: Stre
     analysis_results = await analysis_agent.ainvoke(user_msg, config)
     
     analysis_str = (
-        f"This question is **{analysis_results.is_religious}** and focuses on **{', '.join(analysis_results.key_topics)}**.  \n"
-        f"Context requirements: {analysis_results.context_requirements}.  \n"
-        f"Overall complexity: **{analysis_results.query_complexity}**.  \n"
-        f"Reasoning: {analysis_results.reasoning}"
+        f"***Classification***: This question is **{analysis_results.is_religious}**.  \n"
+        f"***Topic***: The question is focusing on {', '.join(analysis_results.key_topics)}.  \n"
+        f"***Context requirements***: {analysis_results.context_requirements}.  \n"
+        f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
+        f"***Reasoning***: {analysis_results.reasoning}"
     )
     writer({
         "type": "reasoning",
@@ -67,7 +68,7 @@ async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, wri
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
                 writer({
-                    "type": "response_chunk",
+                    "type": "response",
                     "content": message_chunk.content
                 })
                 response += message_chunk.content
@@ -156,14 +157,12 @@ async def summarization(state: OrthodoxV1_State, config: RunnableConfig, writer:
         "analysis_results": analysis_str,
     }
     
-    summarization = ''
-    async for token in summarizer_agent.astream(payload, config):
-        writer({
-            "type": "reasoning_chunk",
-            "content": token.content,
-            "node": "summarization"
-        })
-        summarization += token.content
+    summarization = await summarizer_agent.ainvoke(payload, config)
+    writer({
+        "type": "reasoning",
+        "content": summarization.content,
+        "node": "summarization"
+    })
     return {"summarization": summarization}
 
 
@@ -173,37 +172,38 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
         "analysis_results": state["analysis_str"],
     }
     prompt = religious_gen_template.invoke(payload)
-    
+    # TODO: Fix it
     # invoke the generation agent
     response = ''
-    async for mode, chunk in complex_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
-        if mode == 'messages':
-            message_chunk, _ = chunk
-            if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                writer({
-                    "type": "response_chunk",
-                    "content": message_chunk.content
-                })
-                response += message_chunk.content
-
-        elif mode == 'updates':
-            # chunk is a dict, containing updates per node
-            if "agent" in chunk:
-                agent_msg = chunk['agent']['messages'][0]
-                if getattr(agent_msg, "tool_calls", None):
-                    for tool_call in agent_msg.tool_calls:
-                        writer({
-                            "type": "reasoning",
-                            "content": f"Using the {tool_call['name']} tool",
-                            "node": "complex_gen"
-                        })
-            elif "tools" in chunk:
-                tool_msg = chunk['tools']['messages'][0]
+    async for update in complex_gen_agent.astream(prompt, stream_mode=["updates"]):
+        tag, payload = update
+        
+        if "agent" in payload:
+            message = payload['agent']['messages'][0]
+            
+            if getattr(message, "tool_calls", None):
+                for tool in message.tool_calls:
+                    content = "Executing tool: " + tool['name']
+                    writer({
+                        "type": "reasoning",
+                        "content": content,
+                        "node": "complex_gen"
+                    })
+            elif getattr(message, "content", None):
+                response = message.content
                 writer({
                     "type": "reasoning",
-                    "content": f"The tool call responded the following: {tool_msg.content}",
+                    "content": response,
                     "node": "complex_gen"
                 })
+        elif "tools" in payload:
+            tool_msg = update['tools']['messages'][0]
+            writer({
+                "type": "reasoning",
+                "content": f"The tool call responded the following: {tool_msg.content}",
+                "node": "complex_gen"
+            })
+    
     return {"response": response}
 
 
@@ -233,7 +233,8 @@ async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: St
 
 
 def check_reflection(state: OrthodoxV1_State, writer: StreamWriter) -> Literal["query_gen", "end"]:
-    if state['reflection'].requires_additional_retrieval:
+    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
+        state['cycle_numbers'] += 1
         return 'query_gen'
     else:
         writer({
