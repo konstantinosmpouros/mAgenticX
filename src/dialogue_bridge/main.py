@@ -42,6 +42,7 @@ async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_
         )
     )
     user = res.scalar_one_or_none()
+    await db.close()
     if user:
         return {"authenticated": True, "user_id": user.id}
     return {"authenticated": False}
@@ -61,6 +62,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     db_user = UserTable(id=user_id, username=user.username, password=user.password)
     db.add(db_user)
     await db.commit()
+    await db.close()
     return {"user_id": user_id, "username": user.username}
 
 
@@ -78,6 +80,7 @@ async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
     # 2. Delete; the cascade rule wipes conversations too
     await db.delete(user)
     await db.commit()
+    await db.close()
     return Response(status_code=204)
 
 
@@ -119,7 +122,7 @@ async def list_conversations(
             select(ConversationTable).filter_by(user_id=user_id).order_by(ConversationTable.updated_at.desc())
         )
     ).scalars().all()
-
+    await db.close()
     summaries = [ConversationSummary.model_validate(r, from_attributes=True) for r in rows]
     return summaries
 
@@ -142,6 +145,7 @@ async def get_conversation(
         )
     )
     convo: ConversationTable | None = result.scalar_one_or_none()
+    await db.close()
     if convo is None:
         raise HTTPException(404, "Conversation not found")
     return convo
@@ -165,6 +169,7 @@ async def delete_conversation(
         )
     )
     await db.commit()
+    await db.close()
     if result.rowcount == 0:
         raise HTTPException(404, "Conversation not found")
     return
@@ -184,6 +189,7 @@ async def delete_all_conversations(
         delete(ConversationTable).where(ConversationTable.user_id == user_id)
     )
     await db.commit()
+    await db.close()
     if result.rowcount == 0:
         raise HTTPException(404, "No conversations found for this user")
     return

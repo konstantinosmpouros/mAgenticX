@@ -79,6 +79,7 @@ services:
       POSTGRES_DB: chat_db
     volumes:
       - chat_convs:/var/lib/postgresql/data
+    restart: unless-stopped
     networks:
       - backend
 

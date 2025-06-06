@@ -139,6 +139,7 @@ async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
         raise Exception(exc)
     finally:
         await client.aclose()
+        await db.close()
 
 
 
