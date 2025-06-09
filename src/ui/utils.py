@@ -5,7 +5,7 @@ import time
 import os
 import httpx
 import json
-import uuid
+from uuid import uuid4
 from copy import deepcopy
 
 
@@ -124,7 +124,7 @@ def ensure_core_session_keys() -> None:
     """Seed mandatory session keys once."""
     defaults = {
         "user_id": None,
-        "conversation_id": uuid.uuid4().hex,
+        "conversation_id": uuid4().hex,
         "title": None,
         "messages": [],
         "selected_agent": AGENTS[0],
@@ -147,7 +147,7 @@ def render_sidebar() -> None:
             help="Clear chat and begin a fresh dialogue",
         )
         if new_conv_clicked:
-            st.session_state.conversation_id = uuid.uuid4().hex
+            st.session_state.conversation_id = uuid4().hex
             st.session_state.title = None
             st.session_state.messages = []
             st.rerun()

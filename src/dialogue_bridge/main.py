@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import Base, engine, get_db, ConversationTable, UserTable
+from database import Base, engine, get_db, seed_users, ConversationTable, UserTable
 from schemas import (
     Conversation, ConversationSummary,
     UserCreate, UserOut, AuthRequest, AuthResponse
@@ -19,8 +19,14 @@ AGENT_MAPPING = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 1. Make sure schema exists
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # 2. Seed users – only happens if they’re missing
+    async with AsyncSession(engine) as session:
+        await seed_users(session)
+    
     yield
 
 app = FastAPI(title="Bridge Service", lifespan=lifespan)
@@ -196,7 +202,7 @@ async def delete_all_conversations(
 
 
 #-----------------------------------------------------------------------------------
-# INFERENCE APIS
+# INFERENCE API
 #-----------------------------------------------------------------------------------
 @app.post(
     "/user/{user_id}/inference",

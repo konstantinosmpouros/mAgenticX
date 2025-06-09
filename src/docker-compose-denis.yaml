@@ -1,11 +1,7 @@
 services:
-
-  agents: # 8003
+  agents:
     container_name: agents
-    image: agents
-    build:
-      context: ./agents
-      dockerfile: Dockerfile
+    image: konstantinosmpouros/agents:v1.0.0
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
@@ -17,13 +13,9 @@ services:
       - backend
       - frontend
 
-
-  rag_service: # 8001
+  rag_service:
     container_name: rag_service
-    image: rag_service
-    build: 
-      context: ./rag_service
-      dockerfile: Dockerfile
+    image: konstantinosmpouros/rag_service:v1.0.0
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
@@ -36,8 +28,7 @@ services:
       - backend
       - frontend
 
-
-  vectordb: # 8000
+  vectordb:
     image: chromadb/chroma:0.6.3
     container_name: vectordb
     environment:
@@ -50,24 +41,19 @@ services:
     networks:
       - backend
 
-
-  dialogue_bridge: # 8002
+  dialogue_bridge:
     container_name: dialogue_bridge
-    image: dialogue_bridge
-    build:
-      context: ./dialogue_bridge
-      dockerfile: Dockerfile
+    image: konstantinosmpouros/dialogue_bridge:v1.0.0
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
-    depends_on: 
+    depends_on:
       - agents
       - chat_postgres
     restart: unless-stopped
-    networks: 
+    networks:
       - backend
 
-
-  chat_postgres: # 5432
+  chat_postgres:
     image: postgres:latest
     container_name: chat_postgres
     environment:
@@ -80,22 +66,18 @@ services:
     networks:
       - backend
 
-
-  streamlit_app: # 8501
-    image: streamlit_app
+  streamlit_app:
     container_name: streamlit_app
-    build:
-      context: ./ui
-      dockerfile: Dockerfile
+    image: konstantinosmpouros/streamlit_app:v1.0.0
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002
-    depends_on: 
+    depends_on:
       - dialogue_bridge
     ports:
       - "8501:8501"
     restart: unless-stopped
-    networks: 
+    networks:
       - backend
       - frontend
 
@@ -112,8 +94,6 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ./vectorstores/chroma_db_openai
+      device: /home/kostas/vectorstores/chroma_db_openai
 
   chat_convs:
-
-
