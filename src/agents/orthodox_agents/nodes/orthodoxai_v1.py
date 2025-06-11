@@ -229,12 +229,15 @@ async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: St
         "content": reflection_str,
         "node": "reflection"
     })
-    return {"reflection": reflection, 'reflection_str': reflection_str}
+    return {
+        "reflection": reflection,
+        "reflection_str": reflection_str,
+        "cycle_numbers": state.cycle_numbers + (1 if reflection.requires_additional_retrieval else 0),
+    }
 
 
 def check_reflection(state: OrthodoxV1_State, writer: StreamWriter) -> Literal["query_gen", "end"]:
     if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
-        state['cycle_numbers'] += 1
         return 'query_gen'
     else:
         writer({

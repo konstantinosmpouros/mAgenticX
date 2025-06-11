@@ -82,9 +82,10 @@ class ConversationTable(Base):
 # -------------------------------------------------------------------------------
 async def seed_users(session: AsyncSession) -> None:
     """Insert DEFAULT_USERS once; re-runs become no-ops."""
+    username = os.getenv("username")
+    password = os.getenv("password")
     DEFAULT_USERS = [
-        {"username": "admin", "password": "040298140a"},
-        {"username": "christosmina",  "password": "minaxristos"},
+        {"username": username, "password": password},
     ]
     for u in DEFAULT_USERS:
         stmt = (
