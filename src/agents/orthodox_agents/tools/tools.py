@@ -1,10 +1,3 @@
-from pathlib import Path
-import os
-import sys
-
-PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
-sys.path.append(str(PACKAGE_ROOT))
-
 # Annotations
 from langchain.tools import tool
 from typing import List
@@ -28,7 +21,7 @@ from langchain_community.utilities.dalle_image_generator import DallEAPIWrapper
 from langchain_community.retrievers import ArxivRetriever
 
 # Input schemas for all the tools
-from tools.args_schema import (
+from orthodox_agents.tools.args_schema import (
     SearchGoogleTrendsInput,
     SearchPubmedInput,
     SearchWikidataInput,

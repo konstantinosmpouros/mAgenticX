@@ -1,25 +1,26 @@
 import os
 
+from schemas import Query
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 
 import chromadb
 from chromadb.config import Settings
 from langchain_chroma import Chroma
-
 from langchain_openai import OpenAIEmbeddings
 from langchain.schema import Document
+
+# import duckdb
+# import pandas as pd
 
 
 app = FastAPI()
 
-class Query(BaseModel):
-    query: str
-    k: int = 10
 
+# --------------------------------------------------------------------------------------
+# RAG Configs
+# --------------------------------------------------------------------------------------
 RAG_HOST = os.getenv("RAG_HOST")
 RAG_PORT = os.getenv("RAG_PORT")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 embeddings_model = OpenAIEmbeddings(model='text-embedding-3-large', api_key=os.getenv("OPENAI_API_KEY"))
 
 settings = Settings(
@@ -29,8 +30,11 @@ settings = Settings(
 )
 
 
-@app.post("/retrieve")
-async def retrieve(request: Query):
+# --------------------------------------------------------------------------------------
+# RAG APIs
+# --------------------------------------------------------------------------------------
+@app.post("/retrieve/{collection_name}")
+async def retrieve(request: Query, collection_name: str):
     client = chromadb.HttpClient(
         host=RAG_HOST,
         port=int(RAG_PORT),
@@ -38,7 +42,7 @@ async def retrieve(request: Query):
     )
     vectordb = Chroma(
         client=client,
-        collection_name=COLLECTION_NAME,
+        collection_name=collection_name,
         embedding_function=embeddings_model,
     )
     
@@ -53,3 +57,8 @@ async def retrieve(request: Query):
             {"Content": d.page_content, "Metadata": d.metadata} for d in docs
         ],
     }
+
+
+
+
+

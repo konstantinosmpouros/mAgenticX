@@ -1,17 +1,11 @@
-from pathlib import Path
 import os
-import sys
-
-PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
-sys.path.append(str(PACKAGE_ROOT))
-
 import json
 import asyncio
 import httpx
 
-from states import OrthodoxV1_State
+from orthodox_agents.states import OrthodoxV1_State
 from typing import Literal
-from agents.orthodoxai_v1 import (
+from orthodox_agents.agents.orthodoxai_v1 import (
     analysis_agent,
     simple_gen_agent,
     reflection_agent,
@@ -25,7 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
 
-from prompts.templates.orthodoxai_v1 import (
+from orthodox_agents.prompts.templates.orthodoxai_v1 import (
     nonreligious_gen_template,
     religious_gen_template
 )
@@ -127,7 +121,9 @@ async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: Str
 async def retrieval(state: OrthodoxV1_State, writer):
     RAG_HOST = os.getenv("RAG_HOST", "rag_service")
     RAG_PORT = os.getenv("RAG_PORT", "8001")
-    ENDPOINT = f"http://{RAG_HOST}:{RAG_PORT}/retrieve"
+    
+    COLLECTION_NAME = "athanasios-muthlinaios"
+    ENDPOINT = f"http://{RAG_HOST}:{RAG_PORT}/retrieve/{COLLECTION_NAME}"
     
     retrieved_docs = []
 
@@ -172,7 +168,7 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
         "analysis_results": state["analysis_str"],
     }
     prompt = religious_gen_template.invoke(payload)
-    # TODO: Fix it
+    
     # invoke the generation agent
     response = ''
     async for update in complex_gen_agent.astream(prompt, stream_mode=["updates"]):

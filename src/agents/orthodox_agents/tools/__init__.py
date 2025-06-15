@@ -1,11 +1,4 @@
-from pathlib import Path
-import os
-import sys
-
-PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
-sys.path.append(str(PACKAGE_ROOT))
-
-from tools.tools import (
+from orthodox_agents.tools.tools import (
     get_current_exchange_rate,
     get_daily_stock_data,
     get_stock_market_news,

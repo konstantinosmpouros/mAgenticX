@@ -14,7 +14,10 @@ HOST = os.getenv("BFF_HOST")
 PORT = os.getenv("BFF_PORT")
 API_BASE = f"http://{HOST}:{PORT}"
 
-AGENTS = ["OrthodoxAI_v1"]
+AGENTS = [
+    "OrthodoxAI_v1",
+    "HRPolicies_v1"
+]
 
 
 def _safe_get(url: str) -> Any | None:

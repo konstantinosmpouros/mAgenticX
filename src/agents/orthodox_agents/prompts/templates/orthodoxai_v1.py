@@ -1,12 +1,5 @@
-from pathlib import Path
-import os
-import sys
-
-PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
-sys.path.append(str(PACKAGE_ROOT))
-
 from langchain.prompts import ChatPromptTemplate
-from prompts.system.orthodoxai_v1 import (
+from orthodox_agents.prompts.system.orthodoxai_v1 import (
     ANALYZER_SYSTEM_PROMPT,
     GENERATION_SYSTEM_PROMPT,
     REFLECTION_SYSTEM_PROMPT,

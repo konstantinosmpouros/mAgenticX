@@ -8,6 +8,7 @@ sys.path.append(str(PACKAGE_ROOT))
 
 # Load agents
 from orthodox_agents import orthodoxai_v1
+from hr_agents import hr_policies_v1
 
 import json
 from fastapi import FastAPI
@@ -31,3 +32,11 @@ async def stream_agent(req: StrRequest):
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+
+@app.post("/HRPolicies/v1/stream", status_code=200)
+async def stream_agent(req: StrRequest):
+    async def event_stream():
+        async for msg in hr_policies_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
+            yield (json.dumps(msg) + "\n").encode(encoding="utf-8")
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

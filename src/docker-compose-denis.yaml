@@ -20,7 +20,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
       - RAG_PORT=8000
-      - COLLECTION_NAME=athanasios-muthlinaios
     depends_on:
       - vectordb
     restart: unless-stopped

@@ -1,11 +1,4 @@
-from pathlib import Path
-import os
-import sys
-
-PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__))).parent
-sys.path.append(str(PACKAGE_ROOT))
-
-from nodes.orthodoxai_v1 import (
+from orthodox_agents.nodes.orthodoxai_v1 import (
     analysis,
     check_if_religious,
     simple_generation,
@@ -18,7 +11,7 @@ from nodes.orthodoxai_v1 import (
 )
 
 from langgraph.graph import START, END, StateGraph
-from states import OrthodoxV1_State
+from orthodox_agents.states import OrthodoxV1_State
 
 
 # Initialize the workflow

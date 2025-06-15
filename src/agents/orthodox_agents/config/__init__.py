@@ -8,7 +8,3 @@ OPENAI_LLM_3 = "gpt-4.1-2025-04-14"
 ANTHROPIC_REASONING_LLM_1 = "claude-3-7-sonnet-latest"
 ANTHROPIC_LLM_1 = "claude-3-5-sonnet-latest"
 ANTHROPIC_LLM_2 = "claude-3-5-haiku-latest"
-
-vector_store_collections = [
-    'athanasios-muthlinaios'
-]
