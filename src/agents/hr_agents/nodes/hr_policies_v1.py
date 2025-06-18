@@ -35,18 +35,22 @@ async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: St
     analysis_results = await analysis_agent.ainvoke(user_msg, config)
     
     analysis_str = (
-    f"***Classification***: This question is **{analysis_results.query_domain}**.  \n"
-    f"***Topic(s)***: {', '.join(analysis_results.key_topics)}.  \n"
-    f"***Context requirements***: {analysis_results.context_requirements}.  \n"
-    f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
-    f"***Reasoning***: {analysis_results.reasoning}"
-)
+        f"***Classification***: This question is **{analysis_results.query_domain}**.  \n"
+        f"***Topic(s)***: {', '.join(analysis_results.key_topics)}.  \n"
+        f"***Context requirements***: {analysis_results.context_requirements}.  \n"
+        f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
+        f"***Language***: {analysis_results.user_language}"
+    )
     writer({
         "type": "reasoning",
         "content": analysis_str,
         "node": "analysis"
     })
-    return {'analysis_results': analysis_results, 'analysis_str': analysis_str}
+    return {
+        'analysis_results': analysis_results,
+        'analysis_str': analysis_str,
+        "user_input_json": json.dumps(user_msg)
+    }
 
 
 def check_if_hr(state: HRPoliciesV1_State) -> Literal["query_gen", "simple_generation"]:
@@ -55,8 +59,12 @@ def check_if_hr(state: HRPoliciesV1_State) -> Literal["query_gen", "simple_gener
 
 
 async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    payload = {"analysis_results": state["analysis_str"]}
+    payload = {
+        "analysis_results": state["analysis_str"],
+        "user_input_json": state["user_input_json"]
+    }
     prompt = non_hr_gen_template.invoke(payload)
+    
     response = ''
     async for mode, chunk in simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
         if mode == 'messages':
@@ -131,7 +139,7 @@ async def retrieval(state: HRPoliciesV1_State, writer):
     async def fetch_single(query: str):
         nonlocal retrieved_docs
         async with httpx.AsyncClient() as client:
-            r = await client.post(ENDPOINT, json={"query": query, "k": 10}, timeout=30)
+            r = await client.post(ENDPOINT, json={"query": query, "k": 2}, timeout=30)
             r.raise_for_status()
             retrieved_docs.extend(r.json()["documents"])
     
@@ -167,6 +175,7 @@ async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig, 
     payload = {
         "summarization": state["summarization"],
         "analysis_results": state["analysis_str"],
+        "user_input_json": state["user_input_json"],
     }
     prompt = hr_gen_template.invoke(payload)
     
@@ -234,7 +243,7 @@ async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: 
 
 
 def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal["query_gen", "end"]:
-    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
+    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 0:
         return 'query_gen'
     else:
         writer({

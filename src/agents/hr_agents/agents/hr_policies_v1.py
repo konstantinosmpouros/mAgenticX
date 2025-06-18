@@ -5,7 +5,12 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
-from hr_agents.llms.openai import reasoning_llm_1, reasoning_llm_2
+from hr_agents.llms.openai import (
+    reasoning_llm_1,
+    reasoning_llm_2,
+    llm_1,
+    llm_2
+)
 from hr_agents.agents.templates.prebuilt import react_agent
 
 # Structured Outputs
@@ -91,16 +96,16 @@ def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate,
 # ---------------------------------------------------------------------------------------------------
 
 merge_runnable = RunnableLambda(_merge_templates)
-analysis_agent = merge_runnable | reasoning_llm_2.with_structured_output(AnalyzerOutput)
+analysis_agent = merge_runnable | llm_1.with_structured_output(AnalyzerOutput)
 
 simple_gen_agent = react_agent(model=reasoning_llm_2, tools=tools)
 
 query_reflective_agent = query_gen_with_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
 query_no_reflective_agent = query_gen_no_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
 
-summarizer_agent = summarization_template | reasoning_llm_1
+summarizer_agent = summarization_template | llm_1
 
 complex_gen_agent = react_agent(model=reasoning_llm_2, tools=tools)
 
-reflection_agent = reflection_template | reasoning_llm_1.with_structured_output(ReflectionOutput)
+reflection_agent = reflection_template | llm_1.with_structured_output(ReflectionOutput)
 

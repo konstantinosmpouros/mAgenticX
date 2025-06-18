@@ -17,9 +17,9 @@ class AnalyzerOutput(BaseModel):
     query_complexity: Literal["Low", "Medium", "High"] = Field(
         ..., description="Overall reasoning / policy complexity.",
     )
-    reasoning: str = Field(
+    user_language: str = Field(
         ...,
-        description="Chain-of-thought used to analyse the user query.",
+        description="The language that user's last message was",
     )
 
 

@@ -17,11 +17,11 @@ summarization_template = ChatPromptTemplate.from_messages([
     ("human",
     """
         Below is a JSON array of retrieved documents (each with metadata and content):
-
+        
         {retrieved_docs}
-
+        
         Please write a concise, coherent summary of the above documents that can help answer the following user question (represented by the analysis results):
-
+        
         {analysis_results}
     """
     ),
@@ -34,11 +34,14 @@ hr_gen_template = ChatPromptTemplate.from_messages([
     """
         Here is the summary of the documents retrieved relevant to the user question content:\n\n
         {summarization}
-
-        \n\nHere are the structured analysis results of the user query:\n\n
+        
+        \n\nHere is the structured analysis results of the user query:\n\n
         {analysis_results}
-
-        \n\nPlease use both of these to write a thoughtful, reflective response.
+        
+        \n\nHere is the user query:\n\n
+        {user_input_json}
+        
+        \n\nPlease use the above to write a thoughtful, reflective response.
     """)
 ])
 
@@ -49,7 +52,10 @@ non_hr_gen_template = ChatPromptTemplate.from_messages([
     """
         The content was analyzed as non-religious. These are the structured analysis results of the user query to answer:\n\n
         {analysis_results}
-
+        
+        \n\nHere is the user query:\n\n
+        {user_input_json}
+        
         \n\nPlease write an appropriate response based on this analysis.
     """)
 ])
@@ -61,7 +67,7 @@ query_gen_no_reflection_template = ChatPromptTemplate.from_messages([
     """
         Here are the structured analysis results of the user query (in JSON):
         {analysis_results}
-
+        
         Please generate a list of concise search queries that will retrieve the most relevant vector embeddings to address these analysis findings.
     """),
 ])
@@ -73,10 +79,10 @@ query_gen_with_reflection_template = ChatPromptTemplate.from_messages([
     """
         Here are the structured analysis results of the user query (in JSON):
         {analysis_results}
-
+        
         Here is the reflective response of what was missing and drawbacks of the previous response generated:
         {reflection}
-
+        
         Please generate a list of concise search queries that will retrieve the most relevant vector embeddings to address both the analysis and the reflection.
     """),
 ])
@@ -87,17 +93,17 @@ reflection_template = ChatPromptTemplate.from_messages([
     ("human",
     """
         Below are the structured analysis results of the user query (in JSON form):
-
+        
         <analysis>
         {analysis_results}
         </analysis>
-
+        
         And here is the last response that was generated from those results:
-
+        
         <response>
         {generated_response}
         </response>
-
+        
         Based on both the analysis and that response, please write a concise, thoughtful reflection that:
         - Highlights any deeper insights or implications
         - Notes any unanswered questions or needed areas for further exploration

@@ -15,8 +15,9 @@ PORT = os.getenv("BFF_PORT")
 API_BASE = f"http://{HOST}:{PORT}"
 
 AGENTS = [
-    "OrthodoxAI_v1",
-    "HRPolicies_v1"
+    # "OrthodoxAI_v1",
+    # "HRPolicies_v1",
+    "HR Policies"
 ]
 
 
@@ -32,7 +33,7 @@ def _safe_get(url: str) -> Any | None:
 
 
 def _safe_post(url: str, json: dict = None) -> Any | None:
-    """GET helper that shows a Streamlit error instead of raising."""
+    """POST  helper that shows a Streamlit error instead of raising."""
     try:
         r = requests.post(url=url, json=json, timeout=5)
         r.raise_for_status()
@@ -74,15 +75,15 @@ def auth_request(username: str, password: str) -> str | None:
     """POST username/password → return user_id on success, else *None*."""
     url = f"{API_BASE}/authenticate"
     json={"username": username, "password": password}
-    results = _safe_post(url=url, json=json)
-    return results
+    return _safe_post(url=url, json=json)
 
 
 def creds_entered():
     user   = st.session_state.get("user", "").strip()
-    st.session_state["user"] = ""
-    
     passwd = st.session_state.get("passwd", "").strip()
+
+    # clear widgets so they don't keep old values
+    st.session_state["user"]   = ""
     st.session_state["passwd"] = ""
     
     user_obj = auth_request(user, passwd)

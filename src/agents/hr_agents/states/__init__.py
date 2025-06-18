@@ -6,6 +6,7 @@ from langchain.prompts import ChatPromptTemplate
 
 class HRPoliciesV1_State(BaseModel):
     user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
+    user_input_json: Any = None
     
     analysis_results: Any = None
     analysis_str: str = None
