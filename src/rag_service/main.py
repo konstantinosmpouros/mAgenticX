@@ -54,11 +54,9 @@ async def retrieve(request: Query, collection_name: str):
         "query": request.query,
         "k": request.k,
         "documents": [
-            {"Content": d.page_content, "Metadata": d.metadata} for d in docs
+            {"content": d.page_content, "metadata": d.metadata} for d in docs
         ],
     }
-
-
 
 
 

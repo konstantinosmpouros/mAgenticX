@@ -1,7 +1,8 @@
-from typing import List, Any, Dict, Union
-from pydantic import BaseModel
+from typing import List, Any, Dict, Union, Annotated
+from pydantic import BaseModel, Field
 from langchain.schema import BaseMessage
 from langchain.prompts import ChatPromptTemplate
+from langgraph.graph import add_messages
 
 
 class HRPoliciesV1_State(BaseModel):
@@ -12,15 +13,19 @@ class HRPoliciesV1_State(BaseModel):
     analysis_str: str = None
     
     vector_queries: List[str] = None
-    retrieved_content: List[Dict] = None
-    summarization: str = None
+    
+    retrieved_content: List[List[Dict]] = [[]]
+    
+    ranking_flags: List[List[bool]] = [[]]
     
     reflection: Any = None
     reflection_str: str = None
+    cycle_numbers: int = 0
+    formatted_docs_str: str = None
+    
+    summarization: str = None
     
     response: str = None
-    
-    cycle_numbers: int = 0
     
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)

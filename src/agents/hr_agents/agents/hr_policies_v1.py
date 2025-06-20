@@ -9,12 +9,17 @@ from hr_agents.llms.openai import (
     reasoning_llm_1,
     reasoning_llm_2,
     llm_1,
-    llm_2
+    llm_3
 )
 from hr_agents.agents.templates.prebuilt import react_agent
 
 # Structured Outputs
-from hr_agents.llms.structured_outputs.hr_policies_v1 import AnalyzerOutput, ReflectionOutput, RetrievalQueriesOutput
+from hr_agents.llms.structured_outputs.hr_policies_v1 import (
+    AnalyzerOutput,
+    ReflectionOutput,
+    RetrievalQueriesOutput,
+    RankingOutput
+)
 
 # Tools
 from hr_agents.tools import (
@@ -31,7 +36,8 @@ from hr_agents.prompts.templates.hr_policies_v1 import (
     summarization_template,
     reflection_template,
     query_gen_no_reflection_template,
-    query_gen_with_reflection_template
+    query_gen_with_reflection_template,
+    ranking_template,
 )
 
 
@@ -102,6 +108,8 @@ simple_gen_agent = react_agent(model=reasoning_llm_2, tools=tools)
 
 query_reflective_agent = query_gen_with_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
 query_no_reflective_agent = query_gen_no_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
+
+doc_ranking_agent = ranking_template | llm_3.with_structured_output(RankingOutput)
 
 summarizer_agent = summarization_template | llm_1
 

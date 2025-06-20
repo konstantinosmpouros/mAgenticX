@@ -48,3 +48,12 @@ class ReflectionOutput(BaseModel):
         description="Concrete retrieval / clarification steps, only when more data is needed.",
     )
 
+
+class RankingOutput(BaseModel):
+    relevance_flags: List[bool] = Field(
+        ...,
+        description=(
+            "Boolean relevance for every document received from the retrieval step. "
+            "True = keep; False = drop."
+        ),
+    )

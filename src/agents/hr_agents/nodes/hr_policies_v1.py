@@ -1,11 +1,11 @@
-import os
-
 import json
 import asyncio
 import httpx
 
 from hr_agents.states import HRPoliciesV1_State
 from typing import Literal
+
+from hr_agents.config import ENDPOINT
 from hr_agents.agents.hr_policies_v1 import (
     analysis_agent,
     simple_gen_agent,
@@ -13,7 +13,8 @@ from hr_agents.agents.hr_policies_v1 import (
     query_reflective_agent,
     query_no_reflective_agent,
     complex_gen_agent,
-    summarizer_agent
+    summarizer_agent,
+    doc_ranking_agent,
 )
 
 from langchain_core.runnables import RunnableConfig
@@ -99,12 +100,12 @@ async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, w
 
 async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
     analysis_str = state['analysis_str']
-    reflection = state["reflection_str"]
+    reflection_str = state["reflection_str"]
     
-    if reflection:
+    if reflection_str:
         payload = {
             "analysis_results": analysis_str,
-            "reflection": reflection
+            "reflection": reflection_str
         }
         response = await query_reflective_agent.ainvoke(payload, config)
     else:
@@ -127,13 +128,7 @@ async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: S
     return {"vector_queries": response.queries}
 
 
-async def retrieval(state: HRPoliciesV1_State, writer):
-    RAG_HOST = os.getenv("RAG_HOST", "rag_service")
-    RAG_PORT = os.getenv("RAG_PORT", "8001")
-    
-    COLLECTION_NAME = "hr_policies"
-    ENDPOINT = f"http://{RAG_HOST}:{RAG_PORT}/retrieve/{COLLECTION_NAME}"
-    
+async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
     retrieved_docs = []
     
     async def fetch_single(query: str):
@@ -150,81 +145,66 @@ async def retrieval(state: HRPoliciesV1_State, writer):
         "content": "Retrieved content done",
         "node": "retrieval"
     })
-    return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
+    
+    state_docs = state['retrieved_content']
+    state_docs.extend([retrieved_docs])
+    return {"retrieved_content": state_docs}
 
 
-async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
     retrieved_docs = state['retrieved_content']
     analysis_str = state['analysis_str']
     
+    formatted_docs = []
+    for idx, doc in enumerate(retrieved_docs[-1], start=1):
+        metadata = json.dumps(doc.get("metadata", {}), ensure_ascii=False)
+        content = doc.get("content", "").strip()
+        formatted_docs.append(f"Document {idx}\n Metadata: {metadata}\n Content: {content}\n")
+    
+    formatted_docs_str = "\n\n".join(formatted_docs)
+    
     payload = {
-        "retrieved_docs": retrieved_docs,
-        "analysis_results": analysis_str,
+        "formatted_docs": formatted_docs_str,
+        "analysis_str": analysis_str,
     }
     
-    summarization = await summarizer_agent.ainvoke(payload, config)
+    ranking_flags = await doc_ranking_agent.ainvoke(payload, config)
+    
     writer({
         "type": "reasoning",
-        "content": summarization.content,
-        "node": "summarization"
+        "content": f"Ranking flags: {ranking_flags.relevance_flags}",
+        "node": "ranking"
     })
-    return {"summarization": summarization}
-
-
-async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    payload = {
-        "summarization": state["summarization"],
-        "analysis_results": state["analysis_str"],
-        "user_input_json": state["user_input_json"],
-    }
-    prompt = hr_gen_template.invoke(payload)
     
-    # invoke the generation agent
-    response = ''
-    async for update in complex_gen_agent.astream(prompt, stream_mode=["updates"]):
-        tag, payload = update
-        
-        if "agent" in payload:
-            message = payload['agent']['messages'][0]
-            
-            if getattr(message, "tool_calls", None):
-                for tool in message.tool_calls:
-                    content = "Executing tool: " + tool['name']
-                    writer({
-                        "type": "reasoning",
-                        "content": content,
-                        "node": "complex_gen"
-                    })
-            elif getattr(message, "content", None):
-                response = message.content
-                writer({
-                    "type": "reasoning",
-                    "content": response,
-                    "node": "complex_gen"
-                })
-        elif "tools" in payload:
-            tool_msg = update['tools']['messages'][0]
-            writer({
-                "type": "reasoning",
-                "content": f"The tool call responded the following: {tool_msg.content}",
-                "node": "complex_gen"
-            })
-    
-    return {"response": response}
+    state_flags = state['ranking_flags']
+    state_flags.extend([ranking_flags.relevance_flags])
+    return {"ranking_flags": state_flags}
 
 
 async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    analysis_str = state["analysis_str"]
-    gen_resp = state["response"]
+    all_docs_cycles = state['retrieved_content']
+    all_flags_cycles = state['ranking_flags']
+    analysis_str = state['analysis_str']
+    
+    filtered_docs = []
+    for docs, flags in zip(all_docs_cycles, all_flags_cycles):
+        for doc, flag in zip(docs, flags):
+            if flag:
+                filtered_docs.append(doc)
+    
+    formatted_docs_str = "\n\n".join(
+        f"Document {i+1}\n Metadata: {doc.get('metadata')} \nContent: {doc.get('content', '').strip()}"
+        for i, doc in enumerate(filtered_docs)
+    )
     
     payload = {
         "analysis_results": analysis_str,
-        "generated_response": gen_resp,
+        "retrieved_docs": formatted_docs_str,
     }
     
     reflection = await reflection_agent.ainvoke(payload, config)
     reflection_str = (
-        f"Additional retrieval needed: **{'Yes' if reflection.requires_additional_retrieval else 'No'}**.  \n"
+        f"Additional retrieval needed: **Yes**.  \n"
         f"Reflection: {reflection.reflection}.  \n"
         f"Recommended next steps: {reflection.recommended_next_steps}"
         if reflection.requires_additional_retrieval
@@ -238,18 +218,79 @@ async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: 
     return {
         "reflection": reflection,
         "reflection_str": reflection_str,
+        "formatted_docs_str": formatted_docs_str,
         "cycle_numbers": state.cycle_numbers + (1 if reflection.requires_additional_retrieval else 0),
     }
 
 
-def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal["query_gen", "end"]:
-    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 0:
+def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal["query_gen", "summarizer"]:
+    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
         return 'query_gen'
     else:
-        writer({
-            'type': 'response',
-            'content': state['response']
-        })
-        return 'end'
+        return 'summarizer'
+
+
+async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    formatted_docs_str = state['formatted_docs_str']
+    analysis_str = state['analysis_str']
+    
+    payload = {
+        "retrieved_docs": formatted_docs_str,
+        "analysis_results": analysis_str,
+    }
+    
+    writer({
+        "type": "reasoning",
+        "content": "Summarizing the retrieved documents",
+        "node": "summarization"
+    })
+    
+    summarization = await summarizer_agent.ainvoke(payload, config)
+    return {"summarization": summarization.content}
+
+
+async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    payload = {
+        "summarization": state["summarization"],
+        "analysis_results": state["analysis_str"],
+        "user_input_json": state["user_input_json"],
+    }
+    prompt = hr_gen_template.invoke(payload)
+    
+    # invoke the generation agent
+    response = ''
+    async for mode, chunk in complex_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
+        if mode == 'messages':
+            message_chunk, _ = chunk
+            if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
+                writer({
+                    "type": "response",
+                    "content": message_chunk.content
+                })
+                response += message_chunk.content
+
+        elif mode == 'updates':
+            # chunk is a dict, containing updates per node
+            if "agent" in chunk:
+                agent_msg = chunk['agent']['messages'][0]
+                if getattr(agent_msg, "tool_calls", None):
+                    for tool_call in agent_msg.tool_calls:
+                        writer({
+                            "type": "reasoning",
+                            "content": f"Using the {tool_call['name']} tool",
+                            "node": "simple_gen"
+                        })
+            elif "tools" in chunk:
+                tool_msg = chunk['tools']['messages'][0]
+                writer({
+                    "type": "reasoning",
+                    "content": f"The tool call responded the following: {tool_msg.content}",
+                    "node": "simple_gen"
+                })
+    
+    return {"response": response}
+
+
+
 
 

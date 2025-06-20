@@ -8,6 +8,7 @@ from hr_agents.nodes.hr_policies_v1 import (
     complex_generation,
     reflection,
     check_reflection,
+    doc_ranking,
 )
 
 from langgraph.graph import START, END, StateGraph
@@ -22,11 +23,13 @@ workflow.add_node('analysis', analysis)
 workflow.add_node('simple_generation', simple_generation)
 workflow.add_node('query_gen', query_gen)
 workflow.add_node('retrieval', retrieval)
+workflow.add_node('doc_ranking', doc_ranking)
+workflow.add_node('reflectioner', reflection)
 workflow.add_node('summarizer', summarization)
 workflow.add_node('complex_generation', complex_generation)
-workflow.add_node('reflectioner', reflection)
 
-# Entry edge
+
+# Define the edges of the workflow
 workflow.add_edge(START, "analysis")
 workflow.add_conditional_edges(
     "analysis",
@@ -36,13 +39,12 @@ workflow.add_conditional_edges(
         "simple_generation": "simple_generation",
     },
 )
+
 workflow.add_edge("simple_generation", END)
 
-# The linear “true” branch
 workflow.add_edge("query_gen", "retrieval")
-workflow.add_edge("retrieval", "summarizer")
-workflow.add_edge("summarizer", "complex_generation")
-workflow.add_edge("complex_generation", "reflectioner")
+workflow.add_edge("retrieval", "doc_ranking")
+workflow.add_edge("doc_ranking", "reflectioner")
 
 # Wire up the two reflection branches
 workflow.add_conditional_edges(
@@ -50,12 +52,14 @@ workflow.add_conditional_edges(
     check_reflection,
     {
         "query_gen": "query_gen",
-        "end": END,
+        "summarizer": "summarizer",
     },
 )
 
+workflow.add_edge("summarizer", "complex_generation")
+workflow.add_edge("complex_generation", END)
+
+
 # Compile the workflow
 agent = workflow.compile()
-
-
 

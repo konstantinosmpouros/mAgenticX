@@ -5,6 +5,7 @@ from hr_agents.prompts.system.hr_policies_v1 import (
     REFLECTION_SYSTEM_PROMPT,
     RETRIEVAL_SYSTEM_PROMPT,
     SUMMARIZER_SYSTEM_PROMPT,
+    RANKING_SYSTEM_PROMPT,
 )
 
 analyzer_template = ChatPromptTemplate.from_messages([
@@ -80,7 +81,7 @@ query_gen_with_reflection_template = ChatPromptTemplate.from_messages([
         Here are the structured analysis results of the user query (in JSON):
         {analysis_results}
         
-        Here is the reflective response of what was missing and drawbacks of the previous response generated:
+        Here is the reflective response of what was missing and drawbacks of the previous retrieved content:
         {reflection}
         
         Please generate a list of concise search queries that will retrieve the most relevant vector embeddings to address both the analysis and the reflection.
@@ -100,9 +101,9 @@ reflection_template = ChatPromptTemplate.from_messages([
         
         And here is the last response that was generated from those results:
         
-        <response>
-        {generated_response}
-        </response>
+        <retrieved_documents>
+        {retrieved_docs}
+        </retrieved_documents>
         
         Based on both the analysis and that response, please write a concise, thoughtful reflection that:
         - Highlights any deeper insights or implications
@@ -111,3 +112,23 @@ reflection_template = ChatPromptTemplate.from_messages([
     """),
 ])
 
+
+ranking_template = ChatPromptTemplate.from_messages([
+    ("system", RANKING_SYSTEM_PROMPT),
+    ("human",
+    """
+        Here is the structured analysis of the user query (in JSON):
+        {analysis_str}
+
+        Below is a list of candidate documents retrieved from the vector database, each represented as a JSON object with metadata and content:
+        
+        {formatted_docs}
+
+        Please rank these documents based on their relevance to the user query analysis. Consider factors such as:
+        - How well does each document address the key points in the analysis?
+        - Are there any documents that provide unique insights or perspectives?
+        - Which documents are most likely to help answer the user's question effectively?
+
+        Provide your response in the structured JSON format compatible with the RankingOutput schema.
+    """),
+])

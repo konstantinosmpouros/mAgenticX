@@ -118,7 +118,7 @@ async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: Str
     return {"vector_queries": response.queries}
 
 
-async def retrieval(state: OrthodoxV1_State, writer):
+async def retrieval(state: OrthodoxV1_State, writer: StreamWriter):
     RAG_HOST = os.getenv("RAG_HOST", "rag_service")
     RAG_PORT = os.getenv("RAG_PORT", "8001")
     
