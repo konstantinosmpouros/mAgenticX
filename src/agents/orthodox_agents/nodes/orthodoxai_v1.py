@@ -1,10 +1,10 @@
-import os
 import json
 import asyncio
 import httpx
 
 from orthodox_agents.states import OrthodoxV1_State
 from typing import Literal
+from orthodox_agents.config import ENDPOINT
 from orthodox_agents.agents.orthodoxai_v1 import (
     analysis_agent,
     simple_gen_agent,
@@ -119,12 +119,6 @@ async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: Str
 
 
 async def retrieval(state: OrthodoxV1_State, writer: StreamWriter):
-    RAG_HOST = os.getenv("RAG_HOST", "rag_service")
-    RAG_PORT = os.getenv("RAG_PORT", "8001")
-    
-    COLLECTION_NAME = "athanasios-muthlinaios"
-    ENDPOINT = f"http://{RAG_HOST}:{RAG_PORT}/retrieve/{COLLECTION_NAME}"
-    
     retrieved_docs = []
 
     async def fetch_single(query: str):

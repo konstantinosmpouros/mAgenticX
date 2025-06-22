@@ -17,7 +17,7 @@ API_BASE = f"http://{HOST}:{PORT}"
 AGENTS = [
     # "OrthodoxAI_v1",
     # "HRPolicies_v1",
-    "HR Policies"
+    "HR-Policies v1"
 ]
 
 
@@ -132,6 +132,8 @@ def ensure_core_session_keys() -> None:
         "title": None,
         "messages": [],
         "selected_agent": AGENTS[0],
+        "authenticated": False,
+        "login_warning": None,
     }
     for key, default in defaults.items():
         if key not in st.session_state:

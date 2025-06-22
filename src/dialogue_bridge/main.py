@@ -15,8 +15,7 @@ from utils import authenticate_id, upsert_conversation, agent_stream
 
 AGENT_MAPPING = {
     "OrthodoxAI_v1": "http://agents:8003/OrthodoxAI/v1/stream",
-    "HRPolicies_v1": "http://agents:8003/HRPolicies/v1/stream",
-    "HR Policies": "http://agents:8003/HRPolicies/v1/stream",
+    "HR-Policies v1": "http://agents:8003/HRPolicies/v1/stream",
 }
 
 @asynccontextmanager
