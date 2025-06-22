@@ -4,3 +4,6 @@ class Query(BaseModel):
     query: str
     k: int = 10
 
+class ExcelSQLQuery(BaseModel):
+    sql: str
+

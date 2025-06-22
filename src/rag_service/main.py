@@ -1,33 +1,33 @@
-import os
+from config import RAG_HOST, RAG_PORT, settings, embeddings_model
+from config import TABLES, db
+from schemas import Query, ExcelSQLQuery
 
-from schemas import Query
 from fastapi import FastAPI, HTTPException
 
 import chromadb
-from chromadb.config import Settings
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
 from langchain.schema import Document
-
-# import duckdb
-# import pandas as pd
+import duckdb
 
 
+# Initialize FastAPI server
 app = FastAPI()
 
 
-# --------------------------------------------------------------------------------------
-# RAG Configs
-# --------------------------------------------------------------------------------------
-RAG_HOST = os.getenv("RAG_HOST")
-RAG_PORT = os.getenv("RAG_PORT")
-embeddings_model = OpenAIEmbeddings(model='text-embedding-3-large', api_key=os.getenv("OPENAI_API_KEY"))
-
-settings = Settings(
-    chroma_api_impl="rest",
-    chroma_server_host=RAG_HOST,
-    chroma_server_http_port=RAG_PORT
-)
+# -----------------------------------------------------------------------------
+# Convenience root endpoint
+# -----------------------------------------------------------------------------
+@app.get("/")
+async def root():
+    return {
+        "message": "All APIs are up! See /docs for Swagger UI.",
+        "endpoints": {
+            "/excel": "",
+            "/excel/{table}/schema": "",
+            "/excel/{table}/unique/{column}": "",
+            "/retrieve/{collection_name}": "",
+        },
+    }
 
 
 # --------------------------------------------------------------------------------------
@@ -56,6 +56,64 @@ async def retrieve(request: Query, collection_name: str):
         "documents": [
             {"content": d.page_content, "metadata": d.metadata} for d in docs
         ],
+    }
+
+
+# --------------------------------------------------------------------------------------
+# Excel db APIs
+# --------------------------------------------------------------------------------------
+@app.get("/excel")
+async def list_tables():
+    """List all loaded Excel workbooks and their columns."""
+
+    return [
+        {"table": t, **meta}
+        for t, meta in TABLES.items()
+    ]
+
+
+@app.get("/excel/{table}/schema")
+async def get_schema(table: str):
+    """Return column names and DuckDB types so the agent can reason about them."""
+
+    description = db.execute(f"DESCRIBE {table}").fetchall()
+    return [
+        {"column": col, "type": dtype}
+        for col, dtype, *_ in description
+    ]
+
+
+@app.get("/excel/{table}/unique/{column}")
+async def get_unique(table: str, column: str):
+    """Return distinct values of *column* in *table* - handy for filters."""
+    if not table in TABLES.keys():
+        raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
+    
+    cols = [c[0] for c in db.execute(f"DESCRIBE {duckdb.escape_identifier(table)}").fetchall()]
+    if column not in cols:
+        raise HTTPException(status_code=400, detail="Invalid column name")
+    
+    rows = db.execute(
+        f"SELECT DISTINCT {duckdb.escape_identifier(column)} FROM {duckdb.escape_identifier(table)}"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+@app.post("/excel/{table}/query/sql")
+async def query_sql(table: str, body: ExcelSQLQuery):
+    """Run arbitrary SQL and return result rows as JSON. The SQL *must* reference the table name provided in the path parameter."""
+
+    if not table in TABLES.keys():
+        raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
+    try:
+        df = db.execute(body.sql).fetch_df()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "row_count": len(df),
+        "data": df.to_dict(orient="records"),
+        "sql": body.sql,
     }
 
 
