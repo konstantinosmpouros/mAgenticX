@@ -65,7 +65,7 @@ async def retrieve(request: Query, collection_name: str):
 @app.get("/excel")
 async def list_tables():
     """List all loaded Excel workbooks and their columns."""
-
+    
     return [
         {"table": t, **meta}
         for t, meta in TABLES.items()
@@ -75,7 +75,7 @@ async def list_tables():
 @app.get("/excel/{table}/schema")
 async def get_schema(table: str):
     """Return column names and DuckDB types so the agent can reason about them."""
-
+    
     description = db.execute(f"DESCRIBE {table}").fetchall()
     return [
         {"column": col, "type": dtype}
@@ -89,31 +89,30 @@ async def get_unique(table: str, column: str):
     if not table in TABLES.keys():
         raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
     
-    cols = [c[0] for c in db.execute(f"DESCRIBE {duckdb.escape_identifier(table)}").fetchall()]
+    cols = [c[0] for c in db.execute(f"DESCRIBE {table}").fetchall()]
     if column not in cols:
         raise HTTPException(status_code=400, detail="Invalid column name")
     
     rows = db.execute(
-        f"SELECT DISTINCT {duckdb.escape_identifier(column)} FROM {duckdb.escape_identifier(table)}"
+        f"SELECT DISTINCT {column} FROM {table}"
     ).fetchall()
     return [r[0] for r in rows]
 
 
 @app.post("/excel/{table}/query/sql")
-async def query_sql(table: str, body: ExcelSQLQuery):
+async def query_sql(body: ExcelSQLQuery, table: str):
     """Run arbitrary SQL and return result rows as JSON. The SQL *must* reference the table name provided in the path parameter."""
-
+    
     if not table in TABLES.keys():
         raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
     try:
         df = db.execute(body.sql).fetch_df()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+    
     return {
         "row_count": len(df),
         "data": df.to_dict(orient="records"),
-        "sql": body.sql,
     }
 
 

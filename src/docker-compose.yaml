@@ -30,6 +30,8 @@ services:
       - RAG_PORT=8000
     depends_on:
       - vectordb
+    ports:
+      - "8001:8001"
     restart: unless-stopped
     networks:
       - backend

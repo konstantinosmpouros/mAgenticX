@@ -44,7 +44,7 @@ async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: St
     )
     writer({
         "type": "reasoning",
-        "content": analysis_str,
+        "content": "🧠 Aanalyzing the user input...",
         "node": "analysis"
     })
     return {
@@ -122,13 +122,19 @@ async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: S
     
     writer({
         "type": "reasoning",
-        "content": header_content,
+        "content": "✍️ Generating queries for the HR policies database...",
         "node": "query_gen"
     })
     return {"vector_queries": response.queries}
 
 
 async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
+    writer({
+        "type": "reasoning",
+        "content": "🛢️ Retrieving content from the HR policies database...",
+        "node": "retrieval"
+    })
+    
     retrieved_docs = []
     
     async def fetch_single(query: str):
@@ -142,7 +148,7 @@ async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
     
     writer({
         "type": "reasoning",
-        "content": "Retrieved content done",
+        "content": "🛢️ Retrieved content done",
         "node": "retrieval"
     })
     
@@ -172,7 +178,7 @@ async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer:
     
     writer({
         "type": "reasoning",
-        "content": f"Ranking flags: {ranking_flags.relevance_flags}",
+        "content": f"🏷️ Ranking the retrieved documents based on relevance...",
         "node": "ranking"
     })
     
@@ -212,7 +218,7 @@ async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: 
     )
     writer({
         "type": "reasoning",
-        "content": reflection_str,
+        "content": f"🧠 Reasoning if we need more data to answer...",
         "node": "reflection"
     })
     return {
@@ -231,6 +237,12 @@ def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal
 
 
 async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    writer({
+        "type": "reasoning",
+        "content": "📄 Summarizing the retrieved documents...",
+        "node": "summarization"
+    })
+    
     formatted_docs_str = state['formatted_docs_str']
     analysis_str = state['analysis_str']
     
@@ -241,7 +253,7 @@ async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, write
     
     writer({
         "type": "reasoning",
-        "content": "Summarizing the retrieved documents",
+        "content": "✨ Preparing the response...",
         "node": "summarization"
     })
     
