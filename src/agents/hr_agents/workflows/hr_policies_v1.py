@@ -39,14 +39,10 @@ workflow.add_conditional_edges(
         "simple_generation": "simple_generation",
     },
 )
-
 workflow.add_edge("simple_generation", END)
-
 workflow.add_edge("query_gen", "retrieval")
 workflow.add_edge("retrieval", "doc_ranking")
 workflow.add_edge("doc_ranking", "reflectioner")
-
-# Wire up the two reflection branches
 workflow.add_conditional_edges(
     "reflectioner",
     check_reflection,
@@ -55,7 +51,6 @@ workflow.add_conditional_edges(
         "summarizer": "summarizer",
     },
 )
-
 workflow.add_edge("summarizer", "complex_generation")
 workflow.add_edge("complex_generation", END)
 

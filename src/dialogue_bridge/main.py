@@ -14,8 +14,9 @@ from schemas import (
 from utils import authenticate_id, upsert_conversation, agent_stream
 
 AGENT_MAPPING = {
-    "OrthodoxAI_v1": "http://agents:8003/OrthodoxAI/v1/stream",
+    "OrthodoxAI v1": "http://agents:8003/OrthodoxAI/v1/stream",
     "HR-Policies v1": "http://agents:8003/HRPolicies/v1/stream",
+    "Retail Agent v1": "http://agents:8003/Retail/v1/stream",
 }
 
 @asynccontextmanager

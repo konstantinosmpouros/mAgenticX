@@ -42,7 +42,7 @@ from hr_agents.prompts.templates.hr_policies_v1 import (
 
 
 # ---------------------------------------------------------------------------------------------------
-# OrthodoxAI v1 Helper Functions
+# Helper Functions
 # ---------------------------------------------------------------------------------------------------
 
 def _dict_to_message(d: Dict[str, str]) -> BaseMessage | None:
@@ -98,7 +98,7 @@ def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate,
 
 
 # ---------------------------------------------------------------------------------------------------
-# OrthodoxAI v1 Agents
+# Agents
 # ---------------------------------------------------------------------------------------------------
 
 merge_runnable = RunnableLambda(_merge_templates)

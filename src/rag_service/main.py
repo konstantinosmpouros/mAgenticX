@@ -1,13 +1,12 @@
-from config import RAG_HOST, RAG_PORT, settings, embeddings_model
-from config import TABLES, db
-from schemas import Query, ExcelSQLQuery
-
 from fastapi import FastAPI, HTTPException
 
 import chromadb
 from langchain_chroma import Chroma
 from langchain.schema import Document
-import duckdb
+
+from config import RAG_HOST, RAG_PORT, settings, embeddings_model
+from config import TABLES, db
+from schemas import Query, ExcelSQLQuery
 
 
 # Initialize FastAPI server
@@ -25,6 +24,7 @@ async def root():
             "/excel": "",
             "/excel/{table}/schema": "",
             "/excel/{table}/unique/{column}": "",
+            "/excel/{table}/query/sql": "",
             "/retrieve/{collection_name}": "",
         },
     }

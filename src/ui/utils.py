@@ -15,9 +15,9 @@ PORT = os.getenv("BFF_PORT")
 API_BASE = f"http://{HOST}:{PORT}"
 
 AGENTS = [
-    # "OrthodoxAI_v1",
-    # "HRPolicies_v1",
-    "HR-Policies v1"
+    # "OrthodoxAI v1",
+    "HR-Policies v1",
+    "Retail Agent v1",
 ]
 
 

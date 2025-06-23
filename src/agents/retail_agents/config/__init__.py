@@ -20,4 +20,4 @@ RAG_PORT = os.getenv("RAG_PORT", "8001")
 
 ROOT_ENDPOINT = f"http://{RAG_HOST}:{RAG_PORT}/"
 SCHEMA_ENDPOINT = ROOT_ENDPOINT + f"excel/{TABLE}/schema"
-QUERY_ENDPOINT = ROOT_ENDPOINT + f"/excel/{TABLE}/query/sql"
+QUERY_ENDPOINT = ROOT_ENDPOINT + f"excel/{TABLE}/query/sql"

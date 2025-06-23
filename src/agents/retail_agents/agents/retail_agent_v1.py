@@ -5,11 +5,14 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
-from retail_agents.llms.openai import reasoning_llm_1, reasoning_llm_2
+from retail_agents.llms.openai import (
+    reasoning_llm_2,
+    llm_3
+)
 from retail_agents.agents.templates.prebuilt import react_agent
 
 # Structured Outputs
-from retail_agents.llms.structured_outputs.retail_agent_v1 import AnalyzerOutput, ReflectionOutput, RetrievalQueriesOutput
+from retail_agents.llms.structured_outputs.retail_agent_v1 import AnalysisOutput, SQLQueryOutput
 
 # Tools
 from retail_agents.tools import (
@@ -23,15 +26,13 @@ tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 # Prompt Template
 from retail_agents.prompts.templates.retail_agent_v1 import (
     analyzer_template,
-    summarization_template,
-    reflection_template,
-    query_gen_no_reflection_template,
-    query_gen_with_reflection_template
+    sql_gen_template,
+    sql_error_gen_template,
 )
 
 
 # ---------------------------------------------------------------------------------------------------
-# OrthodoxAI v1 Helper Functions
+# Helper Functions
 # ---------------------------------------------------------------------------------------------------
 
 def _dict_to_message(d: Dict[str, str]) -> BaseMessage | None:
@@ -87,20 +88,15 @@ def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate,
 
 
 # ---------------------------------------------------------------------------------------------------
-# OrthodoxAI v1 Agents
+# Agents
 # ---------------------------------------------------------------------------------------------------
 
 merge_runnable = RunnableLambda(_merge_templates)
-analysis_agent = merge_runnable | reasoning_llm_2.with_structured_output(AnalyzerOutput)
+analysis_agent = merge_runnable | llm_3.with_structured_output(AnalysisOutput)
 
-simple_gen_agent = react_agent(model=reasoning_llm_2, tools=tools)
+simple_gen_agent = react_agent(model=llm_3, tools=tools)
 
-query_reflective_agent = query_gen_with_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
-query_no_reflective_agent = query_gen_no_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
+sql_gen_agent = sql_gen_template | reasoning_llm_2.with_structured_output(SQLQueryOutput)
+sql_error_gen_agent = sql_error_gen_template | reasoning_llm_2.with_structured_output(SQLQueryOutput)
 
-summarizer_agent = summarization_template | reasoning_llm_1
-
-complex_gen_agent = react_agent(model=reasoning_llm_2, tools=tools)
-
-reflection_agent = reflection_template | reasoning_llm_1.with_structured_output(ReflectionOutput)
-
+answer_agent = react_agent(model=llm_3, tools=tools)

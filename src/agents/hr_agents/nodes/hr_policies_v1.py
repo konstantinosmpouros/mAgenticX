@@ -27,11 +27,12 @@ from hr_agents.prompts.templates.hr_policies_v1 import (
 )
 
 async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    """Parse the user question and classify it.
-
-    This node is IO-bound (LLM call) so we expose it as async and call the
-    asynchronous `.ainvoke` method provided by the LangChain agent wrappers.
-    """
+    writer({
+        "type": "reasoning",
+        "content": "🧠 Analyzing the user input...",
+        "node": "analysis"
+    })
+    
     user_msg = state['user_input']
     analysis_results = await analysis_agent.ainvoke(user_msg, config)
     
@@ -42,11 +43,7 @@ async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: St
         f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
         f"***Language***: {analysis_results.user_language}"
     )
-    writer({
-        "type": "reasoning",
-        "content": "🧠 Aanalyzing the user input...",
-        "node": "analysis"
-    })
+    
     return {
         'analysis_results': analysis_results,
         'analysis_str': analysis_str,

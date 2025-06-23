@@ -25,7 +25,7 @@ for message in st.session_state["messages"]:
                 for thought in message["reasoning"]:
                     bullet = thought['chunks']
                     node = thought['node'].upper()
-                    st.markdown(f"#### {node} \n {bullet} \n\n\n")
+                    st.markdown(f"- {bullet} \n\n")
         st.write(message["content"])
 
 
@@ -58,7 +58,7 @@ if user_input:
                 reasoning_cells.append({"node": node, "chunks": content})
                 current_node = node
                 with reasoning_container:
-                    st.markdown(f"#### {node.upper()} \n {content} \n\n\n")
+                    st.markdown(f"- {content} \n\n")
             elif chunk_type == "response":
                 accumulated_response += content
                 response_container.write(accumulated_response)

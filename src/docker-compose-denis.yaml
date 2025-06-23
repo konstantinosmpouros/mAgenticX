@@ -1,7 +1,7 @@
 services:
   agents:
     container_name: agents
-    image: konstantinosmpouros/agents:v1.0.3
+    image: konstantinosmpouros/agents:v1.2.0
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
@@ -15,7 +15,7 @@ services:
 
   rag_service:
     container_name: rag_service
-    image: konstantinosmpouros/rag_service:v1.0.2
+    image: konstantinosmpouros/rag_service:v1.1.0
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
@@ -42,7 +42,7 @@ services:
 
   dialogue_bridge:
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v1.0.3
+    image: konstantinosmpouros/dialogue_bridge:v1.0.5
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - username=${username}
@@ -69,7 +69,7 @@ services:
 
   streamlit_app:
     container_name: streamlit_app
-    image: konstantinosmpouros/streamlit_app:v1.0.2
+    image: konstantinosmpouros/streamlit_app:v1.0.5
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002

@@ -1,107 +1,91 @@
 from langchain.prompts import ChatPromptTemplate
 from retail_agents.prompts.system.retail_agent_v1 import (
-    ANALYZER_SYSTEM_PROMPT,
-    GENERATION_SYSTEM_PROMPT,
-    REFLECTION_SYSTEM_PROMPT,
-    RETRIEVAL_SYSTEM_PROMPT,
-    SUMMARIZER_SYSTEM_PROMPT,
+    ANALYSIS_SYSTEM_PROMPT,
+    SCHEMA_HELP_SYSTEM_PROMPT,
+    SQL_GEN_SYSTEM_PROMPT,
+    ANSWER_SYSTEM_PROMPT
 )
 
 analyzer_template = ChatPromptTemplate.from_messages([
-    ("system", ANALYZER_SYSTEM_PROMPT),
+    ("system", ANALYSIS_SYSTEM_PROMPT),
 ])
 
 
-summarization_template = ChatPromptTemplate.from_messages([
-    ("system", SUMMARIZER_SYSTEM_PROMPT),
+schema_help_template = ChatPromptTemplate.from_messages([
+    ("system", SCHEMA_HELP_SYSTEM_PROMPT),
     ("human",
+    """ 
+        Here is the user's query:
+        <user_question>
+            {user_input_json}
+        </user_question>
+        
+        Here is the analysis of the user's query:
+        <analysis_str>
+            {analysis_str}
+        </analysis_str>
     """
-        Below is a JSON array of retrieved documents (each with metadata and content):
-
-        {retrieved_docs}
-
-        Please write a concise, coherent summary of the above documents that can help answer the following user question (represented by the analysis results):
-
-        {analysis_results}
-    """
-    ),
+    )
 ])
 
 
-hr_gen_template = ChatPromptTemplate.from_messages([
-    ("system", GENERATION_SYSTEM_PROMPT),
+sql_gen_template = ChatPromptTemplate.from_messages([
+    ("system", SQL_GEN_SYSTEM_PROMPT),
     ("human",
     """
-        Here is the summary of the documents retrieved relevant to the user question content:\n\n
-        {summarization}
-
-        \n\nHere are the structured analysis results of the user query:\n\n
-        {analysis_results}
-
-        \n\nPlease use both of these to write a thoughtful, reflective response.
-    """)
-])
-
-
-non_hr_gen_template = ChatPromptTemplate.from_messages([
-    ("system", GENERATION_SYSTEM_PROMPT),
-    ("human",
-    """
-        The content was analyzed as non-religious. These are the structured analysis results of the user query to answer:\n\n
-        {analysis_results}
-
-        \n\nPlease write an appropriate response based on this analysis.
-    """)
-])
-
-
-query_gen_no_reflection_template = ChatPromptTemplate.from_messages([
-    ("system", RETRIEVAL_SYSTEM_PROMPT),
-    ("human",
-    """
-        Here are the structured analysis results of the user query (in JSON):
-        {analysis_results}
-
-        Please generate a list of concise search queries that will retrieve the most relevant vector embeddings to address these analysis findings.
+        Here is the user's query:
+        <user_question>
+            {analysis_str}
+        </user_question>
     """),
 ])
 
 
-query_gen_with_reflection_template = ChatPromptTemplate.from_messages([
-    ("system", RETRIEVAL_SYSTEM_PROMPT),
+sql_error_gen_template = ChatPromptTemplate.from_messages([
+    ("system", SQL_GEN_SYSTEM_PROMPT),
     ("human",
     """
-        Here are the structured analysis results of the user query (in JSON):
-        {analysis_results}
-
-        Here is the reflective response of what was missing and drawbacks of the previous response generated:
-        {reflection}
-
-        Please generate a list of concise search queries that will retrieve the most relevant vector embeddings to address both the analysis and the reflection.
+        Here is the user's query:
+        <user_question>
+            {analysis_str}
+        </user_question>
+        
+        Here is the error message from the SQL engine:
+        <previous_error>
+            {error_message}
+        </previous_error>
+        
+        Here is the SQL query that caused the error:
+        <previous_sql>
+            {sql_query}
+        </previous_sql>
+        
+        Please generate a new SQL query that addresses the error.
+        Ensure that the new query is syntactically correct and addresses the issue raised in the error
+        message.
     """),
 ])
 
 
-reflection_template = ChatPromptTemplate.from_messages([
-    ("system", REFLECTION_SYSTEM_PROMPT),
+answer_gen_template = ChatPromptTemplate.from_messages([
+    ("system", ANSWER_SYSTEM_PROMPT),
     ("human",
     """
-        Below are the structured analysis results of the user query (in JSON form):
-
-        <analysis>
-        {analysis_results}
-        </analysis>
-
-        And here is the last response that was generated from those results:
-
-        <response>
-        {generated_response}
-        </response>
-
-        Based on both the analysis and that response, please write a concise, thoughtful reflection that:
-        - Highlights any deeper insights or implications
-        - Notes any unanswered questions or needed areas for further exploration
-        - Connects the analysis to the response in a coherent way
+        Here is the user's query:
+        <user_input_json>
+        {user_input_json}
+        </user_input_json>
+        
+        Here is the analysis of the user's query:
+        <analysis_str>
+        {analysis_str}
+        </analysis_str>
+        
+        Here are the results of the SQL query:
+        <sql_results>
+        {sql_results}
+        </sql_results>
     """),
 ])
+
 
