@@ -96,6 +96,12 @@ async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, w
 
 
 async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    writer({
+        "type": "reasoning",
+        "content": "✍️ Generating queries for the HR policies database...",
+        "node": "query_gen"
+    })
+    
     analysis_str = state['analysis_str']
     reflection_str = state["reflection_str"]
     
@@ -117,11 +123,6 @@ async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: S
         lines.append(f"{idx}. {q}")
     header_content = "\n".join(lines)
     
-    writer({
-        "type": "reasoning",
-        "content": "✍️ Generating queries for the HR policies database...",
-        "node": "query_gen"
-    })
     return {"vector_queries": response.queries}
 
 
@@ -155,6 +156,12 @@ async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
 
 
 async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    writer({
+        "type": "reasoning",
+        "content": f"🏷️ Ranking the retrieved documents based on relevance...",
+        "node": "ranking"
+    })
+    
     retrieved_docs = state['retrieved_content']
     analysis_str = state['analysis_str']
     
@@ -173,18 +180,18 @@ async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer:
     
     ranking_flags = await doc_ranking_agent.ainvoke(payload, config)
     
-    writer({
-        "type": "reasoning",
-        "content": f"🏷️ Ranking the retrieved documents based on relevance...",
-        "node": "ranking"
-    })
-    
     state_flags = state['ranking_flags']
     state_flags.extend([ranking_flags.relevance_flags])
     return {"ranking_flags": state_flags}
 
 
 async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    writer({
+        "type": "reasoning",
+        "content": f"🧠 Reasoning if we need more data to answer...",
+        "node": "reflection"
+    })
+    
     all_docs_cycles = state['retrieved_content']
     all_flags_cycles = state['ranking_flags']
     analysis_str = state['analysis_str']
@@ -213,11 +220,7 @@ async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: 
         if reflection.requires_additional_retrieval
         else "No additional retrieval is required."
     )
-    writer({
-        "type": "reasoning",
-        "content": f"🧠 Reasoning if we need more data to answer...",
-        "node": "reflection"
-    })
+    
     return {
         "reflection": reflection,
         "reflection_str": reflection_str,
