@@ -56,42 +56,6 @@ async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_
     return {"authenticated": False}
 
 
-@app.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    """
-    Create a new user. Fails with 400 if username already exists.
-    """
-    # username uniqueness check
-    res = await db.execute(select(UserTable).filter_by(username=user.username))
-    if res.scalar_one_or_none():
-        raise HTTPException(400, "Username already taken")
-
-    user_id = str(uuid4())
-    db_user = UserTable(id=user_id, username=user.username, password=user.password)
-    db.add(db_user)
-    await db.commit()
-    await db.close()
-    return {"user_id": user_id, "username": user.username}
-
-
-@app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: str, db: AsyncSession = Depends(get_db)):
-    """
-    Delete a user and all their conversations (cascades via FK relationship).
-    """
-    # 1. Does the user exist?
-    res = await db.execute(select(UserTable).filter_by(id=user_id))
-    user = res.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(404, "User not found")
-
-    # 2. Delete; the cascade rule wipes conversations too
-    await db.delete(user)
-    await db.commit()
-    await db.close()
-    return Response(status_code=204)
-
-
 
 #-----------------------------------------------------------------------------------
 # CONVERSATION APIS
@@ -182,25 +146,6 @@ async def delete_conversation(
         raise HTTPException(404, "Conversation not found")
     return
 
-
-@app.delete(
-    "/users/{user_id}/conversations",
-    status_code=status.HTTP_204_NO_CONTENT
-)
-async def delete_all_conversations(
-    user_id: str,
-    current_user: UserTable = Depends(authenticate_id),
-    db: AsyncSession = Depends(get_db)
-):
-    """Delete all conversations for the specified user."""
-    result = await db.execute(
-        delete(ConversationTable).where(ConversationTable.user_id == user_id)
-    )
-    await db.commit()
-    await db.close()
-    if result.rowcount == 0:
-        raise HTTPException(404, "No conversations found for this user")
-    return
 
 
 #-----------------------------------------------------------------------------------

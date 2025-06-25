@@ -13,23 +13,6 @@ from schemas import Query, ExcelSQLQuery
 app = FastAPI()
 
 
-# -----------------------------------------------------------------------------
-# Convenience root endpoint
-# -----------------------------------------------------------------------------
-@app.get("/")
-async def root():
-    return {
-        "message": "All APIs are up! See /docs for Swagger UI.",
-        "endpoints": {
-            "/excel": "",
-            "/excel/{table}/schema": "",
-            "/excel/{table}/unique/{column}": "",
-            "/excel/{table}/query/sql": "",
-            "/retrieve/{collection_name}": "",
-        },
-    }
-
-
 # --------------------------------------------------------------------------------------
 # RAG APIs
 # --------------------------------------------------------------------------------------
@@ -62,16 +45,6 @@ async def retrieve(request: Query, collection_name: str):
 # --------------------------------------------------------------------------------------
 # Excel db APIs
 # --------------------------------------------------------------------------------------
-@app.get("/excel")
-async def list_tables():
-    """List all loaded Excel workbooks and their columns."""
-    
-    return [
-        {"table": t, **meta}
-        for t, meta in TABLES.items()
-    ]
-
-
 @app.get("/excel/{table}/schema")
 async def get_schema(table: str):
     """Return column names and DuckDB types so the agent can reason about them."""
@@ -81,22 +54,6 @@ async def get_schema(table: str):
         {"column": col, "type": dtype}
         for col, dtype, *_ in description
     ]
-
-
-@app.get("/excel/{table}/unique/{column}")
-async def get_unique(table: str, column: str):
-    """Return distinct values of *column* in *table* - handy for filters."""
-    if not table in TABLES.keys():
-        raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
-    
-    cols = [c[0] for c in db.execute(f"DESCRIBE {table}").fetchall()]
-    if column not in cols:
-        raise HTTPException(status_code=400, detail="Invalid column name")
-    
-    rows = db.execute(
-        f"SELECT DISTINCT {column} FROM {table}"
-    ).fetchall()
-    return [r[0] for r in rows]
 
 
 @app.post("/excel/{table}/query/sql")

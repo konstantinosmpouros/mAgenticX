@@ -1,1 +1,1 @@
-from hr_agents.workflows import hr_policies_v1
+from hr_agents.hr_policies_agent_v1 import hr_policies_agent_v1

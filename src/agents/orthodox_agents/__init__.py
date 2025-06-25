@@ -1,1 +1,1 @@
-from orthodox_agents.workflows import orthodoxai_v1
+from orthodox_agents.orthodox_agent_v1 import orthodoxai_agent_v1
