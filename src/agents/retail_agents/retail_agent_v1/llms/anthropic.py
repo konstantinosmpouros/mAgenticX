@@ -1,6 +1,6 @@
 from langchain_anthropic import ChatAnthropic
 
-from orthodox_agents.config import (
+from retail_agents.retail_agent_v1.config import (
     ANTHROPIC_LLM_1,
     ANTHROPIC_LLM_2,
     ANTHROPIC_REASONING_LLM_1

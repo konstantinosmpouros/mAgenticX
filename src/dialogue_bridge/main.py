@@ -1,6 +1,6 @@
 from typing import List
 from uuid import uuid4
-from fastapi import FastAPI, Depends, HTTPException, Response, status
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 
@@ -13,6 +13,7 @@ from schemas import (
 )
 from utils import authenticate_id, upsert_conversation, agent_stream
 
+# Map agent names to their streaming URLs
 AGENT_MAPPING = {
     "OrthodoxAI v1": "http://agents:8003/OrthodoxAI/v1/stream",
     "HR-Policies v1": "http://agents:8003/HRPolicies/v1/stream",
@@ -43,37 +44,28 @@ async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_
     """
     Simple credential check. Returns True + user_id on success, False otherwise.
     """
-    res = await db.execute(
-        select(UserTable).filter_by(
-            username=creds.username,
-            password=creds.password
+    try:
+        res = await db.execute(
+            select(UserTable).filter_by(
+                username=creds.username,
+                password=creds.password
+            )
         )
-    )
-    user = res.scalar_one_or_none()
-    await db.close()
-    if user:
-        return {"authenticated": True, "user_id": user.id}
-    return {"authenticated": False}
+        user = res.scalar_one_or_none()
+        await db.close()
+        if user:
+            return {"authenticated": True, "user_id": user.id}
+        return {"authenticated": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await db.close()
 
 
 
 #-----------------------------------------------------------------------------------
 # CONVERSATION APIS
 #-----------------------------------------------------------------------------------
-@app.post(
-    "/users/{user_id}/conversations/{conversation_id}/messages",
-    response_model=Conversation,
-    status_code=status.HTTP_201_CREATED
-)
-async def update_conv(
-    payload: Conversation,
-    current_user: UserTable = Depends(authenticate_id),
-    db: AsyncSession = Depends(get_db)
-):
-    """Append a message or create conversation if it doesn't exist."""
-    return await upsert_conversation(payload, db)
-
-
 @app.get(
     "/users/{user_id}/conversations",
     response_model=List[ConversationSummary],

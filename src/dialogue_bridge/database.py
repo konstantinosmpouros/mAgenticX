@@ -16,20 +16,29 @@ from sqlalchemy import DateTime, func
 DATABASE_URL = os.getenv("DATABASE_URL", None)
 if DATABASE_URL is None:
     raise Exception("The service wasn't provided with a database url to persist the conversations!")
-engine = create_async_engine(DATABASE_URL, echo=False)
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=7,
+    max_overflow=10,
+)
 
 # Factory that returns AsyncSession objects
 SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
-    bind=engine, expire_on_commit=False, class_=AsyncSession
+    bind=engine,
+    expire_on_commit=False,
+    class_=AsyncSession
 )
 
 # Base class for all ORM models
 Base = declarative_base()
 
-# A function to initialize a session
 async def get_db() -> AsyncSession: # type: ignore
     """
-    FastAPI dependency — yields a database session and closes it afterwards.
+    FastAPI dependency — yields a database session.
     Usage: `db: AsyncSession = Depends(get_db)`
     """
     async with SessionLocal() as session:

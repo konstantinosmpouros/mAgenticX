@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 
-from orthodox_agents.config import (
+from retail_agents.retail_agent_v1.config import (
     OPENAI_LLM_1,
     OPENAI_LLM_2,
     OPENAI_LLM_3,

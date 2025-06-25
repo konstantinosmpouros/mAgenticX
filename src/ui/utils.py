@@ -44,9 +44,9 @@ def _safe_post(url: str, json: dict = None) -> Any | None:
 
 
 def _safe_delete(url: str) -> bool:
-    """DELETE helper that shows a Streamlit error instead of raising.
-
-    Returns *True* when the API replies 204 No‑Content, else *False*.
+    """
+    Perform DELETE and return True on HTTP 204.
+    Shows an error message and returns False on failure.
     """
     try:
         r = requests.delete(url=url, timeout=5)
@@ -72,13 +72,18 @@ def fetch_conversation(user_id: str, conv_id: str) -> Dict[str, Any]:
 
 
 def auth_request(username: str, password: str) -> str | None:
-    """POST username/password → return user_id on success, else *None*."""
+    """POST username/password → return {True, user_id} on success, else {False}."""
     url = f"{API_BASE}/authenticate"
     json={"username": username, "password": password}
     return _safe_post(url=url, json=json)
 
 
-def creds_entered():
+def creds_entered() -> None:
+    """
+    Callback after user inputs credentials:
+    - Clears input fields
+    - Updates session_state based on authentication result
+    """
     user   = st.session_state.get("user", "").strip()
     passwd = st.session_state.get("passwd", "").strip()
 
@@ -93,6 +98,7 @@ def creds_entered():
         st.session_state["login_warning"] = None
         st.session_state['user_id'] = user_obj['user_id']
     else:
+        # Determine appropriate warning if login failed
         if not user:
             st.session_state["login_warning"] = "Please enter username."
         elif not passwd:
@@ -101,21 +107,25 @@ def creds_entered():
             st.session_state["login_warning"] = "Invalid username / password 😒"
 
 
-def authenticate_user():
-    # -------- initialise state fields once -------- 
+def authenticate_user() -> bool:
+    """
+    Render login UI if not authenticated.
+    Returns True once login succeeds, else False.
+    """
+    # Initialise state fields once
     st.session_state.setdefault("authenticated", False)
     st.session_state.setdefault("login_warning", None)
     
-    # -------- already authenticated? stop rendering login UI -------- 
+    # Already authenticated? stop rendering login UI
     if st.session_state["authenticated"]:
         return True
     
-    # -------- login UI -------- 
+    # Display login form
     st.title("Login to Agentic Chat")
     st.text_input("Username", key="user")
     st.text_input("Password", key="passwd", type="password", on_change=creds_entered)
     
-    # -------- transient warning message -------- 
+    # Transient warning message
     if st.session_state["login_warning"]:
         st.warning(st.session_state["login_warning"])
         time.sleep(3)
@@ -125,7 +135,7 @@ def authenticate_user():
 
 
 def ensure_core_session_keys() -> None:
-    """Seed mandatory session keys once."""
+    """Initialize mandatory session keys with defaults on first load."""
     defaults = {
         "user_id": None,
         "conversation_id": uuid4().hex,
@@ -189,12 +199,12 @@ def render_sidebar() -> None:
                         del_clicked = st.button(
                             label="",  # icon‑only button
                             key=("del_btn", conv_id),
-                            icon="🗑️",  # Streamlit built‑in icon support
+                            icon="❌",  # Streamlit built‑in icon support
                             help="Delete conversation",
                             use_container_width=True,
                         )
                     
-                    # Fetch Conversation functionality
+                    # Fetch Conversation functionality on click
                     if clicked:
                         try:
                             data = fetch_conversation(st.session_state.user_id, conv_id)
@@ -214,7 +224,7 @@ def render_sidebar() -> None:
                         except Exception as ex:
                             st.info(ex)
                     
-                    # Delete conversation functionality
+                    # Delete conversation functionality on click
                     if del_clicked:
                         if st.session_state.user_id:
                             url = (
@@ -234,6 +244,10 @@ def render_sidebar() -> None:
 
 
 def build_payload():
+    """
+    Prepare JSON payload for agent inference.
+    Serializes assistant reasoning into JSON strings.
+    """
     messages = deepcopy(st.session_state['messages'])
     for msg in messages:
         if msg['role'] == 'assistant' and msg['reasoning']:
@@ -250,7 +264,10 @@ def build_payload():
 
 
 def stream_agent_response(payload: Dict):
-    """Generator function to stream individual chunks from API responses."""
+    """
+    Generator that streams ('response'|'reasoning') tuples
+    from the backend as lines of JSON.
+    """
     agent_url = f"{API_BASE}/user/{payload['user_id']}/inference"
 
     try:

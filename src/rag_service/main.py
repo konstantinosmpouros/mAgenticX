@@ -18,6 +18,7 @@ app = FastAPI()
 # --------------------------------------------------------------------------------------
 @app.post("/retrieve/{collection_name}")
 async def retrieve(request: Query, collection_name: str):
+    """Retrieve documents from the specified collection using the provided query and k value."""
     client = chromadb.HttpClient(
         host=RAG_HOST,
         port=int(RAG_PORT),

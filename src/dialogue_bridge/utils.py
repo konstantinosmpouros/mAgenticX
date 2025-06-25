@@ -17,7 +17,7 @@ async def authenticate_id(user_id: str, db: AsyncSession = Depends(get_db)) -> U
         select(UserTable).filter_by(id=user_id)
     )
     user: UserTable | None = result.scalar_one_or_none()
-
+    
     if not user:
         raise HTTPException(401, "Invalid or unknown user")
     return user
@@ -26,15 +26,19 @@ async def authenticate_id(user_id: str, db: AsyncSession = Depends(get_db)) -> U
 async def upsert_conversation(payload: Conversation, db: AsyncSession) -> ConversationTable:
     """Create or update the ConversationTable row, then return it."""
     try:
+        # Assign a random ID if none provided
         if payload.conversation_id is None:
             payload.conversation_id = uuid.uuid4().hex
         
+        # Look for an existing conversation record
         result = await db.execute(
             select(ConversationTable).filter_by(
                 user_id=payload.user_id,
                 conversation_id=payload.conversation_id,
             )
         )
+        
+        # If found, update it, if not, create a new one
         convo = result.scalar_one_or_none()
         if convo is None:
             convo = ConversationTable(
@@ -50,11 +54,12 @@ async def upsert_conversation(payload: Conversation, db: AsyncSession) -> Conver
             convo.agents = convo.agents + payload.agents
             if payload.title and payload.title != convo.title:
                 convo.title = payload.title
-
+        
+        # Persist changes
         await db.commit()
         await db.refresh(convo)
         return convo
-
+    
     except IntegrityError as e:
         if "conversations_user_id_fkey" in str(e.orig):
             raise HTTPException(400, "Cannot create conversation for non-existent user")
@@ -62,6 +67,10 @@ async def upsert_conversation(payload: Conversation, db: AsyncSession) -> Conver
 
 
 async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
+    """
+    Stream chunks from an external agent service and persist the full conversation.
+    Yields UTF-8-encoded JSON lines with either 'reasoning' or 'response' messages.
+    """
     current_node: str | None = None
     reasoning_cells: list[dict[str, str]] = []
     response_accum: str = ""
@@ -79,47 +88,44 @@ async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
                 
                 # Iterate over each line of the agent’s streaming response
                 async for line in resp.aiter_lines():
-                    if line:
-                        try:
-                            chunk = json.loads(line)
-                            
-                            ctype = chunk.get('type')
-                            content = chunk.get("content")
-                            
-                            if ctype in ("reasoning", "reasoning_chunk"):
-                                node = chunk.get("node", "unknown_node")
-                                
-                                if node != current_node:
-                                    reasoning_cells.append({
-                                        "node": node,
-                                        "chunks": ''
-                                    })
-                                    current_node = node
-                                
-                                reasoning_cells[-1]["chunks"] = content
-                                
-                                yield (json.dumps({
-                                    "type": "reasoning",
-                                    "node": node,
-                                    "content": content
-                                }) + "\n").encode("utf-8")
-                                
-                            elif ctype in ("response", "response_chunk"):
-                                response_accum += content
-                                
-                                yield (json.dumps({
-                                    "type": "response",
-                                    "content": content
-                                }) + "\n").encode("utf-8")
-                                
-                            else:
-                                continue
-                                
-                        except Exception as ex:
-                            raise HTTPException(500, ex)
-                    else:
+                    if not line:
                         continue
+                    
+                    try:
+                        chunk = json.loads(line)
+                        ctype = chunk.get('type')
+                        content = chunk.get("content")
+                            
+                        if ctype in ("reasoning", "reasoning_chunk"):
+                            node = chunk.get("node", "unknown_node")
+                                
+                            if node != current_node:
+                                reasoning_cells.append({
+                                    "node": node,
+                                    "chunks": ''
+                                })
+                                current_node = node
+                                
+                            reasoning_cells[-1]["chunks"] = content
+                                
+                            yield (json.dumps({
+                                "type": "reasoning",
+                                "node": node,
+                                "content": content
+                            }) + "\n").encode("utf-8")
+                                
+                        elif ctype in ("response", "response_chunk"):
+                            response_accum += content
+                                
+                            yield (json.dumps({
+                                "type": "response",
+                                "content": content
+                            }) + "\n").encode("utf-8")
+                                
+                    except Exception as ex:
+                        raise HTTPException(500, ex)
         
+        # Once streaming is done, append the assistant message and save to DB
         assistant_message = {
             "role": "assistant",
             "content": response_accum,
@@ -133,11 +139,13 @@ async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
             messages=[*payload.messages,  assistant_message],
             agents=payload.agents
         )
-        await upsert_conversation(new_payload, db)
+        _ = await upsert_conversation(new_payload, db)
         
     except httpx.HTTPError as exc:
+        # Propagate HTTP errors as generic exceptions
         raise Exception(exc)
     finally:
+        # Ensure resources are cleaned up
         await client.aclose()
         await db.close()
 
