@@ -40,7 +40,8 @@ class ReflectionOutput(BaseModel):
         description="""
             Provide only when additional retrieval is needed. 
             Critique accuracy, compliance risk, completeness, or any gaps 
-            relevant to HR policy and employment law.
+            relevant to HR policy and employment law. Brief and to the point.
+            Example: "The answer lacks details on maternity leave entitlements and does not address the user's question about flexible working arrangements."
         """
     )
     recommended_next_steps: Optional[str] = Field(

@@ -1,5 +1,6 @@
 import streamlit as st
 from utils import *
+import pandas as pd
 
 # Set page config
 st.set_page_config(page_title="Agentic Chat", page_icon="🕊️")
@@ -26,7 +27,8 @@ for message in st.session_state["messages"]:
                     bullet = thought['chunks']
                     node = thought['node'].upper()
                     st.markdown(f"- {bullet} \n\n")
-        st.write(message["content"])
+        if "content" in message and message["content"]:
+            st.write(message["content"])
 
 
 # User input
@@ -62,12 +64,12 @@ if user_input:
             elif chunk_type == "response":
                 accumulated_response += content
                 response_container.write(accumulated_response)
-                
+            
     # Append complete assistant message to session state
     st.session_state["messages"].append({
         "role": "assistant",
         "content": accumulated_response,
-        "reasoning": reasoning_cells
+        "reasoning": reasoning_cells,
     })
     st.rerun()
 

@@ -230,7 +230,7 @@ async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: 
 
 
 def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal["query_gen", "summarizer"]:
-    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
+    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 1:
         return 'query_gen'
     else:
         return 'summarizer'

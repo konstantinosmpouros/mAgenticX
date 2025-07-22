@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1
 
 # 3. Install requirements and set working directory
 WORKDIR /app
-RUN pip install --no-cache-dir streamlit httpx
+RUN pip install --no-cache-dir streamlit httpx pandas
 
 # 4. Install system deps
 RUN apt-get update \

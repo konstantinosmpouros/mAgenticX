@@ -29,3 +29,4 @@ class SQLQueryOutput(BaseModel):
     sql_query: str = Field(..., description="The generated SQL query.")
 
 
+

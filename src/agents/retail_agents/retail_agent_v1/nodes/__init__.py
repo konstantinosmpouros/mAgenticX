@@ -23,15 +23,21 @@ from langchain_core.messages.ai import AIMessageChunk
 
 
 async def analysis(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter) -> RetailV1_State:
+    """
+    Analyze user input to extract intent, reasoning, and SQL description,
+    then fetch and store the database schema.
+    """
     writer({
         "type": "reasoning",
         "content": "🧠 Analyzing user input to determine intent and reasoning...",
         "node": "analysis"
     })
     
+    # Invoke analysis agent
     user_msg = state['user_input']
     analysis_results = await analysis_agent.ainvoke(user_msg, config)
     
+    # Build a human-readable analysis summary
     analysis_str = (
         f"***Intent: {analysis_results.intent}.  \n"
         f"Reasoning: {analysis_results.reasoning}.  \n"
@@ -39,6 +45,7 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
         f"SQL Description: {analysis_results.sql_description if analysis_results.sql_description else 'N/A'}***"
     )
     
+    # Retrieve database schema from remote endpoint
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(SCHEMA_ENDPOINT)
         r.raise_for_status()
@@ -54,11 +61,19 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
 
 
 async def check_intent(state: RetailV1_State, config: RunnableConfig) -> Literal["query_gen", "simple_generation"]:
+    """
+    Decide whether to generate an SQL query or a simple text response
+    based on the extracted intent.
+    """
     return "query_gen" if state["analysis_results"].intent == "data" else "simple_generation"
 
 
 
 async def simple_generation(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter) -> RetailV1_State:
+    """
+    Produce a straightforward response without querying the database,
+    streaming chunks back to the client.
+    """
     payload = {
         "analysis_str": state["analysis_str"],
         "db_schema_json": state["db_schema_json"],
@@ -66,6 +81,8 @@ async def simple_generation(state: RetailV1_State, config: RunnableConfig, write
     }
     prompt = await schema_help_template.ainvoke(payload)
     response = ''
+    
+    # Stream agent messages and tool updates
     async for mode, chunk in simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
         if mode == 'messages':
             message_chunk, _ = chunk
@@ -77,7 +94,7 @@ async def simple_generation(state: RetailV1_State, config: RunnableConfig, write
                 response += message_chunk.content
             
         elif mode == 'updates':
-            # chunk is a dict, containing updates per node
+            # Report when tools are invoked or return data
             if "agent" in chunk:
                 agent_msg = chunk['agent']['messages'][0]
                 if getattr(agent_msg, "tool_calls", None):
@@ -99,6 +116,10 @@ async def simple_generation(state: RetailV1_State, config: RunnableConfig, write
 
 
 async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter) -> RetailV1_State:
+    """
+    Generate or refine an SQL query based on analysis results and
+    any previous errors.
+    """
     writer({
         "type": "reasoning",
         "content": "📝 Generating SQL query based on analysis results...",
@@ -112,6 +133,7 @@ async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: Strea
     sql_query = state["sql_query"]
     
     if error_message:
+        # Include error context for retry
         payload = {
             "table_name": table_name,
             "db_schema_json": db_schema_json,
@@ -122,6 +144,7 @@ async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: Strea
         
         sql_output = await sql_error_gen_agent.ainvoke(payload, config)
     else:
+        # No previous error, generate new SQL query
         payload = {
             "table_name": table_name,
             "db_schema_json": db_schema_json,
@@ -134,6 +157,10 @@ async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: Strea
 
 
 async def query_execution(state: RetailV1_State, writer: StreamWriter, config: RunnableConfig) -> RetailV1_State:
+    """
+    Execute the generated SQL query against the backend service,
+    capturing results or any errors.
+    """
     writer({
         "type": "reasoning",
         "content": "⚡ Executing SQL query...",
@@ -182,6 +209,10 @@ async def query_execution(state: RetailV1_State, writer: StreamWriter, config: R
 
 
 async def check_sql_results(state: RetailV1_State, writer: StreamWriter) -> Literal["complex_gen", "query_gen"]:
+    """
+    Determine next step: retry query on error (up to 2 attempts),
+    otherwise proceed to generate the final response.
+    """
     if state["error_message"] is not None and state["sql_cycle"] < 2:
         writer({
             "type": "reasoning",
@@ -200,6 +231,10 @@ async def check_sql_results(state: RetailV1_State, writer: StreamWriter) -> Lite
 
 
 async def complex_generation(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter) -> RetailV1_State:
+    """
+    Generate the final user-facing response by combining analysis summary,
+    original input, and SQL results.
+    """
     analysis_str = state["analysis_str"]
     user_input_json = state["user_input_json"]
     sql_results = state["sql_results"]
@@ -212,7 +247,7 @@ async def complex_generation(state: RetailV1_State, config: RunnableConfig, writ
     
     prompt = await answer_gen_template.ainvoke(payload)
     
-    # invoke the generation agent
+    # Stream the answer agent's output
     response = ''
     async for mode, chunk in answer_agent.astream(prompt, stream_mode=["messages", "updates"]):
         if mode == 'messages':
@@ -223,7 +258,7 @@ async def complex_generation(state: RetailV1_State, config: RunnableConfig, writ
                     "content": message_chunk.content
                 })
                 response += message_chunk.content
-
+        
         elif mode == 'updates':
             # chunk is a dict, containing updates per node
             if "agent" in chunk:
@@ -233,16 +268,15 @@ async def complex_generation(state: RetailV1_State, config: RunnableConfig, writ
                         writer({
                             "type": "reasoning",
                             "content": f"Using the {tool_call['name']} tool",
-                            "node": "simple_gen"
+                            "node": "complex_gen"
                         })
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
                 writer({
                     "type": "reasoning",
                     "content": f"The tool call responded the following: {tool_msg.content}",
-                    "node": "simple_gen"
+                    "node": "complex_gen"
                 })
     
     return {"response": response}
-
 

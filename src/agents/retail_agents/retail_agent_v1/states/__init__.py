@@ -6,6 +6,9 @@ from retail_agents.retail_agent_v1.config import TABLE
 
 
 class RetailV1_State(BaseModel):
+    """
+    Data model representing the state of a retail agent process in version 1.
+    """
     user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
     user_input_json: str = None
     db_schema_json: str = None

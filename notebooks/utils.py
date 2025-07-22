@@ -1,4 +1,7 @@
 import os
+from pathlib import Path
+from typing import Iterable
+
 import pandas as pd
 import re
 from pydub import AudioSegment
@@ -6,30 +9,18 @@ from io import BytesIO
 from mutagen import File as MutagenFile
 
 pd.set_option('display.max_rows', None)
+AUDIO_EXTS: set[str] = {".mp3", ".wav", ".m4a"}
 
-def search_for_audio_files(directory: str) -> pd.DataFrame:
+def search_for_audio_files(root: str | os.PathLike) -> pd.DataFrame:
     """
-    Searches the given directory for .wav and .mp3 files and returns a DataFrame
-    with only the file names.
-
-    Args:
-        directory (str): Path to the directory containing audio files.
-
-    Returns:
-        pd.DataFrame: A DataFrame with two columns: 'file_name' and 'file_path'.
+    Recursively walk *root* and return a DataFrame with columns
+    ``file_name`` and ``file_path`` for every supported audio file.
     """
-    audio_files = []
-    
-    # Walk through the directory
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.lower().endswith(('.mp3', '.wav')):
-                file_path = os.path.join(root, file)  # Construct full file path
-                audio_files.append((file, file_path))
-
-    # Create DataFrame
-    df = pd.DataFrame(audio_files, columns=['file_name', 'file_path'])
-    return df
+    paths: Iterable[Path] = (
+        p for p in Path(root).rglob("*") if p.suffix.lower() in AUDIO_EXTS
+    )
+    records = [{"file_name": p.name, "file_path": str(p)} for p in paths]
+    return pd.DataFrame(records)
 
 def extract_theme(file_name: str) -> str:
     """

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 
 
@@ -51,7 +51,7 @@ class Conversation(BaseModel):
     user_id: str
     conversation_id: str
     title: Optional[str] = None
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, Any]]
     agents: List[str]
 
     class Config:

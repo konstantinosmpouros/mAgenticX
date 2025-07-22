@@ -11,11 +11,13 @@ from orthodox_agents import orthodoxai_agent_v1
 from hr_agents import hr_policies_agent_v1
 from retail_agents import retail_agent_v1
 
+# Load moderation
+# from moderation import moderation_agent
+
 import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-
 from typing import List, Dict
 
 
@@ -54,7 +56,6 @@ async def stream_agent(req: StrRequest):
             yield (json.dumps(msg) + "\n").encode(encoding="utf-8")
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
-
 
 
 # TODO: Create the long-term memory layer for the agents

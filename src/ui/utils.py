@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 import requests
 import streamlit as st
+import pandas as pd
 import time
 import os
 import httpx
@@ -15,7 +16,7 @@ PORT = os.getenv("BFF_PORT")
 API_BASE = f"http://{HOST}:{PORT}"
 
 AGENTS = [
-    "OrthodoxAI v1",
+    # "OrthodoxAI v1",
     "HR-Policies v1",
     "Retail Agent v1",
 ]
@@ -207,19 +208,19 @@ def render_sidebar() -> None:
                     # Fetch Conversation functionality on click
                     if clicked:
                         try:
-                            data = fetch_conversation(st.session_state.user_id, conv_id)
+                            conv_data = fetch_conversation(st.session_state.user_id, conv_id)
                             
-                            for i, msg in enumerate(data.get("messages", [])):
+                            for i, msg in enumerate(conv_data.get("messages", [])):
                                 if msg["role"] == "assistant" and "reasoning" in msg:
                                     if isinstance(msg["reasoning"], str):
                                         try:
-                                            data["messages"][i]['reasoning'] = json.loads(msg["reasoning"])
+                                            conv_data["messages"][i]['reasoning'] = json.loads(msg["reasoning"])
                                         except json.JSONDecodeError:
-                                            data["messages"][i]['reasoning'] = []
+                                            conv_data["messages"][i]['reasoning'] = []
                             
-                            st.session_state.conversation_id = data.get("conversation_id", conv_id)
-                            st.session_state.messages = data.get("messages", [])
-                            st.session_state.title = data.get("title", '')
+                            st.session_state.conversation_id = conv_data.get("conversation_id", conv_id)
+                            st.session_state.messages = conv_data.get("messages", [])
+                            st.session_state.title = conv_data.get("title", '')
                             st.toast("Conversation loaded!")
                         except Exception as ex:
                             st.info(ex)

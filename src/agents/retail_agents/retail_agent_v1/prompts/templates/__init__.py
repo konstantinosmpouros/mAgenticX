@@ -3,7 +3,7 @@ from retail_agents.retail_agent_v1.prompts.system import (
     ANALYSIS_SYSTEM_PROMPT,
     SCHEMA_HELP_SYSTEM_PROMPT,
     SQL_GEN_SYSTEM_PROMPT,
-    ANSWER_SYSTEM_PROMPT
+    ANSWER_SYSTEM_PROMPT,
 )
 
 analyzer_template = ChatPromptTemplate.from_messages([
@@ -87,6 +87,3 @@ answer_gen_template = ChatPromptTemplate.from_messages([
         </sql_results>
     """),
 ])
-
-
-

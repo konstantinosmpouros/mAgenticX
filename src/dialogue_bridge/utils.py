@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException
 
 from database import get_db, UserTable, ConversationTable
 from schemas import Conversation
+from typing import List, Dict, Any
 
 import json
 import httpx
@@ -72,7 +73,7 @@ async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
     Yields UTF-8-encoded JSON lines with either 'reasoning' or 'response' messages.
     """
     current_node: str | None = None
-    reasoning_cells: list[dict[str, str]] = []
+    reasoning_cells: List[Dict[str, str]] = []
     response_accum: str = ""
     
     try:
@@ -98,7 +99,7 @@ async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
                             
                         if ctype in ("reasoning", "reasoning_chunk"):
                             node = chunk.get("node", "unknown_node")
-                                
+                            
                             if node != current_node:
                                 reasoning_cells.append({
                                     "node": node,
@@ -107,21 +108,21 @@ async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
                                 current_node = node
                                 
                             reasoning_cells[-1]["chunks"] = content
-                                
+                            
                             yield (json.dumps({
                                 "type": "reasoning",
                                 "node": node,
                                 "content": content
                             }) + "\n").encode("utf-8")
-                                
+                            
                         elif ctype in ("response", "response_chunk"):
                             response_accum += content
-                                
+                            
                             yield (json.dumps({
                                 "type": "response",
                                 "content": content
                             }) + "\n").encode("utf-8")
-                                
+                        
                     except Exception as ex:
                         raise HTTPException(500, ex)
         
@@ -131,7 +132,7 @@ async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
             "content": response_accum,
             "reasoning": json.dumps(reasoning_cells)
         }
-            
+        
         new_payload = Conversation(
             user_id=payload.user_id,
             conversation_id=payload.conversation_id,

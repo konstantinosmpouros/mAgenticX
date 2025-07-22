@@ -14,5 +14,5 @@ ANTHROPIC_LLM_2 = "claude-3-5-haiku-latest"
 _RAG_HOST = os.getenv("RAG_HOST", "rag_service")
 _RAG_PORT = os.getenv("RAG_PORT", "8001")
 
-_COLLECTION_NAME = "hr_policies_v2"
+_COLLECTION_NAME = "hr_policies_v4"
 ENDPOINT = f"http://{_RAG_HOST}:{_RAG_PORT}/retrieve/{_COLLECTION_NAME}"
