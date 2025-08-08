@@ -59,6 +59,4 @@ async def stream_agent(req: StrRequest):
 
 
 # TODO: Create the long-term memory layer for the agents
-# TODO: Create a synthetic database for the hr policies agent
-# TODO: Make better the retail agent to be able to have RBAC to the excel databases.
 # TODO: Put documentation everywhere

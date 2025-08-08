@@ -1,0 +1,222 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 240 6% 6%;
+    --foreground: 0 0% 95%;
+
+    --card: 240 6% 8%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 240 6% 8%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 293 89% 74%;
+    --primary-foreground: 0 0% 9%;
+    --primary-glow: 293 89% 84%;
+
+    --secondary: 240 4% 12%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 240 4% 12%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 216 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: transparent;
+
+    /* Professional chat colors */
+    --chat-user: 216 100% 50%;
+    --chat-user-foreground: 0 0% 100%;
+    --chat-agent: 240 4% 14%;
+    --chat-agent-foreground: 0 0% 95%;
+    
+    /* Animated gradient palettes */
+    --gradient-bg-1: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 100%, 8%) 100%);
+    --gradient-bg-2: linear-gradient(135deg, hsl(260, 15%, 8%) 0%, hsl(280, 20%, 12%) 50%, hsl(293, 60%, 10%) 100%);
+    --gradient-bg-3: linear-gradient(135deg, hsl(220, 25%, 8%) 0%, hsl(240, 30%, 12%) 50%, hsl(260, 40%, 10%) 100%);
+    --gradient-bg-4: linear-gradient(135deg, hsl(200, 35%, 8%) 0%, hsl(220, 40%, 12%) 50%, hsl(240, 50%, 10%) 100%);
+    --gradient-bg-5: linear-gradient(135deg, hsl(180, 45%, 8%) 0%, hsl(200, 50%, 12%) 50%, hsl(220, 60%, 10%) 100%);
+    --gradient-bg-6: linear-gradient(135deg, hsl(160, 35%, 8%) 0%, hsl(180, 40%, 12%) 50%, hsl(200, 50%, 10%) 100%);
+    
+    /* Current animated gradient */
+    --gradient-bg: var(--gradient-bg-1);
+    --gradient-card: linear-gradient(135deg, hsl(240, 4%, 12%) 0%, hsl(240, 6%, 15%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(293, 89%, 74%) 0%, hsl(293, 89%, 84%) 100%);
+    --gradient-header: linear-gradient(135deg, hsl(240, 6%, 8%) 0%, hsl(240, 8%, 12%) 100%);
+    
+    /* Professional shadows */
+    --shadow-elegant: 0 10px 40px -10px hsl(293, 89%, 74%, 0.25);
+    --shadow-soft: 0 4px 20px -4px hsl(240, 6%, 3%, 0.4);
+    --shadow-card: 0 2px 8px -2px hsl(240, 6%, 3%, 0.3);
+    
+    /* Smooth transitions */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Morphing gradient animation - directly animates background */
+@keyframes gradient-morph {
+  0% { 
+    background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
+  }
+  4% { 
+    background: linear-gradient(135deg, hsl(242, 7%, 6%) 0%, hsl(242, 9%, 10%) 50%, hsl(220, 22%, 8%) 100%);
+  }
+  8% { 
+    background: linear-gradient(135deg, hsl(245, 8%, 7%) 0%, hsl(245, 11%, 11%) 50%, hsl(225, 25%, 9%) 100%);
+  }
+  12% { 
+    background: linear-gradient(135deg, hsl(248, 9%, 7%) 0%, hsl(248, 12%, 11%) 50%, hsl(230, 27%, 9%) 100%);
+  }
+  16% { 
+    background: linear-gradient(135deg, hsl(250, 10%, 8%) 0%, hsl(250, 14%, 12%) 50%, hsl(235, 30%, 10%) 100%);
+  }
+  20% { 
+    background: linear-gradient(135deg, hsl(253, 11%, 7%) 0%, hsl(253, 15%, 11%) 50%, hsl(240, 32%, 9%) 100%);
+  }
+  24% { 
+    background: linear-gradient(135deg, hsl(255, 12%, 8%) 0%, hsl(255, 17%, 12%) 50%, hsl(245, 35%, 10%) 100%);
+  }
+  28% { 
+    background: linear-gradient(135deg, hsl(258, 13%, 7%) 0%, hsl(258, 18%, 11%) 50%, hsl(250, 37%, 9%) 100%);
+  }
+  32% { 
+    background: linear-gradient(135deg, hsl(260, 15%, 8%) 0%, hsl(260, 20%, 12%) 50%, hsl(255, 40%, 10%) 100%);
+  }
+  36% { 
+    background: linear-gradient(135deg, hsl(263, 16%, 7%) 0%, hsl(263, 21%, 11%) 50%, hsl(260, 42%, 9%) 100%);
+  }
+  40% { 
+    background: linear-gradient(135deg, hsl(265, 17%, 8%) 0%, hsl(265, 22%, 12%) 50%, hsl(265, 45%, 10%) 100%);
+  }
+  44% { 
+    background: linear-gradient(135deg, hsl(268, 18%, 7%) 0%, hsl(268, 23%, 11%) 50%, hsl(270, 47%, 9%) 100%);
+  }
+  48% { 
+    background: linear-gradient(135deg, hsl(270, 20%, 8%) 0%, hsl(270, 25%, 12%) 50%, hsl(275, 50%, 10%) 100%);
+  }
+  52% { 
+    background: linear-gradient(135deg, hsl(272, 19%, 7%) 0%, hsl(272, 24%, 11%) 50%, hsl(280, 48%, 9%) 100%);
+  }
+  56% { 
+    background: linear-gradient(135deg, hsl(275, 18%, 8%) 0%, hsl(275, 23%, 12%) 50%, hsl(285, 46%, 10%) 100%);
+  }
+  60% { 
+    background: linear-gradient(135deg, hsl(277, 17%, 7%) 0%, hsl(277, 22%, 11%) 50%, hsl(290, 44%, 9%) 100%);
+  }
+  64% { 
+    background: linear-gradient(135deg, hsl(280, 16%, 8%) 0%, hsl(280, 21%, 12%) 50%, hsl(285, 42%, 10%) 100%);
+  }
+  68% { 
+    background: linear-gradient(135deg, hsl(278, 15%, 7%) 0%, hsl(278, 20%, 11%) 50%, hsl(280, 40%, 9%) 100%);
+  }
+  72% { 
+    background: linear-gradient(135deg, hsl(275, 14%, 8%) 0%, hsl(275, 19%, 12%) 50%, hsl(275, 38%, 10%) 100%);
+  }
+  76% { 
+    background: linear-gradient(135deg, hsl(272, 13%, 7%) 0%, hsl(272, 18%, 11%) 50%, hsl(270, 36%, 9%) 100%);
+  }
+  80% { 
+    background: linear-gradient(135deg, hsl(270, 12%, 8%) 0%, hsl(270, 17%, 12%) 50%, hsl(265, 34%, 10%) 100%);
+  }
+  84% { 
+    background: linear-gradient(135deg, hsl(267, 11%, 7%) 0%, hsl(267, 16%, 11%) 50%, hsl(260, 32%, 9%) 100%);
+  }
+  88% { 
+    background: linear-gradient(135deg, hsl(265, 10%, 8%) 0%, hsl(265, 15%, 12%) 50%, hsl(255, 30%, 10%) 100%);
+  }
+  92% { 
+    background: linear-gradient(135deg, hsl(252, 9%, 7%) 0%, hsl(252, 14%, 11%) 50%, hsl(250, 28%, 9%) 100%);
+  }
+  96% { 
+    background: linear-gradient(135deg, hsl(245, 8%, 8%) 0%, hsl(245, 12%, 12%) 50%, hsl(240, 25%, 10%) 100%);
+  }
+  100% { 
+    background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
+  }
+}
+
+/* Apply morphing animation to background */
+.bg-gradient-morph {
+  background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
+  animation: gradient-morph 45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

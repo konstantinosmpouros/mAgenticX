@@ -1304,3 +1304,136 @@
 2025-07-17 18:20:20,651 - WARNING - No such comm: e2e8284e-a699-4a4c-9dda-04b3df7f67e9
 2025-07-17 21:52:13,838 - ERROR - No such comm target registered: jupyter.widget.control
 2025-07-17 21:52:13,840 - WARNING - No such comm: bb6cb584-d9d3-46d5-ba7d-721abf6fba33
+2025-07-30 21:03:42,410 - INFO - 
+
+------------------------Parallel Transcription Started------------------------
+2025-07-30 21:03:42,479 - ERROR - Error in the transcription process: name 'file_name' is not defined
+2025-07-30 21:03:55,007 - INFO - 
+
+------------------------Parallel Transcription Started------------------------
+2025-07-30 21:03:55,068 - ERROR - Error in the transcription process: name 'file_name' is not defined
+2025-07-30 21:07:13,939 - INFO - 
+
+
+
+------------------------Parallel Transcription Started------------------------
+2025-07-30 21:07:14,044 - ERROR - Error in the transcription process: name 'file_name' is not defined
+2025-07-30 21:09:06,337 - INFO - 
+
+
+
+------------------------Parallel Transcription Started------------------------
+2025-07-30 21:09:06,393 - INFO - 111111111
+2025-07-30 21:09:06,393 - ERROR - Error in the transcription process: name 'file_name' is not defined
+2025-07-30 21:09:35,259 - INFO - 
+
+
+
+------------------------Parallel Transcription Started------------------------
+2025-07-30 21:09:35,319 - INFO - 111111111
+2025-07-30 21:09:35,326 - INFO - None
+2025-07-30 21:09:35,326 - ERROR - Error in the transcription process: name 'file_name' is not defined
+2025-07-30 21:11:16,637 - INFO - 
+
+
+
+------------------------Parallel Transcription Started------------------------
+2025-07-30 21:11:23,403 - INFO - Transcribing 4195 new files.
+2025-07-30 21:11:51,401 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:11:51,402 - ERROR - Error transcribing 0238_02-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:12:02,471 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:12:02,473 - ERROR - Error transcribing 0241_23-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:12:13,368 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:12:13,370 - ERROR - Error transcribing 0242_30-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:12:23,958 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:12:23,959 - ERROR - Error transcribing 0245_20-06-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:12:34,125 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:12:34,127 - ERROR - Error transcribing 0246_27-06-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:12:43,940 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:12:44,637 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:12:45,373 - INFO - Successfully transcribed and saved 0239_09-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:12:46,531 - INFO - Successfully transcribed and saved 0240_16-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:13:03,960 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:13:03,962 - ERROR - Error transcribing 0251_01-08-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:13:14,568 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:13:14,570 - ERROR - Error transcribing 0252_08-08-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:13:25,205 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:13:25,214 - ERROR - Error transcribing 0255_19-09-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:13:33,572 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:13:34,446 - INFO - Successfully transcribed and saved 0247_04-07-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:13:43,734 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:13:43,735 - ERROR - Error transcribing 0258_10-10-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:13:52,312 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:13:53,258 - INFO - Successfully transcribed and saved 0250_25-07-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:14:04,049 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:14:04,050 - ERROR - Error transcribing 0261_31-10-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:14:15,035 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:14:15,036 - ERROR - Error transcribing 0263_14-11-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:14:22,822 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:14:26,004 - INFO - Successfully transcribed and saved 0256_26-09-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:14:37,038 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:14:37,040 - ERROR - Error transcribing 0266_12-12-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:14:37,852 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:14:42,144 - INFO - Successfully transcribed and saved 0260_24-10-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:14:56,375 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:14:56,376 - ERROR - Error transcribing 0270_30-01-80_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:15:06,077 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:15:06,080 - ERROR - Error transcribing 0271_06-02-80_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:15:16,832 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:15:16,834 - ERROR - Error transcribing 0274_27-02-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:15:21,793 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:15:26,586 - INFO - Successfully transcribed and saved 0265_28-11-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:15:36,805 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:15:37,772 - INFO - Successfully transcribed and saved 0269_23-01-80_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:15:48,274 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:15:48,276 - ERROR - Error transcribing 0277_19-03-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:15:59,516 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:15:59,517 - ERROR - Error transcribing 0280_30-04-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:16:17,436 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 429 Too Many Requests"
+2025-07-30 21:16:17,438 - ERROR - Error transcribing 0281_07-05-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 429, body: {'detail': {'status': 'too_many_concurrent_requests', 'message': 'Too many concurrent requests. Your current subscription is associated with a maximum of 20 concurrent requests (running in parallel). This is done such that a single user does not overwhelm our systems and affect other users negatively. Please upgrade your subscription or contact sales if you want to increase this limit.'}}
+2025-07-30 21:16:20,937 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:16:23,451 - INFO - Successfully transcribed and saved 0275_05-03-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:16:28,626 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-07-30 21:16:29,147 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:16:29,157 - ERROR - Error transcribing 0282_14-05-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1615 credits are required for this request.'}}
+2025-07-30 21:16:29,641 - INFO - Successfully transcribed and saved 0276_12-03-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-07-30 21:16:44,672 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:16:44,673 - ERROR - Error transcribing 0283_28-05-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1625 credits are required for this request.'}}
+2025-07-30 21:16:55,188 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:16:55,188 - ERROR - Error transcribing 0286_18-06-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1605 credits are required for this request.'}}
+2025-07-30 21:16:55,916 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:16:55,916 - ERROR - Error transcribing 0287_25-06-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1565 credits are required for this request.'}}
+2025-07-30 21:17:04,026 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:17:04,026 - ERROR - Error transcribing 0288_02-07-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1541 credits are required for this request.'}}
+2025-07-30 21:17:24,795 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:17:24,795 - ERROR - Error transcribing 0292_20-08-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1619 credits are required for this request.'}}
+2025-07-30 21:17:25,853 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:17:25,853 - ERROR - Error transcribing 0291_06-08-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1604 credits are required for this request.'}}
+2025-07-30 21:17:26,862 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:17:26,863 - ERROR - Error transcribing 0293_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1560 credits are required for this request.'}}
+2025-07-30 21:17:42,241 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:17:42,241 - ERROR - Error transcribing 0294_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1474 credits are required for this request.'}}
+2025-07-30 21:17:49,700 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:17:49,700 - ERROR - Error transcribing 0297_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1458 credits are required for this request.'}}
+2025-07-30 21:17:51,579 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:17:51,580 - ERROR - Error transcribing 0298_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1487 credits are required for this request.'}}
+2025-07-30 21:18:04,492 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:18:04,492 - ERROR - Error transcribing 0299_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1614 credits are required for this request.'}}
+2025-07-30 21:18:13,221 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:18:13,222 - ERROR - Error transcribing 0301_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1502 credits are required for this request.'}}
+2025-07-30 21:18:23,493 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:18:23,493 - ERROR - Error transcribing 0303_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1592 credits are required for this request.'}}
+2025-07-30 21:18:35,813 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:18:35,813 - ERROR - Error transcribing 0304_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 2362 credits are required for this request.'}}
+2025-07-30 21:18:37,877 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:18:37,878 - ERROR - Error transcribing 0305_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1463 credits are required for this request.'}}
+2025-07-30 21:18:48,364 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:18:48,364 - ERROR - Error transcribing 0306_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1401 credits are required for this request.'}}
+2025-07-30 21:18:55,532 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:18:55,532 - ERROR - Error transcribing 0307_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1648 credits are required for this request.'}}
+2025-07-30 21:19:04,437 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:19:04,438 - ERROR - Error transcribing 0308_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1592 credits are required for this request.'}}
+2025-07-30 21:19:08,015 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:19:08,015 - ERROR - Error transcribing 0310_21-10-90_ΠΝΕΥΜΑΤΙΚΗ_ΔΙΑΘΗΚΗ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 801 credits are required for this request.'}}
+2025-07-30 21:19:15,486 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
+2025-07-30 21:19:15,486 - ERROR - Error transcribing 0309_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1710 credits are required for this request.'}}

@@ -78,18 +78,18 @@ services:
     volumes:
       - chat_convs:/var/lib/postgresql/data
     restart: unless-stopped
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     networks:
       - backend
       - frontend
 
 
-  streamlit_app: # 8501
-    image: streamlit_app
-    container_name: streamlit_app
+  agentic_ui: # 8050
+    image: agentic_ui
+    container_name: agentic_ui
     build:
-      context: ./ui
+      context: ./agentic_ui
       dockerfile: Dockerfile
     environment:
       - BFF_HOST=dialogue_bridge
@@ -97,11 +97,30 @@ services:
     depends_on: 
       - dialogue_bridge
     ports:
-      - "8501:8501"
+      - "8050:80"
     restart: unless-stopped
     networks: 
       - backend
       - frontend
+
+
+  # streamlit_app: # 8501
+  #   image: streamlit_app
+  #   container_name: streamlit_app
+  #   build:
+  #     context: ./ui
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - BFF_HOST=dialogue_bridge
+  #     - BFF_PORT=8002
+  #   depends_on: 
+  #     - dialogue_bridge
+  #   ports:
+  #     - "8501:8501"
+  #   restart: unless-stopped
+  #   networks: 
+  #     - backend
+  #     - frontend
 
 
 networks:

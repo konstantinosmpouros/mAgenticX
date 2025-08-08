@@ -1,0 +1,11 @@
+# TODO
+
+- Agent icons doesn't appear when we are from mobile.
+- Make better the thinking container and the agents response format.
+
+- Implement the audio input
+- Implement the API call for the conversation history
+- Implement the API call for the conversation deletion
+- Implement the API call for the authentication
+- Implement the API call for the agentic inference
+- Implement the logic of API call for the available agents

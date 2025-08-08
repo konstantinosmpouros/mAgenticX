@@ -5,7 +5,7 @@ from typing import Literal, List, Optional
 class AnalyzerOutput(BaseModel):
     query_domain: Literal["HR-Policy", "General"] = Field(
         ...,
-        description="'HR-Policy' if the query concerns employment law, company policy, compliance, benefits, etc.; otherwise ‘General’.",
+        description="'HR-Policy' if the query concerns employment, HR policy, compliance, benefits, employees and procedures of the company etc.; otherwise 'General'.",
     )
     key_topics: List[str] = Field(
         ...,
