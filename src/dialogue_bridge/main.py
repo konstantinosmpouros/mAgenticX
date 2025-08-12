@@ -9,16 +9,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import Base, engine, get_db, seed_users, ConversationTable, UserTable
 from schemas import (
     Conversation, ConversationSummary,
-    UserCreate, UserOut, AuthRequest, AuthResponse
+    AuthRequest, AuthResponse,
+    AgentFull, AgentPublic,
+    UserCreate, UserOut,
 )
-from utils import authenticate_id, upsert_conversation, agent_stream
+from utils import (
+    authenticate_id,
+    upsert_conversation,
+    agent_stream,
+)
 
-# Map agent names to their streaming URLs
-AGENT_MAPPING = {
-    "OrthodoxAI v1": "http://agents:8003/OrthodoxAI/v1/stream",
-    "HR-Policies v1": "http://agents:8003/HRPolicies/v1/stream",
-    "Retail Agent v1": "http://agents:8003/Retail/v1/stream",
+_AGENTS: dict[str, AgentFull] = {
+    "OrthodoxAI v1": AgentFull(
+        id="OrthodoxAI v1",
+        name="OrthodoxAI",
+        description="Orthodox biblical and theological insights",
+        icon="BookOpen",
+        url="http://agents:8003/OrthodoxAI/v1/stream",
+    ),
+    "HR-Policies v1": AgentFull(
+        id="HR-Policies v1",
+        name="HR Policies",
+        description="HR policies, leave, benefits, and procedures",
+        icon="Building2",
+        url="http://agents:8003/HRPolicies/v1/stream",
+    ),
+    "Retail Agent v1": AgentFull(
+        id="Retail Agent v1",
+        name="Retail Agent",
+        description="Product discovery, pricing, inventory and promotions",
+        icon="ShoppingBag",
+        url="http://agents:8003/Retail/v1/stream",
+    ),
 }
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,6 +57,19 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Bridge Service", lifespan=lifespan)
+
+
+
+#-----------------------------------------------------------------------------------
+# AGENTS APIS
+#-----------------------------------------------------------------------------------
+@app.get("/agents", response_model=List[AgentPublic], status_code=status.HTTP_200_OK)
+async def list_agents():
+    """
+    Public agent catalog (no internal URLs).
+    """
+    return [AgentPublic.model_validate(a.model_dump(exclude={"url"})) for a in _AGENTS.values()]
+
 
 
 
@@ -157,9 +194,10 @@ async def inference(
         raise HTTPException(400, "No agent was specified or more than one was given")
     
     agent_name = payload.agents[0]
-    agent_url = AGENT_MAPPING.get(agent_name)
-    if agent_url is None:
+    agent = _AGENTS.get(agent_name)
+    if agent is None:
         raise HTTPException(400, f"Unknown agent: {agent_name}")
+    agent_url = agent.url
     
     # Persist conversation (create or update)
     _ = await upsert_conversation(payload, db)

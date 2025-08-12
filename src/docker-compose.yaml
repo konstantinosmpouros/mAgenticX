@@ -60,7 +60,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - username=admin
       - password=040298140aA!
-    depends_on: 
+    depends_on:
       - agents
       - chat_postgres
     restart: unless-stopped

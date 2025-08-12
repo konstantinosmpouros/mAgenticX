@@ -5,7 +5,7 @@ from fastapi import Depends, HTTPException
 
 from database import get_db, UserTable, ConversationTable
 from schemas import Conversation
-from typing import List, Dict, Any
+from typing import List, Dict
 
 import json
 import httpx

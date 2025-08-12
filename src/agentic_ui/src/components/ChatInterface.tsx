@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type { Message, ThinkingState, Conversation, Agent, Attachment } from "@/lib/types";
-import { agents } from "@/lib/agents";
+import { getAgents } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -23,7 +23,7 @@ import { InputContainer } from "@/components/layouts/InputContainer";
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState<string>('hr-policies');
+  const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
@@ -36,10 +36,21 @@ export function ChatInterface() {
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  
+  // Ensure a default selected agent after agents are loaded
+  useEffect(() => {
+    if (isLoggedIn && agents.length > 0) {
+      const exists = agents.some(a => a.id === selectedAgent);
+      if (!exists) {
+        setSelectedAgent(agents[0].id);
+      }
+    }
+  }, [isLoggedIn, agents]);
   
   // Scroll to bottom function
   const scrollToBottom = () => {
@@ -326,8 +337,16 @@ export function ChatInterface() {
   const handleLogin = () => {
     if (loginUsername === 'admin' && loginPassword === 'admin') {
       // Add smooth transition delay
-      setTimeout(() => {
+      setTimeout(async () => {
         setIsLoggedIn(true);
+        // Fetch available agents after successful login
+        try {
+          const list = await getAgents();
+          setAgents(list);
+        } catch (e) {
+          // Keep UI functional even if agents can't be loaded
+          setAgents([]);
+        }
       }, 300);
     } else {
       toast({
@@ -354,11 +373,12 @@ export function ChatInterface() {
       />
     );
   }
+
+
   return (
     <div className="animate-fade-in">
       <TooltipProvider>
         <div className="flex flex-col h-screen bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden">
-          
           {/* Header */}
           <Header
             agents={agents}
@@ -375,7 +395,7 @@ export function ChatInterface() {
             }}
             onOpenUserProfile={() => setShowUserProfile(true)}
           />
-          
+
           {/* Floating Sidebar Button */}
           <Sidebar
             open={sidebarOpen}
@@ -387,7 +407,7 @@ export function ChatInterface() {
             onTitleClick={handleTitleClick}
             agents={agents}
           />
-          
+
           {/* Chat Messages Container*/}
           <div className="flex-1 overflow-hidden relative">
             <ScrollArea className="h-full">
@@ -421,10 +441,7 @@ export function ChatInterface() {
                                     {isImage ? (
                                       <div 
                                         className="relative group cursor-pointer"
-                                        onClick={() => {
-                                          console.log('Image clicked:', imageUrl);
-                                          handleImageClick(imageUrl);
-                                        }}
+                                        onClick={() => handleImageClick(imageUrl)}
                                       >
                                         <img 
                                           src={imageUrl} 

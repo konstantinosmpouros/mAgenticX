@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 
 
 #-------------------------------------------
-# CREATE USER USE CASE
+# CREATE USER SCHEMAS
 #-------------------------------------------
 class UserCreate(BaseModel):
     """Schema for creating a new user."""
@@ -19,7 +19,7 @@ class UserOut(BaseModel):
 
 
 #-------------------------------------------
-# AUTHENTICATE USER USE CASE
+# AUTHENTICATE USER SCHEMAS
 #-------------------------------------------
 class AuthRequest(BaseModel):
     """Schema for user authentication request."""
@@ -34,7 +34,7 @@ class AuthResponse(BaseModel):
 
 
 #-------------------------------------------
-# CONVERSATION USE CASES
+# CONVERSATION SCHEMAS
 #-------------------------------------------
 class ConversationSummary(BaseModel):
     """Schema for summarizing a conversation."""
@@ -58,6 +58,22 @@ class Conversation(BaseModel):
         orm_mode = True
 
 
+
+#-------------------------------------------
+# AGENTS SCHEMAS
+#-------------------------------------------
+class AgentFull(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str           # lucide-react icon name
+    url: str            # internal streaming URL
+
+class AgentPublic(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str
 
 
 
