@@ -18,10 +18,11 @@ from database import (
 )
 from schemas import (
     ConversationDetail, ConversationSummary,
-    MessageOut, AttachmentOut,
+    ConversationCreate,
+    MessageCreate, MessageOut,
+    AttachmentOut,
     AuthRequest, AuthResponse,
     AgentFull, AgentPublic,
-    UserCreate, UserOut, MessageCreate, ConversationCreate
 )
 from utils import (
     authenticate_id,
@@ -109,28 +110,8 @@ async def list_agents():
 
 
 #-----------------------------------------------------------------------------------
-# INSERT APIS
+# CONVERSATION APIS
 #-----------------------------------------------------------------------------------
-@app.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
-    # Uniqueness check
-    existing = await db.execute(select(UserTable).where(UserTable.username == payload.username))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status.HTTP_409_CONFLICT, "Username already exists")
-
-    user = UserTable(
-        username=payload.username,
-        password=hash_password(payload.password),
-        email=payload.email,
-        display_name=payload.display_name,
-        avatar_url=payload.avatar_url,
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return UserOut.from_orm(user).model_dump(by_alias=True)
-
-
 @app.post(
     "/users/{user_id}/conversations",
     response_model=ConversationDetail,
@@ -183,17 +164,17 @@ async def create_conversation(
     )
     conv_loaded = result.scalar_one()
     
-    conv_out = ConversationDetail.from_orm(conv_loaded)
+    conv_out = ConversationDetail.model_validate(conv_loaded)
     # inject attachment URLs
     # for msg in conv_out.messages:
     #     for att in msg.attachments:
     #         if att.url is None:
     #             att.url = f"{ATTACHMENTS_BASE_URL}/{att.id}"
-    return conv_out.model_dump(by_alias=True)
+    return conv_out
 
 
 @app.post(
-    "/users/{user_id}/conversations/{conversation_id}/messages",
+    "/users/{user_id}/conversations/{conversation_id}",
     response_model=MessageOut,
     status_code=status.HTTP_201_CREATED,
 )
@@ -243,19 +224,15 @@ async def add_message(
     msg_loaded = result.scalar_one()
     
     # Build response (no attachments in this simple insert)
-    return MessageOut.from_orm(msg_loaded).model_dump(by_alias=True)
+    return MessageOut.model_validate(msg_loaded)
 
 
-
-#-----------------------------------------------------------------------------------
-# CONVERSATION APIS
-#-----------------------------------------------------------------------------------
 @app.get(
     "/users/{user_id}/conversations",
     response_model=List[ConversationSummary],
     status_code=status.HTTP_200_OK
 )
-async def list_conversations(
+async def fetch_all_conversations(
     user_id: str,
     current_user: UserTable = Depends(authenticate_id),
     db: AsyncSession = Depends(get_db)
@@ -280,7 +257,7 @@ async def list_conversations(
     response_model=ConversationDetail,
     status_code=status.HTTP_200_OK
 )
-async def get_conversation(
+async def fetch_conversation(
     user_id: str,
     conversation_id: str,
     current_user: UserTable = Depends(authenticate_id),

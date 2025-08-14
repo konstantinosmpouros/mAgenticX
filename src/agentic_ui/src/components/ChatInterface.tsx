@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type { Message, ThinkingState, Conversation, Agent, Attachment } from "@/lib/types";
-import { getAgents } from "@/lib/api";
+import { getAgents, getConversations } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -33,10 +33,12 @@ export function ChatInterface() {
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [activeProfileTab, setActiveProfileTab] = useState('profile');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -44,13 +46,13 @@ export function ChatInterface() {
   
   // Ensure a default selected agent after agents are loaded
   useEffect(() => {
-    if (isLoggedIn && agents.length > 0) {
+    if (isLoggedIn && userId && agents.length > 0) {
       const exists = agents.some(a => a.id === selectedAgent);
       if (!exists) {
         setSelectedAgent(agents[0].id);
       }
     }
-  }, [isLoggedIn, agents]);
+  }, [isLoggedIn, userId, agents]);
   
   // Scroll to bottom function
   const scrollToBottom = () => {
@@ -339,13 +341,20 @@ export function ChatInterface() {
       // Add smooth transition delay
       setTimeout(async () => {
         setIsLoggedIn(true);
-        // Fetch available agents after successful login
+        setUserId("0123456789");
+        
+        // Fetch available agents and conversations after successful login
         try {
-          const list = await getAgents();
-          setAgents(list);
+          const [agentsList, conversationsList] = await Promise.all([
+            getAgents(),
+            getConversations("0123456789")
+          ]);
+          setAgents(agentsList);
+          setConversations(conversationsList);
         } catch (e) {
-          // Keep UI functional even if agents can't be loaded
+          // Keep UI functional even if data can't be loaded
           setAgents([]);
+          setConversations([]);
         }
       }, 300);
     } else {
@@ -362,7 +371,7 @@ export function ChatInterface() {
   const AgentIcon = currentAgent?.icon || Building2;
   
   // Show login panel if not logged in
-  if (!isLoggedIn) {
+  if (!isLoggedIn || !userId) {
     return (
       <LoginPanel
         username={loginUsername}
@@ -400,7 +409,7 @@ export function ChatInterface() {
           <Sidebar
             open={sidebarOpen}
             onOpenChange={setSidebarOpen}
-            conversations={currentConversation && !currentConversation.isPrivate ? [currentConversation] : []}
+            conversations={conversations}
             currentConversationId={currentConversation?.id || null}
             onSelectConversation={handleConversationSelect}
             onDeleteConversation={deleteConversation}
@@ -630,8 +639,11 @@ export function ChatInterface() {
               setShowUserProfile(false);
               setTimeout(() => {
                 setIsLoggedIn(false);
+                setUserId(null);
                 setLoginUsername("");
                 setLoginPassword("");
+                setAgents([]);
+                setConversations([]);
                 clearChatAndStopThinking();
               }, 300);
             }}

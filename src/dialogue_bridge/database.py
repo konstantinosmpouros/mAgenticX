@@ -19,18 +19,15 @@ from sqlalchemy import (
     Integer,
     Text,
     JSON,
-    Index,
     Enum,
 )
 
 
-
 def gen_uuid() -> str: return str(uuid4())
 
+def hash_password(pw: str) -> str: return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
-def hash_password(pw: str) -> str:
-    # Demo only — replace with bcrypt/argon2 in production
-    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
+
 
 # -------------------------------------------------------------------------------
 # Configurations
@@ -173,6 +170,7 @@ class AttachmentTable(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     
     message = relationship("MessageTable", back_populates="attachments")
+
 
 
 # -------------------------------------------------------------------------------
