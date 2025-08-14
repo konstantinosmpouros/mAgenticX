@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type { Message, ThinkingState, Conversation, Agent, Attachment } from "@/lib/types";
-import { getAgents, getConversations } from "@/lib/api";
+import { getAgents, getConversations, deleteConversation } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -307,19 +307,33 @@ export function ChatInterface() {
   };
   
   // Handle conversation deletion
-  const deleteConversation = (conversationId: string, event: React.MouseEvent) => {
+  const handleDeleteConversation = async (conversationId: string, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent conversation selection when clicking delete
+    if (!userId) return;
     
-    // If deleting the currently active conversation, clear the chat
-    if (conversationId === currentConversation?.id) {
-      clearChatAndStopThinking();
+    try {
+      await deleteConversation(userId, conversationId);
+      setConversations(conversations.filter(conv => conv.id !== conversationId));
+      
+      // If deleting the currently active conversation, clear the chat
+      if (conversationId === currentConversation?.id) {
+        clearChatAndStopThinking();
+      }
+      
+      toast({
+        title: "Conversation deleted",
+        description: "The conversation has been removed from your history",
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      toast({
+        title: "Failed to delete conversation",
+        description: "There was an error deleting the conversation. Please try again.",
+        variant: "destructive",
+        duration: 3000,
+      });
     }
-    
-    toast({
-      title: "Conversation deleted",
-      description: "The conversation has been removed from your history",
-      duration: 2000,
-    });
   };
   
   // Handle thinking toggle
@@ -412,7 +426,7 @@ export function ChatInterface() {
             conversations={conversations}
             currentConversationId={currentConversation?.id || null}
             onSelectConversation={handleConversationSelect}
-            onDeleteConversation={deleteConversation}
+            onDeleteConversation={handleDeleteConversation}
             onTitleClick={handleTitleClick}
             agents={agents}
           />

@@ -65,3 +65,14 @@ export async function getConversations(userId: string): Promise<Conversation[]> 
     isPrivate: c.isPrivate,
   }));
 }
+
+// Delete a conversation
+export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, {
+    method: "DELETE",
+    headers: { "Accept": "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete conversation: ${res.status}`);
+  }
+}
