@@ -1,24 +1,80 @@
+from datetime import datetime
+
 from typing import List
-from uuid import uuid4
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+# from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select, delete
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import Base, engine, get_db, seed_users, ConversationTable, UserTable
+
+from database import (
+    Base, engine, get_db, seed_users,
+    hash_password,
+    ConversationTable,
+    UserTable,
+    MessageTable,
+)
 from schemas import (
-    Conversation, ConversationSummary,
+    ConversationDetail, ConversationSummary,
+    MessageOut, AttachmentOut,
     AuthRequest, AuthResponse,
     AgentFull, AgentPublic,
-    UserCreate, UserOut,
+    UserCreate, UserOut, MessageCreate, ConversationCreate
 )
 from utils import (
     authenticate_id,
-    upsert_conversation,
-    agent_stream,
+    # upsert_conversation,
+    # agent_stream,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Make sure schema exists
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # 2. Seed users – only happens if they’re missing
+    async with AsyncSession(engine) as session:
+        await seed_users(session)
+    
+    yield
+
+app = FastAPI(title="Bridge Service", lifespan=lifespan)
+
+
+#-----------------------------------------------------------------------------------
+# USER APIS
+#-----------------------------------------------------------------------------------
+@app.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Simple credential check. Returns True + user_id on success, False otherwise.
+    """
+    try:
+        res = await db.execute(
+            select(UserTable).filter_by(
+                username=creds.username,
+                password=hash_password(creds.password)
+            )
+        )
+        user = res.scalar_one_or_none()
+        await db.close()
+        if user:
+            return {"authenticated": True, "user_id": user.id}
+        return {"authenticated": False, "user_id": None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await db.close()
+
+
+
+#-----------------------------------------------------------------------------------
+# AGENTS APIS
+#-----------------------------------------------------------------------------------
 _AGENTS: dict[str, AgentFull] = {
     "OrthodoxAI v1": AgentFull(
         id="OrthodoxAI v1",
@@ -43,26 +99,6 @@ _AGENTS: dict[str, AgentFull] = {
     ),
 }
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 1. Make sure schema exists
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    # 2. Seed users – only happens if they’re missing
-    async with AsyncSession(engine) as session:
-        await seed_users(session)
-    
-    yield
-
-app = FastAPI(title="Bridge Service", lifespan=lifespan)
-
-
-
-#-----------------------------------------------------------------------------------
-# AGENTS APIS
-#-----------------------------------------------------------------------------------
 @app.get("/agents", response_model=List[AgentPublic], status_code=status.HTTP_200_OK)
 async def list_agents():
     """
@@ -72,31 +108,142 @@ async def list_agents():
 
 
 
+#-----------------------------------------------------------------------------------
+# INSERT APIS
+#-----------------------------------------------------------------------------------
+@app.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
+    # Uniqueness check
+    existing = await db.execute(select(UserTable).where(UserTable.username == payload.username))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status.HTTP_409_CONFLICT, "Username already exists")
 
-#-----------------------------------------------------------------------------------
-# USER APIS
-#-----------------------------------------------------------------------------------
-@app.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
-async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Simple credential check. Returns True + user_id on success, False otherwise.
-    """
-    try:
-        res = await db.execute(
-            select(UserTable).filter_by(
-                username=creds.username,
-                password=creds.password
-            )
+    user = UserTable(
+        username=payload.username,
+        password=hash_password(payload.password),
+        email=payload.email,
+        display_name=payload.display_name,
+        avatar_url=payload.avatar_url,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return UserOut.from_orm(user).model_dump(by_alias=True)
+
+
+@app.post(
+    "/users/{user_id}/conversations",
+    response_model=ConversationDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_conversation(
+    user_id: str,
+    payload: ConversationCreate,
+    current_user: UserTable = Depends(authenticate_id),
+    db: AsyncSession = Depends(get_db),
+):
+    conv = ConversationTable(
+        user_id=user_id,
+        agent_id=payload.agentId,      # alias from agentId
+        agent_name=payload.agentName,  # alias from agentName
+        title=payload.title,
+        is_private=payload.isPrivate,
+    )
+    db.add(conv)
+    await db.flush() 
+    
+    # Optional initial message
+    if payload.initialMessage:
+        m = payload.initialMessage
+        msg = MessageTable(
+            conversation_id=conv.id,
+            sender=m.sender,
+            type=m.type,
+            content=m.content,
         )
-        user = res.scalar_one_or_none()
-        await db.close()
-        if user:
-            return {"authenticated": True, "user_id": user.id}
-        return {"authenticated": False}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        await db.close()
+        db.add(msg)
+        # update conversation summary fields
+        preview = (m.content or "").strip()
+        conv.last_message_preview = preview[:200] if preview else None
+        # use python time so updated model reflects right away
+        now = datetime.now()
+        conv.last_message_at = now
+        conv.updated_at = now
+    
+    await db.commit()
+    
+    # Reload with messages & attachments
+    result = await db.execute(
+        select(ConversationTable)
+        .options(
+            selectinload(ConversationTable.messages)
+            .selectinload(MessageTable.attachments)
+        )
+        .where(ConversationTable.user_id == user_id, ConversationTable.id == conv.id)
+    )
+    conv_loaded = result.scalar_one()
+    
+    conv_out = ConversationDetail.from_orm(conv_loaded)
+    # inject attachment URLs
+    # for msg in conv_out.messages:
+    #     for att in msg.attachments:
+    #         if att.url is None:
+    #             att.url = f"{ATTACHMENTS_BASE_URL}/{att.id}"
+    return conv_out.model_dump(by_alias=True)
+
+
+@app.post(
+    "/users/{user_id}/conversations/{conversation_id}/messages",
+    response_model=MessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_message(
+    user_id: str,
+    conversation_id: str,
+    payload: MessageCreate,
+    current_user: UserTable = Depends(authenticate_id),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
+
+    # Validate conversation belongs to user
+    conv_q = await db.execute(
+        select(ConversationTable).where(
+            ConversationTable.user_id == user_id,
+            ConversationTable.id == conversation_id,
+        )
+    )
+    conv = conv_q.scalar_one_or_none()
+    if conv is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
+    
+    msg = MessageTable(
+        conversation_id=conversation_id,
+        sender=payload.sender,
+        type=payload.type,
+        content=payload.content,
+    )
+    db.add(msg)
+    
+    # update conversation summary
+    preview = (payload.content or "").strip()
+    now = datetime.now()
+    conv.last_message_preview = preview[:200] if preview else conv.last_message_preview
+    conv.last_message_at = now
+    conv.updated_at = now
+    
+    await db.commit()
+    
+    result = await db.execute(
+        select(MessageTable)
+        .options(selectinload(MessageTable.attachments))
+        .where(MessageTable.id == msg.id)
+    )
+    msg_loaded = result.scalar_one()
+    
+    # Build response (no attachments in this simple insert)
+    return MessageOut.from_orm(msg_loaded).model_dump(by_alias=True)
 
 
 
@@ -114,23 +261,23 @@ async def list_conversations(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Return ONLY the (user_id, conversation_id, title) for all
-    conversations that belong to this user.
+    Return a conversation summary list for the user
     """
     # fetch all full rows
-    rows = (
-        await db.execute(
-            select(ConversationTable).filter_by(user_id=user_id).order_by(ConversationTable.updated_at.desc())
-        )
-    ).scalars().all()
+    result = await db.execute(
+        select(ConversationTable)
+        .where(ConversationTable.user_id == user_id)
+        .order_by(ConversationTable.updated_at.desc())
+    )
+    rows = result.scalars().all()
     await db.close()
-    summaries = [ConversationSummary.model_validate(r, from_attributes=True) for r in rows]
+    summaries = [ConversationSummary.model_validate(r) for r in rows]
     return summaries
 
 
 @app.get(
     "/users/{user_id}/conversations/{conversation_id}",
-    response_model=Conversation,
+    response_model=ConversationDetail,
     status_code=status.HTTP_200_OK
 )
 async def get_conversation(
@@ -139,17 +286,31 @@ async def get_conversation(
     current_user: UserTable = Depends(authenticate_id),
     db: AsyncSession = Depends(get_db)
 ):
-    """Fetch one conversation by ID pair."""
+    """Fetch one conversation (messages included) by user + conversation id."""
     result = await db.execute(
-        select(ConversationTable).filter_by(
-            user_id=user_id, conversation_id=conversation_id
+        select(ConversationTable)
+        .options(
+            selectinload(ConversationTable.messages)
+            .selectinload(MessageTable.attachments)
+        )
+        .where(
+            ConversationTable.user_id == user_id,
+            ConversationTable.id == conversation_id,
         )
     )
-    convo: ConversationTable | None = result.scalar_one_or_none()
+    conv = result.scalar_one_or_none()
     await db.close()
-    if convo is None:
+    if conv is None:
         raise HTTPException(404, "Conversation not found")
-    return convo
+    
+    conv_out = ConversationDetail.model_validate(conv)
+    
+    # for msg in conv_out.messages:
+    #     for att in msg.attachments:
+    #         if att.url is None:
+    #             att.url = f"{ATTACHMENTS_BASE_URL}/{att.id}"
+
+    return conv_out
 
 
 @app.delete(
@@ -162,17 +323,21 @@ async def delete_conversation(
     current_user: UserTable = Depends(authenticate_id),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a conversation entirely."""
+    """Delete a conversation entirely (cascades to messages & attachments rows)."""
     result = await db.execute(
-        delete(ConversationTable).where(
+        select(ConversationTable).where(
             ConversationTable.user_id == user_id,
-            ConversationTable.conversation_id == conversation_id,
+            ConversationTable.id == conversation_id,
         )
     )
+    conv = result.scalar_one_or_none()
+    if conv is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
+    
+    await db.delete(conv)
     await db.commit()
+    
     await db.close()
-    if result.rowcount == 0:
-        raise HTTPException(404, "Conversation not found")
     return
 
 
@@ -180,33 +345,33 @@ async def delete_conversation(
 #-----------------------------------------------------------------------------------
 # INFERENCE API
 #-----------------------------------------------------------------------------------
-@app.post(
-    "/user/{user_id}/inference",
-    status_code=status.HTTP_200_OK
-)
-async def inference(
-    payload: Conversation,
-    current_user: UserTable = Depends(authenticate_id),
-    db: AsyncSession = Depends(get_db)
-):
-    # Validate agent name & URL
-    if not payload.agents or len(payload.agents) != 1:
-        raise HTTPException(400, "No agent was specified or more than one was given")
+# @app.post(
+#     "/user/{user_id}/inference",
+#     status_code=status.HTTP_200_OK
+# )
+# async def inference(
+#     payload: Conversation,
+#     current_user: UserTable = Depends(authenticate_id),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     # Validate agent name & URL
+#     if not payload.agents or len(payload.agents) != 1:
+#         raise HTTPException(400, "No agent was specified or more than one was given")
     
-    agent_name = payload.agents[0]
-    agent = _AGENTS.get(agent_name)
-    if agent is None:
-        raise HTTPException(400, f"Unknown agent: {agent_name}")
-    agent_url = agent.url
+#     agent_name = payload.agents[0]
+#     agent = _AGENTS.get(agent_name)
+#     if agent is None:
+#         raise HTTPException(400, f"Unknown agent: {agent_name}")
+#     agent_url = agent.url
     
-    # Persist conversation (create or update)
-    _ = await upsert_conversation(payload, db)
+#     # Persist conversation (create or update)
+#     _ = await upsert_conversation(payload, db)
     
-    # Return a streaming response
-    return StreamingResponse(
-        agent_stream(agent_url, payload, db),
-        media_type="text/event-stream",
-        status_code=200,
-    )
+#     # Return a streaming response
+#     return StreamingResponse(
+#         agent_stream(agent_url, payload, db),
+#         media_type="text/event-stream",
+#         status_code=200,
+#     )
 
 

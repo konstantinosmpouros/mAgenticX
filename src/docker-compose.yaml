@@ -64,8 +64,11 @@ services:
       - agents
       - chat_postgres
     restart: unless-stopped
+    ports:
+      - "8002:8002"
     networks: 
       - backend
+      - frontend
 
 
   chat_postgres: # 5432
