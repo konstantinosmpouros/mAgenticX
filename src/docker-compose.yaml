@@ -81,8 +81,8 @@ services:
     volumes:
       - chat_convs:/var/lib/postgresql/data
     restart: unless-stopped
-    # ports:
-    #   - "5432:5432"
+    ports:
+      - "5432:5432"
     networks:
       - backend
       - frontend
@@ -139,7 +139,7 @@ volumes:
       type: none
       o: bind
       device: ./vectorstores/chroma_db_openai
-
+  
   chat_convs:
 
 

@@ -1,5 +1,5 @@
 // src/lib/api.ts
-import type { Agent, Conversation } from "./types";
+import type { Agent, Conversation, ConversationDetail, Message } from "./types";
 import type { LucideIcon } from "lucide-react";
 import * as Icons from "lucide-react";
 
@@ -64,6 +64,41 @@ export async function getConversations(userId: string): Promise<Conversation[]> 
     messages: [], // Will be populated when conversation is selected
     isPrivate: c.isPrivate,
   }));
+}
+
+// Fetch conversation details with full message history
+export async function getConversationDetail(userId: string, conversationId: string): Promise<Conversation> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, {
+    headers: { "Accept": "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch conversation details: ${res.status}`);
+  }
+  const data = (await res.json()) as ConversationDetail;
+  
+  // Transform backend messages to frontend format
+  const transformedMessages: Message[] = data.messages.map((msg) => ({
+    id: msg.id,
+    content: msg.content || "",
+    sender: msg.sender as "user" | "agent",
+    timestamp: new Date(msg.timestamp),
+    type: msg.type as "text" | "image" | "file",
+    attachments: msg.attachments.map(att => att.name), // Transform to string array for now
+    thinking: msg.thinking || undefined,
+    thinkingTime: msg.thinkingTime || undefined,
+    error: msg.error || undefined,
+    errorMessage: msg.errorMessage || undefined,
+  }));
+
+  return {
+    id: data.id,
+    agentId: data.agentId,
+    agentName: data.agentName || "Unknown Agent",
+    lastMessage: transformedMessages.length > 0 ? transformedMessages[transformedMessages.length - 1].content : "",
+    timestamp: new Date(data.updated_at),
+    messages: transformedMessages,
+    isPrivate: data.isPrivate,
+  };
 }
 
 // Delete a conversation

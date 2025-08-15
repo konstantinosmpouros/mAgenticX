@@ -62,10 +62,9 @@ async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_
             )
         )
         user = res.scalar_one_or_none()
-        await db.close()
         if user:
-            return {"authenticated": True, "user_id": user.id}
-        return {"authenticated": False, "user_id": None}
+            return AuthResponse(authenticated=True, user_id=user.id)
+        return AuthResponse()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
@@ -286,7 +285,7 @@ async def fetch_conversation(
     #     for att in msg.attachments:
     #         if att.url is None:
     #             att.url = f"{ATTACHMENTS_BASE_URL}/{att.id}"
-
+    
     return conv_out
 
 

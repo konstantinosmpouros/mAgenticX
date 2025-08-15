@@ -1,0 +1,27 @@
+# TODO
+
+## General
+
+- Document everywhere
+
+## Agentic UI
+
+- Implement the API call for the authentication
+- Implement the API call for the agentic inference
+- Enhance the profile panel with actual user info
+- Agent icons doesn't appear when we shrink a lot the page
+- Make better the thinking container
+- The agent response container must support md format
+- There are multiple overlapping schemas (types) that are not needed, fix it
+- Check what to do with the audio input
+
+## Agents
+
+- Implement a long-term memory service that keep memories from all agents (e.g., episodic)
+
+## Dialogue Bridge
+
+- Make a new inference api
+- Make a table for the blob files
+- Put the available agents in a table and refactor the relevant api
+- Make an api to retrieve saved images in the blob table

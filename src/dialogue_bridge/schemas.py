@@ -13,8 +13,8 @@ class AuthRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     """Schema for user authentication response."""
-    authenticated: bool
-    user_id: Optional[str] = None
+    authenticated: bool = False
+    user_id: str | None = None
 
 
 
@@ -51,12 +51,14 @@ class AttachmentOut(BaseModel):
 
 
 class MessageCreate(BaseModel):
+    """Schema to create a message with the least info available"""
     content: Optional[str] = None
     sender: str = "user"        # 'user' | 'agent' | 'ai' | 'assistant'
     type: str = "text"          # 'text' | 'file' | 'image' | 'audio' | 'tool'
 
 
 class MessageOut(BaseModel):
+    """Schema to expose all the info for a Message"""
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     
     id: str

@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type { Message, ThinkingState, Conversation, Agent, Attachment } from "@/lib/types";
-import { getAgents, getConversations, deleteConversation } from "@/lib/api";
+import { getAgents, getConversations, deleteConversation, getConversationDetail } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -39,6 +39,7 @@ export function ChatInterface() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loadingConversation, setLoadingConversation] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -298,12 +299,46 @@ export function ChatInterface() {
   };
   
   // Handle conversation selection from sidebar
-  const handleConversationSelect = (conversation: Conversation) => {
+  const handleConversationSelect = async (conversation: Conversation) => {
+    if (!userId || loadingConversation) return;
+    
+    setLoadingConversation(true);
     clearChatAndStopThinking();
-    setMessages(conversation.messages);
-    setSelectedAgent(conversation.agentId);
-    setCurrentConversation(conversation);
-    setSidebarOpen(false);
+    
+    try {
+      // Fetch full conversation details from API
+      const conversationDetail = await getConversationDetail(userId, conversation.id);
+      
+      // Update state with the loaded conversation data
+      setMessages(conversationDetail.messages);
+      setSelectedAgent(conversationDetail.agentId);
+      setCurrentConversation(conversationDetail);
+      setIsPrivateMode(conversationDetail.isPrivate || false);
+      setSidebarOpen(false);
+      
+      toast({
+        title: "Conversation loaded",
+        description: `Loaded ${conversationDetail.messages.length} messages`,
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+      toast({
+        title: "Failed to load conversation",
+        description: "There was an error loading the conversation. Please try again.",
+        variant: "destructive",
+        duration: 3000,
+      });
+      
+      // Fallback to basic conversation data on error
+      setMessages([]);
+      setSelectedAgent(conversation.agentId);
+      setCurrentConversation(conversation);
+      setIsPrivateMode(conversation.isPrivate || false);
+      setSidebarOpen(false);
+    } finally {
+      setLoadingConversation(false);
+    }
   };
   
   // Handle conversation deletion
@@ -351,7 +386,7 @@ export function ChatInterface() {
   
   // Handle login functionality
   const handleLogin = () => {
-    if (loginUsername === 'admin' && loginPassword === 'admin') {
+    if (loginUsername.trim() === 'admin' && loginPassword.trim() === 'admin') {
       // Add smooth transition delay
       setTimeout(async () => {
         setIsLoggedIn(true);

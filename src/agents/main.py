@@ -58,5 +58,3 @@ async def stream_agent(req: StrRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# TODO: Create the long-term memory layer for the agents
-# TODO: Put documentation everywhere
