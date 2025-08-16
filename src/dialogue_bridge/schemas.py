@@ -22,13 +22,20 @@ class AuthResponse(BaseModel):
 # AGENTS SCHEMAS
 #-------------------------------------------
 class AgentFull(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    
     id: str
     name: str
     description: str
-    icon: str           # lucide-react icon name
-    url: str            # internal streaming URL
+    icon: str
+    url: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 class AgentPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    
     id: str
     name: str
     description: str

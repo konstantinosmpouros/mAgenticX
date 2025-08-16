@@ -68,6 +68,25 @@ async def get_db() -> AsyncSession: # type: ignore
 # -------------------------------------------------------------------------------
 # Database tables
 # -------------------------------------------------------------------------------
+class AgentTable(Base):
+    __tablename__ = "agents"
+    
+    id = Column(String, primary_key=True, default=gen_uuid)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    icon = Column(String, nullable=True)
+    url = Column(String, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    conversations = relationship(
+        "ConversationTable",
+        back_populates="agent",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
 class UserTable(Base):
     __tablename__ = "users"
     
@@ -96,11 +115,9 @@ class ConversationTable(Base):
     
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
     
-    # agent info (denormalized from /agents endpoint)
-    agent_id = Column(String, nullable=False)            # e.g., "OrthodoxAI v1"
-    agent_name = Column(String, nullable=True)           # e.g., "OrthodoxAI" (for stable UI)
-    
+    agent_name = Column(String, nullable=True)
     title = Column(String, nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="false")
     
@@ -112,6 +129,7 @@ class ConversationTable(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     
     user = relationship("UserTable", back_populates="conversations")
+    agent = relationship("AgentTable", back_populates="conversations")
     messages = relationship(
         "MessageTable",
         back_populates="conversation",
@@ -198,3 +216,49 @@ async def seed_users(session: AsyncSession) -> None:
     
     await session.commit()
 
+
+async def seed_agents(session: AsyncSession) -> None:
+    """Insert the default agents in the initialization of the db"""
+    DEFAULT_AGENTS = [
+        {
+            "id": "OrthodoxAI v1",
+            "name": "OrthodoxAI",
+            "description": "Orthodox biblical and theological insights",
+            "icon": "BookOpen",
+            "url": "http://agents:8003/OrthodoxAI/v1/stream",
+            "is_active": True
+        },
+        {
+            "id": "HR-Policies v1",
+            "name": "HR Policies",
+            "description": "HR policies, leave, benefits, and procedures",
+            "icon": "Building2",
+            "url": "http://agents:8003/HRPolicies/v1/stream",
+            "is_active": True
+        },
+        {
+            "id": "Retail Agent v1",
+            "name": "Retail Agent",
+            "description": "Product discovery, pricing, inventory and promotions",
+            "icon": "ShoppingBag",
+            "url": "http://agents:8003/Retail/v1/stream",
+            "is_active": True
+        },
+    ]
+    
+    for a in DEFAULT_AGENTS:
+        stmt = (
+            insert(AgentTable)
+            .values(
+                id=a["id"],
+                name=a["name"],
+                description=a["description"],
+                icon=a["icon"],
+                url=a["url"],
+                is_active=a["is_active"]
+            )
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+        await session.execute(stmt)
+    
+    await session.commit()

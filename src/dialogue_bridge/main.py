@@ -2,7 +2,6 @@ from datetime import datetime
 
 from typing import List
 from fastapi import FastAPI, Depends, HTTPException, status
-# from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select
@@ -10,17 +9,18 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
-    Base, engine, get_db, seed_users,
+    Base, engine, get_db,
+    seed_users, seed_agents,
     hash_password,
-    ConversationTable,
     UserTable,
+    AgentTable,
+    ConversationTable,
     MessageTable,
 )
 from schemas import (
     ConversationDetail, ConversationSummary,
     ConversationCreate,
     MessageCreate, MessageOut,
-    AttachmentOut,
     AuthRequest, AuthResponse,
     AgentFull, AgentPublic,
 )
@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
     # 2. Seed users – only happens if they’re missing
     async with AsyncSession(engine) as session:
         await seed_users(session)
+        await seed_agents(session)
     
     yield
 
@@ -75,36 +76,17 @@ async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_
 #-----------------------------------------------------------------------------------
 # AGENTS APIS
 #-----------------------------------------------------------------------------------
-_AGENTS: dict[str, AgentFull] = {
-    "OrthodoxAI v1": AgentFull(
-        id="OrthodoxAI v1",
-        name="OrthodoxAI",
-        description="Orthodox biblical and theological insights",
-        icon="BookOpen",
-        url="http://agents:8003/OrthodoxAI/v1/stream",
-    ),
-    "HR-Policies v1": AgentFull(
-        id="HR-Policies v1",
-        name="HR Policies",
-        description="HR policies, leave, benefits, and procedures",
-        icon="Building2",
-        url="http://agents:8003/HRPolicies/v1/stream",
-    ),
-    "Retail Agent v1": AgentFull(
-        id="Retail Agent v1",
-        name="Retail Agent",
-        description="Product discovery, pricing, inventory and promotions",
-        icon="ShoppingBag",
-        url="http://agents:8003/Retail/v1/stream",
-    ),
-}
-
 @app.get("/agents", response_model=List[AgentPublic], status_code=status.HTTP_200_OK)
-async def list_agents():
+async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
     """
-    Public agent catalog (no internal URLs).
+    Fetch active agents from the database.
     """
-    return [AgentPublic.model_validate(a.model_dump(exclude={"url"})) for a in _AGENTS.values()]
+    result = await db.execute(
+        select(AgentTable).where(AgentTable.is_active == True)
+    )
+    agents = result.scalars().all()
+    await db.close()
+    return [AgentPublic.model_validate(a) for a in agents]
 
 
 
@@ -116,12 +98,20 @@ async def list_agents():
     response_model=ConversationDetail,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_conversation(
+async def createConversation(
     user_id: str,
     payload: ConversationCreate,
     current_user: UserTable = Depends(authenticate_id),
     db: AsyncSession = Depends(get_db),
 ):
+    # Validate agent exists
+    agent_query = await db.execute(
+        select(AgentTable).where(AgentTable.id == payload.agentId, AgentTable.is_active == True)
+    )
+    agent = agent_query.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
+    
     conv = ConversationTable(
         user_id=user_id,
         agent_id=payload.agentId,      # alias from agentId
@@ -177,7 +167,7 @@ async def create_conversation(
     response_model=MessageOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def add_message(
+async def addMessage(
     user_id: str,
     conversation_id: str,
     payload: MessageCreate,
@@ -231,7 +221,7 @@ async def add_message(
     response_model=List[ConversationSummary],
     status_code=status.HTTP_200_OK
 )
-async def fetch_all_conversations(
+async def getAllConversations(
     user_id: str,
     current_user: UserTable = Depends(authenticate_id),
     db: AsyncSession = Depends(get_db)
@@ -256,7 +246,7 @@ async def fetch_all_conversations(
     response_model=ConversationDetail,
     status_code=status.HTTP_200_OK
 )
-async def fetch_conversation(
+async def getConversation(
     user_id: str,
     conversation_id: str,
     current_user: UserTable = Depends(authenticate_id),
@@ -293,7 +283,7 @@ async def fetch_conversation(
     "/users/{user_id}/conversations/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT
 )
-async def delete_conversation(
+async def deleteConversation(
     user_id: str,
     conversation_id: str,
     current_user: UserTable = Depends(authenticate_id),
