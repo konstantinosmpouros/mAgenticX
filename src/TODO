@@ -2,11 +2,10 @@
 
 ## General
 
-- Document everywhere
+- Document everywhere (/docs)
 
 ## Agentic UI
 
-- Implement the API call for the authentication
 - Implement the API call for the agentic inference
 - Enhance the profile panel with actual user info
 - Agent icons doesn't appear when we shrink a lot the page
@@ -18,10 +17,10 @@
 ## Agents
 
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
+- Create a deep research agent and make it available
 
 ## Dialogue Bridge
 
 - Make a new inference api
 - Make a table for the blob files
-- Put the available agents in a table and refactor the relevant api
 - Make an api to retrieve saved images in the blob table

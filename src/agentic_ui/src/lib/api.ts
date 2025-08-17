@@ -3,6 +3,17 @@ import type { Agent, Conversation, ConversationDetail, Message } from "./types";
 import type { LucideIcon } from "lucide-react";
 import * as Icons from "lucide-react";
 
+// Authentication types
+export type AuthRequest = {
+  username: string;
+  password: string;
+};
+
+export type AuthResponse = {
+  authenticated: boolean;
+  user_id?: string;
+};
+
 // Raw shape returned by backend
 export type AgentPublic = {
   id: string;
@@ -28,6 +39,22 @@ const mapIcon = (name: string): LucideIcon => {
   // Fallback gracefully to Building2 if icon name is invalid
   return Icon || Icons.Building2;
 };
+
+// Authenticate user credentials
+export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
+  const res = await fetch("/api/authenticate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    body: JSON.stringify(credentials),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to authenticate: ${res.status}`);
+  }
+  return await res.json() as AuthResponse;
+}
 
 // Fetch agents from backend via nginx proxy
 export async function getAgents(): Promise<Agent[]> {

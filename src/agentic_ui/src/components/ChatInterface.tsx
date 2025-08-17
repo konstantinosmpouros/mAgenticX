@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type { Message, ThinkingState, Conversation, Agent, Attachment } from "@/lib/types";
-import { getAgents, getConversations, deleteConversation, getConversationDetail } from "@/lib/api";
+import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -385,33 +385,47 @@ export function ChatInterface() {
   };
   
   // Handle login functionality
-  const handleLogin = () => {
-    if (loginUsername.trim() === 'admin' && loginPassword.trim() === 'admin') {
-      // Add smooth transition delay
-      setTimeout(async () => {
-        setIsLoggedIn(true);
-        setUserId("0123456789");
-        
-        // Fetch available agents and conversations after successful login
-        try {
-          const [agentsList, conversationsList] = await Promise.all([
-            getAgents(),
-            getConversations("0123456789")
-          ]);
-          setAgents(agentsList);
-          setConversations(conversationsList);
-        } catch (e) {
-          // Keep UI functional even if data can't be loaded
-          setAgents([]);
-          setConversations([]);
-        }
-      }, 300);
-    } else {
+  const handleLogin = async () => {
+    try {
+      const response = await authenticate({
+        username: loginUsername.trim(),
+        password: loginPassword.trim()
+      });
+      
+      if (response.authenticated && response.user_id) {
+        // Add smooth transition delay
+        setTimeout(async () => {
+          setIsLoggedIn(true);
+          setUserId(response.user_id!);
+          
+          // Fetch available agents and conversations after successful login
+          try {
+            const [agentsList, conversationsList] = await Promise.all([
+              getAgents(),
+              getConversations(response.user_id!)
+            ]);
+            setAgents(agentsList);
+            setConversations(conversationsList);
+          } catch (e) {
+            // Keep UI functional even if data can't be loaded
+            setAgents([]);
+            setConversations([]);
+          }
+        }, 300);
+      } else {
+        toast({
+          title: "Authentication failed",
+          description: "Please check your credentials and try again.",
+          variant: "destructive",
+          duration: 2000,
+        });
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
       toast({
-        title: "Authentication failed",
-        description: "Please check your credentials and try again.",
+        title: "Login Failed",
+        description: "Unable to connect to authentication service",
         variant: "destructive",
-        duration: 2000,
       });
     }
   };
