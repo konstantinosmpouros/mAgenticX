@@ -62,8 +62,11 @@ All colors MUST be HSL.
     --shadow-soft: 0 4px 20px -4px hsl(240, 6%, 3%, 0.4);
     --shadow-card: 0 2px 8px -2px hsl(240, 6%, 3%, 0.3);
     
-    /* Smooth transitions */
+    /* Smooth transitions with different speeds */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
     --radius: 0.5rem;
 
@@ -219,4 +222,60 @@ All colors MUST be HSL.
 .bg-gradient-morph {
   background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
   animation: gradient-morph 45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Smooth state transition utilities */
+.transition-smooth { transition: var(--transition-smooth); }
+.transition-fast { transition: var(--transition-fast); }
+.transition-slow { transition: var(--transition-slow); }
+.transition-bounce { transition: var(--transition-bounce); }
+
+/* Fade transitions */
+.fade-enter {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.fade-exit {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* Chat clearing animation */
+.messages-container {
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.messages-clearing {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+/* Loading states */
+.loading-skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-foreground) / 0.1) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

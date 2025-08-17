@@ -40,6 +40,9 @@ export function ChatInterface() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversation, setLoadingConversation] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [isAgentSwitching, setIsAgentSwitching] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -114,7 +117,9 @@ export function ChatInterface() {
   // Handle sending message
   const handleSendMessage = async () => {
     if (!currentMessage.trim() && attachments.length === 0) return;
+    if (isSendingMessage) return; // Prevent double-sending
 
+    setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
 
     // Only create conversation on first message
@@ -149,9 +154,13 @@ export function ChatInterface() {
       attachments: messageAttachments
     };
 
-    setMessages(prev => [...prev, newMessage]);
-    setCurrentMessage('');
-    setAttachments([]);
+    // Add message with smooth animation
+    setTimeout(() => {
+      setMessages(prev => [...prev, newMessage]);
+      setCurrentMessage('');
+      setAttachments([]);
+      setIsSendingMessage(false);
+    }, 100);
 
     // Start enhanced thinking animation
     const thinking = [
@@ -271,26 +280,49 @@ export function ChatInterface() {
     setSelectedImage(imageUrl);
   };
   
-  // Clear chat and stop thinking state
+  // Clear chat and stop thinking state with smooth transition
   const clearChatAndStopThinking = () => {
-    setThinkingState(null);
-    setMessages([]);
-    setExpandedThinking({});
-    setAttachments([]);
-    setCurrentMessage('');
-    setCurrentConversation(null);
-    setIsPrivateMode(false);
+    setIsClearing(true);
+    
+    // First phase: fade out existing content
+    setTimeout(() => {
+      setThinkingState(null);
+      setMessages([]);
+      setExpandedThinking({});
+      setAttachments([]);
+      setCurrentMessage('');
+      setCurrentConversation(null);
+      setIsPrivateMode(false);
+      
+      // Second phase: fade back in
+      setTimeout(() => {
+        setIsClearing(false);
+      }, 150);
+    }, 200);
   };
   
   // Handle title click to clear chat
   const handleTitleClick = () => {
     clearChatAndStopThinking();
+    setSidebarOpen(false);
   };
   
-  // Handle agent change from dropdown
+  // Handle agent change from dropdown with smooth transition
   const handleAgentChange = (value: string) => {
+    if (isAgentSwitching) return; // Prevent rapid switching
+    
+    setIsAgentSwitching(true);
+    
+    // Clear chat with smooth transition
     clearChatAndStopThinking();
-    setSelectedAgent(value);
+    
+    // Switch agent after clearing animation
+    setTimeout(() => {
+      setSelectedAgent(value);
+      setTimeout(() => {
+        setIsAgentSwitching(false);
+      }, 200);
+    }, 300);
   };
   
   // Handle new chat button click
@@ -298,47 +330,56 @@ export function ChatInterface() {
     clearChatAndStopThinking();
   };
   
-  // Handle conversation selection from sidebar
+  // Handle conversation selection from sidebar with smooth loading
   const handleConversationSelect = async (conversation: Conversation) => {
     if (!userId || loadingConversation) return;
     
     setLoadingConversation(true);
-    clearChatAndStopThinking();
     
-    try {
-      // Fetch full conversation details from API
-      const conversationDetail = await getConversationDetail(userId, conversation.id);
+    // Start sidebar close transition first
+    setSidebarOpen(false);
+    
+    // Clear current content with transition
+    setIsClearing(true);
+    
+    setTimeout(async () => {
+      try {
+        // Fetch full conversation details from API
+        const conversationDetail = await getConversationDetail(userId, conversation.id);
+        
+        // Update state with the loaded conversation data with staggered animation
+        setTimeout(() => {
+          setMessages(conversationDetail.messages);
+          setSelectedAgent(conversationDetail.agentId);
+          setCurrentConversation(conversationDetail);
+          setIsPrivateMode(conversationDetail.isPrivate || false);
+          setIsClearing(false);
+        }, 100);
       
-      // Update state with the loaded conversation data
-      setMessages(conversationDetail.messages);
-      setSelectedAgent(conversationDetail.agentId);
-      setCurrentConversation(conversationDetail);
-      setIsPrivateMode(conversationDetail.isPrivate || false);
-      setSidebarOpen(false);
-      
-      toast({
-        title: "Conversation loaded",
-        description: `Loaded ${conversationDetail.messages.length} messages`,
-        duration: 2000,
-      });
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
-      toast({
-        title: "Failed to load conversation",
-        description: "There was an error loading the conversation. Please try again.",
-        variant: "destructive",
-        duration: 3000,
-      });
-      
-      // Fallback to basic conversation data on error
-      setMessages([]);
-      setSelectedAgent(conversation.agentId);
-      setCurrentConversation(conversation);
-      setIsPrivateMode(conversation.isPrivate || false);
-      setSidebarOpen(false);
-    } finally {
-      setLoadingConversation(false);
-    }
+        toast({
+          title: "Conversation loaded",
+          description: `Loaded ${conversationDetail.messages.length} messages`,
+          duration: 2000,
+        });
+      } catch (error) {
+        console.error('Failed to load conversation:', error);
+        toast({
+          title: "Failed to load conversation",
+          description: "There was an error loading the conversation. Please try again.",
+          variant: "destructive",
+          duration: 3000,
+        });
+        
+        // Fallback to basic conversation data on error
+        setMessages([]);
+        setSelectedAgent(conversation.agentId);
+        setCurrentConversation(conversation);
+        setIsPrivateMode(conversation.isPrivate || false);
+        setIsClearing(false);
+      } finally {
+        setLoadingConversation(false);
+      }
+    }, 300);
   };
   
   // Handle conversation deletion
@@ -393,7 +434,14 @@ export function ChatInterface() {
       });
       
       if (response.authenticated && response.user_id) {
-        // Add smooth transition delay
+        // Show success feedback immediately
+        toast({
+          title: "Authentication successful",
+          description: "Welcome back! Loading your workspace...",
+          duration: 1500,
+        });
+        
+        // Smooth login transition with data loading
         setTimeout(async () => {
           setIsLoggedIn(true);
           setUserId(response.user_id!);
@@ -411,7 +459,7 @@ export function ChatInterface() {
             setAgents([]);
             setConversations([]);
           }
-        }, 300);
+        }, 600);
       } else {
         toast({
           title: "Authentication failed",
@@ -450,7 +498,7 @@ export function ChatInterface() {
   return (
     <div className="animate-fade-in">
       <TooltipProvider>
-        <div className="flex flex-col h-screen bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden">
+        <div className={`flex flex-col h-screen bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
           {/* Header */}
           <Header
             agents={agents}
@@ -483,9 +531,29 @@ export function ChatInterface() {
           {/* Chat Messages Container*/}
           <div className="flex-1 overflow-hidden relative">
             <ScrollArea className="h-full">
-              <div className="max-w-6xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6">
+              <div className={`max-w-6xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth ${isClearing ? 'messages-clearing' : ''}`}>
+                
+                {/* Loading skeleton during conversation loading */}
+                {loadingConversation && (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="animate-fade-in">
+                        <div className="flex justify-end mb-4">
+                          <div className="max-w-[85%] md:max-w-[70%]">
+                            <div className="loading-skeleton h-20 rounded-2xl"></div>
+                          </div>
+                        </div>
+                        <div className="flex justify-start">
+                          <div className="max-w-[85%] md:max-w-[70%]">
+                            <div className="loading-skeleton h-16 rounded-2xl"></div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* For every Message in Messages List */}
-                {messages.map((message) => (
+                {!loadingConversation && messages.map((message) => (
                   <div key={message.id} className="animate-fade-in space-y-2">
                     {/* Show attachments message (if any) */}
                     {message.attachments && message.attachments.length > 0 && (

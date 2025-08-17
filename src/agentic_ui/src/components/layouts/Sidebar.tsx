@@ -41,7 +41,7 @@ export default function Sidebar({
                         <SheetTrigger asChild>
                             <Button
                                 variant="outline"
-                                className="w-10 h-10 rounded-full bg-secondary/90 border-border hover:bg-secondary transition-smooth shadow-card active:bg-secondary active:scale-110"
+                                className="w-10 h-10 rounded-full bg-secondary/90 border-border hover:bg-secondary transition-bounce shadow-card hover:scale-105 active:scale-95"
                             >
                                 <ChevronRightIcon size={16} />
                             </Button>
@@ -50,7 +50,7 @@ export default function Sidebar({
                     <TooltipContent side="right"><p>Conversation History</p></TooltipContent>
                 </Tooltip>
                 
-                <SheetContent side="left" className="w-[clamp(16rem,30vw,20rem)] md:w-[clamp(18rem,35vw,22rem)] lg:w-[clamp(16rem,30vw,20rem)] p-0">
+                <SheetContent side="left" className="w-[clamp(16rem,30vw,20rem)] md:w-[clamp(18rem,35vw,22rem)] lg:w-[clamp(16rem,30vw,20rem)] p-0 transition-slow">
                     <div className="h-full bg-gradient-card border-r border-border">
                         {/* Title */}
                         <div className="p-6 border-b border-border">
@@ -84,15 +84,15 @@ export default function Sidebar({
                                         return (
                                             <Card
                                                 key={conv.id}
-                                                className={`relative p-4 cursor-pointer transition-smooth border-border/50 group ${
-                                                    conv.id === currentConversationId ? "bg-primary/10 border-primary/30 ring-1 ring-primary/20" : "hover:bg-accent/50"
+                                                className={`relative p-4 cursor-pointer transition-bounce border-border/50 group transform hover:scale-[1.02] hover:shadow-lg ${
+                                                    conv.id === currentConversationId ? "bg-primary/10 border-primary/30 ring-1 ring-primary/20 scale-[1.01]" : "hover:bg-accent/50"
                                                 }`}
                                                 onClick={() => onSelectConversation(conv)}
                                             >
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
-                                                    className="absolute top-2 right-2 w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/20 hover:text-destructive active:bg-destructive/30 active:scale-110"
+                                                    className="absolute top-2 right-2 w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-bounce hover:bg-destructive/20 hover:text-destructive hover:scale-110 active:scale-95"
                                                     onClick={(e) => onDeleteConversation(conv.id, e)}
                                                 >
                                                     <X size={12} />
