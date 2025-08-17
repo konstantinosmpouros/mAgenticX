@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 // import StarBorder from "@/components/utils/react_bits/star_border"
 
 // Import types for messages, thinking state, conversations, and agents
-import type { Message, ThinkingState, Conversation, Agent, Attachment } from "@/lib/types";
+import type { Message, ThinkingState, Conversation, Agent, } from "@/lib/types";
 import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate } from "@/lib/api";
 
 // Chat Interface component

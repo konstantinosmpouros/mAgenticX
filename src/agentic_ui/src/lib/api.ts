@@ -1,38 +1,17 @@
 // src/lib/api.ts
-import type { Agent, Conversation, ConversationDetail, Message } from "./types";
+import type { 
+  Agent,
+  AgentPublic,
+  AuthRequest,
+  AuthResponse,
+  Conversation,
+  ConversationDetail,
+  Message,
+  ConversationSummary,
+  } from "./types";
 import type { LucideIcon } from "lucide-react";
 import * as Icons from "lucide-react";
 
-// Authentication types
-export type AuthRequest = {
-  username: string;
-  password: string;
-};
-
-export type AuthResponse = {
-  authenticated: boolean;
-  user_id?: string;
-};
-
-// Raw shape returned by backend
-export type AgentPublic = {
-  id: string;
-  name: string;
-  description: string;
-  icon: string; // Lucide icon name string, e.g., "Building2"
-};
-
-// Raw shape returned by backend for conversations
-export type ConversationSummary = {
-  id: string;
-  agentId: string;
-  agentName?: string;
-  title?: string;
-  isPrivate: boolean;
-  lastMessage?: string;
-  created_at: string;
-  updated_at: string;
-};
 
 const mapIcon = (name: string): LucideIcon => {
   const Icon = (Icons as Record<string, any>)[name] as LucideIcon | undefined;
