@@ -190,7 +190,7 @@ export function ChatInterface() {
         const remainingSlots = 5 - attachments.length;
         if (remainingSlots <= 0) {
           toast({
-            title: "Maximum files reached",
+            title: "Maximum attachments reached",
             description: "You can only attach up to 5 files per message",
             variant: "destructive",
             duration: 3000,
@@ -356,11 +356,6 @@ export function ChatInterface() {
           setIsClearing(false);
         }, 100);
       
-        toast({
-          title: "Conversation loaded",
-          description: `Loaded ${conversationDetail.messages.length} messages`,
-          duration: 2000,
-        });
       } catch (error) {
         console.error('Failed to load conversation:', error);
         toast({
@@ -434,13 +429,6 @@ export function ChatInterface() {
       });
       
       if (response.authenticated && response.user_id) {
-        // Show success feedback immediately
-        toast({
-          title: "Authentication successful",
-          description: "Welcome back! Loading your workspace...",
-          duration: 1500,
-        });
-        
         // Smooth login transition with data loading
         setTimeout(async () => {
           setIsLoggedIn(true);

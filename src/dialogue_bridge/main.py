@@ -68,8 +68,6 @@ async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_
         return AuthResponse()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        await db.close()
 
 
 
@@ -85,7 +83,6 @@ async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
         select(AgentTable).where(AgentTable.is_active == True)
     )
     agents = result.scalars().all()
-    await db.close()
     return [AgentPublic.model_validate(a) for a in agents]
 
 
@@ -236,7 +233,6 @@ async def getAllConversations(
         .order_by(ConversationTable.updated_at.desc())
     )
     rows = result.scalars().all()
-    await db.close()
     summaries = [ConversationSummary.model_validate(r) for r in rows]
     return summaries
 
@@ -265,7 +261,6 @@ async def getConversation(
         )
     )
     conv = result.scalar_one_or_none()
-    await db.close()
     if conv is None:
         raise HTTPException(404, "Conversation not found")
     
@@ -303,7 +298,6 @@ async def deleteConversation(
     await db.delete(conv)
     await db.commit()
     
-    await db.close()
     return
 
 

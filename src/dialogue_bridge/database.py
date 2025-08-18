@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     JSON,
     Enum,
+    LargeBinary,
 )
 
 
@@ -182,12 +183,23 @@ class AttachmentTable(Base):
     mime_type = Column(String, nullable=False)
     size_bytes = Column(Integer, nullable=True)
     
-    # relative path under your local blob root (e.g., "conversations/<cid>/messages/<mid>/<uuid>_<safe>.bin")
-    storage_path = Column(String, nullable=False)
+    # Blob file
+    blob_id = Column(String, ForeignKey("blobs.id", ondelete="CASCADE"), nullable=True, index=True)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     
     message = relationship("MessageTable", back_populates="attachments")
+    blob = relationship("BlobTable", back_populates="attachment", cascade="all, delete-orphan", uselist=False, single_parent=True)
+
+class BlobTable(Base):
+    __tablename__ = "blobs"
+    
+    id = Column(String, primary_key=True, default=gen_uuid)
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    
+    # Back-reference for the 1:1 relationship
+    attachment = relationship("AttachmentTable", back_populates="blob", uselist=False)
 
 
 

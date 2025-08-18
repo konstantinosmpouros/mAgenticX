@@ -11,7 +11,7 @@
 - Agent icons doesn't appear when we shrink a lot the page
 - Make better the thinking container
 - The agent response container must support md format
-- There are multiple overlapping schemas (types) that are not needed, fix it
+- Create a download button for files and images in the current conversation
 - Check what to do with the audio input
 
 ## Agents

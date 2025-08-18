@@ -84,7 +84,6 @@ export type AttachmentOut = {
     name: string;
     mime: string;
     size?: number;
-    path: string;
     timestamp: Date;
 };
 
