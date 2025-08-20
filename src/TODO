@@ -22,5 +22,4 @@
 ## Dialogue Bridge
 
 - Make a new inference api
-- Make a table for the blob files
 - Make an api to retrieve saved images in the blob table

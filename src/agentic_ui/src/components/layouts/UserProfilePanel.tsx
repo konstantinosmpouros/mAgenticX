@@ -1,7 +1,8 @@
 import { Button } from "@/components/utils/button";
 import { ScrollArea } from "@/components/utils/scroll-area";
-import { User, Edit, Settings, Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft } from "lucide-react";
+import { User, Edit, Settings, Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Sun, Moon } from "lucide-react";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils"
 
 type Props = {
@@ -20,6 +21,7 @@ export default function UserProfilePanel({
     onLogout,
 }: Props) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+    const { theme, setTheme } = useTheme();
     
     if (!open) return null;
 
@@ -213,22 +215,69 @@ export default function UserProfilePanel({
                                             <h3 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-2">Appearance Settings</h3>
                                             <p className="text-muted-foreground mb-6">Customize your visual experience</p>
                                         </div>
-                                        <div className="space-y-6">
-                                            <div className="p-8 bg-gradient-card rounded-xl shadow-card border border-border/50">
-                                                <h4 className="font-semibold text-lg mb-3">Theme</h4>
-                                                <p className="text-sm text-muted-foreground mb-6">Choose your preferred theme</p>
-                                                <div className="grid grid-cols-3 gap-4">
-                                                    {["Light", "Dark"].map((theme) => (
-                                                        <div
-                                                            key={theme}
-                                                            className="p-6 bg-background border border-border rounded-xl text-center hover:bg-muted/50 cursor-pointer transition-smooth shadow-card hover:shadow-elegant hover:scale-105"
-                                                        >
-                                                            <div className="font-medium">{theme}</div>
-                                                        </div>
-                                                    ))}
+                                            <div className="space-y-6">
+                                                <div className="p-8 bg-gradient-card rounded-xl shadow-card border border-border/50">
+                                                    <h4 className="font-semibold text-lg mb-3">Theme</h4>
+                                                    <p className="text-sm text-muted-foreground mb-6">Choose your preferred theme</p>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        {[
+                                                            { name: "Light", value: "light", icon: Sun },
+                                                            { name: "Dark", value: "dark", icon: Moon }
+                                                        ].map((themeOption) => {
+                                                            const Icon = themeOption.icon;
+                                                            const isActive = theme === themeOption.value;
+                                                            return (
+                                                                <button
+                                                                    key={themeOption.value}
+                                                                    onClick={() => setTheme(themeOption.value)}
+                                                                    className={cn(
+                                                                        "p-6 rounded-xl text-center transition-all duration-300 border-2 relative overflow-hidden group",
+                                                                        isActive 
+                                                                            ? "bg-gradient-to-r from-fuchsia-500/10 via-fuchsia-400/15 to-fuchsia-500/10 border-fuchsia-500/50 shadow-[0_0_20px_rgba(217,70,239,0.3)] scale-105" 
+                                                                            : "bg-background border-border hover:bg-muted/50 hover:border-fuchsia-500/30 hover:shadow-[0_0_15px_rgba(217,70,239,0.2)] hover:scale-102"
+                                                                    )}
+                                                                >
+                                                                    <div className={cn(
+                                                                        "absolute inset-0 transition-all duration-300",
+                                                                        isActive 
+                                                                            ? "bg-gradient-to-br from-fuchsia-500/5 to-fuchsia-600/10" 
+                                                                            : "group-hover:bg-gradient-to-br group-hover:from-fuchsia-500/2 group-hover:to-fuchsia-600/5"
+                                                                    )} />
+                                                                    <div className="relative z-10 flex flex-col items-center gap-3">
+                                                                        <div className={cn(
+                                                                            "p-3 rounded-full transition-all duration-300",
+                                                                            isActive 
+                                                                                ? "bg-fuchsia-500/20 shadow-[0_0_15px_rgba(217,70,239,0.4)]" 
+                                                                                : "bg-muted/50 group-hover:bg-fuchsia-500/10"
+                                                                        )}>
+                                                                            <Icon 
+                                                                                size={24} 
+                                                                                className={cn(
+                                                                                    "transition-all duration-300",
+                                                                                    isActive 
+                                                                                        ? "text-fuchsia-400 drop-shadow-[0_0_5px_rgba(217,70,239,0.8)]" 
+                                                                                        : "text-muted-foreground group-hover:text-fuchsia-400"
+                                                                                )} 
+                                                                            />
+                                                                        </div>
+                                                                        <div className={cn(
+                                                                            "font-medium transition-all duration-300",
+                                                                            isActive 
+                                                                                ? "text-fuchsia-400" 
+                                                                                : "text-foreground group-hover:text-fuchsia-400"
+                                                                        )}>
+                                                                            {themeOption.name}
+                                                                        </div>
+                                                                        {isActive && (
+                                                                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-fuchsia-500 rounded-full shadow-[0_0_10px_rgba(217,70,239,0.6)] animate-pulse" />
+                                                                        )}
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
                                     </div>
                                 )}
                                 
