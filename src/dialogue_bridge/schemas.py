@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+import base64
+from typing import List, Optional
 from datetime import datetime
 
 
@@ -74,14 +75,30 @@ class ConversationSummary(BaseModel):
     updated_at: datetime = Field(..., validation_alias="updated_at")
 
 
+class BlobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    data: bytes  # Pydantic v2 will base64 this if ever serialized, but we won't expose it directly.
+
 class AttachmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    
+
     id: str
     name: str = Field(..., validation_alias="file_name")
     mime: str = Field(..., validation_alias="mime_type")
     size: Optional[int] = Field(None, validation_alias="size_bytes")
     timestamp: datetime = Field(..., validation_alias="created_at")
+
+    # keep ORM relation for computation but don't serialize it
+    blob: Optional[BlobOut] = Field(None, validation_alias="blob", exclude=True)
+
+    # what you asked for: only the raw base64 data if it's an image
+    data: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _inject_image_b64(self):
+        if self.mime and self.mime.startswith("image/") and self.blob and self.blob.data:
+            self.data = base64.b64encode(self.blob.data).decode("ascii")
+        return self
 
 
 class MessageOut(BaseModel):
@@ -93,7 +110,7 @@ class MessageOut(BaseModel):
     sender: str
     type: str
     timestamp: datetime = Field(..., validation_alias="created_at")
-    attachments: List[AttachmentOut] = []
+    attachments: List[AttachmentOut] = Field(default_factory=list)
     thinking: Optional[List[str]] = Field(None, validation_alias="reasoning_steps")
     thinkingTime: Optional[int] = Field(None, validation_alias="reasoning_time_seconds")
     error: Optional[bool] = Field(None, validation_alias="is_error")
@@ -110,7 +127,7 @@ class ConversationDetail(BaseModel):
     isPrivate: bool = Field(..., validation_alias="is_private")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
-    messages: List[MessageOut]
+    messages: List[MessageOut] = Field(default_factory=list)
 
 
 

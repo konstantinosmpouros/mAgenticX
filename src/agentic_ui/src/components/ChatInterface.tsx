@@ -630,7 +630,7 @@ export function ChatInterface() {
                         {/* Main message content */}
                         <Card className={`p-5 ${
                           message.sender === 'user'
-                            ? 'bg-neutral-800 text-foreground ml-auto shadow-card border-border max-w-[85%] md:max-w-[75%]'
+                            ? 'bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border max-w-[85%] md:max-w-[75%]'
                             : 'bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
                         }`}>
                           <div className="space-y-3">

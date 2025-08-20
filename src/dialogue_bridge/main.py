@@ -5,7 +5,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
@@ -16,6 +16,8 @@ from database import (
     AgentTable,
     ConversationTable,
     MessageTable,
+    AttachmentTable,
+    BlobTable
 )
 from schemas import (
     ConversationDetail, ConversationSummary,
@@ -51,9 +53,9 @@ app = FastAPI(title="Bridge Service", lifespan=lifespan)
 # USER APIS
 #-----------------------------------------------------------------------------------
 @app.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
-async def authenticate_login(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
+async def authenticate(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
     """
-    Simple credential check. Returns True + user_id on success, False otherwise.
+    Simple credential check. Returns True + user_id on success, False and None otherwise.
     """
     try:
         res = await db.execute(
@@ -254,6 +256,7 @@ async def getConversation(
         .options(
             selectinload(ConversationTable.messages)
             .selectinload(MessageTable.attachments)
+            .selectinload(AttachmentTable.blob)
         )
         .where(
             ConversationTable.user_id == user_id,
@@ -265,12 +268,6 @@ async def getConversation(
         raise HTTPException(404, "Conversation not found")
     
     conv_out = ConversationDetail.model_validate(conv)
-    
-    # for msg in conv_out.messages:
-    #     for att in msg.attachments:
-    #         if att.url is None:
-    #             att.url = f"{ATTACHMENTS_BASE_URL}/{att.id}"
-    
     return conv_out
 
 
