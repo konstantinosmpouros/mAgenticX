@@ -4,10 +4,10 @@ import type {
   AgentPublic,
   AuthRequest,
   AuthResponse,
-  Conversation,
   ConversationDetail,
-  Message,
   ConversationSummary,
+  MessageOut,
+  AttachmentOut,
   } from "./types";
 import type { LucideIcon } from "lucide-react";
 import * as Icons from "lucide-react";
@@ -53,7 +53,7 @@ export async function getAgents(): Promise<Agent[]> {
 }
 
 // Fetch conversations for a user
-export async function getConversations(userId: string): Promise<Conversation[]> {
+export async function getConversations(userId: string): Promise<ConversationSummary[]> {
   const res = await fetch(`/api/users/${userId}/conversations`, {
     headers: { "Accept": "application/json" },
   });
@@ -61,19 +61,11 @@ export async function getConversations(userId: string): Promise<Conversation[]> 
     throw new Error(`Failed to fetch conversations: ${res.status}`);
   }
   const data = (await res.json()) as ConversationSummary[];
-  return data.map((c) => ({
-    id: c.id,
-    agentId: c.agentId,
-    agentName: c.agentName || "Unknown Agent",
-    lastMessage: c.lastMessage || "",
-    timestamp: new Date(c.updated_at),
-    messages: [], // Will be populated when conversation is selected
-    isPrivate: c.isPrivate,
-  }));
+  return data;
 }
 
 // Fetch conversation details with full message history
-export async function getConversationDetail(userId: string, conversationId: string): Promise<Conversation> {
+export async function getConversationDetail(userId: string, conversationId: string): Promise<ConversationDetail> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, {
     headers: { "Accept": "application/json" },
   });
@@ -83,13 +75,17 @@ export async function getConversationDetail(userId: string, conversationId: stri
   const data = (await res.json()) as ConversationDetail;
   
   // Transform backend messages to frontend format
-  const transformedMessages: Message[] = data.messages.map((msg) => ({
+  const transformedMessages: MessageOut[] = data.messages.map((msg) => ({
     id: msg.id,
     content: msg.content || "",
-    sender: msg.sender as "user" | "agent",
-    timestamp: new Date(msg.timestamp),
-    type: msg.type as "text" | "image" | "file",
-    attachments: msg.attachments.map(att => att.name), // Transform to string array for now
+    sender: msg.sender,
+    type: msg.type,
+    created_at: new Date(msg.created_at),
+    updated_at: new Date(msg.updated_at),
+    attachments: msg.attachments.map((att: any) => ({
+      ...att,
+      timestamp: new Date(att.timestamp)
+    })),
     thinking: msg.thinking || undefined,
     thinkingTime: msg.thinkingTime || undefined,
     error: msg.error || undefined,
@@ -100,10 +96,12 @@ export async function getConversationDetail(userId: string, conversationId: stri
     id: data.id,
     agentId: data.agentId,
     agentName: data.agentName || "Unknown Agent",
-    lastMessage: transformedMessages.length > 0 ? transformedMessages[transformedMessages.length - 1].content : "",
-    timestamp: new Date(data.updated_at),
-    messages: transformedMessages,
+    title: data.title || "",
     isPrivate: data.isPrivate,
+    created_at: new Date(data.created_at),
+    updated_at: new Date(data.updated_at),
+    messages: transformedMessages,
+    
   };
 }
 

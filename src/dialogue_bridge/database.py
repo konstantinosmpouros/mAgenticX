@@ -1,6 +1,7 @@
 import os
 from uuid import uuid4
 import hashlib
+import base64
 
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
+from sqlalchemy import text
 from sqlalchemy import (
     Column,
     String,
@@ -27,6 +29,10 @@ from sqlalchemy import (
 def gen_uuid() -> str: return str(uuid4())
 
 def hash_password(pw: str) -> str: return hashlib.sha256(pw.encode("utf-8")).hexdigest()
+
+# def b64_encode(b: bytes) -> str: base64.b64encode(b).decode("ascii")
+
+# def b64_decode(s: str) -> bytes: base64.b64decode(s, validate=True)
 
 
 
@@ -74,9 +80,9 @@ class AgentTable(Base):
     
     id = Column(String, primary_key=True, default=gen_uuid)
     name = Column(String, nullable=False)
-    description = Column(String, nullable=True)
-    icon = Column(String, nullable=True)
-    url = Column(String, nullable=True)
+    description = Column(String, nullable=False)
+    icon = Column(String, nullable=False)
+    url = Column(String, nullable=False)
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -187,6 +193,7 @@ class AttachmentTable(Base):
     blob_id = Column(String, ForeignKey("blobs.id", ondelete="CASCADE"), nullable=True, index=True)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     
     message = relationship("MessageTable", back_populates="attachments")
     blob = relationship("BlobTable", back_populates="attachment", cascade="all, delete-orphan", uselist=False, single_parent=True)
@@ -204,7 +211,7 @@ class BlobTable(Base):
 
 
 # -------------------------------------------------------------------------------
-# Initialize users function
+# Seed the DB with data in the initialization
 # -------------------------------------------------------------------------------
 async def seed_users(session: AsyncSession) -> None:
     """Insert DEFAULT_USERS once; re-runs become no-ops."""
@@ -274,3 +281,95 @@ async def seed_agents(session: AsyncSession) -> None:
         await session.execute(stmt)
     
     await session.commit()
+
+
+async def seed_demo_data(session: AsyncSession) -> None:
+    """Execute the provided SQL statements to prefill the DB with demo data."""
+    DEMO_SQL = """
+        INSERT INTO conversations (id, user_id, agent_id, agent_name, title, is_private, created_at, updated_at)
+        VALUES ('c1', '0123456789', 'OrthodoxAI v1', 'OrthodoxAI', 'Bible Questions', FALSE, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m1', 'c1', 'user', 'text', 'What is the meaning of life according to the Bible?', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('What is the meaning of life according to the Bible?', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c1';
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m2', 'c1', 'agent', 'text', 'The Bible suggests that the meaning of life is to glorify God and enjoy Him forever.', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('The Bible suggests that the meaning of life is to glorify God and enjoy Him forever.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c1';
+        
+        INSERT INTO attachments (id, message_id, file_name, mime_type, size_bytes, created_at)
+        VALUES ('a1', 'm2', 'bible_verse.jpg', 'image/jpeg', 2048, NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        INSERT INTO conversations (id, user_id, agent_id, agent_name, title, is_private, created_at, updated_at)
+        VALUES ('c2', '0123456789', 'HR-Policies v1', 'HR Policies', 'Vacation Inquiry', FALSE, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m3', 'c2', 'user', 'text', 'How many vacation days do I get per year?', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('How many vacation days do I get per year?', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c2';
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m4', 'c2', 'agent', 'text', 'According to company policy, full-time employees receive 15 vacation days per year.', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('According to company policy, full-time employees receive 15 vacation days per year.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c2';
+        
+        INSERT INTO conversations (id, user_id, agent_id, agent_name, title, is_private, created_at, updated_at)
+        VALUES ('c3', '0123456789', 'Retail Agent v1', 'Retail Agent', 'Product Search', FALSE, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m5', 'c3', 'user', 'text', 'What products are on sale this week?', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('What products are on sale this week?', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m6', 'c3', 'agent', 'text', 'Current sales include electronics and clothing items.', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('Current sales include electronics and clothing items.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m7', 'c3', 'user', 'image', 'Is this product available in stock?', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('Is this product available in stock?', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
+        
+        INSERT INTO attachments (id, message_id, file_name, mime_type, size_bytes, created_at)
+        VALUES ('a2', 'm7', 'product_photo.png', 'image/png', 3072, NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m8', 'c3', 'agent', 'text', 'Yes, that product is available. Please see the attached PDF for detailed specifications.', NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = LEFT('Yes, that product is available. Please see the attached PDF for detailed specifications.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
+        
+        INSERT INTO attachments (id, message_id, file_name, mime_type, size_bytes, created_at)
+        VALUES ('a3', 'm8', 'product_specs.pdf', 'application/pdf', 4096, NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
+        VALUES ('m9', 'c3', 'user', 'file', NULL, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+        
+        UPDATE conversations SET last_message_preview = NULL, last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
+        
+        INSERT INTO attachments (id, message_id, file_name, mime_type, size_bytes, created_at)
+        VALUES ('a4', 'm9', 'order_form.pdf', 'application/pdf', 5120, NOW())
+        ON CONFLICT (id) DO NOTHING;
+    """
+    statements = [s.strip() for s in DEMO_SQL.strip().split(";") if s.strip()]
+    for stmt in statements:
+        await session.execute(text(stmt))
+    await session.commit()
+

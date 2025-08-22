@@ -33,6 +33,7 @@ type InputContainerProps = {
     Mic: any;
     Button: any;
     Send: any;
+    X: any; // Add X icon for remove functionality
 
     // Optional extras available in your page
     toast?: (opts: { title: string; description?: string; duration?: number }) => void;
@@ -65,6 +66,7 @@ export function InputContainer({
     Mic,
     Button,
     Send,
+    X,
     toast,
     currentAgent,
     Textarea,

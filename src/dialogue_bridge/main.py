@@ -10,39 +10,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
     Base, engine, get_db,
-    seed_users, seed_agents,
+    seed_users, seed_agents, seed_demo_data,
     hash_password,
     UserTable,
     AgentTable,
     ConversationTable,
     MessageTable,
     AttachmentTable,
-    BlobTable
 )
 from schemas import (
     ConversationDetail, ConversationSummary,
     ConversationCreate,
     MessageCreate, MessageOut,
     AuthRequest, AuthResponse,
-    AgentFull, AgentPublic,
+    AgentPublic,
 )
-from utils import (
-    authenticate_id,
-    # upsert_conversation,
-    # agent_stream,
-)
+from utils import authenticate_id
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Make sure schema exists
+    # 1) Initialize the database schema if its not
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
-    # 2. Seed users – only happens if they’re missing
+    # 2) Seed users & agents, then demo data
     async with AsyncSession(engine) as session:
         await seed_users(session)
         await seed_agents(session)
+        await seed_demo_data(session)
     
     yield
 
@@ -220,7 +216,7 @@ async def addMessage(
     response_model=List[ConversationSummary],
     status_code=status.HTTP_200_OK
 )
-async def getAllConversations(
+async def getConvsSummary(
     user_id: str,
     current_user: UserTable = Depends(authenticate_id),
     db: AsyncSession = Depends(get_db)
@@ -244,7 +240,7 @@ async def getAllConversations(
     response_model=ConversationDetail,
     status_code=status.HTTP_200_OK
 )
-async def getConversation(
+async def getConvDetails(
     user_id: str,
     conversation_id: str,
     current_user: UserTable = Depends(authenticate_id),

@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 // import StarBorder from "@/components/utils/react_bits/star_border"
 
 // Import types for messages, thinking state, conversations, and agents
-import type { Message, ThinkingState, Conversation, Agent, } from "@/lib/types";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, AttachmentOut } from "@/lib/types";
 import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate } from "@/lib/api";
 
 // Chat Interface component
@@ -21,13 +21,13 @@ import { InputContainer } from "@/components/layouts/InputContainer";
 
 
 export function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<MessageOut[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
-  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isPrivateMode, setIsPrivateMode] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
@@ -38,7 +38,7 @@ export function ChatInterface() {
   const [loginPassword, setLoginPassword] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isAgentSwitching, setIsAgentSwitching] = useState(false);
@@ -73,7 +73,7 @@ export function ChatInterface() {
   // Enhanced thinking animation
   useEffect(() => {
     if (!thinkingState?.isActive) return;
-
+    
     const interval = setInterval(() => {
       setThinkingState(prev => {
         if (!prev) return null;
@@ -88,14 +88,16 @@ export function ChatInterface() {
           setTimeout(() => {
             // Add "Done!" to thoughts and collapse
             const totalTime = Math.round((endTime - prev.startTime) / 1000);
-            const agentResponse: Message = {
+            const agentResponse: MessageOut = {
               id: prev.messageId,
               content: `Hello! I'm your ${agents.find(a => a.id === selectedAgent)?.name}. I'm here to assist you with specialized knowledge and support. How can I help you today?`,
               sender: 'agent',
-              timestamp: new Date(),
               type: 'text',
               thinking: prev.thoughts.concat('Done!'),
-              thinkingTime: totalTime
+              thinkingTime: totalTime,
+              attachments: [],
+              created_at: new Date(),
+              updated_at: new Date(),
             };
             setMessages(prevMessages => [...prevMessages, agentResponse]);
             setThinkingState(null);
@@ -110,7 +112,7 @@ export function ChatInterface() {
         return prev;
       });
     }, 2000);
-
+    
     return () => clearInterval(interval);
   }, [thinkingState, selectedAgent]);
   
@@ -118,50 +120,52 @@ export function ChatInterface() {
   const handleSendMessage = async () => {
     if (!currentMessage.trim() && attachments.length === 0) return;
     if (isSendingMessage) return; // Prevent double-sending
-
+    
     setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
-
+    
     // Only create conversation on first message
     if (messages.length === 0) {
       const conversationId = Date.now().toString();
-      const conversation: Conversation = {
+      const conversation: ConversationDetail = {
         id: conversationId,
         agentId: selectedAgent,
         agentName: currentAgent?.name || '',
-        lastMessage: currentMessage,
-        timestamp: new Date(),
+        title: "",
+        created_at: new Date(),
+        updated_at: new Date(),
         messages: [],
         isPrivate: isPrivateMode
       };
       setCurrentConversation(conversation);
     }
-
+    
     // Create attachments array with File objects for proper handling
-    const messageAttachments = attachments.map(file => ({
+    const messageAttachments: FileAttachment[] = attachments.map(file => ({
       file: file,
-      url: isImageFile(file) ? getImageUrl(file) : null,
+      url: isImageFile(file) ? getImageUrl(file) : '',
       name: file.name,
       type: file.type
     }));
-
-    const newMessage: Message = {
+    
+    const newMessage: MessageOut = {
       id: Date.now().toString(),
       content: currentMessage,
       sender: 'user',
-      timestamp: new Date(),
       type: attachments.length > 0 ? 'file' : 'text',
-      attachments: messageAttachments
+      created_at: new Date(),
+      updated_at: new Date(),
+      attachments: messageAttachments as any // Temporary cast for mixed attachment types
     };
-
+    
     // Add message with smooth animation
     setTimeout(() => {
       setMessages(prev => [...prev, newMessage]);
       setCurrentMessage('');
       setAttachments([]);
       setIsSendingMessage(false);
-    }, 100);
-
+    }, 200);
+    
     // Start enhanced thinking animation
     const thinking = [
       "Analyzing the user's query and determining the best approach...",
@@ -170,7 +174,7 @@ export function ChatInterface() {
       // "Formulating a comprehensive and helpful response...",
       // "Preparing the final response based on analysis..."
     ];
-
+    
     setThinkingState({
       messageId: (Date.now() + 1).toString(),
       thoughts: thinking,
@@ -256,23 +260,46 @@ export function ChatInterface() {
     }
   };
   
-  // Check if file is image
+  // Check if file is image - now handles AttachmentOut, Attachment, File, and string types
   const isImageFile = (file: File | any): boolean => {
+    // Handle AttachmentOut from API
+    if (file?.mime) {
+      return file.mime.startsWith('image/');
+    }
+    // Handle File objects and Attachment objects
     if (file?.type) {
       return file.type.startsWith('image/');
     }
+    // Handle URL-based attachments
     if (file?.url) {
       return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(file.url);
     }
+    // Handle string attachments
     if (typeof file === 'string') {
       return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(file);
     }
     return false;
   };
   
-  // Get image URL from file
-  const getImageUrl = (file: File): string => {
-    return URL.createObjectURL(file);
+  // Get image URL from file - handles multiple attachment types
+  const getImageUrl = (file: File | any): string => {
+    // Handle AttachmentOut with base64 data
+    if (file?.data && file?.mime) {
+      return `data:${file.mime};base64,${file.data}`;
+    }
+    // Handle Attachment objects with URL
+    if (file?.url) {
+      return file.url;
+    }
+    // Handle File objects
+    if (file instanceof File) {
+      return URL.createObjectURL(file);
+    }
+    // Handle string URLs
+    if (typeof file === 'string') {
+      return file;
+    }
+    return '';
   };
   
   // Handle image click for full preview
@@ -331,7 +358,7 @@ export function ChatInterface() {
   };
   
   // Handle conversation selection from sidebar with smooth loading
-  const handleConversationSelect = async (conversation: Conversation) => {
+  const handleConversationSelect = async (conversation: ConversationSummary) => {
     if (!userId || loadingConversation) return;
     
     setLoadingConversation(true);
@@ -368,7 +395,14 @@ export function ChatInterface() {
         // Fallback to basic conversation data on error
         setMessages([]);
         setSelectedAgent(conversation.agentId);
-        setCurrentConversation(conversation);
+        // Create minimal ConversationDetail from ConversationSummary
+        const fallbackDetail: ConversationDetail = {
+          ...conversation,
+          created_at: new Date(conversation.created_at),
+          updated_at: new Date(conversation.updated_at),
+          messages: []
+        };
+        setCurrentConversation(fallbackDetail);
         setIsPrivateMode(conversation.isPrivate || false);
         setIsClearing(false);
       } finally {
@@ -550,18 +584,30 @@ export function ChatInterface() {
                           <div className="flex flex-wrap gap-2">
                             {message.attachments.map((attachment, index) => {
                               const isImage = isImageFile(attachment);
-                              // For string attachments (legacy), use the string directly
-                              // For object attachments, use the URL or fallback to creating a new blob URL from the file
+                              // Handle different attachment types
                               let imageUrl: string;
                               let fileName: string;
                               
                               if (typeof attachment === 'string') {
+                                // Legacy string attachment
                                 imageUrl = attachment;
                                 fileName = attachment;
-                              } else {
-                                // Always use the stored URL or create a fresh one
-                                imageUrl = attachment.url || URL.createObjectURL(attachment.file);
+                              } else if ('data' in attachment && attachment.data) {
+                                // AttachmentOut with base64 data (from API)
+                                imageUrl = `data:${attachment.mime};base64,${attachment.data}`;
                                 fileName = attachment.name;
+                              } else if ('url' in attachment && (attachment as any).url) {
+                                // Attachment with URL (from file upload)
+                                imageUrl = (attachment as any).url;
+                                fileName = (attachment as any).name;
+                              } else if ('file' in attachment && (attachment as any).file) {
+                                // Attachment with File object (from file upload)
+                                imageUrl = URL.createObjectURL((attachment as any).file);
+                                fileName = (attachment as any).name;
+                              } else {
+                                // AttachmentOut without base64 data (non-image)
+                                imageUrl = '';
+                                fileName = 'name' in attachment ? attachment.name : 'Unknown file';
                               }
                               
                               return (
@@ -636,7 +682,7 @@ export function ChatInterface() {
                           <div className="space-y-3">
                             <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
                             <div className="text-xs opacity-70 flex items-center gap-2">
-                              <span>{message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              <span>{message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                               {message.sender === 'agent' && (
                                 <span className="flex items-center gap-1">
                                   • <AgentIcon size={10} /> {currentAgent?.name}
@@ -705,6 +751,7 @@ export function ChatInterface() {
               Mic={Mic}
               Button={Button}
               Send={Send}
+              X={X}
               toast={toast}
               currentAgent={currentAgent}
               Textarea={Textarea}
@@ -740,6 +787,7 @@ export function ChatInterface() {
               Mic={Mic}
               Button={Button}
               Send={Send}
+              X={X}
               toast={toast}
               currentAgent={currentAgent}
               Textarea={Textarea}

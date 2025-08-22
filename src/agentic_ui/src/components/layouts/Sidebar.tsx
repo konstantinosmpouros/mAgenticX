@@ -6,16 +6,16 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/utils/tooltip";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/utils/sheet";
 import { ChevronRightIcon, MessageSquare, X, Building2 } from "lucide-react";
-import type { Conversation, Agent } from "@/lib/types";
+import type { Agent, ConversationSummary } from "@/lib/types";
 
 type SidebarProps = {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     
     // Conversations
-    conversations: Conversation[];
+    conversations: ConversationSummary[];
     currentConversationId: string | null;
-    onSelectConversation: (c: Conversation) => void;
+    onSelectConversation: (c: ConversationSummary) => void;
     onDeleteConversation: (id: string, e: React.MouseEvent) => void;
     
     // Title click handler
@@ -105,7 +105,7 @@ export default function Sidebar({
                                                     <div className="flex-1 min-w-0">
                                                         <div className="font-medium text-sm mb-1">{conv.agentName}</div>
                                                         <div className="text-xs text-muted-foreground truncate">{conv.lastMessage}</div>
-                                                        <div className="text-xs text-muted-foreground/70 mt-1">{conv.timestamp.toLocaleDateString()}</div>
+                                                        <div className="text-xs text-muted-foreground/70 mt-1">{new Date(conv.updated_at).toLocaleDateString()}</div>
                                                     </div>
                                                 </div>
                                             </Card>

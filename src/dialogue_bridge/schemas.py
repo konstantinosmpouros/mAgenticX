@@ -45,23 +45,8 @@ class AgentPublic(BaseModel):
 
 
 #-------------------------------------------
-# CONVERSATION SCHEMAS
+# CONVERSATION EXPORT SCHEMAS
 #-------------------------------------------
-class MessageCreate(BaseModel):
-    """Schema to create a message with the least info available"""
-    content: Optional[str] = None
-    sender: str = "user"        # 'user' | 'agent' | 'ai' | 'assistant'
-    type: str = "text"          # 'text' | 'file' | 'image' | 'audio' | 'tool'
-
-
-class ConversationCreate(BaseModel):
-    agentId: str = Field(..., validation_alias="agent_id")
-    agentName: Optional[str] = Field(None, validation_alias="agent_name")
-    title: Optional[str] = Field(None, validation_alias="title")
-    isPrivate: bool = Field(False, validation_alias="is_private")
-    initialMessage: Optional[MessageCreate] = None
-
-
 class ConversationSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     
@@ -78,6 +63,7 @@ class ConversationSummary(BaseModel):
 class BlobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     data: bytes  # Pydantic v2 will base64 this if ever serialized, but we won't expose it directly.
+
 
 class AttachmentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -109,7 +95,8 @@ class MessageOut(BaseModel):
     content: Optional[str] = None
     sender: str
     type: str
-    timestamp: datetime = Field(..., validation_alias="created_at")
+    created_at: datetime = Field(..., validation_alias="created_at")
+    updated_at: datetime = Field(..., validation_alias="updated_at")
     attachments: List[AttachmentOut] = Field(default_factory=list)
     thinking: Optional[List[str]] = Field(None, validation_alias="reasoning_steps")
     thinkingTime: Optional[int] = Field(None, validation_alias="reasoning_time_seconds")
@@ -131,4 +118,20 @@ class ConversationDetail(BaseModel):
 
 
 
+#-------------------------------------------
+# CONVERSATION CREATE SCHEMAS
+#-------------------------------------------
+class MessageCreate(BaseModel):
+    """Schema to create a message with the least info available"""
+    content: Optional[str] = None
+    sender: str = "user"        # 'user' | 'agent' | 'ai' | 'assistant'
+    type: str = "text"          # 'text' | 'file' | 'image' | 'audio' | 'tool'
+
+
+class ConversationCreate(BaseModel):
+    agentId: str = Field(..., validation_alias="agent_id")
+    agentName: Optional[str] = Field(None, validation_alias="agent_name")
+    title: Optional[str] = Field(None, validation_alias="title")
+    isPrivate: bool = Field(False, validation_alias="is_private")
+    initialMessage: Optional[MessageCreate] = None
 

@@ -7,11 +7,12 @@
 ## Agentic UI
 
 - Implement the API call for the agentic inference
-- Check if the UI support actual image data from the getConversation API
+- UI doesn't support actual image data from the getConversation API. Must be decoded from base64 to file objects
+- Remove the useless schemas Conversation, Message etc.
 - Fix the light mode colors
 - Enhance the profile panel with actual user info
 - Make better the thinking container
-- The agent response container must support md format
+- The agent + user message containers must support md format
 - Create a download button for files and images in the current conversation
 - Agent icons doesn't appear when we shrink a lot the page
 - Check what to do with the audio input
@@ -23,4 +24,6 @@
 
 ## Dialogue Bridge
 
-- Make a new inference api
+- Create the api in order to create/add conversation, messages and attachments in the db without the inference. The inference will be added later.
+- UI supports image blobs but the api doesnt provide them in the right format.
+- Create API to download blob from the UI download button

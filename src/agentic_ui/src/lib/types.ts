@@ -70,7 +70,8 @@ export type MessageOut = {
     content?: string;
     sender: string;
     type: string;
-    timestamp: Date;
+    created_at: Date;
+    updated_at: Date;
     attachments: AttachmentOut[];
     thinking?: string[];
     thinkingTime?: number;
@@ -85,44 +86,8 @@ export type AttachmentOut = {
     mime: string;
     size?: number;
     timestamp: Date;
-};
-
-
-
-// ------------------------------------------------------
-// Conversation Schemas from UI
-// ------------------------------------------------------
-// Conversation type used in the application
-export type Conversation = {
-    id: string;
-    agentId: string;
-    agentName: string;
-    lastMessage: string;
-    timestamp: Date;
-    messages: Message[];
-    isPrivate?: boolean;
-};
-
-// Message type used in the application
-export type Message = {
-    id: string;
-    content: string;
-    sender: "user" | "agent";
-    timestamp: Date;
-    type: "text" | "image" | "file";
-    attachments?: (Attachment | string)[];
-    thinking?: string[];
-    thinkingTime?: number;
-    error?: boolean;
-    errorMessage?: string;
-};
-
-// Attachment type for messages
-export type Attachment = {
-    file: File;
-    url: string | null;
-    name: string;
-    type: string;
+    blobId: string;
+    data?: string; // Base64 encoded image data for images
 };
 
 
@@ -130,6 +95,17 @@ export type Attachment = {
 // ------------------------------------------------------
 // Other Schemas from UI
 // ------------------------------------------------------
+// File upload attachment type for UI
+export type FileAttachment = {
+    file: File;
+    url: string;
+    name: string;
+    type: string;
+};
+
+// Union type for handling both API and upload attachments
+export type Attachment = AttachmentOut | FileAttachment;
+
 // Thinking state type used in the application
 export type ThinkingState = {
     messageId: string;
