@@ -18,7 +18,6 @@ An intelligent AI agent interaction platform built with modern web technologies.
 - **UI Components**: shadcn/ui with Radix UI primitives
 - **Styling**: Tailwind CSS with custom design system
 - **State Management**: React hooks and context
-- **Backend**: Supabase for data persistence and file storage
 - **Icons**: Lucide React for beautiful, consistent icons
 
 ## 📦 Setup & Installation
@@ -70,12 +69,12 @@ This platform serves as a demonstration of advanced AI agent interactions, showc
 ```
 src/
 ├── components/
-│   ├── ui/           # Reusable UI components (shadcn/ui)
+│   ├── utils/           # Reusable UI components
+|   |── layouts/         # The main parts of the chat interface
 │   └── ChatInterface.tsx  # Main chat interface
 ├── hooks/           # Custom React hooks
 ├── lib/             # Utility functions
-├── pages/           # Application pages
-└── styles/          # Global styles and design tokens
+└── pages/           # Application pages
 ```
 
 ### Design System
@@ -84,38 +83,6 @@ The application uses a comprehensive design system with:
 - Custom animations and transitions
 - Responsive design patterns
 - Dark/light mode support
-
-## 🚀 Deployment
-
-### Using Lovable (Recommended)
-1. Visit your [Lovable Project](https://lovable.dev/projects/cc13b702-4d4d-45cc-9fb2-2f04d264794d)
-2. Click on "Share" → "Publish"
-3. Your app will be deployed automatically
-
-### Manual Deployment
-You can deploy this application to any static hosting service:
-- Vercel
-- Netlify
-- GitHub Pages
-- AWS S3 + CloudFront
-
-## 🔗 Links
-
-- **Live Application**: [Lovable Project](https://lovable.dev/projects/cc13b702-4d4d-45cc-9fb2-2f04d264794d)
-- **Documentation**: [Lovable Docs](https://docs.lovable.dev/)
-- **Community**: [Discord](https://discord.com/channels/1119885301872070706/1280461670979993613)
-
-## 📝 License
-
-This project is built with Lovable and follows their terms of service.
-
-## 🤝 Contributing
-
-This project is primarily developed through the Lovable platform. To contribute:
-
-1. Use the Lovable editor for changes
-2. Or clone locally and push changes to sync with Lovable
-3. All changes made via Lovable are automatically committed
 
 ## 💡 Future Enhancements
 

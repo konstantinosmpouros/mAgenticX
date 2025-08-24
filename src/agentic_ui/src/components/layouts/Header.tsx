@@ -31,7 +31,7 @@ export default function Header({
     onOpenUserProfile,
 }: HeaderProps) {
     return (
-        <div className="border-b border-gradient[pink] bg-[rgba(17,22,40,0.7)] backdrop-blur-lg p-3 md:p-6 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-primary/40 after:to-transparent">
+        <div className="border-b border-gradient[pink] bg-gradient-to-r from-white/80 to-gray-50/80 dark:from-[rgba(17,22,40,0.7)] dark:to-[rgba(17,22,40,0.7)] backdrop-blur-lg p-3 md:p-6 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-primary/40 after:to-transparent">
             <div className="flex items-center justify-between max-w-6xl mx-auto">
                 {/* Agent select + New chat */}
                 <div className="flex items-center gap-1.5 md:gap-3">

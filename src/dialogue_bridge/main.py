@@ -5,7 +5,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload, load_only
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
@@ -19,13 +19,19 @@ from database import (
     AttachmentTable,
 )
 from schemas import (
-    ConversationDetail, ConversationSummary,
-    ConversationCreate,
-    MessageCreate, MessageOut,
+    ConversationDetail, ConversationSummary, 
+    MessageOut, AttachmentOut,
+    ConversationIn, MessageIn, AttachmentIn,
     AuthRequest, AuthResponse,
     AgentPublic,
 )
-from utils import authenticate_id
+from utils import (
+    validate_userId,
+    validate_convId,
+    validate_convId_full,
+    validate_agentId,
+    init_conv,
+)
 
 
 @asynccontextmanager
@@ -86,131 +92,46 @@ async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
 
 
 #-----------------------------------------------------------------------------------
-# CONVERSATION APIS
+# CREATE CONVERSATION APIS
 #-----------------------------------------------------------------------------------
 @app.post(
     "/users/{user_id}/conversations",
     response_model=ConversationDetail,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_201_CREATED
 )
-async def createConversation(
+async def create_conversation(
     user_id: str,
-    payload: ConversationCreate,
-    current_user: UserTable = Depends(authenticate_id),
-    db: AsyncSession = Depends(get_db),
-):
-    # Validate agent exists
-    agent_query = await db.execute(
-        select(AgentTable).where(AgentTable.id == payload.agentId, AgentTable.is_active == True)
-    )
-    agent = agent_query.scalar_one_or_none()
-    if agent is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
+    payload: ConversationIn,
+    current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db)
+) -> ConversationDetail:
+    """
+    Create a new conversation for the user and persist the very first message
+    (with optional attachments). Returns the full conversation detail.
+    """
+    # Validate agent
+    agent = await validate_agentId(db, payload.agentId)
     
-    conv = ConversationTable(
-        user_id=user_id,
-        agent_id=payload.agentId,      # alias from agentId
-        agent_name=payload.agentName,  # alias from agentName
-        title=payload.title,
-        is_private=payload.isPrivate,
-    )
-    db.add(conv)
-    await db.flush() 
-    
-    # Optional initial message
-    if payload.initialMessage:
-        m = payload.initialMessage
-        msg = MessageTable(
-            conversation_id=conv.id,
-            sender=m.sender,
-            type=m.type,
-            content=m.content,
+    # Create conversation + first message atomically
+    async with db.begin():
+        conv = await init_conv(
+            db=db,
+            user=current_user,
+            agent=agent,
+            is_private=payload.isPrivate,
+            title=payload.title,
+            first_message=payload.firstMessage,
         )
-        db.add(msg)
-        # update conversation summary fields
-        preview = (m.content or "").strip()
-        conv.last_message_preview = preview[:200] if preview else None
-        # use python time so updated model reflects right away
-        now = datetime.now()
-        conv.last_message_at = now
-        conv.updated_at = now
     
-    await db.commit()
-    
-    # Reload with messages & attachments
-    result = await db.execute(
-        select(ConversationTable)
-        .options(
-            selectinload(ConversationTable.messages)
-            .selectinload(MessageTable.attachments)
-        )
-        .where(ConversationTable.user_id == user_id, ConversationTable.id == conv.id)
-    )
-    conv_loaded = result.scalar_one()
-    
-    conv_out = ConversationDetail.model_validate(conv_loaded)
-    # inject attachment URLs
-    # for msg in conv_out.messages:
-    #     for att in msg.attachments:
-    #         if att.url is None:
-    #             att.url = f"{ATTACHMENTS_BASE_URL}/{att.id}"
-    return conv_out
+    # Reload with nested attachments->blob so images get base64 injected by AttachmentOut
+    conv_full = await validate_convId_full(user_id, conv.id)
+    return ConversationDetail.model_validate(conv_full)
 
 
-@app.post(
-    "/users/{user_id}/conversations/{conversation_id}",
-    response_model=MessageOut,
-    status_code=status.HTTP_201_CREATED,
-)
-async def addMessage(
-    user_id: str,
-    conversation_id: str,
-    payload: MessageCreate,
-    current_user: UserTable = Depends(authenticate_id),
-    db: AsyncSession = Depends(get_db),
-):
-    if current_user.id != user_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
 
-    # Validate conversation belongs to user
-    conv_q = await db.execute(
-        select(ConversationTable).where(
-            ConversationTable.user_id == user_id,
-            ConversationTable.id == conversation_id,
-        )
-    )
-    conv = conv_q.scalar_one_or_none()
-    if conv is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
-    
-    msg = MessageTable(
-        conversation_id=conversation_id,
-        sender=payload.sender,
-        type=payload.type,
-        content=payload.content,
-    )
-    db.add(msg)
-    
-    # update conversation summary
-    preview = (payload.content or "").strip()
-    now = datetime.now()
-    conv.last_message_preview = preview[:200] if preview else conv.last_message_preview
-    conv.last_message_at = now
-    conv.updated_at = now
-    
-    await db.commit()
-    
-    result = await db.execute(
-        select(MessageTable)
-        .options(selectinload(MessageTable.attachments))
-        .where(MessageTable.id == msg.id)
-    )
-    msg_loaded = result.scalar_one()
-    
-    # Build response (no attachments in this simple insert)
-    return MessageOut.model_validate(msg_loaded)
-
-
+#-----------------------------------------------------------------------------------
+# READ CONVERSATION APIS
+#-----------------------------------------------------------------------------------
 @app.get(
     "/users/{user_id}/conversations",
     response_model=List[ConversationSummary],
@@ -218,7 +139,7 @@ async def addMessage(
 )
 async def getConvsSummary(
     user_id: str,
-    current_user: UserTable = Depends(authenticate_id),
+    current_user: UserTable = Depends(validate_userId),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -243,30 +164,27 @@ async def getConvsSummary(
 async def getConvDetails(
     user_id: str,
     conversation_id: str,
-    current_user: UserTable = Depends(authenticate_id),
-    db: AsyncSession = Depends(get_db)
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId_full),
 ):
     """Fetch one conversation (messages included) by user + conversation id."""
-    result = await db.execute(
-        select(ConversationTable)
-        .options(
-            selectinload(ConversationTable.messages)
-            .selectinload(MessageTable.attachments)
-            .selectinload(AttachmentTable.blob)
-        )
-        .where(
-            ConversationTable.user_id == user_id,
-            ConversationTable.id == conversation_id,
-        )
-    )
-    conv = result.scalar_one_or_none()
-    if conv is None:
-        raise HTTPException(404, "Conversation not found")
-    
-    conv_out = ConversationDetail.model_validate(conv)
-    return conv_out
+    return ConversationDetail.model_validate(current_conv)
 
 
+# TODO: PLACE HERE THE API TO EXPORT A BLOB
+
+
+
+#-----------------------------------------------------------------------------------
+# UPDATE CONVERSATION APIS
+#-----------------------------------------------------------------------------------
+# TODO: PLACE HERE THE APIS TO UPDATE A CONVERSATION
+
+
+
+#-----------------------------------------------------------------------------------
+# DELETE CONVERSATION APIS
+#-----------------------------------------------------------------------------------
 @app.delete(
     "/users/{user_id}/conversations/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT
@@ -274,21 +192,12 @@ async def getConvDetails(
 async def deleteConversation(
     user_id: str,
     conversation_id: str,
-    current_user: UserTable = Depends(authenticate_id),
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
     db: AsyncSession = Depends(get_db)
 ):
     """Delete a conversation entirely (cascades to messages & attachments rows)."""
-    result = await db.execute(
-        select(ConversationTable).where(
-            ConversationTable.user_id == user_id,
-            ConversationTable.id == conversation_id,
-        )
-    )
-    conv = result.scalar_one_or_none()
-    if conv is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
-    
-    await db.delete(conv)
+    await db.delete(current_conv)
     await db.commit()
     
     return

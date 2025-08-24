@@ -21,32 +21,46 @@ import { InputContainer } from "@/components/layouts/InputContainer";
 
 
 export function ChatInterface() {
-  const [messages, setMessages] = useState<MessageOut[]>([]);
+  // Main state variables
+  const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState<string>('');
+  const [messages, setMessages] = useState<MessageOut[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string>('');
+  const [isPrivateMode, setIsPrivateMode] = useState(false);
+  
+  // Main variables use for storing info from the db and present it constantly
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  
+  // Thinking variables (will be changed)
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
-  const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isPrivateMode, setIsPrivateMode] = useState(false);
-  const [showUserProfile, setShowUserProfile] = useState(false);
-  const [activeProfileTab, setActiveProfileTab] = useState('profile');
+  
+  // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [loadingConversation, setLoadingConversation] = useState(false);
+  
+  // Boolean variables for navigation
   const [isClearing, setIsClearing] = useState(false);
   const [isAgentSwitching, setIsAgentSwitching] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  
+  // UI components
+  const [activeProfileTab, setActiveProfileTab] = useState('profile');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  
+  // Image preview
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  
   
   // Ensure a default selected agent after agents are loaded
   useEffect(() => {
@@ -91,7 +105,7 @@ export function ChatInterface() {
             const agentResponse: MessageOut = {
               id: prev.messageId,
               content: `Hello! I'm your ${agents.find(a => a.id === selectedAgent)?.name}. I'm here to assist you with specialized knowledge and support. How can I help you today?`,
-              sender: 'agent',
+              sender: 'ai',
               type: 'text',
               thinking: prev.thoughts.concat('Done!'),
               thinkingTime: totalTime,
@@ -482,6 +496,10 @@ export function ChatInterface() {
             setConversations([]);
           }
         }, 600);
+        
+        setLoginUsername('')
+        setLoginPassword('')
+        
       } else {
         toast({
           title: "Authentication failed",
@@ -644,7 +662,7 @@ export function ChatInterface() {
                     {message.content && (
                       <div className={`space-y-2 md:space-y-3 ${message.sender === 'user' ? 'flex justify-end' : ''}`}>
                         {/* Show thinking process container */}
-                        {message.thinking && message.sender === 'agent' && (
+                        {message.thinking && message.sender === 'ai' && (
                           <div className="
                             flex items-center gap-2 text-xs md:text-sm font-medium 
                             text-muted-foreground hover:text-foreground 
@@ -663,7 +681,7 @@ export function ChatInterface() {
                         )}
                         
                         {/* If click, show expandable thinking content */}
-                        {message.thinking && message.sender === 'agent' && expandedThinking[message.id] && (
+                        {message.thinking && message.sender === 'ai' && expandedThinking[message.id] && (
                           <div className="border border-border/50 rounded-lg p-2 md:p-3 bg-muted/20 space-y-2 max-w-[85%] md:max-w-[85%] w-full">
                             {message.thinking.map((thought, thinkIndex) => (
                               <div key={thinkIndex} className="text-xs text-muted-foreground/80">
@@ -683,7 +701,7 @@ export function ChatInterface() {
                             <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
                             <div className="text-xs opacity-70 flex items-center gap-2">
                               <span>{message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                              {message.sender === 'agent' && (
+                              {message.sender === 'ai' && (
                                 <span className="flex items-center gap-1">
                                   • <AgentIcon size={10} /> {currentAgent?.name}
                                 </span>
@@ -802,7 +820,6 @@ export function ChatInterface() {
             activeTab={activeProfileTab}
             setActiveTab={setActiveProfileTab}
             onLogout={() => {
-              // exactly the same logic you already had
               setShowUserProfile(false);
               setTimeout(() => {
                 setIsLoggedIn(false);

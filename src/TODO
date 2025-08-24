@@ -3,12 +3,13 @@
 ## General
 
 - Document everywhere (/docs)
+- Create flow diagrams so a viewer of the repo can understand fast what is happening
 
 ## Agentic UI
 
 - Implement the API call for the agentic inference
-- UI doesn't support actual image data from the getConversation API. Must be decoded from base64 to file objects
-- Remove the useless schemas Conversation, Message etc.
+- UI might support actual image data from the getConversationDetail API. Check it out
+
 - Fix the light mode colors
 - Enhance the profile panel with actual user info
 - Make better the thinking container
@@ -24,6 +25,7 @@
 
 ## Dialogue Bridge
 
-- Create the api in order to create/add conversation, messages and attachments in the db without the inference. The inference will be added later.
-- UI supports image blobs but the api doesnt provide them in the right format.
+- Create the apis in order to create/add conversation, messages and attachments in the db without the inference. The inference will be added later
+- Implement a small api call in the create conversation to initialize a title in the start of the conversation like openai
+- UI supports image blobs but the api doesn't provide them in the right format
 - Create API to download blob from the UI download button

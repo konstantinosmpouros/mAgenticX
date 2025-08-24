@@ -158,8 +158,33 @@ All colors MUST be HSL.
   }
 }
 
-/* Morphing gradient animation - directly animates background */
-@keyframes gradient-morph {
+/* Morphing gradient animation - light theme */
+@keyframes gradient-morph-light {
+  0% { 
+    background: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 95.9%) 50%, hsl(216, 50%, 92%) 100%);
+  }
+  16% { 
+    background: linear-gradient(135deg, hsl(260, 15%, 98%) 0%, hsl(280, 20%, 95%) 50%, hsl(293, 60%, 92%) 100%);
+  }
+  32% { 
+    background: linear-gradient(135deg, hsl(220, 25%, 98%) 0%, hsl(240, 30%, 95%) 50%, hsl(260, 40%, 92%) 100%);
+  }
+  48% { 
+    background: linear-gradient(135deg, hsl(200, 35%, 98%) 0%, hsl(220, 40%, 95%) 50%, hsl(240, 50%, 92%) 100%);
+  }
+  64% { 
+    background: linear-gradient(135deg, hsl(180, 45%, 98%) 0%, hsl(200, 50%, 95%) 50%, hsl(220, 60%, 92%) 100%);
+  }
+  80% { 
+    background: linear-gradient(135deg, hsl(160, 35%, 98%) 0%, hsl(180, 40%, 95%) 50%, hsl(200, 50%, 92%) 100%);
+  }
+  100% { 
+    background: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 95.9%) 50%, hsl(216, 50%, 92%) 100%);
+  }
+}
+
+/* Morphing gradient animation - dark theme */
+@keyframes gradient-morph-dark {
   0% { 
     background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
   }
@@ -240,10 +265,15 @@ All colors MUST be HSL.
   }
 }
 
-/* Apply morphing animation to background */
+/* Apply morphing animation to background - theme aware */
 .bg-gradient-morph {
+  background: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 95.9%) 50%, hsl(216, 50%, 92%) 100%);
+  animation: gradient-morph-light 45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.dark .bg-gradient-morph {
   background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
-  animation: gradient-morph 45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: gradient-morph-dark 45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* Smooth state transition utilities */

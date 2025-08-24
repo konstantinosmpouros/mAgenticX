@@ -1,17 +1,30 @@
+from datetime import datetime
+import base64
+from typing import Optional, List
+
 from sqlalchemy import select
-# from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from fastapi import Depends, HTTPException
 
-from database import get_db, UserTable, ConversationTable
-# from schemas import Conversation
-from typing import List, Dict
+from database import (
+    get_db,
+    AgentTable,
+    UserTable,
+    ConversationTable,
+    MessageTable,
+    AttachmentTable,
+    BlobTable
+)
 
-import json
-import httpx
+from schemas import (
+    MessageIn,
+    AttachmentIn
+)
 
 
-async def authenticate_id(user_id: str, db: AsyncSession = Depends(get_db)) -> UserTable:
+async def validate_userId(user_id: str, db: AsyncSession = Depends(get_db)) -> UserTable:
     """Generic authenticator by user id"""
     result = await db.execute(
         select(UserTable).filter_by(id=user_id)
@@ -23,47 +36,141 @@ async def authenticate_id(user_id: str, db: AsyncSession = Depends(get_db)) -> U
     return user
 
 
-# async def upsert_conversation(payload: Conversation, db: AsyncSession) -> ConversationTable:
-#     """Create or update the ConversationTable row, then return it."""
-#     try:
-#         # Assign a random ID if none provided
-#         if payload.conversation_id is None:
-#             payload.conversation_id = uuid.uuid4().hex
-        
-#         # Look for an existing conversation record
-#         result = await db.execute(
-#             select(ConversationTable).filter_by(
-#                 user_id=payload.user_id,
-#                 conversation_id=payload.conversation_id,
-#             )
-#         )
-        
-#         # If found, update it, if not, create a new one
-#         convo = result.scalar_one_or_none()
-#         if convo is None:
-#             convo = ConversationTable(
-#                 user_id=payload.user_id,
-#                 conversation_id=payload.conversation_id,
-#                 title=payload.title,
-#                 messages=payload.messages,
-#                 agents=payload.agents,
-#             )
-#             db.add(convo)
-#         else:
-#             convo.messages = payload.messages
-#             convo.agents = convo.agents + payload.agents
-#             if payload.title and payload.title != convo.title:
-#                 convo.title = payload.title
-        
-#         # Persist changes
-#         await db.commit()
-#         await db.refresh(convo)
-#         return convo
-    
-#     except IntegrityError as e:
-#         if "conversations_user_id_fkey" in str(e.orig):
-#             raise HTTPException(400, "Cannot create conversation for non-existent user")
-#         raise  # re-raise any other DB error
+async def validate_convId(user_id: str, conversation_id: str, db: AsyncSession = Depends(get_db)) -> ConversationTable:
+    q = select(ConversationTable).where(
+        ConversationTable.id == conversation_id,
+        ConversationTable.user_id == user_id,
+    )
+    res = await db.execute(q)
+    conv = res.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return conv
+
+
+async def validate_convId_full(user_id: str, conversation_id: str, db: AsyncSession = Depends(get_db)) -> ConversationTable:
+    q = (
+        select(ConversationTable)
+        .options(
+            selectinload(ConversationTable.messages)
+            .selectinload(MessageTable.attachments)
+            .selectinload(AttachmentTable.blob)
+        )
+        .where(
+            ConversationTable.id == conversation_id,
+            ConversationTable.user_id == user_id,
+        )
+    )
+    res = await db.execute(q)
+    conv = res.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return conv
+
+
+async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
+    q = select(AgentTable).where(
+        AgentTable.id == agent_id,
+        AgentTable.is_active == True
+    )
+    res = await db.execute(q)
+    agent = res.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=400, detail="Unknown or inactive agent.")
+    return agent
+
+
+async def init_conv(db: AsyncSession, user: UserTable, agent: AgentTable, is_private: bool, title: Optional[str], first_message: MessageIn) -> ConversationTable:
+    # Create conversation shell
+    conv = ConversationTable(
+        user_id=user.id,
+        agent_id=agent.id,
+        agent_name=agent.name,
+        is_private=is_private,
+        title=title,
+        last_message_preview=_preview(first_message.content) or (
+            first_message.attachments[0].name if first_message.attachments else None
+        ),
+    )
+    db.add(conv)
+    await db.flush()  # assign conv.id
+
+    # Persist first message
+    await init_message(db, conv, first_message)
+
+    return conv
+
+
+async def init_message(db: AsyncSession, conv: ConversationTable, payload: MessageIn) -> MessageTable:
+    # Build row
+    msg = MessageTable(
+        conversation_id=conv.id,
+        sender=payload.sender,
+        type=payload.type,
+        content=payload.content,
+        reasoning_steps=payload.thinking,
+        reasoning_time_seconds=payload.thinkingTime,
+        is_error=bool(payload.error) if payload.error is not None else False,
+        error_message=payload.errorMessage,
+    )
+    db.add(msg)
+    await db.flush()  # assign msg.id
+
+    # Persist attachments (if any)
+    if payload.attachments:
+        await init_attachments(db, msg.id, payload.attachments)
+
+    return msg
+
+
+async def init_attachments(db: AsyncSession, message_id: str, items: List[AttachmentIn]) -> None:
+    for item in items:
+        try:
+            raw = base64.b64decode(item.dataB64, validate=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Attachment '{item.name}' is not valid base64.")
+        blob = BlobTable(data=raw)
+        attach = AttachmentTable(
+            message_id=message_id,
+            file_name=item.name,
+            mime_type=item.mime,
+            size_bytes=item.size if item.size is not None else len(raw),
+            blob=blob,
+        )
+        db.add(attach)
+
+
+async def reload_conv_detail(db: AsyncSession, conversation_id: str, user_id: str) -> ConversationTable:
+    q = (
+        select(ConversationTable)
+        .options(
+            selectinload(ConversationTable.messages)
+            .selectinload(MessageTable.attachments)
+            .selectinload(AttachmentTable.blob)
+        )
+        .where(
+            ConversationTable.id == conversation_id,
+            ConversationTable.user_id == user_id,
+        )
+    )
+    res = await db.execute(q)
+    conv = res.scalar_one()
+    return conv
+
+
+def _preview(text: Optional[str]) -> Optional[str]:
+    MAX_PREVIEW_LEN = 50
+    if not text:
+        return None
+    s = text.strip().replace("\r", " ").replace("\n", " ")
+    return s[:MAX_PREVIEW_LEN]
+
+
+
+
+
+
+
 
 
 # async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):

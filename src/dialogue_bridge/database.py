@@ -30,9 +30,9 @@ def gen_uuid() -> str: return str(uuid4())
 
 def hash_password(pw: str) -> str: return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
-# def b64_encode(b: bytes) -> str: base64.b64encode(b).decode("ascii")
+def b64_encode(b: bytes) -> str: return base64.b64encode(b).decode("ascii")
 
-# def b64_decode(s: str) -> bytes: base64.b64decode(s, validate=True)
+def b64_decode(s: str) -> bytes: return base64.b64decode(s, validate=True)
 
 
 
@@ -129,8 +129,8 @@ class ConversationTable(Base):
     is_private = Column(Boolean, nullable=False, server_default="false")
     
     # for fast conversation list rendering
-    last_message_preview = Column(String, nullable=True)
-    last_message_at = Column(DateTime, nullable=True)
+    last_message_preview = Column(String, server_default="", nullable=False)
+    last_message_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -145,7 +145,7 @@ class ConversationTable(Base):
         order_by="MessageTable.created_at.asc()",
     )
 
-MessageSenderEnum = Enum("user", "agent", "ai", "assistant", name="message_sender_enum")
+MessageSenderEnum = Enum("user", "ai", name="message_sender_enum")
 MessageTypeEnum = Enum("text", "file", "image", "audio", "tool", name="message_type_enum")
 
 class MessageTable(Base):
@@ -297,7 +297,7 @@ async def seed_demo_data(session: AsyncSession) -> None:
         UPDATE conversations SET last_message_preview = LEFT('What is the meaning of life according to the Bible?', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c1';
         
         INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
-        VALUES ('m2', 'c1', 'agent', 'text', 'The Bible suggests that the meaning of life is to glorify God and enjoy Him forever.', NOW(), NOW())
+        VALUES ('m2', 'c1', 'ai', 'text', 'The Bible suggests that the meaning of life is to glorify God and enjoy Him forever.', NOW(), NOW())
         ON CONFLICT (id) DO NOTHING;
         
         UPDATE conversations SET last_message_preview = LEFT('The Bible suggests that the meaning of life is to glorify God and enjoy Him forever.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c1';
@@ -317,7 +317,7 @@ async def seed_demo_data(session: AsyncSession) -> None:
         UPDATE conversations SET last_message_preview = LEFT('How many vacation days do I get per year?', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c2';
         
         INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
-        VALUES ('m4', 'c2', 'agent', 'text', 'According to company policy, full-time employees receive 15 vacation days per year.', NOW(), NOW())
+        VALUES ('m4', 'c2', 'ai', 'text', 'According to company policy, full-time employees receive 15 vacation days per year.', NOW(), NOW())
         ON CONFLICT (id) DO NOTHING;
         
         UPDATE conversations SET last_message_preview = LEFT('According to company policy, full-time employees receive 15 vacation days per year.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c2';
@@ -333,7 +333,7 @@ async def seed_demo_data(session: AsyncSession) -> None:
         UPDATE conversations SET last_message_preview = LEFT('What products are on sale this week?', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
         
         INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
-        VALUES ('m6', 'c3', 'agent', 'text', 'Current sales include electronics and clothing items.', NOW(), NOW())
+        VALUES ('m6', 'c3', 'ai', 'text', 'Current sales include electronics and clothing items.', NOW(), NOW())
         ON CONFLICT (id) DO NOTHING;
         
         UPDATE conversations SET last_message_preview = LEFT('Current sales include electronics and clothing items.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
@@ -349,7 +349,7 @@ async def seed_demo_data(session: AsyncSession) -> None:
         ON CONFLICT (id) DO NOTHING;
         
         INSERT INTO messages (id, conversation_id, sender, type, content, created_at, updated_at)
-        VALUES ('m8', 'c3', 'agent', 'text', 'Yes, that product is available. Please see the attached PDF for detailed specifications.', NOW(), NOW())
+        VALUES ('m8', 'c3', 'ai', 'text', 'Yes, that product is available. Please see the attached PDF for detailed specifications.', NOW(), NOW())
         ON CONFLICT (id) DO NOTHING;
         
         UPDATE conversations SET last_message_preview = LEFT('Yes, that product is available. Please see the attached PDF for detailed specifications.', 200), last_message_at = NOW(), updated_at = NOW() WHERE id = 'c3';
