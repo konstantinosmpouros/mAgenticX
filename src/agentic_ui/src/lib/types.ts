@@ -93,6 +93,39 @@ export type AttachmentOut = {
 
 
 // ------------------------------------------------------
+// API Request Schemas (for creating conversations)
+// ------------------------------------------------------
+// Attachment input for API requests (base64 format)
+export type AttachmentIn = {
+    name: string;
+    mime: string;
+    dataB64: string;
+    size?: number;
+};
+
+// Message input for API requests
+export type MessageIn = {
+    sender: string;
+    type: string;
+    content?: string;
+    attachments?: AttachmentIn[];
+    thinking?: string[];
+    thinkingTime?: number;
+    error?: boolean;
+    errorMessage?: string;
+};
+
+// Conversation creation payload
+export type ConversationIn = {
+    agentId: string;
+    isPrivate: boolean;
+    title?: string;
+    firstMessage: MessageIn;
+};
+
+
+
+// ------------------------------------------------------
 // Other Schemas from UI
 // ------------------------------------------------------
 // File upload attachment type for UI

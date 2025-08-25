@@ -9,8 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 // import StarBorder from "@/components/utils/react_bits/star_border"
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, AttachmentOut } from "@/lib/types";
-import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate } from "@/lib/api";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, AttachmentOut, ConversationIn } from "@/lib/types";
+import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation, convertFileAttachments } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -135,57 +135,131 @@ export function ChatInterface() {
     if (!currentMessage.trim() && attachments.length === 0) return;
     if (isSendingMessage) return; // Prevent double-sending
     
-    setIsSendingMessage(true);
-    const currentAgent = agents.find(a => a.id === selectedAgent);
+    setIsSendingMessage(true); // Set sending flag to true
+    const currentAgent = agents.find(a => a.id === selectedAgent); // Get the current selected agent
     
-    // Only create conversation on first message
-    if (messages.length === 0) {
-      const conversationId = Date.now().toString();
-      const conversation: ConversationDetail = {
-        id: conversationId,
-        agentId: selectedAgent,
-        agentName: currentAgent?.name || '',
-        title: "",
+    try {
+      // If this is the first message, create conversation via API
+      if (messages.length === 0) {
+        // Create attachments array with File objects for proper handling
+        const messageAttachments: FileAttachment[] = attachments.map(file => ({
+          file: file,
+          url: isImageFile(file) ? getImageUrl(file) : '',
+          name: file.name,
+          type: file.type
+        }));
+
+        // Convert file attachments to base64 format for API
+        const apiAttachments = await convertFileAttachments(messageAttachments);
+        
+        // Create the conversation payload
+        const conversationPayload: ConversationIn = {
+          agentId: selectedAgent,
+          isPrivate: isPrivateMode,
+          title: undefined,
+          firstMessage: {
+            sender: 'user',
+            type: attachments.length > 0 ? 'file' : 'text',
+            content: currentMessage.trim() || undefined,
+            attachments: apiAttachments
+          }
+        };
+
+        // Call the API to create conversation
+        const newConversation = await createConversation(userId!, conversationPayload);
+        setCurrentConversation(newConversation);
+        setMessages(newConversation.messages);
+        
+        // Clear input
+        setCurrentMessage('');
+        setAttachments([]);
+        setIsSendingMessage(false);
+      } else {
+        // For subsequent messages, use existing local logic
+        // Create attachments array with File objects for proper handling
+        const messageAttachments: FileAttachment[] = attachments.map(file => ({
+          file: file,
+          url: isImageFile(file) ? getImageUrl(file) : '',
+          name: file.name,
+          type: file.type
+        }));
+        
+        const newMessage: MessageOut = {
+          id: Date.now().toString(),
+          content: currentMessage,
+          sender: 'user',
+          type: attachments.length > 0 ? 'file' : 'text',
+          created_at: new Date(),
+          updated_at: new Date(),
+          attachments: messageAttachments as any // Temporary cast for mixed attachment types
+        };
+        
+        // Add message with smooth animation
+        setTimeout(() => {
+          setMessages(prev => [...prev, newMessage]);
+          setCurrentMessage('');
+          setAttachments([]);
+          setIsSendingMessage(false);
+        }, 200);
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+      
+      // Fallback to local behavior on API error
+      // If first message, init the conversation and then add the messages
+      if (messages.length === 0) {
+        const conversationId = Date.now().toString();
+        const conversation: ConversationDetail = {
+          id: conversationId,
+          agentId: selectedAgent,
+          agentName: currentAgent?.name || '',
+          title: "",
+          created_at: new Date(),
+          updated_at: new Date(),
+          messages: [],
+          isPrivate: isPrivateMode
+        };
+        setCurrentConversation(conversation);
+      }
+      
+      // Add the new messages
+      // Create attachments array with File objects for proper handling
+      const messageAttachments: FileAttachment[] = attachments.map(file => ({
+        file: file,
+        url: isImageFile(file) ? getImageUrl(file) : '',
+        name: file.name,
+        type: file.type
+      }));
+      
+      const newMessage: MessageOut = {
+        id: Date.now().toString(),
+        content: currentMessage,
+        sender: 'user',
+        type: attachments.length > 0 ? 'file' : 'text',
         created_at: new Date(),
         updated_at: new Date(),
-        messages: [],
-        isPrivate: isPrivateMode
+        attachments: messageAttachments as any // Temporary cast for mixed attachment types
       };
-      setCurrentConversation(conversation);
-    }
-    
-    // Create attachments array with File objects for proper handling
-    const messageAttachments: FileAttachment[] = attachments.map(file => ({
-      file: file,
-      url: isImageFile(file) ? getImageUrl(file) : '',
-      name: file.name,
-      type: file.type
-    }));
-    
-    const newMessage: MessageOut = {
-      id: Date.now().toString(),
-      content: currentMessage,
-      sender: 'user',
-      type: attachments.length > 0 ? 'file' : 'text',
-      created_at: new Date(),
-      updated_at: new Date(),
-      attachments: messageAttachments as any // Temporary cast for mixed attachment types
-    };
-    
-    // Add message with smooth animation
-    setTimeout(() => {
+      
+      // Add message with smooth animation
       setMessages(prev => [...prev, newMessage]);
       setCurrentMessage('');
       setAttachments([]);
       setIsSendingMessage(false);
-    }, 200);
+      
+    }
     
-    // Start enhanced thinking animation
+    // Start enhanced thinking animation (only for subsequent messages or API failures)
     const thinking = [
       "Analyzing the user's query and determining the best approach...",
       "Considering relevant context and domain-specific knowledge...",
       "Cross-referencing with specialized databases and policies...",
-      // "Formulating a comprehensive and helpful response...",
+      "Formulating a comprehensive and helpful response...",
       // "Preparing the final response based on analysis..."
     ];
     
@@ -197,6 +271,7 @@ export function ChatInterface() {
       isDone: false,
       startTime: Date.now()
     });
+    
   };
   
   // Handle file upload

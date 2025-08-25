@@ -5,18 +5,15 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
     Base, engine, get_db,
-    seed_users, seed_agents, seed_demo_data,
+    seed_users, seed_agents,
     hash_password,
     UserTable,
     AgentTable,
-    ConversationTable,
-    MessageTable,
-    AttachmentTable,
+    ConversationTable
 )
 from schemas import (
     ConversationDetail, ConversationSummary, 
@@ -44,7 +41,6 @@ async def lifespan(app: FastAPI):
     async with AsyncSession(engine) as session:
         await seed_users(session)
         await seed_agents(session)
-        await seed_demo_data(session)
     
     yield
 
@@ -113,7 +109,8 @@ async def create_conversation(
     agent = await validate_agentId(db, payload.agentId)
     
     # Create conversation + first message atomically
-    async with db.begin():
+    try:
+        # 2) Do all inserts/flushes
         conv = await init_conv(
             db=db,
             user=current_user,
@@ -122,9 +119,13 @@ async def create_conversation(
             title=payload.title,
             first_message=payload.firstMessage,
         )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
     
     # Reload with nested attachments->blob so images get base64 injected by AttachmentOut
-    conv_full = await validate_convId_full(user_id, conv.id)
+    conv_full = await validate_convId_full(user_id, conv.id, db)
     return ConversationDetail.model_validate(conv_full)
 
 

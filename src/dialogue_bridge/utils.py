@@ -42,7 +42,7 @@ async def validate_convId(user_id: str, conversation_id: str, db: AsyncSession =
         ConversationTable.user_id == user_id,
     )
     res = await db.execute(q)
-    conv = res.scalar_one_or_none()
+    conv: ConversationTable | None = res.scalar_one_or_none()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return conv
@@ -62,7 +62,7 @@ async def validate_convId_full(user_id: str, conversation_id: str, db: AsyncSess
         )
     )
     res = await db.execute(q)
-    conv = res.scalar_one_or_none()
+    conv: ConversationTable | None = res.scalar_one_or_none()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return conv
@@ -138,24 +138,6 @@ async def init_attachments(db: AsyncSession, message_id: str, items: List[Attach
             blob=blob,
         )
         db.add(attach)
-
-
-async def reload_conv_detail(db: AsyncSession, conversation_id: str, user_id: str) -> ConversationTable:
-    q = (
-        select(ConversationTable)
-        .options(
-            selectinload(ConversationTable.messages)
-            .selectinload(MessageTable.attachments)
-            .selectinload(AttachmentTable.blob)
-        )
-        .where(
-            ConversationTable.id == conversation_id,
-            ConversationTable.user_id == user_id,
-        )
-    )
-    res = await db.execute(q)
-    conv = res.scalar_one()
-    return conv
 
 
 def _preview(text: Optional[str]) -> Optional[str]:

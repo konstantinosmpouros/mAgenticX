@@ -8,6 +8,9 @@ import type {
   ConversationSummary,
   MessageOut,
   AttachmentOut,
+  ConversationIn,
+  AttachmentIn,
+  FileAttachment
   } from "./types";
 import type { LucideIcon } from "lucide-react";
 import * as Icons from "lucide-react";
@@ -114,4 +117,66 @@ export async function deleteConversation(userId: string, conversationId: string)
   if (!res.ok) {
     throw new Error(`Failed to delete conversation: ${res.status}`);
   }
+}
+
+// Convert File to base64 AttachmentIn format
+export async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = reader.result as string;
+      // Remove the data:mime;base64, prefix
+      const dataB64 = base64String.split(',')[1];
+      resolve({
+        name: file.name,
+        mime: file.type,
+        dataB64,
+        size: file.size
+      });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Convert FileAttachment array to AttachmentIn array
+export async function convertFileAttachments(fileAttachments: FileAttachment[]): Promise<AttachmentIn[]> {
+  const attachmentPromises = fileAttachments.map(attachment => 
+    fileToAttachmentIn(attachment.file)
+  );
+  return Promise.all(attachmentPromises);
+}
+
+// Create a new conversation with the first message
+export async function createConversation(userId: string, payload: ConversationIn): Promise<ConversationDetail> {
+  const res = await fetch(`/api/users/${userId}/conversations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to create conversation: ${res.status}`);
+  }
+
+  const data = await res.json();
+  
+  // Transform the response to match our ConversationDetail type
+  return {
+    ...data,
+    created_at: new Date(data.created_at),
+    updated_at: new Date(data.updated_at),
+    messages: data.messages.map((message: any) => ({
+      ...message,
+      created_at: new Date(message.created_at),
+      updated_at: new Date(message.updated_at),
+      attachments: message.attachments.map((attachment: any) => ({
+        ...attachment,
+        timestamp: new Date(attachment.timestamp)
+      }))
+    }))
+  };
 }

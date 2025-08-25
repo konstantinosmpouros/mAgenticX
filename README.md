@@ -23,7 +23,6 @@ context-rich responses and deep insight.
 - **Container-first**  
   Everything runs via Docker Compose. Local development is prioritized; cloud deployment patterns can be added later.
 
-
 ## 📦 Project Structure (Overview)
 
 The project follows a modular design with the following major components:
@@ -36,7 +35,6 @@ The project follows a modular design with the following major components:
 - **src/agentic_ui/**: Frontend or user interface layer
 - **src/dialogue_bridge/**: Inner layer between the UI and agents that handle the chat history, messages, attachments and everything else.
 
-
 ## 🛠️ Tech Stack
 
 - 🧠 **LLMs**: OpenAI
@@ -48,5 +46,5 @@ The project follows a modular design with the following major components:
 
 ## 🙏 Contributions Welcome
 
-We welcome theological insights, code contributions, 
+We welcome theological insights, code contributions,
 and feedback to help OrthodoxAI grow into a valuable tool for deep religious exploration.
