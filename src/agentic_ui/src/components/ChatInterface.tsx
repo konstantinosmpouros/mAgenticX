@@ -6,11 +6,16 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-// import StarBorder from "@/components/utils/react_bits/star_border"
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, AttachmentOut, ConversationIn } from "@/lib/types";
-import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation, convertFileAttachments } from "@/lib/api";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, ConversationIn } from "@/lib/types";
+
+// Import the api functionalities
+import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation } from "@/lib/api";
+
+// Import helper functions from the utilities
+import { convertFileAttachments } from "@/lib/utils";
+import { validateAttachmentsForUpload, validateAdd } from '@/lib/uploadGuards';
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -134,6 +139,15 @@ export function ChatInterface() {
   const handleSendMessage = async () => {
     if (!currentMessage.trim() && attachments.length === 0) return;
     if (isSendingMessage) return; // Prevent double-sending
+    
+    // Guardrail: preflight size checks BEFORE we set the sending flag or convert to base64
+    if (attachments.length) {
+      const sizeErr = validateAttachmentsForUpload(attachments);
+      if (sizeErr) {
+        toast({ title: "Attachment too large", description: sizeErr, variant: "destructive" });
+        return; // do not proceed
+      }
+    }
     
     setIsSendingMessage(true); // Set sending flag to true
     const currentAgent = agents.find(a => a.id === selectedAgent); // Get the current selected agent
@@ -276,77 +290,99 @@ export function ChatInterface() {
   
   // Handle file upload
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    if (files.length > 0) {
-      const totalFilesAfterAdd = attachments.length + files.length;
-      if (totalFilesAfterAdd > 5) {
-        const remainingSlots = 5 - attachments.length;
-        if (remainingSlots <= 0) {
-          toast({
-            title: "Maximum attachments reached",
-            description: "You can only attach up to 5 files per message",
-            variant: "destructive",
-            duration: 3000,
-          });
-          return;
-        }
-        
-        const filesToAdd = files.slice(0, remainingSlots);
-        const extraFiles = files.length - filesToAdd.length;
-        
-        setAttachments(prev => [...prev, ...filesToAdd]);
-        
-        toast({
-          title: "Some files not added",
-          description: `Only ${filesToAdd.length} files added. Maximum 5 files allowed per message (${extraFiles} files excluded).`,
-          variant: "destructive",
-          duration: 3000,
-        });
-      } else {
-        setAttachments(prev => [...prev, ...files]);
-        toast({
-          title: "Files attached",
-          description: `${files.length} file(s) attached to your message`,
-          duration: 2000,
-        });
+    const input = event.target as HTMLInputElement;
+    const files: File[] = input.files ? Array.from(input.files) : [];
+    if (files.length === 0) {
+      if (input) input.value = '';
+      return;
+    }
+
+    const MAX_FILES = 5;
+    const remainingSlots = Math.max(0, MAX_FILES - attachments.length);
+    let filesToAdd: File[] = [];
+    let extraFiles = 0;
+
+    if (files.length > remainingSlots) {
+      filesToAdd = files.slice(0, remainingSlots);
+      extraFiles = files.length - filesToAdd.length;
+
+      const sizeErr = validateAdd(attachments, filesToAdd);
+      if (sizeErr) {
+        toast({ title: "Attachment too large", description: sizeErr, variant: "destructive", duration: 3000 });
+        if (input) input.value = '';
+        return;
       }
+
+      setAttachments(prev => [...prev, ...filesToAdd]);
+      toast({
+        title: "Some files not added",
+        description: `Only ${filesToAdd.length} files added. Maximum ${MAX_FILES} files allowed per message (${extraFiles} excluded).`,
+        variant: "destructive",
+        duration: 3000,
+      });
+    } else {
+      filesToAdd = files;
+
+      const sizeErr = validateAdd(attachments, filesToAdd);
+      if (sizeErr) {
+        toast({ title: "Attachment too large", description: sizeErr, variant: "destructive", duration: 3000 });
+        if (input) input.value = '';
+        return;
+      }
+
+      setAttachments(prev => [...prev, ...filesToAdd]);
+      toast({ title: "Files attached", description: `${filesToAdd.length} file(s) attached to your message`, duration: 2000 });
     }
-    // Reset the input value to allow selecting the same file again
-    if (event.target) {
-      event.target.value = '';
-    }
+
+    if (input) input.value = ''; // allow re-selecting same file
   };
-  
+
   // Handle paste event for images
   const handlePaste = (event: React.ClipboardEvent) => {
     const items = event.clipboardData?.items;
     if (!items) return;
-
-    const remainingSlots = 5 - attachments.length;
+    
+    const MAX_FILES = 5;
+    const remainingSlots = Math.max(0, MAX_FILES - attachments.length);
     if (remainingSlots <= 0) {
       toast({
         title: "Maximum files reached",
-        description: "You can only attach up to 5 files per message",
+        description: `You can only attach up to ${MAX_FILES} files per message`,
         variant: "destructive",
         duration: 3000,
       });
       return;
     }
-
+    
     const filesToAdd: File[] = [];
     for (let i = 0; i < items.length && filesToAdd.length < remainingSlots; i++) {
       const item = items[i];
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
-        if (file) {
-          filesToAdd.push(file);
-        }
+        if (file) filesToAdd.push(file);
       }
     }
     
-    if (filesToAdd.length > 0) {
-      setAttachments(prev => [...prev, ...filesToAdd]);
+    if (filesToAdd.length === 0) return;
+    
+    // Size guardrail BEFORE we add anything
+    const sizeErr = validateAdd(attachments, filesToAdd);
+    if (sizeErr) {
+      toast({
+        title: "Attachment too large",
+        description: sizeErr,
+        variant: "destructive",
+        duration: 3000,
+      });
+      return;
     }
+    
+    setAttachments(prev => [...prev, ...filesToAdd]);
+    toast({
+      title: "Files attached",
+      description: `${filesToAdd.length} pasted image(s) added`,
+      duration: 2000,
+    });
   };
   
   // Check if file is image - now handles AttachmentOut, Attachment, File, and string types

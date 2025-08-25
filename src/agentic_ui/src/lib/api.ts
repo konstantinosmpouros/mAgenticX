@@ -7,20 +7,10 @@ import type {
   ConversationDetail,
   ConversationSummary,
   MessageOut,
-  AttachmentOut,
   ConversationIn,
-  AttachmentIn,
-  FileAttachment
   } from "./types";
-import type { LucideIcon } from "lucide-react";
-import * as Icons from "lucide-react";
-
-
-const mapIcon = (name: string): LucideIcon => {
-  const Icon = (Icons as Record<string, any>)[name] as LucideIcon | undefined;
-  // Fallback gracefully to Building2 if icon name is invalid
-  return Icon || Icons.Building2;
-};
+import { mapIcon } from "./constants";
+import { PROXY_LIMIT_MB } from "./uploadGuards";
 
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
@@ -119,34 +109,6 @@ export async function deleteConversation(userId: string, conversationId: string)
   }
 }
 
-// Convert File to base64 AttachmentIn format
-export async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64String = reader.result as string;
-      // Remove the data:mime;base64, prefix
-      const dataB64 = base64String.split(',')[1];
-      resolve({
-        name: file.name,
-        mime: file.type,
-        dataB64,
-        size: file.size
-      });
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// Convert FileAttachment array to AttachmentIn array
-export async function convertFileAttachments(fileAttachments: FileAttachment[]): Promise<AttachmentIn[]> {
-  const attachmentPromises = fileAttachments.map(attachment => 
-    fileToAttachmentIn(attachment.file)
-  );
-  return Promise.all(attachmentPromises);
-}
-
 // Create a new conversation with the first message
 export async function createConversation(userId: string, payload: ConversationIn): Promise<ConversationDetail> {
   const res = await fetch(`/api/users/${userId}/conversations`, {
@@ -159,6 +121,13 @@ export async function createConversation(userId: string, payload: ConversationIn
   });
 
   if (!res.ok) {
+    if (res.status === 413) {
+      // Show a friendly message tailored to the limits you set
+      throw new Error(
+        `Your message is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). ` +
+        `Try smaller files or fewer attachments.`
+      );
+    }
     throw new Error(`Failed to create conversation: ${res.status}`);
   }
 
@@ -180,3 +149,4 @@ export async function createConversation(userId: string, payload: ConversationIn
     }))
   };
 }
+

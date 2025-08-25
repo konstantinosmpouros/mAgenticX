@@ -10,7 +10,7 @@ RUN npm ci
 
 # Copy the rest of the source and build
 COPY . .
-RUN npm run build
+RUN npm run build -- --debug
 
 
 # 2) Runtime stage
