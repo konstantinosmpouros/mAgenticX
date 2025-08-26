@@ -1,5 +1,7 @@
 import React from "react";
 import type { LucideIcon } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+
 
 type InputContainerProps = {
     /** Replace "top-1/2 -translate-y-1/2" with anything you want */
@@ -41,54 +43,129 @@ type InputContainerProps = {
     Textarea: any;
 };
 
-export function InputContainer({
-    positionClass = "top-1/2 -translate-y-1/2",
-    isMessagesEmpty = false,
-    attachments,
-    isPrivateMode,
-    thinkingActive,
-    currentMessage,
-    setCurrentMessage,
-    handlePaste,
-    handleSendMessage,
-    isImageFile,
-    getImageUrl,
-    handleImageClick,
-    removeAttachment,
-    handleFileUpload,
-    fileInputRef,
-    textareaRef,
-    AgentIcon,
-    Tooltip,
-    TooltipTrigger,
-    TooltipContent,
-    Paperclip,
-    Mic,
-    Button,
-    Send,
-    X,
-    toast,
-    currentAgent,
-    Textarea,
-}: InputContainerProps) {
+// Random welcome quotes (use {agent} to inject the agent's name)
+const WELCOME_QUOTES: string[] = [
+    "Ready when you are.",
+    "What do you want to accomplish today?",
+    "Ask {agent} anything.",
+    "Drop files or paste images to get started.",
+    "Tell me your goal! I’ll help you get there.",
+    "New chat — new ideas.",
+    "I can draft, analyze, or plan — your call.",
+    "Need a summary, a plan, or code? Say the word.",
+    "Let’s turn a rough idea into something real.",
+    "Small step or big build — we can tackle it together.",
+];
+
+export function InputContainer(props: InputContainerProps) {
+    const {
+        positionClass = "top-1/2 -translate-y-1/2",
+        isMessagesEmpty = false,
+        attachments,
+        isPrivateMode,
+        thinkingActive,
+        currentMessage,
+        setCurrentMessage,
+        handlePaste,
+        handleSendMessage,
+        isImageFile,
+        getImageUrl,
+        handleImageClick,
+        removeAttachment,
+        handleFileUpload,
+        fileInputRef,
+        textareaRef,
+        AgentIcon,
+        Tooltip,
+        TooltipTrigger,
+        TooltipContent,
+        Paperclip,
+        Mic,
+        Button,
+        Send,
+        X,
+        toast,
+        currentAgent,
+        Textarea,
+    } = props;
+    
+    // Pick a starting quote whenever agent changes or the empty-state toggles on
+    const [quoteIndex, setQuoteIndex] = React.useState<number>(() =>
+        Math.floor(Math.random() * WELCOME_QUOTES.length)
+    );
+    
+    // Reset the starting quote when agent changes OR when the empty-state appears
+    React.useEffect(() => {
+        if (!isMessagesEmpty) return;
+        setQuoteIndex(Math.floor(Math.random() * WELCOME_QUOTES.length));
+    }, [currentAgent?.name, isMessagesEmpty]);
+    
+    // Rotate to a different random quote every 5s while empty-state is visible
+    React.useEffect(() => {
+        if (!isMessagesEmpty) return;               // pause rotation when messages exist
+        const id = setInterval(() => {
+            setQuoteIndex(prev => {
+            if (WELCOME_QUOTES.length < 2) return prev;
+            let next = prev;
+            // ensure the next quote differs from the current one
+            while (next === prev) {
+                next = Math.floor(Math.random() * WELCOME_QUOTES.length);
+            }
+            return next;
+            });
+        }, 8000);
+        return () => clearInterval(id);             // clean up on unmount or when empty-state hides
+    }, [isMessagesEmpty]);
+    
+    // Final string with agent name injected
+    const welcomeQuote = WELCOME_QUOTES[quoteIndex].replace(
+        "{agent}",
+        currentAgent?.name ?? "the agent"
+    );
+    
+    const prefersReducedMotion = useReducedMotion();
+    
+    const quoteVariants = {
+        initial: { opacity: 0, y: prefersReducedMotion ? 0 : 8 },
+        animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
+        exit:    { opacity: 0, y: prefersReducedMotion ? 0 : -8, transition: { duration: 0.25, ease: "easeIn" } },
+    };
+    
     return (
         <div
             className={`${positionClass} `}
         >
             {isMessagesEmpty && (
                 <div className="text-center py-16">
-                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4 md:mb-6 shadow-elegant">
+                    {/* <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4 md:mb-6 shadow-elegant">
                         <AgentIcon size={40} className="hidden md:block text-primary-foreground" />
+                    </div> */}
+                    
+                    {/* Random welcome quote */}
+                    <div className="min-h-[2.75rem] md:min-h-[3rem]">
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.h2
+                                key={quoteIndex} // key causes exit/enter on change
+                                variants={quoteVariants}
+                                initial="initial"
+                                animate="animate"
+                                exit="exit"
+                                className="text-xl md:text-2xl font-bold mb-2 md:mb-3 will-change-transform"
+                                >
+                                    {welcomeQuote}
+                            </motion.h2>
+                        </AnimatePresence>
                     </div>
-                    <h3 className="text-xl md:text-2xl font-bold mb-2 md:mb-3">
-                        Welcome to {currentAgent?.name}
-                    </h3>
+                    
+                    {/* Optional: keep agent description as a softer subline if present */}
+                    {currentAgent?.description && (
                     <p className="text-muted-foreground text-sm md:text-lg max-w-md mx-auto">
-                        {currentAgent?.description}
+                        {currentAgent.description}
                     </p>
+                    )}
                 </div>
             )}
-
+            
             <div className="mx-auto max-w-3xl pointer-events-auto">
                 {/* Attachments */}
                 {attachments.length > 0 && (
@@ -126,7 +203,7 @@ export function InputContainer({
                         })}
                     </div>
                 )}
-
+                
                 {/* Floating Input Container */}
                 <div
                     className={`bg-background rounded-2xl shadow-lg p-4 ${
@@ -165,7 +242,7 @@ export function InputContainer({
                                 style={{ height: "auto" }}
                             />
                         </div>
-
+                        
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2">
                             {/* Attach files */}
@@ -182,7 +259,7 @@ export function InputContainer({
                                     <p>Attach files & photos</p>
                                 </TooltipContent>
                             </Tooltip>
-
+                            
                             {/* Voice Input */}
                             <Tooltip>
                                 <TooltipTrigger asChild>
@@ -199,7 +276,7 @@ export function InputContainer({
                                     <p>Voice Input</p>
                                 </TooltipContent>
                             </Tooltip>
-
+                            
                             {/* Send Message */}
                             <Tooltip>
                                 <TooltipTrigger asChild>
@@ -218,7 +295,7 @@ export function InputContainer({
                         </div>
                     </div>
                 </div>
-
+                
                 <input
                     ref={fileInputRef}
                     type="file"

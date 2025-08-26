@@ -337,13 +337,14 @@ export function ChatInterface() {
     if (input) input.value = ''; // allow re-selecting same file
   };
 
-  // Handle paste event for images
+  // Handle paste event for all file types
   const handlePaste = (event: React.ClipboardEvent) => {
     const items = event.clipboardData?.items;
     if (!items) return;
     
     const MAX_FILES = 5;
     const remainingSlots = Math.max(0, MAX_FILES - attachments.length);
+    
     if (remainingSlots <= 0) {
       toast({
         title: "Maximum files reached",
@@ -355,34 +356,69 @@ export function ChatInterface() {
     }
     
     const filesToAdd: File[] = [];
-    for (let i = 0; i < items.length && filesToAdd.length < remainingSlots; i++) {
+    const excludedFiles: { file: File; reason: string }[] = [];
+    let totalFilesFound = 0;
+    
+    // First pass: collect all files and check basic constraints
+    for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.type.startsWith('image/')) {
+      if (item.kind === 'file') {
         const file = item.getAsFile();
-        if (file) filesToAdd.push(file);
+        if (file) {
+          totalFilesFound++;
+          
+          if (filesToAdd.length >= remainingSlots) {
+            excludedFiles.push({ file, reason: 'slot limit' });
+          } else {
+            filesToAdd.push(file);
+          }
+        }
       }
     }
     
-    if (filesToAdd.length === 0) return;
+    if (totalFilesFound === 0) return;
     
-    // Size guardrail BEFORE we add anything
-    const sizeErr = validateAdd(attachments, filesToAdd);
-    if (sizeErr) {
+    // Size validation - this might exclude some files that passed the slot check
+    if (filesToAdd.length > 0) {
+      const sizeErr = validateAdd(attachments, filesToAdd);
+      if (sizeErr) {
+        // If size validation fails, we can't add any files
+        toast({
+          title: "Files too large",
+          description: sizeErr,
+          variant: "destructive",
+          duration: 3000,
+        });
+        return;
+      }
+    }
+    
+    // Update attachments
+    if (filesToAdd.length > 0) {
+      setAttachments(prev => [...prev, ...filesToAdd]);
+    }
+    
+    // Provide feedback to user
+    if (filesToAdd.length > 0 && excludedFiles.length === 0) {
       toast({
-        title: "Attachment too large",
-        description: sizeErr,
+        title: "Files attached",
+        description: `${filesToAdd.length} pasted file(s) added`,
+        duration: 2000,
+      });
+    } else if (filesToAdd.length > 0 && excludedFiles.length > 0) {
+      toast({
+        title: "Some files attached",
+        description: `${filesToAdd.length} file(s) added, ${excludedFiles.length} excluded (${excludedFiles[0].reason === 'slot limit' ? 'file limit reached' : 'size limit'})`,
+        duration: 3000,
+      });
+    } else if (excludedFiles.length > 0) {
+      toast({
+        title: "Files not attached",
+        description: `${excludedFiles.length} file(s) couldn't be added (${excludedFiles[0].reason === 'slot limit' ? 'file limit reached' : 'size limit'})`,
         variant: "destructive",
         duration: 3000,
       });
-      return;
     }
-    
-    setAttachments(prev => [...prev, ...filesToAdd]);
-    toast({
-      title: "Files attached",
-      description: `${filesToAdd.length} pasted image(s) added`,
-      duration: 2000,
-    });
   };
   
   // Check if file is image - now handles AttachmentOut, Attachment, File, and string types
@@ -644,8 +680,6 @@ export function ChatInterface() {
       />
     );
   }
-
-
   return (
     <div className="animate-fade-in">
       <TooltipProvider>
@@ -659,7 +693,6 @@ export function ChatInterface() {
             showPrivateToggle={messages.length === 0 || isPrivateMode}
             isPrivateMode={isPrivateMode}
             onTogglePrivate={() => {
-              // preserve your original guard
               if (messages.length === 0 || !isPrivateMode) {
                 setIsPrivateMode(!isPrivateMode);
               }

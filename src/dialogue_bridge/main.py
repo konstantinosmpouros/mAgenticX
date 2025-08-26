@@ -149,7 +149,10 @@ async def getConvsSummary(
     # fetch all full rows
     result = await db.execute(
         select(ConversationTable)
-        .where(ConversationTable.user_id == user_id)
+        .where(
+            ConversationTable.user_id == user_id,
+            ConversationTable.is_private == False
+        )
         .order_by(ConversationTable.updated_at.desc())
     )
     rows = result.scalars().all()

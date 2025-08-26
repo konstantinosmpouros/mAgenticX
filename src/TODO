@@ -8,14 +8,14 @@
 ## Agentic UI
 
 - Implement the API call for the agentic inference
-- UI might support actual image data from the getConversationDetail API. Check it out
+- On file click, of an attachment in the conversation, implement a download api call
 
+- When changing conversation from sidebar the thinking doesn't stop
+- The scroll area in the sidebar is buggy
 - Fix the light mode colors
 - Enhance the profile panel with actual user info
 - Make better the thinking container
 - The agent + user message containers must support md format
-- Create a download button for files and images in the current conversation
-- Agent icons doesn't appear when we shrink a lot the page
 - Check what to do with the audio input
 
 ## Agents
@@ -25,7 +25,7 @@
 
 ## Dialogue Bridge
 
-- Create the apis in order to create/add conversation, messages and attachments in the db without the inference. The inference will be added later
+- Create an api to add a new message in a conversation + the attachments
+- Implement tha agentic inference api call.
 - Implement a small api call in the create conversation to initialize a title in the start of the conversation like openai
-- UI supports image blobs but the api doesn't provide them in the right format
-- Create API to download blob from the UI download button
+- Create API to download blob from the UI
