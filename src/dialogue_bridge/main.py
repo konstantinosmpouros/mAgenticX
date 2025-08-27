@@ -16,7 +16,7 @@ from database import (
     ConversationTable
 )
 from schemas import (
-    ConversationDetail, ConversationSummary, 
+    ConversationDetail, ConversationSummary, CreateConversationResponse,
     MessageOut, AttachmentOut,
     ConversationIn, MessageIn, AttachmentIn,
     AuthRequest, AuthResponse,
@@ -92,7 +92,7 @@ async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
 #-----------------------------------------------------------------------------------
 @app.post(
     "/users/{user_id}/conversations",
-    response_model=ConversationDetail,
+    response_model=CreateConversationResponse,
     status_code=status.HTTP_201_CREATED
 )
 async def create_conversation(
@@ -126,7 +126,12 @@ async def create_conversation(
     
     # Reload with nested attachments->blob so images get base64 injected by AttachmentOut
     conv_full = await validate_convId_full(user_id, conv.id, db)
-    return ConversationDetail.model_validate(conv_full)
+    
+    # Build both DTOs from the same ORM instance
+    detail = ConversationDetail.model_validate(conv_full)
+    summary = ConversationSummary.model_validate(conv_full)
+
+    return CreateConversationResponse(detail=detail, summary=summary)
 
 
 

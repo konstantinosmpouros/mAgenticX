@@ -8,6 +8,7 @@ import type {
   ConversationSummary,
   MessageOut,
   ConversationIn,
+  CreateConversationResponse,
   } from "./types";
 import { mapIcon } from "./constants";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
@@ -110,7 +111,7 @@ export async function deleteConversation(userId: string, conversationId: string)
 }
 
 // Create a new conversation with the first message
-export async function createConversation(userId: string, payload: ConversationIn): Promise<ConversationDetail> {
+export async function createConversation(userId: string, payload: ConversationIn): Promise<CreateConversationResponse> {
   const res = await fetch(`/api/users/${userId}/conversations`, {
     method: "POST",
     headers: {
@@ -133,20 +134,23 @@ export async function createConversation(userId: string, payload: ConversationIn
 
   const data = await res.json();
   
-  // Transform the response to match our ConversationDetail type
+  // Transform the response to match our CreateConversationResponse type
   return {
-    ...data,
-    created_at: new Date(data.created_at),
-    updated_at: new Date(data.updated_at),
-    messages: data.messages.map((message: any) => ({
-      ...message,
-      created_at: new Date(message.created_at),
-      updated_at: new Date(message.updated_at),
-      attachments: message.attachments.map((attachment: any) => ({
-        ...attachment,
-        timestamp: new Date(attachment.timestamp)
+    detail: {
+      ...data.detail,
+      created_at: new Date(data.detail.created_at),
+      updated_at: new Date(data.detail.updated_at),
+      messages: data.detail.messages.map((message: any) => ({
+        ...message,
+        created_at: new Date(message.created_at),
+        updated_at: new Date(message.updated_at),
+        attachments: message.attachments.map((attachment: any) => ({
+          ...attachment,
+          timestamp: new Date(attachment.timestamp)
+        }))
       }))
-    }))
+    },
+    summary: data.summary
   };
 }
 

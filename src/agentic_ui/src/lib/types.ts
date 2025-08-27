@@ -123,6 +123,12 @@ export type ConversationIn = {
     firstMessage: MessageIn;
 };
 
+// Response from createConversation API
+export type CreateConversationResponse = {
+    detail: ConversationDetail;
+    summary: ConversationSummary;
+};
+
 
 
 // ------------------------------------------------------

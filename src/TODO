@@ -9,6 +9,7 @@
 
 - Implement the API call for the agentic inference
 - On file click, of an attachment in the conversation, implement a download api call
+- After the init of a new conversation it must automatically update the sidebar.
 
 - When changing conversation from sidebar the thinking doesn't stop
 - The scroll area in the sidebar is buggy
@@ -25,7 +26,8 @@
 
 ## Dialogue Bridge
 
+- The create conv api must return a conversation summary as well object
 - Create an api to add a new message in a conversation + the attachments
 - Implement tha agentic inference api call.
-- Implement a small api call in the create conversation to initialize a title in the start of the conversation like openai
+- Implement a small api call in the create conversation api to initialize a title like openai
 - Create API to download blob from the UI

@@ -8,7 +8,7 @@ import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Eye } fr
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, ConversationIn } from "@/lib/types";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, ConversationIn, CreateConversationResponse } from "@/lib/types";
 
 // Import the api functionalities
 import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation } from "@/lib/api";
@@ -180,9 +180,12 @@ export function ChatInterface() {
         };
 
         // Call the API to create conversation
-        const newConversation = await createConversation(userId!, conversationPayload);
-        setCurrentConversation(newConversation);
-        setMessages(newConversation.messages);
+        const response = await createConversation(userId!, conversationPayload);
+        setCurrentConversation(response.detail);
+        setMessages(response.detail.messages);
+        
+        // Add new conversation to sidebar list
+        setConversations(prev => [response.summary, ...prev]);
         
         // Clear input
         setCurrentMessage('');

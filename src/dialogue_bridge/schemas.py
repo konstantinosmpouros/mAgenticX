@@ -130,6 +130,11 @@ class ConversationDetail(BaseModel):
     messages: List[MessageOut] = Field(default_factory=list)
 
 
+class CreateConversationResponse(BaseModel):
+    detail: ConversationDetail
+    summary: ConversationSummary
+
+
 
 #-------------------------------------------
 # CONVERSATION CREATE DTO
