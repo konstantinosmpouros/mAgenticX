@@ -184,5 +184,17 @@ class ConversationIn(BaseModel):
 
 
 
+#-------------------------------------------
+# DOWNLOAD A BLOB DTO
+#-------------------------------------------
+class BlobDownloadRequest(BaseModel):
+    """Client posts a blob id to fetch the file."""
+    blobId: str = Field(..., description="ID of the blob to download")
+
+class BlobDownloadResponse(BaseModel):
+    """
+    Returns a single blob: the raw bytes of the blob, base64-encoded. (No images allowed.)
+    """
+    dataB64: str = Field(..., description="Base64-encoded blob bytes (non-image only)")
 
 

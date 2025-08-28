@@ -1,6 +1,6 @@
-from datetime import datetime
-
+import base64
 from typing import List
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from contextlib import asynccontextmanager
 
@@ -13,12 +13,15 @@ from database import (
     hash_password,
     UserTable,
     AgentTable,
-    ConversationTable
+    ConversationTable,
+    MessageTable,
+    AttachmentTable,
+    BlobTable,
 )
 from schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
-    MessageOut, AttachmentOut,
-    ConversationIn, MessageIn, AttachmentIn,
+    ConversationIn,
+    BlobDownloadRequest, BlobDownloadResponse,
     AuthRequest, AuthResponse,
     AgentPublic,
 )
@@ -88,7 +91,7 @@ async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
 
 
 #-----------------------------------------------------------------------------------
-# CREATE CONVERSATION APIS
+# CREATE APIS
 #-----------------------------------------------------------------------------------
 @app.post(
     "/users/{user_id}/conversations",
@@ -136,7 +139,7 @@ async def create_conversation(
 
 
 #-----------------------------------------------------------------------------------
-# READ CONVERSATION APIS
+# READ APIS
 #-----------------------------------------------------------------------------------
 @app.get(
     "/users/{user_id}/conversations",
@@ -180,12 +183,61 @@ async def getConvDetails(
     return ConversationDetail.model_validate(current_conv)
 
 
-# TODO: PLACE HERE THE API TO EXPORT A BLOB
+@app.post(
+    "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/blobs/download",
+    response_model=BlobDownloadResponse,
+    status_code=status.HTTP_200_OK
+)
+async def download_blob(
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    payload: BlobDownloadRequest,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns ONE thing from BlobTable: 'data' (base64-encoded).
+    Validates the blob is attached to the specified message, which belongs to
+    the specified conversation, which belongs to the specified user.
+    Rejects image/* MIME types.
+    """
+    if not payload.blobId:
+        raise HTTPException(status_code=500, detail="No id was provided")
+    
+    # Fast join chain across indexed FKs: attachments.message_id, messages.conversation_id, attachments.blob_id
+    result = await db.execute(
+        select(BlobTable.data, AttachmentTable.mime_type)
+        .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
+        .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            BlobTable.id == payload.blobId,
+            AttachmentTable.message_id == message_id,
+            MessageTable.id == message_id,
+            MessageTable.conversation_id == conversation_id,
+            ConversationTable.id == conversation_id,
+            ConversationTable.user_id == user_id,
+        )
+    )
+    row = result.one_or_none()
+    if not row:
+        # Either blob not found or not owned/attached as claimed
+        raise HTTPException(status_code=404, detail="Blob not found or not accessible.")
+    
+    data, mime = row
+    
+    if mime and mime.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Images are not served by this endpoint.")
+    
+    data_b64 = base64.b64encode(data).decode("ascii")
+    return BlobDownloadResponse(dataB64=data_b64)
 
 
 
 #-----------------------------------------------------------------------------------
-# UPDATE CONVERSATION APIS
+# UPDATE APIS
 #-----------------------------------------------------------------------------------
 # TODO: PLACE HERE THE APIS TO UPDATE A CONVERSATION
 

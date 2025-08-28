@@ -127,8 +127,8 @@ export function InputContainer(props: InputContainerProps) {
     
     const quoteVariants = {
         initial: { opacity: 0, y: prefersReducedMotion ? 0 : 8 },
-        animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
-        exit:    { opacity: 0, y: prefersReducedMotion ? 0 : -8, transition: { duration: 0.25, ease: "easeIn" } },
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: prefersReducedMotion ? 0 : -8 },
     };
     
     return (
@@ -150,6 +150,7 @@ export function InputContainer(props: InputContainerProps) {
                                 initial="initial"
                                 animate="animate"
                                 exit="exit"
+                                transition={{ duration: 0.35, ease: "easeOut" }}
                                 className="text-xl md:text-2xl font-bold mb-2 md:mb-3 will-change-transform"
                                 >
                                     {welcomeQuote}

@@ -154,3 +154,29 @@ export async function createConversation(userId: string, payload: ConversationIn
   };
 }
 
+// Download non-image attachment
+export async function downloadAttachment(userId: string, conversationId: string, messageId: string, blobId: string): Promise<Blob> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/download`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    body: JSON.stringify({ blobId }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to download attachment: ${res.status}`);
+  }
+
+  const data = await res.json();
+  // Convert base64 back to blob
+  const binaryString = atob(data.dataB64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  
+  return new Blob([bytes]);
+}
+

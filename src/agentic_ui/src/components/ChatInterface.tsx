@@ -4,14 +4,15 @@ import { Textarea } from "@/components/utils/textarea";
 import { Card } from "@/components/utils/card";
 import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
-import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Eye } from "lucide-react";
+import { MarkdownRenderer } from "@/components/utils/MarkdownRenderer";
+import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Eye, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, ConversationIn, CreateConversationResponse } from "@/lib/types";
 
 // Import the api functionalities
-import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation } from "@/lib/api";
+import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation, downloadAttachment } from "@/lib/api";
 
 // Import helper functions from the utilities
 import { convertFileAttachments } from "@/lib/utils";
@@ -466,6 +467,54 @@ export function ChatInterface() {
     return '';
   };
   
+  // Trigger file download helper
+  const triggerFileDownload = (blob: Blob, filename: string, mimeType: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Handle file download for non-image attachments
+  const handleFileDownload = async (attachment: any, message: MessageOut) => {
+    if (!userId || !currentConversation) return;
+    
+    try {
+      toast({
+        title: "Downloading file...",
+        description: `Starting download of ${attachment.name}`,
+        duration: 2000,
+      });
+
+      const blob = await downloadAttachment(
+        userId, 
+        currentConversation.id, 
+        message.id, 
+        attachment.id
+      );
+      
+      triggerFileDownload(blob, attachment.name, attachment.mime);
+      
+      toast({
+        title: "Download complete",
+        description: `${attachment.name} has been downloaded`,
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast({
+        title: "Download failed",
+        description: "Unable to download the file. Please try again.",
+        variant: "destructive",
+        duration: 3000,
+      });
+    }
+  };
+  
   // Handle image click for full preview
   const handleImageClick = (imageUrl: string) => {
     setSelectedImage(imageUrl);
@@ -791,12 +840,16 @@ export function ChatInterface() {
                                           <Eye size={12} className="text-white" />
                                         </div>
                                       </div>
-                                    ) : (
-                                      <>
-                                        <Paperclip size={12} />
-                                        {fileName}
-                                      </>
-                                    )}
+                                     ) : (
+                                       <div 
+                                         className="bg-black/20 px-3 py-1 rounded-md flex items-center gap-1 cursor-pointer hover:bg-black/30 transition-colors group"
+                                         onClick={() => handleFileDownload(attachment, message)}
+                                       >
+                                         <Paperclip size={12} />
+                                         <span className="truncate max-w-[150px]">{fileName}</span>
+                                         <Download size={10} className="opacity-0 group-hover:opacity-100 transition-opacity ml-auto" />
+                                       </div>
+                                     )}
                                 </div>
                               );
                             })}
@@ -845,7 +898,7 @@ export function ChatInterface() {
                             : 'bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
                         }`}>
                           <div className="space-y-3">
-                            <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                            <MarkdownRenderer content={message.content} className="leading-relaxed" />
                             <div className="text-xs opacity-70 flex items-center gap-2">
                               <span>{message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                               {message.sender === 'ai' && (

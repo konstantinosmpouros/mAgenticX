@@ -9,14 +9,13 @@
 
 - Implement the API call for the agentic inference
 - On file click, of an attachment in the conversation, implement a download api call
-- After the init of a new conversation it must automatically update the sidebar.
+- Implement a tab in the profile panel to show all the images, like openai library
 
 - When changing conversation from sidebar the thinking doesn't stop
 - The scroll area in the sidebar is buggy
 - Fix the light mode colors
 - Enhance the profile panel with actual user info
 - Make better the thinking container
-- The agent + user message containers must support md format
 - Check what to do with the audio input
 
 ## Agents
@@ -26,8 +25,8 @@
 
 ## Dialogue Bridge
 
-- The create conv api must return a conversation summary as well object
 - Create an api to add a new message in a conversation + the attachments
 - Implement tha agentic inference api call.
 - Implement a small api call in the create conversation api to initialize a title like openai
 - Create API to download blob from the UI
+- Create API to show all the images the user has from all chats, like openai library
