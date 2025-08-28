@@ -85,6 +85,7 @@ class AttachmentOut(BaseModel):
     
     # keep ORM relation for computation but don't serialize it
     blob: Optional[BlobOut] = Field(None, validation_alias="blob", exclude=True)
+    blobId: Optional[str] = Field(None, validation_alias="blob_id")
     
     # Only for the raw base64 data (image)
     data: Optional[str] = None

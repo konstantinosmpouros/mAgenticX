@@ -86,7 +86,7 @@ export type AttachmentOut = {
     mime: string;
     size?: number;
     timestamp: Date;
-    blobId: string;
+    blobId?: string;
     data?: string; // Base64 encoded image data for images
 };
 

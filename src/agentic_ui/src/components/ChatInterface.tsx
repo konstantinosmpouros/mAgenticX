@@ -483,6 +483,17 @@ export function ChatInterface() {
   const handleFileDownload = async (attachment: any, message: MessageOut) => {
     if (!userId || !currentConversation) return;
     
+    // Check if blobId exists
+    if (!attachment.blobId) {
+      toast({
+        title: "Download unavailable",
+        description: "This attachment cannot be downloaded",
+        variant: "destructive",
+        duration: 3000,
+      });
+      return;
+    }
+    
     try {
       toast({
         title: "Downloading file...",
@@ -494,7 +505,7 @@ export function ChatInterface() {
         userId, 
         currentConversation.id, 
         message.id, 
-        attachment.id
+        attachment.blobId
       );
       
       triggerFileDownload(blob, attachment.name, attachment.mime);

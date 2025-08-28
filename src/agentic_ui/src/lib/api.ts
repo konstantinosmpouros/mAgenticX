@@ -78,7 +78,8 @@ export async function getConversationDetail(userId: string, conversationId: stri
     updated_at: new Date(msg.updated_at),
     attachments: msg.attachments.map((att: any) => ({
       ...att,
-      timestamp: new Date(att.timestamp)
+      timestamp: new Date(att.timestamp),
+      blobId: att.blobId
     })),
     thinking: msg.thinking || undefined,
     thinkingTime: msg.thinkingTime || undefined,
@@ -146,7 +147,8 @@ export async function createConversation(userId: string, payload: ConversationIn
         updated_at: new Date(message.updated_at),
         attachments: message.attachments.map((attachment: any) => ({
           ...attachment,
-          timestamp: new Date(attachment.timestamp)
+          timestamp: new Date(attachment.timestamp),
+          blobId: attachment.blobId || attachment.blob_id // Handle both camelCase and snake_case
         }))
       }))
     },

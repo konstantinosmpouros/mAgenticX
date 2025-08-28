@@ -222,11 +222,12 @@ async def download_blob(
         )
     )
     row = result.one_or_none()
+    
     if not row:
         # Either blob not found or not owned/attached as claimed
         raise HTTPException(status_code=404, detail="Blob not found or not accessible.")
     
-    data, mime = row
+    data, mime = row.data, row.mime_type
     
     if mime and mime.startswith("image/"):
         raise HTTPException(status_code=400, detail="Images are not served by this endpoint.")
