@@ -22,6 +22,7 @@ from schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
     ConversationIn,
     BlobDownloadRequest, BlobDownloadResponse,
+    ImagePageRequest, ImagePageResponse, UserImageOut,
     AuthRequest, AuthResponse,
     AgentPublic,
 )
@@ -98,7 +99,7 @@ async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
     response_model=CreateConversationResponse,
     status_code=status.HTTP_201_CREATED
 )
-async def create_conversation(
+async def createConversation(
     user_id: str,
     payload: ConversationIn,
     current_user: UserTable = Depends(validate_userId),
@@ -188,7 +189,7 @@ async def getConvDetails(
     response_model=BlobDownloadResponse,
     status_code=status.HTTP_200_OK
 )
-async def download_blob(
+async def downloadBlob(
     user_id: str,
     conversation_id: str,
     message_id: str,
@@ -234,6 +235,62 @@ async def download_blob(
     
     data_b64 = base64.b64encode(data).decode("ascii")
     return BlobDownloadResponse(dataB64=data_b64)
+
+
+@app.post(
+    "/users/{user_id}/images/next",
+    response_model=ImagePageResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_next_images(
+    user_id: str,
+    payload: ImagePageRequest,
+    current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1. Short-circuit if limit == 0
+    if payload.limit == 0:
+        return ImagePageResponse(data=[], has_more=False)
+    
+    # 2. Build the query
+    stmt = (
+        select(
+            BlobTable.id.label("blob_id"),
+            AttachmentTable.file_name,
+            AttachmentTable.mime_type,
+            BlobTable.data,
+            AttachmentTable.created_at,
+        )
+        .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
+        .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            ConversationTable.user_id == user_id,
+            AttachmentTable.mime_type.like("image/%"),
+            ~BlobTable.id.in_(payload.exclude) if payload.exclude else True,
+        )
+        .order_by(AttachmentTable.created_at.desc(), BlobTable.id.desc())
+        .limit(payload.limit + 1)   # fetch one extra to see if there’s more
+    )
+    
+    rows = (await db.execute(stmt)).all()
+    
+    # 3. Slice + detect continuation
+    has_more = len(rows) > payload.limit
+    rows = rows[: payload.limit]
+    
+    # 4. Map rows ➜ DTOs
+    images = [
+        UserImageOut(
+            blobId = r.blob_id,
+            mime = r.mime_type,
+            fileName = r.file_name,
+            dataB64 = base64.b64encode(r.data).decode("ascii"),
+        )
+        for r in rows
+    ]
+    
+    return ImagePageResponse(data=images, has_more=has_more)
 
 
 

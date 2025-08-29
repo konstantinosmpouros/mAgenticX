@@ -8,7 +8,6 @@
 ## Agentic UI
 
 - Implement the API call for the agentic inference
-- On file click, of an attachment in the conversation, implement a download api call
 - Implement a tab in the profile panel to show all the images, like openai library
 
 - When changing conversation from sidebar the thinking doesn't stop
@@ -21,12 +20,11 @@
 ## Agents
 
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
-- Create a deep research agent and make it available
+- Create a deep research agent with deep agents and make it available
 
 ## Dialogue Bridge
 
 - Create an api to add a new message in a conversation + the attachments
 - Implement tha agentic inference api call.
 - Implement a small api call in the create conversation api to initialize a title like openai
-- Create API to download blob from the UI
 - Create API to show all the images the user has from all chats, like openai library

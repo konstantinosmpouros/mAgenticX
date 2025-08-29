@@ -66,12 +66,10 @@ class ConversationSummary(BaseModel):
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
 
-
 class BlobOut(BaseModel):
     """Schema to expose a Blob"""
     model_config = ConfigDict(from_attributes=True)
     data: bytes  # Pydantic v2 will base64 this if ever serialized, but we won't expose it directly.
-
 
 class AttachmentOut(BaseModel):
     """Schema to expose all the info for an Attachment"""
@@ -96,7 +94,6 @@ class AttachmentOut(BaseModel):
             self.data = base64.b64encode(self.blob.data).decode("ascii")
         return self
 
-
 class MessageOut(BaseModel):
     """Schema to expose all the info for a Message"""
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -113,7 +110,6 @@ class MessageOut(BaseModel):
     error: Optional[bool] = Field(None, validation_alias="is_error")
     errorMessage: Optional[str] = Field(None, validation_alias="error_message")
 
-
 class ConversationDetail(BaseModel):
     """
     Conversation DTO with all the info of a conversation.
@@ -129,7 +125,6 @@ class ConversationDetail(BaseModel):
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
-
 
 class CreateConversationResponse(BaseModel):
     detail: ConversationDetail
@@ -149,7 +144,6 @@ class AttachmentIn(BaseModel):
     mime: str
     dataB64: str
     size: Optional[int] = None  # if missing, will be computed from decoded bytes
-
 
 class MessageIn(BaseModel):
     """
@@ -172,7 +166,6 @@ class MessageIn(BaseModel):
         if not self.content and not self.attachments:
             raise ValueError("Either 'content' or at least one attachment is required.")
         return self
-
 
 class ConversationIn(BaseModel):
     """
@@ -197,5 +190,24 @@ class BlobDownloadResponse(BaseModel):
     Returns a single blob: the raw bytes of the blob, base64-encoded. (No images allowed.)
     """
     dataB64: str = Field(..., description="Base64-encoded blob bytes (non-image only)")
+
+
+
+#-------------------------------------------
+# IMAGES RETRIEVAL DTO
+#-------------------------------------------
+class ImagePageRequest(BaseModel):
+    exclude: list[str] = Field(default_factory=list, description="Blob IDs already on the client")
+    limit: int = Field(10, ge=1, le=100, description="How many to fetch")
+
+class UserImageOut(BaseModel):
+    blobId: str
+    mime: str
+    fileName: str
+    dataB64: str
+
+class ImagePageResponse(BaseModel):
+    data: list[UserImageOut]
+    has_more: bool
 
 

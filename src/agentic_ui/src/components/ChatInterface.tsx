@@ -836,7 +836,7 @@ export function ChatInterface() {
                               }
                               
                               return (
-                                <div key={index} className={`text-xs ${isImage ? '' : 'bg-black/20 px-3 py-1 rounded-md flex items-center gap-1'}`}>
+                                <div key={index} className="text-xs">
                                     {isImage ? (
                                       <div 
                                         className="relative group cursor-pointer"
@@ -845,22 +845,31 @@ export function ChatInterface() {
                                         <img 
                                           src={imageUrl} 
                                           alt="Image" 
-                                          className="w-12 h-12 object-cover rounded-md border border-white/20 transition-all hover:scale-105 hover:shadow-lg"
+                                          className="w-16 h-16 object-cover rounded-lg border border-white/20 transition-all hover:scale-105 hover:shadow-lg"
                                         />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-md flex items-center justify-center">
-                                          <Eye size={12} className="text-white" />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                                          <Eye size={16} className="text-white" />
                                         </div>
                                       </div>
-                                     ) : (
-                                       <div 
-                                         className="bg-black/20 px-3 py-1 rounded-md flex items-center gap-1 cursor-pointer hover:bg-black/30 transition-colors group"
-                                         onClick={() => handleFileDownload(attachment, message)}
-                                       >
-                                         <Paperclip size={12} />
-                                         <span className="truncate max-w-[150px]">{fileName}</span>
-                                         <Download size={10} className="opacity-0 group-hover:opacity-100 transition-opacity ml-auto" />
-                                       </div>
-                                     )}
+                                    ) : (
+                                      <div 
+                                        className="relative group cursor-pointer bg-muted/30 hover:bg-muted/50 border border-border/30 rounded-lg px-4 py-3 min-w-[160px] max-w-[200px] transition-all duration-200 hover:shadow-md"
+                                        onClick={() => handleFileDownload(attachment, message)}
+                                      >
+                                        {/* File content */}
+                                        <div className="flex items-center gap-2 group-hover:opacity-30 transition-opacity duration-200">
+                                          <Paperclip size={14} className="text-muted-foreground" />
+                                          <span className="truncate font-medium text-foreground/80">{fileName}</span>
+                                        </div>
+                                        
+                                        {/* Centered download button on hover */}
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                          <div className="bg-primary/90 text-primary-foreground rounded-full p-2 shadow-lg">
+                                            <Download size={16} />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
                                 </div>
                               );
                             })}
