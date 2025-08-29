@@ -4,7 +4,7 @@ from typing import List
 from fastapi import FastAPI, Depends, HTTPException, status
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select
+from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
@@ -22,7 +22,7 @@ from schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
     ConversationIn,
     BlobDownloadRequest, BlobDownloadResponse,
-    ImagePageRequest, ImagePageResponse, UserImageOut,
+    ImageSummaryOut, ImageBatchIn, ImageOut,
     AuthRequest, AuthResponse,
     AgentPublic,
 )
@@ -237,29 +237,54 @@ async def downloadBlob(
     return BlobDownloadResponse(dataB64=data_b64)
 
 
-@app.post(
-    "/users/{user_id}/images/next",
-    response_model=ImagePageResponse,
+@app.get(
+    "/users/{user_id}/images/summary",
+    response_model=ImageSummaryOut,
     status_code=status.HTTP_200_OK,
 )
-async def get_next_images(
+async def getImageSummary(
     user_id: str,
-    payload: ImagePageRequest,
     current_user: UserTable = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ):
-    # 1. Short-circuit if limit == 0
-    if payload.limit == 0:
-        return ImagePageResponse(data=[], has_more=False)
-    
-    # 2. Build the query
+    stmt = (
+        select(func.count())
+        .select_from(AttachmentTable)
+        .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            ConversationTable.user_id == user_id,
+            AttachmentTable.mime_type.like("image/%"),
+        )
+    )
+    total: int = (await db.execute(stmt)).scalar_one()
+    return ImageSummaryOut(total=total)
+
+
+@app.post(
+    "/users/{user_id}/images/batch",
+    response_model=list[ImageOut],
+    status_code=status.HTTP_200_OK,
+)
+async def getImageBatch(
+    user_id: str,
+    body: ImageBatchIn,
+    current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return the next `body.limit` images **not** present in `body.exclude`,
+    ordered by newest first.
+    """
+    # Build the query
     stmt = (
         select(
             BlobTable.id.label("blob_id"),
+            AttachmentTable.id.label("attachment_id"),
             AttachmentTable.file_name,
             AttachmentTable.mime_type,
-            BlobTable.data,
             AttachmentTable.created_at,
+            BlobTable.data,
         )
         .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
         .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
@@ -267,30 +292,26 @@ async def get_next_images(
         .where(
             ConversationTable.user_id == user_id,
             AttachmentTable.mime_type.like("image/%"),
-            ~BlobTable.id.in_(payload.exclude) if payload.exclude else True,
+            ~BlobTable.id.in_(body.exclude) if body.exclude else True,
         )
-        .order_by(AttachmentTable.created_at.desc(), BlobTable.id.desc())
-        .limit(payload.limit + 1)   # fetch one extra to see if there’s more
+        .order_by(desc(AttachmentTable.created_at))
+        .limit(body.limit)
     )
-    
+
     rows = (await db.execute(stmt)).all()
-    
-    # 3. Slice + detect continuation
-    has_more = len(rows) > payload.limit
-    rows = rows[: payload.limit]
-    
-    # 4. Map rows ➜ DTOs
-    images = [
-        UserImageOut(
-            blobId = r.blob_id,
-            mime = r.mime_type,
-            fileName = r.file_name,
-            dataB64 = base64.b64encode(r.data).decode("ascii"),
+
+    # Serialize
+    return [
+        ImageOut(
+            blob_id=r.blob_id,
+            attachment_id=r.attachment_id,
+            file_name=r.file_name,
+            mime_type=r.mime_type,
+            created_at=r.created_at,
+            dataB64=base64.b64encode(r.data).decode(),
         )
         for r in rows
     ]
-    
-    return ImagePageResponse(data=images, has_more=has_more)
 
 
 

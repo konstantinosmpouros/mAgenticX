@@ -1,6 +1,7 @@
 import React from "react";
 import type { LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import SplitText from "@/components/utils/react_bits/split_text";
 
 
 type InputContainerProps = {
@@ -49,7 +50,7 @@ const WELCOME_QUOTES: string[] = [
     "What do you want to accomplish today?",
     "Ask {agent} anything.",
     "Drop files or paste images to get started.",
-    "Tell me your goal! I’ll help you get there.",
+    "Tell me your goal! I'll help you get there.",
     "New chat — new ideas.",
     "I can draft, analyze, or plan — your call.",
     "Need a summary, a plan, or code? Say the word.",
@@ -144,17 +145,27 @@ export function InputContainer(props: InputContainerProps) {
                     {/* Random welcome quote */}
                     <div className="min-h-[2.75rem] md:min-h-[3rem]">
                         <AnimatePresence mode="wait" initial={false}>
-                            <motion.h2
+                            <motion.div
                                 key={quoteIndex} // key causes exit/enter on change
-                                variants={quoteVariants}
-                                initial="initial"
-                                animate="animate"
+                                variants={{
+                                    exit: { opacity: 0, y: prefersReducedMotion ? 0 : -8 }
+                                }}
                                 exit="exit"
                                 transition={{ duration: 0.35, ease: "easeOut" }}
-                                className="text-xl md:text-2xl font-bold mb-2 md:mb-3 will-change-transform"
-                                >
-                                    {welcomeQuote}
-                            </motion.h2>
+                                initial={false}
+                                className="text-xl md:text-2xl font-bold mb-2 md:mb-3"
+                            >
+                                <SplitText
+                                    text={welcomeQuote}
+                                    tag="h2"
+                                    useScrollTrigger={false}
+                                    from={{ opacity: 0, y: prefersReducedMotion ? 0 : 8 }}
+                                    to={{ opacity: 1, y: 0 }}
+                                    duration={1}
+                                    delay={25}
+                                    splitType="chars"
+                                />
+                            </motion.div>
                         </AnimatePresence>
                     </div>
                     

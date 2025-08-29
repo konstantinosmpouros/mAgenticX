@@ -127,6 +127,7 @@ class ConversationDetail(BaseModel):
     messages: List[MessageOut] = Field(default_factory=list)
 
 class CreateConversationResponse(BaseModel):
+    """Response when creating a conversation: summary + full detail."""
     detail: ConversationDetail
     summary: ConversationSummary
 
@@ -168,9 +169,7 @@ class MessageIn(BaseModel):
         return self
 
 class ConversationIn(BaseModel):
-    """
-    Create a conversation and persist the very first message.
-    """
+    """Create a conversation and persist the very first message."""
     agentId: str = Field(..., description="Target agent id")
     isPrivate: bool = Field(False, description="Optional privacy flag")
     title: Optional[str] = Field(None, description="Optional custom title")
@@ -186,9 +185,7 @@ class BlobDownloadRequest(BaseModel):
     blobId: str = Field(..., description="ID of the blob to download")
 
 class BlobDownloadResponse(BaseModel):
-    """
-    Returns a single blob: the raw bytes of the blob, base64-encoded. (No images allowed.)
-    """
+    """Returns a single blob: the raw bytes of the blob, base64-encoded. (No images allowed.)"""
     dataB64: str = Field(..., description="Base64-encoded blob bytes (non-image only)")
 
 
@@ -196,18 +193,19 @@ class BlobDownloadResponse(BaseModel):
 #-------------------------------------------
 # IMAGES RETRIEVAL DTO
 #-------------------------------------------
-class ImagePageRequest(BaseModel):
-    exclude: list[str] = Field(default_factory=list, description="Blob IDs already on the client")
-    limit: int = Field(10, ge=1, le=100, description="How many to fetch")
+class ImageSummaryOut(BaseModel):
+    total: int
 
-class UserImageOut(BaseModel):
-    blobId: str
-    mime: str
-    fileName: str
+class ImageBatchIn(BaseModel):
+    exclude: list[str] = Field(default_factory=list)    # blobIds the UI already has
+    limit: int = Field(10, ge=1, le=100)                # page size (default 10)
+
+class ImageOut(BaseModel):
+    blobId: str = Field(..., validation_alias="blob_id")
+    attachmentId: str = Field(..., validation_alias="attachment_id")
+    fileName: str = Field(..., validation_alias="file_name")
+    mime: str = Field(..., validation_alias="mime_type")
+    createdAt: datetime = Field(..., validation_alias="created_at")
     dataB64: str
-
-class ImagePageResponse(BaseModel):
-    data: list[UserImageOut]
-    has_more: bool
 
 
