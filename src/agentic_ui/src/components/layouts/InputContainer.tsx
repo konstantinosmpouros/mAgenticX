@@ -2,6 +2,7 @@ import React from "react";
 import type { LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import SplitText from "@/components/utils/react_bits/split_text";
+import StarBorder from "@/components/utils/react_bits/star_border";
 
 
 type InputContainerProps = {
@@ -292,13 +293,16 @@ export function InputContainer(props: InputContainerProps) {
                             {/* Send Message */}
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Button
+                                    <StarBorder
+                                        innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center h-10 w-10 py-0 px-0 border-0 rounded-full font-normal text-[inherit]"  // Overrides default inner styles to match original button; added flex centering for icon, removed unnecessary padding/text styles
+                                        className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"  // Added hover and transition here for the outer container
+                                        color="hsl(var(--primary))"  // Use your theme's primary color variable for the star effect; fallback to 'magenta' or any color
+                                        thickness={3}
                                         onClick={handleSendMessage}
                                         disabled={(!currentMessage.trim() && attachments.length === 0) || !!thinkingActive}
-                                        className="bg-gradient-primary hover:opacity-90 transition-smooth shadow-elegant h-10 w-10 active:scale-110"
                                     >
                                         <Send size={16} />
-                                    </Button>
+                                    </StarBorder>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                     <p>Send Message</p>
