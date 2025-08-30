@@ -26,6 +26,5 @@
 
 ## Dialogue Bridge
 
-- Create an api to add a new message in a conversation + the attachments
 - Implement tha agentic inference api call.
 - Implement a small api call in the create conversation api to initialize a title like openai

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/utils/button";
 import { Textarea } from "@/components/utils/textarea";
 import { Card } from "@/components/utils/card";
@@ -11,12 +11,18 @@ import { useToast } from "@/hooks/use-toast";
 // Import types for messages, thinking state, conversations, and agents
 import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, ConversationIn, CreateConversationResponse, MessageIn, AttachmentIn } from "@/lib/types";
 
-// Import the api functionalities
-import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation, addMessageToConversation, downloadAttachment } from "@/lib/api";
-
-// Import helper functions from the utilities
-import { convertFileAttachments } from "@/lib/utils";
-import { validateAttachmentsForUpload, validateAdd } from '@/lib/uploadGuards';
+// Handlers (modularized)
+import { 
+  createAttachmentHandlers,
+  createDownloadHandlers,
+  createInferenceHandlers,
+  createConversationHandlers,
+  createAgentHandlers,
+  createAuthHandlers,
+  useThinkingProgressEffect,
+  useAutoScrollEffect,
+  useEnsureDefaultAgentEffect
+} from "@/components/handlers";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -68,609 +74,52 @@ export function ChatInterface() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
   
-  // Ensure a default selected agent after agents are loaded
-  useEffect(() => {
-    if (isLoggedIn && userId && agents.length > 0) {
-      const exists = agents.some(a => a.id === selectedAgent);
-      if (!exists) {
-        setSelectedAgent(agents[0].id);
-      }
-    }
-  }, [isLoggedIn, userId, agents]);
+  // Effects moved to handlers
+  useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
+  useAutoScrollEffect(messages, thinkingState, messagesEndRef);
+  useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages });
   
-  // Scroll to bottom function
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-  };
-  
-  // Scroll to bottom when messages or thinking state changes
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, thinkingState]);
-  
-  // Enhanced thinking animation
-  useEffect(() => {
-    if (!thinkingState?.isActive) return;
-    
-    const interval = setInterval(() => {
-      setThinkingState(prev => {
-        if (!prev) return null;
-        
-        if (prev.currentThoughtIndex < prev.thoughts.length - 1) {
-          return {
-            ...prev,
-            currentThoughtIndex: prev.currentThoughtIndex + 1
-          };
-        } else if (!prev.isDone) {
-          const endTime = Date.now();
-          setTimeout(() => {
-            // Add "Done!" to thoughts and collapse
-            const totalTime = Math.round((endTime - prev.startTime) / 1000);
-            const agentResponse: MessageOut = {
-              id: prev.messageId,
-              content: `Hello! I'm your ${agents.find(a => a.id === selectedAgent)?.name}. I'm here to assist you with specialized knowledge and support. How can I help you today?`,
-              sender: 'ai',
-              type: 'text',
-              thinking: prev.thoughts.concat('Done!'),
-              thinkingTime: totalTime,
-              attachments: [],
-              created_at: new Date(),
-              updated_at: new Date(),
-            };
-            setMessages(prevMessages => [...prevMessages, agentResponse]);
-            setThinkingState(null);
-          }, 1000);
-          
-          return {
-            ...prev,
-            isDone: true,
-            endTime
-          };
-        }
-        return prev;
-      });
-    }, 2000);
-    
-    return () => clearInterval(interval);
-  }, [thinkingState, selectedAgent]);
-  
-  // Handle sending message
-  const handleSendMessage = async () => {
-    if (!currentMessage.trim() && attachments.length === 0) return;
-    if (isSendingMessage) return; // Prevent double-sending
-    
-    // Guardrail: preflight size checks BEFORE we set the sending flag or convert to base64
-    if (attachments.length) {
-      const sizeErr = validateAttachmentsForUpload(attachments);
-      if (sizeErr) {
-        toast({ title: "Attachment too large", description: sizeErr, variant: "destructive" });
-        return; // do not proceed
-      }
-    }
-    
-    setIsSendingMessage(true); // Set sending flag to true
-    const currentAgent = agents.find(a => a.id === selectedAgent); // Get the current selected agent
-    
-    try {
-      // If this is the first message, create conversation via API
-      if (messages.length === 0) {
-        // Create attachments array with File objects for proper handling
-        const messageAttachments: FileAttachment[] = attachments.map(file => ({
-          file: file,
-          url: isImageFile(file) ? getImageUrl(file) : '',
-          name: file.name,
-          type: file.type
-        }));
-
-        // Convert file attachments to base64 format for API
-        const apiAttachments = await convertFileAttachments(messageAttachments);
-        
-        // Create the conversation payload
-        const conversationPayload: ConversationIn = {
-          agentId: selectedAgent,
-          isPrivate: isPrivateMode,
-          title: undefined,
-          firstMessage: {
-            sender: 'user',
-            type: attachments.length > 0 ? 'file' : 'text',
-            content: currentMessage.trim() || undefined,
-            attachments: apiAttachments
-          }
-        };
-
-        // Call the API to create conversation
-        const response = await createConversation(userId!, conversationPayload);
-        setCurrentConversation(response.detail);
-        setMessages(response.detail.messages);
-        
-        // Add new conversation to sidebar list
-        setConversations(prev => [response.summary, ...prev]);
-        
-        // Clear input
-        setCurrentMessage('');
-        setAttachments([]);
-        setIsSendingMessage(false);
-      } else {
-        // For subsequent messages, persist user message to backend
-        const messageAttachments: FileAttachment[] = attachments.map(file => ({
-          file: file,
-          url: isImageFile(file) ? getImageUrl(file) : '',
-          name: file.name,
-          type: file.type
-        }));
-
-        // Convert file attachments to base64 format for API
-        const apiAttachments = await convertFileAttachments(messageAttachments);
-        
-        // Create the message payload
-        const messagePayload: MessageIn = {
-          sender: 'user',
-          type: attachments.length > 0 ? 'file' : 'text',
-          content: currentMessage.trim() || undefined,
-          attachments: apiAttachments
-        };
-
-        // Call the API to add message to existing conversation
-        const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
-        setCurrentConversation(response.detail);
-        setMessages(response.detail.messages);
-        
-        // Update conversation in sidebar list
-        setConversations(prev => prev.map(conv => 
-          conv.id === response.summary.id ? response.summary : conv
-        ));
-        
-        // Clear input
-        setCurrentMessage('');
-        setAttachments([]);
-        setIsSendingMessage(false);
-      }
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
-      });
-      
-      // Fallback to local behavior on API error
-      // If first message, init the conversation and then add the messages
-      if (messages.length === 0) {
-        const conversationId = Date.now().toString();
-        const conversation: ConversationDetail = {
-          id: conversationId,
-          agentId: selectedAgent,
-          agentName: currentAgent?.name || '',
-          title: "",
-          created_at: new Date(),
-          updated_at: new Date(),
-          messages: [],
-          isPrivate: isPrivateMode
-        };
-        setCurrentConversation(conversation);
-      }
-      
-      // Add the new messages
-      // Create attachments array with File objects for proper handling
-      const messageAttachments: FileAttachment[] = attachments.map(file => ({
-        file: file,
-        url: isImageFile(file) ? getImageUrl(file) : '',
-        name: file.name,
-        type: file.type
-      }));
-      
-      const newMessage: MessageOut = {
-        id: Date.now().toString(),
-        content: currentMessage,
-        sender: 'user',
-        type: attachments.length > 0 ? 'file' : 'text',
-        created_at: new Date(),
-        updated_at: new Date(),
-        attachments: messageAttachments as any // Temporary cast for mixed attachment types
-      };
-      
-      // Add message with smooth animation
-      setMessages(prev => [...prev, newMessage]);
-      setCurrentMessage('');
-      setAttachments([]);
-      setIsSendingMessage(false);
-      
-    }
-    
-    // Start enhanced thinking animation (only for subsequent messages or API failures)
-    const thinking = [
-      "Analyzing the user's query and determining the best approach...",
-      "Considering relevant context and domain-specific knowledge...",
-      "Cross-referencing with specialized databases and policies...",
-      "Formulating a comprehensive and helpful response...",
-      // "Preparing the final response based on analysis..."
-    ];
-    
-    setThinkingState({
-      messageId: (Date.now() + 1).toString(),
-      thoughts: thinking,
-      currentThoughtIndex: 0,
-      isActive: true,
-      isDone: false,
-      startTime: Date.now()
-    });
-    
-  };
-  
-  // Handle file upload
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const input = event.target as HTMLInputElement;
-    const files: File[] = input.files ? Array.from(input.files) : [];
-    if (files.length === 0) {
-      if (input) input.value = '';
-      return;
-    }
-
-    const MAX_FILES = 5;
-    const remainingSlots = Math.max(0, MAX_FILES - attachments.length);
-    let filesToAdd: File[] = [];
-    let extraFiles = 0;
-
-    if (files.length > remainingSlots) {
-      filesToAdd = files.slice(0, remainingSlots);
-      extraFiles = files.length - filesToAdd.length;
-
-      const sizeErr = validateAdd(attachments, filesToAdd);
-      if (sizeErr) {
-        toast({ title: "Attachment too large", description: sizeErr, variant: "destructive", duration: 3000 });
-        if (input) input.value = '';
-        return;
-      }
-
-      setAttachments(prev => [...prev, ...filesToAdd]);
-      toast({
-        title: "Some files not added",
-        description: `Only ${filesToAdd.length} files added. Maximum ${MAX_FILES} files allowed per message (${extraFiles} excluded).`,
-        variant: "destructive",
-        duration: 3000,
-      });
-    } else {
-      filesToAdd = files;
-
-      const sizeErr = validateAdd(attachments, filesToAdd);
-      if (sizeErr) {
-        toast({ title: "Attachment too large", description: sizeErr, variant: "destructive", duration: 3000 });
-        if (input) input.value = '';
-        return;
-      }
-
-      setAttachments(prev => [...prev, ...filesToAdd]);
-      toast({ title: "Files attached", description: `${filesToAdd.length} file(s) attached to your message`, duration: 2000 });
-    }
-
-    if (input) input.value = ''; // allow re-selecting same file
-  };
-
-  // Handle paste event for all file types
-  const handlePaste = (event: React.ClipboardEvent) => {
-    const items = event.clipboardData?.items;
-    if (!items) return;
-    
-    const MAX_FILES = 5;
-    const remainingSlots = Math.max(0, MAX_FILES - attachments.length);
-    
-    if (remainingSlots <= 0) {
-      toast({
-        title: "Maximum files reached",
-        description: `You can only attach up to ${MAX_FILES} files per message`,
-        variant: "destructive",
-        duration: 3000,
-      });
-      return;
-    }
-    
-    const filesToAdd: File[] = [];
-    const excludedFiles: { file: File; reason: string }[] = [];
-    let totalFilesFound = 0;
-    
-    // First pass: collect all files and check basic constraints
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file) {
-          totalFilesFound++;
-          
-          if (filesToAdd.length >= remainingSlots) {
-            excludedFiles.push({ file, reason: 'slot limit' });
-          } else {
-            filesToAdd.push(file);
-          }
-        }
-      }
-    }
-    
-    if (totalFilesFound === 0) return;
-    
-    // Size validation - this might exclude some files that passed the slot check
-    if (filesToAdd.length > 0) {
-      const sizeErr = validateAdd(attachments, filesToAdd);
-      if (sizeErr) {
-        // If size validation fails, we can't add any files
-        toast({
-          title: "Files too large",
-          description: sizeErr,
-          variant: "destructive",
-          duration: 3000,
-        });
-        return;
-      }
-    }
-    
-    // Update attachments
-    if (filesToAdd.length > 0) {
-      setAttachments(prev => [...prev, ...filesToAdd]);
-    }
-    
-    // Provide feedback to user
-    if (filesToAdd.length > 0 && excludedFiles.length === 0) {
-      toast({
-        title: "Files attached",
-        description: `${filesToAdd.length} pasted file(s) added`,
-        duration: 2000,
-      });
-    } else if (filesToAdd.length > 0 && excludedFiles.length > 0) {
-      toast({
-        title: "Some files attached",
-        description: `${filesToAdd.length} file(s) added, ${excludedFiles.length} excluded (${excludedFiles[0].reason === 'slot limit' ? 'file limit reached' : 'size limit'})`,
-        duration: 3000,
-      });
-    } else if (excludedFiles.length > 0) {
-      toast({
-        title: "Files not attached",
-        description: `${excludedFiles.length} file(s) couldn't be added (${excludedFiles[0].reason === 'slot limit' ? 'file limit reached' : 'size limit'})`,
-        variant: "destructive",
-        duration: 3000,
-      });
-    }
-  };
-  
-  // Check if file is image - now handles AttachmentOut, Attachment, File, and string types
-  const isImageFile = (file: File | any): boolean => {
-    // Handle AttachmentOut from API
-    if (file?.mime) {
-      return file.mime.startsWith('image/');
-    }
-    // Handle File objects and Attachment objects
-    if (file?.type) {
-      return file.type.startsWith('image/');
-    }
-    // Handle URL-based attachments
-    if (file?.url) {
-      return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(file.url);
-    }
-    // Handle string attachments
-    if (typeof file === 'string') {
-      return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(file);
-    }
-    return false;
-  };
-  
-  // Get image URL from file - handles multiple attachment types
-  const getImageUrl = (file: File | any): string => {
-    // Handle AttachmentOut with base64 data
-    if (file?.data && file?.mime) {
-      return `data:${file.mime};base64,${file.data}`;
-    }
-    // Handle Attachment objects with URL
-    if (file?.url) {
-      return file.url;
-    }
-    // Handle File objects
-    if (file instanceof File) {
-      return URL.createObjectURL(file);
-    }
-    // Handle string URLs
-    if (typeof file === 'string') {
-      return file;
-    }
-    return '';
-  };
-  
-  // Trigger file download helper
-  const triggerFileDownload = (blob: Blob, filename: string, mimeType: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // Handle file download for non-image attachments
-  const handleFileDownload = async (attachment: any, message: MessageOut) => {
-    if (!userId || !currentConversation) return;
-    
-    // Check if blobId exists
-    if (!attachment.blobId) {
-      toast({
-        title: "Download unavailable",
-        description: "This attachment cannot be downloaded",
-        variant: "destructive",
-        duration: 3000,
-      });
-      return;
-    }
-    
-    try {
-      toast({
-        title: "Downloading file...",
-        description: `Starting download of ${attachment.name}`,
-        duration: 2000,
-      });
-
-      const blob = await downloadAttachment(
-        userId, 
-        currentConversation.id, 
-        message.id, 
-        attachment.blobId
-      );
-      
-      triggerFileDownload(blob, attachment.name, attachment.mime);
-      
-      toast({
-        title: "Download complete",
-        description: `${attachment.name} has been downloaded`,
-        duration: 2000,
-      });
-    } catch (error) {
-      console.error('Download failed:', error);
-      toast({
-        title: "Download failed",
-        description: "Unable to download the file. Please try again.",
-        variant: "destructive",
-        duration: 3000,
-      });
-    }
-  };
+  // Handlers from modules
+  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl } = createAttachmentHandlers({ attachments, setAttachments, toast });
+  const { handleFileDownload } = createDownloadHandlers({ userId, currentConversation, toast });
   
   // Handle image click for full preview
   const handleImageClick = (imageUrl: string) => {
     setSelectedImage(imageUrl);
   };
   
-  // Clear chat and stop thinking state with smooth transition
-  const clearChatAndStopThinking = () => {
-    setIsClearing(true);
-    
-    // First phase: fade out existing content
-    setTimeout(() => {
-      setThinkingState(null);
-      setMessages([]);
-      setExpandedThinking({});
-      setAttachments([]);
-      setCurrentMessage('');
-      setCurrentConversation(null);
-      setIsPrivateMode(false);
-      
-      // Second phase: fade back in
-      setTimeout(() => {
-        setIsClearing(false);
-      }, 150);
-    }, 200);
-  };
-  
-  // Handle title click to clear chat
-  const handleTitleClick = () => {
-    clearChatAndStopThinking();
-    setSidebarOpen(false);
-  };
-  
-  // Handle agent change from dropdown with smooth transition
-  const handleAgentChange = (value: string) => {
-    if (isAgentSwitching) return; // Prevent rapid switching
-    
-    setIsAgentSwitching(true);
-    
-    // Clear chat with smooth transition
-    clearChatAndStopThinking();
-    
-    // Switch agent after clearing animation
-    setTimeout(() => {
-      setSelectedAgent(value);
-      setTimeout(() => {
-        setIsAgentSwitching(false);
-      }, 200);
-    }, 300);
-  };
-  
-  // Handle new chat button click
-  const handleNewChat = () => {
-    clearChatAndStopThinking();
-  };
-  
-  // Handle conversation selection from sidebar with smooth loading
-  const handleConversationSelect = async (conversation: ConversationSummary) => {
-    if (!userId || loadingConversation) return;
-    
-    setLoadingConversation(true);
-    
-    // Start sidebar close transition first
-    setSidebarOpen(false);
-    
-    // Clear current content with transition
-    setIsClearing(true);
-    
-    setTimeout(async () => {
-      try {
-        // Fetch full conversation details from API
-        const conversationDetail = await getConversationDetail(userId, conversation.id);
-        
-        // Update state with the loaded conversation data with staggered animation
-        setTimeout(() => {
-          setMessages(conversationDetail.messages);
-          setSelectedAgent(conversationDetail.agentId);
-          setCurrentConversation(conversationDetail);
-          setIsPrivateMode(conversationDetail.isPrivate || false);
-          setIsClearing(false);
-        }, 100);
-      
-      } catch (error) {
-        console.error('Failed to load conversation:', error);
-        toast({
-          title: "Failed to load conversation",
-          description: "There was an error loading the conversation. Please try again.",
-          variant: "destructive",
-          duration: 3000,
-        });
-        
-        // Fallback to basic conversation data on error
-        setMessages([]);
-        setSelectedAgent(conversation.agentId);
-        // Create minimal ConversationDetail from ConversationSummary
-        const fallbackDetail: ConversationDetail = {
-          ...conversation,
-          created_at: new Date(conversation.created_at),
-          updated_at: new Date(conversation.updated_at),
-          messages: []
-        };
-        setCurrentConversation(fallbackDetail);
-        setIsPrivateMode(conversation.isPrivate || false);
-        setIsClearing(false);
-      } finally {
-        setLoadingConversation(false);
-      }
-    }, 300);
-  };
-  
-  // Handle conversation deletion
-  const handleDeleteConversation = async (conversationId: string, event: React.MouseEvent) => {
-    event.stopPropagation(); // Prevent conversation selection when clicking delete
-    if (!userId) return;
-    
-    try {
-      await deleteConversation(userId, conversationId);
-      setConversations(conversations.filter(conv => conv.id !== conversationId));
-      
-      // If deleting the currently active conversation, clear the chat
-      if (conversationId === currentConversation?.id) {
-        clearChatAndStopThinking();
-      }
-      
-      toast({
-        title: "Conversation deleted",
-        description: "The conversation has been removed from your history",
-        duration: 2000,
-      });
-    } catch (error) {
-      console.error('Failed to delete conversation:', error);
-      toast({
-        title: "Failed to delete conversation",
-        description: "There was an error deleting the conversation. Please try again.",
-        variant: "destructive",
-        duration: 3000,
-      });
-    }
-  };
+  // Conversations and agent handlers
+  const {
+    handleConversationSelect,
+    handleDeleteConversation,
+    handleNewChat,
+    handleTitleClick,
+    clearChatAndStopThinking,
+  } = createConversationHandlers({
+    userId,
+    conversations,
+    setConversations,
+    currentConversation,
+    setLoadingConversation,
+    setSidebarOpen,
+    setIsClearing,
+    setMessages,
+    setSelectedAgent,
+    setCurrentConversation,
+    setIsPrivateMode,
+    setExpandedThinking,
+    setAttachments,
+    setCurrentMessage,
+    setThinkingState,
+    toast,
+  });
+
+  const { handleAgentChange } = createAgentHandlers({
+    isAgentSwitching,
+    setIsAgentSwitching,
+    setSelectedAgent,
+    clearChatAndStopThinking,
+  });
   
   // Handle thinking toggle
   const toggleThinking = (messageId: string) => {
@@ -680,60 +129,41 @@ export function ChatInterface() {
     }));
   };
   
-  // Handle attachment removal
-  const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
-  };
-  
-  // Handle login functionality
-  const handleLogin = async () => {
-    try {
-      const response = await authenticate({
-        username: loginUsername.trim(),
-        password: loginPassword.trim()
-      });
-      
-      if (response.authenticated && response.user_id) {
-        // Smooth login transition with data loading
-        setTimeout(async () => {
-          setIsLoggedIn(true);
-          setUserId(response.user_id!);
-          
-          // Fetch available agents and conversations after successful login
-          try {
-            const [agentsList, conversationsList] = await Promise.all([
-              getAgents(),
-              getConversations(response.user_id!)
-            ]);
-            setAgents(agentsList);
-            setConversations(conversationsList);
-          } catch (e) {
-            // Keep UI functional even if data can't be loaded
-            setAgents([]);
-            setConversations([]);
-          }
-        }, 600);
-        
-        setLoginUsername('')
-        setLoginPassword('')
-        
-      } else {
-        toast({
-          title: "Authentication failed",
-          description: "Please check your credentials and try again.",
-          variant: "destructive",
-          duration: 2000,
-        });
-      }
-    } catch (error) {
-      console.error('Authentication error:', error);
-      toast({
-        title: "Login Failed",
-        description: "Unable to connect to authentication service",
-        variant: "destructive",
-      });
-    }
-  };
+  // Auth handler
+  const { handleLogin } = createAuthHandlers({
+    setIsLoggedIn,
+    setUserId,
+    setAgents,
+    setConversations,
+    setLoginUsername,
+    setLoginPassword,
+    toast,
+    loginUsername,
+    loginPassword,
+  });
+
+  // Inference handler (send message)
+  const { handleSendMessage } = createInferenceHandlers({
+    userId,
+    selectedAgent,
+    isPrivateMode,
+    messages,
+    attachments,
+    agents,
+    currentConversation,
+    currentMessage,
+    isSendingMessage,
+    setMessages,
+    setCurrentMessage,
+    setAttachments,
+    setIsSendingMessage,
+    setCurrentConversation,
+    setConversations,
+    toast,
+    isImageFile,
+    getImageUrl,
+    setThinkingState,
+  });
   
   const currentAgent = agents.find(a => a.id === selectedAgent);
   const AgentIcon = currentAgent?.icon || Building2;
