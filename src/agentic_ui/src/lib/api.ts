@@ -181,26 +181,40 @@ export async function addMessageToConversation(userId: string, conversationId: s
   }
 
   const data = await res.json();
-  
-  // Transform the response to match our UpdateConversationResponse type
+
+  // Backward-compat: if server still returns detail, derive the last message
+  if (data.detail) {
+    const last = data.detail.messages[data.detail.messages.length - 1];
+    return {
+      message: {
+        ...last,
+        created_at: new Date(last.created_at),
+        updated_at: new Date(last.updated_at),
+        attachments: (last.attachments || []).map((att: any) => ({
+          ...att,
+          timestamp: new Date(att.timestamp),
+          blobId: att.blobId || att.blob_id
+        })),
+      },
+      summary: data.summary,
+    } as UpdateConversationResponse;
+  }
+
+  // New shape: { message, summary }
+  const m = data.message;
   return {
-    detail: {
-      ...data.detail,
-      created_at: new Date(data.detail.created_at),
-      updated_at: new Date(data.detail.updated_at),
-      messages: data.detail.messages.map((message: any) => ({
-        ...message,
-        created_at: new Date(message.created_at),
-        updated_at: new Date(message.updated_at),
-        attachments: message.attachments.map((attachment: any) => ({
-          ...attachment,
-          timestamp: new Date(attachment.timestamp),
-          blobId: attachment.blobId || attachment.blob_id // Handle both camelCase and snake_case
-        }))
-      }))
+    message: {
+      ...m,
+      created_at: new Date(m.created_at),
+      updated_at: new Date(m.updated_at),
+      attachments: (m.attachments || []).map((att: any) => ({
+        ...att,
+        timestamp: new Date(att.timestamp),
+        blobId: att.blobId || att.blob_id,
+      })),
     },
-    summary: data.summary
-  };
+    summary: data.summary,
+  } as UpdateConversationResponse;
 }
 
 // Download non-image attachment

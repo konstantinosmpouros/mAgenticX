@@ -181,7 +181,7 @@ class CreateConversationResponse(BaseModel):
 # CONVERSATION UPDATE DTO
 #-------------------------------------------
 class UpdateConversationResponse(BaseModel):
-    detail: ConversationDetail
+    message: MessageOut
     summary: ConversationSummary
 
 

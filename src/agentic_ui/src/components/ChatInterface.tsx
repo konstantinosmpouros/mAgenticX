@@ -391,8 +391,8 @@ export function ChatInterface() {
                             ? 'bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border max-w-[85%] md:max-w-[75%]'
                             : 'bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
                         }`}>
-                          <div className="space-y-3">
-                            <MarkdownRenderer content={message.content} className="leading-relaxed" />
+                          <div className="space-y-3 min-w-0">
+                            <MarkdownRenderer content={message.content} className="leading-relaxed break-words" />
                             <div className="text-xs opacity-70 flex items-center gap-2">
                               <span>{message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                               {message.sender === 'ai' && (

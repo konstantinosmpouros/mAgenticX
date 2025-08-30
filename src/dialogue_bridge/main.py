@@ -21,7 +21,7 @@ from database import (
 )
 from schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
-    ConversationIn, MessageIn,
+    ConversationIn, MessageIn, MessageOut,
     UpdateConversationResponse,
     BlobDownloadRequest, BlobDownloadResponse,
     ImageSummaryOut, ImageBatchIn, ImageOut,
@@ -337,11 +337,11 @@ async def addMessageToConversation(
 ) -> UpdateConversationResponse:
     """
     Append a new message (optionally with attachments) to an existing conversation.
-    Returns the refreshed conversation detail & sidebar summary.
+    Returns only the appended message (with attachments) and the updated sidebar summary.
     """
     try:
-        # 1) Persist the new message
-        await init_message(db, current_conv, payload)
+        # 1) Persist the new message and capture it
+        msg = await init_message(db, current_conv, payload)
         
         # 2) Bump conversation metadata
         current_conv.last_message_preview = (
@@ -355,13 +355,26 @@ async def addMessageToConversation(
         await db.rollback()
         raise
     
-    # 3) Reload full tree (messages → attachments → blob) so B64 fields are injected
-    conv_full = await validate_convId_full(user_id, conversation_id, db)
-    
-    detail  = ConversationDetail.model_validate(conv_full)
-    summary = ConversationSummary.model_validate(conv_full)
-    
-    return UpdateConversationResponse(detail=detail, summary=summary)
+        # 3) Load only the inserted message with attachments (including blobs for images)
+    from sqlalchemy.orm import selectinload
+    stmt = (
+        select(MessageTable)
+        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
+        .where(MessageTable.id == msg.id)
+    )
+    result = await db.execute(stmt)
+    msg_row = result.scalar_one_or_none()
+    if not msg_row:
+        conv_full = await validate_convId_full(user_id, conversation_id, db)
+        message_out = MessageOut.model_validate(conv_full.messages[-1])
+        summary = ConversationSummary.model_validate(conv_full)
+        return UpdateConversationResponse(message=message_out, summary=summary)
+
+    message_out = MessageOut.model_validate(msg_row)
+    # Refresh conversation row so auto-updated columns (e.g., updated_at) are loaded
+    await db.refresh(current_conv)
+    summary = ConversationSummary.model_validate(current_conv)
+    return UpdateConversationResponse(message=message_out, summary=summary)
 
 
 
@@ -418,5 +431,7 @@ async def deleteConversation(
 #         media_type="text/event-stream",
 #         status_code=200,
 #     )
+
+
 
 

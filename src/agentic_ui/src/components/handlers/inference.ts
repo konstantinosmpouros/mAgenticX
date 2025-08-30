@@ -118,8 +118,15 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         };
         
         const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
-        setCurrentConversation(response.detail);
-        setMessages(() => response.detail.messages);
+        // Append only the returned message
+        setMessages(prev => [...prev, response.message]);
+        // Touch currentConversation timestamps minimally
+        setCurrentConversation(
+          currentConversation
+            ? { ...currentConversation, updated_at: new Date(response.summary.updated_at) }
+            : currentConversation
+        );
+        // Update sidebar summary and keep ordering
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
         setCurrentMessage('');
         setAttachments([]);

@@ -131,7 +131,7 @@ export type CreateConversationResponse = {
 
 // Response from addMessageToConversation API  
 export type UpdateConversationResponse = {
-    detail: ConversationDetail;
+    message: MessageOut;
     summary: ConversationSummary;
 };
 
