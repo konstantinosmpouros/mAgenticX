@@ -135,7 +135,8 @@ export function InputContainer(props: InputContainerProps) {
     
     return (
         <div
-            className={`${positionClass} `}
+            /* Force dark token scope so the input stays dark even in light theme */
+            className={`${positionClass} dark`}
         >
             {isMessagesEmpty && (
                 <div className="text-center py-16">
@@ -250,7 +251,7 @@ export function InputContainer(props: InputContainerProps) {
                                     handleSendMessage();
                                 }
                                 }}
-                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] max-h-[144px] text-base px-4 py-3 resize-none overflow-y-auto"
+                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] max-h-[144px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground"
                                 rows={1}
                                 style={{ height: "auto" }}
                             />

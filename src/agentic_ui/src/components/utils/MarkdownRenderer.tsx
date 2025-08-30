@@ -68,22 +68,22 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
             </a>
           ),
           h1: ({ children, ...props }) => (
-            <h1 className="text-2xl font-bold text-foreground mt-6 mb-4 first:mt-0" {...props}>
+            <h1 className="text-2xl font-bold text-inherit mt-6 mb-4 first:mt-0" {...props}>
               {children}
             </h1>
           ),
           h2: ({ children, ...props }) => (
-            <h2 className="text-xl font-semibold text-foreground mt-5 mb-3 first:mt-0" {...props}>
+            <h2 className="text-xl font-semibold text-inherit mt-5 mb-3 first:mt-0" {...props}>
               {children}
             </h2>
           ),
           h3: ({ children, ...props }) => (
-            <h3 className="text-lg font-semibold text-foreground mt-4 mb-2 first:mt-0" {...props}>
+            <h3 className="text-lg font-semibold text-inherit mt-4 mb-2 first:mt-0" {...props}>
               {children}
             </h3>
           ),
           p: ({ children, ...props }) => (
-            <p className="text-foreground leading-relaxed mb-3 last:mb-0" {...props}>
+            <p className="text-inherit leading-relaxed mb-3 last:mb-0" {...props}>
               {children}
             </p>
           ),
@@ -98,7 +98,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
             </ol>
           ),
           li: ({ children, ...props }) => (
-            <li className="text-foreground" {...props}>
+            <li className="text-inherit" {...props}>
               {children}
             </li>
           ),

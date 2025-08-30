@@ -39,8 +39,9 @@ All colors MUST be HSL.
     --ring: transparent;
 
     /* Professional chat colors - light theme */
-    --chat-user: 293 89% 74%;
-    --chat-user-foreground: 0 0% 9%;
+    /* Match user bubble to dark mode for consistency in light theme */
+    --chat-user: 240 6% 12%;
+    --chat-user-foreground: 0 0% 95%;
     --chat-agent: 240 4.8% 95.9%;
     --chat-agent-foreground: 240 10% 3.9%;
     

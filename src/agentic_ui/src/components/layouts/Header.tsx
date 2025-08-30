@@ -45,14 +45,16 @@ export default function Header({
                 {/* Agent select + New chat */}
                 <div className="flex items-center gap-1.5 md:gap-3">
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
-                        <SelectTrigger className="w-28 sm:w-36 md:w-48 bg-transparent border-1 border-fuchsia-500/30 hover:border-fuchsia-400/50 hover:bg-gradient-to-r hover:from-fuchsia-500/5 hover:via-fuchsia-400/8 hover:to-fuchsia-500/5 hover:shadow-[0_0_20px_rgba(217,70,239,0.3)] transition-all duration-300 shadow-card focus:ring-0 focus:ring-offset-0 focus:border-fuchsia-400/60 text-fuchsia-300 font-medium">
+                        <SelectTrigger className="w-28 sm:w-36 md:w-48 transition-all duration-300 shadow-card focus:ring-0 focus:ring-offset-0
+                            bg-background border border-input text-foreground hover:bg-muted/60
+                            dark:bg-transparent dark:border-fuchsia-500/30 dark:text-fuchsia-300 dark:hover:border-fuchsia-400/50 dark:hover:bg-gradient-to-r dark:hover:from-fuchsia-500/5 dark:hover:via-fuchsia-400/8 dark:hover:to-fuchsia-500/5 dark:hover:shadow-[0_0_20px_rgba(217,70,239,0.3)] dark:focus:border-fuchsia-400/60">
                             <SelectValue placeholder="Select an agent">
                                 <div className="flex items-center gap-2">
                                     {selected && SelectedIcon && (
-                                        <SelectedIcon size={16} className="text-fuchsia-300 drop-shadow-[0_0_3px_rgba(217,70,239,0.6)]" />
+                                        <SelectedIcon size={16} className="text-muted-foreground dark:text-fuchsia-300 dark:drop-shadow-[0_0_3px_rgba(217,70,239,0.6)]" />
                                     )}
                                     {selected && (
-                                        <span className="truncate text-sm text-fuchsia-300 drop-shadow-[0_0_3px_rgba(217,70,239,0.6)]">
+                                        <span className="truncate text-sm text-foreground dark:text-fuchsia-300 dark:drop-shadow-[0_0_3px_rgba(217,70,239,0.6)]">
                                             {selected.name}
                                         </span>
                                     )}
@@ -60,14 +62,16 @@ export default function Header({
                             </SelectValue>
                         </SelectTrigger>
                         
-                        <SelectContent className="w-[20rem] bg-transparent backdrop-blur-xl shadow-[0_0_20px_rgba(217,70,239,0.2)]">
+                        <SelectContent className="w-[20rem] bg-background border border-input text-foreground shadow-card backdrop-blur-xl dark:bg-transparent dark:shadow-[0_0_20px_rgba(217,70,239,0.2)] dark:border-0">
                             {agents.map(agent => (
                                 <SelectItem
                                     key={agent.id}
                                     value={agent.id}
                                     className="group cursor-pointer transition-colors
-                                                data-[highlighted]:bg-gray-800 data-[highlighted]:text-fuchsia-200
-                                                data-[state=checked]:bg-gray-900 data-[state=checked]:text-fuchsia-200
+                                                data-[highlighted]:bg-muted data-[highlighted]:text-foreground
+                                                data-[state=checked]:bg-muted data-[state=checked]:text-foreground
+                                                dark:data-[highlighted]:bg-gray-800 dark:data-[highlighted]:text-fuchsia-200
+                                                dark:data-[state=checked]:bg-gray-900 dark:data-[state=checked]:text-fuchsia-200
                                                 [&_[data-radix-select-item-indicator]]:hidden"
                                 >
                                     <div className="flex items-center gap-2 mt-1">
@@ -77,13 +81,13 @@ export default function Header({
                                         return (
                                             <Icon
                                             size={18}
-                                            className="text-fuchsia-300 absolute left-2 flex h-4 w-4 items-center justify-center opacity-0 group-data-[state=checked]:opacity-100 transition-opacity"
+                                            className="text-muted-foreground dark:text-fuchsia-300 absolute left-2 flex h-4 w-4 items-center justify-center opacity-0 group-data-[state=checked]:opacity-100 transition-opacity"
                                             />
                                         );
                                         })()}
                                         
                                         <div className="flex flex-col">
-                                            <span className="font-medium text-sm">{agent.name}</span>
+                                            <span className="font-medium text-sm text-foreground dark:text-inherit">{agent.name}</span>
                                             <span className="text-xs text-muted-foreground">{agent.description}</span>
                                         </div>
                                     </div>
@@ -97,7 +101,7 @@ export default function Header({
                         <TooltipTrigger asChild>
                             <Button
                                 onClick={onNewChat}
-                                className="p-4 text-muted-foreground hover:text-foreground hover:bg-gray-800 rounded-full transition-smooth active:bg-gray-700 active:scale-110"
+                                className="p-4 text-muted-foreground hover:text-white hover:bg-gray-900 dark:hover:text-white dark:hover:bg-gray-800 rounded-full transition-smooth active:bg-gray-700 active:scale-110"
                                 variant="ghost"
                             >
                                 <Plus size={20} />
@@ -131,7 +135,7 @@ export default function Header({
                         <TooltipTrigger asChild>
                             <Button
                                 onClick={onOpenUserProfile}
-                                className="p-4 text-muted-foreground hover:text-foreground hover:bg-gray-800 rounded-full transition-smooth active:scale-110 active:bg-fuchsia-500/20 active:border-fuchsia-500/50"
+                                className="p-4 text-muted-foreground hover:text-white hover:bg-gray-900 dark:hover:text-white dark:hover:bg-gray-800 rounded-full transition-smooth active:scale-110 active:bg-fuchsia-500/20 active:border-fuchsia-500/50"
                                 variant="ghost"
                             >
                                 <User size={20} className="active:text-fuchsia-600" />

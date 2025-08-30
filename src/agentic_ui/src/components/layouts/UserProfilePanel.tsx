@@ -26,7 +26,8 @@ export default function UserProfilePanel({
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        // Use dark token scope to improve contrast and reduce light/pink glare
+        <div className="fixed inset-0 z-50 flex items-center justify-center dark">
             {/* Overlay */}
             <div
                 className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity animate-fade-in"

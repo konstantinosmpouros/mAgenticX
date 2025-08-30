@@ -9,12 +9,11 @@
 
 - Implement the API call for the agentic inference
 - Implement a tab in the profile panel to show all the images, like openai library
-
+- Enhance the profile panel with actual user info
 - Check the nginx configs and search how to send larger files with pagination in order to make the limit higher
 - Check how to interrupt the inference process
+
 - When changing conversation from sidebar the thinking doesn't stop
-- Fix the light mode colors
-- Enhance the profile panel with actual user info
 - Check what to do with the audio input
 
 ## Agents

@@ -6,6 +6,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select, func, desc
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
@@ -355,8 +356,7 @@ async def addMessageToConversation(
         await db.rollback()
         raise
     
-        # 3) Load only the inserted message with attachments (including blobs for images)
-    from sqlalchemy.orm import selectinload
+    # 3) Load only the inserted message with attachments (including blobs for images)
     stmt = (
         select(MessageTable)
         .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
@@ -364,16 +364,18 @@ async def addMessageToConversation(
     )
     result = await db.execute(stmt)
     msg_row = result.scalar_one_or_none()
+    
     if not msg_row:
         conv_full = await validate_convId_full(user_id, conversation_id, db)
         message_out = MessageOut.model_validate(conv_full.messages[-1])
         summary = ConversationSummary.model_validate(conv_full)
         return UpdateConversationResponse(message=message_out, summary=summary)
 
-    message_out = MessageOut.model_validate(msg_row)
     # Refresh conversation row so auto-updated columns (e.g., updated_at) are loaded
+    message_out = MessageOut.model_validate(msg_row)
     await db.refresh(current_conv)
     summary = ConversationSummary.model_validate(current_conv)
+    
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 

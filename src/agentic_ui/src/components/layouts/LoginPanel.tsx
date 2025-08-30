@@ -17,12 +17,13 @@ type LoginPanelProps = {
 const GalaxyBg = memo(() => (
     <div className="absolute inset-0 -z-10 pointer-events-none">
         <Galaxy
-        mouseRepulsion={true}
-        mouseInteraction={false}
-        density={1.5}
-        glowIntensity={0.4}
-        saturation={0.8}
-        hueShift={150}
+            mouseRepulsion={true}
+            mouseInteraction={false}
+            density={1.5}
+            glowIntensity={0.4}
+            saturation={0.8}
+            hueShift={150}
+            transparent={false}
         />
     </div>
 ), () => true); 
@@ -36,7 +37,8 @@ export default function LoginPanel({
 }: LoginPanelProps) {
     const [showPassword, setShowPassword] = useState(false);
     return (
-        <div className="h-screen flex items-center justify-center">
+        // Force dark styling for the login scene even when global theme is light
+        <div className="h-screen flex items-center justify-center dark">
             <GalaxyBg/>
             <Card 
                 className="
