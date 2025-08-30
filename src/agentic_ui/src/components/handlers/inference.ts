@@ -56,7 +56,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
   const handleSendMessage = async () => {
     const currentMessage = ctx.currentMessage;
 
-    if (!currentMessage.trim() && attachments.length === 0) return;
+    if (!currentMessage && attachments.length === 0) return;
     if (ctx.isSendingMessage) return;
 
     if (attachments.length) {
@@ -88,7 +88,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           firstMessage: {
             sender: 'user',
             type: attachments.length > 0 ? 'file' : 'text',
-            content: currentMessage.trim() || undefined,
+            content: currentMessage || undefined,
             attachments: apiAttachments,
           },
         };
@@ -113,7 +113,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         const messagePayload: MessageIn = {
           sender: 'user',
           type: attachments.length > 0 ? 'file' : 'text',
-          content: currentMessage.trim() || undefined,
+          content: currentMessage || undefined,
           attachments: apiAttachments,
         };
 

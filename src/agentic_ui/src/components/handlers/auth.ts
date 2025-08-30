@@ -1,4 +1,5 @@
 import { authenticate, getAgents, getConversations } from '@/lib/api';
+import { saveSession, clearSession } from '@/lib/authStorage';
 
 type AuthCtx = {
   setIsLoggedIn: (v: boolean) => void;
@@ -23,6 +24,8 @@ export function createAuthHandlers(ctx: AuthCtx) {
         setTimeout(async () => {
           setIsLoggedIn(true);
           setUserId(response.user_id!);
+          // Persist session with 1 hour TTL
+          saveSession(response.user_id!, 60 * 60 * 1000);
           try {
             const [agentsList, conversationsList] = await Promise.all([getAgents(), getConversations(response.user_id!)]);
             setAgents(agentsList);
@@ -44,6 +47,9 @@ export function createAuthHandlers(ctx: AuthCtx) {
     }
   };
 
-  return { handleLogin };
-}
+  const handleLogoutLocal = () => {
+    clearSession();
+  };
 
+  return { handleLogin, handleLogoutLocal };
+}

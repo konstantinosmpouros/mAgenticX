@@ -21,8 +21,12 @@ import {
   createAuthHandlers,
   useThinkingProgressEffect,
   useAutoScrollEffect,
-  useEnsureDefaultAgentEffect
+  useEnsureDefaultAgentEffect,
+  useAuthRehydrateEffect,
+  useSessionStateSyncEffect,
+  useUIPersistEffect
 } from "@/components/handlers";
+import { loadSession, isSessionValid } from "@/lib/authStorage";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -33,6 +37,9 @@ import { InputContainer } from "@/components/layouts/InputContainer";
 
 
 export function ChatInterface() {
+  const initialSession = typeof window !== 'undefined' ? loadSession() : null;
+  const initialUserId = isSessionValid(initialSession) ? initialSession!.userId : null;
+  const initialLoggedIn = Boolean(initialUserId);
   // Main state variables
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
@@ -50,8 +57,8 @@ export function ChatInterface() {
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
   
   // Login and authentication variables
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
+  const [userId, setUserId] = useState<string | null>(initialUserId);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   
@@ -78,6 +85,36 @@ export function ChatInterface() {
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
   useAutoScrollEffect(messages, thinkingState, messagesEndRef);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages });
+  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode, toast, setAttachments });
+  useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
+  useUIPersistEffect({
+    userId,
+    snapshot: {
+      version: 1,
+      selectedAgent,
+      isPrivateMode,
+      currentMessage,
+      expandedThinking,
+      thinkingState,
+      sidebarOpen,
+      activeProfileTab,
+      selectedImage,
+      currentConversation: currentConversation
+        ? {
+            ...currentConversation,
+            created_at: currentConversation.created_at ? currentConversation.created_at.toISOString() : null,
+            updated_at: currentConversation.updated_at ? currentConversation.updated_at.toISOString() : null,
+          }
+        : null,
+      messages: messages.map(m => ({
+        ...m,
+        created_at: m.created_at.toISOString(),
+        updated_at: m.updated_at.toISOString(),
+      })),
+      attachmentsRefs: [], // will be filled by storage layer
+    },
+    attachments,
+  });
   
   // Handlers from modules
   const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl } = createAttachmentHandlers({ attachments, setAttachments, toast });
@@ -130,7 +167,7 @@ export function ChatInterface() {
   };
   
   // Auth handler
-  const { handleLogin } = createAuthHandlers({
+  const { handleLogin, handleLogoutLocal } = createAuthHandlers({
     setIsLoggedIn,
     setUserId,
     setAgents,
@@ -479,6 +516,7 @@ export function ChatInterface() {
             onLogout={() => {
               setShowUserProfile(false);
               setTimeout(() => {
+                handleLogoutLocal();
                 setIsLoggedIn(false);
                 setUserId(null);
                 setLoginUsername("");
