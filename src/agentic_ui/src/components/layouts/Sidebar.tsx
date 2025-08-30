@@ -51,7 +51,7 @@ export default function Sidebar({
                 </Tooltip>
                 
                 <SheetContent side="left" className="w-[clamp(16rem,30vw,20rem)] md:w-[clamp(18rem,35vw,22rem)] lg:w-[clamp(16rem,30vw,20rem)] p-0 transition-slow">
-                    <div className="h-full bg-gradient-card border-r border-border">
+                    <div className="flex h-full flex-col min-h-0 bg-gradient-card border-r border-border">
                         {/* Title */}
                         <div className="p-6 border-b border-border">
                             <div className="flex items-center gap-2 md:gap-4 cursor-pointer mb-6" onClick={onTitleClick}>
@@ -70,7 +70,7 @@ export default function Sidebar({
                         </div>
                         
                         {/* List */}
-                        <ScrollArea className="h-full pb-20">
+                        <ScrollArea className="flex-1 min-h-0 pb-20">
                             <div className="p-4 space-y-3">
                                 {conversations.length === 0 ? (
                                     <div className="text-center py-8">
