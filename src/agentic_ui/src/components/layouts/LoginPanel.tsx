@@ -1,8 +1,9 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Card } from "@/components/utils/card";
 import { Input } from "@/components/utils/input";
 import { Button } from "@/components/utils/button";
 import { MessageSquare } from "lucide-react";
+import { VscEye, VscEyeClosed } from "react-icons/vsc";
 import Galaxy from "@/components/utils/react_bits/bg_galaxy";
 
 type LoginPanelProps = {
@@ -33,6 +34,7 @@ export default function LoginPanel({
     onPasswordChange,
     onSubmit,
 }: LoginPanelProps) {
+    const [showPassword, setShowPassword] = useState(false);
     return (
         <div className="h-screen flex items-center justify-center">
             <GalaxyBg/>
@@ -86,14 +88,25 @@ export default function LoginPanel({
                         
                         <div className="animate-fade-in space-y-2">
                             <label className="block text-sm font-semibold mb-3 text-foreground/90">Password</label>
-                            <Input
-                                type="password"
-                                value={password}
-                                onChange={(e) => onPasswordChange(e.target.value)}
-                                placeholder="Enter your password"
-                                className="w-full h-14 bg-background/80 border-2 border-border/40 focus:border-primary/60 focus:ring-4 focus:ring-primary/10 transition-all duration-300 text-sm rounded-xl backdrop-blur-sm hover:border-border/60"
-                                onKeyDown={(e) => e.key === "Enter" && onSubmit()}
-                            />
+                            <div className="relative">
+                                <Input
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => onPasswordChange(e.target.value)}
+                                    placeholder="Enter your password"
+                                    className="w-full h-14 bg-background/80 border-2 border-border/40 focus:border-primary/60 focus:ring-4 focus:ring-primary/10 transition-all duration-300 text-sm rounded-xl backdrop-blur-sm hover:border-border/60 pr-12"
+                                    onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+                                />
+                                {password.trim() && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors duration-200"
+                                    >
+                                        {showPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         
                         <Button

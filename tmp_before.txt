@@ -126,6 +126,11 @@ class ConversationDetail(BaseModel):
     updated_at: datetime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
 
+class CreateConversationResponse(BaseModel):
+    """Response when creating a conversation: summary + full detail."""
+    detail: ConversationDetail
+    summary: ConversationSummary
+
 
 
 #-------------------------------------------
@@ -170,20 +175,6 @@ class ConversationIn(BaseModel):
     title: Optional[str] = Field(None, description="Optional custom title")
     firstMessage: MessageIn
 
-class CreateConversationResponse(BaseModel):
-    """Response when creating a conversation: summary + full detail."""
-    detail: ConversationDetail
-    summary: ConversationSummary
-
-
-
-#-------------------------------------------
-# CONVERSATION UPDATE DTO
-#-------------------------------------------
-class UpdateConversationResponse(BaseModel):
-    detail: ConversationDetail
-    summary: ConversationSummary
-
 
 
 #-------------------------------------------
@@ -216,5 +207,6 @@ class ImageOut(BaseModel):
     mime: str = Field(..., validation_alias="mime_type")
     createdAt: datetime = Field(..., validation_alias="created_at")
     dataB64: str
+
 
 

@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime
 from typing import List
 
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -20,7 +21,8 @@ from database import (
 )
 from schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
-    ConversationIn,
+    ConversationIn, MessageIn,
+    UpdateConversationResponse,
     BlobDownloadRequest, BlobDownloadResponse,
     ImageSummaryOut, ImageBatchIn, ImageOut,
     AuthRequest, AuthResponse,
@@ -32,6 +34,8 @@ from utils import (
     validate_convId_full,
     validate_agentId,
     init_conv,
+    init_message,
+    _preview,
 )
 
 
@@ -134,7 +138,7 @@ async def createConversation(
     # Build both DTOs from the same ORM instance
     detail = ConversationDetail.model_validate(conv_full)
     summary = ConversationSummary.model_validate(conv_full)
-
+    
     return CreateConversationResponse(detail=detail, summary=summary)
 
 
@@ -297,9 +301,9 @@ async def getImageBatch(
         .order_by(desc(AttachmentTable.created_at))
         .limit(body.limit)
     )
-
+    
     rows = (await db.execute(stmt)).all()
-
+    
     # Serialize
     return [
         ImageOut(
@@ -318,7 +322,46 @@ async def getImageBatch(
 #-----------------------------------------------------------------------------------
 # UPDATE APIS
 #-----------------------------------------------------------------------------------
-# TODO: PLACE HERE THE APIS TO UPDATE A CONVERSATION
+@app.post(
+    "/users/{user_id}/conversations/{conversation_id}/messages",
+    response_model=UpdateConversationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def addMessageToConversation(
+    user_id: str,
+    conversation_id: str,
+    payload: MessageIn,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),  # cheap variant, no eager-loading
+    db: AsyncSession = Depends(get_db),
+) -> UpdateConversationResponse:
+    """
+    Append a new message (optionally with attachments) to an existing conversation.
+    Returns the refreshed conversation detail & sidebar summary.
+    """
+    try:
+        # 1) Persist the new message
+        await init_message(db, current_conv, payload)
+        
+        # 2) Bump conversation metadata
+        current_conv.last_message_preview = (
+            _preview(payload.content) or
+            (payload.attachments[0].name if payload.attachments else None)
+        )
+        current_conv.last_message_at = datetime.now()
+        
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    
+    # 3) Reload full tree (messages → attachments → blob) so B64 fields are injected
+    conv_full = await validate_convId_full(user_id, conversation_id, db)
+    
+    detail  = ConversationDetail.model_validate(conv_full)
+    summary = ConversationSummary.model_validate(conv_full)
+    
+    return UpdateConversationResponse(detail=detail, summary=summary)
 
 
 

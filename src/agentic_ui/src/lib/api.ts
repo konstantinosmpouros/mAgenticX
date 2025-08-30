@@ -9,6 +9,8 @@ import type {
   MessageOut,
   ConversationIn,
   CreateConversationResponse,
+  MessageIn,
+  UpdateConversationResponse,
   } from "./types";
 import { mapIcon } from "./constants";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
@@ -136,6 +138,50 @@ export async function createConversation(userId: string, payload: ConversationIn
   const data = await res.json();
   
   // Transform the response to match our CreateConversationResponse type
+  return {
+    detail: {
+      ...data.detail,
+      created_at: new Date(data.detail.created_at),
+      updated_at: new Date(data.detail.updated_at),
+      messages: data.detail.messages.map((message: any) => ({
+        ...message,
+        created_at: new Date(message.created_at),
+        updated_at: new Date(message.updated_at),
+        attachments: message.attachments.map((attachment: any) => ({
+          ...attachment,
+          timestamp: new Date(attachment.timestamp),
+          blobId: attachment.blobId || attachment.blob_id // Handle both camelCase and snake_case
+        }))
+      }))
+    },
+    summary: data.summary
+  };
+}
+
+// Add a message to an existing conversation
+export async function addMessageToConversation(userId: string, conversationId: string, payload: MessageIn): Promise<UpdateConversationResponse> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    if (res.status === 413) {
+      throw new Error(
+        `Your message is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). ` +
+        `Try smaller files or fewer attachments.`
+      );
+    }
+    throw new Error(`Failed to add message to conversation: ${res.status}`);
+  }
+
+  const data = await res.json();
+  
+  // Transform the response to match our UpdateConversationResponse type
   return {
     detail: {
       ...data.detail,

@@ -9,10 +9,10 @@ import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Eye, Dow
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, ConversationIn, CreateConversationResponse } from "@/lib/types";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, FileAttachment, ConversationIn, CreateConversationResponse, MessageIn, AttachmentIn } from "@/lib/types";
 
 // Import the api functionalities
-import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation, downloadAttachment } from "@/lib/api";
+import { getAgents, getConversations, deleteConversation, getConversationDetail, authenticate, createConversation, addMessageToConversation, downloadAttachment } from "@/lib/api";
 
 // Import helper functions from the utilities
 import { convertFileAttachments } from "@/lib/utils";
@@ -193,32 +193,39 @@ export function ChatInterface() {
         setAttachments([]);
         setIsSendingMessage(false);
       } else {
-        // For subsequent messages, use existing local logic
-        // Create attachments array with File objects for proper handling
+        // For subsequent messages, persist user message to backend
         const messageAttachments: FileAttachment[] = attachments.map(file => ({
           file: file,
           url: isImageFile(file) ? getImageUrl(file) : '',
           name: file.name,
           type: file.type
         }));
+
+        // Convert file attachments to base64 format for API
+        const apiAttachments = await convertFileAttachments(messageAttachments);
         
-        const newMessage: MessageOut = {
-          id: Date.now().toString(),
-          content: currentMessage,
+        // Create the message payload
+        const messagePayload: MessageIn = {
           sender: 'user',
           type: attachments.length > 0 ? 'file' : 'text',
-          created_at: new Date(),
-          updated_at: new Date(),
-          attachments: messageAttachments as any // Temporary cast for mixed attachment types
+          content: currentMessage.trim() || undefined,
+          attachments: apiAttachments
         };
+
+        // Call the API to add message to existing conversation
+        const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
+        setCurrentConversation(response.detail);
+        setMessages(response.detail.messages);
         
-        // Add message with smooth animation
-        setTimeout(() => {
-          setMessages(prev => [...prev, newMessage]);
-          setCurrentMessage('');
-          setAttachments([]);
-          setIsSendingMessage(false);
-        }, 200);
+        // Update conversation in sidebar list
+        setConversations(prev => prev.map(conv => 
+          conv.id === response.summary.id ? response.summary : conv
+        ));
+        
+        // Clear input
+        setCurrentMessage('');
+        setAttachments([]);
+        setIsSendingMessage(false);
       }
     } catch (error) {
       console.error('Failed to send message:', error);
