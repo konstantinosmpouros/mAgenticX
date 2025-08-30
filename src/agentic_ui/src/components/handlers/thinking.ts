@@ -23,12 +23,15 @@ export function useThinkingProgressEffect(ctx: ThinkingEffectCtx) {
           const endTime = Date.now();
           setTimeout(() => {
             const totalTime = Math.round((endTime - prev.startTime) / 1000);
+            const finalizedThoughts = /^(done!?|completed|finished)$/i.test((prev.thoughts[prev.thoughts.length - 1] || '').trim())
+              ? prev.thoughts
+              : prev.thoughts.concat('Done');
             const agentResponse: MessageOut = {
               id: prev.messageId,
               content: `Hello! I'm your ${agents.find(a => a.id === selectedAgent)?.name}. I'm here to assist you with specialized knowledge and support. How can I help you today?`,
               sender: 'ai',
               type: 'text',
-              thinking: prev.thoughts.concat('Done!'),
+              thinking: finalizedThoughts,
               thinkingTime: totalTime,
               attachments: [],
               created_at: new Date(),
@@ -48,10 +51,13 @@ export function useThinkingProgressEffect(ctx: ThinkingEffectCtx) {
 
 export function startThinking({ setThinkingState }: { setThinkingState: (v: any) => void }) {
   const thinking = [
-    "Analyzing the user's query and determining the best approach...",
-    'Considering relevant context and domain-specific knowledge...',
-    'Cross-referencing with specialized databases and policies...',
-    'Formulating a comprehensive and helpful response...',
+    "Analyzing the user's query and determining the best approach. Summarizing the intent, scope, and constraints before acting.",
+    'Considering relevant context and domain-specific knowledge. Mapping requirements to available tools and data sources.',
+    '[tool] Querying internal knowledge base for similar cases and best practices.',
+    'Cross-referencing with specialized databases and policies to validate assumptions and fill any gaps.',
+    '[tool] Running extraction on supporting documents and compiling quick notes.',
+    'Formulating a comprehensive and helpful response with clear next steps and caveats.',
+    'Done',
   ];
 
   setThinkingState({
@@ -63,4 +69,3 @@ export function startThinking({ setThinkingState }: { setThinkingState: (v: any)
     startTime: Date.now(),
   });
 }
-

@@ -5,6 +5,7 @@ import { Card } from "@/components/utils/card";
 import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/MarkdownRenderer";
+import ThinkingList from "@/components/utils/ThinkingList";
 import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Eye, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -376,13 +377,7 @@ export function ChatInterface() {
                         
                         {/* If click, show expandable thinking content */}
                         {message.thinking && message.sender === 'ai' && expandedThinking[message.id] && (
-                          <div className="border border-border/50 rounded-lg p-2 md:p-3 bg-muted/20 space-y-2 max-w-[85%] md:max-w-[85%] w-full">
-                            {message.thinking.map((thought, thinkIndex) => (
-                              <div key={thinkIndex} className="text-xs text-muted-foreground/80">
-                                {thought}
-                              </div>
-                            ))}
-                          </div>
+                          <ThinkingList thoughts={message.thinking} className="max-w-[85%] md:max-w-[85%] w-full" />
                         )}
                         
                         {/* Main message content */}
@@ -411,18 +406,11 @@ export function ChatInterface() {
                 {/* Enhanced Thinking Animation */}
                 {thinkingState?.isActive && (
                   <div className="animate-fade-in">
-                    <div className="border border-border/50 rounded-lg p-4 bg-muted/20 max-w-[85%] md:max-w-[85%]">
-                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2">
-                        <span>Thinking...</span>
-                      </div>
-                      <div className="space-y-2">
-                        {thinkingState.thoughts.slice(0, thinkingState.currentThoughtIndex + 1).map((thought, index) => (
-                          <div key={index} className="text-xs text-muted-foreground/80 animate-fade-in">
-                            {thought}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <div className="text-sm text-muted-foreground mb-1">Thinking...</div>
+                    <ThinkingList
+                      thoughts={thinkingState.thoughts.slice(0, thinkingState.currentThoughtIndex + 1)}
+                      className="max-w-[85%] md:max-w-[85%]"
+                    />
                   </div>
                 )}
                 
