@@ -376,8 +376,14 @@ export function ChatInterface() {
                         )}
                         
                         {/* If click, show expandable thinking content */}
-                        {message.thinking && message.sender === 'ai' && expandedThinking[message.id] && (
-                          <ThinkingList thoughts={message.thinking} className="max-w-[85%] md:max-w-[85%] w-full" />
+                        {message.thinking && message.sender === 'ai' && (
+                          <div
+                            className={`overflow-hidden transition-all duration-300 ease-smooth ${
+                              expandedThinking[message.id] ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+                            }`}
+                          >
+                            <ThinkingList thoughts={message.thinking} className="max-w-[85%] md:max-w-[85%] w-full" />
+                          </div>
                         )}
                         
                         {/* Main message content */}
@@ -404,15 +410,19 @@ export function ChatInterface() {
                 ))}
                 
                 {/* Enhanced Thinking Animation */}
-                {thinkingState?.isActive && (
-                  <div className="animate-fade-in">
-                    <div className="text-sm text-muted-foreground mb-1">Thinking...</div>
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-smooth ${
+                    thinkingState?.isActive ? 'max-h-[600px] opacity-100 mt-2' : 'max-h-0 opacity-0'
+                  }`}
+                >
+                  <div className="text-sm text-muted-foreground mb-1">Thinking...</div>
+                  {thinkingState && (
                     <ThinkingList
                       thoughts={thinkingState.thoughts.slice(0, thinkingState.currentThoughtIndex + 1)}
                       className="max-w-[85%] md:max-w-[85%]"
                     />
-                  </div>
-                )}
+                  )}
+                </div>
                 
                 <div ref={messagesEndRef} />
               </div>

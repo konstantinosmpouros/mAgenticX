@@ -22,17 +22,22 @@ export function ThinkingList({ thoughts, className }: ThinkingListProps) {
               {/* Left column: bullet/tool + adaptive vertical line */}
               <div className="w-4 flex-shrink-0 flex flex-col items-center">
                 {isDone ? (
-                  <CheckCircle className="h-3.5 w-3.5 text-muted-foreground/60" />
+                  <CheckCircle className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/60" />
                 ) : isTool ? (
                   isActive ? (
-                    <Loader2 className="h-3.5 w-3.5 text-muted-foreground/70 animate-spin" />
+                    <Loader2 className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/70 animate-spin" />
                   ) : (
-                    <Wrench className="h-3.5 w-3.5 text-muted-foreground/70" />
+                    <Wrench className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/70" />
                   )
                 ) : (
-                  <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                  <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
                 )}
-                <div className="w-px flex-1 bg-muted-foreground/30 mt-1" />
+                { !isDone && (
+                  <>
+                    <div className="w-px flex-1 bg-muted-foreground/30 mt-1 origin-top animate-line-grow" />
+                    { !isActive && <div className="w-px h-3 bg-muted-foreground/30 origin-top animate-line-grow" /> }
+                  </>
+                ) }
               </div>
               {/* Right column: content; height determines the left line height */}
               <div className="whitespace-pre-wrap break-words leading-relaxed pr-2">

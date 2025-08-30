@@ -52,13 +52,13 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     getImageUrl,
     setThinkingState,
   } = ctx;
-
+  
   const handleSendMessage = async () => {
     const currentMessage = ctx.currentMessage;
-
+    
     if (!currentMessage && attachments.length === 0) return;
     if (ctx.isSendingMessage) return;
-
+    
     if (attachments.length) {
       const sizeErr = validateAttachmentsForUpload(attachments);
       if (sizeErr) {
@@ -66,10 +66,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         return;
       }
     }
-
+    
     setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
-
+    
     try {
       if (messages.length === 0) {
         const messageAttachments: FileAttachment[] = attachments.map(file => ({
@@ -78,9 +78,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           name: file.name,
           type: file.type,
         }));
-
+        
         const apiAttachments = await convertFileAttachments(messageAttachments);
-
+        
         const conversationPayload: ConversationIn = {
           agentId: selectedAgent,
           isPrivate: isPrivateMode,
@@ -92,14 +92,14 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
             attachments: apiAttachments,
           },
         };
-
+        
         const response = await createConversation(userId!, conversationPayload);
         setCurrentConversation(response.detail);
         setMessages(() => response.detail.messages);
         setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
         setCurrentMessage('');
         setAttachments([]);
-        setIsSendingMessage(false);
+        startThinking({ setThinkingState });
       } else {
         const messageAttachments: FileAttachment[] = attachments.map(file => ({
           file,
@@ -107,67 +107,29 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           name: file.name,
           type: file.type,
         }));
-
+        
         const apiAttachments = await convertFileAttachments(messageAttachments);
-
+        
         const messagePayload: MessageIn = {
           sender: 'user',
           type: attachments.length > 0 ? 'file' : 'text',
           content: currentMessage || undefined,
           attachments: apiAttachments,
         };
-
+        
         const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
         setCurrentConversation(response.detail);
         setMessages(() => response.detail.messages);
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
         setCurrentMessage('');
         setAttachments([]);
-        setIsSendingMessage(false);
+        startThinking({ setThinkingState });
       }
     } catch (error) {
       console.error('Failed to send message:', error);
       toast({ title: 'Error', description: 'Failed to send message. Please try again.', variant: 'destructive' });
-
-      if (messages.length === 0) {
-        const conversationId = Date.now().toString();
-        const conversation: ConversationDetail = {
-          id: conversationId,
-          agentId: selectedAgent,
-          agentName: currentAgent?.name || '',
-          title: '',
-          created_at: new Date(),
-          updated_at: new Date(),
-          messages: [],
-          isPrivate: isPrivateMode,
-        } as any;
-        setCurrentConversation(conversation);
-      }
-
-      const messageAttachments: FileAttachment[] = attachments.map(file => ({
-        file,
-        url: isImageFile(file) ? getImageUrl(file) : '',
-        name: file.name,
-        type: file.type,
-      }));
-
-      const newMessage: MessageOut = {
-        id: Date.now().toString(),
-        content: currentMessage,
-        sender: 'user',
-        type: attachments.length > 0 ? 'file' : 'text',
-        created_at: new Date(),
-        updated_at: new Date(),
-        attachments: messageAttachments as any,
-      };
-
-      setMessages(prev => [...prev, newMessage]);
-      setCurrentMessage('');
-      setAttachments([]);
-      setIsSendingMessage(false);
     }
-
-    startThinking({ setThinkingState });
+    setIsSendingMessage(false);
   };
 
   return { handleSendMessage };

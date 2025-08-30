@@ -17,7 +17,7 @@ export default {
 				'2xl': '1400px'
 			}
 		},
-		extend: {
+			extend: {
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
@@ -110,6 +110,10 @@ export default {
 					from: { opacity: '0', transform: 'translateY(10px)' },
 					to: { opacity: '1', transform: 'translateY(0)' }
 				},
+				'line-grow': {
+					from: { transform: 'scaleY(0)' },
+					to: { transform: 'scaleY(1)' }
+				},
 				'pulse-glow': {
 					'0%, 100%': { opacity: '1' },
 					'50%': { opacity: '0.5' }
@@ -131,6 +135,7 @@ export default {
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'fade-in': 'fade-in 0.3s ease-out',
+				'line-grow': 'line-grow 0.25s ease-out forwards',
 				'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
 				'star-movement-bottom': 'star-movement-bottom linear infinite alternate',
 				'star-movement-top': 'star-movement-top linear infinite alternate',
