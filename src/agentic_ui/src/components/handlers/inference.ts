@@ -1,5 +1,5 @@
 import { createConversation, addMessageToConversation } from '@/lib/api';
-import { convertFileAttachments } from '@/lib/utils';
+import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import { startThinking } from './thinking';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
@@ -96,7 +96,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         const response = await createConversation(userId!, conversationPayload);
         setCurrentConversation(response.detail);
         setMessages(() => response.detail.messages);
-        setConversations(prev => [response.summary, ...prev]);
+        setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
         setCurrentMessage('');
         setAttachments([]);
         setIsSendingMessage(false);
@@ -120,7 +120,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
         setCurrentConversation(response.detail);
         setMessages(() => response.detail.messages);
-        setConversations(prev => prev.map(conv => (conv.id === response.summary.id ? response.summary : conv)));
+        setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
         setCurrentMessage('');
         setAttachments([]);
         setIsSendingMessage(false);

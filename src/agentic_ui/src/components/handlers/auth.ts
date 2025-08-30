@@ -1,4 +1,5 @@
 import { authenticate, getAgents, getConversations } from '@/lib/api';
+import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession } from '@/lib/authStorage';
 
 type AuthCtx = {
@@ -29,7 +30,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
           try {
             const [agentsList, conversationsList] = await Promise.all([getAgents(), getConversations(response.user_id!)]);
             setAgents(agentsList);
-            setConversations(conversationsList);
+            setConversations(sortByUpdatedAtDesc(conversationsList));
           } catch (e) {
             setAgents([]);
             setConversations([]);

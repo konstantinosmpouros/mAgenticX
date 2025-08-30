@@ -14,6 +14,7 @@ import type {
   } from "./types";
 import { mapIcon } from "./constants";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
+import { sortByUpdatedAtDesc } from "./utils";
 
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
@@ -57,7 +58,7 @@ export async function getConversations(userId: string): Promise<ConversationSumm
     throw new Error(`Failed to fetch conversations: ${res.status}`);
   }
   const data = (await res.json()) as ConversationSummary[];
-  return data;
+  return sortByUpdatedAtDesc(data);
 }
 
 // Fetch conversation details with full message history

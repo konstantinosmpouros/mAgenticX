@@ -34,3 +34,15 @@ export async function convertFileAttachments(fileAttachments: FileAttachment[]):
   return Promise.all(attachmentPromises);
 }
 
+// Sort helpers
+type WithUpdatedAt = { updated_at: string | Date };
+
+export function sortByUpdatedAtDesc<T extends WithUpdatedAt>(items: T[]): T[] {
+  // Defensive copy + robust parsing for string or Date
+  return [...items].sort((a, b) => {
+    const ta = typeof a.updated_at === 'string' ? new Date(a.updated_at).getTime() : a.updated_at.getTime();
+    const tb = typeof b.updated_at === 'string' ? new Date(b.updated_at).getTime() : b.updated_at.getTime();
+    return tb - ta; // newest first
+  });
+}
+

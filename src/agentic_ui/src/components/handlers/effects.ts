@@ -3,6 +3,7 @@ import type { Agent, ThinkingState } from '@/lib/types';
 import { loadSession, isSessionValid, clearSession, updateSession } from '@/lib/authStorage';
 import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
 import { getAgents, getConversations } from '@/lib/api';
+import { sortByUpdatedAtDesc } from '@/lib/utils';
 
 export function useAutoScrollEffect(messages: any[], thinkingState: ThinkingState | null, messagesEndRef: React.RefObject<HTMLDivElement>) {
   const scrollToBottom = () => {
@@ -58,7 +59,7 @@ export function useAuthRehydrateEffect(params: {
     Promise.all([getAgents(), getConversations(session!.userId)])
       .then(([agents, conversations]) => {
         setAgents(agents);
-        setConversations(conversations);
+        setConversations(sortByUpdatedAtDesc(conversations));
         // Try full UI snapshot first
         if (setSelectedAgent && setCurrentConversation && setMessages) {
           loadUISnapshot(session!.userId)

@@ -115,4 +115,3 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   return { handleConversationSelect, handleDeleteConversation, handleNewChat, handleTitleClick, clearChatAndStopThinking };
 }
-

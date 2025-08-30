@@ -14,7 +14,6 @@
 
 - Check the nginx configs and search how to send larger files with pagination in order to make the limit higher
 - When changing conversation from sidebar the thinking doesn't stop
-- When in an old conv l send a new message it doesn't automatically goes in the top but in the refresh.
 - Fix the light mode colors
 - Enhance the profile panel with actual user info
 - Check what to do with the audio input
