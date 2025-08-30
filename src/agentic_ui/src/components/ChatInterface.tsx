@@ -6,7 +6,8 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/MarkdownRenderer";
 import ThinkingList from "@/components/utils/ThinkingList";
-import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Eye, Download } from "lucide-react";
+import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText } from "lucide-react";
+import { VscEye } from "react-icons/vsc";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
@@ -281,74 +282,72 @@ export function ChatInterface() {
                     {message.attachments && message.attachments.length > 0 && (
                       <div className={`${message.sender === 'user' ? 'flex justify-end' : ''}`}>
                         <div className="max-w-[85%] md:max-w-[85%]">
-                          <div className="flex flex-wrap gap-2">
-                            {message.attachments.map((attachment, index) => {
+                          {(() => {
+                            const items = message.attachments.map((attachment: any) => {
                               const isImage = isImageFile(attachment);
-                              // Handle different attachment types
-                              let imageUrl: string;
-                              let fileName: string;
-                              
+                              let imageUrl = '';
+                              let fileName = '';
                               if (typeof attachment === 'string') {
-                                // Legacy string attachment
-                                imageUrl = attachment;
-                                fileName = attachment;
+                                imageUrl = attachment; fileName = attachment;
                               } else if ('data' in attachment && attachment.data) {
-                                // AttachmentOut with base64 data (from API)
-                                imageUrl = `data:${attachment.mime};base64,${attachment.data}`;
-                                fileName = attachment.name;
+                                imageUrl = `data:${attachment.mime};base64,${attachment.data}`; fileName = attachment.name;
                               } else if ('url' in attachment && (attachment as any).url) {
-                                // Attachment with URL (from file upload)
-                                imageUrl = (attachment as any).url;
-                                fileName = (attachment as any).name;
+                                imageUrl = (attachment as any).url; fileName = (attachment as any).name;
                               } else if ('file' in attachment && (attachment as any).file) {
-                                // Attachment with File object (from file upload)
-                                imageUrl = URL.createObjectURL((attachment as any).file);
-                                fileName = (attachment as any).name;
+                                imageUrl = URL.createObjectURL((attachment as any).file); fileName = (attachment as any).name;
                               } else {
-                                // AttachmentOut without base64 data (non-image)
-                                imageUrl = '';
-                                fileName = 'name' in attachment ? attachment.name : 'Unknown file';
+                                imageUrl = ''; fileName = 'name' in attachment ? attachment.name : 'Unknown file';
                               }
-                              
-                              return (
-                                <div key={index} className="text-xs">
-                                    {isImage ? (
-                                      <div 
-                                        className="relative group cursor-pointer"
-                                        onClick={() => handleImageClick(imageUrl)}
-                                      >
-                                        <img 
-                                          src={imageUrl} 
-                                          alt="Image" 
-                                          className="w-16 h-16 object-cover rounded-lg border border-white/20 transition-all hover:scale-105 hover:shadow-lg"
-                                        />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                                          <Eye size={16} className="text-white" />
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div 
-                                        className="relative group cursor-pointer bg-muted/30 hover:bg-muted/50 border border-border/30 rounded-lg px-4 py-3 min-w-[160px] max-w-[200px] transition-all duration-200 hover:shadow-md"
-                                        onClick={() => handleFileDownload(attachment, message)}
-                                      >
-                                        {/* File content */}
-                                        <div className="flex items-center gap-2 group-hover:opacity-30 transition-opacity duration-200">
-                                          <Paperclip size={14} className="text-muted-foreground" />
-                                          <span className="truncate font-medium text-foreground/80">{fileName}</span>
-                                        </div>
-                                        
-                                        {/* Centered download button on hover */}
-                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                          <div className="bg-primary/90 text-primary-foreground rounded-full p-2 shadow-lg">
-                                            <Download size={16} />
+                              const typeLabel = ('mime' in attachment && (attachment as any).mime) ? (attachment as any).mime : (isImage ? 'Image' : 'File');
+                              return { attachment, isImage, imageUrl, fileName, typeLabel };
+                            });
+                            const images = items.filter(i => i.isImage);
+                            const files = items.filter(i => !i.isImage);
+                            return (
+                              <div className="flex flex-col items-end space-y-3">
+                                {files.length > 0 && (
+                                  <div className="flex flex-col gap-2 w-fit self-end">
+                                    {files.map((f, index) => (
+                                      <div key={`file-${index}`} className="text-xs self-end">
+                                        <div className="group relative cursor-pointer bg-muted/20 hover:bg-muted/30 border border-border/30 rounded-2xl px-3 py-3 transition-all duration-200 hover:shadow-md w-fit"
+                                          onClick={() => handleFileDownload(f.attachment as any, message)}
+                                        >
+                                          <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-primary/90 text-primary-foreground flex items-center justify-center">
+                                              <FileText size={16} />
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="font-medium text-foreground/90 truncate max-w-[220px] md:max-w-[280px]">{f.fileName}</div>
+                                              <div className="text-muted-foreground/70 truncate max-w-[220px] md:max-w-[280px]">{f.typeLabel}</div>
+                                            </div>
+                                          </div>
+                                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                            <div className="bg-primary/90 text-primary-foreground rounded-full p-2 shadow-lg">
+                                              <Download size={16} />
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
-                                    )}
-                                </div>
-                              );
-                            })}
-                          </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {images.length > 0 && (
+                                  <div className="grid grid-cols-2 gap-3 self-end">
+                                    {images.map((img, idx) => (
+                                      <div key={`img-${idx}`} className={`${(images.length % 2 === 1 && idx === images.length - 1) ? 'col-span-2' : ''}`}>
+                                        <div className="relative group cursor-pointer" onClick={() => handleImageClick(img.imageUrl)}>
+                                          <img src={img.imageUrl} alt="Image" className="w-full h-28 md:h-32 object-cover rounded-xl border border-white/20 transition-all hover:scale-[1.02] hover:shadow-lg" />
+                                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
+                                            <VscEye size={16} className="text-white" />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
