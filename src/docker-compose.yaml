@@ -13,6 +13,8 @@ services:
     depends_on:
       - rag_service
     restart: unless-stopped
+    ports:
+      - "8003:8003"
     networks:
       - backend
       - frontend

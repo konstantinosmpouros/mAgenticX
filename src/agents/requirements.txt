@@ -12,3 +12,4 @@ python-dotenv==1.1.0
 pytrends==4.9.2
 fastapi==0.115.5
 uvicorn==0.32.0
+ag-ui-protocol

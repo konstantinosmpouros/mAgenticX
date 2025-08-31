@@ -7,6 +7,9 @@ from langchain.prompts import ChatPromptTemplate
 class OrthodoxV1_State(BaseModel):
     user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
     
+    # Message identifier for AG-UI streaming correlation
+    message_id: str | None = None
+    
     analysis_results: Any = None
     analysis_str: str = None
     
@@ -23,7 +26,6 @@ class OrthodoxV1_State(BaseModel):
     
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
-
 
 
 
