@@ -83,11 +83,21 @@ export function ChatInterface() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
   
+  // Create toast wrapper for handlers
+  const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
+    toast({
+      title: opts.title,
+      description: opts.description,
+      variant: (opts.variant === 'error' ? 'destructive' : opts.variant) as 'default' | 'destructive' | undefined,
+      duration: opts.duration,
+    });
+  };
+
   // Effects moved to handlers
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
   useAutoScrollEffect(messages, thinkingState, messagesEndRef);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages });
-  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode, toast, setAttachments });
+  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
   useUIPersistEffect({
     userId,
@@ -119,8 +129,8 @@ export function ChatInterface() {
   });
   
   // Handlers from modules
-  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl } = createAttachmentHandlers({ attachments, setAttachments, toast });
-  const { handleFileDownload } = createDownloadHandlers({ userId, currentConversation, toast });
+  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl } = createAttachmentHandlers({ attachments, setAttachments, toast: toastWrapper });
+  const { handleFileDownload } = createDownloadHandlers({ userId, currentConversation, toast: toastWrapper });
   
   // Handle image click for full preview
   const handleImageClick = (imageUrl: string) => {
@@ -150,7 +160,7 @@ export function ChatInterface() {
     setAttachments,
     setCurrentMessage,
     setThinkingState,
-    toast,
+    toast: toastWrapper,
   });
 
   const { handleAgentChange } = createAgentHandlers({
@@ -176,7 +186,7 @@ export function ChatInterface() {
     setConversations,
     setLoginUsername,
     setLoginPassword,
-    toast,
+    toast: toastWrapper,
     loginUsername,
     loginPassword,
   });
@@ -198,7 +208,7 @@ export function ChatInterface() {
     setIsSendingMessage,
     setCurrentConversation,
     setConversations,
-    toast,
+    toast: toastWrapper,
     isImageFile,
     getImageUrl,
     setThinkingState,
@@ -309,16 +319,16 @@ export function ChatInterface() {
                                   <div className="flex flex-col gap-2 w-fit self-end">
                                     {files.map((f, index) => (
                                       <div key={`file-${index}`} className="text-xs self-end">
-                                        <div className="group relative cursor-pointer bg-muted/20 hover:bg-muted/30 border border-border/30 rounded-2xl px-3 py-3 transition-all duration-200 hover:shadow-md w-fit"
+                                        <div className="group relative cursor-pointer bg-muted/20 hover:bg-muted/30 border border-border/30 rounded-2xl px-3 py-3 transition-all duration-200 hover:shadow-md w-64 md:w-80"
                                           onClick={() => handleFileDownload(f.attachment as any, message)}
                                         >
                                           <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-xl bg-primary/90 text-primary-foreground flex items-center justify-center">
                                               <FileText size={16} />
                                             </div>
-                                            <div className="min-w-0">
-                                              <div className="font-medium text-foreground/90 truncate max-w-[220px] md:max-w-[280px]">{f.fileName}</div>
-                                              <div className="text-muted-foreground/70 truncate max-w-[220px] md:max-w-[280px]">{f.typeLabel}</div>
+                                            <div className="min-w-0 flex-1">
+                                              <div className="font-medium text-foreground/90 truncate w-full">{f.fileName}</div>
+                                              <div className="text-muted-foreground/70 truncate w-full">{f.typeLabel}</div>
                                             </div>
                                           </div>
                                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -336,7 +346,7 @@ export function ChatInterface() {
                                     {images.map((img, idx) => (
                                       <div key={`img-${idx}`} className={`${(images.length % 2 === 1 && idx === images.length - 1) ? 'col-span-2' : ''}`}>
                                         <div className="relative group cursor-pointer" onClick={() => handleImageClick(img.imageUrl)}>
-                                          <img src={img.imageUrl} alt="Image" className="w-full h-28 md:h-32 object-cover rounded-xl border border-white/20 transition-all hover:scale-[1.02] hover:shadow-lg" />
+                                          <img src={img.imageUrl} alt="Image" className="w-full h-28 md:h-32 object-cover rounded-xl border border-0 transition-all hover:scale-[1.02] hover:shadow-lg" />
                                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
                                             <VscEye size={16} className="text-white" />
                                           </div>

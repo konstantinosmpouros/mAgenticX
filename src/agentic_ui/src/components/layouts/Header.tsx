@@ -40,14 +40,20 @@ export default function Header({
     const SelectedIcon = selected?.icon;
     
     return (
-        <div className="border-b border-gradient[pink] bg-gradient-to-r from-white/80 to-gray-50/80 dark:from-[rgba(17,22,40,0.7)] dark:to-[rgba(17,22,40,0.7)] backdrop-blur-lg p-3 md:p-6 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-primary/40 after:to-transparent">
+        <div className="border-b border-gradient[pink] bg-gradient-to-r from-white/80 to-gray-50/80 dark:from-[rgba(17,22,40,0.7)] dark:to-[rgba(17,22,40,0.7)] backdrop-blur-lg p-3 md:p-6 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-black/40 after:to-transparent dark:after:via-primary/40">
             <div className="flex items-center justify-between max-w-6xl mx-auto">
                 {/* Agent select + New chat */}
                 <div className="flex items-center gap-1.5 md:gap-3">
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
-                        <SelectTrigger className="w-28 sm:w-36 md:w-48 transition-all duration-300 shadow-card focus:ring-0 focus:ring-offset-0
-                            bg-background border border-input text-foreground hover:bg-muted/60
-                            dark:bg-transparent dark:border-fuchsia-500/30 dark:text-fuchsia-300 dark:hover:border-fuchsia-400/50 dark:hover:bg-gradient-to-r dark:hover:from-fuchsia-500/5 dark:hover:via-fuchsia-400/8 dark:hover:to-fuchsia-500/5 dark:hover:shadow-[0_0_20px_rgba(217,70,239,0.3)] dark:focus:border-fuchsia-400/60">
+                        <SelectTrigger className="
+                            w-28 sm:w-36 md:w-48 transition-all duration-300 shadow-card 
+                            focus:ring-0 focus:ring-offset-0 border-0
+                            bg-background text-foreground hover:bg-muted/60
+                            dark:bg-transparent dark:text-fuchsia-300 
+                            dark:hover:bg-gradient-to-r dark:hover:from-fuchsia-500/5 
+                            dark:hover:via-fuchsia-400/8 dark:hover:to-fuchsia-500/5 
+                            dark:hover:shadow-[0_0_20px_rgba(217,70,239,0.3)] 
+                        ">
                             <SelectValue placeholder="Select an agent">
                                 <div className="flex items-center gap-2">
                                     {selected && SelectedIcon && (

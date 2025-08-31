@@ -189,7 +189,7 @@ export function InputContainer(props: InputContainerProps) {
                             return (
                                 <div
                                     key={index}
-                                    className={`flex items-center gap-2 bg-secondary/70 px-4 py-2 rounded-xl text-sm shadow-card border border-border ${isImg ? "pr-2" : ""}`}
+                                    className={`flex items-center gap-2 bg-secondary/70 px-4 py-2 rounded-xl text-sm shadow-card border border-border ${isImg ? "pr-2" : "w-64 md:w-80 "}`}
                                 >
                                     {isImg ? (
                                         <div className="flex items-center gap-2">
@@ -203,7 +203,9 @@ export function InputContainer(props: InputContainerProps) {
                                     ) : (
                                         <>
                                         <Paperclip size={14} className="text-primary" />
-                                        <span className="font-medium">{file.name}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-medium truncate block">{file.name}</span>
+                                        </div>
                                         </>
                                     )}
                                     <button
