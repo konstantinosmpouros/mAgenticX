@@ -1,4 +1,5 @@
 from orthodox_agents.orthodox_agent_v1.nodes import (
+    OrthodoxV1_State,
     analysis,
     check_if_religious,
     simple_generation,
@@ -11,7 +12,6 @@ from orthodox_agents.orthodox_agent_v1.nodes import (
 )
 
 from langgraph.graph import START, END, StateGraph
-from orthodox_agents.orthodox_agent_v1.states import OrthodoxV1_State
 
 
 # Initialize the workflow

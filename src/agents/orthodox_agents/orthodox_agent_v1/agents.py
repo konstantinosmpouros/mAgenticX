@@ -6,10 +6,10 @@ from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
 from orthodox_agents.orthodox_agent_v1.llms.openai import reasoning_llm_1, reasoning_llm_2
-from orthodox_agents.orthodox_agent_v1.agents.templates.prebuilt import react_agent
+from orthodox_agents.orthodox_agent_v1.agent_templates.prebuilt import react_agent
 
 # Structured Outputs
-from orthodox_agents.orthodox_agent_v1.llms.structured_outputs import AnalyzerOutput, ReflectionOutput, RetrievalQueriesOutput
+from orthodox_agents.orthodox_agent_v1.prompt_engineering.structured_outputs import AnalyzerOutput, ReflectionOutput, RetrievalQueriesOutput
 
 # Tools
 from orthodox_agents.orthodox_agent_v1.tools import (
@@ -21,7 +21,7 @@ from orthodox_agents.orthodox_agent_v1.tools import (
 tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 
 # Prompt Template
-from orthodox_agents.orthodox_agent_v1.prompts.templates import (
+from orthodox_agents.orthodox_agent_v1.prompt_engineering.prompt_templates import (
     analyzer_template,
     summarization_template,
     reflection_template,

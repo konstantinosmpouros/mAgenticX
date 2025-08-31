@@ -3,8 +3,11 @@ import asyncio
 import httpx
 from uuid import uuid4
 
-from orthodox_agents.orthodox_agent_v1.states import OrthodoxV1_State
-from typing import Literal
+from typing import Literal, Union, List, Any, Dict
+from pydantic import BaseModel
+from langchain.schema import BaseMessage
+from langchain.prompts import ChatPromptTemplate
+
 from orthodox_agents.orthodox_agent_v1.config import ENDPOINT
 from orthodox_agents.orthodox_agent_v1.agents import (
     analysis_agent,
@@ -20,11 +23,37 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
 
-from orthodox_agents.orthodox_agent_v1.prompts.templates import (
+from orthodox_agents.orthodox_agent_v1.prompt_engineering.prompt_templates import (
     nonreligious_gen_template,
     religious_gen_template
 )
-from orthodox_agents.orthodox_agent_v1.prompts.agui import agui_emitter
+from orthodox_agents.orthodox_agent_v1.agui import agui_emitter
+
+
+class OrthodoxV1_State(BaseModel):
+    user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
+    
+    # Message identifier for AG-UI streaming correlation
+    message_id: str | None = None
+    
+    analysis_results: Any = None
+    analysis_str: str = None
+    
+    vector_queries: List[str] = None
+    retrieved_content: List[Dict] = None
+    summarization: str = None
+    
+    reflection: Any = None
+    reflection_str: str = None
+    
+    response: str = None
+    
+    cycle_numbers: int = 0
+    
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+
 
 async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
     """Parse the user question and classify it.
