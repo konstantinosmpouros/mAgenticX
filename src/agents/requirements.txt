@@ -2,6 +2,7 @@ langchain==0.3.25
 langgraph==0.4.3
 langgraph-prebuilt==0.1.8
 langchain-openai==0.3.16
+langchain_anthropic
 langchain-community==0.3.24
 langchain-core==0.3.59
 langgraph-supervisor==0.0.21

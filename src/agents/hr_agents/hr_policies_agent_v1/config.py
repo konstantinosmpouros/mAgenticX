@@ -11,8 +11,8 @@ ANTHROPIC_3_7_SONNET = "claude-3-7-sonnet-latest"
 ANTHROPIC_3_5_SONNET = "claude-3-5-sonnet-latest"
 ANTHROPIC_3_5_HAIKU = "claude-3-5-haiku-latest"
 
-RAG_HOST = os.getenv("RAG_HOST", "rag_service")
-RAG_PORT = os.getenv("RAG_PORT", "8001")
-    
-COLLECTION_NAME = "athanasios-muthlinaios"
-ENDPOINT = f"http://{RAG_HOST}:{RAG_PORT}/retrieve/{COLLECTION_NAME}"
+_RAG_HOST = os.getenv("RAG_HOST", "rag_service")
+_RAG_PORT = os.getenv("RAG_PORT", "8001")
+
+_COLLECTION_NAME = "hr_policies_v4"
+ENDPOINT = f"http://{_RAG_HOST}:{_RAG_PORT}/retrieve/{_COLLECTION_NAME}"

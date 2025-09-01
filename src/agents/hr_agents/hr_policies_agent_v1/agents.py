@@ -5,15 +5,15 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
-from hr_agents.hr_policies_agent_v1.llms.openai import (
-    reasoning_llm_2,
-    llm_1,
-    llm_3
+from hr_agents.hr_policies_agent_v1.llms import (
+    gpt_o3_mini,
+    gpt_4o,
+    gpt_4_1
 )
-from hr_agents.hr_policies_agent_v1.agents.templates.prebuilt import react_agent
+from langgraph.prebuilt import create_react_agent as react_agent
 
 # Structured Outputs
-from hr_agents.hr_policies_agent_v1.llms.structured_outputs import (
+from hr_agents.hr_policies_agent_v1.prompt_engineering.structured_outputs import (
     AnalyzerOutput,
     ReflectionOutput,
     RetrievalQueriesOutput,
@@ -30,7 +30,7 @@ from hr_agents.hr_policies_agent_v1.tools import (
 tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 
 # Prompt Template
-from hr_agents.hr_policies_agent_v1.prompts.templates import (
+from hr_agents.hr_policies_agent_v1.prompt_engineering.prompt_templates import (
     analyzer_template,
     summarization_template,
     reflection_template,
@@ -101,18 +101,18 @@ def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate,
 # ---------------------------------------------------------------------------------------------------
 
 merge_runnable = RunnableLambda(_merge_templates)
-analysis_agent = merge_runnable | llm_1.with_structured_output(AnalyzerOutput)
+analysis_agent = merge_runnable | gpt_4o.with_structured_output(AnalyzerOutput)
 
-simple_gen_agent = react_agent(model=reasoning_llm_2, tools=tools)
+simple_gen_agent = react_agent(model=gpt_o3_mini, tools=tools)
 
-query_reflective_agent = query_gen_with_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
-query_no_reflective_agent = query_gen_no_reflection_template | reasoning_llm_2.with_structured_output(RetrievalQueriesOutput)
+query_reflective_agent = query_gen_with_reflection_template | gpt_o3_mini.with_structured_output(RetrievalQueriesOutput)
+query_no_reflective_agent = query_gen_no_reflection_template | gpt_o3_mini.with_structured_output(RetrievalQueriesOutput)
 
-doc_ranking_agent = ranking_template | llm_3.with_structured_output(RankingOutput)
+doc_ranking_agent = ranking_template | gpt_4_1.with_structured_output(RankingOutput)
 
-summarizer_agent = summarization_template | llm_1
+summarizer_agent = summarization_template | gpt_4o
 
-complex_gen_agent = react_agent(model=reasoning_llm_2, tools=tools)
+complex_gen_agent = react_agent(model=gpt_o3_mini, tools=tools)
 
-reflection_agent = reflection_template | llm_1.with_structured_output(ReflectionOutput)
+reflection_agent = reflection_template | gpt_4o.with_structured_output(ReflectionOutput)
 

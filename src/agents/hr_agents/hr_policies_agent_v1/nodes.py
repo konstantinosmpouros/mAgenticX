@@ -2,8 +2,10 @@ import json
 import asyncio
 import httpx
 
-from hr_agents.hr_policies_agent_v1.states import HRPoliciesV1_State
-from typing import Literal
+from typing import Literal, List, Any, Dict, Union
+from pydantic import BaseModel
+from langchain.schema import BaseMessage
+from langchain.prompts import ChatPromptTemplate
 
 from hr_agents.hr_policies_agent_v1.config import ENDPOINT
 from hr_agents.hr_policies_agent_v1.agents import (
@@ -17,14 +19,42 @@ from hr_agents.hr_policies_agent_v1.agents import (
     doc_ranking_agent,
 )
 
+from hr_agents.hr_policies_agent_v1.prompt_engineering.prompt_templates import (
+    non_hr_gen_template,
+    hr_gen_template
+)
+
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
 
-from hr_agents.hr_policies_agent_v1.prompts.templates import (
-    non_hr_gen_template,
-    hr_gen_template
-)
+
+
+class HRPoliciesV1_State(BaseModel):
+    user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
+    user_input_json: Any = None
+    
+    analysis_results: Any = None
+    analysis_str: str = None
+    
+    vector_queries: List[str] = None
+    
+    retrieved_content: List[List[Dict]] = [[]]
+    
+    ranking_flags: List[List[bool]] = [[]]
+    
+    reflection: Any = None
+    reflection_str: str = None
+    cycle_numbers: int = 0
+    formatted_docs_str: str = None
+    
+    summarization: str = None
+    
+    response: str = None
+    
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
 
 async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
     writer({

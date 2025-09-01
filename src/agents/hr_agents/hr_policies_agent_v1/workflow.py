@@ -1,4 +1,5 @@
 from hr_agents.hr_policies_agent_v1.nodes import (
+    HRPoliciesV1_State,
     analysis,
     check_if_hr,
     simple_generation,
@@ -12,7 +13,6 @@ from hr_agents.hr_policies_agent_v1.nodes import (
 )
 
 from langgraph.graph import START, END, StateGraph
-from hr_agents.hr_policies_agent_v1.states import HRPoliciesV1_State
 
 
 # Initialize the workflow
