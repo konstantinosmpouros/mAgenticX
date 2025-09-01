@@ -17,6 +17,7 @@
 
 ## Agents
 
+- Implement the AG-UI to the rest agent (hr + retail) and refactor the codebase there too.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Create a deep research agent with deep agents and make it available
 
