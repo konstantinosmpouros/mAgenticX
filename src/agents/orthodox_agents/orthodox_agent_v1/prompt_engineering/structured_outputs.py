@@ -5,7 +5,7 @@ from typing import Literal, List, Optional
 class AnalyzerOutput(BaseModel):
     is_religious: Literal["Religious", "Non-Religious"] = Field(
         ...,
-        description="True if the query relates explicitly to religious or theological matters of orthodox christianity, otherwise, False.",
+        description="Religious if the query relates explicitly to religious or theological matters of orthodox christianity, otherwise, Non-Religious.",
     )
     key_topics: List[str] = Field(
         ...,

@@ -62,9 +62,9 @@ async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: Stre
     asynchronous `.ainvoke` method provided by the LangChain agent wrappers.
     """
     user_msg = state['user_input']
-    # Ensure we have a message id for AG-UI stream correlation
     message_id = state.message_id or str(uuid4())
-    # Start thinking session for all non-final emissions
+    
+    # AG-UI start thinking session for all non-final emissions
     agui_emitter.thinking_start(writer)
     analysis_results = await analysis_agent.ainvoke(user_msg, config)
     
@@ -76,7 +76,11 @@ async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: Stre
         f"***Reasoning***: {analysis_results.reasoning}"
     )
     agui_emitter.thought(writer, analysis_str)
-    return {'analysis_results': analysis_results, 'analysis_str': analysis_str, 'message_id': message_id}
+    return {
+        'analysis_results': analysis_results,
+        'analysis_str': analysis_str,
+        'message_id': message_id
+    }
 
 
 def check_if_religious(state: OrthodoxV1_State) -> Literal["query_gen", "simple_generation"]:
@@ -85,17 +89,19 @@ def check_if_religious(state: OrthodoxV1_State) -> Literal["query_gen", "simple_
 
 
 async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
-    payload = {"analysis_results": state["analysis_str"]}
-    prompt = nonreligious_gen_template.invoke(payload)
-    response = ''
-    # End thinking session; final response begins streaming
+    # AG-UI end thinking session, final response begins streaming
     agui_emitter.thinking_end(writer)
     agui_emitter.response_start(writer, state["message_id"])
+    
+    payload = {"analysis_results": state["analysis_str"]}
+    prompt = nonreligious_gen_template.invoke(payload)
+    
+    response = ''
     async for mode, chunk in simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
         if mode == 'messages':
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                agui_emitter.response_chunk(writer, message_chunk.content)
+                agui_emitter.response_chunk(writer, state["message_id"], message_chunk.content)
                 response += message_chunk.content
         elif mode == 'updates':
             # chunk is a dict, containing updates per node
@@ -103,20 +109,20 @@ async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, wri
                 agent_msg = chunk['agent']['messages'][0]
                 if getattr(agent_msg, "tool_calls", None):
                     for tool_call in agent_msg.tool_calls:
-                        tcid = agui_emitter.tool_call_start(
+                        agui_emitter.tool_call_start(
                             writer,
+                            tool_call["id"],
                             state["message_id"],
-                            tool_call.get('name', 'tool'),
+                            tool_call.get('name'),
                             tool_call.get('args'),
                         )
-                        setattr(agent_msg, "_tcid", tcid)
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
-                tcid = getattr(tool_msg, "_tcid", None) or getattr(agent_msg, "_tcid", None) or str(uuid4())
                 agui_emitter.tool_call_result(
                     writer,
-                    tcid,
-                    getattr(tool_msg, 'content', ''),
+                    tool_call["id"],
+                    state["message_id"],
+                    tool_msg.content,
                 )
     agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
@@ -150,17 +156,18 @@ async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: Str
 
 async def retrieval(state: OrthodoxV1_State, writer: StreamWriter):
     retrieved_docs = []
-
+    tcid = str(uuid4())
     async def fetch_single(query: str):
         nonlocal retrieved_docs
         async with httpx.AsyncClient() as client:
             r = await client.post(ENDPOINT, json={"query": query, "k": 10}, timeout=30)
             r.raise_for_status()
             retrieved_docs.extend(r.json()["documents"])
-
-    tcid = agui_emitter.tool_call_start(writer, state["message_id"], "vector_db.search", {"queries": state["vector_queries"], "k": 10})
+    
+    agui_emitter.tool_call_start(writer, tcid, state["message_id"], "vector_db.search", {"queries": state["vector_queries"], "k": 10})
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
-    agui_emitter.tool_call_result(writer, tcid, f"documents={len(retrieved_docs)}")
+    agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"documents={len(retrieved_docs)}")
+    
     return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
 
 
@@ -188,36 +195,32 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
     # invoke the generation agent
     response = ''
     # End thinking session; final response begins streaming
-    agui_emitter.thinking_end(writer)
-    agui_emitter.response_start(writer, state["message_id"])
     async for update in complex_gen_agent.astream(prompt, stream_mode=["updates"]):
-        tag, payload = update
+        _, payload = update
         
         if "agent" in payload:
             message = payload['agent']['messages'][0]
             
             if getattr(message, "tool_calls", None):
                 for tool in message.tool_calls:
-                    tcid = agui_emitter.tool_call_start(
+                    agui_emitter.tool_call_start(
                         writer,
+                        tool.get("id"),
                         state["message_id"],
-                        tool.get('name', 'tool'),
+                        tool.get('name'),
                         tool.get('args'),
                     )
-                    setattr(message, "_tcid", tcid)
             elif getattr(message, "content", None):
-                response = message.content
-                agui_emitter.response_chunk(writer, response)
+                response += message.content
         elif "tools" in payload:
             tool_msg = update['tools']['messages'][0]
-            tcid = getattr(tool_msg, "_tcid", None) or getattr(message, "_tcid", None) or str(uuid4())
             agui_emitter.tool_call_result(
                 writer,
-                tcid,
-                getattr(tool_msg, 'content', ''),
+                tool_msg.get("id"),
+                state["message_id"],
+                tool_msg.get("content"),
             )
     
-    agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
 
 
@@ -238,6 +241,7 @@ async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: St
         if reflection.requires_additional_retrieval
         else "No additional retrieval is required."
     )
+    
     agui_emitter.thought(writer, reflection_str)
     return {
         "reflection": reflection,
@@ -250,6 +254,9 @@ def check_reflection(state: OrthodoxV1_State, writer: StreamWriter) -> Literal["
     if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
         return 'query_gen'
     else:
+        agui_emitter.thinking_end(writer)
+        agui_emitter.response_start(writer, state["message_id"])
+        agui_emitter.response_content(writer, state["message_id"], state["response"])
         agui_emitter.response_end(writer, state["message_id"])
         return 'end'
 
