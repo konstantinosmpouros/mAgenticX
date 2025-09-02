@@ -1,4 +1,5 @@
 from retail_agents.retail_agent_v1.nodes import (
+    RetailV1_State,
     analysis,
     check_intent,
     simple_generation,
@@ -9,8 +10,6 @@ from retail_agents.retail_agent_v1.nodes import (
 )
 
 from langgraph.graph import START, END, StateGraph
-from retail_agents.retail_agent_v1.states import RetailV1_State
-
 
 # Initialize the state machine workflow with the RetailV1 state definitions
 workflow = StateGraph(RetailV1_State)

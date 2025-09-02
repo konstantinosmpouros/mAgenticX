@@ -41,22 +41,26 @@ class AGUIEmitter:
         self._emit(writer, ThinkingEndEvent(type=EventType.THINKING_END))
 
     # Thought content inside thinking session
-    def thinking_text(self, writer: Any, content: str) -> None:
+    def thought(self, writer: Any, content: str) -> None:
         self._emit(writer, ThinkingTextMessageStartEvent(type=EventType.THINKING_TEXT_MESSAGE_START))
         self._emit(writer, ThinkingTextMessageContentEvent(type=EventType.THINKING_TEXT_MESSAGE_CONTENT, delta=content))
         self._emit(writer, ThinkingTextMessageEndEvent(type=EventType.THINKING_TEXT_MESSAGE_END))
 
     # Assistant message streaming
-    def text_start(self, writer: Any, message_id: str) -> None:
+    def response_start(self, writer: Any, message_id: str) -> None:
+        """Helper to emit the start event of the agent response."""
         self._emit(writer, TextMessageStartEvent(type=EventType.TEXT_MESSAGE_START, message_id=message_id))
 
-    def text_chunk(self, writer: Any, delta: str) -> None:
+    def response_chunk(self, writer: Any, delta: str) -> None:
+        """Helper to emit chunk event, not the whole content."""
         self._emit(writer, TextMessageChunkEvent(type=EventType.TEXT_MESSAGE_CHUNK, delta=delta))
 
-    def text_content(self, writer: Any, delta: str) -> None:
+    def response_content(self, writer: Any, delta: str) -> None:
+        """Helper to emit content event directly, skipping chunk event."""
         self._emit(writer, TextMessageContentEvent(type=EventType.TEXT_MESSAGE_CONTENT, delta=delta))
 
-    def text_done(self, writer: Any, message_id: str) -> None:
+    def response_end(self, writer: Any, message_id: str) -> None:
+        """Helper to emit the end event of the agent response."""
         self._emit(writer, TextMessageEndEvent(type=EventType.TEXT_MESSAGE_END, message_id=message_id))
 
     # Tool calls lifecycle
@@ -75,9 +79,9 @@ class AGUIEmitter:
 
     # Error as assistant message
     def error(self, writer: Any, message_id: str, message: str) -> None:
-        self.text_start(writer, message_id)
-        self.text_chunk(writer, f"Error: {message}")
-        self.text_done(writer, message_id)
+        self.response_start(writer, message_id)
+        self.response_chunk(writer, f"Error: {message}")
+        self.response_end(writer, message_id)
 
 # Reusable emitter instance
 agui_emitter = AGUIEmitter()

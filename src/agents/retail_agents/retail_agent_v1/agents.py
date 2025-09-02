@@ -5,14 +5,17 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
-from retail_agents.retail_agent_v1.llms.openai import (
-    reasoning_llm_2,
-    llm_3
+from retail_agents.retail_agent_v1.llms import (
+    gpt_o4_mini,
+    gpt_4_1_mini
 )
-from retail_agents.retail_agent_v1.agents.templates.prebuilt import react_agent
+from langgraph.prebuilt import create_react_agent as react_agent
 
 # Structured Outputs
-from retail_agents.retail_agent_v1.llms.structured_outputs import AnalysisOutput, SQLQueryOutput
+from retail_agents.retail_agent_v1.prompt_engineering.structured_outputs import (
+    AnalysisOutput,
+    SQLQueryOutput,
+)
 
 # Tools
 from retail_agents.retail_agent_v1.tools import (
@@ -24,7 +27,7 @@ from retail_agents.retail_agent_v1.tools import (
 tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 
 # Prompt Template
-from retail_agents.retail_agent_v1.prompts.templates import (
+from retail_agents.retail_agent_v1.prompt_engineering.prompt_templates import (
     analyzer_template,
     sql_gen_template,
     sql_error_gen_template,
@@ -92,12 +95,12 @@ def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate,
 # ---------------------------------------------------------------------------------------------------
 
 merge_runnable = RunnableLambda(_merge_templates)
-analysis_agent = merge_runnable | llm_3.with_structured_output(AnalysisOutput)
+analysis_agent = merge_runnable | gpt_4_1_mini.with_structured_output(AnalysisOutput)
 
-simple_gen_agent = react_agent(model=llm_3, tools=tools)
+simple_gen_agent = react_agent(model=gpt_4_1_mini, tools=tools)
 
-sql_gen_agent = sql_gen_template | reasoning_llm_2.with_structured_output(SQLQueryOutput)
-sql_error_gen_agent = sql_error_gen_template | reasoning_llm_2.with_structured_output(SQLQueryOutput)
+sql_gen_agent = sql_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
+sql_error_gen_agent = sql_error_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
 
-answer_agent = react_agent(model=llm_3, tools=tools)
+answer_agent = react_agent(model=gpt_4_1_mini, tools=tools)
 

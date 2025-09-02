@@ -1,9 +1,9 @@
 import json
 import httpx
+from typing import Literal, Any, Dict, List, Union
+from pydantic import BaseModel
 
-from retail_agents.retail_agent_v1.states import RetailV1_State
-from typing import Literal
-from retail_agents.retail_agent_v1.config import SCHEMA_ENDPOINT, QUERY_ENDPOINT
+from retail_agents.retail_agent_v1.config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
 from retail_agents.retail_agent_v1.agents import (
     analysis_agent,
     simple_gen_agent,
@@ -12,7 +12,7 @@ from retail_agents.retail_agent_v1.agents import (
     answer_agent,
 )
 
-from retail_agents.retail_agent_v1.prompts.templates import (
+from retail_agents.retail_agent_v1.prompt_engineering.prompt_templates import (
     schema_help_template,
     answer_gen_template
 )
@@ -20,6 +20,34 @@ from retail_agents.retail_agent_v1.prompts.templates import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
+from langchain_core.prompts.chat import ChatPromptTemplate
+from langchain_core.messages import BaseMessage
+
+
+
+class RetailV1_State(BaseModel):
+    """
+    Data model representing the state of a retail agent process in version 1.
+    """
+    user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
+    user_input_json: str = None
+    db_schema_json: str = None
+    table_name: str = TABLE
+    
+    analysis_results: Any = None
+    analysis_str: str = None
+    
+    error_message: str = None
+    sql_query: str = None
+    sql_results: Any = None
+    
+    response: str = None
+    
+    sql_cycle: int = 0
+    
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
 
 
 async def analysis(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter) -> RetailV1_State:

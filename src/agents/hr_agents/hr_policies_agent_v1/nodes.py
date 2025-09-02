@@ -28,11 +28,16 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
 
+from hr_agents.hr_policies_agent_v1.agui import agui_emitter
+from uuid import uuid4
+
 
 
 class HRPoliciesV1_State(BaseModel):
     user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
     user_input_json: Any = None
+    
+    message_id: str | None = None
     
     analysis_results: Any = None
     analysis_str: str = None
@@ -57,11 +62,10 @@ class HRPoliciesV1_State(BaseModel):
 
 
 async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    writer({
-        "type": "reasoning",
-        "content": "🧠 Analyzing the user input...",
-        "node": "analysis"
-    })
+    # AG-UI: ensure message id and start thinking
+    message_id = state.message_id or str(uuid4())
+    agui_emitter.thinking_start(writer)
+    agui_emitter.thought(writer, "🧠 Analyzing the user input...")
     
     user_msg = state['user_input']
     analysis_results = await analysis_agent.ainvoke(user_msg, config)
@@ -74,10 +78,12 @@ async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: St
         f"***Language***: {analysis_results.user_language}"
     )
     
+    agui_emitter.thought(writer, analysis_str)
     return {
         'analysis_results': analysis_results,
         'analysis_str': analysis_str,
-        "user_input_json": json.dumps(user_msg)
+        "user_input_json": json.dumps(user_msg),
+        "message_id": message_id
     }
 
 
@@ -87,6 +93,10 @@ def check_if_hr(state: HRPoliciesV1_State) -> Literal["query_gen", "simple_gener
 
 
 async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    # AG-UI: finalize thinking and begin assistant message streaming
+    agui_emitter.thinking_end(writer)
+    agui_emitter.response_start(writer, state["message_id"])
+    
     payload = {
         "analysis_results": state["analysis_str"],
         "user_input_json": state["user_input_json"]
@@ -98,10 +108,7 @@ async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, w
         if mode == 'messages':
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                writer({
-                    "type": "response",
-                    "content": message_chunk.content
-                })
+                agui_emitter.response_chunk(writer, state["message_id"], message_chunk.content)
                 response += message_chunk.content
 
         elif mode == 'updates':
@@ -110,27 +117,27 @@ async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, w
                 agent_msg = chunk['agent']['messages'][0]
                 if getattr(agent_msg, "tool_calls", None):
                     for tool_call in agent_msg.tool_calls:
-                        writer({
-                            "type": "reasoning",
-                            "content": f"Using the {tool_call['name']} tool",
-                            "node": "simple_gen"
-                        })
+                        agui_emitter.tool_call_start(
+                            writer,
+                            tool_call["id"],
+                            state["message_id"],
+                            tool_call.get('name'),
+                            tool_call.get('args'),
+                        )
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
-                writer({
-                    "type": "reasoning",
-                    "content": f"The tool call responded the following: {tool_msg.content}",
-                    "node": "simple_gen"
-                })
+                agui_emitter.tool_call_result(
+                    writer,
+                    tool_call["id"],
+                    state["message_id"],
+                    tool_msg.content,
+                )
+    agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
 
 
 async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    writer({
-        "type": "reasoning",
-        "content": "✍️ Generating queries for the HR policies database...",
-        "node": "query_gen"
-    })
+    agui_emitter.thought(writer, "🧠 Generating queries for the HR policies database...")
     
     analysis_str = state['analysis_str']
     reflection_str = state["reflection_str"]
@@ -152,17 +159,13 @@ async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: S
     for idx, q in enumerate(response.queries, start=1):
         lines.append(f"{idx}. {q}")
     header_content = "\n".join(lines)
-    
+    agui_emitter.thought(writer, header_content)
     return {"vector_queries": response.queries}
 
 
 async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
-    writer({
-        "type": "reasoning",
-        "content": "🛢️ Retrieving content from the HR policies database...",
-        "node": "retrieval"
-    })
-    
+    agui_emitter.thought(writer, "🛢️ Retrieving content from the HR policies database...")
+    tcid = str(uuid4())
     retrieved_docs = []
     
     async def fetch_single(query: str):
@@ -172,13 +175,11 @@ async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
             r.raise_for_status()
             retrieved_docs.extend(r.json()["documents"])
     
+    agui_emitter.tool_call_start(writer, tcid, state["message_id"], "vector_db.search", {"queries": state["vector_queries"], "k": 2})
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
     
-    writer({
-        "type": "reasoning",
-        "content": "🛢️ Retrieved content done",
-        "node": "retrieval"
-    })
+    agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"documents={len(retrieved_docs)}")
+    agui_emitter.thought(writer, f"🛢️ Retrieved {len(retrieved_docs)} documents from the database.")
     
     state_docs = state['retrieved_content']
     state_docs.extend([retrieved_docs])
@@ -186,11 +187,7 @@ async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
 
 
 async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    writer({
-        "type": "reasoning",
-        "content": f"🏷️ Ranking the retrieved documents based on relevance...",
-        "node": "ranking"
-    })
+    agui_emitter.thought(writer, "🏷️ Ranking the retrieved documents based on relevance...")
     
     retrieved_docs = state['retrieved_content']
     analysis_str = state['analysis_str']
@@ -216,11 +213,7 @@ async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer:
 
 
 async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    writer({
-        "type": "reasoning",
-        "content": f"🧠 Reasoning if we need more data to answer...",
-        "node": "reflection"
-    })
+    agui_emitter.thought(writer, "🧠 Reasoning if we need more data to answer...")
     
     all_docs_cycles = state['retrieved_content']
     all_flags_cycles = state['ranking_flags']
@@ -267,11 +260,7 @@ def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal
 
 
 async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    writer({
-        "type": "reasoning",
-        "content": "📄 Summarizing the retrieved documents...",
-        "node": "summarization"
-    })
+    agui_emitter.thought(writer, "📄 Summarizing the retrieved documents...")
     
     formatted_docs_str = state['formatted_docs_str']
     analysis_str = state['analysis_str']
@@ -281,17 +270,17 @@ async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, write
         "analysis_results": analysis_str,
     }
     
-    writer({
-        "type": "reasoning",
-        "content": "✨ Preparing the response...",
-        "node": "summarization"
-    })
-    
     summarization = await summarizer_agent.ainvoke(payload, config)
+    
+    agui_emitter.thought(writer, "✨ Preparing the response...")
     return {"summarization": summarization.content}
 
 
 async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
+    # AG-UI: finalize thinking and begin assistant message streaming
+    agui_emitter.thinking_end(writer)
+    agui_emitter.response_start(writer, state["message_id"])
+    
     payload = {
         "summarization": state["summarization"],
         "analysis_results": state["analysis_str"],
@@ -305,10 +294,7 @@ async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig, 
         if mode == 'messages':
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                writer({
-                    "type": "response",
-                    "content": message_chunk.content
-                })
+                agui_emitter.response_chunk(writer, state["message_id"], message_chunk.content)
                 response += message_chunk.content
 
         elif mode == 'updates':
@@ -317,20 +303,26 @@ async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig, 
                 agent_msg = chunk['agent']['messages'][0]
                 if getattr(agent_msg, "tool_calls", None):
                     for tool_call in agent_msg.tool_calls:
-                        writer({
-                            "type": "reasoning",
-                            "content": f"Using the {tool_call['name']} tool",
-                            "node": "simple_gen"
-                        })
+                        agui_emitter.tool_call_start(
+                            writer,
+                            tool_call["id"],
+                            state["message_id"],
+                            tool_call.get('name'),
+                            tool_call.get('args'),
+                        )
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
-                writer({
-                    "type": "reasoning",
-                    "content": f"The tool call responded the following: {tool_msg.content}",
-                    "node": "simple_gen"
-                })
-    
+                agui_emitter.tool_call_result(
+                    writer,
+                    tool_call["id"],
+                    state["message_id"],
+                    tool_msg.content,
+                )
+    agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
+
+
+
 
 
 

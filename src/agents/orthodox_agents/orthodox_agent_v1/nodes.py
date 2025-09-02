@@ -75,7 +75,7 @@ async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: Stre
         f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
         f"***Reasoning***: {analysis_results.reasoning}"
     )
-    agui_emitter.thinking_text(writer, analysis_str)
+    agui_emitter.thought(writer, analysis_str)
     return {'analysis_results': analysis_results, 'analysis_str': analysis_str, 'message_id': message_id}
 
 
@@ -90,12 +90,12 @@ async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, wri
     response = ''
     # End thinking session; final response begins streaming
     agui_emitter.thinking_end(writer)
-    agui_emitter.text_start(writer, state["message_id"])
+    agui_emitter.response_start(writer, state["message_id"])
     async for mode, chunk in simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
         if mode == 'messages':
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                agui_emitter.text_chunk(writer, message_chunk.content)
+                agui_emitter.response_chunk(writer, message_chunk.content)
                 response += message_chunk.content
         elif mode == 'updates':
             # chunk is a dict, containing updates per node
@@ -118,7 +118,7 @@ async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, wri
                     tcid,
                     getattr(tool_msg, 'content', ''),
                 )
-    agui_emitter.text_done(writer, state["message_id"])
+    agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
 
 
@@ -144,7 +144,7 @@ async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: Str
         lines.append(f"{idx}. {q}")
     header_content = "\n".join(lines)
     
-    agui_emitter.thinking_text(writer, header_content)
+    agui_emitter.thought(writer, header_content)
     return {"vector_queries": response.queries}
 
 
@@ -174,7 +174,7 @@ async def summarization(state: OrthodoxV1_State, config: RunnableConfig, writer:
     }
     
     summarization = await summarizer_agent.ainvoke(payload, config)
-    agui_emitter.thinking_text(writer, summarization.content)
+    agui_emitter.thought(writer, summarization.content)
     return {"summarization": summarization}
 
 
@@ -189,7 +189,7 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
     response = ''
     # End thinking session; final response begins streaming
     agui_emitter.thinking_end(writer)
-    agui_emitter.text_start(writer, state["message_id"])
+    agui_emitter.response_start(writer, state["message_id"])
     async for update in complex_gen_agent.astream(prompt, stream_mode=["updates"]):
         tag, payload = update
         
@@ -207,7 +207,7 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
                     setattr(message, "_tcid", tcid)
             elif getattr(message, "content", None):
                 response = message.content
-                agui_emitter.text_chunk(writer, response)
+                agui_emitter.response_chunk(writer, response)
         elif "tools" in payload:
             tool_msg = update['tools']['messages'][0]
             tcid = getattr(tool_msg, "_tcid", None) or getattr(message, "_tcid", None) or str(uuid4())
@@ -217,7 +217,7 @@ async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, wr
                 getattr(tool_msg, 'content', ''),
             )
     
-    agui_emitter.text_done(writer, state["message_id"])
+    agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
 
 
@@ -238,7 +238,7 @@ async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: St
         if reflection.requires_additional_retrieval
         else "No additional retrieval is required."
     )
-    agui_emitter.thinking_text(writer, reflection_str)
+    agui_emitter.thought(writer, reflection_str)
     return {
         "reflection": reflection,
         "reflection_str": reflection_str,
@@ -250,7 +250,7 @@ def check_reflection(state: OrthodoxV1_State, writer: StreamWriter) -> Literal["
     if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
         return 'query_gen'
     else:
-        agui_emitter.text_done(writer, state["message_id"])
+        agui_emitter.response_end(writer, state["message_id"])
         return 'end'
 
 
