@@ -117,6 +117,9 @@ class AGUIEmitter:
         # End
         self._emit(writer, ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=tool_call_id,))
     
+    def tool_call_end(self, writer: Any, tool_call_id: str) -> None:
+        self._emit(writer, ToolCallEndEvent(type=EventType.TOOL_CALL_END, tool_call_id=tool_call_id,))
+    
     
     # ---------- Error as assistant message ----------
     def error(self, writer: Any, message_id: str, message: str) -> None:

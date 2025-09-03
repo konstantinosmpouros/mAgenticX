@@ -69,7 +69,15 @@ async def stream_agent(req: Request):
     """Stream responses from the Retail v1 agent."""
     async def event_stream():
         async for msg in retail_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
-            yield (json.dumps(msg) + "\n").encode(encoding="utf-8")
+            # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
+            if isinstance(msg, (str, bytes)):
+                if isinstance(msg, str):
+                    yield msg.encode("utf-8")
+                else:
+                    yield msg
+            else:
+                # Fallback: wrap dicts as SSE data lines
+                yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

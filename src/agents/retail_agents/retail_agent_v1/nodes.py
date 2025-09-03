@@ -1,5 +1,6 @@
 import json
 import httpx
+from uuid import uuid4
 from typing import Literal, Any, Dict, List, Union
 from pydantic import BaseModel
 
@@ -16,6 +17,7 @@ from retail_agents.retail_agent_v1.prompt_engineering.prompt_templates import (
     schema_help_template,
     answer_gen_template
 )
+from retail_agents.retail_agent_v1.agui import agui_emitter
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
@@ -29,6 +31,7 @@ class RetailV1_State(BaseModel):
     """
     Data model representing the state of a retail agent process in version 1.
     """
+    message_id: str = None
     user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
     user_input_json: str = None
     db_schema_json: str = None
@@ -55,11 +58,9 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
     Analyze user input to extract intent, reasoning, and SQL description,
     then fetch and store the database schema.
     """
-    writer({
-        "type": "reasoning",
-        "content": "🧠 Analyzing user input to determine intent and reasoning...",
-        "node": "analysis"
-    })
+    message_id = state["message_id"] or str(uuid4())
+    agui_emitter.thinking_start(writer)
+    agui_emitter.thought(writer, "🧠 Analyzing user input to determine intent and reasoning…")
     
     # Invoke analysis agent
     user_msg = state['user_input']
@@ -74,17 +75,33 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
     )
     
     # Retrieve database schema from remote endpoint
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(SCHEMA_ENDPOINT)
-        r.raise_for_status()
-        db_schema_json = r.json()
+    tcid = str(uuid4())
+    agui_emitter.tool_call_start(
+        writer,
+        tcid,
+        message_id,
+        name="schema_backend.fetch",
+        args={"endpoint": SCHEMA_ENDPOINT}
+    )
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(SCHEMA_ENDPOINT)
+            r.raise_for_status()
+            db_schema_json = r.json()
+            agui_emitter.tool_call_result(writer, tcid, message_id, "📦 Retrieved database schema.")
+    except Exception as exc:
+        agui_emitter.tool_call_result(writer, tcid, message_id, "❌ Failed to retrieve db schema.")
+        raise
+    finally:
+        agui_emitter.tool_call_end(writer, tcid)
     
     return {
         'analysis_results': analysis_results,
         'analysis_str': analysis_str,
         'db_schema_json': db_schema_json,
-        "user_input_json": json.dumps(user_msg),
-    }   
+        'user_input_json': user_msg,
+        'message_id': message_id,
+    }
 
 
 
@@ -110,15 +127,16 @@ async def simple_generation(state: RetailV1_State, config: RunnableConfig, write
     prompt = await schema_help_template.ainvoke(payload)
     response = ''
     
+    agui_emitter.thought(writer, "💬 Generating response...")
+    agui_emitter.thinking_end(writer)
+    agui_emitter.response_start(writer, state["message_id"])
+    
     # Stream agent messages and tool updates
     async for mode, chunk in simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
         if mode == 'messages':
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                writer({
-                    "type": "response",
-                    "content": message_chunk.content
-                })
+                agui_emitter.response_chunk(writer, state["message_id"], message_chunk.content)
                 response += message_chunk.content
             
         elif mode == 'updates':
@@ -127,18 +145,22 @@ async def simple_generation(state: RetailV1_State, config: RunnableConfig, write
                 agent_msg = chunk['agent']['messages'][0]
                 if getattr(agent_msg, "tool_calls", None):
                     for tool_call in agent_msg.tool_calls:
-                        writer({
-                            "type": "reasoning",
-                            "content": f"Using the {tool_call['name']} tool",
-                            "node": "simple_gen"
-                        })
+                        agui_emitter.tool_call_start(
+                            writer,
+                            tool_call["id"],
+                            state["message_id"],
+                            tool_call.get('name'),
+                            tool_call.get('args'),
+                        )
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
-                writer({
-                    "type": "reasoning",
-                    "content": f"The tool call responded the following: {tool_msg.content}",
-                    "node": "simple_gen"
-                })
+                agui_emitter.tool_call_result(
+                    writer,
+                    tool_call["id"],
+                    state["message_id"],
+                    tool_msg.content,
+                )
+    agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
 
 
@@ -148,11 +170,7 @@ async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: Strea
     Generate or refine an SQL query based on analysis results and
     any previous errors.
     """
-    writer({
-        "type": "reasoning",
-        "content": "📝 Generating SQL query based on analysis results...",
-        "node": "sql_query_gen",
-    })
+    agui_emitter.thought(writer, "📝 Generating SQL query based on analysis results…")
     
     error_message = state["error_message"]
     table_name = state["table_name"]
@@ -189,13 +207,18 @@ async def query_execution(state: RetailV1_State, writer: StreamWriter, config: R
     Execute the generated SQL query against the backend service,
     capturing results or any errors.
     """
-    writer({
-        "type": "reasoning",
-        "content": "⚡ Executing SQL query...",
-        "node": "sql_query_execution"
-    })
+    agui_emitter.thought(writer, "⚡ Executing SQL query…")
     
     sql_query = state["sql_query"]
+    
+    tcid = str(uuid4())
+    agui_emitter.tool_call_start(
+        writer,
+        tcid,
+        state["message_id"],
+        name="sql_backend.query",
+        args={"sql": sql_query}
+    )
     
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -242,18 +265,10 @@ async def check_sql_results(state: RetailV1_State, writer: StreamWriter) -> Lite
     otherwise proceed to generate the final response.
     """
     if state["error_message"] is not None and state["sql_cycle"] < 2:
-        writer({
-            "type": "reasoning",
-            "content": f"❌ Error executing SQL query",
-            "node": "sql_query_execution"
-        })
+        agui_emitter.thought(writer, "❌ Error executing SQL query. Will retry with error-aware generator…")
         return 'query_gen'
     else:
-        writer({
-            "type": "reasoning",
-            "content": "✅ SQL query executed successfully, generating response...",
-            "node": "complex_gen"
-        })
+        agui_emitter.thought(writer, "✅ SQL executed successfully. Moving to final answer generation…")
         return 'complex_generation'
 
 
@@ -263,16 +278,15 @@ async def complex_generation(state: RetailV1_State, config: RunnableConfig, writ
     Generate the final user-facing response by combining analysis summary,
     original input, and SQL results.
     """
-    analysis_str = state["analysis_str"]
-    user_input_json = state["user_input_json"]
-    sql_results = state["sql_results"]
+    agui_emitter.thought(writer, "💬 Generating response...")
+    agui_emitter.thinking_end(writer)
+    agui_emitter.response_start(writer, state["message_id"])
     
     payload = {
-        "analysis_str": analysis_str,
-        "user_input_json": user_input_json,
-        "sql_results": sql_results,
+        "analysis_str": state["analysis_str"],
+        "user_input_json": state["user_input_json"],
+        "sql_results": state["sql_results"],
     }
-    
     prompt = await answer_gen_template.ainvoke(payload)
     
     # Stream the answer agent's output
@@ -281,10 +295,7 @@ async def complex_generation(state: RetailV1_State, config: RunnableConfig, writ
         if mode == 'messages':
             message_chunk, _ = chunk
             if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                writer({
-                    "type": "response",
-                    "content": message_chunk.content
-                })
+                agui_emitter.response_chunk(writer, state["message_id"], message_chunk.content)
                 response += message_chunk.content
         
         elif mode == 'updates':
@@ -293,18 +304,21 @@ async def complex_generation(state: RetailV1_State, config: RunnableConfig, writ
                 agent_msg = chunk['agent']['messages'][0]
                 if getattr(agent_msg, "tool_calls", None):
                     for tool_call in agent_msg.tool_calls:
-                        writer({
-                            "type": "reasoning",
-                            "content": f"Using the {tool_call['name']} tool",
-                            "node": "complex_gen"
-                        })
+                        agui_emitter.tool_call_start(
+                            writer,
+                            tool_call["id"],
+                            state["message_id"],
+                            tool_call.get('name'),
+                            tool_call.get('args'),
+                        )
             elif "tools" in chunk:
                 tool_msg = chunk['tools']['messages'][0]
-                writer({
-                    "type": "reasoning",
-                    "content": f"The tool call responded the following: {tool_msg.content}",
-                    "node": "complex_gen"
-                })
-    
+                agui_emitter.tool_call_result(
+                    writer,
+                    tool_call["id"],
+                    state["message_id"],
+                    tool_msg.content,
+                )
+    agui_emitter.response_end(writer, state["message_id"])
     return {"response": response}
 
