@@ -48,7 +48,13 @@ export default function Sidebar({
                             </Button>
                         </SheetTrigger>
                     </TooltipTrigger>
-                    <TooltipContent side="right"><p>Conversation History</p></TooltipContent>
+                    <TooltipContent
+                        side="right"
+                        align="center"
+                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                    >
+                        <p>Conversation History</p>
+                    </TooltipContent>
                 </Tooltip>
                 
                 <SheetContent side="left" className="w-[clamp(16rem,30vw,20rem)] md:w-[clamp(18rem,35vw,22rem)] lg:w-[clamp(16rem,30vw,20rem)] p-0 transition-slow">

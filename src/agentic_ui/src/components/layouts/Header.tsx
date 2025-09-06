@@ -116,7 +116,13 @@ export default function Header({
                                 <Plus size={20} />
                             </Button>
                         </TooltipTrigger>
-                        <TooltipContent><p>New Chat</p></TooltipContent>
+                        <TooltipContent
+                            side="bottom"
+                            align="center"
+                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                        >
+                            <p>New Chat</p>
+                        </TooltipContent>
                     </Tooltip>
                 </div>
                 
@@ -137,7 +143,13 @@ export default function Header({
                                     <Ghost size={20} />
                                 </button>
                             </TooltipTrigger>
-                            <TooltipContent><p>Private Chat</p></TooltipContent>
+                            <TooltipContent
+                                side="bottom"
+                                align="center"
+                                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                            >
+                                <p>Private Chat</p>
+                            </TooltipContent>
                         </Tooltip>
                     )}
                     
@@ -152,7 +164,13 @@ export default function Header({
                                 <User size={20} className="active:text-fuchsia-600" />
                             </Button>
                         </TooltipTrigger>
-                        <TooltipContent><p>User Profile</p></TooltipContent>
+                        <TooltipContent
+                            side="bottom"
+                            align="center"
+                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                        >
+                            <p>User Profile</p>
+                        </TooltipContent>
                     </Tooltip>
                 </div>
             </div>

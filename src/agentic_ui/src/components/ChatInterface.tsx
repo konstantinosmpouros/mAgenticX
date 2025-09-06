@@ -378,7 +378,7 @@ export function ChatInterface() {
                     
                     {/* Show text message (if any) */}
                     {message.content && (
-                      <div className={`space-y-2 md:space-y-3 ${message.sender === 'user' ? 'flex justify-end' : ''}`}>
+                      <div className={`space-y-2 md:space-y-3 ${message.sender === 'user' ? 'flex flex-col items-end' : ''} group/message`}>
                         {/* Show thinking process container */}
                         {message.thinking && message.sender === 'ai' && (
                           <div className="
@@ -438,13 +438,10 @@ export function ChatInterface() {
                                           variant="ghost"
                                           size="icon"
                                           className="
-                                            h-8 w-8
-                                            text-muted-foreground hover:text-foreground
-                                            hover:bg-muted/60
-                                            active:!bg-muted/70 active:!text-foreground
-                                            focus:!bg-muted/60 focus:!text-foreground
-                                            focus:outline-none focus:ring-0 focus-visible:ring-0
-                                            transition-colors
+                                            h-8 w-8 text-muted-foreground hover:text-foreground
+                                            hover:bg-muted/60 active:!bg-muted/70 active:!text-foreground
+                                            focus:!bg-muted/60 focus:!text-foreground focus:outline-none 
+                                            focus:ring-0 focus-visible:ring-0 transition-colors
                                           "
                                           onMouseDown={(e) => e.preventDefault()}
                                           onClick={() => handleCopy(message.content!, message.id)}
@@ -469,7 +466,7 @@ export function ChatInterface() {
                                         align="center"
                                         className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                       >
-                                        {copiedId === message.id ? 'Copied!' : 'Copy'}
+                                        <p>Copy</p>
                                       </TooltipContent>
                                     </Tooltip>
                                   </div>
@@ -479,6 +476,55 @@ export function ChatInterface() {
                             </div>
                           </div>
                         </Card>
+                        
+                        {/* Action bar (User only) */}
+                        {message.sender === 'user' && (
+                          <div className="flex justify-end">
+                            <div className="
+                              mt-1 opacity-0 group-hover/message:opacity-100 hover:opacity-100
+                              transition-opacity pointer-events-none 
+                              group-hover/message:pointer-events-auto hover:pointer-events-auto"
+                            >
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="
+                                      h-8 w-8 text-muted-foreground hover:text-foreground
+                                      hover:bg-muted/60 active:!bg-muted/70 active:!text-foreground
+                                      focus:!bg-muted/60 focus:!text-foreground focus:outline-none 
+                                      focus:ring-0 focus-visible:ring-0 transition-colors
+                                    "
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => handleCopy(message.content!, message.id)}
+                                    aria-label={copiedId === message.id ? "Copied" : "Copy"}
+                                  >
+                                    <span className="relative inline-block h-4 w-4">
+                                      {/* Copy icon */}
+                                      <Copy
+                                        className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                          ${copiedId === message.id ? 'opacity-0 scale-75' : 'opacity-100 scale-100'}`}
+                                      />
+                                      {/* Check icon */}
+                                      <Check
+                                        className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                          ${copiedId === message.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+                                      />
+                                    </span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="bottom"
+                                  align="center"
+                                  className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                >
+                                  <p>Copy</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

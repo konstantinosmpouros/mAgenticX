@@ -271,7 +271,11 @@ export function InputContainer(props: InputContainerProps) {
                                         <Paperclip size={18} className="text-muted-foreground active:text-white" />
                                     </div>
                                 </TooltipTrigger>
-                                <TooltipContent>
+                                <TooltipContent
+                                    side="top"
+                                    align="center"
+                                    className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                >
                                     <p>Attach files & photos</p>
                                 </TooltipContent>
                             </Tooltip>
@@ -288,7 +292,11 @@ export function InputContainer(props: InputContainerProps) {
                                         <Mic size={18} className="text-muted-foreground active:text-white" />
                                     </div>
                                 </TooltipTrigger>
-                                <TooltipContent>
+                                <TooltipContent
+                                    side="top"
+                                    align="center"
+                                    className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                >
                                     <p>Voice Input</p>
                                 </TooltipContent>
                             </Tooltip>
@@ -307,7 +315,11 @@ export function InputContainer(props: InputContainerProps) {
                                         <Send size={16} />
                                     </StarBorder>
                                 </TooltipTrigger>
-                                <TooltipContent>
+                                <TooltipContent
+                                    side="top"
+                                    align="center"
+                                    className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                >
                                     <p>Send Message</p>
                                 </TooltipContent>
                             </Tooltip>
