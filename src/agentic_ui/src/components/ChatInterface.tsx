@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/MarkdownRenderer";
 import ThinkingList from "@/components/utils/ThinkingList";
-import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText } from "lucide-react";
+import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText, Copy, Check } from "lucide-react";
 import { VscEye } from "react-icons/vsc";
 import { useToast } from "@/hooks/use-toast";
 
@@ -79,6 +79,9 @@ export function ChatInterface() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   
+  // Copy to clipboard state
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
@@ -135,6 +138,17 @@ export function ChatInterface() {
   // Handle image click for full preview
   const handleImageClick = (imageUrl: string) => {
     setSelectedImage(imageUrl);
+  };
+  
+  // Copy helper
+  const handleCopy = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      toast({ title: "Copy failed", variant: "destructive" });
+    }
   };
   
   // Conversations and agent handlers
@@ -404,12 +418,64 @@ export function ChatInterface() {
                           <div className="space-y-3 min-w-0">
                             <MarkdownRenderer content={message.content} className="leading-relaxed break-words" />
                             <div className="text-xs opacity-70 flex items-center gap-2">
+                              {/* Timestamp */}
                               <span>{message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              
+                              {/* Agent name */}
                               {message.sender === 'ai' && (
                                 <span className="flex items-center gap-1">
                                   • <AgentIcon size={10} /> {currentAgent?.name}
                                 </span>
                               )}
+                              
+                              {/* Action bar (AI only) */}
+                              {message.sender === 'ai' && (
+                                <div className="flex justify-start">
+                                  <div className="mt-1">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="
+                                            h-8 w-8
+                                            text-muted-foreground hover:text-foreground
+                                            hover:bg-muted/60
+                                            active:!bg-muted/70 active:!text-foreground
+                                            focus:!bg-muted/60 focus:!text-foreground
+                                            focus:outline-none focus:ring-0 focus-visible:ring-0
+                                            transition-colors
+                                          "
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => handleCopy(message.content!, message.id)}
+                                          aria-label={copiedId === message.id ? "Copied" : "Copy"}
+                                        >
+                                          <span className="relative inline-block h-4 w-4">
+                                            {/* Copy icon */}
+                                            <Copy
+                                              className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                                ${copiedId === message.id ? 'opacity-0 scale-75' : 'opacity-100 scale-100'}`}
+                                            />
+                                            {/* Check icon */}
+                                            <Check
+                                              className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                                ${copiedId === message.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+                                            />
+                                          </span>
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="bottom"
+                                        align="center"
+                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                      >
+                                        {copiedId === message.id ? 'Copied!' : 'Copy'}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                </div>
+                              )}
+                              
                             </div>
                           </div>
                         </Card>
@@ -439,79 +505,45 @@ export function ChatInterface() {
           </div>
           
           {/* Input Area */}
-          {messages.length === 0 ? (
-            <InputContainer
-              // Centered empty state
-              isMessagesEmpty={true}
-              positionClass="fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
-              
-              // pass through your existing state/handlers/refs
-              attachments={attachments}
-              isPrivateMode={isPrivateMode}
-              thinkingActive={thinkingState?.isActive}
-              currentMessage={currentMessage}
-              setCurrentMessage={setCurrentMessage}
-              handlePaste={handlePaste}
-              handleSendMessage={handleSendMessage}
-              isImageFile={isImageFile}
-              getImageUrl={getImageUrl}
-              handleImageClick={handleImageClick}
-              removeAttachment={removeAttachment}
-              handleFileUpload={handleFileUpload}
-              fileInputRef={fileInputRef}
-              textareaRef={textareaRef}
-              
-              // UI deps
-              AgentIcon={AgentIcon}
-              Tooltip={Tooltip}
-              TooltipTrigger={TooltipTrigger}
-              TooltipContent={TooltipContent}
-              Paperclip={Paperclip}
-              Mic={Mic}
-              Button={Button}
-              Send={Send}
-              X={X}
-              toast={toast}
-              currentAgent={currentAgent}
-              Textarea={Textarea}
-            />
-          ) : (
-            <InputContainer
-              // Centered empty state
-              isMessagesEmpty={false}
-              positionClass="bottom-0 left-0 right-0 z-0 p-6"
-              
-              // pass through your existing state/handlers/refs
-              attachments={attachments}
-              isPrivateMode={isPrivateMode}
-              thinkingActive={thinkingState?.isActive}
-              currentMessage={currentMessage}
-              setCurrentMessage={setCurrentMessage}
-              handlePaste={handlePaste}
-              handleSendMessage={handleSendMessage}
-              isImageFile={isImageFile}
-              getImageUrl={getImageUrl}
-              handleImageClick={handleImageClick}
-              removeAttachment={removeAttachment}
-              handleFileUpload={handleFileUpload}
-              fileInputRef={fileInputRef}
-              textareaRef={textareaRef}
-              
-              // UI deps
-              AgentIcon={AgentIcon}
-              Tooltip={Tooltip}
-              TooltipTrigger={TooltipTrigger}
-              TooltipContent={TooltipContent}
-              Paperclip={Paperclip}
-              Mic={Mic}
-              Button={Button}
-              Send={Send}
-              X={X}
-              toast={toast}
-              currentAgent={currentAgent}
-              Textarea={Textarea}
-            />
-          )}
+          <InputContainer
+            // Centered empty state
+            isMessagesEmpty={messages.length === 0 ? true : false}
+            positionClass={
+              messages.length === 0
+              ? "fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
+              : "bottom-0 left-0 right-0 z-0 p-6"
+            }
+            
+            // pass through your existing state/handlers/refs
+            attachments={attachments}
+            isPrivateMode={isPrivateMode}
+            thinkingActive={thinkingState?.isActive}
+            currentMessage={currentMessage}
+            setCurrentMessage={setCurrentMessage}
+            handlePaste={handlePaste}
+            handleSendMessage={handleSendMessage}
+            isImageFile={isImageFile}
+            getImageUrl={getImageUrl}
+            handleImageClick={handleImageClick}
+            removeAttachment={removeAttachment}
+            handleFileUpload={handleFileUpload}
+            fileInputRef={fileInputRef}
+            textareaRef={textareaRef}
+            
+            // UI deps
+            AgentIcon={AgentIcon}
+            Tooltip={Tooltip}
+            TooltipTrigger={TooltipTrigger}
+            TooltipContent={TooltipContent}
+            Paperclip={Paperclip}
+            Mic={Mic}
+            Button={Button}
+            Send={Send}
+            X={X}
+            toast={toast}
+            currentAgent={currentAgent}
+            Textarea={Textarea}
+          />
           
           
           {/* User Profile Modal */}

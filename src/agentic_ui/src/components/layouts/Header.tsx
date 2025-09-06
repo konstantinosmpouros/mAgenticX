@@ -45,7 +45,9 @@ export default function Header({
                 {/* Agent select + New chat */}
                 <div className="flex items-center gap-1.5 md:gap-3">
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
-                        <SelectTrigger className="
+                        <SelectTrigger 
+                        onMouseDown={(e) => e.preventDefault()}
+                        className="
                             w-28 sm:w-36 md:w-48 transition-all duration-300 shadow-card 
                             focus:ring-0 focus:ring-offset-0 border-0
                             bg-background text-foreground hover:bg-muted/60
@@ -109,6 +111,7 @@ export default function Header({
                                 onClick={onNewChat}
                                 className="p-4 text-muted-foreground hover:text-white hover:bg-gray-900 dark:hover:text-white dark:hover:bg-gray-800 rounded-full transition-smooth active:bg-gray-700 active:scale-110"
                                 variant="ghost"
+                                onMouseDown={(e) => e.preventDefault()}
                             >
                                 <Plus size={20} />
                             </Button>
@@ -124,6 +127,7 @@ export default function Header({
                             <TooltipTrigger asChild>
                                 <button
                                     onClick={onTogglePrivate}
+                                    onMouseDown={(e) => e.preventDefault()}
                                     className={`p-3 rounded-full transition-smooth duration-300 ${
                                         isPrivateMode
                                         ? 'text-fuchsia-600 bg-gradient-to-r from-fuchsia-500/20 via-fuchsia-400/25 to-fuchsia-500/20 shadow-[0_0_20px_rgba(217,70,239,0.4)] border border-fuchsia-500/40 hover:shadow-[0_0_25px_rgba(217,70,239,0.5)]'
@@ -141,6 +145,7 @@ export default function Header({
                         <TooltipTrigger asChild>
                             <Button
                                 onClick={onOpenUserProfile}
+                                onMouseDown={(e) => e.preventDefault()}
                                 className="p-4 text-muted-foreground hover:text-white hover:bg-gray-900 dark:hover:text-white dark:hover:bg-gray-800 rounded-full transition-smooth active:scale-110 active:bg-fuchsia-500/20 active:border-fuchsia-500/50"
                                 variant="ghost"
                             >

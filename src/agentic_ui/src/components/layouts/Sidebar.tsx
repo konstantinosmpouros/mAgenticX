@@ -41,6 +41,7 @@ export default function Sidebar({
                         <SheetTrigger asChild>
                             <Button
                                 variant="outline"
+                                onMouseDown={(e) => e.preventDefault()}
                                 className="w-10 h-10 rounded-full bg-secondary/90 border-border hover:bg-secondary transition-bounce shadow-card hover:scale-105 active:scale-95"
                             >
                                 <ChevronRightIcon size={16} />
