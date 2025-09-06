@@ -128,8 +128,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         };
         
         const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
-        // Replace optimistic message with API message
+        // Replace message with API message
         setMessages(prev => prev.map(m => (m.id === tempId ? response.message : m)));
+        
         // Touch currentConversation timestamps minimally
         setCurrentConversation(
           currentConversation

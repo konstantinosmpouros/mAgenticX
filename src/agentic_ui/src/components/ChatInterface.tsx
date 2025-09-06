@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/utils/button";
 import { Textarea } from "@/components/utils/textarea";
 import { Card } from "@/components/utils/card";
@@ -27,7 +27,8 @@ import {
   useAuthRehydrateEffect,
   useSessionStateSyncEffect,
   useUIPersistEffect,
-  createUIHandlers
+  createUIHandlers,
+  createStickyUserBarHandlers
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
 
@@ -40,9 +41,11 @@ import { InputContainer } from "@/components/layouts/InputContainer";
 
 
 export function ChatInterface() {
+  // Initial session check
   const initialSession = typeof window !== 'undefined' ? loadSession() : null;
   const initialUserId = isSessionValid(initialSession) ? initialSession!.userId : null;
   const initialLoggedIn = Boolean(initialUserId);
+  
   // Main state variables
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
@@ -86,6 +89,9 @@ export function ChatInterface() {
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
+  // Sticky user bar
+  const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
+  const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
   
   // Create toast wrapper for handlers
   const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
@@ -96,7 +102,7 @@ export function ChatInterface() {
       duration: opts.duration,
     });
   };
-
+  
   // Effects moved to handlers
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
   useAutoScrollEffect(messages, thinkingState, messagesEndRef);
@@ -142,7 +148,7 @@ export function ChatInterface() {
   };
   
   // UI Handlers (clipboard, etc.)
-  const { handleCopy } = createUIHandlers({ toast, setCopiedId });
+  const { handleCopy } = createUIHandlers({ toast: toastWrapper , setCopiedId });
   
   // Conversations and agent handlers
   const {
@@ -169,7 +175,7 @@ export function ChatInterface() {
     setThinkingState,
     toast: toastWrapper,
   });
-
+  
   const { handleAgentChange } = createAgentHandlers({
     isAgentSwitching,
     setIsAgentSwitching,
@@ -473,10 +479,15 @@ export function ChatInterface() {
                         {/* Action bar (User only) */}
                         {message.sender === 'user' && (
                           <div className="flex justify-end">
-                            <div className="
-                              mt-1 opacity-0 group-hover/message:opacity-100 hover:opacity-100
-                              transition-opacity pointer-events-none 
-                              group-hover/message:pointer-events-auto hover:pointer-events-auto"
+                            <div
+                              className={`
+                                mt-1 transition-opacity
+                                ${
+                                  stickyUserBarId === message.id
+                                    ? 'opacity-100 pointer-events-auto'
+                                    : 'opacity-0 group-hover/message:opacity-100 hover:opacity-100 pointer-events-none group-hover/message:pointer-events-auto hover:pointer-events-auto'
+                                }
+                              `}
                             >
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -490,7 +501,10 @@ export function ChatInterface() {
                                       focus:ring-0 focus-visible:ring-0 transition-colors
                                     "
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => handleCopy(message.content!, message.id)}
+                                    onClick={() => {
+                                      handleCopy(message.content!, message.id);
+                                      flashUserActionBar(message.id); // keep visible for 3s
+                                    }}
                                     aria-label={copiedId === message.id ? "Copied" : "Copy"}
                                   >
                                     <span className="relative inline-block h-4 w-4">
