@@ -10,7 +10,7 @@
 - Implement the API call for the agentic inference with AG-UI
 - Check the nginx configs and search how to send larger files with pagination in order to make the limit higher
 - Check how to interrupt the inference process
-- When the user send the first message, it must automatically be presented in the ui, then the api call, and if error, toast and remove message.
+- When the user send a message it do what it should do in the db but in the return the temp message is mapped and
 
 - Implement a tab in the profile panel to show all the images, like openai library
 - Enhance the profile panel with actual user info
@@ -24,4 +24,4 @@
 ## Dialogue Bridge
 
 - Implement tha agentic inference api call with AG-UI.
-- Implement a small api call in the create conversation api to initialize a title like openai
+- Enhance the title api call, if the user sended an image, attach this too in the prompt.

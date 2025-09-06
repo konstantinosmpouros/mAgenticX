@@ -26,7 +26,8 @@ import {
   useEnsureDefaultAgentEffect,
   useAuthRehydrateEffect,
   useSessionStateSyncEffect,
-  useUIPersistEffect
+  useUIPersistEffect,
+  createUIHandlers
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
 
@@ -140,16 +141,8 @@ export function ChatInterface() {
     setSelectedImage(imageUrl);
   };
   
-  // Copy helper
-  const handleCopy = async (text: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch (err) {
-      toast({ title: "Copy failed", variant: "destructive" });
-    }
-  };
+  // UI Handlers (clipboard, etc.)
+  const { handleCopy } = createUIHandlers({ toast, setCopiedId });
   
   // Conversations and agent handlers
   const {

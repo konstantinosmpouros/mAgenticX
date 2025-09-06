@@ -86,7 +86,7 @@ async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
 async def init_conv(db: AsyncSession, user: UserTable, agent: AgentTable, is_private: bool, title: Optional[str], first_message: MessageIn) -> ConversationTable:
     # Generate title if missing
     if not title:
-        title = await generate_title(first_message, agent_name=agent.name)
+        title = await generate_title(first_message)
     
     # Create conversation shell
     conv = ConversationTable(
@@ -147,7 +147,7 @@ async def init_attachments(db: AsyncSession, message_id: str, items: List[Attach
         db.add(attach)
 
 
-async def generate_title(message: MessageIn, *, agent_name: Optional[str] = None, model: str = "gpt-4o", temperature: float = 0.2) -> Optional[str]:
+async def generate_title(message: MessageIn, *, model: str = "gpt-4o", temperature: float = 0.2) -> Optional[str]:
     """
     Build a prompt from MessageIn and get a structured TitleOut from the LLM.
     Returns the cleaned title or None if there is nothing to title.
@@ -159,8 +159,6 @@ async def generate_title(message: MessageIn, *, agent_name: Optional[str] = None
         return None
     
     parts = []
-    if agent_name:
-        parts.append(f"Agent: {agent_name}")
     if content:
         parts.append(f"First user message:\n{content}")
     if attachment_names:
