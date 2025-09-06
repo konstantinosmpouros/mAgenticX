@@ -10,6 +10,7 @@
 - Implement the API call for the agentic inference with AG-UI
 - Check the nginx configs and search how to send larger files with pagination in order to make the limit higher
 - Check how to interrupt the inference process
+- When the user send the first message, it must automatically be presented in the ui, then the api call, and if error, toast and remove message.
 
 - Implement a tab in the profile panel to show all the images, like openai library
 - Enhance the profile panel with actual user info
@@ -17,7 +18,6 @@
 
 ## Agents
 
-- Implement the AG-UI to the rest agent (hr + retail) and refactor the codebase there too.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Create a deep research agent with deep agents and make it available
 

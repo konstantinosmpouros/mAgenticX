@@ -1,4 +1,3 @@
-from datetime import datetime
 import base64
 from typing import Optional, List
 
@@ -7,6 +6,9 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import Depends, HTTPException
+
+from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 
 from database import (
     get_db,
@@ -20,7 +22,8 @@ from database import (
 
 from schemas import (
     MessageIn,
-    AttachmentIn
+    AttachmentIn,
+    TitleOut,
 )
 
 
@@ -81,6 +84,10 @@ async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
 
 
 async def init_conv(db: AsyncSession, user: UserTable, agent: AgentTable, is_private: bool, title: Optional[str], first_message: MessageIn) -> ConversationTable:
+    # Generate title if missing
+    if not title:
+        title = await generate_title(first_message, agent_name=agent.name)
+    
     # Create conversation shell
     conv = ConversationTable(
         user_id=user.id,
@@ -140,15 +147,55 @@ async def init_attachments(db: AsyncSession, message_id: str, items: List[Attach
         db.add(attach)
 
 
+async def generate_title(message: MessageIn, *, agent_name: Optional[str] = None, model: str = "gpt-4o", temperature: float = 0.2) -> Optional[str]:
+    """
+    Build a prompt from MessageIn and get a structured TitleOut from the LLM.
+    Returns the cleaned title or None if there is nothing to title.
+    """
+    content = (message.content or "").strip()
+    attachment_names = [a.name for a in (message.attachments or [])]
+    
+    if not content and not attachment_names:
+        return None
+    
+    parts = []
+    if agent_name:
+        parts.append(f"Agent: {agent_name}")
+    if content:
+        parts.append(f"First user message:\n{content}")
+    if attachment_names:
+        parts.append("Attachments (names):\n- " + "\n- ".join(attachment_names[:8]))
+    parts.append("Produce only a succinct title that captures the request.")
+    payload = "\n\n".join(parts)
+    
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """
+            You create concise, descriptive chat titles.
+            Reply in English regardless the language of the user's message (Except: Greek if the message is Greek).
+            Aim for 3-5 words. Never use emojis, quotes, code fences, and trailing punctuation. Only return the title in plain text.
+            """
+        ),
+        (
+            "user",
+            "{payload}"
+        ),
+    ])
+
+    llm = ChatOpenAI(model=model, temperature=temperature)
+    structured = llm.with_structured_output(TitleOut)
+
+    result: TitleOut = await (prompt | structured).ainvoke({"payload": payload})
+    return result.title or None
+
+
 def _preview(text: Optional[str]) -> Optional[str]:
     MAX_PREVIEW_LEN = 50
     if not text:
         return None
     s = text.strip().replace("\r", " ").replace("\n", " ")
     return s[:MAX_PREVIEW_LEN]
-
-
-
 
 
 

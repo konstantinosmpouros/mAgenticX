@@ -203,18 +203,29 @@ class BlobDownloadResponse(BaseModel):
 # IMAGES RETRIEVAL DTO
 #-------------------------------------------
 class ImageSummaryOut(BaseModel):
-    total: int
+    """The number of images available for a user."""
+    total: int = Field(..., description="Total number of images available")
 
 class ImageBatchIn(BaseModel):
-    exclude: list[str] = Field(default_factory=list)    # blobIds the UI already has
-    limit: int = Field(10, ge=1, le=100)                # page size (default 10)
+    """Request a batch of images, excluding those the UI already has."""
+    exclude: list[str] = Field(default_factory=list, description="List of image IDs to exclude")
+    limit: int = Field(10, ge=1, le=100, description="Number of images to retrieve (1-100)")
 
 class ImageOut(BaseModel):
+    """Schema to expose all the info for an Image"""
     blobId: str = Field(..., validation_alias="blob_id")
     attachmentId: str = Field(..., validation_alias="attachment_id")
     fileName: str = Field(..., validation_alias="file_name")
     mime: str = Field(..., validation_alias="mime_type")
     createdAt: datetime = Field(..., validation_alias="created_at")
     dataB64: str
+
+
+
+#-------------------------------------------
+# TITLE CREATION DTO
+#-------------------------------------------
+class TitleOut(BaseModel):
+    title: str
 
 
