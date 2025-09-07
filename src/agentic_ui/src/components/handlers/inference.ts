@@ -30,9 +30,13 @@ type InferenceCtx = {
   
   // thinking
   setThinkingState: (updater: any) => void;
+  // UI transition indicator between persistence and thinking start
+  setShowAiTransition?: (v: boolean) => void;
 };
 
 export function createInferenceHandlers(ctx: InferenceCtx) {
+  // Small visual pause so the transition dot is noticeable
+  const AI_THINKING_DELAY_MS = 3000;
   const {
     userId,
     selectedAgent,
@@ -51,6 +55,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     isImageFile,
     getImageUrl,
     setThinkingState,
+    setShowAiTransition,
   } = ctx;
   
   const handleSendMessage = async () => {
@@ -121,7 +126,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         // Replace optimistic message with authoritative messages from server
         setMessages(() => response.detail.messages);
         setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
-        startThinking({ setThinkingState });
+        if (setShowAiTransition) setShowAiTransition(true);
+        setTimeout(() => startThinking({ setThinkingState }), AI_THINKING_DELAY_MS);
       } else {
         const messagePayload: MessageIn = {
           sender: 'user',
@@ -142,13 +148,15 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         );
         // Update sidebar summary and keep ordering
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
-        startThinking({ setThinkingState });
+        if (setShowAiTransition) setShowAiTransition(true);
+        setTimeout(() => startThinking({ setThinkingState }), AI_THINKING_DELAY_MS);
       }
     } catch (error) {
       console.error('Failed to send message:', error);
       toast({ title: 'Error', description: 'Failed to send message. Please try again.', variant: 'destructive' });
       // Remove any optimistic message if present
       setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
+      if (setShowAiTransition) setShowAiTransition(false);
     }
     setIsSendingMessage(false);
   };

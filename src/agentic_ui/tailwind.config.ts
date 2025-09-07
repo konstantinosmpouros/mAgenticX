@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
 	darkMode: ["class"],
@@ -118,6 +119,10 @@ export default {
 					'0%, 100%': { opacity: '1' },
 					'50%': { opacity: '0.5' }
 				},
+				'pulse-scale': {
+					'0%, 100%': { opacity: '1', transform: 'scale(1)' },
+					'50%': { opacity: '.9', transform: 'scale(1.35)' },
+				},
 				'star-movement-bottom': {
 					'0%': { transform: 'translate(0%, 0%)', opacity: '0' },
 					'20%': { opacity: '0.9' },
@@ -137,11 +142,12 @@ export default {
 				'fade-in': 'fade-in 0.3s ease-out',
 				'line-grow': 'line-grow 0.25s ease-out forwards',
 				'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+				'pulse-scale': 'pulse-scale 1.3s ease-in-out infinite',
 				'star-movement-bottom': 'star-movement-bottom linear infinite alternate',
 				'star-movement-top': 'star-movement-top linear infinite alternate',
 			}
 		
 		}
 	},
-	plugins: [require("tailwindcss-animate")],
+	plugins: [tailwindcssAnimate],
 } satisfies Config;

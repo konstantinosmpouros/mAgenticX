@@ -149,6 +149,12 @@ export function ChatInterface() {
   
   // UI Handlers (clipboard, etc.)
   const { handleCopy } = createUIHandlers({ toast: toastWrapper , setCopiedId });
+
+  // AI transition dot (between DB persistence and thinking start)
+  const [showAiTransition, setShowAiTransition] = useState(false);
+  useEffect(() => {
+    if (thinkingState?.isActive) setShowAiTransition(false);
+  }, [thinkingState?.isActive]);
   
   // Conversations and agent handlers
   const {
@@ -225,6 +231,7 @@ export function ChatInterface() {
     isImageFile,
     getImageUrl,
     setThinkingState,
+    setShowAiTransition,
   });
   
   const currentAgent = agents.find(a => a.id === selectedAgent);
@@ -301,7 +308,7 @@ export function ChatInterface() {
                 {/* For every Message in Messages List */}
                 {!loadingConversation && messages.map((message, idx) => (
                   <div key={idx} className="animate-fade-in space-y-2">
-                    {/* Show attachments message (if any) */}
+                    {/* Show attachments for message (if any) */}
                     {message.attachments && message.attachments.length > 0 && (
                       <div className={`${message.sender === 'user' ? 'flex justify-end' : ''}`}>
                         <div className="max-w-[85%] md:max-w-[85%]">
@@ -538,6 +545,13 @@ export function ChatInterface() {
                     )}
                   </div>
                 ))}
+                
+                {/* AI Transition Indicator (left-aligned) */}
+                {showAiTransition && !thinkingState?.isActive && (
+                  <div className="flex justify-start pl-2">
+                    <div className="size-3 rounded-full bg-white/90 shadow-sm transform-gpu motion-safe:animate-pulse-scale" />
+                  </div>
+                )}
                 
                 {/* Enhanced Thinking Animation */}
                 <div
