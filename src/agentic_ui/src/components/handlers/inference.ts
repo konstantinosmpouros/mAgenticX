@@ -70,7 +70,24 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
     
-    // Show user's message immediately
+    // Prepare attachments once (as both API payload and optimistic AttachmentOuts)
+    const messageAttachments: FileAttachment[] = attachments.map(file => ({
+      file,
+      url: isImageFile(file) ? getImageUrl(file) : '',
+      name: file.name,
+      type: file.type,
+    }));
+    const apiAttachments = await convertFileAttachments(messageAttachments);
+    const optimisticAttachmentsOut: any[] = apiAttachments.map((a, i) => ({
+      id: `temp-att-${Date.now()}-${i}`,
+      name: a.name,
+      mime: a.mime,
+      size: a.size,
+      timestamp: new Date(),
+      data: a.dataB64,
+    }));
+
+    // Show user's message immediately (with AttachmentOut shape)
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage: MessageOut = {
       id: tempId,
@@ -79,25 +96,11 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       content: currentMessage || undefined,
       created_at: new Date(),
       updated_at: new Date(),
-      attachments: attachments.map((file) => ({
-        file,
-        url: isImageFile(file) ? getImageUrl(file) : '',
-        name: (file as any).name,
-        type: (file as any).type,
-      })) as any,
+      attachments: optimisticAttachmentsOut as any,
     };
     setMessages(prev => [...prev, optimisticMessage]);
     setCurrentMessage('');
     setAttachments([]);
-    
-    const messageAttachments: FileAttachment[] = attachments.map(file => ({
-      file,
-      url: isImageFile(file) ? getImageUrl(file) : '',
-      name: file.name,
-      type: file.type,
-    }));
-    
-    const apiAttachments = await convertFileAttachments(messageAttachments);
     
     try {
       if (messages.length === 0) {

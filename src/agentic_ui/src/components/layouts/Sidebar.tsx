@@ -110,7 +110,7 @@ export default function Sidebar({
                                                         <Icon size={16} className="text-primary" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <div className="font-medium text-sm mb-1">{conv.title}</div>
+                                                        <div className="font-medium text-sm mb-1">{conv.title && conv.title.trim() !== "" ? conv.title : agent?.name}</div>
                                                         <div className="text-xs text-muted-foreground truncate">{conv.lastMessage}</div>
                                                         <div className="text-xs text-muted-foreground/70 mt-1">{new Date(conv.updated_at).toLocaleDateString()}</div>
                                                     </div>

@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/MarkdownRenderer";
 import ThinkingList from "@/components/utils/ThinkingList";
-import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText, Copy, Check } from "lucide-react";
+import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy } from "lucide-react";
 import { VscEye } from "react-icons/vsc";
 import { useToast } from "@/hooks/use-toast";
 
@@ -299,8 +299,8 @@ export function ChatInterface() {
                   </div>
                 )}
                 {/* For every Message in Messages List */}
-                {!loadingConversation && messages.map((message) => (
-                  <div key={message.id} className="animate-fade-in space-y-2">
+                {!loadingConversation && messages.map((message, idx) => (
+                  <div key={idx} className="animate-fade-in space-y-2">
                     {/* Show attachments message (if any) */}
                     {message.attachments && message.attachments.length > 0 && (
                       <div className={`${message.sender === 'user' ? 'flex justify-end' : ''}`}>
@@ -409,69 +409,71 @@ export function ChatInterface() {
                         )}
                         
                         {/* Main message content */}
-                        <Card className={`p-5 ${
+                        <Card className={`${
                           message.sender === 'user'
-                            ? 'bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border max-w-[85%] md:max-w-[75%]'
-                            : 'bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
+                            ? 'p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border max-w-[85%] md:max-w-[75%]'
+                            : 'p-5 bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
                         }`}>
                           <div className="space-y-3 min-w-0">
                             <MarkdownRenderer content={message.content} className="leading-relaxed break-words" />
-                            <div className="text-xs opacity-70 flex items-center gap-2">
+                            <div className="text-sm opacity-70 flex items-center gap-2">
                               {/* Timestamp */}
-                              <span>{message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                              
-                              {/* Agent name */}
-                              {message.sender === 'ai' && (
-                                <span className="flex items-center gap-1">
-                                  • <AgentIcon size={10} /> {currentAgent?.name}
-                                </span>
-                              )}
+                              <span>
+                                {message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
                               
                               {/* Action bar (AI only) */}
                               {message.sender === 'ai' && (
-                                <div className="flex justify-start">
-                                  <div className="mt-1">
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="
-                                            h-8 w-8 text-muted-foreground hover:text-foreground
-                                            hover:bg-muted/60 active:!bg-muted/70 active:!text-foreground
-                                            focus:!bg-muted/60 focus:!text-foreground focus:outline-none 
-                                            focus:ring-0 focus-visible:ring-0 transition-colors
-                                          "
-                                          onMouseDown={(e) => e.preventDefault()}
-                                          onClick={() => handleCopy(message.content!, message.id)}
-                                          aria-label={copiedId === message.id ? "Copied" : "Copy"}
+                                <>
+                                  {/* Agent name */}
+                                  <span className="flex items-center gap-1">
+                                    •   <AgentIcon size={14} /> {currentAgent?.name}
+                                  </span>
+                                  
+                                  {/* Action buttons */}
+                                  <div className="flex justify-start">
+                                    <div className="mt-1">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="
+                                              h-8 w-8 text-muted-foreground hover:text-foreground
+                                              hover:bg-muted/60 active:!bg-muted/70 active:!text-foreground
+                                              focus:!bg-muted/60 focus:!text-foreground focus:outline-none 
+                                              focus:ring-0 focus-visible:ring-0 transition-colors
+                                            "
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={() => handleCopy(message.content!, message.id)}
+                                            aria-label={copiedId === message.id ? "Copied" : "Copy"}
+                                          >
+                                            <span className="relative inline-block h-4 w-4">
+                                              {/* Copy icon */}
+                                              <Copy
+                                                className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                                  ${copiedId === message.id ? 'opacity-0 scale-75' : 'opacity-100 scale-100'}`}
+                                              />
+                                              {/* Check icon */}
+                                              <Check
+                                                className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                                  ${copiedId === message.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+                                              />
+                                            </span>
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                          side="bottom"
+                                          align="center"
+                                          className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
-                                          <span className="relative inline-block h-4 w-4">
-                                            {/* Copy icon */}
-                                            <Copy
-                                              className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                                ${copiedId === message.id ? 'opacity-0 scale-75' : 'opacity-100 scale-100'}`}
-                                            />
-                                            {/* Check icon */}
-                                            <Check
-                                              className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                                ${copiedId === message.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
-                                            />
-                                          </span>
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent
-                                        side="bottom"
-                                        align="center"
-                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                      >
-                                        <p>Copy</p>
-                                      </TooltipContent>
-                                    </Tooltip>
+                                          <p>Copy</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
                                   </div>
-                                </div>
+                                </>
                               )}
-                              
                             </div>
                           </div>
                         </Card>
@@ -481,7 +483,7 @@ export function ChatInterface() {
                           <div className="flex justify-end">
                             <div
                               className={`
-                                mt-1 transition-opacity
+                                transition-opacity
                                 ${
                                   stickyUserBarId === message.id
                                     ? 'opacity-100 pointer-events-auto'

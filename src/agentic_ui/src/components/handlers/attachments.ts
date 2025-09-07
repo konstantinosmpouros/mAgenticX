@@ -68,7 +68,6 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
       }
 
       setAttachments(prev => [...prev, ...filesToAdd]);
-      toast({ title: 'Files attached', description: `${filesToAdd.length} file(s) attached to your message`, duration: 2000 });
     }
 
     if (input) input.value = '';
@@ -77,6 +76,11 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
   const handlePaste = (event: React.ClipboardEvent) => {
     const items = event.clipboardData?.items;
     if (!items) return;
+
+    // Only handle paste if there are file items present.
+    // Pasting plain text should not trigger file limit toasts.
+    const fileItems: DataTransferItem[] = Array.from(items).filter((it) => it.kind === 'file');
+    if (fileItems.length === 0) return;
 
     const MAX_FILES = 5;
     const remainingSlots = Math.max(0, MAX_FILES - attachments.length);
@@ -95,17 +99,15 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     const excludedFiles: { file: File; reason: string }[] = [];
     let totalFilesFound = 0;
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file) {
-          totalFilesFound++;
-          if (filesToAdd.length >= remainingSlots) {
-            excludedFiles.push({ file, reason: 'slot limit' });
-          } else {
-            filesToAdd.push(file);
-          }
+    for (let i = 0; i < fileItems.length; i++) {
+      const item = fileItems[i];
+      const file = item.getAsFile();
+      if (file) {
+        totalFilesFound++;
+        if (filesToAdd.length >= remainingSlots) {
+          excludedFiles.push({ file, reason: 'slot limit' });
+        } else {
+          filesToAdd.push(file);
         }
       }
     }
@@ -148,4 +150,3 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
 
   return { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl };
 }
-

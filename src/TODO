@@ -9,8 +9,8 @@
 
 - Implement the API call for the agentic inference with AG-UI
 - Check the nginx configs and search how to send larger files with pagination in order to make the limit higher
+- Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui.
 - Check how to interrupt the inference process
-- When the user send a message it do what it should do in the db but in the return the temp message is mapped and its seems like the chat rerenders.
 - Instead of just waiting for the first thought to come, we could add a transitioning ball, like openai while we wait for the first thought to appear.
 
 - Implement a tab in the profile panel to show all the images, like openai library
@@ -25,4 +25,4 @@
 ## Dialogue Bridge
 
 - Implement tha agentic inference api call with AG-UI.
-- Enhance the title api call, if the user sended an image, attach this too in the prompt.
+- Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception

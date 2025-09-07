@@ -84,9 +84,9 @@ async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
 
 
 async def init_conv(db: AsyncSession, user: UserTable, agent: AgentTable, is_private: bool, title: Optional[str], first_message: MessageIn) -> ConversationTable:
-    # Generate title if missing
-    if not title:
-        title = await generate_title(first_message)
+    # # Generate title if missing
+    # if not title:
+    #     title = await generate_title(first_message)
     
     # Create conversation shell
     conv = ConversationTable(
@@ -101,10 +101,10 @@ async def init_conv(db: AsyncSession, user: UserTable, agent: AgentTable, is_pri
     )
     db.add(conv)
     await db.flush()  # assign conv.id
-
+    
     # Persist first message
     await init_message(db, conv, first_message)
-
+    
     return conv
 
 
@@ -165,7 +165,7 @@ async def generate_title(message: MessageIn, *, model: str = "gpt-4o", temperatu
         mime = getattr(a, "mime", None)
         name = getattr(a, "name", None)
         b64 = getattr(a, "dataB64", None)
-
+        
         if _is_image_mime(mime) and b64:
             # image_url must be an OBJECT with a url key (and optional detail)
             data_url = f"data:{mime};base64,{b64}"

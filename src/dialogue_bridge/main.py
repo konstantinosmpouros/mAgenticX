@@ -119,7 +119,7 @@ async def createConversation(
     
     # Create conversation + first message atomically
     try:
-        # 2) Do all inserts/flushes
+        # Do all inserts/flushes
         conv = await init_conv(
             db=db,
             user=current_user,
@@ -401,38 +401,6 @@ async def deleteConversation(
     return
 
 
-
-#-----------------------------------------------------------------------------------
-# INFERENCE API
-#-----------------------------------------------------------------------------------
-# @app.post(
-#     "/user/{user_id}/inference",
-#     status_code=status.HTTP_200_OK
-# )
-# async def inference(
-#     payload: Conversation,
-#     current_user: UserTable = Depends(authenticate_id),
-#     db: AsyncSession = Depends(get_db)
-# ):
-#     # Validate agent name & URL
-#     if not payload.agents or len(payload.agents) != 1:
-#         raise HTTPException(400, "No agent was specified or more than one was given")
-    
-#     agent_name = payload.agents[0]
-#     agent = _AGENTS.get(agent_name)
-#     if agent is None:
-#         raise HTTPException(400, f"Unknown agent: {agent_name}")
-#     agent_url = agent.url
-    
-#     # Persist conversation (create or update)
-#     _ = await upsert_conversation(payload, db)
-    
-#     # Return a streaming response
-#     return StreamingResponse(
-#         agent_stream(agent_url, payload, db),
-#         media_type="text/event-stream",
-#         status_code=200,
-#     )
 
 
 
