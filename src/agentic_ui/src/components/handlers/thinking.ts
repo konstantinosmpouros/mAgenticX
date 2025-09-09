@@ -28,7 +28,44 @@ export function useThinkingProgressEffect(ctx: ThinkingEffectCtx) {
               : prev.thoughts.concat('Done');
             const agentResponse: MessageOut = {
               id: prev.messageId,
-              content: `Hello! I'm your ${agents.find(a => a.id === selectedAgent)?.name}. I'm here to assist you with specialized knowledge and support. How can I help you today?`,
+              content: `Hello! I'm your ${agents.find(a => a.id === selectedAgent)?.name}. I'm here to assist you with specialized knowledge and support. How can I help you today?
+
+# Heading 1
+## Heading 2
+### Heading 3
+
+**Bold text**  
+*Italic text*  
+~~Strikethrough~~  
+\`inline code\`
+
+---
+
+> Blockquote with some text.
+
+---
+
+### Unordered List
+- Item 1
+- Item 2
+  - Sub-item
+- Item 3
+
+### Ordered List
+1. First
+2. Second
+3. Third
+
+---
+
+### Code Blocks
+~~~js
+function hello(name) {
+  console.log("Hello, " + name + "!");
+}
+hello("Markdown");
+~~~
+`,
               sender: 'ai',
               type: 'text',
               thinking: finalizedThoughts,

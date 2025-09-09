@@ -11,7 +11,6 @@
 - Check the nginx configs and search how to send larger files with pagination in order to make the limit higher
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui.
 - Check how to interrupt the inference process
-- Instead of just waiting for the first thought to come, we could add a transitioning ball, like openai while we wait for the first thought to appear.
 
 - Implement a tab in the profile panel to show all the images, like openai library
 - Enhance the profile panel with actual user info
