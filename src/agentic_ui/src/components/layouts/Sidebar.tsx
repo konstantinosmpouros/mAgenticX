@@ -5,7 +5,7 @@ import { Card } from "@/components/utils/card";
 import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/utils/tooltip";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/utils/sheet";
-import { ChevronRightIcon, MessageSquare, X, Building2 } from "lucide-react";
+import { ChevronRightIcon, MessageSquare, X, Building2, Loader2 } from "lucide-react";
 import type { Agent, ConversationSummary } from "@/lib/types";
 
 type SidebarProps = {
@@ -17,6 +17,9 @@ type SidebarProps = {
     currentConversationId: string | null;
     onSelectConversation: (c: ConversationSummary) => void;
     onDeleteConversation: (id: string, e: React.MouseEvent) => void;
+    onLoadMore: () => void;
+    isLoadingMore: boolean;
+    hasMore: boolean;
     
     // Title click handler
     onTitleClick: () => void;
@@ -30,9 +33,22 @@ export default function Sidebar({
     currentConversationId,
     onSelectConversation,
     onDeleteConversation,
+    onLoadMore,
+    isLoadingMore,
+    hasMore,
     onTitleClick,
     agents,
 }: SidebarProps) {
+    // Detect near-bottom to load more
+    const handleScroll: React.UIEventHandler<HTMLDivElement> = async (e) => {
+        if (isLoadingMore || !hasMore) return;
+        const el = e.currentTarget;
+        const threshold = 16; // px from bottom
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - threshold) {
+            onLoadMore();
+        }
+    };
+
     return (
         <div className="absolute left-2 top-[5.8rem] z-10">
             <Sheet open={open} onOpenChange={onOpenChange}>
@@ -76,8 +92,9 @@ export default function Sidebar({
                             <h3 className="text-lg font-semibold mb-[-1rem] text-muted-foreground">Conversation History</h3>
                         </div>
                         
-                        {/* List */}
-                        <ScrollArea className="flex-1 min-h-0 pb-20">
+                        {/* List with infinite scroll */}
+                        <div className="relative flex-1 min-h-0">
+                          <ScrollArea className="h-full pb-20" onScroll={handleScroll}>
                             <div className="p-4 space-y-3">
                                 {conversations.length === 0 ? (
                                     <div className="text-center py-8">
@@ -120,7 +137,13 @@ export default function Sidebar({
                                     })
                                 )}
                             </div>
-                        </ScrollArea>
+                          </ScrollArea>
+                          {isLoadingMore && (
+                            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background/90 to-transparent backdrop-blur-sm flex items-center justify-center">
+                              <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+                            </div>
+                          )}
+                        </div>
                     </div>
                 </SheetContent>
             </Sheet>

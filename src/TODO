@@ -4,6 +4,7 @@
 
 - Plug tool in FastAPI that auto-generates documentation for all available APIs (/docs)
 - Create flow diagrams so a viewer of the repo can understand fast what is happening
+- Check what is hydra
 
 ## Agentic UI
 

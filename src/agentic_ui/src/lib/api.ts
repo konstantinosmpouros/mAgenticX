@@ -50,15 +50,17 @@ export async function getAgents(): Promise<Agent[]> {
 }
 
 // Fetch conversations for a user
-export async function getConversations(userId: string): Promise<ConversationSummary[]> {
-  const res = await fetch(`/api/users/${userId}/conversations`, {
+export async function getConversations(userId: string, page: number = 1, size: number = 10): Promise<ConversationSummary[]> {
+  const res = await fetch(`/api/users/${userId}/conversations?page=${page}&size=${size}`, {
     headers: { "Accept": "application/json" },
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch conversations: ${res.status}`);
   }
-  const data = (await res.json()) as ConversationSummary[];
-  return sortByUpdatedAtDesc(data);
+  // Backend returns a Page shape: { items, total, page, size }
+  const data = await res.json();
+  const items = Array.isArray(data) ? data : (data?.items ?? []);
+  return items as ConversationSummary[];
 }
 
 // Fetch conversation details with full message history

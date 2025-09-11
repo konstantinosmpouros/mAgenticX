@@ -9,6 +9,9 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi_pagination import add_pagination, Page
+from fastapi_pagination.ext.sqlalchemy import paginate
+
 from database import (
     Base, engine, get_db,
     seed_users, seed_agents,
@@ -25,7 +28,7 @@ from schemas import (
     ConversationIn, MessageIn, MessageOut,
     UpdateConversationResponse,
     BlobDownloadRequest, BlobDownloadResponse,
-    ImageSummaryOut, ImageBatchIn, ImageOut,
+    ImageOut,
     AuthRequest, AuthResponse,
     AgentPublic,
 )
@@ -54,6 +57,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Bridge Service", lifespan=lifespan)
+add_pagination(app)
 
 
 #-----------------------------------------------------------------------------------
@@ -149,7 +153,7 @@ async def createConversation(
 #-----------------------------------------------------------------------------------
 @app.get(
     "/users/{user_id}/conversations",
-    response_model=List[ConversationSummary],
+    response_model=Page[ConversationSummary],
     status_code=status.HTTP_200_OK
 )
 async def getConvsSummary(
@@ -158,20 +162,19 @@ async def getConvsSummary(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Return a conversation summary list for the user
+    Return a paginated conversation summary list for the user.
+    Use query params: ?page=1&size=50
     """
-    # fetch all full rows
-    result = await db.execute(
+    # fetch all full rows statement
+    stmt = (
         select(ConversationTable)
         .where(
             ConversationTable.user_id == user_id,
-            ConversationTable.is_private == False
+            ConversationTable.is_private == False,
         )
         .order_by(ConversationTable.updated_at.desc())
     )
-    rows = result.scalars().all()
-    summaries = [ConversationSummary.model_validate(r) for r in rows]
-    return summaries
+    return await paginate(db, stmt)
 
 
 @app.get(
@@ -243,45 +246,20 @@ async def downloadBlob(
 
 
 @app.get(
-    "/users/{user_id}/images/summary",
-    response_model=ImageSummaryOut,
+    "/users/{user_id}/images",
+    response_model=Page[ImageOut],
     status_code=status.HTTP_200_OK,
 )
-async def getImageSummary(
+async def getImagesBatch(
     user_id: str,
     current_user: UserTable = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = (
-        select(func.count())
-        .select_from(AttachmentTable)
-        .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
-        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
-        .where(
-            ConversationTable.user_id == user_id,
-            AttachmentTable.mime_type.like("image/%"),
-        )
-    )
-    total: int = (await db.execute(stmt)).scalar_one()
-    return ImageSummaryOut(total=total)
-
-
-@app.post(
-    "/users/{user_id}/images/batch",
-    response_model=list[ImageOut],
-    status_code=status.HTTP_200_OK,
-)
-async def getImageBatch(
-    user_id: str,
-    body: ImageBatchIn,
-    current_user: UserTable = Depends(validate_userId),
-    db: AsyncSession = Depends(get_db),
-):
     """
-    Return the next `body.limit` images **not** present in `body.exclude`,
-    ordered by newest first.
+    Paginated image retrieval for a user. Use query params `page` and `size`.
+    Returns base64-encoded image data with metadata. The `total` field on the
+    Page response can be used instead of a separate summary endpoint.
     """
-    # Build the query
     stmt = (
         select(
             BlobTable.id.label("blob_id"),
@@ -297,16 +275,13 @@ async def getImageBatch(
         .where(
             ConversationTable.user_id == user_id,
             AttachmentTable.mime_type.like("image/%"),
-            ~BlobTable.id.in_(body.exclude) if body.exclude else True,
         )
         .order_by(desc(AttachmentTable.created_at))
-        .limit(body.limit)
     )
     
-    rows = (await db.execute(stmt)).all()
+    pages = await paginate(db, stmt)
     
-    # Serialize
-    return [
+    items = [
         ImageOut(
             blob_id=r.blob_id,
             attachment_id=r.attachment_id,
@@ -315,8 +290,12 @@ async def getImageBatch(
             created_at=r.created_at,
             dataB64=base64.b64encode(r.data).decode(),
         )
-        for r in rows
+        for r in pages.items
     ]
+    
+    return Page[ImageOut](
+        items=items, total=pages.total, page=pages.page, size=pages.size
+    )
 
 
 
@@ -399,7 +378,6 @@ async def deleteConversation(
     await db.commit()
     
     return
-
 
 
 

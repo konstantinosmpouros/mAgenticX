@@ -38,6 +38,7 @@ import Header from "@/components/layouts/Header";
 import Sidebar from "@/components/layouts/Sidebar";
 import UserProfilePanel from "@/components/layouts/UserProfilePanel";
 import { InputContainer } from "@/components/layouts/InputContainer";
+import { getConversations } from "@/lib/api";
 
 
 export function ChatInterface() {
@@ -57,6 +58,11 @@ export function ChatInterface() {
   // Main variables use for storing info from the db and present it constantly
   const [agents, setAgents] = useState<Agent[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  // Conversation list pagination state (persist across sidebar open/close)
+  const [convPage, setConvPage] = useState<number>(1);
+  const [convHasMore, setConvHasMore] = useState<boolean>(true);
+  const [convIsLoadingMore, setConvIsLoadingMore] = useState<boolean>(false);
+  const CONV_PAGE_SIZE = 10;
   
   // Thinking variables (will be changed)
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
@@ -268,7 +274,7 @@ export function ChatInterface() {
             }}
             onOpenUserProfile={() => setShowUserProfile(true)}
           />
-
+          
           {/* Floating Sidebar Button */}
           <Sidebar
             open={sidebarOpen}
@@ -277,8 +283,33 @@ export function ChatInterface() {
             currentConversationId={currentConversation?.id || null}
             onSelectConversation={handleConversationSelect}
             onDeleteConversation={handleDeleteConversation}
+            onLoadMore={async () => {
+              if (!userId || convIsLoadingMore || !convHasMore) return;
+              setConvIsLoadingMore(true);
+              try {
+                const nextPage = convPage + 1;
+                const items = await getConversations(userId, nextPage, CONV_PAGE_SIZE);
+                if (!items || items.length === 0) {
+                  setConvHasMore(false);
+                } else {
+                  setConversations(prev => {
+                    const ids = new Set(prev.map(c => c.id));
+                    const dedup = items.filter(i => !ids.has(i.id));
+                    return [...prev, ...dedup]; // append only
+                  });
+                  setConvPage(nextPage);
+                  if (items.length < CONV_PAGE_SIZE) setConvHasMore(false);
+                }
+              } catch (e) {
+                setConvHasMore(false);
+              } finally {
+                setTimeout(() => setConvIsLoadingMore(false), 120);
+              }
+            }}
             onTitleClick={handleTitleClick}
             agents={agents}
+            isLoadingMore={convIsLoadingMore}
+            hasMore={convHasMore}
           />
 
           {/* Chat Messages Container*/}

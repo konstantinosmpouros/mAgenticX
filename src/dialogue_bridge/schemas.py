@@ -202,15 +202,6 @@ class BlobDownloadResponse(BaseModel):
 #-------------------------------------------
 # IMAGES RETRIEVAL DTO
 #-------------------------------------------
-class ImageSummaryOut(BaseModel):
-    """The number of images available for a user."""
-    total: int = Field(..., description="Total number of images available")
-
-class ImageBatchIn(BaseModel):
-    """Request a batch of images, excluding those the UI already has."""
-    exclude: list[str] = Field(default_factory=list, description="List of image IDs to exclude")
-    limit: int = Field(10, ge=1, le=100, description="Number of images to retrieve (1-100)")
-
 class ImageOut(BaseModel):
     """Schema to expose all the info for an Image"""
     blobId: str = Field(..., validation_alias="blob_id")
