@@ -4,6 +4,7 @@ from typing import List
 
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Response
 from fastapi.responses import StreamingResponse
+import httpx
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select, func, desc
@@ -406,6 +407,53 @@ async def addMessageToConversation(
     summary = ConversationSummary.model_validate(current_conv)
     
     return UpdateConversationResponse(message=message_out, summary=summary)
+
+
+
+#-----------------------------------------------------------------------------------
+# INFERENCE STREAM (SSE PROXY)
+#-----------------------------------------------------------------------------------
+@app.post(
+    "/users/{user_id}/conversations/{conversation_id}/inference/stream",
+)
+async def startInferenceStream(
+    user_id: str,
+    conversation_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId_full),
+):
+    """
+    Proxy an inference stream from the selected agent to the UI as SSE.
+    - Builds chat history for the agent as List[Dict[str, str]] (role/content only).
+    - Looks up the agent URL from the conversation's agent.
+    - POSTs to the agent stream endpoint and forwards bytes as-is.
+    Attachments are not sent to the agent.
+    """
+    # Resolve agent URL
+    agent_url = None
+    if current_conv.agent and current_conv.agent.url:
+        agent_url = current_conv.agent.url
+    else:
+        # Fallback: fetch via AgentTable relationship (should be eager-loaded by validate_convId_full)
+        raise HTTPException(status_code=500, detail="Agent URL not found for this conversation")
+
+    # Build full chat history (role/content only)
+    history = []
+    for m in current_conv.messages:
+        role = "user" if m.sender == "user" else "assistant"
+        content = m.content or ""
+        history.append({"role": role, "content": content})
+
+    async def event_stream():
+        timeout = httpx.Timeout(60.0, connect=30.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", agent_url, json={"user_input": history}) as r:
+                r.raise_for_status()
+                async for chunk in r.aiter_bytes():
+                    # Forward bytes directly (pre-encoded SSE from the agents service)
+                    yield chunk
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 

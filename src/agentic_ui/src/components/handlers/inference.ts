@@ -1,7 +1,6 @@
-import { createConversation, addMessageToConversation } from '@/lib/api';
+import { createConversation, addMessageToConversation, streamInference, type AGUIEvent } from '@/lib/api';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
-import { startThinking } from './thinking';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
 
 type InferenceCtx = {
@@ -35,8 +34,8 @@ type InferenceCtx = {
 };
 
 export function createInferenceHandlers(ctx: InferenceCtx) {
-  // Small visual pause so the transition dot is noticeable
-  const AI_THINKING_DELAY_MS = 3000;
+  // Allow aborting previous streams if user sends again quickly
+  let currentStreamAbort: AbortController | null = null;
   const {
     userId,
     selectedAgent,
@@ -127,7 +126,19 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setMessages(() => response.detail.messages);
         setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
         if (setShowAiTransition) setShowAiTransition(true);
-        setTimeout(() => startThinking({ setThinkingState }), AI_THINKING_DELAY_MS);
+        // Build full chat history for the agent (role/content only)
+        const history = (response.detail.messages || []).map((m) => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          content: m.content || ''
+        }));
+        // Start streaming inference
+        if (currentStreamAbort) currentStreamAbort.abort();
+        currentStreamAbort = new AbortController();
+        await startStreaming({
+          userId: userId!,
+          conversationId: response.detail.id,
+          history,
+        }, currentStreamAbort.signal);
       } else {
         const messagePayload: MessageIn = {
           sender: 'user',
@@ -149,7 +160,20 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         // Update sidebar summary and keep ordering
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
         if (setShowAiTransition) setShowAiTransition(true);
-        setTimeout(() => startThinking({ setThinkingState }), AI_THINKING_DELAY_MS);
+        // Build full chat history from current messages + new API message
+        const base = messages.filter(m => !String(m.id).startsWith('temp-'));
+        const historyMessages: MessageOut[] = [...base, response.message];
+        const history = historyMessages.map((m) => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          content: m.content || ''
+        }));
+        if (currentStreamAbort) currentStreamAbort.abort();
+        currentStreamAbort = new AbortController();
+        await startStreaming({
+          userId: userId!,
+          conversationId: currentConversation!.id,
+          history,
+        }, currentStreamAbort.signal);
       }
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -162,4 +186,126 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
   };
 
   return { handleSendMessage };
+
+  // --- Streaming helpers ---
+  async function startStreaming(
+    {
+      userId,
+      conversationId,
+      history,
+    }: { userId: string; conversationId: string; history: { role: string; content: string }[] },
+    signal?: AbortSignal,
+  ) {
+    const runtime = {
+      thoughts: [] as string[],
+      thinkingStart: 0,
+      thinkingEnd: 0,
+      stagedMessageId: '' as string,
+      content: '' as string,
+    };
+
+    const onEvent = async (e: AGUIEvent) => {
+      const t = String(e.type || '').toUpperCase();
+
+      if (t === 'THINKING_START') {
+        if (setShowAiTransition) setShowAiTransition(false);
+        runtime.thinkingStart = Date.now();
+        setThinkingState({
+          messageId: '',
+          thoughts: [],
+          currentThoughtIndex: 0,
+          isActive: true,
+          isDone: false,
+          startTime: runtime.thinkingStart,
+        });
+        return;
+      }
+
+      if (t === 'THINKING_TEXT_MESSAGE_CONTENT') {
+        const delta = e.delta ?? '';
+        runtime.thoughts.push(String(delta));
+        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        return;
+      }
+
+      if (t === 'TOOL_CALL_START') {
+        const name = e.tool_call_name || e.name || 'tool';
+        runtime.thoughts.push(`[tool] ${name} starting`);
+        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        return;
+      }
+      if (t === 'TOOL_CALL_ARGS') {
+        let argStr = '';
+        try { argStr = String(e.delta || ''); } catch {}
+        runtime.thoughts.push(`[tool] args ${argStr}`);
+        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        return;
+      }
+      if (t === 'TOOL_CALL_RESULT') {
+        const content = typeof e.content === 'string' ? e.content : (e.content ? JSON.stringify(e.content) : '');
+        runtime.thoughts.push(`[tool] result ${content}`);
+        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        return;
+      }
+      if (t === 'THINKING_END') {
+        runtime.thinkingEnd = Date.now();
+        setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: runtime.thinkingEnd } : prev);
+        return;
+      }
+
+      if (t === 'TEXT_MESSAGE_START') {
+        const msgId = e.message_id || e.messageId || `ai-${Date.now()}`;
+        runtime.stagedMessageId = String(msgId);
+        const staged: MessageOut = {
+          id: runtime.stagedMessageId,
+          sender: 'ai',
+          type: 'text',
+          content: '',
+          attachments: [],
+          created_at: new Date(),
+          updated_at: new Date(),
+        } as any;
+        setMessages((prev: MessageOut[]) => [...prev, staged]);
+        return;
+      }
+
+      if (t === 'TEXT_MESSAGE_CHUNK' || t === 'TEXT_MESSAGE_CONTENT') {
+        const delta = e.delta ?? '';
+        runtime.content += String(delta);
+        const id = runtime.stagedMessageId;
+        if (id) {
+          setMessages((prev: MessageOut[]) => prev.map(m => m.id === id ? { ...m, content: runtime.content, updated_at: new Date() } : m));
+        }
+        return;
+      }
+
+      if (t === 'TEXT_MESSAGE_END') {
+        const thinkingTime = runtime.thinkingStart ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000) : undefined;
+        const payload: MessageIn = {
+          sender: 'ai',
+          type: 'text',
+          content: runtime.content,
+          thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
+          thinkingTime,
+        } as any;
+        try {
+          const resp = await addMessageToConversation(userId, conversationId, payload);
+          const id = runtime.stagedMessageId;
+          setMessages((prev: MessageOut[]) => prev.map(m => m.id === id ? resp.message : m));
+          setCurrentConversation((prev: any) => prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev);
+          setConversations((prev: any[]) => sortByUpdatedAtDesc(prev.map(c => c.id === resp.summary.id ? resp.summary : c)));
+        } catch (err) {
+          console.error('Failed to persist AI message', err);
+        }
+        return;
+      }
+    };
+
+    try {
+      await streamInference(userId, conversationId, history, onEvent, signal);
+    } catch (err) {
+      console.error('Stream error', err);
+      toast({ title: 'Stream error', description: 'The agent stream ended unexpectedly.', variant: 'destructive' });
+    }
+  }
 }

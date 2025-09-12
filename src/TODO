@@ -21,10 +21,13 @@
 ## Agents
 
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
+- Make all the agents support images pls
 - Create a deep research agent with deep agents and make it available
 
 ## Dialogue Bridge
 
 - Implement tha agentic inference api call with AG-UI
 - Implement the like and dislike endpoints for messages
+- Instead of checking all the time if the agent exists in the database in the lifespan implemented once the retrieval and use a variable to have search faster
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
+- For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document

@@ -231,3 +231,70 @@ export async function downloadAttachment(userId: string, conversationId: string,
   return await res.blob();
 }
 
+// Streaming Inference (AG-UI)
+export type AGUIEvent = {
+  type: string;
+  [key: string]: any;
+};
+
+// Utility to parse SSE text into discrete events, calling onEvent for each JSON data line
+function parseSSE(buffer: string, onEvent: (e: AGUIEvent) => void): string {
+  let start = 0;
+  while (true) {
+    const idx = buffer.indexOf("\n\n", start);
+    if (idx === -1) break;
+    const block = buffer.slice(start, idx);
+    start = idx + 2;
+    // Each block may have multiple lines; we only process data: lines
+    const lines = block.split(/\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload) continue;
+      try {
+        const obj = JSON.parse(payload);
+        if (obj && typeof obj === 'object' && obj.type) onEvent(obj as AGUIEvent);
+      } catch {
+        // ignore non-JSON frames
+      }
+    }
+  }
+  return buffer.slice(start);
+}
+
+// Start streaming inference: send full conversation (role/content only) to the bridge
+export async function streamInference(
+  userId: string,
+  conversationId: string,
+  history: { role: string; content: string }[],
+  onEvent: (e: AGUIEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    },
+    body: JSON.stringify({ user_input: history }),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to start inference stream: ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const textDecoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += textDecoder.decode(value, { stream: true });
+      buffer = parseSSE(buffer, onEvent);
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+}

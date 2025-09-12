@@ -9,100 +9,11 @@ type ThinkingEffectCtx = {
   setMessages: (updater: (prev: MessageOut[]) => MessageOut[]) => void | ((v: MessageOut[]) => void);
 };
 
-export function useThinkingProgressEffect(ctx: ThinkingEffectCtx) {
-  const { thinkingState, setThinkingState, agents, selectedAgent, setMessages } = ctx;
-
-  useEffect(() => {
-    if (!thinkingState?.isActive) return;
-    const interval = setInterval(() => {
-      setThinkingState((prev: ThinkingState | null) => {
-        if (!prev) return null as any;
-        if (prev.currentThoughtIndex < prev.thoughts.length - 1) {
-          return { ...prev, currentThoughtIndex: prev.currentThoughtIndex + 1 } as any;
-        } else if (!prev.isDone) {
-          const endTime = Date.now();
-          setTimeout(() => {
-            const totalTime = Math.round((endTime - prev.startTime) / 1000);
-            const finalizedThoughts = /^(done!?|completed|finished)$/i.test((prev.thoughts[prev.thoughts.length - 1] || '').trim())
-              ? prev.thoughts
-              : prev.thoughts.concat('Done');
-            const agentResponse: MessageOut = {
-              id: prev.messageId,
-              content: `Hello! I'm your ${agents.find(a => a.id === selectedAgent)?.name}. I'm here to assist you with specialized knowledge and support. How can I help you today?
-
-# Heading 1
-## Heading 2
-### Heading 3
-
-**Bold text**  
-*Italic text*  
-~~Strikethrough~~  
-\`inline code\`
-
----
-
-> Blockquote with some text.
-
----
-
-### Unordered List
-- Item 1
-- Item 2
-  - Sub-item
-- Item 3
-
-### Ordered List
-1. First
-2. Second
-3. Third
-
----
-
-### Code Blocks
-~~~js
-function hello(name) {
-  console.log("Hello, " + name + "!");
-}
-hello("Markdown");
-~~~
-`,
-              sender: 'ai',
-              type: 'text',
-              thinking: finalizedThoughts,
-              thinkingTime: totalTime,
-              attachments: [],
-              created_at: new Date(),
-              updated_at: new Date(),
-            } as any;
-            setMessages((prevMessages: MessageOut[]) => [...prevMessages, agentResponse]);
-            setThinkingState(null);
-          }, 1000);
-          return { ...prev, isDone: true, endTime } as any;
-        }
-        return prev as any;
-      });
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [thinkingState, selectedAgent]);
+export function useThinkingProgressEffect(_ctx: ThinkingEffectCtx) {
+  // No-op: real-time streaming updates thoughts and response now.
+  useEffect(() => {}, []);
 }
 
-export function startThinking({ setThinkingState }: { setThinkingState: (v: any) => void }) {
-  const thinking = [
-    "Analyzing the user's query and determining the best approach. Summarizing the intent, scope, and constraints before acting. l am about to do some awesome work! Analyzing the user's query and determining the best approach. Summarizing the intent, scope, and constraints before acting. l am about to do some awesome work!",
-    'Considering relevant context and domain-specific knowledge. Mapping requirements to available tools and data sources.',
-    '[tool] Querying internal knowledge base for similar cases and best practices.',
-    'Cross-referencing with specialized databases and policies to validate assumptions and fill any gaps.',
-    '[tool] Running extraction on supporting documents and compiling quick notes.',
-    'Formulating a comprehensive and helpful response with clear next steps and caveats.',
-    'Done',
-  ];
-
-  setThinkingState({
-    messageId: (Date.now() + 1).toString(),
-    thoughts: thinking,
-    currentThoughtIndex: 0,
-    isActive: true,
-    isDone: false,
-    startTime: Date.now(),
-  });
+export function startThinking(_opts: { setThinkingState: (v: any) => void }) {
+  // No-op placeholder to avoid breaking imports.
 }
