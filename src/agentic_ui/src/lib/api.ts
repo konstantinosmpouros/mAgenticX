@@ -1,4 +1,3 @@
-// src/lib/api.ts
 import type { 
   Agent,
   AgentPublic,
@@ -14,7 +13,7 @@ import type {
   } from "./types";
 import { mapIcon } from "./constants";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
-import { sortByUpdatedAtDesc } from "./utils";
+
 
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
@@ -221,27 +220,14 @@ export async function addMessageToConversation(userId: string, conversationId: s
 
 // Download non-image attachment
 export async function downloadAttachment(userId: string, conversationId: string, messageId: string, blobId: string): Promise<Blob> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/download`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json"
-    },
-    body: JSON.stringify({ blobId }),
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/${blobId}`, {
+    method: "GET",
   });
 
   if (!res.ok) {
     throw new Error(`Failed to download attachment: ${res.status}`);
   }
 
-  const data = await res.json();
-  // Convert base64 back to blob
-  const binaryString = atob(data.dataB64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  
-  return new Blob([bytes]);
+  return await res.blob();
 }
 

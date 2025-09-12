@@ -2,7 +2,8 @@ import base64
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Response
+from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select, func, desc
@@ -27,7 +28,6 @@ from schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
     ConversationIn, MessageIn, MessageOut,
     UpdateConversationResponse,
-    BlobDownloadRequest, BlobDownloadResponse,
     ImageOut,
     AuthRequest, AuthResponse,
     AgentPublic,
@@ -192,37 +192,29 @@ async def getConvDetails(
     return ConversationDetail.model_validate(current_conv)
 
 
-@app.post(
-    "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/blobs/download",
-    response_model=BlobDownloadResponse,
-    status_code=status.HTTP_200_OK
+@app.get(
+    "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/blobs/{blob_id}",
 )
-async def downloadBlob(
+async def downloadBlobStream(
     user_id: str,
     conversation_id: str,
     message_id: str,
-    payload: BlobDownloadRequest,
-    current_user: UserTable = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId),
+    blob_id: str,
+    range_header: str | None = Header(default=None, alias="Range"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns ONE thing from BlobTable: 'data' (base64-encoded).
-    Validates the blob is attached to the specified message, which belongs to
-    the specified conversation, which belongs to the specified user.
-    Rejects image/* MIME types.
+    Stream a blob (non-image) with HTTP byte-range support.
+    Returns 200 for full content or 206 for partial content.
     """
-    if not payload.blobId:
-        raise HTTPException(status_code=500, detail="No id was provided")
-    
-    # Fast join chain across indexed FKs: attachments.message_id, messages.conversation_id, attachments.blob_id
+    # Validate ownership and get data + metadata
     result = await db.execute(
-        select(BlobTable.data, AttachmentTable.mime_type)
+        select(BlobTable.data, AttachmentTable.mime_type, AttachmentTable.file_name)
         .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
         .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
         .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
         .where(
-            BlobTable.id == payload.blobId,
+            BlobTable.id == blob_id,
             AttachmentTable.message_id == message_id,
             MessageTable.id == message_id,
             MessageTable.conversation_id == conversation_id,
@@ -231,18 +223,76 @@ async def downloadBlob(
         )
     )
     row = result.one_or_none()
-    
     if not row:
-        # Either blob not found or not owned/attached as claimed
         raise HTTPException(status_code=404, detail="Blob not found or not accessible.")
-    
-    data, mime = row.data, row.mime_type
-    
+
+    data: bytes = row.data
+    mime: str | None = row.mime_type
+    file_name: str | None = row.file_name
+
     if mime and mime.startswith("image/"):
         raise HTTPException(status_code=400, detail="Images are not served by this endpoint.")
-    
-    data_b64 = base64.b64encode(data).decode("ascii")
-    return BlobDownloadResponse(dataB64=data_b64)
+
+    file_size = len(data)
+
+    def encode_disposition(name: str | None) -> str:
+        name = name or "download"
+        try:
+            name.encode("ascii")
+            return f'attachment; filename="{name}"'
+        except Exception:
+            from urllib.parse import quote
+            return f"attachment; filename*=UTF-8''{quote(name)}"
+
+    base_headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": encode_disposition(file_name),
+    }
+
+    # Full content
+    if not range_header:
+        def iter_full():
+            CHUNK = 1024 * 1024
+            for i in range(0, file_size, CHUNK):
+                yield data[i:i + CHUNK]
+
+        headers = dict(base_headers)
+        headers["Content-Length"] = str(file_size)
+        return StreamingResponse(iter_full(), media_type=mime or "application/octet-stream", headers=headers)
+
+    # Parse Range: bytes=start-end
+    try:
+        units, rng = range_header.split("=")
+        if units.strip().lower() != "bytes":
+            raise ValueError
+        start_s, end_s = [s.strip() for s in rng.split("-")]
+        start = int(start_s) if start_s else 0
+        end = int(end_s) if end_s else file_size - 1
+        if start > end or start < 0 or end >= file_size:
+            raise ValueError
+    except Exception:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+
+    content_length = end - start + 1
+    headers = dict(base_headers)
+    headers.update({
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Content-Length": str(content_length),
+    })
+
+    def iter_range():
+        CHUNK = 1024 * 1024
+        i = start
+        while i <= end:
+            yield data[i:min(i + CHUNK, end + 1)]
+            i += CHUNK
+
+    return StreamingResponse(
+        iter_range(),
+        status_code=206,
+        media_type=mime or "application/octet-stream",
+        headers=headers,
+    )
 
 
 @app.get(

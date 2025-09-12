@@ -9,13 +9,13 @@
 ## Agentic UI
 
 - Implement the API call for the agentic inference with AG-UI
-- When hovering the toast must appear immediately plus to be always on top
 - When downloading something large for some reason it stuck even though the backend has return status 200
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui.
 - Check how to interrupt the inference process
 
 - Implement a tab in the profile panel to show all the images, like openai library
 - Enhance the profile panel with actual user info
+- Enhance the agent message with like and dislike
 - Check what to do with the audio input
 
 ## Agents
@@ -25,5 +25,6 @@
 
 ## Dialogue Bridge
 
-- Implement tha agentic inference api call with AG-UI.
+- Implement tha agentic inference api call with AG-UI
+- Implement the like and dislike endpoints for messages
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception

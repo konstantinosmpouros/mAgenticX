@@ -1,4 +1,3 @@
-import { downloadAttachment } from '@/lib/api';
 import type { MessageOut } from '@/lib/types';
 
 type DownloadsCtx = {
@@ -10,15 +9,13 @@ type DownloadsCtx = {
 export function createDownloadHandlers(ctx: DownloadsCtx) {
   const { userId, currentConversation, toast } = ctx;
 
-  const triggerFileDownload = (blob: Blob, filename: string, _mimeType: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const triggerDirectDownload = (url: string, filename?: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    if (filename) a.download = filename; // optional; Content-Disposition also sets it
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const handleFileDownload = async (attachment: any, message: MessageOut) => {
@@ -32,9 +29,9 @@ export function createDownloadHandlers(ctx: DownloadsCtx) {
     try {
       toast({ title: 'Downloading file...', description: `Starting download of ${attachment.name}`, duration: 2000 });
 
-      const blob = await downloadAttachment(userId, currentConversation.id, message.id, attachment.blobId);
-
-      triggerFileDownload(blob, attachment.name, attachment.mime);
+      const url = `/api/users/${userId}/conversations/${currentConversation.id}/messages/${message.id}/blobs/${attachment.blobId}`;
+      // Let the browser handle streaming + progress natively
+      triggerDirectDownload(url, attachment.name);
 
       toast({ title: 'Download complete', description: `${attachment.name} has been downloaded`, duration: 2000 });
     } catch (error) {
