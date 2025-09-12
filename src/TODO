@@ -9,7 +9,8 @@
 ## Agentic UI
 
 - Implement the API call for the agentic inference with AG-UI
-- Check the nginx configs and search how to send larger files with pagination in order to make the limit higher
+- When hovering the toast must appear immediately plus to be always on top
+- When downloading something large for some reason it stuck even though the backend has return status 200
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui.
 - Check how to interrupt the inference process
 

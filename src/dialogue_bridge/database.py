@@ -225,7 +225,6 @@ async def seed_users(session: AsyncSession) -> None:
             insert(UserTable)
             .values(
                 id=gen_uuid(),
-                # id="0123456789",
                 username=u["username"],
                 password=hash_password(u["password"]),
             )
