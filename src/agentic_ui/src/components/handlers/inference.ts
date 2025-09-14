@@ -1,4 +1,5 @@
 import { createConversation, addMessageToConversation, streamInference, type AGUIEvent } from '@/lib/api';
+import { AGUIEventType, asEventType } from '@/lib/agui';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
@@ -205,9 +206,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     };
 
     const onEvent = async (e: AGUIEvent) => {
-      const t = String(e.type || '').toUpperCase();
+      const t = asEventType(e);
 
-      if (t === 'THINKING_START') {
+      if (t === AGUIEventType.THINKING_START) {
         if (setShowAiTransition) setShowAiTransition(false);
         runtime.thinkingStart = Date.now();
         setThinkingState({
@@ -221,39 +222,39 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         return;
       }
 
-      if (t === 'THINKING_TEXT_MESSAGE_CONTENT') {
+      if (t === AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT) {
         const delta = e.delta ?? '';
         runtime.thoughts.push(String(delta));
         setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
         return;
       }
 
-      if (t === 'TOOL_CALL_START') {
+      if (t === AGUIEventType.TOOL_CALL_START) {
         const name = e.tool_call_name || e.name || 'tool';
         runtime.thoughts.push(`[tool] ${name} starting`);
         setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
         return;
       }
-      if (t === 'TOOL_CALL_ARGS') {
+      if (t === AGUIEventType.TOOL_CALL_ARGS) {
         let argStr = '';
         try { argStr = String(e.delta || ''); } catch {}
         runtime.thoughts.push(`[tool] args ${argStr}`);
         setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
         return;
       }
-      if (t === 'TOOL_CALL_RESULT') {
+      if (t === AGUIEventType.TOOL_CALL_RESULT) {
         const content = typeof e.content === 'string' ? e.content : (e.content ? JSON.stringify(e.content) : '');
         runtime.thoughts.push(`[tool] result ${content}`);
         setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
         return;
       }
-      if (t === 'THINKING_END') {
+      if (t === AGUIEventType.THINKING_END) {
         runtime.thinkingEnd = Date.now();
         setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: runtime.thinkingEnd } : prev);
         return;
       }
 
-      if (t === 'TEXT_MESSAGE_START') {
+      if (t === AGUIEventType.TEXT_MESSAGE_START) {
         const msgId = e.message_id || e.messageId || `ai-${Date.now()}`;
         runtime.stagedMessageId = String(msgId);
         const staged: MessageOut = {
@@ -269,7 +270,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         return;
       }
 
-      if (t === 'TEXT_MESSAGE_CHUNK' || t === 'TEXT_MESSAGE_CONTENT') {
+      if (t === AGUIEventType.TEXT_MESSAGE_CHUNK || t === AGUIEventType.TEXT_MESSAGE_CONTENT) {
         const delta = e.delta ?? '';
         runtime.content += String(delta);
         const id = runtime.stagedMessageId;
@@ -279,7 +280,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         return;
       }
 
-      if (t === 'TEXT_MESSAGE_END') {
+      if (t === AGUIEventType.TEXT_MESSAGE_END) {
         const thinkingTime = runtime.thinkingStart ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000) : undefined;
         const payload: MessageIn = {
           sender: 'ai',
@@ -297,6 +298,39 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         } catch (err) {
           console.error('Failed to persist AI message', err);
         }
+        return;
+      }
+
+      if (t === AGUIEventType.RUN_ERROR) {
+        // Close thinking if active
+        setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
+        if (setShowAiTransition) setShowAiTransition(false);
+
+        // Persist an error assistant message so history reflects the failure
+        const errorMsg = (e as any)?.message || 'Agent stream failed.';
+        const payload: MessageIn = {
+          sender: 'ai',
+          type: 'text',
+          content: runtime.content || 'An error occurred while generating the response.',
+          error: true,
+          errorMessage: errorMsg,
+          thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
+          thinkingTime: runtime.thinkingStart ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000) : undefined,
+        } as any;
+        try {
+          const resp = await addMessageToConversation(userId, conversationId, payload);
+          const id = runtime.stagedMessageId;
+          if (id) {
+            setMessages((prev: MessageOut[]) => prev.map(m => m.id === id ? resp.message : m));
+          } else {
+            setMessages((prev: MessageOut[]) => [...prev, resp.message]);
+          }
+          setCurrentConversation((prev: any) => prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev);
+          setConversations((prev: any[]) => sortByUpdatedAtDesc(prev.map(c => c.id === resp.summary.id ? resp.summary : c)));
+        } catch (err) {
+          console.error('Failed to persist error message', err);
+        }
+        toast({ title: 'Agent error', description: errorMsg, variant: 'destructive' });
         return;
       }
     };
