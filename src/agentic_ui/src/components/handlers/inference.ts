@@ -207,6 +207,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       thinkingEnd: 0,
       stagedMessageId: '' as string,
       content: '' as string,
+      closedThinkingOnFirstChunk: false,
+      lastToolIndex: null as number | null,
     };
     
     const onEvent = async (e: AGUIEvent) => {
@@ -233,32 +235,40 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       if (t === AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT) {
         const delta = e.delta ?? '';
         runtime.thoughts.push(String(delta));
-        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1) } : prev);
         return;
       }
       
       if (t === AGUIEventType.TOOL_CALL_START) {
-        const name = e.tool_call_name || e.name || 'tool';
-        runtime.thoughts.push(`[tool] ${name} starting`);
-        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        const name = e.tool_call_name || e.name || (e.tool && (e.tool.name || e.tool_call_name)) || 'tool';
+        const line = `[tool_active] ${name}`;
+        runtime.thoughts.push(line);
+        runtime.lastToolIndex = runtime.thoughts.length - 1;
+        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: runtime.lastToolIndex } : prev);
         return;
       }
       if (t === AGUIEventType.TOOL_CALL_ARGS) {
-        let argStr = '';
-        try { argStr = String(e.delta || ''); } catch {}
-        runtime.thoughts.push(`[tool] args ${argStr}`);
-        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        // Suppress verbose args in the thinking list to keep it clean.
         return;
       }
       if (t === AGUIEventType.TOOL_CALL_RESULT) {
         const content = typeof e.content === 'string' ? e.content : (e.content ? JSON.stringify(e.content) : '');
-        runtime.thoughts.push(`[tool] result ${content}`);
-        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
+        const line = `[tool] ${content}`; // keep tool icon, hide prefix in UI
+        if (runtime.lastToolIndex != null && runtime.lastToolIndex >= 0 && runtime.lastToolIndex < runtime.thoughts.length) {
+          // Replace the active tool line with the result content
+          runtime.thoughts[runtime.lastToolIndex] = line;
+          runtime.lastToolIndex = null;
+        } else {
+          // No start seen, just append as tool result
+          runtime.thoughts.push(line);
+        }
+        setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1) } : prev);
         return;
       }
       if (t === AGUIEventType.THINKING_END) {
+        // Mark thinking done, but keep the panel open until the first content chunk arrives
         runtime.thinkingEnd = Date.now();
-        setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: runtime.thinkingEnd } : prev);
+        setThinkingState((prev: any) => prev ? { ...prev, isDone: true, endTime: runtime.thinkingEnd, currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1) } : prev);
         return;
       }
       
@@ -277,10 +287,17 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setMessages((prev: MessageOut[]) => [...prev, staged]);
         return;
       }
-      
+
       if (t === AGUIEventType.TEXT_MESSAGE_CHUNK || t === AGUIEventType.TEXT_MESSAGE_CONTENT) {
-        const delta = e.delta ?? '';
+        const delta = (e.delta ?? e.content ?? e.text ?? e.token ?? '') as string;
         runtime.content += String(delta);
+
+        // As soon as first visible content arrives, auto-close the global thinking panel
+        if (!runtime.closedThinkingOnFirstChunk) {
+          runtime.closedThinkingOnFirstChunk = true;
+          setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
+        }
+
         const id = runtime.stagedMessageId;
         if (id) {
           setMessages((prev: MessageOut[]) => prev.map(m => m.id === id ? { ...m, content: runtime.content, updated_at: new Date() } : m));

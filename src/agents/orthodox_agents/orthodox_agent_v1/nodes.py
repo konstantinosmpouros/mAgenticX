@@ -166,7 +166,7 @@ async def retrieval(state: OrthodoxV1_State, writer: StreamWriter):
     
     agui_emitter.tool_call_start(writer, tcid, state["message_id"], "vector_db.search", {"queries": state["vector_queries"], "k": 10})
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
-    agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"documents={len(retrieved_docs)}")
+    agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"Gathered in total {len(retrieved_docs)} relevant documents.")
     
     return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
 

@@ -337,8 +337,8 @@ export function ChatInterface() {
                   </div>
                 )}
                 {/* For every Message in Messages List */}
-                {!loadingConversation && messages.map((message, idx) => (
-                  <div key={idx} className="animate-fade-in space-y-2">
+                {!loadingConversation && messages.map((message) => (
+                  <div key={message.id} className="animate-fade-in space-y-2">
                     {/* Show attachments for message (if any) */}
                     {message.attachments && message.attachments.length > 0 && (
                       <div className={`${message.sender === 'user' ? 'flex justify-end' : ''}`}>
@@ -415,7 +415,7 @@ export function ChatInterface() {
                     
                     {/* Show text message (if any) */}
                     {message.content && (
-                      <div className={`space-y-2 md:space-y-3 ${message.sender === 'user' ? 'flex flex-col items-end' : ''} group/message`}>
+                      <div className={`${message.sender === 'user' ? 'flex flex-col items-end' : ''} group/message`}>
                         {/* Show thinking process container */}
                         {message.thinking && message.sender === 'ai' && (
                           <div className="
@@ -425,7 +425,13 @@ export function ChatInterface() {
                             onClick={() => toggleThinking(message.id)}
                           >
                             <span>
-                              {message.thinkingTime ? `Thought for ${message.thinkingTime} secs` : 'Thinking...'}
+                              {message.thinkingTime ? (() => {
+                                const t = message.thinkingTime as number;
+                                const m = Math.floor(t / 60);
+                                const s = t % 60;
+                                const fmt = m > 0 ? `${m}m ${s}s` : `${s}s`;
+                                return `Thought for ${fmt}`;
+                              })() : 'Thinking...'}
                             </span>
                             {expandedThinking[message.id] ? (
                               <ChevronDown className="h-3 w-3 " />
@@ -439,7 +445,9 @@ export function ChatInterface() {
                         {message.thinking && message.sender === 'ai' && (
                           <div
                             className={`overflow-hidden transition-all duration-300 ease-smooth ${
-                              expandedThinking[message.id] ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+                              expandedThinking[message.id]
+                                ? 'max-h-[75vh] opacity-100 overflow-y-auto pr-1'
+                                : 'max-h-0 opacity-0'
                             }`}
                           >
                             <ThinkingList thoughts={message.thinking} className="max-w-[85%] md:max-w-[85%] w-full" />
@@ -587,7 +595,7 @@ export function ChatInterface() {
                 {/* Enhanced Thinking Animation */}
                 <div
                   className={`overflow-hidden transition-all duration-300 ease-smooth ${
-                    thinkingState?.isActive ? 'max-h-[600px] opacity-100 mt-2' : 'max-h-0 opacity-0'
+                    thinkingState?.isActive ? 'max-h-[70vh] opacity-100 mt-2 overflow-y-auto pr-1' : 'max-h-0 opacity-0'
                   }`}
                 >
                   <div className="text-sm text-muted-foreground mb-1">Thinking...</div>

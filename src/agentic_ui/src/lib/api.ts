@@ -237,30 +237,32 @@ export type AGUIEvent = {
   [key: string]: any;
 };
 
-// Utility to parse SSE text into discrete events, calling onEvent for each JSON data line
+// Utility to parse SSE text incrementally and emit events ASAP.
+// Processes each complete line and triggers onEvent on every 'data:' line
+// without waiting for a blank-line block terminator. Returns any leftover
+// partial line in the buffer.
 function parseSSE(buffer: string, onEvent: (e: AGUIEvent) => void): string {
-  let start = 0;
-  while (true) {
-    const idx = buffer.indexOf("\n\n", start);
-    if (idx === -1) break;
-    const block = buffer.slice(start, idx);
-    start = idx + 2;
-    // Each block may have multiple lines; we only process data: lines
-    const lines = block.split(/\n/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload) continue;
-      try {
-        const obj = JSON.parse(payload);
-        if (obj && typeof obj === 'object' && obj.type) onEvent(obj as AGUIEvent);
-      } catch {
-        // ignore non-JSON frames
-      }
+  // Find the last newline to ensure we only process complete lines
+  const lastNewline = Math.max(buffer.lastIndexOf("\n"), buffer.lastIndexOf("\r"));
+  if (lastNewline === -1) return buffer; // no complete lines yet
+
+  const chunk = buffer.slice(0, lastNewline + 1);
+  const rest = buffer.slice(lastNewline + 1);
+
+  const lines = chunk.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) continue;
+    try {
+      const obj = JSON.parse(payload);
+      if (obj && typeof obj === 'object' && obj.type) onEvent(obj as AGUIEvent);
+    } catch {
+      // ignore non-JSON frames
     }
   }
-  return buffer.slice(start);
+  return rest;
 }
 
 // Start streaming inference: send full conversation (role/content only) to the bridge
@@ -293,6 +295,12 @@ export async function streamInference(
       if (done) break;
       buffer += textDecoder.decode(value, { stream: true });
       buffer = parseSSE(buffer, onEvent);
+    }
+    // Flush any remaining buffered data (handle streams ending without trailing newline)
+    buffer += textDecoder.decode(new Uint8Array(), { stream: false });
+    if (buffer) {
+      // append a newline to ensure the last line is processed
+      buffer = parseSSE(buffer + "\n", onEvent);
     }
   } finally {
     try { reader.releaseLock(); } catch {}

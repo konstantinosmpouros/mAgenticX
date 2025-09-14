@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Wrench, Loader2, CheckCircle } from "lucide-react";
+import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
 
 type ThinkingListProps = {
   thoughts: string[];
@@ -8,17 +9,20 @@ type ThinkingListProps = {
 };
 
 export function ThinkingList({ thoughts, className }: ThinkingListProps) {
-  const toolPattern = /^(\s*(\[tool\]|\(tool\)|tool:|executing tool|running tool|calling tool))/i;
+  const activeToolPattern = /^\s*\[tool_active\]\s*/i;
+  const toolPattern = /^\s*\[tool\]\s*/i;
   return (
     <div className={cn(className)}>
       <div className="space-y-2">
         {thoughts.map((raw, i) => {
           const thought = String(raw ?? "");
-          const isTool = toolPattern.test(thought);
-          const isActive = i === thoughts.length - 1; // treat last as active for subtle motion on tools
+          const isToolActive = activeToolPattern.test(thought);
+          const isTool = isToolActive || toolPattern.test(thought);
+          const isActive = isToolActive; // spinner only when explicitly active
           const isDone = isActive && /^\s*done!?\s*$/i.test(thought.trim());
+          const displayText = thought.replace(activeToolPattern, '').replace(toolPattern, '');
           return (
-            <div key={i} className="flex items-stretch gap-2 text-sm md:text-base text-muted-foreground/80 animate-fade-in">
+            <div key={i} className="flex items-stretch gap-2 text-sm md:text-base text-muted-foreground/90 animate-fade-in">
               {/* Left column: bullet/tool + adaptive vertical line */}
               <div className="w-4 flex-shrink-0 flex flex-col items-center">
                 {isDone ? (
@@ -30,7 +34,7 @@ export function ThinkingList({ thoughts, className }: ThinkingListProps) {
                     <Wrench className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/70" />
                   )
                 ) : (
-                  <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                  <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/70" />
                 )}
                 { !isDone && (
                   <>
@@ -40,9 +44,7 @@ export function ThinkingList({ thoughts, className }: ThinkingListProps) {
                 ) }
               </div>
               {/* Right column: content; height determines the left line height */}
-              <div className="whitespace-pre-wrap break-words leading-relaxed pr-2">
-                {thought}
-              </div>
+              <MarkdownRenderer content={displayText} className="leading-relaxed pr-2" />
             </div>
           );
         })}

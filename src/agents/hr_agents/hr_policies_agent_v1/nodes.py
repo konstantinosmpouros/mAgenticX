@@ -178,7 +178,7 @@ async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
     agui_emitter.tool_call_start(writer, tcid, state["message_id"], "vector_db.search", {"queries": state["vector_queries"], "k": 2})
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
     
-    agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"documents={len(retrieved_docs)}")
+    agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"Gathered in total {len(retrieved_docs)} relevant documents.")
     agui_emitter.thought(writer, f"🛢️ Retrieved {len(retrieved_docs)} documents from the database.")
     
     state_docs = state['retrieved_content']
