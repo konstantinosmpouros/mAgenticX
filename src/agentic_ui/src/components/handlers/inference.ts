@@ -75,7 +75,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
     
-    // Prepare attachments once (as both API payload and optimistic AttachmentOuts)
+    // Prepare attachments once (as both API payload and temp AttachmentOuts)
     const messageAttachments: FileAttachment[] = attachments.map(file => ({
       file,
       url: isImageFile(file) ? getImageUrl(file) : '',
@@ -83,7 +83,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       type: file.type,
     }));
     const apiAttachments = await convertFileAttachments(messageAttachments);
-    const optimisticAttachmentsOut: any[] = apiAttachments.map((a, i) => ({
+    const tempAttachmentsOut: any[] = apiAttachments.map((a, i) => ({
       id: `temp-att-${Date.now()}-${i}`,
       name: a.name,
       mime: a.mime,
@@ -91,19 +91,19 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       timestamp: new Date(),
       data: a.dataB64,
     }));
-
+    
     // Show user's message immediately (with AttachmentOut shape)
     const tempId = `temp-${Date.now()}`;
-    const optimisticMessage: MessageOut = {
+    const tempMessage: MessageOut = {
       id: tempId,
       sender: 'user',
       type: attachments.length > 0 ? 'file' : 'text',
       content: currentMessage || undefined,
       created_at: new Date(),
       updated_at: new Date(),
-      attachments: optimisticAttachmentsOut as any,
+      attachments: tempAttachmentsOut as any,
     };
-    setMessages(prev => [...prev, optimisticMessage]);
+    setMessages(prev => [...prev, tempMessage]);
     setCurrentMessage('');
     setAttachments([]);
     
@@ -123,15 +123,18 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         
         const response = await createConversation(userId!, conversationPayload);
         setCurrentConversation(response.detail);
-        // Replace optimistic message with authoritative messages from server
+        
+        // Replace temp  message with authoritative messages from server
         setMessages(() => response.detail.messages);
         setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
         if (setShowAiTransition) setShowAiTransition(true);
+        
         // Build full chat history for the agent (role/content only)
         const history = (response.detail.messages || []).map((m) => ({
-          role: m.sender === 'user' ? 'user' : 'assistant',
+          role: m.sender === 'user' ? 'user' : 'ai',
           content: m.content || ''
         }));
+        
         // Start streaming inference
         if (currentStreamAbort) currentStreamAbort.abort();
         currentStreamAbort = new AbortController();
@@ -140,6 +143,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           conversationId: response.detail.id,
           history,
         }, currentStreamAbort.signal);
+        
       } else {
         const messagePayload: MessageIn = {
           sender: 'user',
@@ -149,7 +153,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         };
         
         const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
-        // Replace message with API message
+        // Replace temp message with API message
         setMessages(prev => prev.map(m => (m.id === tempId ? response.message : m)));
         
         // Touch currentConversation timestamps minimally
@@ -165,7 +169,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         const base = messages.filter(m => !String(m.id).startsWith('temp-'));
         const historyMessages: MessageOut[] = [...base, response.message];
         const history = historyMessages.map((m) => ({
-          role: m.sender === 'user' ? 'user' : 'assistant',
+          role: m.sender === 'user' ? 'user' : 'ai',
           content: m.content || ''
         }));
         if (currentStreamAbort) currentStreamAbort.abort();
@@ -179,15 +183,15 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     } catch (error) {
       console.error('Failed to send message:', error);
       toast({ title: 'Error', description: 'Failed to send message. Please try again.', variant: 'destructive' });
-      // Remove any optimistic message if present
+      // Remove any temp message if present
       setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
       if (setShowAiTransition) setShowAiTransition(false);
     }
     setIsSendingMessage(false);
   };
-
+  
   return { handleSendMessage };
-
+  
   // --- Streaming helpers ---
   async function startStreaming(
     {
@@ -204,12 +208,16 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       stagedMessageId: '' as string,
       content: '' as string,
     };
-
+    
     const onEvent = async (e: AGUIEvent) => {
       const t = asEventType(e);
-
-      if (t === AGUIEventType.THINKING_START) {
+      
+      if (t === AGUIEventType.RUN_STARTED) {
         if (setShowAiTransition) setShowAiTransition(false);
+        return;
+      }
+      
+      if (t === AGUIEventType.THINKING_START) {
         runtime.thinkingStart = Date.now();
         setThinkingState({
           messageId: '',
@@ -221,14 +229,14 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         });
         return;
       }
-
+      
       if (t === AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT) {
         const delta = e.delta ?? '';
         runtime.thoughts.push(String(delta));
         setThinkingState((prev: any) => prev ? { ...prev, thoughts: [...runtime.thoughts] } : prev);
         return;
       }
-
+      
       if (t === AGUIEventType.TOOL_CALL_START) {
         const name = e.tool_call_name || e.name || 'tool';
         runtime.thoughts.push(`[tool] ${name} starting`);
@@ -253,7 +261,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: runtime.thinkingEnd } : prev);
         return;
       }
-
+      
       if (t === AGUIEventType.TEXT_MESSAGE_START) {
         const msgId = e.message_id || e.messageId || `ai-${Date.now()}`;
         runtime.stagedMessageId = String(msgId);
@@ -269,7 +277,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setMessages((prev: MessageOut[]) => [...prev, staged]);
         return;
       }
-
+      
       if (t === AGUIEventType.TEXT_MESSAGE_CHUNK || t === AGUIEventType.TEXT_MESSAGE_CONTENT) {
         const delta = e.delta ?? '';
         runtime.content += String(delta);
@@ -279,7 +287,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         }
         return;
       }
-
+      
       if (t === AGUIEventType.TEXT_MESSAGE_END) {
         const thinkingTime = runtime.thinkingStart ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000) : undefined;
         const payload: MessageIn = {
@@ -300,12 +308,12 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         }
         return;
       }
-
+      
       if (t === AGUIEventType.RUN_ERROR) {
         // Close thinking if active
         setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
         if (setShowAiTransition) setShowAiTransition(false);
-
+        
         // Persist an error assistant message so history reflects the failure
         const errorMsg = (e as any)?.message || 'Agent stream failed.';
         const payload: MessageIn = {
@@ -334,7 +342,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         return;
       }
     };
-
+    
     try {
       await streamInference(userId, conversationId, history, onEvent, signal);
     } catch (err) {

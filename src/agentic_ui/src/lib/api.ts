@@ -170,7 +170,7 @@ export async function addMessageToConversation(userId: string, conversationId: s
     },
     body: JSON.stringify(payload),
   });
-
+  
   if (!res.ok) {
     if (res.status === 413) {
       throw new Error(
@@ -180,9 +180,9 @@ export async function addMessageToConversation(userId: string, conversationId: s
     }
     throw new Error(`Failed to add message to conversation: ${res.status}`);
   }
-
+  
   const data = await res.json();
-
+  
   // Backward-compat: if server still returns detail, derive the last message
   if (data.detail) {
     const last = data.detail.messages[data.detail.messages.length - 1];
@@ -200,7 +200,7 @@ export async function addMessageToConversation(userId: string, conversationId: s
       summary: data.summary,
     } as UpdateConversationResponse;
   }
-
+  
   // New shape: { message, summary }
   const m = data.message;
   return {
@@ -283,7 +283,7 @@ export async function streamInference(
   if (!res.ok || !res.body) {
     throw new Error(`Failed to start inference stream: ${res.status}`);
   }
-
+  
   const reader = res.body.getReader();
   const textDecoder = new TextDecoder();
   let buffer = '';
