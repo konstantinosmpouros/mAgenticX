@@ -9,39 +9,27 @@ type ThinkingListProps = {
 };
 
 export function ThinkingList({ thoughts, className }: ThinkingListProps) {
-  const activeToolPattern = /^\s*\[tool_active\]\s*/i;
   const toolPattern = /^\s*\[tool\]\s*/i;
   return (
     <div className={cn(className)}>
       <div className="space-y-2">
         {thoughts.map((raw, i) => {
           const thought = String(raw ?? "");
-          const isToolActive = activeToolPattern.test(thought);
-          const isTool = isToolActive || toolPattern.test(thought);
-          const isActive = isToolActive; // spinner only when explicitly active
-          const isDone = isActive && /^\s*done!?\s*$/i.test(thought.trim());
-          const displayText = thought.replace(activeToolPattern, '').replace(toolPattern, '');
+          const isTool = toolPattern.test(thought);
+          const displayText = thought.replace(toolPattern, '');
           return (
             <div key={i} className="flex items-stretch gap-2 text-sm md:text-base text-muted-foreground/90 animate-fade-in">
               {/* Left column: bullet/tool + adaptive vertical line */}
               <div className="w-4 flex-shrink-0 flex flex-col items-center">
-                {isDone ? (
-                  <CheckCircle className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/60" />
-                ) : isTool ? (
-                  isActive ? (
-                    <Loader2 className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/70 animate-spin" />
-                  ) : (
-                    <Wrench className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/70" />
-                  )
+                {isTool ? (
+                  <Wrench className="mt-[5px] h-3.5 w-3.5 text-muted-foreground/70" />
                 ) : (
                   <span className="mt-2.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/70" />
                 )}
-                { !isDone && (
-                  <>
-                    <div className="w-px flex-1 bg-muted-foreground/30 mt-1 origin-top animate-line-grow" />
-                    { !isActive && <div className="w-px h-3 bg-muted-foreground/30 origin-top animate-line-grow" /> }
-                  </>
-                ) }
+                <>
+                  <div className="w-px flex-1 bg-muted-foreground/30 mt-1 origin-top animate-line-grow" />
+                  <div className="w-px h-3 bg-muted-foreground/30 origin-top animate-line-grow" />
+                </>
               </div>
               {/* Right column: content; height determines the left line height */}
               <MarkdownRenderer content={displayText} className="leading-relaxed pr-2" />

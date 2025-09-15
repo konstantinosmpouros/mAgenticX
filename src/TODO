@@ -14,7 +14,6 @@
 - Implement the interrupt inference process with the signal and change the send icon to stop
 - The streaming works well but no use of ag-ui actual package
 - Clean the inference code, handler, agui event handling, types etc
-- In the tool call start event l don't see the name of the tool
 
 - Implement a tab in the profile panel to show all the images, like openai library
 - Enhance the profile panel with actual user info
