@@ -415,7 +415,7 @@ export function ChatInterface() {
                     
                     {/* Show text message (if any) */}
                     {message.content && (
-                      <div className={`${message.sender === 'user' ? 'flex flex-col items-end' : ''} group/message`}>
+                      <div className={`space-y-2 md:space-y-2 ${message.sender === 'user' ? 'flex flex-col items-end' : ''} group/message`}>
                         {/* Show thinking process container */}
                         {message.thinking && message.sender === 'ai' && (
                           <div className="
