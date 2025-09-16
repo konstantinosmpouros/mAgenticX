@@ -99,8 +99,7 @@ export function ChatInterface() {
   // Sticky user bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
-  
-  const conversationMessages = currentConversation?.messages ?? [];
+
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
     setCurrentConversation(prev => {
       const prevMessages = prev?.messages ?? [];
@@ -138,7 +137,7 @@ export function ChatInterface() {
   
   // Effects moved to handlers
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
-  useAutoScrollEffect(conversationMessages, thinkingState, messagesEndRef);
+  useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
   useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
@@ -161,7 +160,7 @@ export function ChatInterface() {
             updated_at: currentConversation.updated_at ? currentConversation.updated_at.toISOString() : null,
           }
         : null,
-      messages: conversationMessages.map(m => ({
+      messages: (currentConversation?.messages ?? []).map(m => ({
         ...m,
         created_at: m.created_at.toISOString(),
         updated_at: m.updated_at.toISOString(),
@@ -249,7 +248,7 @@ export function ChatInterface() {
     userId,
     selectedAgent,
     isPrivateMode,
-    messages: conversationMessages,
+    messages: currentConversation?.messages ?? [],
     attachments,
     agents,
     currentConversation,
@@ -294,10 +293,10 @@ export function ChatInterface() {
             selectedAgent={selectedAgent}
             onAgentChange={handleAgentChange}
             onNewChat={handleNewChat}
-            showPrivateToggle={conversationMessages.length === 0 || isPrivateMode}
+            showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
             isPrivateMode={isPrivateMode}
             onTogglePrivate={() => {
-              if (conversationMessages.length === 0 || !isPrivateMode) {
+              if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
                 setIsPrivateMode(!isPrivateMode);
               }
             }}
@@ -366,7 +365,7 @@ export function ChatInterface() {
                   </div>
                 )}
                 {/* For every Message in Messages List */}
-                {!loadingConversation && conversationMessages.map((message) => (
+                {!loadingConversation && (currentConversation?.messages ?? []).map((message) => (
                   <div key={message.id} className="animate-fade-in space-y-2">
                     {/* Show attachments for message (if any) */}
                     {message.attachments && message.attachments.length > 0 && (
@@ -644,9 +643,9 @@ export function ChatInterface() {
           {/* Input Area */}
           <InputContainer
             // Centered empty state
-            isMessagesEmpty={conversationMessages.length === 0}
+            isMessagesEmpty={(currentConversation?.messages?.length ?? 0) === 0}
             positionClass={
-              conversationMessages.length === 0
+              (currentConversation?.messages?.length ?? 0) === 0
                 ? "fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
                 : "bottom-0 left-0 right-0 z-0 p-6"
             }
