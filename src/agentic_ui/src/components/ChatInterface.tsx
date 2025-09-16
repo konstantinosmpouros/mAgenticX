@@ -8,7 +8,7 @@ import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
 import ThinkingList from "@/components/utils/thinkingList";
 import { Send, Paperclip, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, } from "lucide-react";
 import { VscEye, VscMicFilled  } from "react-icons/vsc";
-import { FaStop } from "react-icons/fa";
+import { FaStop } from "react-icons/fa6";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
@@ -51,7 +51,6 @@ export function ChatInterface() {
   // Main state variables
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
-  const [messages, setMessages] = useState<MessageOut[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [isPrivateMode, setIsPrivateMode] = useState(false);
@@ -59,6 +58,7 @@ export function ChatInterface() {
   // Main variables use for storing info from the db and present it constantly
   const [agents, setAgents] = useState<Agent[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  
   // Conversation list pagination state (persist across sidebar open/close)
   const [convPage, setConvPage] = useState<number>(1);
   const [convHasMore, setConvHasMore] = useState<boolean>(true);
@@ -100,6 +100,32 @@ export function ChatInterface() {
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
   
+  const conversationMessages = currentConversation?.messages ?? [];
+  const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
+    setCurrentConversation(prev => {
+      const prevMessages = prev?.messages ?? [];
+      const nextMessages = typeof updater === 'function'
+        ? (updater as (prev: MessageOut[]) => MessageOut[])(prevMessages)
+        : updater;
+      if (prev) {
+        return { ...prev, messages: nextMessages };
+      }
+      if (nextMessages.length === 0) return prev;
+      const agentMeta = agents.find(a => a.id === selectedAgent);
+      const now = new Date();
+      return {
+        id: '',
+        agentId: selectedAgent,
+        agentName: agentMeta?.name || '',
+        title: '',
+        isPrivate: isPrivateMode,
+        created_at: now,
+        updated_at: now,
+        messages: nextMessages,
+      } as ConversationDetail;
+    });
+  };
+
   // Create toast wrapper for handlers
   const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
     toast({
@@ -112,9 +138,9 @@ export function ChatInterface() {
   
   // Effects moved to handlers
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
-  useAutoScrollEffect(messages, thinkingState, messagesEndRef);
-  useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages });
-  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode, toast: toastWrapper });
+  useAutoScrollEffect(conversationMessages, thinkingState, messagesEndRef);
+  useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
+  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
   useUIPersistEffect({
     userId,
@@ -135,7 +161,7 @@ export function ChatInterface() {
             updated_at: currentConversation.updated_at ? currentConversation.updated_at.toISOString() : null,
           }
         : null,
-      messages: messages.map(m => ({
+      messages: conversationMessages.map(m => ({
         ...m,
         created_at: m.created_at.toISOString(),
         updated_at: m.updated_at.toISOString(),
@@ -180,7 +206,6 @@ export function ChatInterface() {
     setLoadingConversation,
     setSidebarOpen,
     setIsClearing,
-    setMessages,
     setSelectedAgent,
     setCurrentConversation,
     setIsPrivateMode,
@@ -224,13 +249,13 @@ export function ChatInterface() {
     userId,
     selectedAgent,
     isPrivateMode,
-    messages,
+    messages: conversationMessages,
     attachments,
     agents,
     currentConversation,
     currentMessage,
     isSendingMessage,
-    setMessages,
+    setMessages: setConversationMessages,
     setCurrentMessage,
     setAttachments,
     setIsSendingMessage,
@@ -269,10 +294,10 @@ export function ChatInterface() {
             selectedAgent={selectedAgent}
             onAgentChange={handleAgentChange}
             onNewChat={handleNewChat}
-            showPrivateToggle={messages.length === 0 || isPrivateMode}
+            showPrivateToggle={conversationMessages.length === 0 || isPrivateMode}
             isPrivateMode={isPrivateMode}
             onTogglePrivate={() => {
-              if (messages.length === 0 || !isPrivateMode) {
+              if (conversationMessages.length === 0 || !isPrivateMode) {
                 setIsPrivateMode(!isPrivateMode);
               }
             }}
@@ -341,7 +366,7 @@ export function ChatInterface() {
                   </div>
                 )}
                 {/* For every Message in Messages List */}
-                {!loadingConversation && messages.map((message) => (
+                {!loadingConversation && conversationMessages.map((message) => (
                   <div key={message.id} className="animate-fade-in space-y-2">
                     {/* Show attachments for message (if any) */}
                     {message.attachments && message.attachments.length > 0 && (
@@ -619,11 +644,11 @@ export function ChatInterface() {
           {/* Input Area */}
           <InputContainer
             // Centered empty state
-            isMessagesEmpty={messages.length === 0 ? true : false}
+            isMessagesEmpty={conversationMessages.length === 0}
             positionClass={
-              messages.length === 0
-              ? "fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
-              : "bottom-0 left-0 right-0 z-0 p-6"
+              conversationMessages.length === 0
+                ? "fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
+                : "bottom-0 left-0 right-0 z-0 p-6"
             }
             
             // pass through your existing state/handlers/refs

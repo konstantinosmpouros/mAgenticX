@@ -1,5 +1,5 @@
 import { getConversationDetail, deleteConversation } from '@/lib/api';
-import type { ConversationDetail, ConversationSummary, MessageOut } from '@/lib/types';
+import type { ConversationDetail, ConversationSummary } from '@/lib/types';
 
 type ConversationsCtx = {
   userId: string | null;
@@ -10,7 +10,6 @@ type ConversationsCtx = {
   setLoadingConversation: (v: boolean) => void;
   setSidebarOpen: (v: boolean) => void;
   setIsClearing: (v: boolean) => void;
-  setMessages: (v: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => void;
   setSelectedAgent: (v: string) => void;
   setCurrentConversation: (v: ConversationDetail | null) => void;
   setIsPrivateMode: (v: boolean) => void;
@@ -30,7 +29,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setLoadingConversation,
     setSidebarOpen,
     setIsClearing,
-    setMessages,
     setSelectedAgent,
     setCurrentConversation,
     setIsPrivateMode,
@@ -44,7 +42,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setIsClearing(true);
     setTimeout(() => {
       ctx.setThinkingState?.(null);
-      setMessages([]);
       setExpandedThinking({});
       setAttachments([]);
       setCurrentMessage('');
@@ -73,7 +70,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       try {
         const conversationDetail = await getConversationDetail(userId, conversation.id);
         setTimeout(() => {
-          setMessages(conversationDetail.messages);
           setSelectedAgent(conversationDetail.agentId);
           setCurrentConversation(conversationDetail);
           setIsPrivateMode(conversationDetail.isPrivate || false);
@@ -82,7 +78,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       } catch (error) {
         console.error('Failed to load conversation:', error);
         toast({ title: 'Failed to load conversation', description: 'There was an error loading the conversation. Please try again.', variant: 'destructive', duration: 3000 });
-        setMessages([]);
         setSelectedAgent(conversation.agentId);
         const fallbackDetail: ConversationDetail = {
           ...conversation,
