@@ -1,0 +1,221 @@
+import { addMessageToConversation, streamInference } from '@/lib/api';
+import { sortByUpdatedAtDesc } from '@/lib/utils';
+import type { MessageIn, MessageOut } from '@/lib/types';
+import { EventSchemas, EventType as AGUIEventType } from '@ag-ui/core';
+
+const parseEvent = (raw: unknown) => {
+  const result = EventSchemas.safeParse(raw);
+  return result.success ? result.data : null;
+};
+
+type MessageSetter = (updater: (prev: MessageOut[]) => MessageOut[]) => void | ((v: MessageOut[]) => void);
+
+type ConversationSetter = (updater: (prev: any[]) => any[]) => void;
+
+type ThinkingSetter = (updater: any) => void;
+
+type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+
+export type AguiStreamOptions = {
+  userId: string;
+  conversationId: string;
+  history: { role: string; content: string }[];
+  setMessages: MessageSetter;
+  setThinkingState: ThinkingSetter;
+  setCurrentConversation: (updater: any) => void;
+  setConversations: ConversationSetter;
+  toast: ToastFn;
+  setShowAiTransition?: (v: boolean) => void;
+  signal?: AbortSignal;
+};
+
+export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
+  const {
+    userId,
+    conversationId,
+    history,
+    setMessages,
+    setThinkingState,
+    setCurrentConversation,
+    setConversations,
+    toast,
+    setShowAiTransition,
+    signal,
+  } = options;
+  
+  const runtime = {
+    thoughts: [] as string[],
+    thinkingStart: 0,
+    thinkingEnd: 0,
+    stagedMessageId: '' as string,
+    content: '' as string,
+    closedThinkingOnFirstChunk: false,
+  };
+  
+  const onEvent = async (raw: unknown) => {
+    const ev = parseEvent(raw);
+    if (!ev) return;
+    
+    const type = ev.type;
+    
+    if (type === AGUIEventType.RUN_STARTED) {
+      if (setShowAiTransition) setShowAiTransition(false);
+      return;
+    }
+    
+    if (type === AGUIEventType.THINKING_START) {
+      runtime.thinkingStart = Date.now();
+      setThinkingState({
+        messageId: '',
+        thoughts: [],
+        currentThoughtIndex: 0,
+        isActive: true,
+        isDone: false,
+        startTime: runtime.thinkingStart,
+      });
+      return;
+    }
+    
+    if (type === AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT) {
+      runtime.thoughts.push(String(ev.delta ?? ''));
+      setThinkingState((prev: any) =>
+        prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: runtime.thoughts.length - 1 } : prev,
+      );
+      return;
+    }
+    
+    if (type === AGUIEventType.TOOL_CALL_START) {
+      runtime.thoughts.push(`[tool] ${ev.toolCallName}`);
+      setThinkingState((prev: any) =>
+        prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: runtime.thoughts.length - 1 } : prev,
+      );
+      return;
+    }
+    
+    if (type === AGUIEventType.TOOL_CALL_ARGS || type === AGUIEventType.TOOL_CALL_RESULT) {
+      return;
+    }
+    
+    if (type === AGUIEventType.THINKING_END) {
+      runtime.thinkingEnd = Date.now();
+      setThinkingState((prev: any) =>
+        prev ? { ...prev, isDone: true, endTime: runtime.thinkingEnd, currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1) } : prev,
+      );
+      return;
+    }
+    
+    if (type === AGUIEventType.TEXT_MESSAGE_START) {
+      const msgId = ev.messageId || `ai-${Date.now()}`;
+      runtime.stagedMessageId = String(msgId);
+      const staged: MessageOut = {
+        id: runtime.stagedMessageId,
+        sender: 'ai',
+        type: 'text',
+        content: '',
+        attachments: [],
+        created_at: new Date(),
+        updated_at: new Date(),
+      } as any;
+      setMessages((prev: MessageOut[]) => [...prev, staged]);
+      return;
+    }
+    
+    if (type === AGUIEventType.TEXT_MESSAGE_CHUNK || type === AGUIEventType.TEXT_MESSAGE_CONTENT) {
+      const delta = (ev.delta ?? '') as string;
+      runtime.content += String(delta);
+      
+      if (!runtime.closedThinkingOnFirstChunk) {
+        runtime.closedThinkingOnFirstChunk = true;
+        setThinkingState((prev: any) =>
+          prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev,
+        );
+      }
+      
+      const id = runtime.stagedMessageId;
+      if (id) {
+        setMessages((prev: MessageOut[]) =>
+          prev.map((m) => (m.id === id ? { ...m, content: runtime.content, updated_at: new Date() } : m)),
+        );
+      }
+      return;
+    }
+    
+    if (type === AGUIEventType.TEXT_MESSAGE_END) {
+      const thinkingTime = runtime.thinkingStart
+        ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000)
+        : undefined;
+      
+      const payload: MessageIn = {
+        sender: 'ai',
+        type: 'text',
+        content: runtime.content,
+        thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
+        thinkingTime,
+      } as any;
+      
+      try {
+        const resp = await addMessageToConversation(userId, conversationId, payload);
+        const id = runtime.stagedMessageId;
+        setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
+        setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
+        setConversations((prev: any[]) =>
+          sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
+        );
+      } catch (err) {
+        console.error('Failed to persist AI message', err);
+      }
+      return;
+    }
+    
+    if (type === AGUIEventType.RUN_ERROR) {
+      setThinkingState((prev: any) => (prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev));
+      if (setShowAiTransition) setShowAiTransition(false);
+      
+      const errorMsg = ev.message || 'Agent stream failed.';
+      const payload: MessageIn = {
+        sender: 'ai',
+        type: 'text',
+        content: runtime.content || 'An error occurred while generating the response.',
+        error: true,
+        errorMessage: errorMsg,
+        thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
+        thinkingTime: runtime.thinkingStart
+          ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000)
+          : undefined,
+      } as any;
+      
+      try {
+        const resp = await addMessageToConversation(userId, conversationId, payload);
+        const id = runtime.stagedMessageId;
+        if (id) {
+          setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
+        } else {
+          setMessages((prev: MessageOut[]) => [...prev, resp.message]);
+        }
+        setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
+        setConversations((prev: any[]) =>
+          sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
+        );
+      } catch (err) {
+        console.error('Failed to persist error message', err);
+      }
+      toast({ title: 'Agent error', description: errorMsg, variant: 'destructive' });
+      return;
+    }
+  };
+  
+  try {
+    await streamInference(userId, conversationId, history, onEvent, signal);
+  } catch (err) {
+    const name = (err as any)?.name;
+    if (name === 'AbortError') {
+      setThinkingState((prev: any) =>
+        prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev,
+      );
+      if (setShowAiTransition) setShowAiTransition(false);
+      return;
+    }
+    console.error('Stream error', err);
+    toast({ title: 'Stream error', description: 'The agent stream ended unexpectedly.', variant: 'destructive' });
+  }
+}

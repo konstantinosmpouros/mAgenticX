@@ -291,6 +291,9 @@ export async function streamInference(
   let buffer = '';
   try {
     while (true) {
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
       const { value, done } = await reader.read();
       if (done) break;
       buffer += textDecoder.decode(value, { stream: true });

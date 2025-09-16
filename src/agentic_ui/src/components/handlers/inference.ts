@@ -1,13 +1,8 @@
-import { createConversation, addMessageToConversation, streamInference, type AGUIEvent } from '@/lib/api';
-import { EventType as AGUIEventType, EventSchemas } from "@ag-ui/core";
+import { createConversation, addMessageToConversation } from '@/lib/api';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
-
-const parseEvent = (raw: unknown) => {
-  const r = EventSchemas.safeParse(raw);
-  return r.success ? r.data : null;
-};
+import { streamAguiRun } from './agui';
 
 type InferenceCtx = {
   userId: string | null;
@@ -65,7 +60,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
   
   const handleSendMessage = async () => {
     const currentMessage = ctx.currentMessage;
-    
+
     if (!currentMessage && attachments.length === 0) return;
     if (ctx.isSendingMessage) return;
     
@@ -143,12 +138,20 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         // Start streaming inference
         if (currentStreamAbort) currentStreamAbort.abort();
         currentStreamAbort = new AbortController();
-        await startStreaming({
+        await streamAguiRun({
           userId: userId!,
           conversationId: response.detail.id,
           history,
-        }, currentStreamAbort.signal);
-        
+          setMessages,
+          setThinkingState,
+          setCurrentConversation,
+          setConversations,
+          toast,
+          setShowAiTransition,
+          signal: currentStreamAbort.signal,
+        });
+        currentStreamAbort = null;
+
       } else {
         const messagePayload: MessageIn = {
           sender: 'user',
@@ -179,11 +182,19 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         }));
         if (currentStreamAbort) currentStreamAbort.abort();
         currentStreamAbort = new AbortController();
-        await startStreaming({
+        await streamAguiRun({
           userId: userId!,
           conversationId: currentConversation!.id,
           history,
-        }, currentStreamAbort.signal);
+          setMessages,
+          setThinkingState,
+          setCurrentConversation,
+          setConversations,
+          toast,
+          setShowAiTransition,
+          signal: currentStreamAbort.signal,
+        });
+        currentStreamAbort = null;
       }
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -191,209 +202,20 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       // Remove any temp message if present
       setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
       if (setShowAiTransition) setShowAiTransition(false);
+      currentStreamAbort = null;
     }
     setIsSendingMessage(false);
   };
-  
-  return { handleSendMessage };
-  
-  // --- Streaming helpers ---
-  async function startStreaming(
-    {
-      userId,
-      conversationId,
-      history,
-    }: { userId: string; conversationId: string; history: { role: string; content: string }[] },
-    signal?: AbortSignal,
-  ) {
-    const runtime = {
-      thoughts: [] as string[],
-      thinkingStart: 0,
-      thinkingEnd: 0,
-      stagedMessageId: '' as string,
-      content: '' as string,
-      closedThinkingOnFirstChunk: false,
-    };
-    
-    const onEvent = async (raw: any) => {
-      const ev = parseEvent(raw);
-      if (!ev) {
-        // Unknown or invalid event; ignore silently or log if you prefer:
-        // console.debug('Unrecognized AG-UI event', raw);
-        return;
-      }
-      
-      const t = ev.type;
-      
-      if (t === AGUIEventType.RUN_STARTED) {
-        if (setShowAiTransition) setShowAiTransition(false);
-        return;
-      }
-      
-      if (t === AGUIEventType.THINKING_START) {
-        runtime.thinkingStart = Date.now();
-        setThinkingState({
-          messageId: "",
-          thoughts: [],
-          currentThoughtIndex: 0,
-          isActive: true,
-          isDone: false,
-          startTime: runtime.thinkingStart,
-        });
-        return;
-      }
-      
-      if (t === AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT) {
-        // ev.delta is guaranteed (per schema)
-        runtime.thoughts.push(String(ev.delta));
-        setThinkingState((prev: any) =>
-          prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: runtime.thoughts.length - 1 } : prev
-        );
-        return;
-      }
-      
-      if (t === AGUIEventType.TOOL_CALL_START) {
-        // Use official camelCase field names
-        runtime.thoughts.push(`[tool] ${ev.toolCallName.trim()}`);
-        setThinkingState((prev: any) =>
-          prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: runtime.thoughts.length - 1 } : prev
-        );
-        return;
-      }
-      
-      if (t === AGUIEventType.TOOL_CALL_ARGS) {
-        // ev.delta (string) is available if you want to surface arguments
-        return;
-      }
-      
-      if (t === AGUIEventType.TOOL_CALL_RESULT) {
-        // ev.content includes tool result if you want to surface it
-        return;
-      }
-      
-      if (t === AGUIEventType.THINKING_END) {
-        runtime.thinkingEnd = Date.now();
-        setThinkingState((prev: any) =>
-          prev ? { ...prev, isDone: true, endTime: runtime.thinkingEnd, currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1) } : prev
-        );
-        return;
-      }
-      
-      if (t === AGUIEventType.TEXT_MESSAGE_START) {
-        // Official field is camelCase: messageId
-        const msgId = ev.messageId || `ai-${Date.now()}`;
-        runtime.stagedMessageId = String(msgId);
-        const staged: MessageOut = {
-          id: runtime.stagedMessageId,
-          sender: "ai",
-          type: "text",
-          content: "",
-          attachments: [],
-          created_at: new Date(),
-          updated_at: new Date(),
-        } as any;
-        setMessages((prev: MessageOut[]) => [...prev, staged]);
-        return;
-      }
-      
-      if (t === AGUIEventType.TEXT_MESSAGE_CHUNK || t === AGUIEventType.TEXT_MESSAGE_CONTENT) {
-        // Official schema uses "delta"
-        const delta = ev.delta ?? "";
-        runtime.content += String(delta);
-        
-        if (!runtime.closedThinkingOnFirstChunk) {
-          runtime.closedThinkingOnFirstChunk = true;
-          setThinkingState((prev: any) =>
-            prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev
-          );
-        }
-        
-        const id = runtime.stagedMessageId;
-        if (id) {
-          setMessages((prev: MessageOut[]) =>
-            prev.map((m) => (m.id === id ? { ...m, content: runtime.content, updated_at: new Date() } : m))
-          );
-        }
-        return;
-      }
-      
-      if (t === AGUIEventType.TEXT_MESSAGE_END) {
-        const thinkingTime = runtime.thinkingStart
-          ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000)
-          : undefined;
-        
-        const payload: MessageIn = {
-          sender: "ai",
-          type: "text",
-          content: runtime.content,
-          thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
-          thinkingTime,
-        } as any;
-        
-        try {
-          const resp = await addMessageToConversation(userId, conversationId, payload);
-          const id = runtime.stagedMessageId;
-          setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
-          setCurrentConversation((prev: any) =>
-            prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev
-          );
-          setConversations((prev: any[]) =>
-            sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c)))
-          );
-        } catch (err) {
-          console.error("Failed to persist AI message", err);
-        }
-        return;
-      }
-      
-      if (t === AGUIEventType.RUN_ERROR) {
-        // Official schema provides ev.message and optional ev.code
-        setThinkingState((prev: any) =>
-          prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev
-        );
-        if (setShowAiTransition) setShowAiTransition(false);
-        
-        const errorMsg = ev.message || "Agent stream failed.";
-        const payload: MessageIn = {
-          sender: "ai",
-          type: "text",
-          content: runtime.content || "An error occurred while generating the response.",
-          error: true,
-          errorMessage: errorMsg,
-          thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
-          thinkingTime: runtime.thinkingStart
-            ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000)
-            : undefined,
-        } as any;
-        
-        try {
-          const resp = await addMessageToConversation(userId, conversationId, payload);
-          const id = runtime.stagedMessageId;
-          if (id) {
-            setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
-          } else {
-            setMessages((prev: MessageOut[]) => [...prev, resp.message]);
-          }
-          setCurrentConversation((prev: any) =>
-            prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev
-          );
-          setConversations((prev: any[]) =>
-            sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c)))
-          );
-        } catch (err) {
-          console.error("Failed to persist error message", err);
-        }
-        toast({ title: "Agent error", description: errorMsg, variant: "destructive" });
-        return;
-      }
-      
-    };
-    
-    try {
-      await streamInference(userId, conversationId, history, onEvent, signal);
-    } catch (err) {
-      console.error('Stream error', err);
-      toast({ title: 'Stream error', description: 'The agent stream ended unexpectedly.', variant: 'destructive' });
+
+  const handleStopStreaming = () => {
+    if (currentStreamAbort) {
+      currentStreamAbort.abort();
+      currentStreamAbort = null;
+      setIsSendingMessage(false);
+      setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
+      if (setShowAiTransition) setShowAiTransition(false);
     }
-  }
+  };
+
+  return { handleSendMessage, handleStopStreaming };
 }

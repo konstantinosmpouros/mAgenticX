@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
 import ThinkingList from "@/components/utils/thinkingList";
-import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy } from "lucide-react";
+import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, Square } from "lucide-react";
 import { VscEye } from "react-icons/vsc";
 import { useToast } from "@/hooks/use-toast";
 
@@ -155,7 +155,7 @@ export function ChatInterface() {
   
   // UI Handlers (clipboard, etc.)
   const { handleCopy } = createUIHandlers({ toast: toastWrapper , setCopiedId });
-
+  
   // AI transition dot (between DB persistence and thinking start)
   const [showAiTransition, setShowAiTransition] = useState(false);
   useEffect(() => {
@@ -217,7 +217,7 @@ export function ChatInterface() {
   });
 
   // Inference handler (send message)
-  const { handleSendMessage } = createInferenceHandlers({
+  const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
     userId,
     selectedAgent,
     isPrivateMode,
@@ -311,7 +311,7 @@ export function ChatInterface() {
             isLoadingMore={convIsLoadingMore}
             hasMore={convHasMore}
           />
-
+          
           {/* Chat Messages Container*/}
           <div className="flex-1 overflow-hidden relative">
             <ScrollArea className="h-full">
@@ -626,10 +626,12 @@ export function ChatInterface() {
             attachments={attachments}
             isPrivateMode={isPrivateMode}
             thinkingActive={thinkingState?.isActive}
+            isStreaming={isSendingMessage}
             currentMessage={currentMessage}
             setCurrentMessage={setCurrentMessage}
             handlePaste={handlePaste}
             handleSendMessage={handleSendMessage}
+            handleStopStreaming={handleStopStreaming}
             isImageFile={isImageFile}
             getImageUrl={getImageUrl}
             handleImageClick={handleImageClick}
@@ -647,6 +649,7 @@ export function ChatInterface() {
             Mic={Mic}
             Button={Button}
             Send={Send}
+            Stop={Square}
             X={X}
             toast={toast}
             currentAgent={currentAgent}

@@ -14,10 +14,12 @@ type InputContainerProps = {
     isMessagesEmpty?: boolean;
     isPrivateMode: boolean;
     thinkingActive?: boolean;
+    isStreaming?: boolean;
     currentMessage: string;
     setCurrentMessage: (v: string) => void;
     handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
     handleSendMessage: () => void;
+    handleStopStreaming?: () => void;
 
     // Helpers/refs you already have
     isImageFile: (f: any) => boolean;
@@ -37,6 +39,7 @@ type InputContainerProps = {
     Mic: any;
     Button: any;
     Send: any;
+    Stop: any;
     X: any; // Add X icon for remove functionality
 
     // Optional extras available in your page
@@ -66,10 +69,12 @@ export function InputContainer(props: InputContainerProps) {
         attachments,
         isPrivateMode,
         thinkingActive,
+        isStreaming = false,
         currentMessage,
         setCurrentMessage,
         handlePaste,
         handleSendMessage,
+        handleStopStreaming,
         isImageFile,
         getImageUrl,
         handleImageClick,
@@ -85,6 +90,7 @@ export function InputContainer(props: InputContainerProps) {
         Mic,
         Button,
         Send,
+        Stop,
         X,
         toast,
         currentAgent,
@@ -247,6 +253,7 @@ export function InputContainer(props: InputContainerProps) {
                                     e.key === "Enter" &&
                                     !e.shiftKey &&
                                     !thinkingActive &&
+                                    !isStreaming &&
                                     (currentMessage.trim() || attachments.length > 0)
                                 ) {
                                     e.preventDefault();
@@ -309,10 +316,16 @@ export function InputContainer(props: InputContainerProps) {
                                         className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"  // Added hover and transition here for the outer container
                                         color="hsl(var(--primary))"  // Use your theme's primary color variable for the star effect; fallback to 'magenta' or any color
                                         thickness={3}
-                                        onClick={handleSendMessage}
-                                        disabled={(!currentMessage.trim() && attachments.length === 0) || !!thinkingActive}
+                                        onClick={() => {
+                                            if (isStreaming) {
+                                                handleStopStreaming?.();
+                                            } else {
+                                                handleSendMessage();
+                                            }
+                                        }}
+                                        disabled={isStreaming ? false : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive)}
                                     >
-                                        <Send size={16} />
+                                        {isStreaming ? <Stop size={16} /> : <Send size={16} />}
                                     </StarBorder>
                                 </TooltipTrigger>
                                 <TooltipContent
@@ -320,7 +333,7 @@ export function InputContainer(props: InputContainerProps) {
                                     align="center"
                                     className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                 >
-                                    <p>Send Message</p>
+                                    <p>{isStreaming ? 'Stop generation' : 'Send Message'}</p>
                                 </TooltipContent>
                             </Tooltip>
                         </div>
