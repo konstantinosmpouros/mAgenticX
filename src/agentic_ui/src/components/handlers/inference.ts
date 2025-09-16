@@ -3,6 +3,7 @@ import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
 import { streamAguiRun } from './agui';
+import type { MutableRefObject } from 'react';
 
 type InferenceCtx = {
   userId: string | null;
@@ -32,11 +33,10 @@ type InferenceCtx = {
   setThinkingState: (updater: any) => void;
   // UI transition indicator between persistence and thinking start
   setShowAiTransition?: (v: boolean) => void;
+  streamAbortRef: MutableRefObject<AbortController | null>;
 };
 
 export function createInferenceHandlers(ctx: InferenceCtx) {
-  // Allow aborting previous streams if user sends again quickly
-  let currentStreamAbort: AbortController | null = null;
   const {
     userId,
     selectedAgent,
@@ -56,8 +56,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     getImageUrl,
     setThinkingState,
     setShowAiTransition,
+    streamAbortRef,
   } = ctx;
-  
+
   const handleSendMessage = async () => {
     const currentMessage = ctx.currentMessage;
 
@@ -136,8 +137,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         }));
         
         // Start streaming inference
-        if (currentStreamAbort) currentStreamAbort.abort();
-        currentStreamAbort = new AbortController();
+        if (streamAbortRef.current) streamAbortRef.current.abort();
+        streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: response.detail.id,
@@ -148,9 +149,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setConversations,
           toast,
           setShowAiTransition,
-          signal: currentStreamAbort.signal,
+          signal: streamAbortRef.current.signal,
         });
-        currentStreamAbort = null;
+        streamAbortRef.current = null;
 
       } else {
         const messagePayload: MessageIn = {
@@ -180,8 +181,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           role: m.sender === 'user' ? 'user' : 'ai',
           content: m.content || ''
         }));
-        if (currentStreamAbort) currentStreamAbort.abort();
-        currentStreamAbort = new AbortController();
+        if (streamAbortRef.current) streamAbortRef.current.abort();
+        streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: currentConversation!.id,
@@ -192,9 +193,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setConversations,
           toast,
           setShowAiTransition,
-          signal: currentStreamAbort.signal,
+          signal: streamAbortRef.current.signal,
         });
-        currentStreamAbort = null;
+        streamAbortRef.current = null;
       }
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -202,15 +203,16 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       // Remove any temp message if present
       setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
       if (setShowAiTransition) setShowAiTransition(false);
-      currentStreamAbort = null;
+      streamAbortRef.current = null;
     }
     setIsSendingMessage(false);
   };
 
   const handleStopStreaming = () => {
-    if (currentStreamAbort) {
-      currentStreamAbort.abort();
-      currentStreamAbort = null;
+    const controller = streamAbortRef.current;
+    if (controller) {
+      controller.abort();
+      streamAbortRef.current = null;
       setIsSendingMessage(false);
       setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
       if (setShowAiTransition) setShowAiTransition(false);

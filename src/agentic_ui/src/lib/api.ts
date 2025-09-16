@@ -289,6 +289,10 @@ export async function streamInference(
   const reader = res.body.getReader();
   const textDecoder = new TextDecoder();
   let buffer = '';
+  const cancelReader = () => {
+    try { reader.cancel(); } catch {}
+  };
+  signal?.addEventListener('abort', cancelReader, { once: true });
   try {
     while (true) {
       if (signal?.aborted) {
@@ -306,6 +310,7 @@ export async function streamInference(
       buffer = parseSSE(buffer + "\n", onEvent);
     }
   } finally {
+    signal?.removeEventListener?.('abort', cancelReader as any);
     try { reader.releaseLock(); } catch {}
   }
 }

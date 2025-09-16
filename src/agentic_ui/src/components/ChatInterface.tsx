@@ -6,8 +6,9 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
 import ThinkingList from "@/components/utils/thinkingList";
-import { Send, Paperclip, Mic, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, Square } from "lucide-react";
-import { VscEye } from "react-icons/vsc";
+import { Send, Paperclip, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, } from "lucide-react";
+import { VscEye, VscMicFilled  } from "react-icons/vsc";
+import { FaStop } from "react-icons/fa";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
@@ -163,6 +164,8 @@ export function ChatInterface() {
   }, [thinkingState?.isActive]);
   
   // Conversations and agent handlers
+  const streamAbortRef = useRef<AbortController | null>(null);
+
   const {
     handleConversationSelect,
     handleDeleteConversation,
@@ -238,6 +241,7 @@ export function ChatInterface() {
     getImageUrl,
     setThinkingState,
     setShowAiTransition,
+    streamAbortRef,
   });
   
   const currentAgent = agents.find(a => a.id === selectedAgent);
@@ -646,10 +650,10 @@ export function ChatInterface() {
             TooltipTrigger={TooltipTrigger}
             TooltipContent={TooltipContent}
             Paperclip={Paperclip}
-            Mic={Mic}
+            Mic={VscMicFilled}
             Button={Button}
             Send={Send}
-            Stop={Square}
+            Stop={FaStop}
             X={X}
             toast={toast}
             currentAgent={currentAgent}

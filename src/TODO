@@ -12,7 +12,6 @@
 - Make the thinking dots have the line above them, not appear and add a line below ass well and in the end if the agent start the response, have a done thought
 - When downloading something large for some reason it stuck even though the backend has return status 200
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui.
-- Implement the interrupt inference process with the signal and change the send icon to stop
 
 - Implement a tab in the profile panel to show all the images, like openai library
 - Enhance the profile panel with actual user info

@@ -40,7 +40,7 @@ type InputContainerProps = {
     Button: any;
     Send: any;
     Stop: any;
-    X: any; // Add X icon for remove functionality
+    X: any;
 
     // Optional extras available in your page
     toast?: (opts: { title: string; description?: string; duration?: number }) => void;
@@ -296,7 +296,7 @@ export function InputContainer(props: InputContainerProps) {
                                         toast?.({ title: "Voice input", description: "Feature coming soon!", duration: 2000 })
                                         }
                                     >
-                                        <Mic size={18} className="text-muted-foreground active:text-white" />
+                                        <Mic size={20} className="text-muted-foreground active:text-white" />
                                     </div>
                                 </TooltipTrigger>
                                 <TooltipContent

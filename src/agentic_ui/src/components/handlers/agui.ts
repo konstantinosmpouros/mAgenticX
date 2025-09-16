@@ -43,6 +43,11 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     signal,
   } = options;
   
+  let aborted = false;
+  options.signal?.addEventListener('abort', () => {
+    aborted = true;
+  }, { once: true });
+
   const runtime = {
     thoughts: [] as string[],
     thinkingStart: 0,
@@ -53,6 +58,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   };
   
   const onEvent = async (raw: unknown) => {
+    if (aborted) return;
     const ev = parseEvent(raw);
     if (!ev) return;
     
@@ -64,6 +70,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     if (type === AGUIEventType.THINKING_START) {
+      if (aborted) return;
       runtime.thinkingStart = Date.now();
       setThinkingState({
         messageId: '',
@@ -77,6 +84,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     if (type === AGUIEventType.THINKING_TEXT_MESSAGE_CONTENT) {
+      if (aborted) return;
       runtime.thoughts.push(String(ev.delta ?? ''));
       setThinkingState((prev: any) =>
         prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: runtime.thoughts.length - 1 } : prev,
@@ -85,6 +93,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     if (type === AGUIEventType.TOOL_CALL_START) {
+      if (aborted) return;
       runtime.thoughts.push(`[tool] ${ev.toolCallName}`);
       setThinkingState((prev: any) =>
         prev ? { ...prev, thoughts: [...runtime.thoughts], currentThoughtIndex: runtime.thoughts.length - 1 } : prev,
@@ -95,8 +104,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     if (type === AGUIEventType.TOOL_CALL_ARGS || type === AGUIEventType.TOOL_CALL_RESULT) {
       return;
     }
-    
+
     if (type === AGUIEventType.THINKING_END) {
+      if (aborted) return;
       runtime.thinkingEnd = Date.now();
       setThinkingState((prev: any) =>
         prev ? { ...prev, isDone: true, endTime: runtime.thinkingEnd, currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1) } : prev,
@@ -105,6 +115,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     if (type === AGUIEventType.TEXT_MESSAGE_START) {
+      if (aborted) return;
       const msgId = ev.messageId || `ai-${Date.now()}`;
       runtime.stagedMessageId = String(msgId);
       const staged: MessageOut = {
@@ -121,6 +132,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     if (type === AGUIEventType.TEXT_MESSAGE_CHUNK || type === AGUIEventType.TEXT_MESSAGE_CONTENT) {
+      if (aborted) return;
       const delta = (ev.delta ?? '') as string;
       runtime.content += String(delta);
       
@@ -141,6 +153,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     if (type === AGUIEventType.TEXT_MESSAGE_END) {
+      if (aborted) return;
       const thinkingTime = runtime.thinkingStart
         ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000)
         : undefined;
@@ -168,6 +181,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     if (type === AGUIEventType.RUN_ERROR) {
+      if (aborted) return;
       setThinkingState((prev: any) => (prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev));
       if (setShowAiTransition) setShowAiTransition(false);
       
@@ -209,6 +223,10 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   } catch (err) {
     const name = (err as any)?.name;
     if (name === 'AbortError') {
+      const stagedId = runtime.stagedMessageId;
+      if (stagedId) {
+        setMessages((prev: MessageOut[]) => prev.filter((m) => m.id !== stagedId));
+      }
       setThinkingState((prev: any) =>
         prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev,
       );
