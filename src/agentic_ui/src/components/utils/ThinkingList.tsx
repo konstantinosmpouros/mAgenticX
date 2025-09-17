@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Wrench, Loader2, CheckCircle } from "lucide-react";
-import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
+import { MarkdownRenderer } from "@/components/utils/MarkdownRenderer";
 
 type ThinkingListProps = {
   thoughts: string[];
