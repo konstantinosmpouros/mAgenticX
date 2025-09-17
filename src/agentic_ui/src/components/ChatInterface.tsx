@@ -5,7 +5,7 @@ import { Card } from "@/components/utils/card";
 import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/MarkdownRenderer";
-import ThinkingList from "@/components/utils/ThinkingList";
+import ThinkingList from "@/components/utils/thinkingList";
 import { Send, Paperclip, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, } from "lucide-react";
 import { VscEye, VscMicFilled  } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
