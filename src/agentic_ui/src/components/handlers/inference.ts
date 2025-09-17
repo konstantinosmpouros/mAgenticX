@@ -166,10 +166,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setMessages(prev => prev.map(m => (m.id === tempId ? response.message : m)));
         
         // Touch currentConversation timestamps minimally
-        setCurrentConversation(
-          currentConversation
-            ? { ...currentConversation, updated_at: new Date(response.summary.updated_at) }
-            : currentConversation
+        setCurrentConversation(prev =>
+          prev ? { ...prev, updated_at: new Date(response.summary.updated_at) } : prev
         );
         // Update sidebar summary and keep ordering
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
@@ -221,3 +219,4 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
 
   return { handleSendMessage, handleStopStreaming };
 }
+
