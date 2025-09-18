@@ -1,94 +1,67 @@
-# Agentic Chatting Platform
+# Agentic UI
 
-An intelligent AI agent interaction platform built with modern web technologies. This application provides a sophisticated chat interface where users can interact with specialized AI agents across different domains.
+## Overview
 
-## 🚀 Features
+Front-end for the mAgenticX platform. A Vite + React 18 single-page app renders the multi-agent chat experience, subscribes to AG-UI SSE streams coming from the dialogue bridge, and visualises reasoning steps, tool calls, and attachments in real time.
 
-- **Multi-Agent Support**: Choose from specialized agents including HR Policies, Retail, Marketing, Research, and DeepResearch
-- **Real-time Thinking Process**: Watch as agents analyze and process your queries with transparent thinking steps
-- **File & Photo Attachments**: Upload and share files with AI agents
-- **Conversation History**: Keep track of all your conversations with automatic saving
-- **Responsive Design**: Beautiful, modern interface that works on all devices
-- **Voice Input Support**: Future-ready voice interaction capabilities
+## Responsibilities
 
-## 🛠 Technology Stack
+- Authenticate users and list available agents via the dialogue bridge APIs.
+- Provide a chat-first UX with support for multiple conversations, agent selection, message threading, and AG-UI thought visualisation.
+- Handle uploads for files and images, display rendered previews, and surface server-side validation errors.
+- Stream conversation updates from `/inference/stream` endpoints and render incremental content using the AG-UI protocol components.
 
-- **Frontend Framework**: React 18 with TypeScript
-- **Build Tool**: Vite for fast development and building
-- **UI Components**: shadcn/ui with Radix UI primitives
-- **Styling**: Tailwind CSS with custom design system
-- **State Management**: React hooks and context
-- **Icons**: Lucide React for beautiful, consistent icons
+## Key Technologies
 
-## 📦 Setup & Installation
+- React 18 + TypeScript bundled with Vite.
+- Component system built with `shadcn/ui` (Radix primitives) and Tailwind CSS utility styling.
+- `@ag-ui/core` for decoding and presenting AG-UI protocol frames.
+- `@tanstack/react-query` for data fetching and caching.
+- `react-hook-form`, `zod`, and Tailwind for form validation and layout.
+- Nginx (multi-stage Dockerfile) for serving the production build.
 
-### Prerequisites
-- Node.js (v18 or higher) - [Install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-- npm or yarn package manager
+## Application Structure
 
-### Local Development
-
-1. **Clone the repository**
-   ```bash
-   git clone <YOUR_GIT_URL>
-   cd <YOUR_PROJECT_NAME>
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server**
-   ```bash
-   npm run dev
-   ```
-
-4. **Open your browser**
-   Navigate to `http://localhost:8080` to see the application running.
-
-### Available Scripts
-
-- `npm run dev` - Start development server with hot reloading
-- `npm run build` - Build the application for production
-- `npm run preview` - Preview the production build locally
-- `npm run lint` - Run ESLint for code quality checks
-
-## 🎯 Project Purpose
-
-This platform serves as a demonstration of advanced AI agent interactions, showcasing:
-
-- **Professional Agent Communication**: Each agent is specialized for specific business domains
-- **Transparent AI Processing**: Users can see the thinking process behind AI responses
-- **Modern UX Patterns**: Implementing ChatGPT-like interface patterns with enhanced features
-- **Scalable Architecture**: Built with modularity and extensibility in mind
-
-## 🔧 Development
-
-### Project Structure
-```
+```shell
 src/
-├── components/
-│   ├── utils/           # Reusable UI components
-|   |── layouts/         # The main parts of the chat interface
-│   └── ChatInterface.tsx  # Main chat interface
-├── hooks/           # Custom React hooks
-├── lib/             # Utility functions
-└── pages/           # Application pages
+  components/
+    handlers/      Stream handlers and message transforms
+    layouts/       Chat shell, sidebars, and top-level scaffolding
+    utils/         Shared widgets used across chat views
+    ChatInterface.tsx
+  hooks/           Custom hooks for responsive breakpoints and toasts
+  lib/             API client, persistence helpers, shared types
+  pages/           Route-level screens (landing, 404)
+  App.tsx          Composition of providers and main layout
+  main.tsx         Application bootstrap and render root
 ```
 
-### Design System
-The application uses a comprehensive design system with:
-- Semantic color tokens for consistent theming
-- Custom animations and transitions
-- Responsive design patterns
-- Dark/light mode support
+Refer to the component directories for concrete implementations such as the chat interface, agent picker, and SSE stream renderer.
 
-## 💡 Future Enhancements
+## Environment Variables
 
-- Voice input/output capabilities
-- Multi-language support
-- Advanced file processing
-- Custom agent creation
-- Integration with external APIs
-- Team collaboration features
+- `BFF_HOST` and `BFF_PORT` are injected at build time (see Dockerfile) and tell the UI where the dialogue bridge lives (`dialogue_bridge:8002` by default when running inside compose).
+
+## Local Development
+
+```shell
+cd src/agentic_ui
+npm install
+npm run dev
+```
+
+The dev server runs on port `5173` by default. Configure a `.env` file or Vite env vars (`VITE_BFF_URL`, etc.) if you need to override backend locations during local work.
+
+## Production Build
+
+```shell
+npm run build
+npm run preview   # optional smoke test of the static build
+```
+
+The Dockerfile performs a multi-stage build (`node:20-alpine` builder -> `nginx:1.25-alpine`) and copies the compiled `/dist` assets into Nginx. Custom `nginx.conf` enables history fallback for `react-router`.
+
+## Service Interactions
+
+- Consumes the `dialogue_bridge` HTTP APIs for authentication, conversation CRUD, and SSE streaming.
+- Indirectly reaches the `agents` service through the dialogue bridge proxy; AG-UI event decoding ensures thought and tool steps render correctly in the front end.
