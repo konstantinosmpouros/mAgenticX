@@ -327,8 +327,12 @@ def image_generation(description: str) -> str:
             - 'image_url': URL of the generated image
             - or an error message if generation fails
     """
-    dalle_tool = OpenAIDALLEImageGenerationTool(api_wrapper=DallEAPIWrapper(model='dall-e-3',
-                                                                        size="1024x1024"))
+    dalle_tool = OpenAIDALLEImageGenerationTool(
+        api_wrapper=DallEAPIWrapper(
+            model='dall-e-3',
+            size="1024x1024"
+        )
+    )
     
     try:
         response = dalle_tool.invoke(description)
