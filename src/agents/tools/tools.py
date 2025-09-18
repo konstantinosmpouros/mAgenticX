@@ -21,7 +21,7 @@ from langchain_community.utilities.dalle_image_generator import DallEAPIWrapper
 from langchain_community.retrievers import ArxivRetriever
 
 # Input schemas for all the tools
-from orthodox_agents.orthodox_agent_v1.tools.args_schema import (
+from tools.tools_schema import (
     SearchGoogleTrendsInput,
     SearchPubmedInput,
     SearchWikidataInput,

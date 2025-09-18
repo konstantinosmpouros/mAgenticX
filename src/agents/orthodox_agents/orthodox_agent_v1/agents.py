@@ -5,14 +5,18 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
-from orthodox_agents.orthodox_agent_v1.llms import gpt_o4_mini, gpt_o3_mini
+from llms import gpt_o4_mini, gpt_o3_mini
 from langgraph.prebuilt import create_react_agent as react_agent
 
 # Structured Outputs
-from orthodox_agents.orthodox_agent_v1.prompt_engineering.structured_outputs import AnalyzerOutput, ReflectionOutput, RetrievalQueriesOutput
+from orthodox_agents.orthodox_agent_v1.structured_outputs import (
+    AnalyzerOutput,
+    ReflectionOutput,
+    RetrievalQueriesOutput
+)
 
 # Tools
-from orthodox_agents.orthodox_agent_v1.tools import (
+from tools import (
     financial_tools,
     search_tools,
     articles_tools,
@@ -21,7 +25,7 @@ from orthodox_agents.orthodox_agent_v1.tools import (
 tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 
 # Prompt Template
-from orthodox_agents.orthodox_agent_v1.prompt_engineering.prompt_templates import (
+from orthodox_agents.orthodox_agent_v1.prompt_templates import (
     analyzer_template,
     summarization_template,
     reflection_template,

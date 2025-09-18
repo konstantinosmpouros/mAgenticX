@@ -1,13 +1,14 @@
 import json
 import asyncio
 import httpx
+from uuid import uuid4
 
 from typing import Literal, List, Any, Dict, Union
 from pydantic import BaseModel
 from langchain.schema import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 
-from hr_agents.hr_policies_agent_v1.config import ENDPOINT
+from config import HR_ENDPOINT as ENDPOINT
 from hr_agents.hr_policies_agent_v1.agents import (
     analysis_agent,
     simple_gen_agent,
@@ -19,7 +20,7 @@ from hr_agents.hr_policies_agent_v1.agents import (
     doc_ranking_agent,
 )
 
-from hr_agents.hr_policies_agent_v1.prompt_engineering.prompt_templates import (
+from hr_agents.hr_policies_agent_v1.prompt_templates import (
     non_hr_gen_template,
     hr_gen_template
 )
@@ -28,8 +29,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
 
-from hr_agents.hr_policies_agent_v1.agui import agui_emitter
-from uuid import uuid4
+from agui import agui_emitter
 
 
 
@@ -65,7 +65,7 @@ async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: St
     # AG-UI: ensure message id and start thinking
     message_id = state.message_id or str(uuid4())
     agui_emitter.thinking_start(writer)
-    agui_emitter.thought(writer, "🧠 Analyzing the user input...")
+    agui_emitter.thought(writer, "Analyzing the user input...")
     
     user_msg = state['user_input']
     analysis_results = await analysis_agent.ainvoke(user_msg, config)
@@ -137,7 +137,7 @@ async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, w
 
 
 async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    agui_emitter.thought(writer, "🧠 Generating queries for the HR policies database...")
+    agui_emitter.thought(writer, "Generating queries for the HR policies database...")
     
     analysis_str = state['analysis_str']
     reflection_str = state["reflection_str"]
@@ -164,7 +164,7 @@ async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: S
 
 
 async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
-    agui_emitter.thought(writer, "🛢️ Retrieving content from the HR policies database...")
+    agui_emitter.thought(writer, "Retrieving content from the HR policies database...")
     tcid = str(uuid4())
     retrieved_docs = []
     
@@ -179,7 +179,7 @@ async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
     await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
     
     agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"Gathered in total {len(retrieved_docs)} relevant documents.")
-    agui_emitter.thought(writer, f"🛢️ Retrieved {len(retrieved_docs)} documents from the database.")
+    agui_emitter.thought(writer, f"Retrieved {len(retrieved_docs)} documents from the database.")
     
     state_docs = state['retrieved_content']
     state_docs.extend([retrieved_docs])
@@ -187,7 +187,7 @@ async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
 
 
 async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    agui_emitter.thought(writer, "🏷️ Ranking the retrieved documents based on relevance...")
+    agui_emitter.thought(writer, "Ranking the retrieved documents based on relevance...")
     
     retrieved_docs = state['retrieved_content']
     analysis_str = state['analysis_str']
@@ -213,7 +213,7 @@ async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer:
 
 
 async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    agui_emitter.thought(writer, "🧠 Reasoning if we need more data to answer...")
+    agui_emitter.thought(writer, "Reasoning if we need more data to answer...")
     
     all_docs_cycles = state['retrieved_content']
     all_flags_cycles = state['ranking_flags']
@@ -260,7 +260,7 @@ def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal
 
 
 async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter) -> HRPoliciesV1_State:
-    agui_emitter.thought(writer, "📄 Summarizing the retrieved documents...")
+    agui_emitter.thought(writer, "Summarizing the retrieved documents...")
     
     formatted_docs_str = state['formatted_docs_str']
     analysis_str = state['analysis_str']
@@ -272,7 +272,7 @@ async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, write
     
     summarization = await summarizer_agent.ainvoke(payload, config)
     
-    agui_emitter.thought(writer, "✨ Preparing the response...")
+    agui_emitter.thought(writer, "Preparing the response...")
     return {"summarization": summarization.content}
 
 

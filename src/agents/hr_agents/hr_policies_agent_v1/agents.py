@@ -5,7 +5,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
-from hr_agents.hr_policies_agent_v1.llms import (
+from llms import (
     gpt_o3_mini,
     gpt_4o,
     gpt_4_1
@@ -13,7 +13,7 @@ from hr_agents.hr_policies_agent_v1.llms import (
 from langgraph.prebuilt import create_react_agent as react_agent
 
 # Structured Outputs
-from hr_agents.hr_policies_agent_v1.prompt_engineering.structured_outputs import (
+from hr_agents.hr_policies_agent_v1.structured_outputs import (
     AnalyzerOutput,
     ReflectionOutput,
     RetrievalQueriesOutput,
@@ -21,7 +21,7 @@ from hr_agents.hr_policies_agent_v1.prompt_engineering.structured_outputs import
 )
 
 # Tools
-from hr_agents.hr_policies_agent_v1.tools import (
+from tools import (
     financial_tools,
     search_tools,
     articles_tools,
@@ -30,7 +30,7 @@ from hr_agents.hr_policies_agent_v1.tools import (
 tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 
 # Prompt Template
-from hr_agents.hr_policies_agent_v1.prompt_engineering.prompt_templates import (
+from hr_agents.hr_policies_agent_v1.prompt_templates import (
     analyzer_template,
     summarization_template,
     reflection_template,

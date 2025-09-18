@@ -1,14 +1,21 @@
-from hr_agents.hr_policies_agent_v1.tools.tools import (
+from tools.tools import (
+    # Financial Tools
     get_current_exchange_rate,
     get_daily_stock_data,
     get_stock_market_news,
     get_top_gainers_losers_stock_data,
     get_weekly_stock_data,
+    
+    # Search Tools
     search_google_trends,
     search_pubmed,
     search_wikidata,
     search_wikipedia,
+    
+    # Computer Vision Tools
     image_generation,
+    
+    # Articles Tools
     retrieve_arxiv_articles_content,
     retrieve_arxiv_articles_summaries,
 )

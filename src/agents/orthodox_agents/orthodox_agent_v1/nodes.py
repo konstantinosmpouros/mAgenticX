@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from langchain.schema import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 
-from orthodox_agents.orthodox_agent_v1.config import ENDPOINT
+from config import ORTHODOX_ENDPOINT as ENDPOINT
 from orthodox_agents.orthodox_agent_v1.agents import (
     analysis_agent,
     simple_gen_agent,
@@ -23,11 +23,11 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
 
-from orthodox_agents.orthodox_agent_v1.prompt_engineering.prompt_templates import (
+from orthodox_agents.orthodox_agent_v1.prompt_templates import (
     nonreligious_gen_template,
     religious_gen_template
 )
-from orthodox_agents.orthodox_agent_v1.agui import agui_emitter
+from agui import agui_emitter
 
 
 class OrthodoxV1_State(BaseModel):

@@ -5,20 +5,20 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage, BaseMessage, SystemMessage, AIMessage
 
 # OpenAI LLMs & agents
-from retail_agents.retail_agent_v1.llms import (
+from llms import (
     gpt_o4_mini,
     gpt_4_1_mini
 )
 from langgraph.prebuilt import create_react_agent as react_agent
 
 # Structured Outputs
-from retail_agents.retail_agent_v1.prompt_engineering.structured_outputs import (
+from retail_agents.retail_agent_v1.structured_outputs import (
     AnalysisOutput,
     SQLQueryOutput,
 )
 
 # Tools
-from retail_agents.retail_agent_v1.tools import (
+from tools import (
     financial_tools,
     search_tools,
     articles_tools,
@@ -27,7 +27,7 @@ from retail_agents.retail_agent_v1.tools import (
 tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 
 # Prompt Template
-from retail_agents.retail_agent_v1.prompt_engineering.prompt_templates import (
+from retail_agents.retail_agent_v1.prompt_templates import (
     analyzer_template,
     sql_gen_template,
     sql_error_gen_template,

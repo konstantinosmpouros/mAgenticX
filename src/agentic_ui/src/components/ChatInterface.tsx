@@ -472,13 +472,17 @@ export function ChatInterface() {
                         {/* If click, show expandable thinking content */}
                         {message.thinking && message.sender === 'ai' && (
                           <div
-                            className={`overflow-hidden transition-all duration-300 ease-smooth ${
+                            className={`transition-all duration-300 ease-smooth ${
                               expandedThinking[message.id]
-                                ? 'max-h-[75vh] opacity-100 overflow-y-auto pr-1'
-                                : 'max-h-0 opacity-0'
+                                ? 'mt-2 opacity-100 max-h-none overflow-visible'
+                                : 'max-h-0 opacity-0 overflow-hidden'
                             }`}
                           >
-                            <ThinkingList thoughts={message.thinking} className="max-w-[85%] md:max-w-[85%] w-full" />
+                            <ThinkingList
+                              thoughts={message.thinking}
+                              isComplete
+                              className="max-w-[85%] md:max-w-[85%] w-full"
+                            />
                           </div>
                         )}
                         
@@ -486,7 +490,7 @@ export function ChatInterface() {
                         <Card className={`${
                           message.sender === 'user'
                             ? 'p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border max-w-[85%] md:max-w-[75%]'
-                            : 'p-5 bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
+                            : 'bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
                         }`}>
                           <div className="space-y-3 min-w-0">
                             <MarkdownRenderer content={message.content} className="leading-relaxed break-words" />
@@ -622,14 +626,17 @@ export function ChatInterface() {
                 
                 {/* Enhanced Thinking Animation */}
                 <div
-                  className={`overflow-hidden transition-all duration-300 ease-smooth ${
-                    thinkingState?.isActive ? 'max-h-[70vh] opacity-100 mt-2 overflow-y-auto pr-1' : 'max-h-0 opacity-0'
+                  className={`transition-all duration-300 ease-smooth ${
+                    thinkingState?.isActive
+                      ? 'mt-2 opacity-100 max-h-none overflow-visible'
+                      : 'max-h-0 opacity-0 overflow-hidden'
                   }`}
                 >
                   <div className="text-sm text-muted-foreground mb-1">Thinking...</div>
                   {thinkingState && (
                     <ThinkingList
                       thoughts={thinkingState.thoughts.slice(0, thinkingState.currentThoughtIndex + 1)}
+                      isComplete={thinkingState?.isDone}
                       className="max-w-[85%] md:max-w-[85%]"
                     />
                   )}
@@ -734,3 +741,6 @@ export function ChatInterface() {
     </div>
   );
 }
+
+
+

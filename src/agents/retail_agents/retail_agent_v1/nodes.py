@@ -1,10 +1,9 @@
-import json
 import httpx
 from uuid import uuid4
 from typing import Literal, Any, Dict, List, Union
 from pydantic import BaseModel
 
-from retail_agents.retail_agent_v1.config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
+from config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
 from retail_agents.retail_agent_v1.agents import (
     analysis_agent,
     simple_gen_agent,
@@ -13,11 +12,11 @@ from retail_agents.retail_agent_v1.agents import (
     answer_agent,
 )
 
-from retail_agents.retail_agent_v1.prompt_engineering.prompt_templates import (
+from retail_agents.retail_agent_v1.prompt_templates import (
     schema_help_template,
     answer_gen_template
 )
-from retail_agents.retail_agent_v1.agui import agui_emitter
+from agui import agui_emitter
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
@@ -60,7 +59,7 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
     """
     message_id = state["message_id"] or str(uuid4())
     agui_emitter.thinking_start(writer)
-    agui_emitter.thought(writer, "🧠 Analyzing user input to determine intent and reasoning…")
+    agui_emitter.thought(writer, "Analyzing user input to determine intent and reasoning…")
     
     # Invoke analysis agent
     user_msg = state['user_input']
@@ -88,9 +87,9 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
             r = await client.get(SCHEMA_ENDPOINT)
             r.raise_for_status()
             db_schema_json = r.json()
-            agui_emitter.tool_call_result(writer, tcid, message_id, "📦 Retrieved database schema.")
+            agui_emitter.tool_call_result(writer, tcid, message_id, "Retrieved database schema.")
     except Exception as exc:
-        agui_emitter.tool_call_result(writer, tcid, message_id, "❌ Failed to retrieve db schema.")
+        agui_emitter.tool_call_result(writer, tcid, message_id, "Failed to retrieve db schema.")
         raise
     finally:
         agui_emitter.tool_call_end(writer, tcid)
@@ -127,7 +126,6 @@ async def simple_generation(state: RetailV1_State, config: RunnableConfig, write
     prompt = await schema_help_template.ainvoke(payload)
     response = ''
     
-    agui_emitter.thought(writer, "💬 Generating response...")
     agui_emitter.thinking_end(writer)
     agui_emitter.response_start(writer, state["message_id"])
     
@@ -170,7 +168,7 @@ async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: Strea
     Generate or refine an SQL query based on analysis results and
     any previous errors.
     """
-    agui_emitter.thought(writer, "📝 Generating SQL query based on analysis results…")
+    agui_emitter.thought(writer, "Generating SQL query based on analysis results…")
     
     error_message = state["error_message"]
     table_name = state["table_name"]
@@ -202,12 +200,12 @@ async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: Strea
 
 
 
-async def query_execution(state: RetailV1_State, writer: StreamWriter, config: RunnableConfig) -> RetailV1_State:
+async def query_execution(state: RetailV1_State, writer: StreamWriter) -> RetailV1_State:
     """
     Execute the generated SQL query against the backend service,
     capturing results or any errors.
     """
-    agui_emitter.thought(writer, "⚡ Executing SQL query…")
+    agui_emitter.thought(writer, "Executing SQL query…")
     
     sql_query = state["sql_query"]
     
@@ -231,26 +229,23 @@ async def query_execution(state: RetailV1_State, writer: StreamWriter, config: R
             detail = exc.response.json().get("detail")
         except Exception:
             detail = exc.response.text or str(exc)
-
         return {
             "sql_results": None,
             "error_message": f"HTTP {exc.response.status_code}: {detail}",
         }
-
     except httpx.RequestError as exc:
         # Networking issues (timeout, DNS, connection refused, etc.)
         return {
             "sql_results": None,
             "error_message": f"Request failed: {exc}",
         }
-
     except Exception as exc:
         # Anything else
         return {
             "sql_results": None,
             "error_message": str(exc),
         }
-
+    
     # Success
     return {
         "sql_results": response,
@@ -278,7 +273,6 @@ async def complex_generation(state: RetailV1_State, config: RunnableConfig, writ
     Generate the final user-facing response by combining analysis summary,
     original input, and SQL results.
     """
-    agui_emitter.thought(writer, "💬 Generating response...")
     agui_emitter.thinking_end(writer)
     agui_emitter.response_start(writer, state["message_id"])
     
