@@ -162,3 +162,9 @@ export type ThinkingState = {
     startTime: number;
     endTime?: number;
 };
+
+// Streaming Inference (AG-UI)
+export type AGUIEvent = {
+    type: string;
+    [key: string]: any;
+};

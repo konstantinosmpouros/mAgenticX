@@ -1,50 +1,102 @@
-# mAgenticX (UNDERDEVELOPMENT)
+# mAgenticX
 
-**mAgenticX** is an AI-powered multi-agent system designed to understand, retrieve,
-and contextualize knowledge from texts, image and audio content. Its a chat interface that the user can select
-from an agent pool, one to chat with and solve a specified problem.
-It leverages transcription, vector search, and agentic reasoning to provide meaningful,
-context-rich responses and deep insight.
+mAgenticX is a modular, containerized multi-agent chat platform. A React UI connects to a FastAPI dialogue bridge that persists conversations in Postgres and proxies streaming responses from a LangGraph-based agents service. Retrieval and lightweight analytics are handled by a separate RAG service backed by a Chroma vector database.
 
-## Key capabilities
+## Highlights
 
-- **Multi-modal understanding**  
-  Works with text, images, and audio. Uses transcription for audio, and retrieval for long or multi-file contexts.
+- Multi-agent chat with tool use and AG-UI streaming of thoughts and messages
+- RAG via Chroma (persistent vector store) + OpenAI embeddings
+- Attachments (images/files) stored alongside messages
+- Clean service boundaries and Docker Compose orchestration
 
-- **Agent pool with tool use**  
-  Define multiple specialists (e.g., Researcher, Data Explorer, Summarizer). Each agent can call tools (RAG, web, parsing, etc.) and hand off tasks.
+## Architecture
 
-- **Retrieval-Augmented Generation (RAG)**  
-  Ingestion + chunking + embeddings + vector search to ground replies in your own knowledge sources.
+- `src/agentic_ui` — Vite + React frontend for the chat experience. Renders reasoning, tools, and attachments; consumes the dialogue bridge REST + SSE endpoints.
+  - See: `src/agentic_ui/README.md`
+- `src/dialogue_bridge` — FastAPI backend that authenticates users, persists conversations/messages/attachments to Postgres, lists agents, and proxies inference streams to the UI.
+  - See: `src/dialogue_bridge/README.md`
+  - Postgres service notes: `src/dialogue_bridge/POSTGRES_README.md`
+- `src/agents` — FastAPI service hosting LangGraph agents (OrthodoxAI v1, HR Policies v1, Retail v1). Streams AG-UI compatible events.
+  - See: `src/agents/README.md`
+- `src/rag_service` — FastAPI microservice for retrieval (Chroma) and Excel SQL analytics (DuckDB).
+  - See: `src/rag_service/README.md`
+  - Chroma service notes: `src/rag_service/CHROMA_README.md`
+- `vectordb` — Chroma server (REST) with a persistent volume for embeddings (internal network only).
+- `chat_postgres` — Postgres database for durable storage of conversations and attachments.
 
-- **Composable services**  
-  Clean separation between UI, dialogue/agent orchestration, RAG, and vector store backends so you can swap or scale components independently.
+## Quickstart (Docker Compose)
 
-- **Container-first**  
-  Everything runs via Docker Compose. Local development is prioritized; cloud deployment patterns can be added later.
+Prerequisites
+- Docker + Docker Compose
+- `OPENAI_API_KEY` exported in your environment (used by `agents` and `rag_service`)
 
-## 📦 Project Structure (Overview)
+Bring the stack up from the repo root:
 
-The project follows a modular design with the following major components:
+```
+docker compose -f src/docker-compose.yaml up --build
+```
 
-- **docs/**: Documentation and workflow visuals  
-- **notebooks/**: Exploratory analysis and prototyping  
-- **src/agents/**: Core implementation of agents, workflows and tools
-- **src/rag_service/**: A service specialized to retrieve relevant documents to a query form the vector store
-- **src/vectorstores/**: The vector stores as a db service
-- **src/agentic_ui/**: Frontend or user interface layer
-- **src/dialogue_bridge/**: Inner layer between the UI and agents that handle the chat history, messages, attachments and everything else.
+Service endpoints (defaults from compose):
+- UI: http://localhost:8050 (`agentic_ui`)
+- Dialogue Bridge: http://localhost:8002 (`dialogue_bridge`)
+- Agents: http://localhost:8003 (`agents`)
+- RAG Service: http://localhost:8001 (`rag_service`)
+- Postgres: localhost:5432 (`chat_postgres`, exposed)
+- Chroma (vectordb): internal on 8000 (no host port)
 
-## 🛠️ Tech Stack
+Tear down:
 
-- 🧠 **LLMs**: OpenAI
-- 🔊 **ASR**: Whisper
-- 📚 **RAG**: Custom retrieval pipeline
-- 🤖 **Agent Framework**: LangGraph
-- 🧠 **Memory**: Chroma for persistent long-term storage  
-- 🌅 **UI**: React, Typescript, Tailwind CSS
+```
+docker compose -f src/docker-compose.yaml down
+```
 
-## 🙏 Contributions Welcome
+## Local Development
 
-We welcome theological insights, code contributions,
-and feedback to help OrthodoxAI grow into a valuable tool for deep religious exploration.
+Each service can run standalone for development; see the linked READMEs for full instructions.
+
+- UI (React)
+  - `cd src/agentic_ui && npm install && npm run dev`
+  - Configure `BFF_HOST`/`BFF_PORT` (or Vite env) to point at your bridge instance
+- Dialogue Bridge (FastAPI)
+  - Requires Postgres; set `DATABASE_URL`, `username`, `password`
+  - `uvicorn main:app --host 0.0.0.0 --port 8002 --reload`
+- Agents (FastAPI + LangGraph)
+  - Requires `OPENAI_API_KEY` and access to `rag_service`
+  - `uvicorn main:app --host 0.0.0.0 --port 8003 --reload`
+- RAG Service (FastAPI)
+  - Requires Chroma (vectordb) and Excel files in `src/rag_service/data/`
+  - `uvicorn main:app --host 0.0.0.0 --port 8001 --reload`
+
+## Configuration
+
+- `OPENAI_API_KEY` — used by `agents` and `rag_service` (embeddings)
+- `DATABASE_URL` — async SQLAlchemy URL for dialogue bridge, e.g. `postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db`
+- `BFF_HOST`, `BFF_PORT` — UI build-time settings that locate the dialogue bridge (compose defaults: `dialogue_bridge:8002`)
+
+## Data & Persistence
+
+- Vector store volume `vectorstore` bound to `./src/vectorstores/chroma_db_openai`
+- Postgres data volume `chat_convs` for durable chat storage
+- Dialogue bridge seeds a default user and agent roster on startup
+
+## Directory Map
+
+- `docs/` — design notes and workflow diagrams
+- `notebooks/` — experiments and prototypes
+- `src/agentic_ui/` — frontend application
+- `src/dialogue_bridge/` — backend API + persistence
+- `src/agents/` — agents service (LangGraph + tools)
+- `src/rag_service/` — retrieval + Excel SQL service
+- `src/vectorstores/` — Chroma persistence folder
+- `src/docker-compose.yaml` — Compose stack definition
+
+## Service Interactions
+
+- `agentic_ui` → `dialogue_bridge` (REST + SSE)
+- `dialogue_bridge` → `agents` (SSE proxy)
+- `agents` → `rag_service` (HTTP) and OpenAI APIs
+- `rag_service` → `vectordb` (Chroma REST)
+- `dialogue_bridge` ↔ `chat_postgres` (async SQLAlchemy)
+
+For API details and dev commands, consult the per-service READMEs linked above.
+

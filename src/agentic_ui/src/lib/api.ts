@@ -10,6 +10,7 @@ import type {
   CreateConversationResponse,
   MessageIn,
   UpdateConversationResponse,
+  AGUIEvent,
   } from "./types";
 import { mapIcon } from "./constants";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
@@ -276,16 +277,8 @@ export async function downloadAttachment(userId: string, conversationId: string,
   return await res.blob();
 }
 
-// Streaming Inference (AG-UI)
-export type AGUIEvent = {
-  type: string;
-  [key: string]: any;
-};
 
 // Utility to parse SSE text incrementally and emit events ASAP.
-// Processes each complete line and triggers onEvent on every 'data:' line
-// without waiting for a blank-line block terminator. Returns any leftover
-// partial line in the buffer.
 function parseSSE(buffer: string, onEvent: (e: AGUIEvent) => void): string {
   // Find the last newline to ensure we only process complete lines
   const lastNewline = Math.max(buffer.lastIndexOf("\n"), buffer.lastIndexOf("\r"));
