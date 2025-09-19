@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/utils/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
 import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
 import ThinkingList from "@/components/utils/thinkingList";
-import { Send, Paperclip, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, } from "lucide-react";
+import { Send, Paperclip, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, ThumbsUp, ThumbsDown } from "lucide-react";
 import { VscEye, VscMicFilled  } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
 import { useToast } from "@/hooks/use-toast";
@@ -39,7 +39,9 @@ import Header from "@/components/layouts/Header";
 import Sidebar from "@/components/layouts/Sidebar";
 import UserProfilePanel from "@/components/layouts/UserProfilePanel";
 import { InputContainer } from "@/components/layouts/InputContainer";
-import { getConversations } from "@/lib/api";
+
+// API functions
+import { getConversations, likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage } from "@/lib/api";
 
 
 export function ChatInterface() {
@@ -99,6 +101,22 @@ export function ChatInterface() {
   // Sticky user bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
+
+  // Like/dislike handlers
+  const handleLike = async (message: MessageOut) => {
+    if (!userId || !currentConversation) return;
+    try {
+      const updated = await apiLikeMessage(userId, currentConversation.id, message.id);
+      setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
+    } catch (_) {}
+  };
+  const handleDislike = async (message: MessageOut) => {
+    if (!userId || !currentConversation) return;
+    try {
+      const updated = await apiDislikeMessage(userId, currentConversation.id, message.id);
+      setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
+    } catch (_) {}
+  };
 
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
     setCurrentConversation(prev => {
@@ -509,7 +527,8 @@ export function ChatInterface() {
                                   </span>
                                   
                                   {/* Action buttons */}
-                                  <div className="flex justify-start">
+                                  <div className="flex justify-start gap-1">
+                                    {/* Copy */}
                                     <div className="mt-1">
                                       <Tooltip>
                                         <TooltipTrigger asChild>
@@ -546,6 +565,54 @@ export function ChatInterface() {
                                           className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
                                           <p>Copy</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                    {/* Like */}
+                                    <div className="mt-1">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 hover:bg-muted/60 ${message.liked === true ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={() => handleLike(message)}
+                                            aria-label={message.liked === true ? 'Unlike' : 'Like'}
+                                          >
+                                            <ThumbsUp className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                          side="bottom"
+                                          align="center"
+                                          className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                        >
+                                          <p>Like</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                    {/* Dislike */}
+                                    <div className="mt-1">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 hover:bg-muted/60 ${message.liked === false ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={() => handleDislike(message)}
+                                            aria-label={message.liked === false ? 'Clear dislike' : 'Dislike'}
+                                          >
+                                            <ThumbsDown className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                          side="bottom"
+                                          align="center"
+                                          className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                        >
+                                          <p>Dislike</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     </div>

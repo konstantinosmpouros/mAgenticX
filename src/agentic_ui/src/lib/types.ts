@@ -70,6 +70,7 @@ export type MessageOut = {
     content?: string;
     sender: string;
     type: string;
+    liked?: boolean;
     created_at: Date;
     updated_at: Date;
     attachments: AttachmentOut[];

@@ -158,6 +158,9 @@ class MessageTable(Base):
     type = Column(MessageTypeEnum, nullable=False, server_default="text")
     content = Column(Text, nullable=True)                  # may be NULL for pure file messages
     
+    # User feedback: nullable boolean => None (no feedback), True (like), False (dislike)
+    liked = Column(Boolean, nullable=True)
+    
     # Agent "thinking" UX
     reasoning_steps = Column(JSON, nullable=True)          # array[str]
     reasoning_time_seconds = Column(Integer, nullable=True)

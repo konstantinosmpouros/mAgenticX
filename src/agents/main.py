@@ -14,14 +14,45 @@ from retail_agents import retail_agent_v1
 # Load moderation
 # from moderation import moderation_agent
 
+import asyncio
 import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from typing import List, Dict
+from types import TracebackType
 
 
 app = FastAPI()
+
+
+def _make_loop_exception_handler(old_handler=None):
+    def handler(loop, context):
+        ex = context.get("exception")
+        # Silently ignore common disconnect/cancel noise
+        if isinstance(ex, (asyncio.CancelledError, BrokenPipeError, ConnectionResetError)):
+            return
+        # Suppress LangGraph uvloop callback noise on cancellation
+        handle = context.get("handle") or context.get("task")
+        msg = context.get("message", "")
+        text = f"{msg} {handle!r}"
+        if isinstance(ex, TypeError) and "NoneType" in str(ex) and "langgraph" in text:
+            return
+        if old_handler is not None:
+            try:
+                old_handler(loop, context)
+                return
+            except Exception:
+                pass
+        loop.default_exception_handler(context)
+    return handler
+
+
+@app.on_event("startup")
+async def _configure_loop_exception_handler():
+    loop = asyncio.get_event_loop()
+    old = loop.get_exception_handler()
+    loop.set_exception_handler(_make_loop_exception_handler(old))
 
 class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
@@ -32,16 +63,37 @@ class Request(BaseModel):
 async def stream_agent(req: Request):
     """Stream responses from the OrthodoxAI v1 agent."""
     async def event_stream():
-        async for msg in orthodoxai_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
-            # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
-            if isinstance(msg, (str, bytes)):
-                if isinstance(msg, str):
-                    yield msg.encode("utf-8")
+        aiter = None
+        try:
+            aiter = orthodoxai_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom")
+            async for msg in aiter:
+                # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
+                if isinstance(msg, (str, bytes)):
+                    if isinstance(msg, str):
+                        yield msg.encode("utf-8")
+                    else:
+                        yield msg
                 else:
-                    yield msg
-            else:
-                # Fallback: wrap dicts as SSE data lines
-                yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+                    # Fallback: wrap dicts as SSE data lines
+                    yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+        except asyncio.CancelledError:
+            # Client disconnected; stop quietly to avoid noisy logs
+            return
+        except (BrokenPipeError, ConnectionResetError):
+            # Downstream closed; no further writes
+            return
+        except Exception as e:
+            err = {"type": "RUN_ERROR", "message": str(e)}
+            yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
+        finally:
+            # Ensure upstream iterator is closed to stop background tasks
+            if aiter is not None:
+                aclose = getattr(aiter, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()
+                    except Exception:
+                        pass
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -50,16 +102,36 @@ async def stream_agent(req: Request):
 async def stream_agent(req: Request):
     """Stream responses from the HR Policies v1 agent."""
     async def event_stream():
-        async for msg in hr_policies_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
-            # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
-            if isinstance(msg, (str, bytes)):
-                if isinstance(msg, str):
-                    yield msg.encode("utf-8")
+        aiter = None
+        try:
+            aiter = hr_policies_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom")
+            async for msg in aiter:
+                # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
+                if isinstance(msg, (str, bytes)):
+                    if isinstance(msg, str):
+                        yield msg.encode("utf-8")
+                    else:
+                        yield msg
                 else:
-                    yield msg
-            else:
-                # Fallback: wrap dicts as SSE data lines
-                yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+                    # Fallback: wrap dicts as SSE data lines
+                    yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+        except asyncio.CancelledError:
+            # Client disconnected; stop quietly to avoid noisy logs
+            return
+        except (BrokenPipeError, ConnectionResetError):
+            # Downstream closed; no further writes
+            return
+        except Exception as e:
+            err = {"type": "RUN_ERROR", "message": str(e)}
+            yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
+        finally:
+            if aiter is not None:
+                aclose = getattr(aiter, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()
+                    except Exception:
+                        pass
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -68,16 +140,36 @@ async def stream_agent(req: Request):
 async def stream_agent(req: Request):
     """Stream responses from the Retail v1 agent."""
     async def event_stream():
-        async for msg in retail_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
-            # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
-            if isinstance(msg, (str, bytes)):
-                if isinstance(msg, str):
-                    yield msg.encode("utf-8")
+        aiter = None
+        try:
+            aiter = retail_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom")
+            async for msg in aiter:
+                # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
+                if isinstance(msg, (str, bytes)):
+                    if isinstance(msg, str):
+                        yield msg.encode("utf-8")
+                    else:
+                        yield msg
                 else:
-                    yield msg
-            else:
-                # Fallback: wrap dicts as SSE data lines
-                yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+                    # Fallback: wrap dicts as SSE data lines
+                    yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+        except asyncio.CancelledError:
+            # Client disconnected; stop quietly to avoid noisy logs
+            return
+        except (BrokenPipeError, ConnectionResetError):
+            # Downstream closed; no further writes
+            return
+        except Exception as e:
+            err = {"type": "RUN_ERROR", "message": str(e)}
+            yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
+        finally:
+            if aiter is not None:
+                aclose = getattr(aiter, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()
+                    except Exception:
+                        pass
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

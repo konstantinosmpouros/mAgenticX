@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from datetime import datetime
 from typing import List
@@ -7,7 +8,7 @@ from fastapi.responses import StreamingResponse
 import httpx
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, text
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -413,6 +414,74 @@ async def addMessageToConversation(
 #-----------------------------------------------------------------------------------
 # INFERENCE STREAM (SSE PROXY)
 #-----------------------------------------------------------------------------------
+
+@app.post(
+    "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/like",
+    response_model=MessageOut,
+    status_code=status.HTTP_200_OK,
+)
+async def likeMessage(
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    db: AsyncSession = Depends(get_db),
+):
+    # Load message within the validated conversation, including attachments for UI consistency
+    stmt = (
+        select(MessageTable)
+        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
+        .where(
+            MessageTable.id == message_id,
+            MessageTable.conversation_id == conversation_id,
+        )
+    )
+    res = await db.execute(stmt)
+    msg = res.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found.")
+
+    # Toggle semantics: clicking like again clears the reaction
+    msg.liked = None if msg.liked is True else True
+    await db.commit()
+    await db.refresh(msg)
+    return MessageOut.model_validate(msg)
+
+
+@app.post(
+    "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/dislike",
+    response_model=MessageOut,
+    status_code=status.HTTP_200_OK,
+)
+async def dislikeMessage(
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(MessageTable)
+        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
+        .where(
+            MessageTable.id == message_id,
+            MessageTable.conversation_id == conversation_id,
+        )
+    )
+    res = await db.execute(stmt)
+    msg = res.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found.")
+
+    # Toggle semantics: clicking dislike again clears the reaction
+    msg.liked = None if msg.liked is False else False
+    await db.commit()
+    await db.refresh(msg)
+    return MessageOut.model_validate(msg)
+
+#-----------------------------------------------------------------------------------
 @app.post(
     "/users/{user_id}/conversations/{conversation_id}/inference/stream",
 )
@@ -450,16 +519,23 @@ async def startInferenceStream(
         timeout = httpx.Timeout(60.0, connect=30.0)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream(
-                    "POST",
-                    agent_url,
-                    json={"user_input": history},
-                    headers={"Accept": "text/event-stream"},
-                ) as r:
-                    r.raise_for_status()
-                    async for chunk in r.aiter_bytes():
-                        # Forward bytes directly (pre-encoded SSE from the agents service)
-                        yield chunk
+                try:
+                    async with client.stream(
+                        "POST",
+                        agent_url,
+                        json={"user_input": history},
+                        headers={"Accept": "text/event-stream"},
+                    ) as r:
+                        r.raise_for_status()
+                        async for chunk in r.aiter_bytes():
+                            # Forward bytes directly (pre-encoded SSE from the agents service)
+                            yield chunk
+                except asyncio.CancelledError:
+                    # Client interrupted streaming; exit silently to avoid noisy logs
+                    return
+        except asyncio.CancelledError:
+            # Request context cancelled (e.g., UI aborted). Exit quietly.
+            return
         except httpx.HTTPError as e:
             # Emit a RUN_ERROR frame so UI can gracefully handle upstream failures
             import json as _json

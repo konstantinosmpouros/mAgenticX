@@ -9,16 +9,14 @@
 ## Agentic UI
 
 - The streaming and presentation of the new token is a bit weird cause the erase might transitioning the whole response content and not the last chunk only
-- Make the thinking dots have the line above them, not appear and add a line below ass well and in the end if the agent start the response, have a done thought
+- The thinking in openai is like, title and content, the title goes in pair with the icon and its one sentence max, and when click the content appear in pair with the vline and the vline + content expands. The content is like transparent and appear when the title is clicked.
+
 - When downloading something large for some reason it stuck even though the backend has return status 200
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui.
-- In the logs they are printed a tone of things when l interrupt the inference, check how to handle this.
 - The nginx might not be needed
-
 - Implement a tab in the profile panel to show all the images, like openai library
 - Input area in lagging when typing if a long conversation is open. Also the messages are stored twice in session
 - Enhance the profile panel with actual user info
-- Enhance the agent message with like and dislike
 - Check what to do with the audio input
 
 ## Agents
@@ -29,7 +27,6 @@
 
 ## Dialogue Bridge
 
-- Implement the like and dislike endpoints for messages
 - Instead of checking all the time if the agent exists in the database in the lifespan implemented once the retrieval and use a variable to have search faster
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document

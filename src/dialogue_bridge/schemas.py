@@ -102,6 +102,7 @@ class MessageOut(BaseModel):
     content: Optional[str] = None
     sender: Senders
     type: Types
+    liked: Optional[bool] = Field(None, validation_alias="liked")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
     attachments: List[AttachmentOut] = Field(default_factory=list)

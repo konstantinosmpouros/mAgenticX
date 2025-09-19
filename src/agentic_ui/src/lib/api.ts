@@ -78,6 +78,7 @@ export async function getConversationDetail(userId: string, conversationId: stri
     content: msg.content || "",
     sender: msg.sender,
     type: msg.type,
+    liked: (msg as any).liked ?? undefined,
     created_at: new Date(msg.created_at),
     updated_at: new Date(msg.updated_at),
     attachments: msg.attachments.map((att: any) => ({
@@ -147,6 +148,7 @@ export async function createConversation(userId: string, payload: ConversationIn
       updated_at: new Date(data.detail.updated_at),
       messages: data.detail.messages.map((message: any) => ({
         ...message,
+        liked: message.liked ?? undefined,
         created_at: new Date(message.created_at),
         updated_at: new Date(message.updated_at),
         attachments: message.attachments.map((attachment: any) => ({
@@ -189,6 +191,7 @@ export async function addMessageToConversation(userId: string, conversationId: s
     return {
       message: {
         ...last,
+        liked: last.liked ?? undefined,
         created_at: new Date(last.created_at),
         updated_at: new Date(last.updated_at),
         attachments: (last.attachments || []).map((att: any) => ({
@@ -206,6 +209,7 @@ export async function addMessageToConversation(userId: string, conversationId: s
   return {
     message: {
       ...m,
+      liked: m.liked ?? undefined,
       created_at: new Date(m.created_at),
       updated_at: new Date(m.updated_at),
       attachments: (m.attachments || []).map((att: any) => ({
@@ -216,6 +220,47 @@ export async function addMessageToConversation(userId: string, conversationId: s
     },
     summary: data.summary,
   } as UpdateConversationResponse;
+}
+
+// Like/dislike a message (toggle semantics on server)
+export async function likeMessage(userId: string, conversationId: string, messageId: string): Promise<MessageOut> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/like`, {
+    method: 'POST',
+    headers: { 'Accept': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Failed to like message: ${res.status}`);
+  const m = await res.json();
+  return {
+    ...m,
+    liked: m.liked ?? undefined,
+    created_at: new Date(m.created_at),
+    updated_at: new Date(m.updated_at),
+    attachments: (m.attachments || []).map((att: any) => ({
+      ...att,
+      timestamp: new Date(att.timestamp),
+      blobId: att.blobId || att.blob_id,
+    })),
+  } as MessageOut;
+}
+
+export async function dislikeMessage(userId: string, conversationId: string, messageId: string): Promise<MessageOut> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/dislike`, {
+    method: 'POST',
+    headers: { 'Accept': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Failed to dislike message: ${res.status}`);
+  const m = await res.json();
+  return {
+    ...m,
+    liked: m.liked ?? undefined,
+    created_at: new Date(m.created_at),
+    updated_at: new Date(m.updated_at),
+    attachments: (m.attachments || []).map((att: any) => ({
+      ...att,
+      timestamp: new Date(att.timestamp),
+      blobId: att.blobId || att.blob_id,
+    })),
+  } as MessageOut;
 }
 
 // Download non-image attachment
