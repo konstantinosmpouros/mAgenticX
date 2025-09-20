@@ -27,26 +27,28 @@ mAgenticX is a modular, containerized multi-agent chat platform. A React UI conn
 ## Quickstart (Docker Compose)
 
 Prerequisites
+
 - Docker + Docker Compose
 - `OPENAI_API_KEY` exported in your environment (used by `agents` and `rag_service`)
 
 Bring the stack up from the repo root:
 
-```
+```shell
 docker compose -f src/docker-compose.yaml up --build
 ```
 
 Service endpoints (defaults from compose):
-- UI: http://localhost:8050 (`agentic_ui`)
-- Dialogue Bridge: http://localhost:8002 (`dialogue_bridge`)
-- Agents: http://localhost:8003 (`agents`)
-- RAG Service: http://localhost:8001 (`rag_service`)
+
+- UI: <http://localhost:8050> (`agentic_ui`)
+- Dialogue Bridge: <http://localhost:8002> (`dialogue_bridge`)
+- Agents: <http://localhost:8003> (`agents`)
+- RAG Service: <http://localhost:8001> (`rag_service`)
 - Postgres: localhost:5432 (`chat_postgres`, exposed)
 - Chroma (vectordb): internal on 8000 (no host port)
 
 Tear down:
 
-```
+```shell
 docker compose -f src/docker-compose.yaml down
 ```
 
@@ -99,4 +101,3 @@ Each service can run standalone for development; see the linked READMEs for full
 - `dialogue_bridge` ↔ `chat_postgres` (async SQLAlchemy)
 
 For API details and dev commands, consult the per-service READMEs linked above.
-

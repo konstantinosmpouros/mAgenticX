@@ -48,7 +48,7 @@ export default function Sidebar({
             onLoadMore();
         }
     };
-
+    
     return (
         <div className="absolute left-2 top-[5.8rem] z-10">
             <Sheet open={open} onOpenChange={onOpenChange}>
@@ -94,55 +94,61 @@ export default function Sidebar({
                         
                         {/* List with infinite scroll */}
                         <div className="relative flex-1 min-h-0">
-                          <ScrollArea className="h-full pb-20" onScroll={handleScroll}>
-                            <div className="p-4 space-y-3">
-                                {conversations.length === 0 ? (
-                                    <div className="text-center py-8">
-                                        <MessageSquare size={32} className="mx-auto text-muted-foreground/50 mb-3" />
-                                        <p className="text-sm text-muted-foreground">No conversations yet</p>
+                            <ScrollArea className="h-full pb-20" onScroll={handleScroll}>
+                                <div className="relative h-full">
+                                    <div
+                                        className={`p-4 space-y-3 transition-all duration-200 ${
+                                            isLoadingMore ? "opacity-60 grayscale" : ""
+                                        }`}
+                                    >
+                                        {conversations.length === 0 ? (
+                                            <div className="text-center py-8">
+                                                <MessageSquare size={32} className="mx-auto text-muted-foreground/50 mb-3" />
+                                                <p className="text-sm text-muted-foreground">No conversations yet</p>
+                                            </div>
+                                        ) : (
+                                            conversations.map(conv => {
+                                                const agent = agents.find(a => a.id === conv.agentId);
+                                                const Icon = agent?.icon || Building2;
+                                                return (
+                                                    <Card
+                                                        key={conv.id}
+                                                        className={`relative p-4 cursor-pointer transition-bounce border-border/50 group transform hover:scale-[1.02] hover:shadow-lg ${
+                                                            conv.id === currentConversationId ? "bg-primary/10 border-primary/30 ring-1 ring-primary/20 scale-[1.01]" : "hover:bg-accent/50"
+                                                        }`}
+                                                        onClick={() => onSelectConversation(conv)}
+                                                    >
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="absolute top-2 right-2 w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-bounce hover:bg-destructive/20 hover:text-destructive hover:scale-110 active:scale-95"
+                                                            onClick={(e) => onDeleteConversation(conv.id, e)}
+                                                        >
+                                                            <X size={12} />
+                                                        </Button>
+                                                        
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                                                <Icon size={16} className="text-primary" />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="font-medium text-sm mb-1">{conv.title && conv.title.trim() !== "" ? conv.title : agent?.name}</div>
+                                                                <div className="text-xs text-muted-foreground truncate">{conv.lastMessage}</div>
+                                                                <div className="text-xs text-muted-foreground/70 mt-1">{new Date(conv.updated_at).toLocaleDateString()}</div>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                );
+                                            })
+                                        )}
                                     </div>
-                                ) : (
-                                    conversations.map(conv => {
-                                        const agent = agents.find(a => a.id === conv.agentId);
-                                        const Icon = agent?.icon || Building2;
-                                        return (
-                                            <Card
-                                                key={conv.id}
-                                                className={`relative p-4 cursor-pointer transition-bounce border-border/50 group transform hover:scale-[1.02] hover:shadow-lg ${
-                                                    conv.id === currentConversationId ? "bg-primary/10 border-primary/30 ring-1 ring-primary/20 scale-[1.01]" : "hover:bg-accent/50"
-                                                }`}
-                                                onClick={() => onSelectConversation(conv)}
-                                            >
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="absolute top-2 right-2 w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-bounce hover:bg-destructive/20 hover:text-destructive hover:scale-110 active:scale-95"
-                                                    onClick={(e) => onDeleteConversation(conv.id, e)}
-                                                >
-                                                    <X size={12} />
-                                                </Button>
-                                            
-                                                <div className="flex items-start gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                                        <Icon size={16} className="text-primary" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="font-medium text-sm mb-1">{conv.title && conv.title.trim() !== "" ? conv.title : agent?.name}</div>
-                                                        <div className="text-xs text-muted-foreground truncate">{conv.lastMessage}</div>
-                                                        <div className="text-xs text-muted-foreground/70 mt-1">{new Date(conv.updated_at).toLocaleDateString()}</div>
-                                                    </div>
-                                                </div>
-                                            </Card>
-                                        );
-                                    })
-                                )}
-                            </div>
-                          </ScrollArea>
-                          {isLoadingMore && (
-                            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background/90 to-transparent backdrop-blur-sm flex items-center justify-center">
-                              <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
-                            </div>
-                          )}
+                                    {isLoadingMore && (
+                                        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background/90 to-transparent backdrop-blur-sm flex items-center justify-center">
+                                            <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+                                        </div>
+                                    )}
+                                </div>
+                            </ScrollArea>
                         </div>
                     </div>
                 </SheetContent>

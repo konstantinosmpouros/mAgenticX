@@ -384,7 +384,7 @@ export function ChatInterface() {
                 )}
                 {/* For every Message in Messages List */}
                 {!loadingConversation && (currentConversation?.messages ?? []).map((message) => (
-                  <div key={message.id} className="animate-fade-in space-y-2">
+                  <div key={message.id} className="animate-fade-in-fast space-y-2">
                     {/* Show attachments for message (if any) */}
                     {message.attachments && message.attachments.length > 0 && (
                       <div className={`${message.sender === 'user' ? 'flex justify-end' : ''}`}>

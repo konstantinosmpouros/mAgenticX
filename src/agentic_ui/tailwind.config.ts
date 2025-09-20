@@ -140,6 +140,7 @@ export default {
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'fade-in': 'fade-in 0.3s ease-out',
+				'fade-in-fast': 'fade-in 0.18s ease-out',
 				'line-grow': 'line-grow 0.25s ease-out forwards',
 				'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
 				'pulse-scale': 'pulse-scale 1.3s ease-in-out infinite',
