@@ -29,5 +29,6 @@
 ## Dialogue Bridge
 
 - Instead of checking all the time if the agent exists in the database in the lifespan implemented once the retrieval and use a variable to have search faster
+- Enrich the user table with more info cause the sidebar and the user panel is closer
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document
