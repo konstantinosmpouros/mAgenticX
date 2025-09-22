@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Wrench, } from "lucide-react";
 import { LuCircleCheck } from "react-icons/lu";
-import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
+import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
 
 
 import { FaCog } from "react-icons/fa";

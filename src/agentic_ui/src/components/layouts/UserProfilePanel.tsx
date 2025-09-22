@@ -1,5 +1,5 @@
-import { Button } from "@/components/utils/button";
-import { ScrollArea } from "@/components/utils/scroll-area";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { User, Edit, Settings, Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Sun, Moon } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "next-themes";

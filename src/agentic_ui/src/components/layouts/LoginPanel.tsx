@@ -1,10 +1,10 @@
 import { memo, useState } from "react";
-import { Card } from "@/components/utils/card";
-import { Input } from "@/components/utils/input";
-import { Button } from "@/components/utils/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { MessageSquare } from "lucide-react";
 import { VscEye, VscEyeClosed } from "react-icons/vsc";
-import Galaxy from "@/components/utils/react_bits/bg_galaxy";
+import Galaxy from "@/components/ui/react_bits/bg_galaxy";
 
 type LoginPanelProps = {
     username: string;

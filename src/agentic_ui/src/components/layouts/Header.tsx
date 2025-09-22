@@ -1,7 +1,7 @@
 // src/components/layouts/Header.tsx
-import { Button } from "@/components/utils/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/utils/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/utils/select";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Ghost, User } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import React from "react";

@@ -1,10 +1,10 @@
 // src/components/layouts/Sidebar.tsx
 import * as React from "react";
-import { Button } from "@/components/utils/button";
-import { Card } from "@/components/utils/card";
-import { ScrollArea } from "@/components/utils/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/utils/tooltip";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/utils/sheet";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ChevronRightIcon, MessageSquare, X, Building2, Loader2 } from "lucide-react";
 import type { Agent, ConversationSummary } from "@/lib/types";
 

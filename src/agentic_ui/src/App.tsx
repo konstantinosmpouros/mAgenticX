@@ -1,5 +1,5 @@
-import { Toaster } from "@/components/utils/toaster";
-import { Toaster as Sonner } from "@/components/utils/sonner";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/utils/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";

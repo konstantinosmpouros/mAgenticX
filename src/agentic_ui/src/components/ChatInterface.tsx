@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/utils/button";
-import { Textarea } from "@/components/utils/textarea";
-import { Card } from "@/components/utils/card";
-import { ScrollArea } from "@/components/utils/scroll-area";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/utils/tooltip";
-import { MarkdownRenderer } from "@/components/utils/markdownRenderer";
-import ThinkingList from "@/components/utils/thinkingList";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
+import ThinkingList from "@/components/ui/thinkingList";
 import { Send, Paperclip, Building2, ChevronDown, ChevronRight, X, Download, FileText, Check, Copy, ThumbsUp, ThumbsDown } from "lucide-react";
 import { VscEye, VscMicFilled  } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";

@@ -1,8 +1,8 @@
 import React from "react";
 import type { LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import SplitText from "@/components/utils/react_bits/split_text";
-import StarBorder from "@/components/utils/react_bits/star_border";
+import SplitText from "@/components/ui/react_bits/split_text";
+import StarBorder from "@/components/ui/react_bits/star_border";
 
 
 type InputContainerProps = {
