@@ -25,6 +25,7 @@ import {
   useSessionStateSyncEffect,
   useUIPersistEffect,
   createUIHandlers,
+  createAiTransitionHandlers,
   createStickyUserBarHandlers,
   createFeedbackHandlers
 } from "@/components/handlers";
@@ -35,7 +36,7 @@ import LoginPanel from "@/components/layouts/LoginPanel";
 import Header from "@/components/layouts/Header";
 import Sidebar from "@/components/layouts/Sidebar";
 import UserProfilePanel from "@/components/layouts/UserProfilePanel";
-import ConversationLayout from "@/components/layouts/ConversationContainer";
+import ConversationContainer from "@/components/layouts/ConversationContainer";
 import { InputContainer } from "@/components/layouts/InputContainer";
 
 // API functions
@@ -137,7 +138,7 @@ export function ChatInterface() {
   
   // Effects moved to handlers
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
-  useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef);
+  useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
   useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
@@ -187,6 +188,8 @@ export function ChatInterface() {
   useEffect(() => {
     if (thinkingState?.isActive) setShowAiTransition(false);
   }, [thinkingState?.isActive]);
+  
+  const { AiTransitionIndicator } = createAiTransitionHandlers({ showAiTransition, thinkingState });
   
   // Conversations and agent handlers
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -348,7 +351,7 @@ export function ChatInterface() {
           />
           
           {/* Chat Messages Container*/}
-          <ConversationLayout
+          <ConversationContainer
             messages={currentConversation?.messages ?? []}
             loadingConversation={loadingConversation}
             isClearing={isClearing}
@@ -363,7 +366,7 @@ export function ChatInterface() {
             onDislike={handleDislike}
             stickyUserBarId={stickyUserBarId}
             onFlashUserActionBar={flashUserActionBar}
-            showAiTransition={showAiTransition}
+            AiTransitionIndicator={AiTransitionIndicator}
             thinkingState={thinkingState}
             messagesEndRef={messagesEndRef}
             AgentIcon={AgentIcon}
@@ -464,4 +467,13 @@ export function ChatInterface() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
 

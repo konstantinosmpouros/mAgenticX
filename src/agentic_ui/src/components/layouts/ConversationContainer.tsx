@@ -1,4 +1,5 @@
 import React from "react";
+import type { ComponentType } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ type AttachmentLike =
   | string
   | Record<string, unknown>;
 
-type ConversationLayoutProps = {
+type ConversationContainerProps = {
   messages: MessageOut[];
   loadingConversation: boolean;
   isClearing: boolean;
@@ -47,14 +48,14 @@ type ConversationLayoutProps = {
   onDislike: (message: MessageOut) => void;
   stickyUserBarId: string | null;
   onFlashUserActionBar: (messageId: string) => void;
-  showAiTransition: boolean;
+  AiTransitionIndicator?: ComponentType;
   thinkingState: ThinkingState | null;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   AgentIcon: LucideIcon;
   currentAgent?: Agent;
 };
 
-export default function ConversationLayout({
+export default function ConversationContainer({
   messages,
   loadingConversation,
   isClearing,
@@ -69,12 +70,12 @@ export default function ConversationLayout({
   onDislike,
   stickyUserBarId,
   onFlashUserActionBar,
-  showAiTransition,
+  AiTransitionIndicator,
   thinkingState,
   messagesEndRef,
   AgentIcon,
   currentAgent,
-}: ConversationLayoutProps) {
+}: ConversationContainerProps) {
   return (
     <div className="flex-1 overflow-hidden relative">
       <ScrollArea className="h-full">
@@ -437,11 +438,8 @@ export default function ConversationLayout({
               </div>
             ))}
 
-          {showAiTransition && !thinkingState?.isActive && (
-            <div className="flex justify-start pl-2">
-              <div className="size-3 rounded-full bg-white/90 shadow-sm transform-gpu motion-safe:animate-pulse-scale" />
-            </div>
-          )}
+          {AiTransitionIndicator ? <AiTransitionIndicator /> : null}
+
 
           <div
             className={`transition-all duration-300 ease-smooth ${
@@ -466,3 +464,5 @@ export default function ConversationLayout({
     </div>
   );
 }
+
+

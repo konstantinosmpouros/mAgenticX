@@ -5,7 +5,7 @@ import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/ui
 import { getAgents, getConversations } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 
-export function useAutoScrollEffect(messages: any[], thinkingState: ThinkingState | null, messagesEndRef: React.RefObject<HTMLDivElement>) {
+export function useAutoScrollEffect(messages: any[], thinkingState: ThinkingState | null, messagesEndRef: React.RefObject<HTMLDivElement>, shouldAutoScroll: boolean) {
   const scrollToBottom = () => {
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -13,8 +13,9 @@ export function useAutoScrollEffect(messages: any[], thinkingState: ThinkingStat
   };
 
   useEffect(() => {
+    if (!shouldAutoScroll) return;
     scrollToBottom();
-  }, [messages, thinkingState]);
+  }, [messages, thinkingState, shouldAutoScroll]);
 }
 
 export function useEnsureDefaultAgentEffect(params: {
@@ -134,3 +135,5 @@ export function useUIPersistEffect(params: {
     };
   }, [userId, JSON.stringify(snapshot), attachments.map(a => (a as any).name + ':' + (a as any).size + ':' + (a as any).type).join('|')]);
 }
+
+
