@@ -522,7 +522,7 @@ export function ChatInterface() {
                                   <div className="flex justify-start gap-1">
                                     {/* Copy */}
                                     <div className="mt-1">
-                                      <Tooltip>
+                                      <Tooltip delayDuration={0}>
                                         <TooltipTrigger asChild>
                                           <Button
                                             variant="ghost"
@@ -562,7 +562,7 @@ export function ChatInterface() {
                                     </div>
                                     {/* Like */}
                                     <div className="mt-1">
-                                      <Tooltip>
+                                      <Tooltip delayDuration={0}>
                                         <TooltipTrigger asChild>
                                           <Button
                                             variant="ghost"
@@ -586,7 +586,7 @@ export function ChatInterface() {
                                     </div>
                                     {/* Dislike */}
                                     <div className="mt-1">
-                                      <Tooltip>
+                                      <Tooltip delayDuration={0}>
                                         <TooltipTrigger asChild>
                                           <Button
                                             variant="ghost"
@@ -628,7 +628,7 @@ export function ChatInterface() {
                                 }
                               `}
                             >
-                              <Tooltip>
+                              <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                   <Button
                                     variant="ghost"

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { MessageOut, ConversationDetail } from "@/lib/types";
 import { likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage } from "@/lib/api";
 
@@ -30,3 +31,21 @@ export const createFeedbackHandlers = ({
 
   return { handleLike, handleDislike };
 };
+
+// Sticky user action bar that stays visible for a short period
+export function createStickyUserBarHandlers(ctx: { setStickyUserBarId: (id: string | null) => void }) {
+  const { setStickyUserBarId } = ctx;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, []);
+
+  const flashUserActionBar = (id: string, ms = 3000) => {
+    setStickyUserBarId(id);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setStickyUserBarId(null), ms);
+  };
+
+  return { flashUserActionBar };
+}

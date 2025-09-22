@@ -52,7 +52,7 @@ export default function Sidebar({
     return (
         <div className="absolute left-2 top-[5.8rem] z-10">
             <Sheet open={open} onOpenChange={onOpenChange}>
-                <Tooltip>
+                <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
                         <SheetTrigger asChild>
                             <Button

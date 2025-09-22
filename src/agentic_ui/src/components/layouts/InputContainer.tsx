@@ -269,7 +269,7 @@ export function InputContainer(props: InputContainerProps) {
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2">
                             {/* Attach files */}
-                            <Tooltip>
+                            <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <div
                                         className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
@@ -288,7 +288,7 @@ export function InputContainer(props: InputContainerProps) {
                             </Tooltip>
                             
                             {/* Voice Input */}
-                            <Tooltip>
+                            <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <div
                                         className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
@@ -309,7 +309,7 @@ export function InputContainer(props: InputContainerProps) {
                             </Tooltip>
                             
                             {/* Send Message */}
-                            <Tooltip>
+                            <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <StarBorder
                                         innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center h-10 w-10 py-0 px-0 border-0 rounded-full font-normal text-[inherit]"  // Overrides default inner styles to match original button; added flex centering for icon, removed unnecessary padding/text styles
@@ -328,13 +328,6 @@ export function InputContainer(props: InputContainerProps) {
                                         {isStreaming ? <Stop size={16} /> : <Send size={16} />}
                                     </StarBorder>
                                 </TooltipTrigger>
-                                <TooltipContent
-                                    side="top"
-                                    align="center"
-                                    className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                >
-                                    <p>{isStreaming ? 'Stop generation' : 'Send Message'}</p>
-                                </TooltipContent>
                             </Tooltip>
                         </div>
                     </div>

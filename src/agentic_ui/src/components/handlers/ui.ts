@@ -1,5 +1,3 @@
-import { useEffect, useRef } from 'react';
-
 type UIHandlersCtx = {
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   setCopiedId: (id: string | null) => void;
@@ -19,22 +17,4 @@ export function createUIHandlers(ctx: UIHandlersCtx) {
   };
 
   return { handleCopy };
-}
-
-// Sticky user action bar that stays visible for a short period
-export function createStickyUserBarHandlers(ctx: { setStickyUserBarId: (id: string | null) => void }) {
-  const { setStickyUserBarId } = ctx;
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => { if (timer.current) clearTimeout(timer.current); };
-  }, []);
-
-  const flashUserActionBar = (id: string, ms = 3000) => {
-    setStickyUserBarId(id);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setStickyUserBarId(null), ms);
-  };
-
-  return { flashUserActionBar };
 }

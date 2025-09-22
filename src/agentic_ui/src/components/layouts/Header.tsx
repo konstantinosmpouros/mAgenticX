@@ -1,4 +1,4 @@
-// src/components/layouts/Header.tsx
+﻿// src/components/layouts/Header.tsx
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,7 +40,7 @@ export default function Header({
     const SelectedIcon = selected?.icon;
     
     return (
-        <div className="border-b border-gradient[pink] bg-gradient-to-r from-white/80 to-gray-50/80 dark:from-[rgba(17,22,40,0.7)] dark:to-[rgba(17,22,40,0.7)] backdrop-blur-lg p-3 md:p-6 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-black/40 after:to-transparent dark:after:via-primary/40">
+        <div className="border-b border-border bg-background dark:bg-background px-3 py-2 md:px-6 md:py-3 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-black/40 after:to-transparent dark:after:via-primary/40">
             <div className="flex items-center justify-between max-w-6xl mx-auto">
                 {/* Agent select + New chat */}
                 <div className="flex items-center gap-1.5 md:gap-3">
@@ -105,16 +105,15 @@ export default function Header({
                         </SelectContent>
                     </Select>
                     
-                    <Tooltip>
+                    <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
-                            <Button
+                            <button
                                 onClick={onNewChat}
                                 className="p-4 text-muted-foreground hover:text-white hover:bg-gray-900 dark:hover:text-white dark:hover:bg-gray-800 rounded-full transition-smooth active:bg-gray-700 active:scale-110"
-                                variant="ghost"
                                 onMouseDown={(e) => e.preventDefault()}
                             >
                                 <Plus size={20} />
-                            </Button>
+                            </button>
                         </TooltipTrigger>
                         <TooltipContent
                             side="bottom"
@@ -129,7 +128,7 @@ export default function Header({
                 {/* Right controls */}
                 <div className="flex items-center gap-1.5 md:gap-3 ml-auto">
                     {showPrivateToggle && (
-                        <Tooltip>
+                        <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                                 <button
                                     onClick={onTogglePrivate}
@@ -153,16 +152,15 @@ export default function Header({
                         </Tooltip>
                     )}
                     
-                    <Tooltip>
+                    <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
-                            <Button
+                            <button
                                 onClick={onOpenUserProfile}
                                 onMouseDown={(e) => e.preventDefault()}
-                                className="p-4 text-muted-foreground hover:text-white hover:bg-gray-900 dark:hover:text-white dark:hover:bg-gray-800 rounded-full transition-smooth active:scale-110 active:bg-fuchsia-500/20 active:border-fuchsia-500/50"
-                                variant="ghost"
+                                className="p-3 text-muted-foreground hover:text-white hover:bg-gray-900 dark:hover:text-white dark:hover:bg-gray-800 rounded-full transition-smooth active:scale-110 active:bg-fuchsia-500/20 active:border-fuchsia-500/50"
                             >
                                 <User size={20} className="active:text-fuchsia-600" />
-                            </Button>
+                            </button>
                         </TooltipTrigger>
                         <TooltipContent
                             side="bottom"
@@ -177,3 +175,4 @@ export default function Header({
         </div>
     );
 }
+
