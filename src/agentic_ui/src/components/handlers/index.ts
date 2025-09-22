@@ -8,3 +8,4 @@ export * from './thinking';
 export * from './effects';
 export * from './ui';
 export * from './agui';
+export * from './messages';

@@ -29,7 +29,8 @@ import {
   useSessionStateSyncEffect,
   useUIPersistEffect,
   createUIHandlers,
-  createStickyUserBarHandlers
+  createStickyUserBarHandlers,
+  createFeedbackHandlers
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
 
@@ -101,22 +102,6 @@ export function ChatInterface() {
   // Sticky user bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
-
-  // Like/dislike handlers
-  const handleLike = async (message: MessageOut) => {
-    if (!userId || !currentConversation) return;
-    try {
-      const updated = await apiLikeMessage(userId, currentConversation.id, message.id);
-      setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
-    } catch (_) {}
-  };
-  const handleDislike = async (message: MessageOut) => {
-    if (!userId || !currentConversation) return;
-    try {
-      const updated = await apiDislikeMessage(userId, currentConversation.id, message.id);
-      setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
-    } catch (_) {}
-  };
 
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
     setCurrentConversation(prev => {
@@ -259,6 +244,13 @@ export function ChatInterface() {
     toast: toastWrapper,
     loginUsername,
     loginPassword,
+  });
+
+  // Feedback handlers
+  const { handleLike, handleDislike } = createFeedbackHandlers({
+    userId,
+    currentConversation,
+    setConversationMessages,
   });
 
   // Inference handler (send message)
@@ -808,6 +800,3 @@ export function ChatInterface() {
     </div>
   );
 }
-
-
-
