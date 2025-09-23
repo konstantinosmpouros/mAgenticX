@@ -34,7 +34,8 @@ import { loadSession, isSessionValid } from "@/lib/authStorage";
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
 import Header from "@/components/layouts/Header";
-import Sidebar from "@/components/layouts/Sidebar";
+import AppSidebar from "@/components/layouts/Sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import UserProfilePanel from "@/components/layouts/UserProfilePanel";
 import ConversationContainer from "@/components/layouts/ConversationContainer";
 import { InputContainer } from "@/components/layouts/InputContainer";
@@ -81,7 +82,6 @@ export function ChatInterface() {
   const [isAgentSwitching, setIsAgentSwitching] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
   
   // UI components
@@ -151,7 +151,6 @@ export function ChatInterface() {
       currentMessage,
       expandedThinking,
       thinkingState,
-      sidebarOpen,
       activeProfileTab,
       selectedImage,
       currentConversation: currentConversation
@@ -206,7 +205,6 @@ export function ChatInterface() {
     setConversations,
     currentConversation,
     setLoadingConversation,
-    setSidebarOpen,
     setIsClearing,
     setSelectedAgent,
     setCurrentConversation,
@@ -218,6 +216,30 @@ export function ChatInterface() {
     toast: toastWrapper,
   });
   
+  const handleLoadMoreConversations = async () => {
+    if (!userId || convIsLoadingMore || !convHasMore) return;
+    setConvIsLoadingMore(true);
+    try {
+      const nextPage = convPage + 1;
+      const items = await getConversations(userId, nextPage, CONV_PAGE_SIZE);
+      if (!items || items.length === 0) {
+        setConvHasMore(false);
+      } else {
+        setConversations(prev => {
+          const ids = new Set(prev.map(c => c.id));
+          const dedup = items.filter(i => !ids.has(i.id));
+          return [...prev, ...dedup];
+        });
+        setConvPage(nextPage);
+        if (items.length < CONV_PAGE_SIZE) setConvHasMore(false);
+      }
+    } catch (e) {
+      setConvHasMore(false);
+    } finally {
+      setTimeout(() => setConvIsLoadingMore(false), 120);
+    }
+  };
+
   const { handleAgentChange } = createAgentHandlers({
     isAgentSwitching,
     setIsAgentSwitching,
@@ -294,9 +316,20 @@ export function ChatInterface() {
     );
   }
   return (
-    <div className="animate-fade-in">
-      <TooltipProvider>
-        <div className={`flex flex-col h-screen bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
+    <SidebarProvider>
+      <AppSidebar
+        conversations={conversations}
+        currentConversationId={currentConversation?.id || null}
+        onSelectConversation={handleConversationSelect}
+        onDeleteConversation={handleDeleteConversation}
+        onLoadMore={handleLoadMoreConversations}
+        onTitleClick={handleTitleClick}
+        agents={agents}
+        isLoadingMore={convIsLoadingMore}
+        hasMore={convHasMore}
+      />
+      <SidebarInset>
+        <div className={`animate-fade-in flex flex-col min-h-svh bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
           {/* Header */}
           <Header
             agents={agents}
@@ -311,47 +344,14 @@ export function ChatInterface() {
               }
             }}
             onOpenUserProfile={() => setShowUserProfile(true)}
+            sidebarToggle={
+              <SidebarTrigger className="h-10 w-10 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" />
+            }
           />
-          
-          {/* Floating Sidebar Button */}
-          <Sidebar
-            open={sidebarOpen}
-            onOpenChange={setSidebarOpen}
-            conversations={conversations}
-            currentConversationId={currentConversation?.id || null}
-            onSelectConversation={handleConversationSelect}
-            onDeleteConversation={handleDeleteConversation}
-            onLoadMore={async () => {
-              if (!userId || convIsLoadingMore || !convHasMore) return;
-              setConvIsLoadingMore(true);
-              try {
-                const nextPage = convPage + 1;
-                const items = await getConversations(userId, nextPage, CONV_PAGE_SIZE);
-                if (!items || items.length === 0) {
-                  setConvHasMore(false);
-                } else {
-                  setConversations(prev => {
-                    const ids = new Set(prev.map(c => c.id));
-                    const dedup = items.filter(i => !ids.has(i.id));
-                    return [...prev, ...dedup]; // append only
-                  });
-                  setConvPage(nextPage);
-                  if (items.length < CONV_PAGE_SIZE) setConvHasMore(false);
-                }
-              } catch (e) {
-                setConvHasMore(false);
-              } finally {
-                setTimeout(() => setConvIsLoadingMore(false), 120);
-              }
-            }}
-            onTitleClick={handleTitleClick}
-            agents={agents}
-            isLoadingMore={convIsLoadingMore}
-            hasMore={convHasMore}
-          />
-          
+
           {/* Chat Messages Container*/}
-          <ConversationContainer
+          <div className="flex-1 overflow-hidden pb-32">
+            <ConversationContainer
             messages={currentConversation?.messages ?? []}
             loadingConversation={loadingConversation}
             isClearing={isClearing}
@@ -372,6 +372,7 @@ export function ChatInterface() {
             AgentIcon={AgentIcon}
             currentAgent={currentAgent}
           />
+          </div>
 
           {/* Input Area */}
           <InputContainer
@@ -380,9 +381,9 @@ export function ChatInterface() {
             positionClass={
               (currentConversation?.messages?.length ?? 0) === 0
                 ? "fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
-                : "bottom-0 left-0 right-0 z-0 p-6"
+                : "sticky bottom-0 left-0 right-0 z-10 p-6"
             }
-            
+
             // pass through your existing state/handlers/refs
             attachments={attachments}
             isPrivateMode={isPrivateMode}
@@ -400,7 +401,7 @@ export function ChatInterface() {
             handleFileUpload={handleFileUpload}
             fileInputRef={fileInputRef}
             textareaRef={textareaRef}
-            
+
             // UI deps
             AgentIcon={AgentIcon}
             Tooltip={Tooltip}
@@ -416,8 +417,7 @@ export function ChatInterface() {
             currentAgent={currentAgent}
             Textarea={Textarea}
           />
-          
-          
+
           {/* User Profile Modal */}
           <UserProfilePanel
             open={showUserProfile}
@@ -438,10 +438,10 @@ export function ChatInterface() {
               }, 300);
             }}
           />
-          
+
           {/* Image Preview Modal */}
           {selectedImage && (
-            <div 
+            <div
               className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
               onClick={() => setSelectedImage(null)}
             >
@@ -452,28 +452,17 @@ export function ChatInterface() {
                 >
                   <X size={24} />
                 </button>
-                <img 
-                  src={selectedImage} 
-                  alt="Full preview" 
+                <img
+                  src={selectedImage}
+                  alt="Full preview"
                   className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
             </div>
           )}
-          
         </div>
-      </TooltipProvider>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
-
-
-
-
-
-
-
-
-
-

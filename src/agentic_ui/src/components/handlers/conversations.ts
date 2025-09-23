@@ -8,7 +8,6 @@ type ConversationsCtx = {
   currentConversation: ConversationDetail | null;
 
   setLoadingConversation: (v: boolean) => void;
-  setSidebarOpen: (v: boolean) => void;
   setIsClearing: (v: boolean) => void;
   setSelectedAgent: (v: string) => void;
   setCurrentConversation: (v: ConversationDetail | null) => void;
@@ -27,7 +26,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setConversations,
     currentConversation,
     setLoadingConversation,
-    setSidebarOpen,
     setIsClearing,
     setSelectedAgent,
     setCurrentConversation,
@@ -53,7 +51,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   const handleTitleClick = () => {
     clearChatAndStopThinking();
-    setSidebarOpen(false);
   };
 
   const handleNewChat = () => {
@@ -63,7 +60,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   const handleConversationSelect = async (conversation: ConversationSummary) => {
     if (!userId || (ctx as any).loadingConversation) return;
     setLoadingConversation(true);
-    setSidebarOpen(false);
     setIsClearing(true);
 
     setTimeout(async () => {
@@ -110,3 +106,4 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   return { handleConversationSelect, handleDeleteConversation, handleNewChat, handleTitleClick, clearChatAndStopThinking };
 }
+

@@ -1,158 +1,166 @@
-// src/components/layouts/Sidebar.tsx
 import * as React from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { ChevronRightIcon, MessageSquare, X, Building2, Loader2 } from "lucide-react";
-import type { Agent, ConversationSummary } from "@/lib/types";
+import { MessageSquare, X, Loader2, Building2 } from "lucide-react";
 
-type SidebarProps = {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    
-    // Conversations
-    conversations: ConversationSummary[];
-    currentConversationId: string | null;
-    onSelectConversation: (c: ConversationSummary) => void;
-    onDeleteConversation: (id: string, e: React.MouseEvent) => void;
-    onLoadMore: () => void;
-    isLoadingMore: boolean;
-    hasMore: boolean;
-    
-    // Title click handler
-    onTitleClick: () => void;
-    agents: Agent[];
+import type { Agent, ConversationSummary } from "@/lib/types";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sidebar as SidebarRoot,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuAction,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
+  SidebarRail,
+  useSidebar,
+} from "@/components/ui/sidebar";
+
+type AppSidebarProps = {
+  conversations: ConversationSummary[];
+  currentConversationId: string | null;
+  onSelectConversation: (conversation: ConversationSummary) => void;
+  onDeleteConversation: (id: string, e: React.MouseEvent) => void;
+  onLoadMore: () => void;
+  isLoadingMore: boolean;
+  hasMore: boolean;
+  onTitleClick: () => void;
+  agents: Agent[];
 };
 
-export default function Sidebar({
-    open,
-    onOpenChange,
-    conversations,
-    currentConversationId,
-    onSelectConversation,
-    onDeleteConversation,
-    onLoadMore,
-    isLoadingMore,
-    hasMore,
-    onTitleClick,
-    agents,
-}: SidebarProps) {
-    // Detect near-bottom to load more
-    const handleScroll: React.UIEventHandler<HTMLDivElement> = async (e) => {
-        if (isLoadingMore || !hasMore) return;
-        const el = e.currentTarget;
-        const threshold = 16; // px from bottom
-        if (el.scrollTop + el.clientHeight >= el.scrollHeight - threshold) {
-            onLoadMore();
-        }
-    };
-    
-    return (
-        <div className="absolute left-2 top-[5.8rem] z-10">
-            <Sheet open={open} onOpenChange={onOpenChange}>
-                <Tooltip delayDuration={0}>
-                    <TooltipTrigger asChild>
-                        <SheetTrigger asChild>
-                            <Button
-                                variant="outline"
-                                onMouseDown={(e) => e.preventDefault()}
-                                className="w-10 h-10 rounded-full bg-secondary/90 border-border hover:bg-secondary transition-bounce shadow-card hover:scale-105 active:scale-95"
-                            >
-                                <ChevronRightIcon size={16} />
-                            </Button>
-                        </SheetTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent
-                        side="right"
-                        align="center"
-                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                    >
-                        <p>Conversation History</p>
-                    </TooltipContent>
-                </Tooltip>
-                
-                <SheetContent side="left" className="w-[clamp(16rem,30vw,20rem)] md:w-[clamp(18rem,35vw,22rem)] lg:w-[clamp(16rem,30vw,20rem)] p-0 transition-slow">
-                    <div className="flex h-full flex-col min-h-0 bg-gradient-card border-r border-border">
-                        {/* Title */}
-                        <div className="p-6 border-b border-border">
-                            <div className="flex items-center gap-2 md:gap-4 cursor-pointer mb-6" onClick={onTitleClick}>
-                                <div className="w-8 h-8 md:w-12 md:h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-elegant">
-                                    <MessageSquare size={16} className="md:hidden text-primary-foreground" />
-                                    <MessageSquare size={24} className="hidden md:block text-primary-foreground" />
-                                </div>
-                                <div>
-                                    <h1 className="text-lg md:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                                        Agentic Chatting
-                                    </h1>
-                                    <p className="text-muted-foreground text-xs md:text-sm">Professional AI agent interactions</p>
-                                </div>
-                            </div>
-                            <h3 className="text-lg font-semibold mb-[-1rem] text-muted-foreground">Conversation History</h3>
-                        </div>
-                        
-                        {/* List with infinite scroll */}
-                        <div className="relative flex-1 min-h-0">
-                            <ScrollArea className="h-full pb-20" onScroll={handleScroll}>
-                                <div className="relative h-full">
-                                    <div
-                                        className={`p-4 space-y-3 transition-all duration-200 ${
-                                            isLoadingMore ? "opacity-60 grayscale" : ""
-                                        }`}
-                                    >
-                                        {conversations.length === 0 ? (
-                                            <div className="text-center py-8">
-                                                <MessageSquare size={32} className="mx-auto text-muted-foreground/50 mb-3" />
-                                                <p className="text-sm text-muted-foreground">No conversations yet</p>
-                                            </div>
-                                        ) : (
-                                            conversations.map(conv => {
-                                                const agent = agents.find(a => a.id === conv.agentId);
-                                                const Icon = agent?.icon || Building2;
-                                                return (
-                                                    <Card
-                                                        key={conv.id}
-                                                        className={`relative p-4 cursor-pointer transition-bounce border-border/50 group transform hover:scale-[1.02] hover:shadow-lg ${
-                                                            conv.id === currentConversationId ? "bg-primary/10 border-primary/30 ring-1 ring-primary/20 scale-[1.01]" : "hover:bg-accent/50"
-                                                        }`}
-                                                        onClick={() => onSelectConversation(conv)}
-                                                    >
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            className="absolute top-2 right-2 w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-bounce hover:bg-destructive/20 hover:text-destructive hover:scale-110 active:scale-95"
-                                                            onClick={(e) => onDeleteConversation(conv.id, e)}
-                                                        >
-                                                            <X size={12} />
-                                                        </Button>
-                                                        
-                                                        <div className="flex items-start gap-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                                                <Icon size={16} className="text-primary" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="font-medium text-sm mb-1">{conv.title && conv.title.trim() !== "" ? conv.title : agent?.name}</div>
-                                                                <div className="text-xs text-muted-foreground truncate">{conv.lastMessage}</div>
-                                                                <div className="text-xs text-muted-foreground/70 mt-1">{new Date(conv.updated_at).toLocaleDateString()}</div>
-                                                            </div>
-                                                        </div>
-                                                    </Card>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                    {isLoadingMore && (
-                                        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-background/90 to-transparent backdrop-blur-sm flex items-center justify-center">
-                                            <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
-                                        </div>
-                                    )}
-                                </div>
-                            </ScrollArea>
-                        </div>
+export default function AppSidebar({
+  conversations,
+  currentConversationId,
+  onSelectConversation,
+  onDeleteConversation,
+  onLoadMore,
+  isLoadingMore,
+  hasMore,
+  onTitleClick,
+  agents,
+}: AppSidebarProps) {
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  const handleConversationSelect = React.useCallback(
+    (conversation: ConversationSummary) => {
+      onSelectConversation(conversation);
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+    },
+    [onSelectConversation, isMobile, setOpenMobile]
+  );
+
+  const handleTitleClickInternal = React.useCallback(() => {
+    onTitleClick();
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [onTitleClick, isMobile, setOpenMobile]);
+
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = React.useCallback(
+    (event) => {
+      if (isLoadingMore || !hasMore) return;
+      const el = event.currentTarget;
+      const threshold = 16;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - threshold) {
+        onLoadMore();
+      }
+    },
+    [isLoadingMore, hasMore, onLoadMore]
+  );
+
+  return (
+    <SidebarRoot collapsible="icon" className="border-r border-border bg-gradient-card">
+      <SidebarRail />
+      <div className="flex h-full flex-col">
+        <SidebarHeader className="border-b border-border px-4 py-6">
+          <button
+            type="button"
+            onClick={handleTitleClickInternal}
+            className="flex w-full items-center gap-3 rounded-md text-left transition-colors hover:bg-sidebar-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <MessageSquare size={18} />
+            </div>
+            <div className="flex flex-col group-data-[collapsible=icon]:hidden">
+              <span className="text-base font-semibold text-foreground">Agentic Chatting</span>
+              <span className="text-xs text-muted-foreground">Professional AI agent interactions</span>
+            </div>
+          </button>
+          <SidebarGroupLabel className="mt-4 text-sm font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
+            Conversation History
+          </SidebarGroupLabel>
+        </SidebarHeader>
+
+        <SidebarContent className="px-0 py-4 group-data-[collapsible=icon]:hidden">
+          <div className="relative flex h-full flex-col">
+            <ScrollArea className="h-full" onScroll={handleScroll}>
+              <SidebarGroup>
+                <SidebarGroupContent className="px-3 pb-6">
+                  {conversations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-sidebar/40 py-10 text-center text-muted-foreground">
+                      <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
+                      <p className="text-sm">No conversations yet</p>
                     </div>
-                </SheetContent>
-            </Sheet>
-        </div>
-    );
+                  ) : (
+                    <SidebarMenu className="space-y-3">
+                      {conversations.map((conversation) => {
+                        const agent = agents.find((a) => a.id === conversation.agentId);
+                        const Icon = agent?.icon || Building2;
+
+                        return (
+                          <SidebarMenuItem key={conversation.id}>
+                            <SidebarMenuButton
+                              className="items-start gap-3 rounded-xl border border-transparent bg-background/60 text-left shadow-sm transition-all hover:border-border/70 hover:bg-background/90 data-[active=true]:border-primary/30 data-[active=true]:bg-primary/10 data-[active=true]:shadow-md"
+                              isActive={conversation.id === currentConversationId}
+                              onClick={() => handleConversationSelect(conversation)}
+                            >
+                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <Icon size={16} />
+                              </div>
+                              <div className="flex min-w-0 flex-col gap-1 group-data-[collapsible=icon]:hidden">
+                                <span className="truncate text-sm font-medium text-foreground">
+                                  {conversation.title && conversation.title.trim() !== ""
+                                    ? conversation.title
+                                    : agent?.name}
+                                </span>
+                                <span className="truncate text-xs text-muted-foreground">
+                                  {conversation.lastMessage || "No messages yet"}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground/80">
+                                  {new Date(conversation.updated_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </SidebarMenuButton>
+                            <SidebarMenuAction
+                              aria-label="Delete conversation"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onDeleteConversation(conversation.id, event);
+                              }}
+                              className="hover:bg-destructive/15 hover:text-destructive"
+                            >
+                              <X size={14} />
+                            </SidebarMenuAction>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  )}
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </ScrollArea>
+            {isLoadingMore && (
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex h-16 items-center justify-center bg-gradient-to-t from-sidebar/95 to-transparent">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+          </div>
+        </SidebarContent>
+      </div>
+    </SidebarRoot>
+  );
 }

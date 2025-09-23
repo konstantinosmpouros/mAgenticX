@@ -1,4 +1,4 @@
-﻿// src/components/layouts/Header.tsx
+// src/components/layouts/Header.tsx
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,6 +11,8 @@ type HeaderProps = {
     selectedAgent: string;
     onAgentChange: (id: string) => void;
     onNewChat: () => void;
+    sidebarToggle?: React.ReactNode;
+
     
     // private/ghost toggle
     showPrivateToggle: boolean;
@@ -26,6 +28,7 @@ export default function Header({
     selectedAgent,
     onAgentChange,
     onNewChat,
+    sidebarToggle,
     showPrivateToggle,
     isPrivateMode,
     onTogglePrivate,
@@ -40,10 +43,15 @@ export default function Header({
     const SelectedIcon = selected?.icon;
     
     return (
-        <div className="border-b border-border bg-background dark:bg-background px-3 py-2 md:px-6 md:py-3 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-black/40 after:to-transparent dark:after:via-primary/40">
+        <div className="sticky top-0 z-40 border-b border-border bg-background dark:bg-background px-3 py-2 md:px-6 md:py-3 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-black/40 after:to-transparent dark:after:via-primary/40">
             <div className="flex items-center justify-between max-w-6xl mx-auto">
                 {/* Agent select + New chat */}
                 <div className="flex items-center gap-1.5 md:gap-3">
+                    {sidebarToggle && (
+                        <div className="flex items-center">
+                            {sidebarToggle}
+                        </div>
+                    )}
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
                         <SelectTrigger 
                         onMouseDown={(e) => e.preventDefault()}
@@ -175,4 +183,3 @@ export default function Header({
         </div>
     );
 }
-
