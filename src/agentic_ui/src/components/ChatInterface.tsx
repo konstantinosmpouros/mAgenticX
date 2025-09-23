@@ -148,6 +148,7 @@ export function ChatInterface() {
       version: 1,
       selectedAgent,
       isPrivateMode,
+      sidebarOpen: false,
       currentMessage,
       expandedThinking,
       thinkingState,
@@ -329,7 +330,8 @@ export function ChatInterface() {
         hasMore={convHasMore}
       />
       <SidebarInset>
-        <div className={`animate-fade-in flex flex-col min-h-svh bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
+        <TooltipProvider>
+          <div className={`animate-fade-in flex min-h-svh max-h-svh flex-col bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
           {/* Header */}
           <Header
             agents={agents}
@@ -350,7 +352,7 @@ export function ChatInterface() {
           />
 
           {/* Chat Messages Container*/}
-          <div className="flex-1 overflow-hidden pb-32">
+          <div className="flex flex-1 min-h-0 overflow-hidden pb-32">
             <ConversationContainer
             messages={currentConversation?.messages ?? []}
             loadingConversation={loadingConversation}
@@ -381,7 +383,7 @@ export function ChatInterface() {
             positionClass={
               (currentConversation?.messages?.length ?? 0) === 0
                 ? "fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
-                : "sticky bottom-0 left-0 right-0 z-10 p-6"
+                : "sticky bottom-0 left-0 right-0 z-30 p-6"
             }
 
             // pass through your existing state/handlers/refs
@@ -462,6 +464,7 @@ export function ChatInterface() {
             </div>
           )}
         </div>
+        </TooltipProvider>
       </SidebarInset>
     </SidebarProvider>
   );

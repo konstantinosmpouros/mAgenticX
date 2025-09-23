@@ -8,9 +8,9 @@
 
 ## Agentic UI
 
-- Make the sidebar like openai
-- All the conversation need to become memo in order not to be rerendered every time
+- In long conversation the input container is lagging. Fix it
 - When downloading something large for some reason it stuck even though the backend has return status 200
+- Sidebar need some small adjustments in order to be the same with openai.
 
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui
 - The nginx might not be needed
