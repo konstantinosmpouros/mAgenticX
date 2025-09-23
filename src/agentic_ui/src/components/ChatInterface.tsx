@@ -40,9 +40,6 @@ import UserProfilePanel from "@/components/layouts/UserProfilePanel";
 import ConversationContainer from "@/components/layouts/ConversationContainer";
 import { InputContainer } from "@/components/layouts/InputContainer";
 
-// API functions
-import { getConversations, likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage } from "@/lib/api";
-
 
 export function ChatInterface() {
   // Initial session check
@@ -175,13 +172,9 @@ export function ChatInterface() {
   const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl } = createAttachmentHandlers({ attachments, setAttachments, toast: toastWrapper });
   const { handleFileDownload } = createDownloadHandlers({ userId, currentConversation, toast: toastWrapper });
   
-  // Handle image click for full preview
-  const handleImageClick = (imageUrl: string) => {
-    setSelectedImage(imageUrl);
-  };
   
   // UI Handlers (clipboard, etc.)
-  const { handleCopy } = createUIHandlers({ toast: toastWrapper , setCopiedId });
+  const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
   
   // AI transition dot (between DB persistence and thinking start)
   const [showAiTransition, setShowAiTransition] = useState(false);
@@ -199,6 +192,7 @@ export function ChatInterface() {
     handleDeleteConversation,
     handleNewChat,
     handleTitleClick,
+    handleLoadMoreConversations,
     clearChatAndStopThinking,
   } = createConversationHandlers({
     userId,
@@ -215,32 +209,15 @@ export function ChatInterface() {
     setCurrentMessage,
     setThinkingState,
     toast: toastWrapper,
+    convPage,
+    setConvPage,
+    convHasMore,
+    setConvHasMore,
+    convIsLoadingMore,
+    setConvIsLoadingMore,
+    pageSize: CONV_PAGE_SIZE,
   });
   
-  const handleLoadMoreConversations = async () => {
-    if (!userId || convIsLoadingMore || !convHasMore) return;
-    setConvIsLoadingMore(true);
-    try {
-      const nextPage = convPage + 1;
-      const items = await getConversations(userId, nextPage, CONV_PAGE_SIZE);
-      if (!items || items.length === 0) {
-        setConvHasMore(false);
-      } else {
-        setConversations(prev => {
-          const ids = new Set(prev.map(c => c.id));
-          const dedup = items.filter(i => !ids.has(i.id));
-          return [...prev, ...dedup];
-        });
-        setConvPage(nextPage);
-        if (items.length < CONV_PAGE_SIZE) setConvHasMore(false);
-      }
-    } catch (e) {
-      setConvHasMore(false);
-    } finally {
-      setTimeout(() => setConvIsLoadingMore(false), 120);
-    }
-  };
-
   const { handleAgentChange } = createAgentHandlers({
     isAgentSwitching,
     setIsAgentSwitching,
@@ -332,138 +309,138 @@ export function ChatInterface() {
       <SidebarInset>
         <TooltipProvider>
           <div className={`animate-fade-in flex min-h-svh max-h-svh flex-col bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
-          {/* Header */}
-          <Header
-            agents={agents}
-            selectedAgent={selectedAgent}
-            onAgentChange={handleAgentChange}
-            onNewChat={handleNewChat}
-            showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
-            isPrivateMode={isPrivateMode}
-            onTogglePrivate={() => {
-              if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
-                setIsPrivateMode(!isPrivateMode);
+            {/* Header */}
+            <Header
+              agents={agents}
+              selectedAgent={selectedAgent}
+              onAgentChange={handleAgentChange}
+              onNewChat={handleNewChat}
+              showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
+              isPrivateMode={isPrivateMode}
+              onTogglePrivate={() => {
+                if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
+                  setIsPrivateMode(!isPrivateMode);
+                }
+              }}
+              onOpenUserProfile={() => setShowUserProfile(true)}
+              sidebarToggle={
+                <SidebarTrigger className="h-10 w-10 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" />
               }
-            }}
-            onOpenUserProfile={() => setShowUserProfile(true)}
-            sidebarToggle={
-              <SidebarTrigger className="h-10 w-10 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" />
-            }
-          />
+            />
 
-          {/* Chat Messages Container*/}
-          <div className="flex flex-1 min-h-0 overflow-hidden pb-32">
-            <ConversationContainer
-            messages={currentConversation?.messages ?? []}
-            loadingConversation={loadingConversation}
-            isClearing={isClearing}
-            expandedThinking={expandedThinking}
-            isImageFile={isImageFile}
-            onDownloadAttachment={handleFileDownload}
-            onImageClick={handleImageClick}
-            onToggleThinking={toggleThinking}
-            copiedId={copiedId}
-            onCopy={handleCopy}
-            onLike={handleLike}
-            onDislike={handleDislike}
-            stickyUserBarId={stickyUserBarId}
-            onFlashUserActionBar={flashUserActionBar}
-            AiTransitionIndicator={AiTransitionIndicator}
-            thinkingState={thinkingState}
-            messagesEndRef={messagesEndRef}
-            AgentIcon={AgentIcon}
-            currentAgent={currentAgent}
-          />
-          </div>
-
-          {/* Input Area */}
-          <InputContainer
-            // Centered empty state
-            isMessagesEmpty={(currentConversation?.messages?.length ?? 0) === 0}
-            positionClass={
-              (currentConversation?.messages?.length ?? 0) === 0
-                ? "fixed inset-x-0 top-1/3 -translate-y-[120px] z-40 p-6"
-                : "sticky bottom-0 left-0 right-0 z-30 p-6"
-            }
-
-            // pass through your existing state/handlers/refs
-            attachments={attachments}
-            isPrivateMode={isPrivateMode}
-            thinkingActive={thinkingState?.isActive}
-            isStreaming={isSendingMessage}
-            currentMessage={currentMessage}
-            setCurrentMessage={setCurrentMessage}
-            handlePaste={handlePaste}
-            handleSendMessage={handleSendMessage}
-            handleStopStreaming={handleStopStreaming}
-            isImageFile={isImageFile}
-            getImageUrl={getImageUrl}
-            handleImageClick={handleImageClick}
-            removeAttachment={removeAttachment}
-            handleFileUpload={handleFileUpload}
-            fileInputRef={fileInputRef}
-            textareaRef={textareaRef}
-
-            // UI deps
-            AgentIcon={AgentIcon}
-            Tooltip={Tooltip}
-            TooltipTrigger={TooltipTrigger}
-            TooltipContent={TooltipContent}
-            Paperclip={Paperclip}
-            Mic={VscMicFilled}
-            Button={Button}
-            Send={Send}
-            Stop={FaStop}
-            X={X}
-            toast={toast}
-            currentAgent={currentAgent}
-            Textarea={Textarea}
-          />
-
-          {/* User Profile Modal */}
-          <UserProfilePanel
-            open={showUserProfile}
-            onClose={() => setShowUserProfile(false)}
-            activeTab={activeProfileTab}
-            setActiveTab={setActiveProfileTab}
-            onLogout={() => {
-              setShowUserProfile(false);
-              setTimeout(() => {
-                handleLogoutLocal();
-                setIsLoggedIn(false);
-                setUserId(null);
-                setLoginUsername("");
-                setLoginPassword("");
-                setAgents([]);
-                setConversations([]);
-                clearChatAndStopThinking();
-              }, 300);
-            }}
-          />
-
-          {/* Image Preview Modal */}
-          {selectedImage && (
-            <div
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-              onClick={() => setSelectedImage(null)}
-            >
-              <div className="relative w-full h-full flex items-center justify-center">
-                <button
-                  onClick={() => setSelectedImage(null)}
-                  className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
-                >
-                  <X size={24} />
-                </button>
-                <img
-                  src={selectedImage}
-                  alt="Full preview"
-                  className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
+            {/* Chat Messages Container*/}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              <ConversationContainer
+              messages={currentConversation?.messages ?? []}
+              loadingConversation={loadingConversation}
+              isClearing={isClearing}
+              expandedThinking={expandedThinking}
+              isImageFile={isImageFile}
+              onDownloadAttachment={handleFileDownload}
+              onImageClick={handleImageClick}
+              onToggleThinking={toggleThinking}
+              copiedId={copiedId}
+              onCopy={handleCopy}
+              onLike={handleLike}
+              onDislike={handleDislike}
+              stickyUserBarId={stickyUserBarId}
+              onFlashUserActionBar={flashUserActionBar}
+              AiTransitionIndicator={AiTransitionIndicator}
+              thinkingState={thinkingState}
+              messagesEndRef={messagesEndRef}
+              AgentIcon={AgentIcon}
+              currentAgent={currentAgent}
+            />
             </div>
-          )}
-        </div>
+
+            {/* Input Area */}
+            <InputContainer
+              // Centered empty state
+              isMessagesEmpty={(currentConversation?.messages?.length ?? 0) === 0}
+              positionClass={
+                (currentConversation?.messages?.length ?? 0) === 0
+                  ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
+                  : "sticky bottom-0 left-0 right-0 z-30 p-6"
+              }
+
+              // pass through your existing state/handlers/refs
+              attachments={attachments}
+              isPrivateMode={isPrivateMode}
+              thinkingActive={thinkingState?.isActive}
+              isStreaming={isSendingMessage}
+              currentMessage={currentMessage}
+              setCurrentMessage={setCurrentMessage}
+              handlePaste={handlePaste}
+              handleSendMessage={handleSendMessage}
+              handleStopStreaming={handleStopStreaming}
+              isImageFile={isImageFile}
+              getImageUrl={getImageUrl}
+              handleImageClick={handleImageClick}
+              removeAttachment={removeAttachment}
+              handleFileUpload={handleFileUpload}
+              fileInputRef={fileInputRef}
+              textareaRef={textareaRef}
+
+              // UI deps
+              AgentIcon={AgentIcon}
+              Tooltip={Tooltip}
+              TooltipTrigger={TooltipTrigger}
+              TooltipContent={TooltipContent}
+              Paperclip={Paperclip}
+              Mic={VscMicFilled}
+              Button={Button}
+              Send={Send}
+              Stop={FaStop}
+              X={X}
+              toast={toast}
+              currentAgent={currentAgent}
+              Textarea={Textarea}
+            />
+
+            {/* User Profile Modal */}
+            <UserProfilePanel
+              open={showUserProfile}
+              onClose={() => setShowUserProfile(false)}
+              activeTab={activeProfileTab}
+              setActiveTab={setActiveProfileTab}
+              onLogout={() => {
+                setShowUserProfile(false);
+                setTimeout(() => {
+                  handleLogoutLocal();
+                  setIsLoggedIn(false);
+                  setUserId(null);
+                  setLoginUsername("");
+                  setLoginPassword("");
+                  setAgents([]);
+                  setConversations([]);
+                  clearChatAndStopThinking();
+                }, 300);
+              }}
+            />
+
+            {/* Image Preview Modal */}
+            {selectedImage && (
+              <div
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                onClick={handleCloseImagePreview}
+              >
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <button
+                    onClick={handleCloseImagePreview}
+                    className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
+                  >
+                    <X size={24} />
+                  </button>
+                  <img
+                    src={selectedImage}
+                    alt="Full preview"
+                    className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </TooltipProvider>
       </SidebarInset>
     </SidebarProvider>

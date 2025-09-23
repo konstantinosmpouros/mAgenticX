@@ -1,4 +1,5 @@
-import { getConversationDetail, deleteConversation } from '@/lib/api';
+import { getConversationDetail, deleteConversation, getConversations } from '@/lib/api';
+import type { Dispatch, SetStateAction } from 'react';
 import type { ConversationDetail, ConversationSummary } from '@/lib/types';
 
 type ConversationsCtx = {
@@ -6,6 +7,14 @@ type ConversationsCtx = {
   conversations: ConversationSummary[];
   setConversations: (updater: (prev: ConversationSummary[]) => ConversationSummary[]) => void;
   currentConversation: ConversationDetail | null;
+
+  convPage: number;
+  setConvPage: Dispatch<SetStateAction<number>>;
+  convHasMore: boolean;
+  setConvHasMore: Dispatch<SetStateAction<boolean>>;
+  convIsLoadingMore: boolean;
+  setConvIsLoadingMore: Dispatch<SetStateAction<boolean>>;
+  pageSize: number;
 
   setLoadingConversation: (v: boolean) => void;
   setIsClearing: (v: boolean) => void;
@@ -25,6 +34,15 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     conversations,
     setConversations,
     currentConversation,
+
+    convPage,
+    setConvPage,
+    convHasMore,
+    setConvHasMore,
+    convIsLoadingMore,
+    setConvIsLoadingMore,
+    pageSize,
+
     setLoadingConversation,
     setIsClearing,
     setSelectedAgent,
@@ -90,6 +108,33 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }, 300);
   };
 
+  const handleLoadMoreConversations = async () => {
+    if (!userId || convIsLoadingMore || !convHasMore) return;
+    setConvIsLoadingMore(true);
+    try {
+      const nextPage = convPage + 1;
+      const items = await getConversations(userId, nextPage, pageSize);
+      if (!items || items.length === 0) {
+        setConvHasMore(false);
+      } else {
+        setConversations(prev => {
+          const ids = new Set(prev.map(c => c.id));
+          const dedup = items.filter(item => !ids.has(item.id));
+          return [...prev, ...dedup];
+        });
+        setConvPage(nextPage);
+        if (items.length < pageSize) {
+          setConvHasMore(false);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more conversations:', error);
+      setConvHasMore(false);
+    } finally {
+      setTimeout(() => setConvIsLoadingMore(false), 120);
+    }
+  };
+
   const handleDeleteConversation = async (conversationId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     if (!userId) return;
@@ -104,6 +149,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
-  return { handleConversationSelect, handleDeleteConversation, handleNewChat, handleTitleClick, clearChatAndStopThinking };
+  return { handleConversationSelect, handleDeleteConversation, handleNewChat, handleTitleClick, handleLoadMoreConversations, clearChatAndStopThinking };
 }
 

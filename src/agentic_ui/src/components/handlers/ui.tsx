@@ -4,10 +4,11 @@ import type { ThinkingState } from "@/lib/types";
 type UIHandlersCtx = {
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   setCopiedId: (id: string | null) => void;
+  setSelectedImage?: (value: string | null) => void;
 };
 
 export function createUIHandlers(ctx: UIHandlersCtx) {
-  const { toast, setCopiedId } = ctx;
+  const { toast, setCopiedId, setSelectedImage } = ctx;
 
   const handleCopy = async (text: string, id: string) => {
     try {
@@ -19,7 +20,15 @@ export function createUIHandlers(ctx: UIHandlersCtx) {
     }
   };
 
-  return { handleCopy };
+  const handleImageClick = (imageUrl: string) => {
+    setSelectedImage?.(imageUrl);
+  };
+
+  const handleCloseImagePreview = () => {
+    setSelectedImage?.(null);
+  };
+
+  return { handleCopy, handleImageClick, handleCloseImagePreview };
 }
 
 type AiTransitionHandlersCtx = {
