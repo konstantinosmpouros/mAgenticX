@@ -113,6 +113,7 @@ export default function AppSidebar({
       <SidebarRail />
       <div className="flex h-full flex-col">
         <SidebarHeader className="px-4 py-6 flex items-center justify-between gap-2">
+          
           {isCollapsed && isHoveringCollapsed ? (
             <SidebarTrigger variant="outline" size="icon" className="h-10 w-10 rounded-xl" />
           ) : (
@@ -154,9 +155,9 @@ export default function AppSidebar({
 
         <SidebarContent className="px-0 py-4 group-data-[collapsible=icon]:hidden">
           <div className="relative flex h-full flex-col">
-            <ScrollArea className="h-full" onScroll={handleScroll}>
-              <SidebarGroup>
-                <SidebarGroupContent className="px-3 pb-6">
+            <SidebarGroupContent>
+              <ScrollArea className="h-full" onScroll={handleScroll}>
+                <SidebarGroup className="px-3 pb-6">
                   {conversations.length === 0 ? (
                     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-sidebar/40 py-10 text-center text-muted-foreground">
                       <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
@@ -207,9 +208,9 @@ export default function AppSidebar({
                       })}
                     </SidebarMenu>
                   )}
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </ScrollArea>
+                </SidebarGroup>
+              </ScrollArea>
+            </SidebarGroupContent>
             {isLoadingMore && (
               <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex h-16 items-center justify-center bg-gradient-to-t from-sidebar/95 to-transparent">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
