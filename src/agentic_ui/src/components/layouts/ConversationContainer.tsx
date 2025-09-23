@@ -16,6 +16,7 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import { BsHandThumbsUpFill, BsHandThumbsDownFill } from "react-icons/bs";
 import { VscEye } from "react-icons/vsc";
 import type { LucideIcon } from "lucide-react";
 import type {
@@ -333,7 +334,11 @@ export default function ConversationContainer({
                                         onClick={() => onLike(message)}
                                         aria-label={message.liked === true ? 'Unlike' : 'Like'}
                                       >
+                                        {message.liked === true ? (
+                                        <BsHandThumbsUpFill className="h-4 w-4" />
+                                      ) : (
                                         <ThumbsUp className="h-4 w-4" />
+                                      )}
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent
@@ -361,7 +366,11 @@ export default function ConversationContainer({
                                         onClick={() => onDislike(message)}
                                         aria-label={message.liked === false ? 'Clear dislike' : 'Dislike'}
                                       >
+                                        {message.liked === false ? (
+                                        <BsHandThumbsDownFill className="h-4 w-4" />
+                                      ) : (
                                         <ThumbsDown className="h-4 w-4" />
+                                      )}
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent
@@ -464,5 +473,10 @@ export default function ConversationContainer({
     </div>
   );
 }
+
+
+
+
+
 
 
