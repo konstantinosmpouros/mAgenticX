@@ -35,7 +35,7 @@ import { loadSession, isSessionValid } from "@/lib/authStorage";
 import LoginPanel from "@/components/layouts/LoginPanel";
 import Header from "@/components/layouts/Header";
 import AppSidebar from "@/components/layouts/Sidebar";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import UserProfilePanel from "@/components/layouts/UserProfilePanel";
 import ConversationContainer from "@/components/layouts/ConversationContainer";
 import { InputContainer } from "@/components/layouts/InputContainer";
@@ -302,6 +302,8 @@ export function ChatInterface() {
         onDeleteConversation={handleDeleteConversation}
         onLoadMore={handleLoadMoreConversations}
         onTitleClick={handleTitleClick}
+        onNewChat={handleNewChat}
+        onOpenUserProfile={() => setShowUserProfile(true)}
         agents={agents}
         isLoadingMore={convIsLoadingMore}
         hasMore={convHasMore}
@@ -314,7 +316,6 @@ export function ChatInterface() {
               agents={agents}
               selectedAgent={selectedAgent}
               onAgentChange={handleAgentChange}
-              onNewChat={handleNewChat}
               showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
               isPrivateMode={isPrivateMode}
               onTogglePrivate={() => {
@@ -322,10 +323,6 @@ export function ChatInterface() {
                   setIsPrivateMode(!isPrivateMode);
                 }
               }}
-              onOpenUserProfile={() => setShowUserProfile(true)}
-              sidebarToggle={
-                <SidebarTrigger className="h-10 w-10 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" />
-              }
             />
 
             {/* Chat Messages Container*/}

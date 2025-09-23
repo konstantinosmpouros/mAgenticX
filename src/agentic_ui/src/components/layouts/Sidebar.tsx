@@ -1,8 +1,10 @@
 import * as React from "react";
-import { MessageSquare, X, Loader2, Building2 } from "lucide-react";
+import { MessageSquare, X, Loader2, Building2, Plus, User } from "lucide-react";
 
 import type { Agent, ConversationSummary } from "@/lib/types";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -12,9 +14,10 @@ import {
   SidebarMenuButton,
   SidebarMenuAction,
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarGroupContent,
+  SidebarFooter,
   SidebarRail,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -27,6 +30,8 @@ type AppSidebarProps = {
   isLoadingMore: boolean;
   hasMore: boolean;
   onTitleClick: () => void;
+  onNewChat: () => void;
+  onOpenUserProfile: () => void;
   agents: Agent[];
 };
 
@@ -39,9 +44,19 @@ export default function AppSidebar({
   isLoadingMore,
   hasMore,
   onTitleClick,
+  onNewChat,
+  onOpenUserProfile,
   agents,
 }: AppSidebarProps) {
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile, state: sidebarState } = useSidebar();
+  const isCollapsed = sidebarState === "collapsed";
+  const [isHoveringCollapsed, setIsHoveringCollapsed] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isCollapsed && isHoveringCollapsed) {
+      setIsHoveringCollapsed(false);
+    }
+  }, [isCollapsed, isHoveringCollapsed]);
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -60,6 +75,20 @@ export default function AppSidebar({
     }
   }, [onTitleClick, isMobile, setOpenMobile]);
 
+  const handleNewChatClick = React.useCallback(() => {
+    onNewChat();
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [onNewChat, isMobile, setOpenMobile]);
+
+  const handleOpenProfile = React.useCallback(() => {
+    onOpenUserProfile();
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [onOpenUserProfile, isMobile, setOpenMobile]);
+
   const handleScroll: React.UIEventHandler<HTMLDivElement> = React.useCallback(
     (event) => {
       if (isLoadingMore || !hasMore) return;
@@ -73,27 +102,55 @@ export default function AppSidebar({
   );
 
   return (
-    <SidebarRoot collapsible="icon" className="border-r border-border bg-gradient-card">
+    <SidebarRoot
+      collapsible="icon"
+      className="border-r border-border bg-gradient-card"
+      onMouseEnter={() => {
+        if (isCollapsed) setIsHoveringCollapsed(true);
+      }}
+      onMouseLeave={() => setIsHoveringCollapsed(false)}
+    >
       <SidebarRail />
       <div className="flex h-full flex-col">
-        <SidebarHeader className="border-b border-border px-4 py-6">
-          <button
-            type="button"
-            onClick={handleTitleClickInternal}
-            className="flex w-full items-center gap-3 rounded-md text-left transition-colors hover:bg-sidebar-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <MessageSquare size={18} />
-            </div>
-            <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-              <span className="text-base font-semibold text-foreground">Agentic Chatting</span>
-              <span className="text-xs text-muted-foreground">Professional AI agent interactions</span>
-            </div>
-          </button>
-          <SidebarGroupLabel className="mt-4 text-sm font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
-            Conversation History
-          </SidebarGroupLabel>
+        <SidebarHeader className="px-4 py-6 flex items-center justify-between gap-2">
+          {isCollapsed && isHoveringCollapsed ? (
+            <SidebarTrigger variant="outline" size="icon" className="h-10 w-10 rounded-xl" />
+          ) : (
+            <button
+              type="button"
+              onClick={handleTitleClickInternal}
+              className="flex w-full items-center gap-3 rounded-md text-left transition-colors hover:bg-sidebar-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <img
+                src="/8.png"
+                alt="mAgenticX logo"
+                className="h-8 w-8 rounded-xl object-cover"
+              />
+              <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="text-base font-semibold text-foreground">mAgenticX</span>
+                <span className="text-xs text-muted-foreground">Professional AI Agent Interactions</span>
+              </div>
+            </button>
+          )}
+
+          {!isCollapsed && (
+            <SidebarTrigger
+              variant="ghost"
+              size="icon"
+              className="ml-2 h-10 w-10 text-muted-foreground hover:text-foreground"
+            />
+          )}
         </SidebarHeader>
+
+        <div className="px-4 group-data-[collapsible=icon]:hidden">
+          <Button
+            variant="default"
+            className="mt-3 w-full justify-center"
+            onClick={handleNewChatClick}
+          >
+            <Plus className="mr-2 h-4 w-4" /> New Chat
+          </Button>
+        </div>
 
         <SidebarContent className="px-0 py-4 group-data-[collapsible=icon]:hidden">
           <div className="relative flex h-full flex-col">
@@ -160,7 +217,30 @@ export default function AppSidebar({
             )}
           </div>
         </SidebarContent>
+
+        <SidebarFooter className="border-t border-border px-4 py-4 flex items-center gap-2">
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10"
+                onClick={handleOpenProfile}
+              >
+                <User className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              align="center"
+              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+            >
+              <p>Profile</p>
+            </TooltipContent>
+          </Tooltip>
+        </SidebarFooter>
       </div>
     </SidebarRoot>
   );
 }
+
