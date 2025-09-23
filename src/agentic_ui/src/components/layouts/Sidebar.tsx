@@ -2,24 +2,25 @@ import * as React from "react";
 import { MessageSquare, X, Loader2, Building2, Plus, User } from "lucide-react";
 
 import type { Agent, ConversationSummary } from "@/lib/types";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarMenuAction,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarFooter,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuAction,
+  SidebarMenuButton,
+  SidebarMenuItem,
   SidebarRail,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
 type AppSidebarProps = {
   conversations: ConversationSummary[];
@@ -48,15 +49,9 @@ export default function AppSidebar({
   onOpenUserProfile,
   agents,
 }: AppSidebarProps) {
-  const { isMobile, setOpenMobile, state: sidebarState } = useSidebar();
-  const isCollapsed = sidebarState === "collapsed";
-  const [isHoveringCollapsed, setIsHoveringCollapsed] = React.useState(false);
+  const { isMobile, setOpenMobile } = useSidebar();
 
-  React.useEffect(() => {
-    if (!isCollapsed && isHoveringCollapsed) {
-      setIsHoveringCollapsed(false);
-    }
-  }, [isCollapsed, isHoveringCollapsed]);
+  const [isSidebarHovered, setIsSidebarHovered] = React.useState(false);
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -105,143 +100,141 @@ export default function AppSidebar({
     <SidebarRoot
       collapsible="icon"
       className="border-r border-border bg-gradient-card"
-      onMouseEnter={() => {
-        if (isCollapsed) setIsHoveringCollapsed(true);
-      }}
-      onMouseLeave={() => setIsHoveringCollapsed(false)}
+      onMouseEnter={() => setIsSidebarHovered(true)}
+      onMouseLeave={() => setIsSidebarHovered(false)}
     >
       <SidebarRail />
-      <div className="flex h-full flex-col">
-        <SidebarHeader className="px-4 py-6 flex items-center justify-between gap-2">
-          
-          {isCollapsed && isHoveringCollapsed ? (
-            <SidebarTrigger variant="outline" size="icon" className="h-10 w-10 rounded-xl" />
-          ) : (
+
+      <SidebarHeader className="gap-4 px-4 py-4">
+        <div className="flex w-full items-center">
+          <div className="relative h-8 w-8">
             <button
               type="button"
               onClick={handleTitleClickInternal}
-              className="flex w-full items-center gap-3 rounded-md text-left transition-colors hover:bg-sidebar-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              className={cn(
+                "absolute inset-0 flex items-center justify-center rounded-xl bg-background/60 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                isSidebarHovered ? "pointer-events-none opacity-0" : "opacity-100"
+              )}
             >
-              <img
-                src="/8.png"
-                alt="mAgenticX logo"
-                className="h-8 w-8 rounded-xl object-cover"
-              />
-              <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
-                <span className="text-base font-semibold text-foreground">mAgenticX</span>
-                <span className="text-xs text-muted-foreground">Professional AI Agent Interactions</span>
-              </div>
+              <img src="/8.png" alt="mAgenticX logo" className="h-7 w-7 rounded-xl object-cover" />
             </button>
-          )}
-
-          {!isCollapsed && (
             <SidebarTrigger
+              aria-label="Toggle sidebar"
               variant="ghost"
               size="icon"
-              className="ml-2 h-10 w-10 text-muted-foreground hover:text-foreground"
+              className={cn(
+                "absolute inset-0 h-8 w-8 rounded-xl text-muted-foreground transition-opacity hover:text-foreground",
+                isSidebarHovered ? "opacity-100" : "pointer-events-none opacity-0"
+              )}
             />
-          )}
-        </SidebarHeader>
-
-        <div className="px-4 group-data-[collapsible=icon]:hidden">
-          <Button
-            variant="default"
-            className="mt-3 w-full justify-center"
-            onClick={handleNewChatClick}
-          >
-            <Plus className="mr-2 h-4 w-4" /> New Chat
-          </Button>
+          </div>
         </div>
 
-        <SidebarContent className="px-0 py-4 group-data-[collapsible=icon]:hidden">
-          <div className="relative flex h-full flex-col">
-            <SidebarGroupContent>
-              <ScrollArea className="h-full" onScroll={handleScroll}>
-                <SidebarGroup className="px-3 pb-6">
-                  {conversations.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-sidebar/40 py-10 text-center text-muted-foreground">
-                      <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
-                      <p className="text-sm">No conversations yet</p>
-                    </div>
-                  ) : (
-                    <SidebarMenu className="space-y-3">
-                      {conversations.map((conversation) => {
-                        const agent = agents.find((a) => a.id === conversation.agentId);
-                        const Icon = agent?.icon || Building2;
+        <Button
+          variant="default"
+          className="w-full justify-center gap-2 rounded-xl px-3 py-3 transition-colors group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:self-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
+          onClick={handleNewChatClick}
+        >
+          <Plus className="h-4 w-4" />
+          <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
+        </Button>
+      </SidebarHeader>
 
-                        return (
-                          <SidebarMenuItem key={conversation.id}>
-                            <SidebarMenuButton
-                              className="items-start gap-3 rounded-xl border border-transparent bg-background/60 text-left shadow-sm transition-all hover:border-border/70 hover:bg-background/90 data-[active=true]:border-primary/30 data-[active=true]:bg-primary/10 data-[active=true]:shadow-md"
-                              isActive={conversation.id === currentConversationId}
-                              onClick={() => handleConversationSelect(conversation)}
-                            >
-                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                <Icon size={16} />
-                              </div>
-                              <div className="flex min-w-0 flex-col gap-1 group-data-[collapsible=icon]:hidden">
-                                <span className="truncate text-sm font-medium text-foreground">
-                                  {conversation.title && conversation.title.trim() !== ""
-                                    ? conversation.title
-                                    : agent?.name}
-                                </span>
-                                <span className="truncate text-xs text-muted-foreground">
-                                  {conversation.lastMessage || "No messages yet"}
-                                </span>
-                                <span className="text-[11px] text-muted-foreground/80">
-                                  {new Date(conversation.updated_at).toLocaleDateString()}
-                                </span>
-                              </div>
-                            </SidebarMenuButton>
-                            <SidebarMenuAction
-                              aria-label="Delete conversation"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onDeleteConversation(conversation.id, event);
-                              }}
-                              className="hover:bg-destructive/15 hover:text-destructive"
-                            >
-                              <X size={14} />
-                            </SidebarMenuAction>
-                          </SidebarMenuItem>
-                        );
-                      })}
-                    </SidebarMenu>
-                  )}
-                </SidebarGroup>
-              </ScrollArea>
-            </SidebarGroupContent>
+      <SidebarContent
+        className="flex-1 px-4 py-4"
+        onScroll={handleScroll}
+      >
+        <SidebarGroup className="flex h-full flex-col space-y-3 !p-0">
+          <SidebarGroupLabel className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">
+            Chats
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="min-h-0 flex-1 space-y-3 overflow-hidden">
+            {conversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-sidebar/40 py-10 text-center text-muted-foreground">
+                <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
+                <p className="text-sm">No conversations yet</p>
+              </div>
+            ) : (
+              <SidebarMenu className="space-y-3">
+                {conversations.map((conversation) => {
+                  const agent = agents.find((a) => a.id === conversation.agentId);
+                  const Icon = agent?.icon || Building2;
+
+                  return (
+                    <SidebarMenuItem key={conversation.id}>
+                      <SidebarMenuButton
+                        className="w-full items-start gap-3 rounded-xl border border-transparent bg-background/60 px-3 py-3 text-left shadow-sm transition-all hover:border-border/70 hover:bg-background/90 data-[active=true]:border-primary/30 data-[active=true]:bg-primary/10 data-[active=true]:shadow-md group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
+                        isActive={conversation.id === currentConversationId}
+                        onClick={() => handleConversationSelect(conversation)}
+                      >
+                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
+                          <Icon size={16} />
+                        </div>
+                        <div className="flex min-w-0 flex-col gap-1 group-data-[collapsible=icon]:hidden">
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {conversation.title && conversation.title.trim() !== ""
+                              ? conversation.title
+                              : agent?.name}
+                          </span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {conversation.lastMessage || "No messages yet"}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground/80">
+                            {new Date(conversation.updated_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </SidebarMenuButton>
+                      <SidebarMenuAction
+                        aria-label="Delete conversation"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteConversation(conversation.id, event);
+                        }}
+                        className="opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus-visible:opacity-100 group-hover/menu-item:opacity-100"
+                      >
+                        <X size={14} />
+                      </SidebarMenuAction>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            )}
             {isLoadingMore && (
-              <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex h-16 items-center justify-center bg-gradient-to-t from-sidebar/95 to-transparent">
+              <div className="flex justify-center py-2">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             )}
-          </div>
-        </SidebarContent>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
 
-        <SidebarFooter className="border-t border-border px-4 py-4 flex items-center gap-2">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-10 w-10"
-                onClick={handleOpenProfile}
-              >
-                <User className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="top"
-              align="center"
-              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+      <SidebarFooter className="border-t border-border px-4 py-4">
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-12 w-full justify-start gap-3 rounded-xl px-3 transition-colors group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
+              onClick={handleOpenProfile}
             >
-              <p>Profile</p>
-            </TooltipContent>
-          </Tooltip>
-        </SidebarFooter>
-      </div>
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
+                <User className="h-4 w-4" />
+              </div>
+              <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-sm font-medium text-foreground">john Doe</span>
+                <span className="text-xs text-muted-foreground">Profile</span>
+              </div>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="top"
+            align="center"
+            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+          >
+            <p>Profile</p>
+          </TooltipContent>
+        </Tooltip>
+      </SidebarFooter>
     </SidebarRoot>
   );
 }
-
