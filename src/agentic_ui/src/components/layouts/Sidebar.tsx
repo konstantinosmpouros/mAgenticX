@@ -107,8 +107,8 @@ export default function AppSidebar({
       <SidebarRail />
       <SidebarHeader
         className={cn(
-          "py-4 transition-[padding] duration-200 ease-linear",
-          isCollapsed ? "px-2" : "px-4"
+          "py-4 transition-[padding] duration-200 ease-linear px-3",
+          isCollapsed ? "justify-center" : ""
         )}
       >
         {/* Title Icon */}
@@ -146,12 +146,17 @@ export default function AppSidebar({
         </div>
         
         {/* New Chat Button */}
-        <div className="flex w-full items-center gap-2 py-5 transition-all duration-200 ease-linear">
+        <div
+          className={cn(
+            "flex w-full items-center gap-2 py-5 transition-all duration-200 ease-linear",
+            isCollapsed && "justify-center"
+          )}
+        >
           <Button
             variant="default"
             className={cn(
-              "mt-2 w-full items-center justify-center gap-2 rounded-xl px-3 py-3 transition-all duration-200 ease-linear overflow-hidden",
-              isCollapsed && "mt-0 h-8 w-10 self-start px-0 py-0 gap-0"
+              "relative mt-2 w-full items-center justify-center gap-2 rounded-xl px-3 py-3 transition-all duration-200 ease-linear overflow-hidden",
+              isCollapsed && "mt-0 h-10 w-10 self-center px-0 py-0 gap-0"
             )}
             onClick={handleNewChatClick}
           >
@@ -159,13 +164,16 @@ export default function AppSidebar({
             <span
               className={cn(
                 "truncate text-sm transition-all duration-200",
-                isCollapsed ? "ml-0 max-w-0 opacity-0" : "ml-1 max-w-[160px] opacity-100"
+                isCollapsed
+                  ? "pointer-events-none absolute left-full top-1/2 -translate-y-1/2 opacity-0"
+                  : "opacity-100"
               )}
             >
               New Chat
             </span>
           </Button>
         </div>
+
       </SidebarHeader>
 
       <SidebarContent
