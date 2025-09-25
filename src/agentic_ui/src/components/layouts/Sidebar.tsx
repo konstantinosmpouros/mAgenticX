@@ -49,9 +49,10 @@ export default function AppSidebar({
   onOpenUserProfile,
   agents,
 }: AppSidebarProps) {
-  const { isMobile, setOpenMobile } = useSidebar();
-
+  const { isMobile, setOpenMobile, state } = useSidebar();
+  const isCollapsed = state === "collapsed";
   const [isSidebarHovered, setIsSidebarHovered] = React.useState(false);
+  const showSwap = isCollapsed && isSidebarHovered;
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -104,19 +105,18 @@ export default function AppSidebar({
       onMouseLeave={() => setIsSidebarHovered(false)}
     >
       <SidebarRail />
-
-      <SidebarHeader className="gap-4 px-4 py-4">
-        <div className="flex w-full items-center">
+      <SidebarHeader className="px-4 py-4">
+        <div className="flex w-full items-center gap-2">
           <div className="relative h-8 w-8">
             <button
               type="button"
               onClick={handleTitleClickInternal}
               className={cn(
                 "absolute inset-0 flex items-center justify-center rounded-xl bg-background/60 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                isSidebarHovered ? "pointer-events-none opacity-0" : "opacity-100"
+                showSwap ? "pointer-events-none opacity-0" : "opacity-100"
               )}
             >
-              <img src="/8.png" alt="mAgenticX logo" className="h-7 w-7 rounded-xl object-cover" />
+              <img src="/8.png" alt="mAgenticX logo" className="h-8 w-8 rounded-xl object-cover" />
             </button>
             <SidebarTrigger
               aria-label="Toggle sidebar"
@@ -124,88 +124,104 @@ export default function AppSidebar({
               size="icon"
               className={cn(
                 "absolute inset-0 h-8 w-8 rounded-xl text-muted-foreground transition-opacity hover:text-foreground",
-                isSidebarHovered ? "opacity-100" : "pointer-events-none opacity-0"
+                showSwap ? "opacity-100" : "pointer-events-none opacity-0"
               )}
             />
           </div>
+          <SidebarTrigger
+            aria-label="Toggle sidebar"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "ml-auto h-8 w-8 rounded-xl text-muted-foreground transition-colors hover:text-foreground",
+              isCollapsed ? "hidden" : "inline-flex"
+            )}
+          />
         </div>
+      </SidebarHeader>
 
+      
+      <div className="px-4 pb-4">
         <Button
           variant="default"
-          className="w-full justify-center gap-2 rounded-xl px-3 py-3 transition-colors group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:self-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
+          className="mt-2 w-full justify-center gap-2 rounded-xl px-3 py-3 transition-colors group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
           onClick={handleNewChatClick}
         >
           <Plus className="h-4 w-4" />
           <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
         </Button>
-      </SidebarHeader>
-
+      </div>
+      
       <SidebarContent
-        className="flex-1 px-4 py-4"
-        onScroll={handleScroll}
+        className="flex-1 px-4 pb-4 pt-0"
       >
-        <SidebarGroup className="flex h-full flex-col space-y-3 !p-0">
-          <SidebarGroupLabel className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden">
-            Chats
-          </SidebarGroupLabel>
-          <SidebarGroupContent className="min-h-0 flex-1 space-y-3 overflow-hidden">
-            {conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-sidebar/40 py-10 text-center text-muted-foreground">
-                <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
-                <p className="text-sm">No conversations yet</p>
-              </div>
-            ) : (
-              <SidebarMenu className="space-y-3">
-                {conversations.map((conversation) => {
-                  const agent = agents.find((a) => a.id === conversation.agentId);
-                  const Icon = agent?.icon || Building2;
-
-                  return (
-                    <SidebarMenuItem key={conversation.id}>
-                      <SidebarMenuButton
-                        className="w-full items-start gap-3 rounded-xl border border-transparent bg-background/60 px-3 py-3 text-left shadow-sm transition-all hover:border-border/70 hover:bg-background/90 data-[active=true]:border-primary/30 data-[active=true]:bg-primary/10 data-[active=true]:shadow-md group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
-                        isActive={conversation.id === currentConversationId}
-                        onClick={() => handleConversationSelect(conversation)}
-                      >
-                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
-                          <Icon size={16} />
-                        </div>
-                        <div className="flex min-w-0 flex-col gap-1 group-data-[collapsible=icon]:hidden">
-                          <span className="truncate text-sm font-medium text-foreground">
-                            {conversation.title && conversation.title.trim() !== ""
-                              ? conversation.title
-                              : agent?.name}
-                          </span>
-                          <span className="truncate text-xs text-muted-foreground">
-                            {conversation.lastMessage || "No messages yet"}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground/80">
-                            {new Date(conversation.updated_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </SidebarMenuButton>
-                      <SidebarMenuAction
-                        aria-label="Delete conversation"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDeleteConversation(conversation.id, event);
-                        }}
-                        className="opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus-visible:opacity-100 group-hover/menu-item:opacity-100"
-                      >
-                        <X size={14} />
-                      </SidebarMenuAction>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            )}
-            {isLoadingMore && (
-              <div className="flex justify-center py-2">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            )}
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {!isCollapsed && (
+          <SidebarGroup className="flex h-full flex-col space-y-3 !p-0">
+            <SidebarGroupLabel className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Chats
+            </SidebarGroupLabel>
+            <SidebarGroupContent
+              className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+              onScroll={handleScroll}
+            >
+              {conversations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-sidebar/40 py-10 text-center text-muted-foreground">
+                  <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
+                  <p className="text-sm">No conversations yet</p>
+                </div>
+              ) : (
+                <SidebarMenu className="space-y-3">
+                  {conversations.map((conversation) => {
+                    const agent = agents.find((a) => a.id === conversation.agentId);
+                    const Icon = agent?.icon || Building2;
+                    
+                    return (
+                      <SidebarMenuItem key={conversation.id}>
+                        <SidebarMenuButton
+                          className="w-full items-start gap-3 rounded-xl border border-transparent bg-background/60 px-3 py-3 text-left shadow-sm transition-all hover:border-border/70 hover:bg-background/90 data-[active=true]:border-primary/30 data-[active=true]:bg-primary/10 data-[active=true]:shadow-md"
+                          isActive={conversation.id === currentConversationId}
+                          onClick={() => handleConversationSelect(conversation)}
+                        >
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <Icon size={16} />
+                          </div>
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <span className="truncate text-sm font-medium text-foreground">
+                              {conversation.title && conversation.title.trim() !== ""
+                                ? conversation.title
+                                : agent?.name}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              {conversation.lastMessage || "No messages yet"}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground/80">
+                              {new Date(conversation.updated_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </SidebarMenuButton>
+                        <SidebarMenuAction
+                          aria-label="Delete conversation"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDeleteConversation(conversation.id, event);
+                          }}
+                          className="opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus-visible:opacity-100 group-hover/menu-item:opacity-100"
+                        >
+                          <X size={14} />
+                        </SidebarMenuAction>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              )}
+              {isLoadingMore && (
+                <div className="flex justify-center py-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-border px-4 py-4">
@@ -222,7 +238,6 @@ export default function AppSidebar({
               </div>
               <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
                 <span className="truncate text-sm font-medium text-foreground">john Doe</span>
-                <span className="text-xs text-muted-foreground">Profile</span>
               </div>
             </Button>
           </TooltipTrigger>
@@ -238,3 +253,7 @@ export default function AppSidebar({
     </SidebarRoot>
   );
 }
+
+
+
+
