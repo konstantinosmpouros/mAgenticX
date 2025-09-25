@@ -39,6 +39,7 @@ from utils import (
     validate_convId,
     validate_convId_full,
     validate_agentId,
+    prime_agent_cache,
     init_conv,
     init_message,
     _preview,
@@ -55,7 +56,13 @@ async def lifespan(app: FastAPI):
     async with AsyncSession(engine) as session:
         await seed_users(session)
         await seed_agents(session)
-    
+
+        result = await session.execute(
+            select(AgentTable).where(AgentTable.is_active == True)
+        )
+        agents = list(result.scalars().all())
+        prime_agent_cache(agents)
+
     yield
 
 app = FastAPI(title="Bridge Service", lifespan=lifespan)

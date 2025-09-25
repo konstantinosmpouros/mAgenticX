@@ -1,5 +1,5 @@
 import base64
-from typing import Optional, List
+from typing import Optional, List, Dict, Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -25,6 +25,15 @@ from schemas import (
     AttachmentIn,
     TitleOut,
 )
+
+
+_AGENT_CACHE: Dict[str, AgentTable] = {}
+
+
+def prime_agent_cache(agents: Iterable[AgentTable]) -> None:
+    """Store active agents for fast validation lookups."""
+    global _AGENT_CACHE
+    _AGENT_CACHE = {agent.id: agent for agent in agents if getattr(agent, 'is_active', True)}
 
 
 async def validate_userId(user_id: str, db: AsyncSession = Depends(get_db)) -> UserTable:
@@ -72,6 +81,10 @@ async def validate_convId_full(user_id: str, conversation_id: str, db: AsyncSess
 
 
 async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
+    agent = _AGENT_CACHE.get(agent_id)
+    if agent is not None:
+        return agent
+
     q = select(AgentTable).where(
         AgentTable.id == agent_id,
         AgentTable.is_active == True
@@ -80,6 +93,8 @@ async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
     agent = res.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=400, detail="Unknown or inactive agent.")
+
+    _AGENT_CACHE[agent.id] = agent
     return agent
 
 
@@ -219,94 +234,4 @@ def _preview(text: Optional[str]) -> Optional[str]:
         return None
     s = text.strip().replace("\r", " ").replace("\n", " ")
     return s[:MAX_PREVIEW_LEN]
-
-
-
-
-
-
-# async def agent_stream(agent_url: str, payload: Conversation, db: AsyncSession):
-#     """
-#     Stream chunks from an external agent service and persist the full conversation.
-#     Yields UTF-8-encoded JSON lines with either 'reasoning' or 'response' messages.
-#     """
-#     current_node: str | None = None
-#     reasoning_cells: List[Dict[str, str]] = []
-#     response_accum: str = ""
-    
-#     try:
-#         # Make the streaming request to the agent
-#         async with httpx.AsyncClient(timeout=None) as client:
-#             async with client.stream(
-#                 "POST",
-#                 agent_url,
-#                 headers={"Content-Type":"application/json"},
-#                 json={"user_input": payload.messages},
-#                 timeout=None
-#             ) as resp:
-                
-#                 # Iterate over each line of the agent’s streaming response
-#                 async for line in resp.aiter_lines():
-#                     if not line:
-#                         continue
-                    
-#                     try:
-#                         chunk = json.loads(line)
-#                         ctype = chunk.get('type')
-#                         content = chunk.get("content")
-                            
-#                         if ctype in ("reasoning", "reasoning_chunk"):
-#                             node = chunk.get("node", "unknown_node")
-                            
-#                             if node != current_node:
-#                                 reasoning_cells.append({
-#                                     "node": node,
-#                                     "chunks": ''
-#                                 })
-#                                 current_node = node
-                                
-#                             reasoning_cells[-1]["chunks"] = content
-                            
-#                             yield (json.dumps({
-#                                 "type": "reasoning",
-#                                 "node": node,
-#                                 "content": content
-#                             }) + "\n").encode("utf-8")
-                            
-#                         elif ctype in ("response", "response_chunk"):
-#                             response_accum += content
-                            
-#                             yield (json.dumps({
-#                                 "type": "response",
-#                                 "content": content
-#                             }) + "\n").encode("utf-8")
-                        
-#                     except Exception as ex:
-#                         raise HTTPException(500, ex)
-        
-#         # Once streaming is done, append the assistant message and save to DB
-#         assistant_message = {
-#             "role": "assistant",
-#             "content": response_accum,
-#             "reasoning": json.dumps(reasoning_cells)
-#         }
-        
-#         new_payload = Conversation(
-#             user_id=payload.user_id,
-#             conversation_id=payload.conversation_id,
-#             title=payload.title,
-#             messages=[*payload.messages,  assistant_message],
-#             agents=payload.agents
-#         )
-#         _ = await upsert_conversation(new_payload, db)
-        
-#     except httpx.HTTPError as exc:
-#         # Propagate HTTP errors as generic exceptions
-#         raise Exception(exc)
-#     finally:
-#         # Ensure resources are cleaned up
-#         await client.aclose()
-#         await db.close()
-
-
 
