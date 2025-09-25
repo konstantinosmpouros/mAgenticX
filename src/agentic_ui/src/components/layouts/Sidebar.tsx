@@ -138,22 +138,22 @@ export default function AppSidebar({
             )}
           />
         </div>
+        
+        <div className="flex w-full items-center gap-2 py-5">
+          <Button
+            variant="default"
+            className="mt-2 w-full justify-center gap-2 rounded-xl px-3 py-3 transition-colors group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
+            onClick={handleNewChatClick}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
+          </Button>
+        </div>
       </SidebarHeader>
 
-      
-      <div className="px-4 pb-4">
-        <Button
-          variant="default"
-          className="mt-2 w-full justify-center gap-2 rounded-xl px-3 py-3 transition-colors group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
-          onClick={handleNewChatClick}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
-        </Button>
-      </div>
-      
       <SidebarContent
         className="flex-1 px-4 pb-4 pt-0"
+        onScroll={!isCollapsed ? handleScroll : undefined}
       >
         {!isCollapsed && (
           <SidebarGroup className="flex h-full flex-col space-y-3 !p-0">
@@ -161,8 +161,7 @@ export default function AppSidebar({
               Chats
             </SidebarGroupLabel>
             <SidebarGroupContent
-              className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
-              onScroll={handleScroll}
+              className="min-h-0 flex-1 space-y-3"
             >
               {conversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-sidebar/40 py-10 text-center text-muted-foreground">
