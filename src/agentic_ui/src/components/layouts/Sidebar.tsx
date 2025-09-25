@@ -105,8 +105,14 @@ export default function AppSidebar({
       onMouseLeave={() => setIsSidebarHovered(false)}
     >
       <SidebarRail />
-      <SidebarHeader className="px-4 py-4">
-        <div className="flex w-full items-center gap-2">
+      <SidebarHeader
+        className={cn(
+          "py-4 transition-[padding] duration-200 ease-linear",
+          isCollapsed ? "px-2" : "px-4"
+        )}
+      >
+        {/* Title Icon */}
+        <div className="flex w-full items-center gap-2 transition-all duration-200 ease-linear">
           <div className="relative h-8 w-8">
             <button
               type="button"
@@ -139,14 +145,25 @@ export default function AppSidebar({
           />
         </div>
         
-        <div className="flex w-full items-center gap-2 py-5">
+        {/* New Chat Button */}
+        <div className="flex w-full items-center gap-2 py-5 transition-all duration-200 ease-linear">
           <Button
             variant="default"
-            className="mt-2 w-full justify-center gap-2 rounded-xl px-3 py-3 transition-colors group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
+            className={cn(
+              "mt-2 w-full items-center justify-center gap-2 rounded-xl px-3 py-3 transition-all duration-200 ease-linear overflow-hidden",
+              isCollapsed && "mt-0 h-8 w-10 self-start px-0 py-0 gap-0"
+            )}
             onClick={handleNewChatClick}
           >
-            <Plus className="h-4 w-4" />
-            <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
+            <Plus className="h-4 w-4 flex-shrink-0 transition-transform duration-200" />
+            <span
+              className={cn(
+                "truncate text-sm transition-all duration-200",
+                isCollapsed ? "ml-0 max-w-0 opacity-0" : "ml-1 max-w-[160px] opacity-100"
+              )}
+            >
+              New Chat
+            </span>
           </Button>
         </div>
       </SidebarHeader>
@@ -229,13 +246,26 @@ export default function AppSidebar({
             <Button
               variant="outline"
               size="lg"
-              className="h-12 w-full justify-start gap-3 rounded-xl px-3 transition-colors group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0"
+              className={cn(
+                "h-12 w-full items-center justify-start gap-3 rounded-xl px-3 transition-all duration-200 ease-linear overflow-hidden",
+                isCollapsed && "h-10 w-10 justify-center gap-0 px-0"
+              )}
               onClick={handleOpenProfile}
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
+              <div
+                className={cn(
+                  "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-200",
+                  isCollapsed && "h-8 w-8"
+                )}
+              >
                 <User className="h-4 w-4" />
               </div>
-              <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
+              <div
+                className={cn(
+                  "flex min-w-0 flex-col overflow-hidden transition-all duration-200",
+                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
+                )}
+              >
                 <span className="truncate text-sm font-medium text-foreground">john Doe</span>
               </div>
             </Button>
