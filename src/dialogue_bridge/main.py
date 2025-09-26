@@ -40,6 +40,7 @@ from utils import (
     validate_convId_full,
     validate_agentId,
     prime_agent_cache,
+    get_cached_agents,
     init_conv,
     init_message,
     _preview,
@@ -94,22 +95,6 @@ async def authenticate(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
 
 
 #-----------------------------------------------------------------------------------
-# AGENTS APIS
-#-----------------------------------------------------------------------------------
-@app.get("/agents", response_model=List[AgentPublic], status_code=status.HTTP_200_OK)
-async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
-    """
-    Fetch active agents from the database.
-    """
-    result = await db.execute(
-        select(AgentTable).where(AgentTable.is_active == True)
-    )
-    agents = result.scalars().all()
-    return [AgentPublic.model_validate(a) for a in agents]
-
-
-
-#-----------------------------------------------------------------------------------
 # CREATE APIS
 #-----------------------------------------------------------------------------------
 @app.post(
@@ -160,6 +145,22 @@ async def createConversation(
 #-----------------------------------------------------------------------------------
 # READ APIS
 #-----------------------------------------------------------------------------------
+@app.get("/agents", response_model=List[AgentPublic], status_code=status.HTTP_200_OK)
+async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
+    """
+    Fetch active agents from the cache, falling back to the database if needed.
+    """
+    agents = get_cached_agents()
+    if not agents:
+        result = await db.execute(
+            select(AgentTable).where(AgentTable.is_active == True)
+        )
+        agents = list(result.scalars().all())
+        if agents:
+            prime_agent_cache(agents)
+    return [AgentPublic.model_validate(a) for a in agents]
+
+
 @app.get(
     "/users/{user_id}/conversations",
     response_model=Page[ConversationSummary],
@@ -417,11 +418,6 @@ async def addMessageToConversation(
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
-
-#-----------------------------------------------------------------------------------
-# INFERENCE STREAM (SSE PROXY)
-#-----------------------------------------------------------------------------------
-
 @app.post(
     "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/like",
     response_model=MessageOut,
@@ -448,7 +444,7 @@ async def likeMessage(
     msg = res.scalar_one_or_none()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found.")
-
+    
     # Toggle semantics: clicking like again clears the reaction
     msg.liked = None if msg.liked is True else True
     await db.commit()
@@ -481,13 +477,38 @@ async def dislikeMessage(
     msg = res.scalar_one_or_none()
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found.")
-
+    
     # Toggle semantics: clicking dislike again clears the reaction
     msg.liked = None if msg.liked is False else False
     await db.commit()
     await db.refresh(msg)
     return MessageOut.model_validate(msg)
 
+
+
+#-----------------------------------------------------------------------------------
+# DELETE CONVERSATION APIS
+#-----------------------------------------------------------------------------------
+@app.delete(
+    "/users/{user_id}/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def deleteConversation(
+    user_id: str,
+    conversation_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a conversation entirely (cascades to messages & attachments rows)."""
+    await db.delete(current_conv)
+    await db.commit()
+    return
+
+
+
+#-----------------------------------------------------------------------------------
+# INFERENCE STREAM (SSE PROXY)
 #-----------------------------------------------------------------------------------
 @app.post(
     "/users/{user_id}/conversations/{conversation_id}/inference/stream",
@@ -556,28 +577,6 @@ async def startInferenceStream(
         "X-Accel-Buffering": "no",
     }
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
-
-
-
-#-----------------------------------------------------------------------------------
-# DELETE CONVERSATION APIS
-#-----------------------------------------------------------------------------------
-@app.delete(
-    "/users/{user_id}/conversations/{conversation_id}",
-    status_code=status.HTTP_204_NO_CONTENT
-)
-async def deleteConversation(
-    user_id: str,
-    conversation_id: str,
-    current_user: UserTable = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId),
-    db: AsyncSession = Depends(get_db)
-):
-    """Delete a conversation entirely (cascades to messages & attachments rows)."""
-    await db.delete(current_conv)
-    await db.commit()
-    return
-
 
 
 

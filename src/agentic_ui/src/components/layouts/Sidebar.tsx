@@ -255,7 +255,7 @@ export default function AppSidebar({
               variant="outline"
               size="lg"
               className={cn(
-                "h-12 w-full items-center justify-start gap-3 rounded-xl px-3 transition-all duration-200 ease-linear overflow-hidden",
+                "h-12 w-full items-center justify-start gap-3 rounded-xl px-3 transition-all duration-200 ease-linear overflow-hidden bg-background-transparent border border-transparent",
                 isCollapsed && "h-10 w-10 justify-center gap-0 px-0"
               )}
               onClick={handleOpenProfile}

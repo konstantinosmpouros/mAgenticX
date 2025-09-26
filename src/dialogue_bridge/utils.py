@@ -36,6 +36,29 @@ def prime_agent_cache(agents: Iterable[AgentTable]) -> None:
     _AGENT_CACHE = {agent.id: agent for agent in agents if getattr(agent, 'is_active', True)}
 
 
+def get_cached_agents() -> List[AgentTable]:
+    """Return cached active agents; empty list if cache not yet primed."""
+    return list(_AGENT_CACHE.values())
+
+
+async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
+    agent = _AGENT_CACHE.get(agent_id)
+    if agent is not None:
+        return agent
+
+    q = select(AgentTable).where(
+        AgentTable.id == agent_id,
+        AgentTable.is_active == True
+    )
+    res = await db.execute(q)
+    agent = res.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=400, detail="Unknown or inactive agent.")
+
+    _AGENT_CACHE[agent.id] = agent
+    return agent
+
+
 async def validate_userId(user_id: str, db: AsyncSession = Depends(get_db)) -> UserTable:
     """Generic authenticator by user id"""
     result = await db.execute(
@@ -78,24 +101,6 @@ async def validate_convId_full(user_id: str, conversation_id: str, db: AsyncSess
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return conv
-
-
-async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
-    agent = _AGENT_CACHE.get(agent_id)
-    if agent is not None:
-        return agent
-
-    q = select(AgentTable).where(
-        AgentTable.id == agent_id,
-        AgentTable.is_active == True
-    )
-    res = await db.execute(q)
-    agent = res.scalar_one_or_none()
-    if not agent:
-        raise HTTPException(status_code=400, detail="Unknown or inactive agent.")
-
-    _AGENT_CACHE[agent.id] = agent
-    return agent
 
 
 async def init_conv(db: AsyncSession, user: UserTable, agent: AgentTable, is_private: bool, title: Optional[str], first_message: MessageIn) -> ConversationTable:

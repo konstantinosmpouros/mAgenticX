@@ -24,9 +24,10 @@
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Make all the agents support images pls
 - Create a deep research agent with deep agents and make it available
+- Replace tools with mcp
 
 ## Dialogue Bridge
 
-- Enrich the user table with more info cause the sidebar and the user panel is closer. Give a variable if he want the agentic chat of openai chat.
+#TODO Enrich the user table with more info about the user. In the lifespan user seed add these info too and update the authentication to return the user object with info and the ui. Give a boolean variable if he want the agentic chat of openai chat (preferences).
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document
