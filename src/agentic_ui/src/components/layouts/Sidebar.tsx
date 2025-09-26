@@ -1,7 +1,7 @@
 import * as React from "react";
-import { MessageSquare, X, Loader2, Building2, Plus, User } from "lucide-react";
+import { MessageSquare, X, Loader2, Building2, Plus } from "lucide-react";
 
-import type { Agent, ConversationSummary } from "@/lib/types";
+import type { Agent, ConversationSummary, UserProfile } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -34,6 +34,7 @@ type AppSidebarProps = {
   onNewChat: () => void;
   onOpenUserProfile: () => void;
   agents: Agent[];
+  userProfile: UserProfile | null;
 };
 
 export default function AppSidebar({
@@ -48,11 +49,16 @@ export default function AppSidebar({
   onNewChat,
   onOpenUserProfile,
   agents,
+  userProfile,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isSidebarHovered, setIsSidebarHovered] = React.useState(false);
   const showSwap = isCollapsed && isSidebarHovered;
+  const profileName = userProfile?.displayName || userProfile?.fullName || userProfile?.username || "Profile";
+  const profileInitial = profileName.charAt(0).toUpperCase();
+  const profileEmail = userProfile?.email || "Open profile";
+  const avatarUrl = userProfile?.avatarUrl || null;
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -262,11 +268,15 @@ export default function AppSidebar({
             >
               <div
                 className={cn(
-                  "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-200",
+                  "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-200 overflow-hidden",
                   isCollapsed && "h-8 w-8"
                 )}
               >
-                <User className="h-4 w-4" />
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-sm font-semibold">{profileInitial}</span>
+                )}
               </div>
               <div
                 className={cn(
@@ -274,16 +284,20 @@ export default function AppSidebar({
                   isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
                 )}
               >
-                <span className="truncate text-sm font-medium text-foreground">john Doe</span>
+                <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
+                <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
               </div>
             </Button>
           </TooltipTrigger>
           <TooltipContent
             side="top"
             align="center"
-            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-3 py-2 rounded-md"
           >
-            <p>Profile</p>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold">{profileName}</span>
+              <span className="text-xs text-muted-foreground">{profileEmail}</span>
+            </div>
           </TooltipContent>
         </Tooltip>
       </SidebarFooter>

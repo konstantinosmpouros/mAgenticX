@@ -29,7 +29,18 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
   if (!res.ok) {
     throw new Error(`Failed to authenticate: ${res.status}`);
   }
-  return await res.json() as AuthResponse;
+  const data = await res.json();
+  if (data && typeof data === "object" && data.user) {
+    const user = data.user as any;
+    data.user = {
+      ...user,
+      prefersAgenticChat: Boolean(user.prefersAgenticChat),
+      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+      updatedAt: user.updatedAt ? new Date(user.updatedAt) : new Date(),
+      lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : undefined,
+    };
+  }
+  return data as AuthResponse;
 }
 
 // Fetch agents from backend via nginx proxy

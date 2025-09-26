@@ -9,9 +9,26 @@ export type AuthRequest = {
     password: string;
 };
 
+export type UserProfile = {
+    id: string;
+    username: string;
+    email?: string;
+    displayName?: string;
+    fullName?: string;
+    avatarUrl?: string;
+    department?: string;
+    roleTitle?: string;
+    prefersAgenticChat: boolean;
+    lastLoginAt?: Date;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+};
+
 export type AuthResponse = {
     authenticated: boolean;
     user_id?: string;
+    user?: UserProfile;
 };
 
 

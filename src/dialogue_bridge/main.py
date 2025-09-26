@@ -87,7 +87,10 @@ async def authenticate(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
         )
         user = res.scalar_one_or_none()
         if user:
-            return AuthResponse(authenticated=True, user_id=user.id)
+            user.last_login_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(user)
+            return AuthResponse(authenticated=True, user_id=user.id, user=user)
         return AuthResponse()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

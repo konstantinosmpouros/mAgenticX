@@ -28,6 +28,5 @@
 
 ## Dialogue Bridge
 
-#TODO Enrich the user table with more info about the user. In the lifespan user seed add these info too and update the authentication to return the user object with info and the ui. Give a boolean variable if he want the agentic chat of openai chat (preferences).
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document

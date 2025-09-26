@@ -1,3 +1,4 @@
+import type { UserProfile } from '@/lib/types';
 import { authenticate, getAgents, getConversations } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession } from '@/lib/authStorage';
@@ -5,6 +6,8 @@ import { saveSession, clearSession } from '@/lib/authStorage';
 type AuthCtx = {
   setIsLoggedIn: (v: boolean) => void;
   setUserId: (v: string | null) => void;
+  setUserProfile: (v: UserProfile | null) => void;
+  setPrefersAgenticChat: (v: boolean) => void;
   setAgents: (v: any) => void;
   setConversations: (v: any) => void;
   setLoginUsername: (v: string) => void;
@@ -15,20 +18,23 @@ type AuthCtx = {
 };
 
 export function createAuthHandlers(ctx: AuthCtx) {
-  const { setIsLoggedIn, setUserId, setAgents, setConversations, setLoginUsername, setLoginPassword, toast, loginUsername, loginPassword } = ctx;
+  const { setIsLoggedIn, setUserId, setUserProfile, setPrefersAgenticChat, setAgents, setConversations, setLoginUsername, setLoginPassword, toast, loginUsername, loginPassword } = ctx;
 
   const handleLogin = async () => {
     try {
       const response = await authenticate({ username: loginUsername.trim(), password: loginPassword.trim() });
 
-      if (response.authenticated && response.user_id) {
+      if (response.authenticated && response.user && response.user.id) {
+        const user = response.user;
         setTimeout(async () => {
           setIsLoggedIn(true);
-          setUserId(response.user_id!);
+          setUserProfile(user);
+          setPrefersAgenticChat(Boolean(user.prefersAgenticChat));
+          setUserId(user.id);
           // Persist session with 1 hour TTL
-          saveSession(response.user_id!, 60 * 60 * 1000);
+          saveSession(user, 60 * 60 * 1000);
           try {
-            const [agentsList, conversationsList] = await Promise.all([getAgents(), getConversations(response.user_id!)]);
+            const [agentsList, conversationsList] = await Promise.all([getAgents(), getConversations(user.id)]);
             setAgents(agentsList);
             setConversations(sortByUpdatedAtDesc(conversationsList));
           } catch (e) {
@@ -50,6 +56,8 @@ export function createAuthHandlers(ctx: AuthCtx) {
 
   const handleLogoutLocal = () => {
     clearSession();
+    setUserProfile(null);
+    setPrefersAgenticChat(true);
   };
 
   return { handleLogin, handleLogoutLocal };

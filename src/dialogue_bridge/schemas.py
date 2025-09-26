@@ -15,10 +15,29 @@ class AuthRequest(BaseModel):
     username: str
     password: str
 
+class UserProfile(BaseModel):
+    """Public user profile returned to the client after authentication."""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: str
+    username: str
+    email: Optional[str] = None
+    displayName: Optional[str] = Field(None, validation_alias="display_name")
+    fullName: Optional[str] = Field(None, validation_alias="full_name")
+    avatarUrl: Optional[str] = Field(None, validation_alias="avatar_url")
+    department: Optional[str] = None
+    roleTitle: Optional[str] = Field(None, validation_alias="role_title")
+    prefersAgenticChat: bool = Field(False, validation_alias="prefers_agentic_chat")
+    lastLoginAt: Optional[datetime] = Field(None, validation_alias="last_login_at")
+    isActive: bool = Field(..., validation_alias="is_active")
+    createdAt: datetime = Field(..., validation_alias="created_at")
+    updatedAt: datetime = Field(..., validation_alias="updated_at")
+
 class AuthResponse(BaseModel):
     """Schema for user authentication response."""
     authenticated: bool = False
     user_id: str | None = None
+    user: UserProfile | None = None
 
 
 

@@ -8,7 +8,7 @@ import { FaStop } from "react-icons/fa6";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary } from "@/lib/types";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, UserProfile } from "@/lib/types";
 
 // Handlers (modularized)
 import { 
@@ -29,7 +29,7 @@ import {
   createStickyUserBarHandlers,
   createFeedbackHandlers
 } from "@/components/handlers";
-import { loadSession, isSessionValid } from "@/lib/authStorage";
+import { loadSession, isSessionValid, updateSession } from "@/lib/authStorage";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -44,7 +44,9 @@ import { InputContainer } from "@/components/layouts/InputContainer";
 export function ChatInterface() {
   // Initial session check
   const initialSession = typeof window !== 'undefined' ? loadSession() : null;
-  const initialUserId = isSessionValid(initialSession) ? initialSession!.userId : null;
+  const hasValidSession = isSessionValid(initialSession);
+  const initialUserId = hasValidSession ? initialSession!.userId : null;
+  const initialUserProfile = hasValidSession ? initialSession!.user ?? null : null;
   const initialLoggedIn = Boolean(initialUserId);
   
   // Main state variables
@@ -68,6 +70,9 @@ export function ChatInterface() {
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
   
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(initialUserProfile);
+  const [prefersAgenticChat, setPrefersAgenticChat] = useState<boolean>(initialUserProfile?.prefersAgenticChat ?? true);
+
   // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
   const [userId, setUserId] = useState<string | null>(initialUserId);
@@ -137,7 +142,7 @@ export function ChatInterface() {
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
-  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
+  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setUserProfile, setPrefersAgenticChat, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
   useUIPersistEffect({
     userId,
@@ -237,6 +242,8 @@ export function ChatInterface() {
   const { handleLogin, handleLogoutLocal } = createAuthHandlers({
     setIsLoggedIn,
     setUserId,
+    setUserProfile,
+    setPrefersAgenticChat,
     setAgents,
     setConversations,
     setLoginUsername,
@@ -252,6 +259,17 @@ export function ChatInterface() {
     currentConversation,
     setConversationMessages,
   });
+  
+  const handlePreferenceChange = (value: boolean) => {
+    setPrefersAgenticChat(value);
+    setUserProfile(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, prefersAgenticChat: value };
+      updateSession({ user: updated });
+      return updated;
+    });
+  };
+
 
   // Inference handler (send message)
   const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
@@ -305,6 +323,7 @@ export function ChatInterface() {
         onNewChat={handleNewChat}
         onOpenUserProfile={() => setShowUserProfile(true)}
         agents={agents}
+        userProfile={userProfile}
         isLoadingMore={convIsLoadingMore}
         hasMore={convHasMore}
       />
@@ -406,6 +425,8 @@ export function ChatInterface() {
                   handleLogoutLocal();
                   setIsLoggedIn(false);
                   setUserId(null);
+                  setUserProfile(null);
+                  setPrefersAgenticChat(true);
                   setLoginUsername("");
                   setLoginPassword("");
                   setAgents([]);
@@ -443,3 +464,4 @@ export function ChatInterface() {
     </SidebarProvider>
   );
 }
+
