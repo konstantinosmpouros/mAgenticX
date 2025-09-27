@@ -222,7 +222,15 @@ async def downloadBlobStream(
     """
     # Validate ownership and get data + metadata
     result = await db.execute(
-        select(BlobTable.data, AttachmentTable.mime_type, AttachmentTable.file_name)
+        select(
+            AttachmentTable.mime_type,
+            AttachmentTable.file_name,
+            func.coalesce(
+                AttachmentTable.size_bytes,
+                func.octet_length(BlobTable.data)
+            ).label("blob_size"),
+        )
+        .select_from(BlobTable)
         .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
         .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
         .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
@@ -235,18 +243,19 @@ async def downloadBlobStream(
             ConversationTable.user_id == user_id,
         )
     )
-    row = result.one_or_none()
+    row = result.mappings().one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Blob not found or not accessible.")
 
-    data: bytes = row.data
-    mime: str | None = row.mime_type
-    file_name: str | None = row.file_name
+    mime: str | None = row["mime_type"]
+    file_name: str | None = row["file_name"]
+    file_size: int | None = row["blob_size"]
 
     if mime and mime.startswith("image/"):
         raise HTTPException(status_code=400, detail="Images are not served by this endpoint.")
 
-    file_size = len(data)
+    if file_size is None:
+        raise HTTPException(status_code=500, detail="Unable to determine blob size.")
 
     def encode_disposition(name: str | None) -> str:
         name = name or "download"
@@ -262,16 +271,36 @@ async def downloadBlobStream(
         "Content-Disposition": encode_disposition(file_name),
     }
 
+    CHUNK = 1024 * 512
+
+    async def stream_range(start: int, end: int):
+        pos = start
+        while pos <= end:
+            length = min(CHUNK, end - pos + 1)
+            chunk_result = await db.execute(
+                select(func.substring(BlobTable.data, pos + 1, length))
+                .select_from(BlobTable)
+                .where(BlobTable.id == blob_id)
+            )
+            chunk = chunk_result.scalar_one_or_none()
+            if not chunk:
+                break
+            if isinstance(chunk, memoryview):
+                chunk = chunk.tobytes()
+            else:
+                chunk = bytes(chunk)
+            yield chunk
+            pos += len(chunk)
+
     # Full content
     if not range_header:
-        def iter_full():
-            CHUNK = 1024 * 1024
-            for i in range(0, file_size, CHUNK):
-                yield data[i:i + CHUNK]
-
         headers = dict(base_headers)
         headers["Content-Length"] = str(file_size)
-        return StreamingResponse(iter_full(), media_type=mime or "application/octet-stream", headers=headers)
+        return StreamingResponse(
+            stream_range(0, file_size - 1),
+            media_type=mime or "application/octet-stream",
+            headers=headers,
+        )
 
     # Parse Range: bytes=start-end
     try:
@@ -293,15 +322,8 @@ async def downloadBlobStream(
         "Content-Length": str(content_length),
     })
 
-    def iter_range():
-        CHUNK = 1024 * 1024
-        i = start
-        while i <= end:
-            yield data[i:min(i + CHUNK, end + 1)]
-            i += CHUNK
-
     return StreamingResponse(
-        iter_range(),
+        stream_range(start, end),
         status_code=206,
         media_type=mime or "application/octet-stream",
         headers=headers,

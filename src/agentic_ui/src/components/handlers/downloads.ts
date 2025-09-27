@@ -27,13 +27,11 @@ export function createDownloadHandlers(ctx: DownloadsCtx) {
     }
 
     try {
-      toast({ title: 'Downloading file...', description: `Starting download of ${attachment.name}`, duration: 2000 });
+      toast({ title: 'Download starting', description: `Preparing ${attachment.name}`, duration: 2000 });
 
       const url = `/api/users/${userId}/conversations/${currentConversation.id}/messages/${message.id}/blobs/${attachment.blobId}`;
       // Let the browser handle streaming + progress natively
       triggerDirectDownload(url, attachment.name);
-
-      toast({ title: 'Download complete', description: `${attachment.name} has been downloaded`, duration: 2000 });
     } catch (error) {
       console.error('Download failed:', error);
       toast({ title: 'Download failed', description: 'Unable to download the file. Please try again.', variant: 'destructive', duration: 3000 });
