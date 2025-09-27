@@ -55,9 +55,11 @@ export default function AppSidebar({
   const isCollapsed = state === "collapsed";
   const [isSidebarHovered, setIsSidebarHovered] = React.useState(false);
   const showSwap = isCollapsed && isSidebarHovered;
-  const profileName = userProfile?.displayName || userProfile?.fullName || userProfile?.username || "Profile";
-  const profileInitial = profileName.charAt(0).toUpperCase();
-  const profileEmail = userProfile?.email || "Open profile";
+  const rawProfileName =
+    userProfile?.displayName ?? userProfile?.fullName ?? userProfile?.username ?? "";
+  const profileName = rawProfileName.trim() || "Profile";
+  const profileInitial = profileName.charAt(0).toUpperCase() || "P";
+  const profileEmail = (userProfile?.email ?? "Open profile").trim();
   const avatarUrl = userProfile?.avatarUrl || null;
 
   const handleConversationSelect = React.useCallback(
@@ -106,7 +108,7 @@ export default function AppSidebar({
   return (
     <SidebarRoot
       collapsible="icon"
-      className="border-r border-border bg-gradient-card"
+      className="border-r border-border"
       onMouseEnter={() => setIsSidebarHovered(true)}
       onMouseLeave={() => setIsSidebarHovered(false)}
     >
@@ -254,7 +256,7 @@ export default function AppSidebar({
         )}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border px-4 py-4">
+      <SidebarFooter className="px-4 py-4">
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
             <Button
@@ -280,7 +282,7 @@ export default function AppSidebar({
               </div>
               <div
                 className={cn(
-                  "flex min-w-0 flex-col overflow-hidden transition-all duration-200",
+                  "flex min-w-0 flex-col items-start overflow-hidden text-left transition-all duration-200",
                   isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
                 )}
               >
@@ -294,7 +296,7 @@ export default function AppSidebar({
             align="center"
             className="!opacity-100 bg-background text-foreground border border-border shadow-card px-3 py-2 rounded-md"
           >
-            <div className="flex flex-col">
+            <div className="flex flex-col text-left">
               <span className="text-sm font-semibold">{profileName}</span>
               <span className="text-xs text-muted-foreground">{profileEmail}</span>
             </div>

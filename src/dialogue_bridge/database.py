@@ -227,8 +227,7 @@ async def seed_users(session: AsyncSession) -> None:
     username = os.getenv("username") or "agentic_user"
     password = os.getenv("password") or "agentic_password"
     
-    display_name = os.getenv("display_name", username)
-    display_name = display_name.replace("_", " ")
+    display_name = os.getenv("display_name", username).replace("_", " ")
     full_name = os.getenv("USER_FULL_NAME", display_name)
     
     email = os.getenv("email", None)
@@ -237,7 +236,7 @@ async def seed_users(session: AsyncSession) -> None:
     
     avatar_url = os.getenv("avatar_url", None)
     department = os.getenv("department")
-    role_title = os.getenv("role_title")
+    role_title = os.getenv("role_title").replace("_", " ")
     prefers_agentic_chat = os.getenv("prefers_agentic_chat", False)
     
     default_user = {
