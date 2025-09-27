@@ -7,18 +7,19 @@ type AuthCtx = {
   setIsLoggedIn: (v: boolean) => void;
   setUserId: (v: string | null) => void;
   setUserProfile: (v: UserProfile | null) => void;
-  setPrefersAgenticChat: (v: boolean) => void;
   setAgents: (v: any) => void;
   setConversations: (v: any) => void;
   setLoginUsername: (v: string) => void;
   setLoginPassword: (v: string) => void;
+  setShowUserProfile: (v: boolean) => void;
+  clearChatAndStopThinking: () => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   loginUsername: string;
   loginPassword: string;
 };
 
 export function createAuthHandlers(ctx: AuthCtx) {
-  const { setIsLoggedIn, setUserId, setUserProfile, setPrefersAgenticChat, setAgents, setConversations, setLoginUsername, setLoginPassword, toast, loginUsername, loginPassword } = ctx;
+  const { setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setLoginUsername, setLoginPassword, setShowUserProfile, clearChatAndStopThinking, toast, loginUsername, loginPassword } = ctx;
 
   const handleLogin = async () => {
     try {
@@ -29,7 +30,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
         setTimeout(async () => {
           setIsLoggedIn(true);
           setUserProfile(user);
-          setPrefersAgenticChat(Boolean(user.prefersAgenticChat));
           setUserId(user.id);
           // Persist session with 1 hour TTL
           saveSession(user, 60 * 60 * 1000);
@@ -57,8 +57,21 @@ export function createAuthHandlers(ctx: AuthCtx) {
   const handleLogoutLocal = () => {
     clearSession();
     setUserProfile(null);
-    setPrefersAgenticChat(true);
   };
 
-  return { handleLogin, handleLogoutLocal };
+  const handleLogout = () => {
+    setShowUserProfile(false);
+    setTimeout(() => {
+      handleLogoutLocal();
+      setIsLoggedIn(false);
+      setUserId(null);
+      setLoginUsername("");
+      setLoginPassword("");
+      setAgents([]);
+      setConversations([]);
+      clearChatAndStopThinking();
+    }, 300);
+  };
+
+  return { handleLogin, handleLogout };
 }

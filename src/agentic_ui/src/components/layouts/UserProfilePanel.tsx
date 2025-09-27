@@ -4,6 +4,7 @@ import { User, Edit, Settings, Palette, HelpCircle, LogOut, ChevronRight, Chevro
 import { useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils"
+import { UserProfile } from "@/lib/types";
 
 type Props = {
     open: boolean;
@@ -11,6 +12,7 @@ type Props = {
     activeTab: string;
     setActiveTab: (tabId: string) => void;
     onLogout: () => void;
+    user: UserProfile | null;
 };
 
 export default function UserProfilePanel({
@@ -19,11 +21,56 @@ export default function UserProfilePanel({
     activeTab,
     setActiveTab,
     onLogout,
+    user,
 }: Props) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
     const { theme, setTheme } = useTheme();
     
     if (!open) return null;
+    
+    const NA = "—";
+    
+    const safeText = (v?: string | null) =>
+        v && String(v).trim().length > 0 ? String(v).trim() : NA;
+    
+    // tolerate Date or ISO string
+    const fmtDateTime = (v?: Date | string | null) => {
+        if (!v) return NA;
+        const d = typeof v === "string" ? new Date(v) : v;
+        return isNaN(d.getTime()) ? NA : d.toLocaleString();
+    };
+    
+    const fmtBoolean = (b?: boolean) => (typeof b === "boolean" ? (b ? "Yes" : "No") : NA);
+    
+    // ---------- display fields ----------
+    const displayName =
+        safeText(user?.displayName) !== NA
+        ? safeText(user?.displayName)
+        : safeText(user?.fullName) !== NA
+        ? safeText(user?.fullName)
+        : safeText(user?.username);
+    
+    const displayEmail = safeText(user?.email);
+    const displayDepartment = safeText(user?.department);
+    const displayRole = safeText(user?.roleTitle);
+
+    const displayLastLogin = fmtDateTime(user?.lastLoginAt);
+    const displayCreatedAt = fmtDateTime(user?.createdAt);
+    const displayUpdatedAt = fmtDateTime(user?.updatedAt);
+
+    const displayIsActive = fmtBoolean(user?.isActive);
+    const displayPrefersAgentic = fmtBoolean(user?.prefersAgenticChat);
+
+    // Optional: initials if no avatar
+    const initials =
+        displayName !== NA
+        ? displayName
+            .split(" ")
+            .map((p) => p[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase()
+        : "";
 
     return (
         // Use dark token scope to improve contrast and reduce light/pink glare
@@ -165,6 +212,7 @@ export default function UserProfilePanel({
                     <div className="flex-1 p-10 overflow-y-auto bg-gradient-to-br from-background/98 to-secondary/5 relative">
                         <ScrollArea className="h-full w-full">
                             <div className="pr-6">
+                                
                                 {activeTab === "profile" && (
                                     <div className="space-y-8 animate-fade-in">
                                         {/* Profile Header */}
@@ -182,21 +230,27 @@ export default function UserProfilePanel({
                                                 </Button>
                                             </div>
                                             <div>
-                                                <h3 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">John Doe</h3>
-                                                <p className="text-muted-foreground text-lg">john.doe@company.com</p>
-                                                <p className="text-sm text-muted-foreground mt-2 px-3 py-1 bg-primary/10 rounded-full inline-block">Senior HR Manager</p>
+                                                <h3 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">{displayName}</h3>
+                                                <p className="text-muted-foreground text-lg">{displayEmail}</p>
+                                                <p className="text-sm text-muted-foreground mt-2 px-3 py-1 bg-primary/10 rounded-full inline-block">{displayRole}</p>
                                             </div>
                                         </div>
-
+                                        
                                         {/* Profile Information */}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             {[
-                                                { label: "Full Name", value: "John Doe" },
-                                                { label: "Email", value: "john.doe@company.com" },
-                                                { label: "Department", value: "Human Resources" },
-                                                { label: "Role", value: "Senior HR Manager" },
-                                                { label: "Member Since", value: "January 2023" },
-                                                { label: "Last Login", value: "Today, 2:30 PM" },
+                                                { label: "Full Name", value: safeText(user?.fullName) },
+                                                { label: "Display Name", value: safeText(user?.displayName) },
+                                                { label: "Username", value: safeText(user?.username) },
+                                                { label: "Email", value: displayEmail },
+                                                { label: "Department", value: displayDepartment },
+                                                { label: "Role Title", value: displayRole },
+                                                { label: "Last Login", value: displayLastLogin },
+                                                { label: "Created At", value: displayCreatedAt },
+                                                { label: "Updated At", value: displayUpdatedAt },
+                                                { label: "Active Account", value: displayIsActive },
+                                                { label: "Prefers Agentic Chat", value: displayPrefersAgentic },
+                                                { label: "User ID", value: safeText(user?.id) },
                                             ].map((field) => (
                                                 <div
                                                     key={field.label}

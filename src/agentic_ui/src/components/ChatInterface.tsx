@@ -29,7 +29,7 @@ import {
   createStickyUserBarHandlers,
   createFeedbackHandlers
 } from "@/components/handlers";
-import { loadSession, isSessionValid, updateSession } from "@/lib/authStorage";
+import { loadSession, isSessionValid } from "@/lib/authStorage";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -71,7 +71,6 @@ export function ChatInterface() {
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
   
   const [userProfile, setUserProfile] = useState<UserProfile | null>(initialUserProfile);
-  const [prefersAgenticChat, setPrefersAgenticChat] = useState<boolean>(initialUserProfile?.prefersAgenticChat ?? true);
 
   // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
@@ -142,7 +141,7 @@ export function ChatInterface() {
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
-  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setUserProfile, setPrefersAgenticChat, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
+  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
   useUIPersistEffect({
     userId,
@@ -239,15 +238,16 @@ export function ChatInterface() {
   };
   
   // Auth handler
-  const { handleLogin, handleLogoutLocal } = createAuthHandlers({
+  const { handleLogin, handleLogout } = createAuthHandlers({
     setIsLoggedIn,
     setUserId,
     setUserProfile,
-    setPrefersAgenticChat,
     setAgents,
     setConversations,
     setLoginUsername,
     setLoginPassword,
+    setShowUserProfile,
+    clearChatAndStopThinking,
     toast: toastWrapper,
     loginUsername,
     loginPassword,
@@ -259,17 +259,6 @@ export function ChatInterface() {
     currentConversation,
     setConversationMessages,
   });
-  
-  const handlePreferenceChange = (value: boolean) => {
-    setPrefersAgenticChat(value);
-    setUserProfile(prev => {
-      if (!prev) return prev;
-      const updated = { ...prev, prefersAgenticChat: value };
-      updateSession({ user: updated });
-      return updated;
-    });
-  };
-
 
   // Inference handler (send message)
   const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
@@ -419,21 +408,8 @@ export function ChatInterface() {
               onClose={() => setShowUserProfile(false)}
               activeTab={activeProfileTab}
               setActiveTab={setActiveProfileTab}
-              onLogout={() => {
-                setShowUserProfile(false);
-                setTimeout(() => {
-                  handleLogoutLocal();
-                  setIsLoggedIn(false);
-                  setUserId(null);
-                  setUserProfile(null);
-                  setPrefersAgenticChat(true);
-                  setLoginUsername("");
-                  setLoginPassword("");
-                  setAgents([]);
-                  setConversations([]);
-                  clearChatAndStopThinking();
-                }, 300);
-              }}
+              onLogout={handleLogout}
+              user={userProfile}
             />
 
             {/* Image Preview Modal */}
