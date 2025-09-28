@@ -438,7 +438,6 @@ async def addMessageToConversation(
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
-# TODO: Optimize the validation for these apis, like & dislike.
 @app.post(
     "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/like",
     response_model=MessageOut,

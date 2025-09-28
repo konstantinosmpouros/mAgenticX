@@ -19,7 +19,6 @@ type ToastFn = (opts: { title: string; description?: string; variant?: string; d
 export type AguiStreamOptions = {
   userId: string;
   conversationId: string;
-  history: { role: string; content: string }[];
   setMessages: MessageSetter;
   setThinkingState: ThinkingSetter;
   setCurrentConversation: (updater: any) => void;
@@ -33,7 +32,6 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   const {
     userId,
     conversationId,
-    history,
     setMessages,
     setThinkingState,
     setCurrentConversation,
@@ -219,7 +217,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   };
   
   try {
-    await streamInference(userId, conversationId, history, onEvent, signal);
+    await streamInference(userId, conversationId, onEvent, signal);
   } catch (err) {
     const name = (err as any)?.name;
     if (name === 'AbortError') {

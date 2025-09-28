@@ -295,21 +295,18 @@ export async function downloadAttachment(userId: string, conversationId: string,
   return await res.blob();
 }
 
-// Start streaming inference: send full conversation (role/content only) to the bridge
+// Start streaming inference by requesting the bridge SSE endpoint
 export async function streamInference(
   userId: string,
   conversationId: string,
-  history: { role: string; content: string }[],
   onEvent: (e: AGUIEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
     },
-    body: JSON.stringify({ user_input: history }),
     signal,
   });
   if (!res.ok || !res.body) {

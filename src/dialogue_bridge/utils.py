@@ -104,10 +104,6 @@ async def validate_convId_full(user_id: str, conversation_id: str, db: AsyncSess
 
 
 async def init_conv(db: AsyncSession, user: UserTable, agent: AgentTable, is_private: bool, title: Optional[str], first_message: MessageIn) -> ConversationTable:
-    # # Generate title if missing
-    # if not title:
-    #     title = await generate_title(first_message)
-    
     # Create conversation shell
     conv = ConversationTable(
         user_id=user.id,
@@ -151,6 +147,7 @@ async def init_message(db: AsyncSession, conv: ConversationTable, payload: Messa
 
 
 async def init_attachments(db: AsyncSession, message_id: str, items: List[AttachmentIn]) -> None:
+    # Create attachment rows with blobs
     for item in items:
         try:
             raw = base64.b64decode(item.dataB64, validate=True)

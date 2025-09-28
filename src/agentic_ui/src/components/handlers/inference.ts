@@ -133,19 +133,12 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
         if (setShowAiTransition) setShowAiTransition(true);
         
-        // Build full chat history for the agent (role/content only)
-        const history = (response.detail.messages || []).map((m) => ({
-          role: m.sender === 'user' ? 'user' : 'ai',
-          content: m.content || ''
-        }));
-        
         // Start streaming inference
         if (streamAbortRef.current) streamAbortRef.current.abort();
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: response.detail.id,
-          history,
           setMessages,
           setThinkingState,
           setCurrentConversation,
@@ -178,19 +171,11 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         // Update sidebar summary and keep ordering
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
         if (setShowAiTransition) setShowAiTransition(true);
-        // Build full chat history from current messages + new API message
-        const base = messages.filter(m => !String(m.id).startsWith('temp-'));
-        const historyMessages: MessageOut[] = [...base, response.message];
-        const history = historyMessages.map((m) => ({
-          role: m.sender === 'user' ? 'user' : 'ai',
-          content: m.content || ''
-        }));
         if (streamAbortRef.current) streamAbortRef.current.abort();
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: currentConversation!.id,
-          history,
           setMessages,
           setThinkingState,
           setCurrentConversation,
