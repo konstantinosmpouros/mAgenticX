@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { User, Edit, Settings, Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Sun, Moon } from "lucide-react";
+import { User, Edit, Settings, Palette, HelpCircle, LogOut, ChevronRight, ChevronLeft, Sparkles, MoonStar } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils"
@@ -276,8 +276,8 @@ export default function UserProfilePanel({
                                                     <p className="text-sm text-muted-foreground mb-6">Choose your preferred theme</p>
                                                     <div className="grid grid-cols-2 gap-4">
                                                         {[
-                                                            { name: "Light", value: "light", icon: Sun },
-                                                            { name: "Dark", value: "dark", icon: Moon }
+                                                            { name: "Elegant", value: "light", icon: Sparkles },
+                                                            { name: "Dark Magenta", value: "dark", icon: MoonStar }
                                                         ].map((themeOption) => {
                                                             const Icon = themeOption.icon;
                                                             const isActive = theme === themeOption.value;

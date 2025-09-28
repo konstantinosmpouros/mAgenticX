@@ -1437,3 +1437,438 @@
 2025-07-30 21:19:08,015 - ERROR - Error transcribing 0310_21-10-90_ΠΝΕΥΜΑΤΙΚΗ_ΔΙΑΘΗΚΗ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 801 credits are required for this request.'}}
 2025-07-30 21:19:15,486 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 401 Unauthorized"
 2025-07-30 21:19:15,486 - ERROR - Error transcribing 0309_ΒΙΒΛΙΟ_ΤΩΒΙΤ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: status_code: 401, body: {'detail': {'status': 'quota_exceeded', 'message': 'This request exceeds your quota of 193536. You have 586 credits remaining, while 1710 credits are required for this request.'}}
+2025-09-27 22:40:13,853 - INFO - 
+
+
+
+------------------------Parallel Transcription Started------------------------
+2025-09-27 22:40:20,692 - INFO - Transcribing 4185 new files.
+2025-09-27 22:41:42,802 - ERROR - Error transcribing 0242_30-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:41:43,302 - ERROR - Error transcribing 0241_23-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:41:46,498 - ERROR - Error transcribing 0238_02-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:42:53,844 - ERROR - Error transcribing 0245_20-06-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:43:02,718 - ERROR - Error transcribing 0246_27-06-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:43:06,902 - ERROR - Error transcribing 0251_01-08-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:44:01,358 - ERROR - Error transcribing 0252_08-08-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:44:10,460 - ERROR - Error transcribing 0255_19-09-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:44:17,141 - ERROR - Error transcribing 0258_10-10-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:45:08,921 - ERROR - Error transcribing 0261_31-10-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:45:18,243 - ERROR - Error transcribing 0263_14-11-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:45:27,371 - ERROR - Error transcribing 0266_12-12-79_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:46:16,337 - ERROR - Error transcribing 0270_30-01-80_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:46:21,040 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-09-27 22:46:23,530 - INFO - Successfully transcribed and saved 0271_06-02-80_Γ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-09-27 22:46:34,781 - ERROR - Error transcribing 0274_27-02-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 22:47:21,319 - INFO - HTTP Request: POST https://api.elevenlabs.io/v1/speech-to-text "HTTP/1.1 200 OK"
+2025-09-27 22:47:22,154 - INFO - Successfully transcribed and saved 0277_19-03-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3.
+2025-09-27 22:47:32,661 - ERROR - Error transcribing 0280_30-04-80_Δ_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out
+2025-09-27 23:29:09,903 - INFO - 
+
+
+
+------------------------Sequential Transcription Started------------------------
+2025-09-27 23:29:17,111 - INFO - Transcribing 4183 new files.
+2025-09-27 23:30:25,004 - ERROR - Error transcribing 0238_02-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out (size=11085185 bytes)
+Traceback (most recent call last):
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+    yield
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 236, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 216, in handle_request
+    raise exc from None
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 196, in handle_request
+    response = connection.handle_request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    return self._connection.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 143, in handle_request
+    raise exc
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 113, in handle_request
+    ) = self._receive_response_headers(**kwargs)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 186, in _receive_response_headers
+    event = self._receive_event(timeout=timeout)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 224, in _receive_event
+    data = self._network_stream.read(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_backends/sync.py", line 124, in read
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_6429/3837856365.py", line 10, in transcribe_one
+    transcription_text = transcribe_func(audio_file, file_name=file_name)
+  File "/tmp/ipykernel_6429/2647616698.py", line 3, in elevenlabs_transcribe
+    result = client.speech_to_text.convert(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/speech_to_text/client.py", line 81, in convert
+    _response = self._client_wrapper.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/core/http_client.py", line 198, in request
+    response = self.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 837, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 926, in send
+    response = self._send_handling_auth(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+    response = self._send_handling_redirects(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 1027, in _send_single_request
+    response = transport.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 235, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+2025-09-27 23:31:32,486 - ERROR - Error transcribing 0241_23-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out (size=10951255 bytes)
+Traceback (most recent call last):
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+    yield
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 236, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 216, in handle_request
+    raise exc from None
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 196, in handle_request
+    response = connection.handle_request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    return self._connection.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 143, in handle_request
+    raise exc
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 113, in handle_request
+    ) = self._receive_response_headers(**kwargs)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 186, in _receive_response_headers
+    event = self._receive_event(timeout=timeout)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 224, in _receive_event
+    data = self._network_stream.read(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_backends/sync.py", line 124, in read
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_6429/3837856365.py", line 10, in transcribe_one
+    transcription_text = transcribe_func(audio_file, file_name=file_name)
+  File "/tmp/ipykernel_6429/2647616698.py", line 3, in elevenlabs_transcribe
+    result = client.speech_to_text.convert(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/speech_to_text/client.py", line 81, in convert
+    _response = self._client_wrapper.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/core/http_client.py", line 198, in request
+    response = self.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 837, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 926, in send
+    response = self._send_handling_auth(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+    response = self._send_handling_redirects(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 1027, in _send_single_request
+    response = transport.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 235, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+2025-09-27 23:39:56,584 - INFO - 
+
+
+
+------------------------Sequential Transcription Started------------------------
+2025-09-27 23:40:03,086 - INFO - Transcribing 4183 new files.
+2025-09-27 23:41:10,912 - ERROR - Error transcribing 0238_02-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out (size=11085185 bytes)
+Traceback (most recent call last):
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+    yield
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 236, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 216, in handle_request
+    raise exc from None
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 196, in handle_request
+    response = connection.handle_request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    return self._connection.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 143, in handle_request
+    raise exc
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 113, in handle_request
+    ) = self._receive_response_headers(**kwargs)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 186, in _receive_response_headers
+    event = self._receive_event(timeout=timeout)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 224, in _receive_event
+    data = self._network_stream.read(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_backends/sync.py", line 124, in read
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_6906/3837856365.py", line 10, in transcribe_one
+    transcription_text = transcribe_func(audio_file, file_name=file_name)
+  File "/tmp/ipykernel_6906/1248848590.py", line 11, in elevenlabs_transcribe
+    result = client.speech_to_text.convert(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/speech_to_text/client.py", line 81, in convert
+    _response = self._client_wrapper.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/core/http_client.py", line 198, in request
+    response = self.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 837, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 926, in send
+    response = self._send_handling_auth(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+    response = self._send_handling_redirects(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 1027, in _send_single_request
+    response = transport.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 235, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+2025-09-27 23:42:18,641 - ERROR - Error transcribing 0241_23-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out (size=10951255 bytes)
+Traceback (most recent call last):
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+    yield
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 236, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 216, in handle_request
+    raise exc from None
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 196, in handle_request
+    response = connection.handle_request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    return self._connection.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 143, in handle_request
+    raise exc
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 113, in handle_request
+    ) = self._receive_response_headers(**kwargs)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 186, in _receive_response_headers
+    event = self._receive_event(timeout=timeout)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 224, in _receive_event
+    data = self._network_stream.read(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_backends/sync.py", line 124, in read
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_6906/3837856365.py", line 10, in transcribe_one
+    transcription_text = transcribe_func(audio_file, file_name=file_name)
+  File "/tmp/ipykernel_6906/1248848590.py", line 11, in elevenlabs_transcribe
+    result = client.speech_to_text.convert(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/speech_to_text/client.py", line 81, in convert
+    _response = self._client_wrapper.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/core/http_client.py", line 198, in request
+    response = self.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 837, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 926, in send
+    response = self._send_handling_auth(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+    response = self._send_handling_redirects(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 1027, in _send_single_request
+    response = transport.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 235, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+2025-09-27 23:43:26,296 - ERROR - Error transcribing 0242_30-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out (size=10977665 bytes)
+Traceback (most recent call last):
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+    yield
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 236, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 216, in handle_request
+    raise exc from None
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 196, in handle_request
+    response = connection.handle_request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    return self._connection.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 143, in handle_request
+    raise exc
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 113, in handle_request
+    ) = self._receive_response_headers(**kwargs)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 186, in _receive_response_headers
+    event = self._receive_event(timeout=timeout)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 224, in _receive_event
+    data = self._network_stream.read(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_backends/sync.py", line 124, in read
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_6906/3837856365.py", line 10, in transcribe_one
+    transcription_text = transcribe_func(audio_file, file_name=file_name)
+  File "/tmp/ipykernel_6906/1248848590.py", line 11, in elevenlabs_transcribe
+    result = client.speech_to_text.convert(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/speech_to_text/client.py", line 81, in convert
+    _response = self._client_wrapper.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/core/http_client.py", line 198, in request
+    response = self.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 837, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 926, in send
+    response = self._send_handling_auth(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+    response = self._send_handling_redirects(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 1027, in _send_single_request
+    response = transport.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 235, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+2025-09-27 23:44:33,572 - ERROR - Error transcribing 0245_20-06-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out (size=10518354 bytes)
+Traceback (most recent call last):
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+    yield
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 236, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 216, in handle_request
+    raise exc from None
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 196, in handle_request
+    response = connection.handle_request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    return self._connection.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 143, in handle_request
+    raise exc
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 113, in handle_request
+    ) = self._receive_response_headers(**kwargs)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 186, in _receive_response_headers
+    event = self._receive_event(timeout=timeout)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 224, in _receive_event
+    data = self._network_stream.read(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_backends/sync.py", line 124, in read
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_6906/3837856365.py", line 10, in transcribe_one
+    transcription_text = transcribe_func(audio_file, file_name=file_name)
+  File "/tmp/ipykernel_6906/1248848590.py", line 11, in elevenlabs_transcribe
+    result = client.speech_to_text.convert(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/speech_to_text/client.py", line 81, in convert
+    _response = self._client_wrapper.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/core/http_client.py", line 198, in request
+    response = self.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 837, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 926, in send
+    response = self._send_handling_auth(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+    response = self._send_handling_redirects(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 1027, in _send_single_request
+    response = transport.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 235, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
+2025-09-27 23:46:22,302 - INFO - 
+
+
+
+------------------------Sequential Transcription Started------------------------
+2025-09-27 23:46:29,021 - INFO - Transcribing 4183 new files.
+2025-09-27 23:47:36,908 - ERROR - Error transcribing 0238_02-05-79_Β_ΒΑΣΙΛΕΙΩΝ_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ.mp3: The read operation timed out (size=11085185 bytes)
+Traceback (most recent call last):
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+    yield
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 236, in handle_request
+    resp = self._pool.handle_request(req)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 216, in handle_request
+    raise exc from None
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection_pool.py", line 196, in handle_request
+    response = connection.handle_request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/connection.py", line 101, in handle_request
+    return self._connection.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 143, in handle_request
+    raise exc
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 113, in handle_request
+    ) = self._receive_response_headers(**kwargs)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 186, in _receive_response_headers
+    event = self._receive_event(timeout=timeout)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_sync/http11.py", line 224, in _receive_event
+    data = self._network_stream.read(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_backends/sync.py", line 124, in read
+    with map_exceptions(exc_map):
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ReadTimeout: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/tmp/ipykernel_6906/3837856365.py", line 10, in transcribe_one
+    transcription_text = transcribe_func(audio_file, file_name=file_name)
+  File "/tmp/ipykernel_6906/1865725964.py", line 3, in elevenlabs_transcribe
+    result = client.speech_to_text.convert(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/speech_to_text/client.py", line 81, in convert
+    _response = self._client_wrapper.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/elevenlabs/core/http_client.py", line 198, in request
+    response = self.httpx_client.request(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 837, in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 926, in send
+    response = self._send_handling_auth(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 954, in _send_handling_auth
+    response = self._send_handling_redirects(
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 991, in _send_handling_redirects
+    response = self._send_single_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_client.py", line 1027, in _send_single_request
+    response = transport.handle_request(request)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 235, in handle_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.10/contextlib.py", line 153, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/kostasbouros/.local/lib/python3.10/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ReadTimeout: The read operation timed out
