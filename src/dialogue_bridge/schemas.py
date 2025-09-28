@@ -111,6 +111,7 @@ class AttachmentOut(BaseModel):
     def _inject_image_b64(self):
         if self.mime and self.mime.startswith("image/") and self.blob and self.blob.data:
             self.data = base64.b64encode(self.blob.data).decode("ascii")
+            self.blob = None
         return self
 
 class MessageOut(BaseModel):

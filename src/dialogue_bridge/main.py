@@ -205,6 +205,7 @@ async def getConvDetails(
     return ConversationDetail.model_validate(current_conv)
 
 
+# TODO: This needs a bit more validation l think
 @app.get(
     "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/blobs/{blob_id}",
 )
@@ -397,7 +398,7 @@ async def addMessageToConversation(
     conversation_id: str,
     payload: MessageIn,
     current_user: UserTable = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId),  # cheap variant, no eager-loading
+    current_conv: ConversationTable = Depends(validate_convId),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateConversationResponse:
     """
@@ -429,12 +430,6 @@ async def addMessageToConversation(
     result = await db.execute(stmt)
     msg_row = result.scalar_one_or_none()
     
-    if not msg_row:
-        conv_full = await validate_convId_full(user_id, conversation_id, db)
-        message_out = MessageOut.model_validate(conv_full.messages[-1])
-        summary = ConversationSummary.model_validate(conv_full)
-        return UpdateConversationResponse(message=message_out, summary=summary)
-
     # Refresh conversation row so auto-updated columns (e.g., updated_at) are loaded
     message_out = MessageOut.model_validate(msg_row)
     await db.refresh(current_conv)
@@ -443,7 +438,7 @@ async def addMessageToConversation(
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
-# TODO: Optimize the validation for these apis.
+# TODO: Optimize the validation for these apis, like & dislike.
 @app.post(
     "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/like",
     response_model=MessageOut,
