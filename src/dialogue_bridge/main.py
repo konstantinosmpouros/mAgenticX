@@ -291,7 +291,7 @@ async def downloadBlobStream(
                 chunk = bytes(chunk)
             yield chunk
             pos += len(chunk)
-
+    
     # Full content
     if not range_header:
         headers = dict(base_headers)
@@ -301,7 +301,7 @@ async def downloadBlobStream(
             media_type=mime or "application/octet-stream",
             headers=headers,
         )
-
+    
     # Parse Range: bytes=start-end
     try:
         units, rng = range_header.split("=")
@@ -314,14 +314,14 @@ async def downloadBlobStream(
             raise ValueError
     except Exception:
         return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
-
+    
     content_length = end - start + 1
     headers = dict(base_headers)
     headers.update({
         "Content-Range": f"bytes {start}-{end}/{file_size}",
         "Content-Length": str(content_length),
     })
-
+    
     return StreamingResponse(
         stream_range(start, end),
         status_code=206,
@@ -443,6 +443,7 @@ async def addMessageToConversation(
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
+# TODO: Optimize the validation for these apis.
 @app.post(
     "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/like",
     response_model=MessageOut,
@@ -554,19 +555,16 @@ async def startInferenceStream(
     """
     # Resolve agent URL
     agent_url = None
-    result = await db.execute(select(AgentTable.url).where(AgentTable.id == current_conv.agent_id))
-    row = result.one_or_none()
-    if row and row[0]:
-        agent_url = row[0]
-    else:
+    agent = await validate_agentId(db, current_conv.agent_id)
+    agent_url = agent.url if agent else None
+    if not agent_url:
         raise HTTPException(status_code=500, detail="Agent URL not found for this conversation")
     
     # Build full chat history (role/content only)
     history = []
     for m in current_conv.messages:
-        role = "user" if m.sender == "user" else "assistant"
-        content = m.content or ""
-        history.append({"role": role, "content": content})
+        role = "user" if m.sender == "user" else "ai"
+        history.append({"role": role, "content": m.content or ""})
     
     async def event_stream():
         timeout = httpx.Timeout(60.0, connect=30.0)

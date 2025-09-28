@@ -11,7 +11,11 @@ OPENAI_GPT_o1_MINI = "o1-mini"
 OPENAI_GPT_4o = "gpt-4o-2024-08-06"
 OPENAI_GPT_4_1_MINI = "gpt-4.1-mini-2025-04-14"
 OPENAI_GPT_4_1 = "gpt-4.1-2025-04-14"
-OPENAI_GPT_5 = ""
+OPENAI_GPT_5 = "gpt-5-2025-08-07"
+OPENAI_GPT_5_MINI = "gpt-5-mini-2025-08-07"
+OPENAI_GPT_5_NANO = "gpt-5-nano-2025-08-07"
+OPENAI_GPT_5_CODEX = "gpt-5-codex"
+OPENAI_GPT_5_CODEX_MINI = "codex-mini-latest"
 
 # Reasoning models
 gpt_o4_mini = ChatOpenAI(model=OPENAI_GPT_o4_MINI)
@@ -25,6 +29,12 @@ gpt_4_1 = ChatOpenAI(model=OPENAI_GPT_4_1)
 
 # Advanced models
 gpt_5 = ChatOpenAI(model=OPENAI_GPT_5)
+gpt_5_mini = ChatOpenAI(model=OPENAI_GPT_5_MINI)
+gpt_5_nano = ChatOpenAI(model=OPENAI_GPT_5_NANO)
+
+# Code models
+gpt_5_codex = ChatOpenAI(model=OPENAI_GPT_5_CODEX)
+gpt_5_codex_mini = ChatOpenAI(model=OPENAI_GPT_5_CODEX_MINI)
 
 
 
