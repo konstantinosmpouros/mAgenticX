@@ -12,9 +12,10 @@ import type {
   UpdateConversationResponse,
   AGUIEvent,
   } from "./types";
-import { mapIcon } from "./constants";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
-
+import { parseSSE } from "./utils";
+import type { LucideIcon } from "lucide-react";
+import * as Icons from "lucide-react";
 
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
@@ -45,6 +46,12 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
 
 // Fetch agents from backend via nginx proxy
 export async function getAgents(): Promise<Agent[]> {
+  const mapIcon = (name: string): LucideIcon => {
+    const Icon = (Icons as Record<string, any>)[name] as LucideIcon | undefined;
+    // Fallback gracefully to Building2 if icon name is invalid
+    return Icon || Icons.Building2;
+  };
+  
   const res = await fetch("/api/agents", {
     headers: { "Accept": "application/json" },
   });
@@ -286,32 +293,6 @@ export async function downloadAttachment(userId: string, conversationId: string,
   }
 
   return await res.blob();
-}
-
-
-// Utility to parse SSE text incrementally and emit events ASAP.
-function parseSSE(buffer: string, onEvent: (e: AGUIEvent) => void): string {
-  // Find the last newline to ensure we only process complete lines
-  const lastNewline = Math.max(buffer.lastIndexOf("\n"), buffer.lastIndexOf("\r"));
-  if (lastNewline === -1) return buffer; // no complete lines yet
-
-  const chunk = buffer.slice(0, lastNewline + 1);
-  const rest = buffer.slice(lastNewline + 1);
-
-  const lines = chunk.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const payload = trimmed.slice(5).trim();
-    if (!payload) continue;
-    try {
-      const obj = JSON.parse(payload);
-      if (obj && typeof obj === 'object' && obj.type) onEvent(obj as AGUIEvent);
-    } catch {
-      // ignore non-JSON frames
-    }
-  }
-  return rest;
 }
 
 // Start streaming inference: send full conversation (role/content only) to the bridge

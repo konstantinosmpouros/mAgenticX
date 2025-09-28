@@ -65,6 +65,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     if (!currentMessage && attachments.length === 0) return;
     if (ctx.isSendingMessage) return;
     
+    // Validate attachments upfront
     if (attachments.length) {
       const sizeErr = validateAttachmentsForUpload(attachments);
       if (sizeErr) {
@@ -73,6 +74,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       }
     }
     
+    // Mark sending state
     setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
     
@@ -109,6 +111,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setAttachments([]);
     
     try {
+      // Create new conversation if needed
       if (messages.length === 0) {
         const conversationPayload: ConversationIn = {
           agentId: selectedAgent,
@@ -153,7 +156,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         });
         streamAbortRef.current = null;
 
-      } else {
+      }
+
+      // Existing conversation: send message normally
+      else {
         const messagePayload: MessageIn = {
           sender: 'user',
           type: attachments.length > 0 ? 'file' : 'text',
@@ -196,6 +202,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         streamAbortRef.current = null;
       }
     } catch (error) {
+      // Handle errors: show toast and remove temp message
       console.error('Failed to send message:', error);
       toast({ title: 'Error', description: 'Failed to send message. Please try again.', variant: 'destructive' });
       // Remove any temp message if present
@@ -203,9 +210,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       if (setShowAiTransition) setShowAiTransition(false);
       streamAbortRef.current = null;
     }
+    // Reset sending state
     setIsSendingMessage(false);
   };
-
+  // Handler to abort ongoing streaming
   const handleStopStreaming = () => {
     const controller = streamAbortRef.current;
     if (controller) {
