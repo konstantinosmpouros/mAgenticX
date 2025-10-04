@@ -1,5 +1,7 @@
+import json
 import asyncio
 import base64
+import traceback
 from datetime import datetime
 from typing import List
 
@@ -35,6 +37,7 @@ from schemas import (
     AgentPublic,
 )
 from utils import (
+    serialise_message_with_images_for_agent,
     validate_userId,
     validate_convId,
     validate_convId_full,
@@ -545,7 +548,7 @@ async def startInferenceStream(
     - Builds chat history for the agent as List[Dict[str, str]] (role/content only).
     - Looks up the agent URL from the conversation's agent.
     - POSTs to the agent stream endpoint and forwards bytes as-is.
-    Attachments are not sent to the agent.
+    Image attachments are forwarded to the agent as base64 data URLs.
     """
     # Resolve agent URL
     agent_url = None
@@ -555,10 +558,7 @@ async def startInferenceStream(
         raise HTTPException(status_code=500, detail="Agent URL not found for this conversation")
     
     # Build full chat history (role/content only)
-    history = []
-    for m in current_conv.messages:
-        role = "user" if m.sender == "user" else "ai"
-        history.append({"role": role, "content": m.content or ""})
+    history = [serialise_message_with_images_for_agent(m) for m in current_conv.messages]
     
     async def event_stream():
         timeout = httpx.Timeout(60.0, connect=30.0)
@@ -583,9 +583,10 @@ async def startInferenceStream(
             return
         except httpx.HTTPError as e:
             # Emit a RUN_ERROR frame so UI can gracefully handle upstream failures
-            import json as _json
-            err = {"type": "RUN_ERROR", "message": str(e)}
-            data = "data: " + _json.dumps(err, ensure_ascii=False) + "\n\n"
+            tb = traceback.format_exc()
+            message = tb.strip() if tb and tb.strip() and tb.strip() != "NoneType: None" else f"{type(e).__name__}: {e}"
+            err = {"type": "RUN_ERROR", "message": message}
+            data = "data: " + json.dumps(err, ensure_ascii=False) + "\n\n"
             yield data.encode("utf-8")
 
     headers = {

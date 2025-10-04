@@ -164,6 +164,55 @@ async def init_attachments(db: AsyncSession, message_id: str, items: List[Attach
         db.add(attach)
 
 
+def serialise_message_with_images_for_agent(msg):
+    """Convert a MessageTable (with attachments) into a LangChain message with multimodal content.
+    - Images are embedded as data-URLs
+    - Other attachments are listed by name in a text block
+    """
+    # Get main parts
+    role = "user" if msg.sender == "user" else "ai"
+    text_content = (msg.content or "").strip()
+    attachments = getattr(msg, "attachments", []) or []
+    
+    content_parts = []
+    other_attachment_notes = []
+    
+    if text_content:
+        content_parts.append({"type": "text", "text": text_content})
+
+    for attachment in attachments:
+        mime = (getattr(attachment, "mime_type", None) or "").lower()
+        blob = getattr(attachment, "blob", None)
+        data_bytes = getattr(blob, "data", None) if blob is not None else None
+
+        if mime.startswith("image/") and data_bytes:
+            data_b64 = base64.b64encode(data_bytes).decode("ascii")
+            data_url = f"data:{mime};base64,{data_b64}"
+            content_parts.append({
+                "type": "image_url",
+                "image_url": data_url,
+            })
+        else:
+            name = getattr(attachment, "file_name", None)
+            if name:
+                label = f"{name} ({attachment.mime_type})" if getattr(attachment, "mime_type", None) else name
+                other_attachment_notes.append(label)
+
+    if other_attachment_notes:
+        attachment_text = "Attachments:\n" + "\n".join(f"- {note}" for note in other_attachment_notes)
+        content_parts.append({"type": "text", "text": attachment_text})
+
+    if not content_parts:
+        content_parts.append({"type": "text", "text": ""})
+
+    if len(content_parts) == 1 and content_parts[0]["type"] == "text":
+        content_payload = content_parts[0]["text"]
+    else:
+        content_payload = content_parts
+
+    return {"role": role, "content": content_payload}
+
+
 async def generate_title(message: MessageIn, *, model: str = "gpt-4o", temperature: float = 0.2) -> Optional[str]:
     """
     Build a multimodal prompt from MessageIn and get a structured TitleOut from the LLM.
@@ -236,4 +285,3 @@ def _preview(text: Optional[str]) -> Optional[str]:
         return None
     s = text.strip().replace("\r", " ").replace("\n", " ")
     return s[:MAX_PREVIEW_LEN]
-

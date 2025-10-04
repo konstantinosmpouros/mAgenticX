@@ -9,7 +9,9 @@ from utils import normalise_user_input
 # OpenAI LLMs & agents
 from llms import (
     gpt_o4_mini,
-    gpt_4_1_mini
+    gpt_4_1_mini,
+    gpt_4o,
+    gpt_5
 )
 from langgraph.prebuilt import create_react_agent as react_agent
 
@@ -40,10 +42,10 @@ from retail_agents.retail_agent_v1.prompt_templates import (
 def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]) -> List[BaseMessage]:
     """Return analyzer system prompt + cleaned user messages."""
     user_msgs: List[BaseMessage] = normalise_user_input(user_input)
-
     merged_tpl = ChatPromptTemplate.from_messages(
         analyzer_template.messages + user_msgs
     )
+    print(f"--- Merged template ---\n{merged_tpl}\n---------------------")
     return merged_tpl.format_messages()
 
 
@@ -53,12 +55,12 @@ def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate,
 # ---------------------------------------------------------------------------------------------------
 
 merge_runnable = RunnableLambda(_merge_templates)
-analysis_agent = merge_runnable | gpt_4_1_mini.with_structured_output(AnalysisOutput)
+analysis_agent = merge_runnable | gpt_4o.with_structured_output(AnalysisOutput)
 
 simple_gen_agent = react_agent(model=gpt_4_1_mini, tools=tools)
 
 sql_gen_agent = sql_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
 sql_error_gen_agent = sql_error_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
 
-answer_agent = react_agent(model=gpt_4_1_mini, tools=tools)
+answer_agent = react_agent(model=gpt_5, tools=tools)
 

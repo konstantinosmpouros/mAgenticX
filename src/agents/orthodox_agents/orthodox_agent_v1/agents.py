@@ -7,7 +7,7 @@ from langchain.schema import BaseMessage
 from utils import normalise_user_input
 
 # OpenAI LLMs & agents
-from llms import gpt_o4_mini, gpt_o3_mini
+from llms import gpt_o4_mini, gpt_o3_mini, gpt_4o, gpt_5
 from langgraph.prebuilt import create_react_agent as react_agent
 
 # Structured Outputs
@@ -53,7 +53,7 @@ def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate,
 # ---------------------------------------------------------------------------------------------------
 
 merge_runnable = RunnableLambda(_merge_templates)
-analysis_agent = merge_runnable | gpt_o3_mini.with_structured_output(AnalyzerOutput)
+analysis_agent = merge_runnable | gpt_4o.with_structured_output(AnalyzerOutput)
 
 simple_gen_agent = react_agent(model=gpt_o3_mini, tools=tools)
 
@@ -62,7 +62,7 @@ query_no_reflective_agent = query_gen_no_reflection_template | gpt_o3_mini.with_
 
 summarizer_agent = summarization_template | gpt_o4_mini
 
-complex_gen_agent = react_agent(model=gpt_o3_mini, tools=tools)
+complex_gen_agent = react_agent(model=gpt_5, tools=tools)
 
 reflection_agent = reflection_template | gpt_o4_mini.with_structured_output(ReflectionOutput)
 

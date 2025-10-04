@@ -16,15 +16,21 @@ from retail_agents import retail_agent_v1
 
 import asyncio
 import json
+import traceback
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-from typing import List, Dict
-from types import TracebackType
+from typing import Any, List, Dict
 
 
 app = FastAPI()
 
+
+def _format_run_error_message(exc: BaseException) -> str:
+    tb = traceback.format_exc()
+    if tb and tb.strip() and tb.strip() != "NoneType: None":
+        return tb.strip()
+    return f"{type(exc).__name__}: {exc}"
 
 def _make_loop_exception_handler(old_handler=None):
     def handler(loop, context):
@@ -56,7 +62,7 @@ async def _configure_loop_exception_handler():
 
 class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
-    user_input: List[Dict[str, str]]
+    user_input: List[Dict[str, Any]]
 
 
 @app.post("/OrthodoxAI/v1/stream", status_code=200)
@@ -83,7 +89,7 @@ async def stream_agent(req: Request):
             # Downstream closed; no further writes
             return
         except Exception as e:
-            err = {"type": "RUN_ERROR", "message": str(e)}
+            err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
         finally:
             # Ensure upstream iterator is closed to stop background tasks
@@ -122,7 +128,7 @@ async def stream_agent(req: Request):
             # Downstream closed; no further writes
             return
         except Exception as e:
-            err = {"type": "RUN_ERROR", "message": str(e)}
+            err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
         finally:
             if aiter is not None:
@@ -160,7 +166,7 @@ async def stream_agent(req: Request):
             # Downstream closed; no further writes
             return
         except Exception as e:
-            err = {"type": "RUN_ERROR", "message": str(e)}
+            err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
         finally:
             if aiter is not None:
