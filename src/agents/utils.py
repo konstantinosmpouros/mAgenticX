@@ -16,10 +16,16 @@ class TextPart(BaseModel):
     text: str
 
 
+class ImageURLPayload(BaseModel):
+    """Schema for image_url payload accepted by OpenAI multimodal endpoints."""
+    url: str
+    detail: Optional[Literal["auto", "low", "high"]] = None
+
+
 class ImageURLPart(BaseModel):
     """Image content part (data URL or remote URL)."""
     type: Literal["image_url"] = "image_url"
-    image_url: str
+    image_url: Union[str, ImageURLPayload]
 
 
 SupportedPart = Union[TextPart, ImageURLPart]
@@ -57,7 +63,7 @@ def _normalize_content(
                 model = _coerce_part(raw)
             except ValidationError as ve:  # extra safety if fields missing
                 raise ValueError(f"Invalid content part at index {idx}: {ve}") from ve
-            out.append(model.model_dump())
+            out.append(model.model_dump(exclude_none=True))
         return out
     raise TypeError(f"content must be str | list[dict] | None, got {type(content)}")
 
@@ -173,6 +179,7 @@ def normalise_user_input(
 
 __all__ = [
     "TextPart",
+    "ImageURLPayload",
     "ImageURLPart",
     "dict_to_message",
     "normalise_user_input",

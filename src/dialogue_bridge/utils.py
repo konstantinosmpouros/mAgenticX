@@ -190,7 +190,10 @@ def serialise_message_with_images_for_agent(msg):
             data_url = f"data:{mime};base64,{data_b64}"
             content_parts.append({
                 "type": "image_url",
-                "image_url": data_url,
+                "image_url": {
+                    "url": data_url,
+                    "detail": "auto",
+                },
             })
         else:
             name = getattr(attachment, "file_name", None)
