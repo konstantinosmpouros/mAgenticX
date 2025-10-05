@@ -41,7 +41,8 @@ from hr_agents.hr_policies_agent_v1.prompt_templates import (
     ranking_template,
 )
 
-
+# ---------------------------------------------------------------------------------------------------
+# Helper to merge system + user messages
 # ---------------------------------------------------------------------------------------------------
 def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]) -> List[BaseMessage]:
     """Return analyzer system prompt + cleaned user messages."""

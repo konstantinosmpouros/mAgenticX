@@ -37,6 +37,8 @@ from orthodox_agents.orthodox_agent_v1.prompt_templates import (
 
 
 # ---------------------------------------------------------------------------------------------------
+# Helper to merge system + user messages
+# ---------------------------------------------------------------------------------------------------
 def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]) -> List[BaseMessage]:
     """Return analyzer system prompt + cleaned user messages."""
     user_msgs: List[BaseMessage] = normalise_user_input(user_input)

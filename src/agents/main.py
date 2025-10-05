@@ -69,10 +69,8 @@ class Request(BaseModel):
 async def stream_agent(req: Request):
     """Stream responses from the OrthodoxAI v1 agent."""
     async def event_stream():
-        aiter = None
         try:
-            aiter = orthodoxai_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom")
-            async for msg in aiter:
+            async for msg in orthodoxai_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
                 # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
                 if isinstance(msg, (str, bytes)):
                     if isinstance(msg, str):
@@ -91,15 +89,6 @@ async def stream_agent(req: Request):
         except Exception as e:
             err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
-        finally:
-            # Ensure upstream iterator is closed to stop background tasks
-            if aiter is not None:
-                aclose = getattr(aiter, "aclose", None)
-                if aclose is not None:
-                    try:
-                        await aclose()
-                    except Exception:
-                        pass
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -108,10 +97,8 @@ async def stream_agent(req: Request):
 async def stream_agent(req: Request):
     """Stream responses from the HR Policies v1 agent."""
     async def event_stream():
-        aiter = None
         try:
-            aiter = hr_policies_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom")
-            async for msg in aiter:
+            async for msg in hr_policies_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
                 # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
                 if isinstance(msg, (str, bytes)):
                     if isinstance(msg, str):
@@ -130,14 +117,6 @@ async def stream_agent(req: Request):
         except Exception as e:
             err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
-        finally:
-            if aiter is not None:
-                aclose = getattr(aiter, "aclose", None)
-                if aclose is not None:
-                    try:
-                        await aclose()
-                    except Exception:
-                        pass
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -145,11 +124,10 @@ async def stream_agent(req: Request):
 @app.post("/Retail/v1/stream", status_code=200)
 async def stream_agent(req: Request):
     """Stream responses from the Retail v1 agent."""
+    print(f"\n\n\n Received request: {req}\n\n\n")
     async def event_stream():
-        aiter = None
         try:
-            aiter = retail_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom")
-            async for msg in aiter:
+            async for msg in retail_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
                 # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
                 if isinstance(msg, (str, bytes)):
                     if isinstance(msg, str):
@@ -168,14 +146,6 @@ async def stream_agent(req: Request):
         except Exception as e:
             err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
-        finally:
-            if aiter is not None:
-                aclose = getattr(aiter, "aclose", None)
-                if aclose is not None:
-                    try:
-                        await aclose()
-                    except Exception:
-                        pass
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
