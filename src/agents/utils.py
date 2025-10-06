@@ -31,6 +31,16 @@ class ImageURLPart(BaseModel):
 SupportedPart = Union[TextPart, ImageURLPart]
 
 
+def make_merge_with_template(system_template: ChatPromptTemplate):
+    """Return a callable that prepends the given system template before user input."""
+    def _merge(user_input: UserInputT) -> List[BaseMessage]:
+        user_msgs: List[BaseMessage] = normalise_user_input(user_input)
+        merged = ChatPromptTemplate.from_messages(system_template.messages + user_msgs)
+        return merged.format_messages()
+
+    return _merge
+
+
 def _coerce_part(part: Mapping[str, Any]) -> SupportedPart:
     """Validate and coerce a raw dict part into a SupportedPart model."""
     t = str(part.get("type", "")).lower()
@@ -183,4 +193,5 @@ __all__ = [
     "ImageURLPart",
     "dict_to_message",
     "normalise_user_input",
+    "make_merge_with_template",
 ]

@@ -124,7 +124,6 @@ async def stream_agent(req: Request):
 @app.post("/Retail/v1/stream", status_code=200)
 async def stream_agent(req: Request):
     """Stream responses from the Retail v1 agent."""
-    print(f"\n\n\n Received request: {req}\n\n\n")
     async def event_stream():
         try:
             async for msg in retail_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):

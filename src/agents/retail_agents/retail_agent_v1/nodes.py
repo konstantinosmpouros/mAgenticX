@@ -31,7 +31,7 @@ class RetailV1_State(BaseModel):
     Data model representing the state of a retail agent process in version 1.
     """
     message_id: str = None
-    user_input: Any = None
+    user_input: Any
     user_input_json: str = None
     db_schema_json: str = None
     table_name: str = TABLE

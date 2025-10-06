@@ -34,7 +34,7 @@ from agui import agui_emitter
 
 
 class HRPoliciesV1_State(BaseModel):
-    user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
+    user_input: Any
     user_input_json: Any = None
     
     message_id: str | None = None

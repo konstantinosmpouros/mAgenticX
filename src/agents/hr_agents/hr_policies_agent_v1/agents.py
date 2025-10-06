@@ -1,10 +1,7 @@
 # Custom Runnable step in chains
-from typing import Dict, List, Union
 from langchain.schema.runnable import RunnableLambda
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import BaseMessage
 
-from utils import normalise_user_input
+from utils import make_merge_with_template
 
 # OpenAI LLMs & agents
 from llms import (
@@ -42,24 +39,9 @@ from hr_agents.hr_policies_agent_v1.prompt_templates import (
 )
 
 # ---------------------------------------------------------------------------------------------------
-# Helper to merge system + user messages
-# ---------------------------------------------------------------------------------------------------
-def _merge_templates(user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]) -> List[BaseMessage]:
-    """Return analyzer system prompt + cleaned user messages."""
-    user_msgs: List[BaseMessage] = normalise_user_input(user_input)
-
-    merged_tpl = ChatPromptTemplate.from_messages(
-        analyzer_template.messages + user_msgs
-    )
-    return merged_tpl.format_messages()
-
-
-
-# ---------------------------------------------------------------------------------------------------
 # Agents
 # ---------------------------------------------------------------------------------------------------
-
-merge_runnable = RunnableLambda(_merge_templates)
+merge_runnable = RunnableLambda(make_merge_with_template(analyzer_template))
 analysis_agent = merge_runnable | gpt_4o.with_structured_output(AnalyzerOutput)
 
 simple_gen_agent = react_agent(model=gpt_o3_mini, tools=tools)

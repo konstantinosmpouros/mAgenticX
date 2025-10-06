@@ -31,7 +31,7 @@ from agui import agui_emitter
 
 
 class OrthodoxV1_State(BaseModel):
-    user_input: Union[List[Dict[str, str]], ChatPromptTemplate, List[BaseMessage]]
+    user_input: Any
     
     # Message identifier for AG-UI streaming correlation
     message_id: str | None = None

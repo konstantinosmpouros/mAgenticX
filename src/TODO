@@ -19,6 +19,7 @@
 
 ## Agents
 
+- Improve the current agent's architecture
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Make all the agents support images pls
 - Create a deep research agent with deep agents and make it available
@@ -26,5 +27,6 @@
 
 ## Dialogue Bridge
 
+- In the inference process we shouldn't send all the images in the conversation, when an image is send create a handler and a new col to store a description of it and the images from older messages should be replaces with the description only. The same for the file, handle the file description and rag and then in the messages that have files insert in the prompt the attachment description.
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document
