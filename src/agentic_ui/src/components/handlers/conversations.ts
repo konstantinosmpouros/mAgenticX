@@ -7,6 +7,7 @@ type ConversationsCtx = {
   conversations: ConversationSummary[];
   setConversations: (updater: (prev: ConversationSummary[]) => ConversationSummary[]) => void;
   currentConversation: ConversationDetail | null;
+  handleStopStreaming?: () => void;
 
   convPage: number;
   setConvPage: Dispatch<SetStateAction<number>>;
@@ -34,6 +35,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     conversations,
     setConversations,
     currentConversation,
+    handleStopStreaming,
 
     convPage,
     setConvPage,
@@ -55,6 +57,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   } = ctx;
 
   const clearChatAndStopThinking = () => {
+    handleStopStreaming?.();
     setIsClearing(true);
     setTimeout(() => {
       ctx.setThinkingState?.(null);
@@ -76,6 +79,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   };
 
   const handleConversationSelect = async (conversation: ConversationSummary) => {
+    handleStopStreaming?.();
     if (!userId || (ctx as any).loadingConversation) return;
     setLoadingConversation(true);
     setIsClearing(true);

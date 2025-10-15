@@ -191,6 +191,31 @@ export function ChatInterface() {
   // Conversations and agent handlers
   const streamAbortRef = useRef<AbortController | null>(null);
 
+  // Inference handler (send message)
+  const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
+    userId,
+    selectedAgent,
+    isPrivateMode,
+    messages: currentConversation?.messages ?? [],
+    attachments,
+    agents,
+    currentConversation,
+    currentMessage,
+    isSendingMessage,
+    setMessages: setConversationMessages,
+    setCurrentMessage,
+    setAttachments,
+    setIsSendingMessage,
+    setCurrentConversation,
+    setConversations,
+    toast: toastWrapper,
+    isImageFile,
+    getImageUrl,
+    setThinkingState,
+    setShowAiTransition,
+    streamAbortRef,
+  });
+
   const {
     handleConversationSelect,
     handleDeleteConversation,
@@ -203,6 +228,7 @@ export function ChatInterface() {
     conversations,
     setConversations,
     currentConversation,
+    handleStopStreaming,
     setLoadingConversation,
     setIsClearing,
     setSelectedAgent,
@@ -258,31 +284,6 @@ export function ChatInterface() {
     userId,
     currentConversation,
     setConversationMessages,
-  });
-
-  // Inference handler (send message)
-  const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
-    userId,
-    selectedAgent,
-    isPrivateMode,
-    messages: currentConversation?.messages ?? [],
-    attachments,
-    agents,
-    currentConversation,
-    currentMessage,
-    isSendingMessage,
-    setMessages: setConversationMessages,
-    setCurrentMessage,
-    setAttachments,
-    setIsSendingMessage,
-    setCurrentConversation,
-    setConversations,
-    toast: toastWrapper,
-    isImageFile,
-    getImageUrl,
-    setThinkingState,
-    setShowAiTransition,
-    streamAbortRef,
   });
   
   const currentAgent = agents.find(a => a.id === selectedAgent);

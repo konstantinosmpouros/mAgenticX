@@ -12,7 +12,6 @@
 - Refactor Sidebar according to the [official page](https://ui.shadcn.com/docs/components/sidebar)
 
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui
-- The nginx might not be needed
 - Implement a tab in the profile panel to show all the images, like openai library
 - Check what to do with the audio input
 - Create one more chat like gemini code or cursor (agentic chat)
@@ -23,6 +22,7 @@
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Create a deep research agent with deep agents and make it available
 - Replace tools with mcp
+- Make all agents OOP in order to pass configs for llms, tools etc.
 
 ## Dialogue Bridge
 
