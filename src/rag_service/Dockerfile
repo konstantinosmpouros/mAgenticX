@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1
 # 3. Install requirements and set working directory
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 # 4. Install system deps
 RUN apt-get update \

@@ -1,6 +1,7 @@
 import httpx
 from uuid import uuid4
-from typing import Literal, Any, Dict, List, Union
+import json
+from typing import Literal, Any
 from pydantic import BaseModel
 
 from config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
@@ -83,7 +84,7 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
         args={"endpoint": SCHEMA_ENDPOINT}
     )
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             r = await client.get(SCHEMA_ENDPOINT)
             r.raise_for_status()
             db_schema_json = r.json()
@@ -98,7 +99,7 @@ async def analysis(state: RetailV1_State, config: RunnableConfig, writer: Stream
         'analysis_results': analysis_results,
         'analysis_str': analysis_str,
         'db_schema_json': db_schema_json,
-        'user_input_json': user_msg,
+        'user_input_json': json.dumps(user_msg),
         'message_id': message_id,
     }
 
@@ -254,7 +255,7 @@ async def query_execution(state: RetailV1_State, writer: StreamWriter) -> Retail
 
 
 
-async def check_sql_results(state: RetailV1_State, writer: StreamWriter) -> Literal["complex_gen", "query_gen"]:
+async def check_sql_results(state: RetailV1_State, writer: StreamWriter) -> Literal["complex_generation", "query_gen"]:
     """
     Determine next step: retry query on error (up to 2 attempts),
     otherwise proceed to generate the final response.

@@ -21,7 +21,6 @@
 
 - Improve the current agent's architecture
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
-- Make all the agents support images pls
 - Create a deep research agent with deep agents and make it available
 - Replace tools with mcp
 

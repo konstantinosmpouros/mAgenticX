@@ -79,7 +79,7 @@ services:
 
 
   chat_postgres: # 5432
-    image: postgres:latest
+    image: postgres:16.3
     container_name: chat_postgres
     environment:
       POSTGRES_USER: admin

@@ -1,7 +1,7 @@
 services:
   agents:
     container_name: agents
-    image: konstantinosmpouros/agents:v1.2.0
+    image: konstantinosmpouros/agents:v1.5.0
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
@@ -15,7 +15,7 @@ services:
 
   rag_service:
     container_name: rag_service
-    image: konstantinosmpouros/rag_service:v1.1.0
+    image: konstantinosmpouros/rag_service:v1.1.3
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
@@ -42,11 +42,16 @@ services:
 
   dialogue_bridge:
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v1.0.5
+    image: konstantinosmpouros/dialogue_bridge:v2.0.0
     environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - username=${username}
       - password=${password}
+      - display_name=Konstantinos_Bouros
+      - email=kostasbouros@hotmail.gr
+      - department=AI&PA
+      - role_title=Data_Scientist
     depends_on:
       - agents
       - chat_postgres
@@ -55,7 +60,7 @@ services:
       - backend
 
   chat_postgres:
-    image: postgres:latest
+    image: postgres:16.3
     container_name: chat_postgres
     environment:
       POSTGRES_USER: admin
@@ -66,27 +71,31 @@ services:
     restart: unless-stopped
     networks:
       - backend
+      - frontend
 
-  streamlit_app:
-    container_name: streamlit_app
-    image: konstantinosmpouros/streamlit_app:v1.0.5
+  agentic_ui:
+    container_name: agentic_ui
+    image: konstantinosmpouros/agentic_ui:v0.1.0
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002
     depends_on:
       - dialogue_bridge
-    ports:
-      - "8501:8501"
     restart: unless-stopped
     networks:
       - backend
       - frontend
+      - proxy
+
 
 
 networks:
   backend:
     internal: true
   frontend: 
+  proxy:
+    external: true
+
 
 
 volumes:
