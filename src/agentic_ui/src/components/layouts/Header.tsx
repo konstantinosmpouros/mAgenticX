@@ -29,70 +29,50 @@ export default function Header({
     const SelectedIcon = selected?.icon;
 
     return (
-        <div className="sticky top-0 z-40 border-b border-border bg-background dark:bg-background px-3 py-2 md:px-6 md:py-3 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-black/40 after:to-transparent dark:after:via-primary/40">
-            <div className="flex items-center justify-between max-w-6xl mx-auto">
-                <div className="flex items-center gap-1.5 md:gap-3">
-                    <Select value={selectedAgent} onValueChange={onAgentChange}>
-                        <SelectTrigger
-                            onMouseDown={(e) => e.preventDefault()}
-                            className="
-                                w-28 sm:w-36 md:w-48 transition-all duration-300 shadow-card
-                                focus:ring-0 focus:ring-offset-0 border-0
-                                bg-background text-foreground hover:bg-muted/60
-                                dark:bg-transparent dark:text-fuchsia-300
-                                dark:hover:bg-gradient-to-r dark:hover:from-fuchsia-500/5
-                                dark:hover:via-fuchsia-400/8 dark:hover:to-fuchsia-500/5
-                                dark:hover:shadow-[0_0_20px_rgba(217,70,239,0.3)]
-                            "
-                        >
-                            <SelectValue placeholder="Select an agent">
+        <div className="sticky top-0 z-40 w-full bg-transparent px-3 py-2 md:px-6 md:py-3">
+            <div className="flex w-full items-center gap-1.5 md:gap-3">
+                <Select value={selectedAgent} onValueChange={onAgentChange}>
+                    <SelectTrigger
+                        onMouseDown={(e) => e.preventDefault()}
+                        className="w-32 sm:w-40 md:w-52 border-0 bg-background/70 text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-muted/60 dark:bg-background/40 dark:text-foreground dark:hover:bg-muted/40"
+                    >
+                        <SelectValue placeholder="Select an agent">
+                            <div className="flex items-center gap-2">
+                                {selected && SelectedIcon && (
+                                    <SelectedIcon size={16} className="text-muted-foreground" />
+                                )}
+                                {selected && (
+                                    <span className="truncate text-sm text-foreground">
+                                        {selected.name}
+                                    </span>
+                                )}
+                            </div>
+                        </SelectValue>
+                    </SelectTrigger>
+
+                    <SelectContent className="w-[18rem] border-0 bg-background text-foreground shadow-none">
+                        {agents.map(agent => (
+                            <SelectItem
+                                key={agent.id}
+                                value={agent.id}
+                                className="cursor-pointer text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground data-[state=checked]:bg-muted data-[state=checked]:text-foreground"
+                            >
                                 <div className="flex items-center gap-2">
-                                    {selected && SelectedIcon && (
-                                        <SelectedIcon size={16} className="text-muted-foreground dark:text-fuchsia-300 dark:drop-shadow-[0_0_3px_rgba(217,70,239,0.6)]" />
-                                    )}
-                                    {selected && (
-                                        <span className="truncate text-sm text-foreground dark:text-fuchsia-300 dark:drop-shadow-[0_0_3px_rgba(217,70,239,0.6)]">
-                                            {selected.name}
-                                        </span>
-                                    )}
-                                </div>
-                            </SelectValue>
-                        </SelectTrigger>
-
-                        <SelectContent className="w-[20rem] bg-background border border-input text-foreground shadow-card backdrop-blur-xl dark:bg-transparent dark:shadow-[0_0_20px_rgba(217,70,239,0.2)] dark:border-0">
-                            {agents.map(agent => (
-                                <SelectItem
-                                    key={agent.id}
-                                    value={agent.id}
-                                    className="group cursor-pointer transition-colors
-                                                data-[highlighted]:bg-muted data-[highlighted]:text-foreground
-                                                data-[state=checked]:bg-muted data-[state=checked]:text-foreground
-                                                dark:data-[highlighted]:bg-gray-800 dark:data-[highlighted]:text-fuchsia-200
-                                                dark:data-[state=checked]:bg-gray-900 dark:data-[state=checked]:text-fuchsia-200
-                                                [&_[data-radix-select-item-indicator]]:hidden"
-                                >
-                                    <div className="flex items-center gap-2 mt-1">
-                                        {(() => {
-                                            const Icon = agent.icon;
-                                            return (
-                                                <Icon
-                                                    size={18}
-                                                    className="text-muted-foreground dark:text-fuchsia-300 absolute left-2 flex h-4 w-4 items-center justify-center opacity-0 group-data-[state=checked]:opacity-100 transition-opacity"
-                                                />
-                                            );
-                                        })()}
-                                        <div className="flex flex-col">
-                                            <span className="font-medium text-sm text-foreground dark:text-inherit">{agent.name}</span>
-                                            <span className="text-xs text-muted-foreground">{agent.description}</span>
-                                        </div>
+                                    {(() => {
+                                        const Icon = agent.icon;
+                                        return <Icon size={18} className="text-muted-foreground" />;
+                                    })()}
+                                    <div className="flex flex-col">
+                                        <span className="font-medium text-sm text-foreground">{agent.name}</span>
+                                        <span className="text-xs text-muted-foreground">{agent.description}</span>
                                     </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+                                </div>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
 
-                <div className="flex items-center gap-1.5 md:gap-3 ml-auto">
+                <div className="ml-auto flex items-center gap-1.5 md:gap-3">
                     {showPrivateToggle && (
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
