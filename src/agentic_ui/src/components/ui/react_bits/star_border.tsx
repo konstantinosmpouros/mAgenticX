@@ -47,7 +47,7 @@ const StarBorder = <T extends React.ElementType = "button">({
                 animationDuration: speed,
                 }}
             ></div>
-            <div className={`relative z-1 bg-gradient-to-b from-black to-gray-900 text-white text-center text-[16px] py-[16px] px-[26px] rounded-[20px]`}>
+            <div className={`relative z-1 bg-gradient-to-b from-black to-gray-900 text-white text-center text-[16px] py-[13px] px-[18px] rounded-[18px]`}>
                 {children}
             </div>
         </Component>

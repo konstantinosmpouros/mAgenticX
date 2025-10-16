@@ -199,7 +199,7 @@ export function InputContainer(props: InputContainerProps) {
             <div className="mx-auto max-w-3xl pointer-events-auto">
                 {/* Floating Input Container */}
                 <div
-                    className={`bg-background rounded-3xl shadow-lg p-4 ${
+                    className={`bg-background rounded-3xl shadow-lg px-3 pt-3 pb-1 ${
                         isPrivateMode ? "border-2 border-primary/50" : "border"
                     }`}
                 >
@@ -298,12 +298,12 @@ export function InputContainer(props: InputContainerProps) {
                                 <Tooltip delayDuration={0}>
                                     <TooltipTrigger asChild>
                                         <div
-                                            className="w-12 h-12 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
+                                            className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
                                             onClick={() =>
                                                 toast?.({ title: "Voice input", description: "Feature coming soon!", duration: 2000 })
                                             }
                                         >
-                                            <Mic size={20} className="text-muted-foreground active:text-white" />
+                                            <Mic size={21} className="text-muted-foreground active:text-white" />
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent
@@ -319,7 +319,7 @@ export function InputContainer(props: InputContainerProps) {
                                     <TooltipTrigger asChild>
                                         <StarBorder
                                             as="button"
-                                            innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center h-4 w-4 py-0 px-0 border-0 rounded-full font-normal text-[inherit]"
+                                            innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center border-0 rounded-full"
                                             className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
                                             color="hsl(var(--primary))"
                                             thickness={2}
