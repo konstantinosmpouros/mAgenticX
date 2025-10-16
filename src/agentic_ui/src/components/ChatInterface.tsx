@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -249,6 +249,30 @@ export function ChatInterface() {
     setConvIsLoadingMore,
     pageSize: CONV_PAGE_SIZE,
   });
+
+  const handleArchiveCurrentConversation = useCallback(() => {
+    if (!currentConversation?.id) {
+      toastWrapper({ title: "No conversation selected", description: "Select a conversation to archive first.", duration: 2000 });
+      return;
+    }
+    toastWrapper({ title: "Archive coming soon", description: "Conversation archiving is not available yet.", duration: 2500 });
+  }, [currentConversation, toastWrapper]);
+
+  const handleReportCurrentConversation = useCallback(() => {
+    if (!currentConversation?.id) {
+      toastWrapper({ title: "No conversation selected", description: "Select a conversation to report first.", duration: 2000 });
+      return;
+    }
+    toastWrapper({ title: "Report coming soon", description: "Conversation reporting will be available soon.", duration: 2500 });
+  }, [currentConversation, toastWrapper]);
+
+  const handleDeleteCurrentConversation = useCallback(() => {
+    if (!currentConversation?.id) {
+      toastWrapper({ title: "No conversation selected", description: "Select a conversation to delete first.", duration: 2000 });
+      return;
+    }
+    void handleDeleteConversation(currentConversation.id);
+  }, [currentConversation, handleDeleteConversation, toastWrapper]);
   
   const { handleAgentChange } = createAgentHandlers({
     isAgentSwitching,
@@ -335,6 +359,10 @@ export function ChatInterface() {
                 }
               }}
               showBottomBorder={headerHasDivider}
+              showConversationActions={Boolean(currentConversation?.id)}
+              onArchiveConversation={handleArchiveCurrentConversation}
+              onReportConversation={handleReportCurrentConversation}
+              onDeleteConversation={handleDeleteCurrentConversation}
             />
 
             {/* Chat Messages Container*/}

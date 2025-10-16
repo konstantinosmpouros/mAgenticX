@@ -139,8 +139,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
-  const handleDeleteConversation = async (conversationId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
+  const handleDeleteConversation = async (conversationId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
     if (!userId) return;
     try {
       await deleteConversation(userId, conversationId);

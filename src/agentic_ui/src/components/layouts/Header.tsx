@@ -1,9 +1,10 @@
 // src/components/layouts/Header.tsx
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Ghost } from "lucide-react";
+import { Ghost, Archive, Flag, Trash2, MoreHorizontal } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import React from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
 type HeaderProps = {
     agents: Agent[];
@@ -13,6 +14,10 @@ type HeaderProps = {
     isPrivateMode: boolean;
     onTogglePrivate: () => void;
     showBottomBorder?: boolean;
+    showConversationActions?: boolean;
+    onArchiveConversation?: () => void;
+    onReportConversation?: () => void;
+    onDeleteConversation?: () => void;
 };
 
 export default function Header({
@@ -23,6 +28,10 @@ export default function Header({
     isPrivateMode,
     onTogglePrivate,
     showBottomBorder = false,
+    showConversationActions = false,
+    onArchiveConversation,
+    onReportConversation,
+    onDeleteConversation,
 }: HeaderProps) {
     const selected = React.useMemo(
         () => agents.find(a => a.id === selectedAgent),
@@ -54,7 +63,7 @@ export default function Header({
                         </SelectValue>
                     </SelectTrigger>
 
-                    <SelectContent className="w-[18rem] border-0 bg-background text-foreground shadow-none">
+                    <SelectContent className="w-[18rem] rounded-xl border border-border/60 bg-background text-foreground shadow-lg">
                         {agents.map(agent => (
                             <SelectItem
                                 key={agent.id}
@@ -100,6 +109,56 @@ export default function Header({
                                 <p>Private Chat</p>
                             </TooltipContent>
                         </Tooltip>
+                    )}
+                    {showConversationActions && (
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                                <button
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    className="rounded-full p-2 text-muted-foreground transition-smooth hover:bg-gray-800/80 hover:text-white focus-visible:outline-none"
+                                    aria-label="Conversation actions"
+                                >
+                                    <MoreHorizontal size={18} />
+                                </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                                <DropdownMenu.Content
+                                    sideOffset={8}
+                                    align="end"
+                                    className="z-50 w-48 rounded-xl border border-border/60 bg-background text-foreground shadow-lg"
+                                >
+                                    <DropdownMenu.Item
+                                        onSelect={() => {
+                                            onArchiveConversation?.();
+                                        }}
+                                        className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                                    >
+                                        <Archive size={16} className="text-muted-foreground" />
+                                        <span>Archive</span>
+                                    </DropdownMenu.Item>
+                                    <DropdownMenu.Item
+                                        onSelect={() => {
+                                            onReportConversation?.();
+                                        }}
+                                        className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                                    >
+                                        <Flag size={16} className="text-muted-foreground" />
+                                        <span>Report</span>
+                                    </DropdownMenu.Item>
+                                    <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                                    <DropdownMenu.Item
+                                        onSelect={() => {
+                                            onDeleteConversation?.();
+                                        }}
+                                        className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive"
+                                    >
+                                        <Trash2 size={16} />
+                                        <span>Delete</span>
+                                    </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
                     )}
                 </div>
             </div>

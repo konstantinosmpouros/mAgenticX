@@ -24,7 +24,7 @@ type AppSidebarProps = {
   conversations: ConversationSummary[];
   currentConversationId: string | null;
   onSelectConversation: (conversation: ConversationSummary) => void;
-  onDeleteConversation: (id: string, e: React.MouseEvent) => void;
+  onDeleteConversation: (id: string, e?: React.MouseEvent) => void;
   onLoadMore: () => void;
   isLoadingMore: boolean;
   hasMore: boolean;
