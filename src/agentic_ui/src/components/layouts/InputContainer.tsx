@@ -118,7 +118,7 @@ export function InputContainer(props: InputContainerProps) {
     
     // Rotate to a different random quote every 5s while empty-state is visible
     React.useEffect(() => {
-        if (!isMessagesEmpty) return;               // pause rotation when messages exist
+        if (!isMessagesEmpty) return;
         const id = setInterval(() => {
             setQuoteIndex(prev => {
             if (WELCOME_QUOTES.length < 2) return prev;
@@ -197,83 +197,85 @@ export function InputContainer(props: InputContainerProps) {
             )}
             
             <div className="mx-auto max-w-3xl pointer-events-auto">
-                {/* Attachments */}
-                {attachments.length > 0 && (
-                    <div className="mb-4 flex flex-wrap gap-2 justify-center">
-                        {attachments.map((file, index) => {
-                            const isImg = isImageFile(file);
-                            return (
-                                <div
-                                    key={index}
-                                    className={`flex items-center gap-2 bg-secondary/70 px-4 py-2 rounded-xl text-sm shadow-card border border-border ${isImg ? "pr-2" : "w-64 md:w-80 "}`}
-                                >
-                                    {isImg ? (
-                                        <div className="flex items-center gap-2">
-                                            <img
-                                                src={getImageUrl(file)}
-                                                alt="Preview"
-                                                className="w-8 h-8 object-cover rounded cursor-pointer"
-                                                onClick={() => handleImageClick(getImageUrl(file))}
-                                            />
-                                        </div>
-                                    ) : (
-                                        <>
-                                        <Paperclip size={14} className="text-primary" />
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-medium truncate block">{file.name}</span>
-                                        </div>
-                                        </>
-                                    )}
-                                    <button
-                                        onClick={() => removeAttachment(index)}
-                                        className="text-destructive hover:text-destructive/80 transition-smooth ml-2 w-5 h-5 rounded-full bg-destructive/20 flex items-center justify-center"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-                
                 {/* Floating Input Container */}
                 <div
-                    className={`bg-background rounded-2xl shadow-lg p-4 ${
+                    className={`bg-background rounded-3xl shadow-lg p-4 ${
                         isPrivateMode ? "border-2 border-primary/50" : "border"
                     }`}
                 >
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col">
+                        <div
+                            className={`transition-all duration-200 overflow-hidden ${attachments.length ? "mb-4 opacity-100" : "mb-0 opacity-0"}`}
+                        >
+                            {attachments.length > 0 && (
+                                <div className="flex flex-wrap gap-2 justify-center">
+                                    {attachments.map((file, index) => {
+                                        const isImg = isImageFile(file);
+                                        return (
+                                            <div
+                                                key={index}
+                                                className={`flex items-center gap-2 bg-secondary/70 px-4 py-2 rounded-xl text-sm shadow-card border border-border ${isImg ? "pr-2" : "w-64 md:w-80 "}`}
+                                            >
+                                                {isImg ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <img
+                                                            src={getImageUrl(file)}
+                                                            alt="Preview"
+                                                            className="w-8 h-8 object-cover rounded cursor-pointer"
+                                                            onClick={() => handleImageClick(getImageUrl(file))}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <Paperclip size={14} className="text-primary" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className="font-medium truncate block">{file.name}</span>
+                                                        </div>
+                                                    </>
+                                                )}
+                                                <button
+                                                    onClick={() => removeAttachment(index)}
+                                                    className="text-destructive hover:text-destructive/80 transition-smooth ml-2 w-5 h-5 rounded-full bg-destructive/20 flex items-center justify-center"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
                         {/* Text Input Area */}
-                        <div className="flex-1">
+                        <div className="w-full">
                             <Textarea
                                 ref={(textarea: any) => {
-                                (textareaRef as any).current = textarea;
+                                    (textareaRef as any).current = textarea;
                                 }}
                                 value={currentMessage}
                                 onChange={(e: any) => setCurrentMessage(e.target.value)}
                                 onPaste={handlePaste}
                                 placeholder={`Message ${currentAgent?.name}...`}
                                 onKeyDown={(e: any) => {
-                                if (
-                                    e.key === "Enter" &&
-                                    !e.shiftKey &&
-                                    !thinkingActive &&
-                                    !isStreaming &&
-                                    (currentMessage.trim() || attachments.length > 0)
-                                ) {
-                                    e.preventDefault();
-                                    handleSendMessage();
-                                }
+                                    if (
+                                        e.key === "Enter" &&
+                                        !e.shiftKey &&
+                                        !thinkingActive &&
+                                        !isStreaming &&
+                                        (currentMessage.trim() || attachments.length > 0)
+                                    ) {
+                                        e.preventDefault();
+                                        handleSendMessage();
+                                    }
                                 }}
-                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground"
+                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground w-full"
                                 rows={1}
                                 style={{ height: "auto", maxHeight: textareaMaxHeight }}
                             />
                         </div>
-                        
+
                         {/* Action Buttons */}
-                        <div className="flex items-center gap-2">
-                            {/* Attach files */}
+                        <div className="flex items-center justify-between gap-3">
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <div
@@ -291,49 +293,50 @@ export function InputContainer(props: InputContainerProps) {
                                     <p>Attach files & photos</p>
                                 </TooltipContent>
                             </Tooltip>
-                            
-                            {/* Voice Input */}
-                            <Tooltip delayDuration={0}>
-                                <TooltipTrigger asChild>
-                                    <div
-                                        className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
-                                        onClick={() =>
-                                        toast?.({ title: "Voice input", description: "Feature coming soon!", duration: 2000 })
-                                        }
-                                    >
-                                        <Mic size={20} className="text-muted-foreground active:text-white" />
-                                    </div>
-                                </TooltipTrigger>
-                                <TooltipContent
-                                    side="top"
-                                    align="center"
-                                    className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                >
-                                    <p>Voice Input</p>
-                                </TooltipContent>
-                            </Tooltip>
-                            
-                            {/* Send Message */}
-                            <Tooltip delayDuration={0}>
-                                <TooltipTrigger asChild>
-                                    <StarBorder
-                                        innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center h-10 w-10 py-0 px-0 border-0 rounded-full font-normal text-[inherit]"  // Overrides default inner styles to match original button; added flex centering for icon, removed unnecessary padding/text styles
-                                        className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"  // Added hover and transition here for the outer container
-                                        color="hsl(var(--primary))"  // Use your theme's primary color variable for the star effect; fallback to 'magenta' or any color
-                                        thickness={3}
-                                        onClick={() => {
-                                            if (isStreaming) {
-                                                handleStopStreaming?.();
-                                            } else {
-                                                handleSendMessage();
+
+                            <div className="flex items-center gap-2">
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <div
+                                            className="w-12 h-12 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
+                                            onClick={() =>
+                                                toast?.({ title: "Voice input", description: "Feature coming soon!", duration: 2000 })
                                             }
-                                        }}
-                                        disabled={isStreaming ? false : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive)}
+                                        >
+                                            <Mic size={20} className="text-muted-foreground active:text-white" />
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                        side="top"
+                                        align="center"
+                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                     >
-                                        {isStreaming ? <Stop size={16} /> : <Send size={16} />}
-                                    </StarBorder>
-                                </TooltipTrigger>
-                            </Tooltip>
+                                        <p>Voice Input</p>
+                                    </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <StarBorder
+                                            as="button"
+                                            innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center h-4 w-4 py-0 px-0 border-0 rounded-full font-normal text-[inherit]"
+                                            className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
+                                            color="hsl(var(--primary))"
+                                            thickness={2}
+                                            onClick={() => {
+                                                if (isStreaming) {
+                                                    handleStopStreaming?.();
+                                                } else {
+                                                    handleSendMessage();
+                                                }
+                                            }}
+                                            disabled={isStreaming ? false : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive)}
+                                        >
+                                            {isStreaming ? <Stop size={16} /> : <Send size={16} />}
+                                        </StarBorder>
+                                    </TooltipTrigger>
+                                </Tooltip>
+                            </div>
                         </div>
                     </div>
                 </div>
