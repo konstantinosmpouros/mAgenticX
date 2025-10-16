@@ -157,9 +157,10 @@ type CenteredComposerLayoutArgs = {
   attachmentsCount: number;
 };
 
-const DEFAULT_TEXTAREA_MAX = 144;
-const FLOATING_MAX_RATIO = 0.6;
+const DEFAULT_TEXTAREA_MAX = 168;
+const FLOATING_MAX_RATIO = 0.68;
 const MIN_TEXTAREA_HEIGHT = 48;
+const FLOATING_ANCHOR_RATIO = 0.35;
 
 export function useCenteredComposerLayout({
   isMessagesEmpty,
@@ -176,9 +177,10 @@ export function useCenteredComposerLayout({
 
   const emptyWrapperStyle = useMemo<CSSProperties | undefined>(() => {
     if (!isMessagesEmpty || centerAnchorOffset === null) return undefined;
+    const anchorPercent = FLOATING_ANCHOR_RATIO * 100;
     return {
       transform: 'translateX(-50%)',
-      top: `calc(50% - ${centerAnchorOffset}px)`,
+      top: `calc(${anchorPercent}% - ${centerAnchorOffset}px)`,
     };
   }, [isMessagesEmpty, centerAnchorOffset]);
 
