@@ -4,17 +4,21 @@
 
 - Plug tool in FastAPI that auto-generates documentation for all available APIs (/docs)
 - Create flow diagrams so a viewer of the repo can understand fast what is happening
-- Check what is hydra
+- Add the hashicorp Vault for password and key management and update the whole project accordingly. Add also the hashicorp vault authenticator of autho2 and JWT authentication to vault
 
 ## Agentic UI
 
 - In long conversation the input container is lagging. Fix it
-- Refactor Sidebar according to the [official page](https://ui.shadcn.com/docs/components/sidebar)
+- Fix sidebars conversation boxes and create dropdowns like (Today, Yesterday, This Week, Past)
+- In the input container layout, in the container where the attachments are temporarily hold before send, it has a bg and its outside the input container. Either put it inside or remove the bg.
+- Something is wrong with the header's bg.
+- Make the input container expand more according to the text area size and cover upto a percentage of the page, also in the empty conv state make it expand from the bottom.
+- Make the conversation container the same length as the input container.
 
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui
 - Implement a tab in the profile panel to show all the images, like openai library
 - Check what to do with the audio input
-- Create one more chat like gemini code or cursor (agentic chat)
+- Create one more chat workflow like gemini code or cursor (agentic chat)
 
 ## Agents
 
@@ -23,9 +27,10 @@
 - Create a deep research agent with deep agents and make it available
 - Replace tools with mcp
 - Make all agents OOP in order to pass configs for llms, tools etc.
+- Remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 
 ## Dialogue Bridge
 
-- In the inference process we shouldn't send all the images in the conversation, when an image is send create a handler and a new col to store a description of it and the images from older messages should be replaces with the description only. The same for the file, handle the file description and rag and then in the messages that have files insert in the prompt the attachment description.
+- In the inference process we shouldn't send all the images in the conversation, when an image is send create a handler and a new col to store a description of it and the images from older messages should be replaces with the description only. Alternative the images size must be shrunk in order to be lighter for the inference. The same for the file, handle the file description and rag and then in the messages that have files insert in the prompt the attachment description.
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document

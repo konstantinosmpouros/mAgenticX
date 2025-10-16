@@ -41,9 +41,9 @@ const ScrollBar = React.forwardRef<
       // make the track transparent (removes the white bg)
       "flex touch-none select-none transition-colors bg-transparent",
       orientation === "vertical" &&
-        "h-full w-2 border-l border-l-transparent p-[1px]",
+        "h-full w-3 border-l border-l-transparent p-[2px]",
       orientation === "horizontal" &&
-        "h-2 flex-col border-t border-t-transparent p-[1px]",
+        "h-3 flex-col border-t border-t-transparent p-[2px]",
       className
     )}
     {...props}
