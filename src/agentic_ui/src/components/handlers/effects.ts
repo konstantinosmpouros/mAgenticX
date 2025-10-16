@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Agent, ThinkingState, UserProfile } from '@/lib/types';
 import { loadSession, isSessionValid, clearSession, updateSession } from '@/lib/authStorage';
 import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
@@ -139,4 +139,13 @@ export function useUIPersistEffect(params: {
   }, [userId, JSON.stringify(snapshot), attachments.map(a => (a as any).name + ':' + (a as any).size + ':' + (a as any).type).join('|')]);
 }
 
+export function useHeaderDividerEffect() {
+  const [headerHasDivider, setHeaderHasDivider] = useState(false);
+
+  const handleHeaderScrollState = useCallback((scrolled: boolean) => {
+    setHeaderHasDivider(scrolled);
+  }, []);
+
+  return { headerHasDivider, handleHeaderScrollState };
+}
 

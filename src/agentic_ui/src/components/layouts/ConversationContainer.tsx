@@ -54,6 +54,7 @@ type ConversationContainerProps = {
   messagesEndRef: React.RefObject<HTMLDivElement>;
   AgentIcon: LucideIcon;
   currentAgent?: Agent;
+  onScrolledPastTop?: (isScrolled: boolean) => void;
 };
 
 export default function ConversationContainer({
@@ -76,12 +77,30 @@ export default function ConversationContainer({
   messagesEndRef,
   AgentIcon,
   currentAgent,
+  onScrolledPastTop,
 }: ConversationContainerProps) {
+  const viewportRef = React.useRef<HTMLDivElement | null>(null);
+
+  const handleScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const scrolled = event.currentTarget.scrollTop > 4;
+      onScrolledPastTop?.(scrolled);
+    },
+    [onScrolledPastTop]
+  );
+
+  React.useEffect(() => {
+    if (!onScrolledPastTop) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    onScrolledPastTop(viewport.scrollTop > 4);
+  }, [messages.length, onScrolledPastTop]);
+
   return (
     <div className="flex-1 overflow-hidden relative">
-      <ScrollArea className="h-full">
+      <ScrollArea className="h-full" onScroll={handleScroll} viewportRef={viewportRef}>
         <div
-          className={`w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth ${
+          className={`max-w-6xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth ${
             isClearing ? 'messages-clearing' : ''
           }`}
         >

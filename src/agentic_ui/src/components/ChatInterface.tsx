@@ -27,7 +27,8 @@ import {
   createUIHandlers,
   createAiTransitionHandlers,
   createStickyUserBarHandlers,
-  createFeedbackHandlers
+  createFeedbackHandlers,
+  useHeaderDividerEffect
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
 
@@ -84,6 +85,7 @@ export function ChatInterface() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
+  const { headerHasDivider, handleHeaderScrollState } = useHeaderDividerEffect();
   
   // UI components
   const [activeProfileTab, setActiveProfileTab] = useState('profile');
@@ -332,6 +334,7 @@ export function ChatInterface() {
                   setIsPrivateMode(!isPrivateMode);
                 }
               }}
+              showBottomBorder={headerHasDivider}
             />
 
             {/* Chat Messages Container*/}
@@ -356,6 +359,7 @@ export function ChatInterface() {
               messagesEndRef={messagesEndRef}
               AgentIcon={AgentIcon}
               currentAgent={currentAgent}
+              onScrolledPastTop={handleHeaderScrollState}
             />
             </div>
 

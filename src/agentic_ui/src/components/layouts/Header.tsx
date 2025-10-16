@@ -12,6 +12,7 @@ type HeaderProps = {
     showPrivateToggle: boolean;
     isPrivateMode: boolean;
     onTogglePrivate: () => void;
+    showBottomBorder?: boolean;
 };
 
 export default function Header({
@@ -21,6 +22,7 @@ export default function Header({
     showPrivateToggle,
     isPrivateMode,
     onTogglePrivate,
+    showBottomBorder = false,
 }: HeaderProps) {
     const selected = React.useMemo(
         () => agents.find(a => a.id === selectedAgent),
@@ -29,7 +31,9 @@ export default function Header({
     const SelectedIcon = selected?.icon;
 
     return (
-        <div className="sticky top-0 z-40 w-full bg-transparent px-3 py-2 md:px-6 md:py-3">
+        <div
+            className={`sticky top-0 z-40 w-full bg-transparent px-3 py-2 md:px-6 md:py-3 border-b transition-colors duration-200 ${showBottomBorder ? 'border-border/60 backdrop-blur-md' : 'border-transparent'}`}
+        >
             <div className="flex w-full items-center gap-1.5 md:gap-3">
                 <Select value={selectedAgent} onValueChange={onAgentChange}>
                     <SelectTrigger
