@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
+import { useCenteredComposerLayout } from "@/components/handlers";
 
 
 type InputContainerProps = {
@@ -94,8 +95,15 @@ export function InputContainer(props: InputContainerProps) {
         X,
         toast,
         currentAgent,
-        Textarea,
-    } = props;
+    Textarea,
+} = props;
+
+    const { containerRef, emptyWrapperStyle, textareaMaxHeight } = useCenteredComposerLayout({
+        isMessagesEmpty,
+        textareaRef,
+        currentMessage,
+        attachmentsCount: attachments.length,
+    });
     
     // Pick a starting quote whenever agent changes or the empty-state toggles on
     const [quoteIndex, setQuoteIndex] = React.useState<number>(() =>
@@ -141,8 +149,10 @@ export function InputContainer(props: InputContainerProps) {
     
     return (
         <div
+            ref={containerRef}
             /* Force dark token scope so the input stays dark even in light theme */
             className={`${positionClass} dark`}
+            style={emptyWrapperStyle}
         >
             {isMessagesEmpty && (
                 <div className="text-center py-16">
@@ -237,12 +247,7 @@ export function InputContainer(props: InputContainerProps) {
                         <div className="flex-1">
                             <Textarea
                                 ref={(textarea: any) => {
-                                // keep your existing auto-resize logic
                                 (textareaRef as any).current = textarea;
-                                if (textarea) {
-                                    textarea.style.height = "auto";
-                                    textarea.style.height = Math.min(textarea.scrollHeight, 144) + "px";
-                                }
                                 }}
                                 value={currentMessage}
                                 onChange={(e: any) => setCurrentMessage(e.target.value)}
@@ -260,9 +265,9 @@ export function InputContainer(props: InputContainerProps) {
                                     handleSendMessage();
                                 }
                                 }}
-                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] max-h-[144px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground"
+                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground"
                                 rows={1}
-                                style={{ height: "auto" }}
+                                style={{ height: "auto", maxHeight: textareaMaxHeight }}
                             />
                         </div>
                         

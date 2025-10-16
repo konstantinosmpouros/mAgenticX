@@ -11,7 +11,6 @@
 - In long conversation the input container is lagging. Fix it
 - Fix sidebars conversation boxes and create dropdowns like (Today, Yesterday, This Week, Past)
 - In the input container layout, in the container where the attachments are temporarily hold before send, it has a bg and its outside the input container. Either put it inside or remove the bg.
-- Something is wrong with the header's bg.
 - Make the input container expand more according to the text area size and cover upto a percentage of the page, also in the empty conv state make it expand from the bottom.
 - Make the conversation container the same length as the input container.
 

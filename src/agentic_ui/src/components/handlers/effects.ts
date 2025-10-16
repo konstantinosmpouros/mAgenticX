@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { Agent, ThinkingState, UserProfile } from '@/lib/types';
 import { loadSession, isSessionValid, clearSession, updateSession } from '@/lib/authStorage';
 import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
 import { getAgents, getConversations } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
+import type { CSSProperties, RefObject } from 'react';
 
 export function useAutoScrollEffect(messages: any[], thinkingState: ThinkingState | null, messagesEndRef: React.RefObject<HTMLDivElement>, shouldAutoScroll: boolean) {
   const scrollToBottom = () => {
@@ -149,3 +150,106 @@ export function useHeaderDividerEffect() {
   return { headerHasDivider, handleHeaderScrollState };
 }
 
+type CenteredComposerLayoutArgs = {
+  isMessagesEmpty: boolean;
+  textareaRef: RefObject<HTMLTextAreaElement>;
+  currentMessage: string;
+  attachmentsCount: number;
+};
+
+const DEFAULT_TEXTAREA_MAX = 144;
+const FLOATING_MAX_RATIO = 0.6;
+const MIN_TEXTAREA_HEIGHT = 48;
+
+export function useCenteredComposerLayout({
+  isMessagesEmpty,
+  textareaRef,
+  currentMessage,
+  attachmentsCount,
+}: CenteredComposerLayoutArgs) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [centerAnchorOffset, setCenterAnchorOffset] = useState<number | null>(null);
+  const [floatingMaxHeight, setFloatingMaxHeight] = useState<number>(DEFAULT_TEXTAREA_MAX);
+
+  const textareaMaxHeight = isMessagesEmpty ? floatingMaxHeight : DEFAULT_TEXTAREA_MAX;
+  const effectiveTextareaMax = Math.max(textareaMaxHeight, MIN_TEXTAREA_HEIGHT);
+
+  const emptyWrapperStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!isMessagesEmpty || centerAnchorOffset === null) return undefined;
+    return {
+      transform: 'translateX(-50%)',
+      top: `calc(50% - ${centerAnchorOffset}px)`,
+    };
+  }, [isMessagesEmpty, centerAnchorOffset]);
+
+  useEffect(() => {
+    if (!isMessagesEmpty) {
+      setCenterAnchorOffset(null);
+      return;
+    }
+    if (centerAnchorOffset !== null) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setCenterAnchorOffset(rect.height / 2);
+  }, [isMessagesEmpty, centerAnchorOffset]);
+
+  useEffect(() => {
+    if (!isMessagesEmpty) {
+      setFloatingMaxHeight(DEFAULT_TEXTAREA_MAX);
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const computeMaxHeight = () => {
+      const rect = el.getBoundingClientRect();
+      const availableSpace = window.innerHeight - rect.bottom;
+      if (availableSpace > 0) {
+        const target = availableSpace * FLOATING_MAX_RATIO;
+        setFloatingMaxHeight(target > 0 ? target : DEFAULT_TEXTAREA_MAX);
+      } else {
+        setFloatingMaxHeight(DEFAULT_TEXTAREA_MAX);
+      }
+    };
+
+    computeMaxHeight();
+
+    const handleResize = () => computeMaxHeight();
+    window.addEventListener('resize', handleResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => computeMaxHeight());
+      resizeObserver.observe(el);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      resizeObserver?.disconnect();
+    };
+  }, [isMessagesEmpty]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.maxHeight = `${effectiveTextareaMax}px`;
+    textarea.style.height = 'auto';
+    const nextHeight = Math.min(textarea.scrollHeight, effectiveTextareaMax);
+    const clampedHeight = Math.max(nextHeight, MIN_TEXTAREA_HEIGHT);
+    textarea.style.height = `${clampedHeight}px`;
+  }, [
+    textareaRef,
+    currentMessage,
+    attachmentsCount,
+    effectiveTextareaMax,
+    isMessagesEmpty,
+  ]);
+
+  return {
+    containerRef,
+    emptyWrapperStyle,
+    textareaMaxHeight: effectiveTextareaMax,
+  };
+}
