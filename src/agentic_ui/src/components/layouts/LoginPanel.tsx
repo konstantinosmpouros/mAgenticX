@@ -1,8 +1,7 @@
-import { memo, useState } from "react";
+import { FormEvent, memo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { MessageSquare } from "lucide-react";
 import { VscEye, VscEyeClosed } from "react-icons/vsc";
 import Galaxy from "@/components/ui/react_bits/bg_galaxy";
 
@@ -14,19 +13,26 @@ type LoginPanelProps = {
     onSubmit: () => void;
 };
 
-const GalaxyBg = memo(() => (
-    <div className="absolute inset-0 -z-10 pointer-events-none">
-        <Galaxy
-            mouseRepulsion={true}
-            mouseInteraction={false}
-            density={1.5}
-            glowIntensity={0.4}
-            saturation={0.8}
-            hueShift={150}
-            transparent={false}
-        />
-    </div>
-), () => true); 
+const GalaxyBg = memo(
+    () => (
+        <div className="absolute inset-0 -z-10 pointer-events-none">
+            <Galaxy
+                mouseRepulsion={true}
+                mouseInteraction={false}
+                density={1.1}
+                glowIntensity={0.18}
+                saturation={0.08}
+                hueShift={185}
+                twinkleIntensity={0.22}
+                rotationSpeed={0.05}
+                autoCenterRepulsion={0}
+                starSpeed={0.4}
+                transparent={false}
+            />
+        </div>
+    ),
+    () => true
+);
 
 export default function LoginPanel({
     username,
@@ -36,88 +42,91 @@ export default function LoginPanel({
     onSubmit,
 }: LoginPanelProps) {
     const [showPassword, setShowPassword] = useState(false);
+    const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        onSubmit();
+    };
     return (
         // Force dark styling for the login scene even when global theme is light
-        <div className="h-screen flex items-center justify-center dark">
-            <GalaxyBg/>
-            <Card 
-                className="
-                    w-full max-w-[min(92vw,32rem)]
-                    p-6 sm:p-8 md:p-10
-                    mx-auto
-                    max-h-[90dvh] overflow-auto
-                    bg-background/98 backdrop-blur-xl
-                    border border-border/20
-                    shadow-2xl animate-scale-in
-                    relative overflow-hidden
-                    rounded-2xl
-                "
-            >
-                {/* Subtle gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5 pointer-events-none"></div>
-                
-                <div className="relative z-10">
-                    <div className="text-center mb-5">
-                        <div className="relative inline-block mb-8">
-                            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-primary flex items-center justify-center shadow-2xl animate-pulse relative">
-                                <MessageSquare size={40} className="text-primary-foreground" />
-                                <div className="absolute inset-0 rounded-full bg-gradient-primary opacity-20 blur-xl scale-150"></div>
-                            </div>
+        <div className="dark flex min-h-[100dvh] items-center justify-center">
+            <GalaxyBg />
+            <Card className="relative w-full max-w-[min(92vw,30rem)] overflow-hidden rounded-[32px] border border-white/12 bg-gradient-to-br from-[#232b3d]/85 via-[#161c2b]/92 to-[#0f1422]/94 px-6 py-8 shadow-[0_28px_80px_-32px_rgba(7,9,14,0.85)] backdrop-blur-2xl sm:px-10 sm:py-12">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.22)_0%,_rgba(16,22,33,0)_68%)] opacity-75" aria-hidden="true" />
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(211,164,255,0.16)_0%,_rgba(12,18,28,0)_70%)] opacity-60 mix-blend-lighten" aria-hidden="true" />
+                <div className="pointer-events-none absolute inset-x-14 bottom-[-4rem] h-44 rounded-full bg-white/12 blur-[110px]" aria-hidden="true" />
+
+                <div className="relative z-10 flex flex-col gap-10 text-white">
+                    <header className="flex flex-col items-center gap-5 text-center">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-gradient-to-br from-white/25 via-white/12 to-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.32)]">
+                            <img src="/8.png" alt="mAgenticX mark" className="h-10 w-10 object-contain" />
                         </div>
-                        
-                        <div className="container min-h-fit">
-                            <h1 className="text-2xl md:text-2xl lg:text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-3 animate-fade-in tracking-tight">
-                                Agentic Chatting
+                        <div className="space-y-2">
+                            <h1 className="bg-gradient-to-r from-white via-white to-[#f1d6ff] bg-clip-text text-xl font-semibold tracking-tight text-transparent sm:text-2xl">
+                                Sign in to mAgenticX
                             </h1>
-                            <p className="text-muted-foreground text-sm animate-fade-in leading-relaxed ">
-                                Welcome back! Please sign in to continue your AI conversations
+                            <p className="text-sm text-white/72">
+                                Enter your workspace credentials to continue.
                             </p>
+                            <div className="mx-auto h-px w-14 rounded-full bg-gradient-to-r from-transparent via-[#dba9ff]/70 to-transparent" />
                         </div>
-                    </div>
-                    
-                    <div className="space-y-8">
-                        <div className="animate-fade-in space-y-2">
-                            <label className="block text-sm font-semibold mb-3 text-foreground/90">Username</label>
-                            <Input
-                                type="text"
-                                value={username}
-                                onChange={(e) => onUsernameChange(e.target.value)}
-                                placeholder="Enter your username"
-                                className="w-full h-14 bg-background/80 border-2 border-border/40 focus:border-primary/60 focus:ring-4 focus:ring-primary/10 transition-all duration-300 text-sm rounded-xl backdrop-blur-sm hover:border-border/60"
-                                onKeyDown={(e) => e.key === "Enter" && onSubmit()}
-                            />
-                        </div>
-                        
-                        <div className="animate-fade-in space-y-2">
-                            <label className="block text-sm font-semibold mb-3 text-foreground/90">Password</label>
-                            <div className="relative">
+                    </header>
+
+                    <div className="space-y-8 text-white">
+                        <form className="space-y-6" onSubmit={handleSubmit}>
+                            <div className="space-y-2">
+                                <label htmlFor="login-username" className="text-xs font-semibold uppercase tracking-[0.2em] text-white/65">
+                                    Username
+                                </label>
                                 <Input
-                                    type={showPassword ? "text" : "password"}
-                                    value={password}
-                                    onChange={(e) => onPasswordChange(e.target.value)}
-                                    placeholder="Enter your password"
-                                    className="w-full h-14 bg-background/80 border-2 border-border/40 focus:border-primary/60 focus:ring-4 focus:ring-primary/10 transition-all duration-300 text-sm rounded-xl backdrop-blur-sm hover:border-border/60 pr-12"
-                                    onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+                                    id="login-username"
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => onUsernameChange(e.target.value)}
+                                    placeholder="Your username"
+                                    className="h-12 rounded-xl border-white/18 bg-white/12 text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
                                 />
-                                {password.trim() && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors duration-200"
-                                    >
-                                        {showPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
-                                    </button>
-                                )}
                             </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="login-password" className="text-xs font-semibold uppercase tracking-[0.2em] text-white/65">
+                                    Password
+                                </label>
+                                <div className="relative">
+                                    <Input
+                                        id="login-password"
+                                        type={showPassword ? "text" : "password"}
+                                        value={password}
+                                        onChange={(e) => onPasswordChange(e.target.value)}
+                                        placeholder="Your password"
+                                        className="h-12 rounded-xl border-white/18 bg-white/12 pr-12 text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
+                                    />
+                                    {password.trim() && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/65 transition-colors hover:text-white/85"
+                                            aria-label={showPassword ? "Hide password" : "Show password"}
+                                        >
+                                            {showPassword ? <VscEyeClosed size={18} /> : <VscEye size={18} />}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <Button
+                                type="submit"
+                                className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-white via-white/94 to-white/88 text-slate-900 shadow-[0_18px_40px_-28px_rgba(211,164,255,0.9)] transition hover:from-white/95 hover:via-white/92 hover:to-white/85 focus-visible:ring-[#dfb7ff]/35"
+                            >
+                                <span className="text-sm font-semibold tracking-wide">Sign In</span>
+                            </Button>
+                        </form>
+
+                        <div className="text-center text-xs text-white/55">
+                            Don't have access yet?{" "}
+                            <button type="button" className="font-semibold text-[#d0b0ff] underline-offset-4 transition hover:text-white">
+                                Request an invite
+                            </button>
                         </div>
-                        
-                        <Button
-                            onClick={onSubmit}
-                            className="w-full h-[3rem] bg-gradient-primary hover:opacity-95 text-primary-foreground font-semibold text-md transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] shadow-2xl hover:shadow-glow animate-fade-in rounded-xl relative overflow-hidden"
-                        >
-                            <span className="relative z-10">Sign In</span>
-                            <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary-foreground/10 to-primary/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                        </Button>
                     </div>
                 </div>
             </Card>

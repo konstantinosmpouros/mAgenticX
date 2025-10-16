@@ -11,12 +11,11 @@ import {
   FileText,
   ChevronDown,
   ChevronRight,
-  ThumbsUp,
-  ThumbsDown,
   Copy,
   Check,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
-import { BsHandThumbsUpFill, BsHandThumbsDownFill } from "react-icons/bs";
 import { VscEye } from "react-icons/vsc";
 import type { LucideIcon } from "lucide-react";
 import type {
@@ -307,9 +306,10 @@ export default function ConversationContainer({
                                         variant="ghost"
                                         size="icon"
                                         className="
-                                          h-8 w-8 text-muted-foreground hover:text-foreground
-                                          hover:bg-muted/60 active:!bg-muted/70 active:!text-foreground
-                                          focus:!bg-muted/60 focus:!text-foreground focus:outline-none 
+                                          h-8 w-8 text-muted-foreground
+                                          hover:bg-muted/60 hover:!text-muted-foreground
+                                          active:!bg-muted/70 active:!text-muted-foreground
+                                          focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
                                           focus:ring-0 focus-visible:ring-0 transition-colors
                                         "
                                         onMouseDown={(e) => e.preventDefault()}
@@ -338,69 +338,65 @@ export default function ConversationContainer({
                                   </Tooltip>
                                 </div>
 
-                                <div className="mt-1">
-                                  <Tooltip delayDuration={0}>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className={`h-8 w-8 hover:bg-muted/60 ${
-                                          message.liked === true
-                                            ? 'text-primary'
-                                            : 'text-muted-foreground hover:text-foreground'
-                                        }`}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => onLike(message)}
-                                        aria-label={message.liked === true ? 'Unlike' : 'Like'}
+                                {message.liked !== false && (
+                                  <div className="mt-1">
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className={`h-8 w-8 hover:bg-muted/60 ${
+                                            message.liked === true
+                                              ? 'text-[#de8bff] hover:!text-[#de8bff]'
+                                              : 'text-muted-foreground hover:!text-muted-foreground'
+                                          }`}
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => onLike(message)}
+                                          aria-label={message.liked === true ? 'Unlike' : 'Like'}
+                                        >
+                                          <ThumbsUp className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="bottom"
+                                        align="center"
+                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                       >
-                                        {message.liked === true ? (
-                                        <BsHandThumbsUpFill className="h-4 w-4" />
-                                      ) : (
-                                        <ThumbsUp className="h-4 w-4" />
-                                      )}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                      side="bottom"
-                                      align="center"
-                                      className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                    >
-                                      <p>Like</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </div>
+                                        <p>Like</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                )}
 
-                                <div className="mt-1">
-                                  <Tooltip delayDuration={0}>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className={`h-8 w-8 hover:bg-muted/60 ${
-                                          message.liked === false
-                                            ? 'text-primary'
-                                            : 'text-muted-foreground hover:text-foreground'
-                                        }`}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => onDislike(message)}
-                                        aria-label={message.liked === false ? 'Clear dislike' : 'Dislike'}
+                                {message.liked !== true && (
+                                  <div className="mt-1">
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className={`h-8 w-8 hover:bg-muted/60 ${
+                                            message.liked === false
+                                              ? 'text-[#de8bff] hover:!text-[#de8bff]'
+                                              : 'text-muted-foreground hover:!text-muted-foreground'
+                                          }`}
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => onDislike(message)}
+                                          aria-label={message.liked === false ? 'Clear dislike' : 'Dislike'}
+                                        >
+                                          <ThumbsDown className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="bottom"
+                                        align="center"
+                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                       >
-                                        {message.liked === false ? (
-                                        <BsHandThumbsDownFill className="h-4 w-4" />
-                                      ) : (
-                                        <ThumbsDown className="h-4 w-4" />
-                                      )}
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                      side="bottom"
-                                      align="center"
-                                      className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                    >
-                                      <p>Dislike</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </div>
+                                        <p>Dislike</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                )}
                               </div>
                             </>
                           )}
@@ -426,9 +422,10 @@ export default function ConversationContainer({
                                 variant="ghost"
                                 size="icon"
                                 className="
-                                  h-8 w-8 text-muted-foreground hover:text-foreground
-                                  hover:bg-muted/60 active:!bg-muted/70 active:!text-foreground
-                                  focus:!bg-muted/60 focus:!text-foreground focus:outline-none 
+                                  h-8 w-8 text-muted-foreground
+                                  hover:bg-muted/60 hover:!text-muted-foreground
+                                  active:!bg-muted/70 active:!text-muted-foreground
+                                  focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
                                   focus:ring-0 focus-visible:ring-0 transition-colors
                                 "
                                 onMouseDown={(e) => e.preventDefault()}
