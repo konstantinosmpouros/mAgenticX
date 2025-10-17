@@ -1,5 +1,4 @@
 export * from './attachments';
-export * from './downloads';
 export * from './inference';
 export * from './conversations';
 export * from './agents';

@@ -121,13 +121,4 @@ export async function loadUISnapshot(userId: string): Promise<{ snapshot: UISnap
   return { snapshot: saved, attachments };
 }
 
-export async function clearUISnapshot(userId: string) {
-  const saved: UISnapshotSerializable | undefined = await idbGet(STATE_STORE, userId);
-  if (saved?.attachmentsRefs) {
-    await Promise.all(saved.attachmentsRefs.map(ref => idbDelete(BLOB_STORE, ref.key).catch(() => {})));
-  }
-  await idbDelete(STATE_STORE, userId);
-}
-
 // Helpers for converting Dates in messages/conversation when saving/restoring can be handled in caller.
-

@@ -57,7 +57,6 @@ All colors MUST be HSL.
     --gradient-bg: var(--gradient-bg-1);
     --gradient-card: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 97%) 100%);
     --gradient-primary: linear-gradient(135deg, hsl(293, 89%, 74%) 0%, hsl(293, 89%, 84%) 100%);
-    --gradient-header: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 97%) 100%);
     
     /* Light theme shadows */
     --shadow-elegant: 0 10px 40px -10px hsl(293, 89%, 74%, 0.15);
@@ -66,9 +65,7 @@ All colors MUST be HSL.
     
     /* Smooth transitions with different speeds */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
     --radius: 0.5rem;
 
@@ -132,7 +129,6 @@ All colors MUST be HSL.
     --gradient-bg: var(--gradient-bg-1);
     --gradient-card: linear-gradient(135deg, hsl(240, 4%, 12%) 0%, hsl(240, 6%, 15%) 100%);
     --gradient-primary: linear-gradient(135deg, hsl(293, 89%, 74%) 0%, hsl(293, 89%, 84%) 100%);
-    --gradient-header: linear-gradient(135deg, hsl(240, 6%, 8%) 0%, hsl(240, 8%, 12%) 100%);
     
     /* Dark theme shadows - preserving current */
     --shadow-elegant: 0 10px 40px -10px hsl(293, 89%, 74%, 0.25);
@@ -161,152 +157,9 @@ All colors MUST be HSL.
   }
 }
 
-/* Morphing gradient animation - light theme */
-@keyframes gradient-morph-light {
-  0% { 
-    background: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 95.9%) 50%, hsl(216, 50%, 92%) 100%);
-  }
-  16% { 
-    background: linear-gradient(135deg, hsl(260, 15%, 98%) 0%, hsl(280, 20%, 95%) 50%, hsl(293, 60%, 92%) 100%);
-  }
-  32% { 
-    background: linear-gradient(135deg, hsl(220, 25%, 98%) 0%, hsl(240, 30%, 95%) 50%, hsl(260, 40%, 92%) 100%);
-  }
-  48% { 
-    background: linear-gradient(135deg, hsl(200, 35%, 98%) 0%, hsl(220, 40%, 95%) 50%, hsl(240, 50%, 92%) 100%);
-  }
-  64% { 
-    background: linear-gradient(135deg, hsl(180, 45%, 98%) 0%, hsl(200, 50%, 95%) 50%, hsl(220, 60%, 92%) 100%);
-  }
-  80% { 
-    background: linear-gradient(135deg, hsl(160, 35%, 98%) 0%, hsl(180, 40%, 95%) 50%, hsl(200, 50%, 92%) 100%);
-  }
-  100% { 
-    background: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 95.9%) 50%, hsl(216, 50%, 92%) 100%);
-  }
-}
-
-/* Morphing gradient animation - dark theme */
-@keyframes gradient-morph-dark {
-  0% { 
-    background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
-  }
-  4% { 
-    background: linear-gradient(135deg, hsl(242, 7%, 6%) 0%, hsl(242, 9%, 10%) 50%, hsl(220, 22%, 8%) 100%);
-  }
-  8% { 
-    background: linear-gradient(135deg, hsl(245, 8%, 7%) 0%, hsl(245, 11%, 11%) 50%, hsl(225, 25%, 9%) 100%);
-  }
-  12% { 
-    background: linear-gradient(135deg, hsl(248, 9%, 7%) 0%, hsl(248, 12%, 11%) 50%, hsl(230, 27%, 9%) 100%);
-  }
-  16% { 
-    background: linear-gradient(135deg, hsl(250, 10%, 8%) 0%, hsl(250, 14%, 12%) 50%, hsl(235, 30%, 10%) 100%);
-  }
-  20% { 
-    background: linear-gradient(135deg, hsl(253, 11%, 7%) 0%, hsl(253, 15%, 11%) 50%, hsl(240, 32%, 9%) 100%);
-  }
-  24% { 
-    background: linear-gradient(135deg, hsl(255, 12%, 8%) 0%, hsl(255, 17%, 12%) 50%, hsl(245, 35%, 10%) 100%);
-  }
-  28% { 
-    background: linear-gradient(135deg, hsl(258, 13%, 7%) 0%, hsl(258, 18%, 11%) 50%, hsl(250, 37%, 9%) 100%);
-  }
-  32% { 
-    background: linear-gradient(135deg, hsl(260, 15%, 8%) 0%, hsl(260, 20%, 12%) 50%, hsl(255, 40%, 10%) 100%);
-  }
-  36% { 
-    background: linear-gradient(135deg, hsl(263, 16%, 7%) 0%, hsl(263, 21%, 11%) 50%, hsl(260, 42%, 9%) 100%);
-  }
-  40% { 
-    background: linear-gradient(135deg, hsl(265, 17%, 8%) 0%, hsl(265, 22%, 12%) 50%, hsl(265, 45%, 10%) 100%);
-  }
-  44% { 
-    background: linear-gradient(135deg, hsl(268, 18%, 7%) 0%, hsl(268, 23%, 11%) 50%, hsl(270, 47%, 9%) 100%);
-  }
-  48% { 
-    background: linear-gradient(135deg, hsl(270, 20%, 8%) 0%, hsl(270, 25%, 12%) 50%, hsl(275, 50%, 10%) 100%);
-  }
-  52% { 
-    background: linear-gradient(135deg, hsl(272, 19%, 7%) 0%, hsl(272, 24%, 11%) 50%, hsl(280, 48%, 9%) 100%);
-  }
-  56% { 
-    background: linear-gradient(135deg, hsl(275, 18%, 8%) 0%, hsl(275, 23%, 12%) 50%, hsl(285, 46%, 10%) 100%);
-  }
-  60% { 
-    background: linear-gradient(135deg, hsl(277, 17%, 7%) 0%, hsl(277, 22%, 11%) 50%, hsl(290, 44%, 9%) 100%);
-  }
-  64% { 
-    background: linear-gradient(135deg, hsl(280, 16%, 8%) 0%, hsl(280, 21%, 12%) 50%, hsl(285, 42%, 10%) 100%);
-  }
-  68% { 
-    background: linear-gradient(135deg, hsl(278, 15%, 7%) 0%, hsl(278, 20%, 11%) 50%, hsl(280, 40%, 9%) 100%);
-  }
-  72% { 
-    background: linear-gradient(135deg, hsl(275, 14%, 8%) 0%, hsl(275, 19%, 12%) 50%, hsl(275, 38%, 10%) 100%);
-  }
-  76% { 
-    background: linear-gradient(135deg, hsl(272, 13%, 7%) 0%, hsl(272, 18%, 11%) 50%, hsl(270, 36%, 9%) 100%);
-  }
-  80% { 
-    background: linear-gradient(135deg, hsl(270, 12%, 8%) 0%, hsl(270, 17%, 12%) 50%, hsl(265, 34%, 10%) 100%);
-  }
-  84% { 
-    background: linear-gradient(135deg, hsl(267, 11%, 7%) 0%, hsl(267, 16%, 11%) 50%, hsl(260, 32%, 9%) 100%);
-  }
-  88% { 
-    background: linear-gradient(135deg, hsl(265, 10%, 8%) 0%, hsl(265, 15%, 12%) 50%, hsl(255, 30%, 10%) 100%);
-  }
-  92% { 
-    background: linear-gradient(135deg, hsl(252, 9%, 7%) 0%, hsl(252, 14%, 11%) 50%, hsl(250, 28%, 9%) 100%);
-  }
-  96% { 
-    background: linear-gradient(135deg, hsl(245, 8%, 8%) 0%, hsl(245, 12%, 12%) 50%, hsl(240, 25%, 10%) 100%);
-  }
-  100% { 
-    background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
-  }
-}
-
-/* Apply morphing animation to background - theme aware */
-.bg-gradient-morph {
-  background: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 95.9%) 50%, hsl(216, 50%, 92%) 100%);
-  animation: gradient-morph-light 45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.dark .bg-gradient-morph {
-  background: linear-gradient(135deg, hsl(240, 6%, 6%) 0%, hsl(240, 8%, 10%) 50%, hsl(216, 20%, 8%) 100%);
-  animation: gradient-morph-dark 45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
 /* Smooth state transition utilities */
 .transition-smooth { transition: var(--transition-smooth); }
-.transition-fast { transition: var(--transition-fast); }
 .transition-slow { transition: var(--transition-slow); }
-.transition-bounce { transition: var(--transition-bounce); }
-
-/* Fade transitions */
-.fade-enter {
-  opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.4s ease, transform 0.4s ease;
-}
-
-.fade-enter-active {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.fade-exit {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-
-.fade-exit-active {
-  opacity: 0;
-  transform: translateY(-10px);
-}
 
 /* Chat clearing animation */
 .messages-container {

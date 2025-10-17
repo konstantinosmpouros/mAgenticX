@@ -1,11 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Building2, X } from "lucide-react";
-import { HiArrowUp } from "react-icons/hi";
-import { VscMicFilled } from "react-icons/vsc";
-import { FaStop } from "react-icons/fa6";
+import { Building2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
@@ -14,7 +10,6 @@ import type { ThinkingState, Agent, MessageOut, ConversationDetail, Conversation
 // Handlers (modularized)
 import { 
   createAttachmentHandlers,
-  createDownloadHandlers,
   createInferenceHandlers,
   createConversationHandlers,
   createAgentHandlers,
@@ -29,7 +24,8 @@ import {
   createAiTransitionHandlers,
   createStickyUserBarHandlers,
   createFeedbackHandlers,
-  useHeaderDividerEffect
+  useHeaderDividerEffect,
+  useCenteredComposerLayout
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
 
@@ -176,8 +172,13 @@ export function ChatInterface() {
   });
   
   // Handlers from modules
-  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl } = createAttachmentHandlers({ attachments, setAttachments, toast: toastWrapper });
-  const { handleFileDownload } = createDownloadHandlers({ userId, currentConversation, toast: toastWrapper });
+  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl, handleFileDownload } = createAttachmentHandlers({
+    attachments,
+    setAttachments,
+    toast: toastWrapper,
+    userId,
+    currentConversation,
+  });
   
   
   // UI Handlers (clipboard, etc.)
@@ -312,6 +313,18 @@ export function ChatInterface() {
     currentConversation,
     setConversationMessages,
   });
+
+  const isMessagesEmpty = (currentConversation?.messages?.length ?? 0) === 0;
+  const {
+    containerRef: composerContainerRef,
+    emptyWrapperStyle,
+    textareaMaxHeight,
+  } = useCenteredComposerLayout({
+    isMessagesEmpty,
+    textareaRef,
+    currentMessage,
+    attachmentsCount: attachments.length,
+  });
   
   const currentAgent = agents.find(a => a.id === selectedAgent);
   const AgentIcon = currentAgent?.icon || Building2;
@@ -395,9 +408,9 @@ export function ChatInterface() {
             {/* Input Area */}
             <InputContainer
               // Centered empty state
-              isMessagesEmpty={(currentConversation?.messages?.length ?? 0) === 0}
+              isMessagesEmpty={isMessagesEmpty}
               positionClass={
-                (currentConversation?.messages?.length ?? 0) === 0
+                isMessagesEmpty
                   ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
                   : "sticky bottom-0 left-0 right-0 z-30 p-6"
               }
@@ -419,18 +432,15 @@ export function ChatInterface() {
               handleFileUpload={handleFileUpload}
               fileInputRef={fileInputRef}
               textareaRef={textareaRef}
+              containerRef={composerContainerRef}
+              emptyWrapperStyle={emptyWrapperStyle}
+              textareaMaxHeight={textareaMaxHeight}
 
               // UI deps
               AgentIcon={AgentIcon}
               Tooltip={Tooltip}
               TooltipTrigger={TooltipTrigger}
               TooltipContent={TooltipContent}
-              AttachmentIcon={Plus}
-              Mic={VscMicFilled}
-              Button={Button}
-              Send={HiArrowUp}
-              Stop={FaStop}
-              X={X}
               toast={toast}
               currentAgent={currentAgent}
               Textarea={Textarea}

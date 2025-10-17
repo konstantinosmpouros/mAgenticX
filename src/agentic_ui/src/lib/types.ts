@@ -167,8 +167,6 @@ export type FileAttachment = {
 };
 
 // Union type for handling both API and upload attachments
-export type Attachment = AttachmentOut | FileAttachment;
-
 // Thinking state type used in the application
 export type ThinkingState = {
     messageId: string;

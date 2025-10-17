@@ -283,16 +283,30 @@ export async function dislikeMessage(userId: string, conversationId: string, mes
 }
 
 // Download non-image attachment
-export async function downloadAttachment(userId: string, conversationId: string, messageId: string, blobId: string): Promise<Blob> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/${blobId}`, {
-    method: "GET",
-  });
+type DownloadAttachmentParams = {
+  userId: string;
+  conversationId: string;
+  messageId: string;
+  blobId: string;
+  filename?: string;
+};
 
-  if (!res.ok) {
-    throw new Error(`Failed to download attachment: ${res.status}`);
+export function downloadAttachment({
+  userId,
+  conversationId,
+  messageId,
+  blobId,
+  filename,
+}: DownloadAttachmentParams): void {
+  const url = `/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/${blobId}`;
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  if (filename) {
+    anchor.download = filename;
   }
-
-  return await res.blob();
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
 }
 
 // Start streaming inference by requesting the bridge SSE endpoint

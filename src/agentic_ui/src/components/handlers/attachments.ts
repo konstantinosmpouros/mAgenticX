@@ -1,10 +1,13 @@
 import { validateAdd, validateAttachmentsForUpload } from '@/lib/uploadGuards';
-import type { MessageOut } from '@/lib/types';
+import { downloadAttachment } from '@/lib/api';
+import type { ConversationDetail, MessageOut } from '@/lib/types';
 
 type AttachmentsCtx = {
   attachments: File[];
   setAttachments: (updater: (prev: File[]) => File[]) => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  userId?: string | null;
+  currentConversation?: ConversationDetail | null;
 };
 
 export function createAttachmentHandlers(ctx: AttachmentsCtx) {
@@ -148,5 +151,29 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  return { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl };
+  const handleFileDownload = (attachment: any, message: MessageOut) => {
+    const { userId, currentConversation } = ctx;
+    if (!userId || !currentConversation) return;
+
+    if (!attachment?.blobId) {
+      toast({ title: 'Download unavailable', description: 'This attachment cannot be downloaded', variant: 'destructive', duration: 3000 });
+      return;
+    }
+
+    try {
+      toast({ title: 'Download starting', description: `Preparing ${attachment.name}`, duration: 2000 });
+      downloadAttachment({
+        userId,
+        conversationId: currentConversation.id,
+        messageId: message.id,
+        blobId: attachment.blobId,
+        filename: attachment.name,
+      });
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast({ title: 'Download failed', description: 'Unable to download the file. Please try again.', variant: 'destructive', duration: 3000 });
+    }
+  };
+
+  return { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl, handleFileDownload };
 }

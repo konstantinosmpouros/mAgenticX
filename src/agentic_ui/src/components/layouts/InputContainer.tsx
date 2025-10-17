@@ -1,10 +1,12 @@
 import React from "react";
 import type { LucideIcon } from 'lucide-react';
+import { Plus } from "lucide-react";
+import { HiArrowUp } from "react-icons/hi";
+import { VscMicFilled } from "react-icons/vsc";
+import { FaStop } from "react-icons/fa6";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
-import { useCenteredComposerLayout } from "@/components/handlers";
-
 
 type InputContainerProps = {
     /** Replace "top-1/2 -translate-y-1/2" with anything you want */
@@ -30,18 +32,15 @@ type InputContainerProps = {
     handleFileUpload: React.ChangeEventHandler<HTMLInputElement>;
     fileInputRef: React.RefObject<HTMLInputElement>;
     textareaRef: React.RefObject<HTMLTextAreaElement>;
+    containerRef: React.RefObject<HTMLDivElement>;
+    emptyWrapperStyle?: React.CSSProperties;
+    textareaMaxHeight: number;
 
     // UI bits you already import in the page
     AgentIcon: LucideIcon;
     Tooltip: any;
     TooltipTrigger: any;
     TooltipContent: any;
-    AttachmentIcon: any;
-    Mic: any;
-    Button: any;
-    Send: any;
-    Stop: any;
-    X: any;
 
     // Optional extras available in your page
     toast?: (opts: { title: string; description?: string; duration?: number }) => void;
@@ -83,27 +82,18 @@ export function InputContainer(props: InputContainerProps) {
         handleFileUpload,
         fileInputRef,
         textareaRef,
+        containerRef,
+        emptyWrapperStyle,
+        textareaMaxHeight,
         AgentIcon,
         Tooltip,
         TooltipTrigger,
         TooltipContent,
-        AttachmentIcon,
-        Mic,
-        Button,
-        Send,
-        Stop,
-        X,
         toast,
         currentAgent,
-    Textarea,
-} = props;
+        Textarea,
+    } = props;
 
-    const { containerRef, emptyWrapperStyle, textareaMaxHeight } = useCenteredComposerLayout({
-        isMessagesEmpty,
-        textareaRef,
-        currentMessage,
-        attachmentsCount: attachments.length,
-    });
     
     // Pick a starting quote whenever agent changes or the empty-state toggles on
     const [quoteIndex, setQuoteIndex] = React.useState<number>(() =>
@@ -227,7 +217,7 @@ export function InputContainer(props: InputContainerProps) {
                                                     </div>
                                                 ) : (
                                                     <>
-                                                        <AttachmentIcon size={18} className="text-primary" />
+                                                        <Plus size={18} className="text-primary" />
                                                         <div className="flex-1 min-w-0">
                                                             <span className="font-medium truncate block">{file.name}</span>
                                                         </div>
@@ -282,7 +272,7 @@ export function InputContainer(props: InputContainerProps) {
                                         className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
                                         onClick={() => fileInputRef.current?.click()}
                                     >
-                                        <AttachmentIcon size={20} className="text-muted-foreground active:text-white" />
+                                        <Plus size={20} className="text-muted-foreground active:text-white" />
                                     </div>
                                 </TooltipTrigger>
                                 <TooltipContent
@@ -303,7 +293,7 @@ export function InputContainer(props: InputContainerProps) {
                                                 toast?.({ title: "Voice input", description: "Feature coming soon!", duration: 2000 })
                                             }
                                         >
-                                            <Mic size={21} className="text-muted-foreground active:text-white" />
+                                            <VscMicFilled size={21} className="text-muted-foreground active:text-white" />
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent
@@ -332,7 +322,7 @@ export function InputContainer(props: InputContainerProps) {
                                             }}
                                             disabled={isStreaming ? false : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive)}
                                         >
-                                            {isStreaming ? <Stop size={16} /> : <Send size={16} />}
+                                            {isStreaming ? <FaStop size={16} /> : <HiArrowUp size={16} />}
                                         </StarBorder>
                                     </TooltipTrigger>
                                 </Tooltip>
