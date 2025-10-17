@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Paperclip, Building2, X } from "lucide-react";
+import { Plus, Building2, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
@@ -425,7 +425,7 @@ export function ChatInterface() {
               Tooltip={Tooltip}
               TooltipTrigger={TooltipTrigger}
               TooltipContent={TooltipContent}
-              Paperclip={Paperclip}
+              AttachmentIcon={Plus}
               Mic={VscMicFilled}
               Button={Button}
               Send={HiArrowUp}

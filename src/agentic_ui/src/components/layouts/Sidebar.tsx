@@ -1,5 +1,6 @@
 import * as React from "react";
-import { MessageSquare, X, Loader2, Building2, Plus, PanelLeft } from "lucide-react";
+import { MessageSquare, X, Loader2, Building2, PanelLeft } from "lucide-react";
+import { FiEdit } from "react-icons/fi";
 
 import type { Agent, ConversationSummary, UserProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -192,7 +193,7 @@ export default function AppSidebar({
               className="gap-2 rounded-xl bg-transparent px-3 py-3 transition hover:bg-muted/20 group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0"
               tooltip="Start a new chat"
             >
-              <Plus className="h-5 w-5" />
+              <FiEdit className="h-5 w-5" />
               <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

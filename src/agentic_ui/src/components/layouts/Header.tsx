@@ -47,15 +47,15 @@ export default function Header({
                 <Select value={selectedAgent} onValueChange={onAgentChange}>
                     <SelectTrigger
                         onMouseDown={(e) => e.preventDefault()}
-                        className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-background/70 text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-muted/60 dark:bg-background/40 dark:text-foreground dark:hover:bg-muted/40 justify-start gap-1.5 px-3"
+                        className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-background/70 text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-muted/60 dark:bg-background/40 dark:text-foreground dark:hover:bg-muted/40 justify-start gap-2 px-3 h-11"
                     >
                         <SelectValue placeholder="Select an agent">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2.5">
                                 {selected && SelectedIcon && (
-                                    <SelectedIcon size={16} className="text-muted-foreground" />
+                                    <SelectedIcon size={18} className="text-muted-foreground shrink-0" />
                                 )}
                                 {selected && (
-                                    <span className="truncate text-sm text-foreground max-w-[8.5rem] md:max-w-[10.5rem]">
+                                    <span className="truncate text-lg text-foreground max-w-[8.5rem] md:max-w-[10.5rem]">
                                         {selected.name}
                                     </span>
                                 )}

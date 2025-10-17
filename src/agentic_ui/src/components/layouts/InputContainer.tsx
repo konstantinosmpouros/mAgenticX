@@ -36,7 +36,7 @@ type InputContainerProps = {
     Tooltip: any;
     TooltipTrigger: any;
     TooltipContent: any;
-    Paperclip: any;
+    AttachmentIcon: any;
     Mic: any;
     Button: any;
     Send: any;
@@ -87,7 +87,7 @@ export function InputContainer(props: InputContainerProps) {
         Tooltip,
         TooltipTrigger,
         TooltipContent,
-        Paperclip,
+        AttachmentIcon,
         Mic,
         Button,
         Send,
@@ -130,7 +130,7 @@ export function InputContainer(props: InputContainerProps) {
             return next;
             });
         }, 8000);
-        return () => clearInterval(id);             // clean up on unmount or when empty-state hides
+        return () => clearInterval(id);
     }, [isMessagesEmpty]);
     
     // Final string with agent name injected
@@ -227,7 +227,7 @@ export function InputContainer(props: InputContainerProps) {
                                                     </div>
                                                 ) : (
                                                     <>
-                                                        <Paperclip size={14} className="text-primary" />
+                                                        <AttachmentIcon size={18} className="text-primary" />
                                                         <div className="flex-1 min-w-0">
                                                             <span className="font-medium truncate block">{file.name}</span>
                                                         </div>
@@ -282,7 +282,7 @@ export function InputContainer(props: InputContainerProps) {
                                         className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
                                         onClick={() => fileInputRef.current?.click()}
                                     >
-                                        <Paperclip size={18} className="text-muted-foreground active:text-white" />
+                                        <AttachmentIcon size={20} className="text-muted-foreground active:text-white" />
                                     </div>
                                 </TooltipTrigger>
                                 <TooltipContent
