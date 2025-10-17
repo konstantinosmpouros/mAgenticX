@@ -52,6 +52,7 @@ export default function AppSidebar({
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isLogoHovered, setIsLogoHovered] = React.useState(false);
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (!isCollapsed) {
       setIsLogoHovered(false);
@@ -110,6 +111,19 @@ export default function AppSidebar({
     },
     [isLoadingMore, hasMore, onLoadMore]
   );
+
+  React.useEffect(() => {
+    if (isCollapsed || isLoadingMore || !hasMore) {
+      return;
+    }
+    const el = contentRef.current;
+    if (!el) {
+      return;
+    }
+    if (el.scrollHeight <= el.clientHeight + 4) {
+      onLoadMore();
+    }
+  }, [conversations.length, hasMore, isCollapsed, isLoadingMore, onLoadMore]);
 
   const handleSidebarMouseEnter = React.useCallback(() => {
     if (isCollapsed) {
@@ -186,22 +200,23 @@ export default function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent
+        ref={contentRef}
         className="flex-1 overflow-y-auto px-3 pb-4 pt-0"
         onScroll={handleScroll}
       >
         {!isCollapsed && (
-          <SidebarGroup className="flex h-full flex-col space-y-3">
+          <SidebarGroup className="flex flex-1 flex-col space-y-2">
             <SidebarGroupLabel className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Chats
             </SidebarGroupLabel>
-            <SidebarGroupContent className="min-h-0 flex-1 space-y-3">
+            <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
               {conversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-muted/10 py-10 text-center text-muted-foreground">
                   <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
                   <p className="text-sm">No conversations yet</p>
                 </div>
               ) : (
-                <SidebarMenu className="space-y-2">
+                <SidebarMenu className="space-y-1.5">
                   {conversations.map((conversation) => {
                     const agent = agents.find((a) => a.id === conversation.agentId);
                     const Icon = agent?.icon || Building2;
@@ -225,7 +240,7 @@ export default function AppSidebar({
                               </div>
                             ),
                           }}
-                          className="items-start gap-3 rounded-xl bg-transparent px-3 py-4 text-left shadow-none transition hover:bg-muted/15 focus-visible:ring-2 data-[active=true]:bg-muted/25 data-[active=true]:text-foreground"
+                          className="items-start gap-2.5 rounded-xl bg-transparent px-3 py-3 text-left shadow-none transition hover:bg-muted/15 focus-visible:ring-2 data-[active=true]:bg-muted/25 data-[active=true]:text-foreground !h-auto min-h-[4rem]"
                         >
                           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                             <Icon size={16} />
@@ -244,9 +259,6 @@ export default function AppSidebar({
                               }}
                             >
                               {lastMessage}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground/80">
-                              {new Date(conversation.updated_at).toLocaleDateString()}
                             </span>
                           </div>
                         </SidebarMenuButton>
