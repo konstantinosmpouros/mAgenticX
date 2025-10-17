@@ -58,7 +58,7 @@ export default function LoginPanel({
                 <div className="relative z-10 flex flex-col gap-10 text-white">
                     <header className="flex flex-col items-center gap-5 text-center">
                         <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-gradient-to-br from-white/25 via-white/12 to-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.32)]">
-                            <img src="/8.png" alt="mAgenticX mark" className="h-10 w-10 object-contain" />
+                            <img src="/logo2.png" alt="mAgenticX mark" className="h-10 w-10 object-contain" />
                         </div>
                         <div className="space-y-2">
                             <h1 className="bg-gradient-to-r from-white via-white to-[#f1d6ff] bg-clip-text text-xl font-semibold tracking-tight text-transparent sm:text-2xl">
@@ -115,7 +115,7 @@ export default function LoginPanel({
 
                             <Button
                                 type="submit"
-                                className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-white via-white/94 to-white/88 text-slate-900 shadow-[0_18px_40px_-28px_rgba(211,164,255,0.9)] transition hover:from-white/95 hover:via-white/92 hover:to-white/85 focus-visible:ring-[#dfb7ff]/35"
+                                className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-white via-white/94 to-white/88 text-slate-900 shadow-[0_18px_40px_-28px_rgba(187, 31, 102,0.9)] transition hover:from-white/95 hover:via-white/92 hover:to-white/85 focus-visible:ring-[#dfb7ff]/35"
                             >
                                 <span className="text-sm font-semibold tracking-wide">Sign In</span>
                             </Button>
@@ -124,7 +124,7 @@ export default function LoginPanel({
                         <div className="text-center text-xs text-white/55">
                             Don't have access yet?{" "}
                             <button type="button" className="font-semibold text-[#d0b0ff] underline-offset-4 transition hover:text-white">
-                                Request an invite
+                                Request to sign up
                             </button>
                         </div>
                     </div>
