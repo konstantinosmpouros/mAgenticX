@@ -1,6 +1,6 @@
 import React from "react";
 import type { LucideIcon } from 'lucide-react';
-import { Plus } from "lucide-react";
+import { Plus, FileText } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
@@ -217,7 +217,7 @@ export function InputContainer(props: InputContainerProps) {
                                                     </div>
                                                 ) : (
                                                     <>
-                                                        <Plus size={18} className="text-primary" />
+                                                        <FileText size={18} className="text-primary" />
                                                         <div className="flex-1 min-w-0">
                                                             <span className="font-medium truncate block">{file.name}</span>
                                                         </div>

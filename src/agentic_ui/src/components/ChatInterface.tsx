@@ -69,7 +69,7 @@ export function ChatInterface() {
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
   
   const [userProfile, setUserProfile] = useState<UserProfile | null>(initialUserProfile);
-
+  
   // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
   const [userId, setUserId] = useState<string | null>(initialUserId);
@@ -97,10 +97,11 @@ export function ChatInterface() {
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   
-  // Sticky user bar
+  // Sticky user action bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
-
+  
+  // Function to set conversation messages
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
     setCurrentConversation(prev => {
       const prevMessages = prev?.messages ?? [];
@@ -125,7 +126,7 @@ export function ChatInterface() {
       } as ConversationDetail;
     });
   };
-
+  
   // Create toast wrapper for handlers
   const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
     toast({
@@ -136,7 +137,7 @@ export function ChatInterface() {
     });
   };
   
-  // Effects moved to handlers
+  // Effects
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
@@ -171,7 +172,7 @@ export function ChatInterface() {
     attachments,
   });
   
-  // Handlers from modules
+  // Create attachment handlers
   const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl, handleFileDownload } = createAttachmentHandlers({
     attachments,
     setAttachments,
@@ -181,7 +182,7 @@ export function ChatInterface() {
   });
   
   
-  // UI Handlers (clipboard, etc.)
+  // Create UI handlers
   const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
   
   // AI transition dot (between DB persistence and thinking start)
@@ -190,12 +191,13 @@ export function ChatInterface() {
     if (thinkingState?.isActive) setShowAiTransition(false);
   }, [thinkingState?.isActive]);
   
+  // Create AI transition handlers
   const { AiTransitionIndicator } = createAiTransitionHandlers({ showAiTransition, thinkingState });
   
-  // Conversations and agent handlers
+  // Abort controller for streaming
   const streamAbortRef = useRef<AbortController | null>(null);
-
-  // Inference handler (send message)
+  
+  // Inference handler
   const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
     userId,
     selectedAgent,
@@ -219,7 +221,8 @@ export function ChatInterface() {
     setShowAiTransition,
     streamAbortRef,
   });
-
+  
+  // Conversation handlers
   const {
     handleConversationSelect,
     handleDeleteConversation,
@@ -227,6 +230,10 @@ export function ChatInterface() {
     handleTitleClick,
     handleLoadMoreConversations,
     clearChatAndStopThinking,
+    handleDeleteCurrentConversation,
+    handleArchiveCurrentConversation,
+    handleReportCurrentConversation,
+    handleOpenSearch,
   } = createConversationHandlers({
     userId,
     conversations,
@@ -251,31 +258,8 @@ export function ChatInterface() {
     setConvIsLoadingMore,
     pageSize: CONV_PAGE_SIZE,
   });
-
-  const handleArchiveCurrentConversation = useCallback(() => {
-    if (!currentConversation?.id) {
-      toastWrapper({ title: "No conversation selected", description: "Select a conversation to archive first.", duration: 2000 });
-      return;
-    }
-    toastWrapper({ title: "Archive coming soon", description: "Conversation archiving is not available yet.", duration: 2500 });
-  }, [currentConversation, toastWrapper]);
-
-  const handleReportCurrentConversation = useCallback(() => {
-    if (!currentConversation?.id) {
-      toastWrapper({ title: "No conversation selected", description: "Select a conversation to report first.", duration: 2000 });
-      return;
-    }
-    toastWrapper({ title: "Report coming soon", description: "Conversation reporting will be available soon.", duration: 2500 });
-  }, [currentConversation, toastWrapper]);
-
-  const handleDeleteCurrentConversation = useCallback(() => {
-    if (!currentConversation?.id) {
-      toastWrapper({ title: "No conversation selected", description: "Select a conversation to delete first.", duration: 2000 });
-      return;
-    }
-    void handleDeleteConversation(currentConversation.id);
-  }, [currentConversation, handleDeleteConversation, toastWrapper]);
   
+  // Agent change handler
   const { handleAgentChange } = createAgentHandlers({
     isAgentSwitching,
     setIsAgentSwitching,
@@ -306,14 +290,15 @@ export function ChatInterface() {
     loginUsername,
     loginPassword,
   });
-
+  
   // Feedback handlers
   const { handleLike, handleDislike } = createFeedbackHandlers({
     userId,
     currentConversation,
     setConversationMessages,
   });
-
+  
+  // Centered composer layout for input area
   const isMessagesEmpty = (currentConversation?.messages?.length ?? 0) === 0;
   const {
     containerRef: composerContainerRef,
@@ -326,11 +311,13 @@ export function ChatInterface() {
     attachmentsCount: attachments.length,
   });
   
+  // Determine current agent and its icon
   const currentAgent = agents.find(a => a.id === selectedAgent);
   const AgentIcon = currentAgent?.icon || Building2;
   
-  // Show login panel if not logged in
+  // Main Chat Interface
   if (!isLoggedIn || !userId) {
+    // Show login panel if not logged in
     return (
       <LoginPanel
         username={loginUsername}
@@ -342,6 +329,7 @@ export function ChatInterface() {
     );
   }
   return (
+    // Main chat interface with sidebar, header, conversation container, and input area
     <SidebarProvider>
       <AppSidebar
         conversations={conversations}
@@ -351,6 +339,7 @@ export function ChatInterface() {
         onLoadMore={handleLoadMoreConversations}
         onTitleClick={handleTitleClick}
         onNewChat={handleNewChat}
+        onOpenSearch={handleOpenSearch}
         onOpenUserProfile={() => setShowUserProfile(true)}
         agents={agents}
         userProfile={userProfile}
@@ -378,7 +367,7 @@ export function ChatInterface() {
               onReportConversation={handleReportCurrentConversation}
               onDeleteConversation={handleDeleteCurrentConversation}
             />
-
+            
             {/* Chat Messages Container*/}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <ConversationContainer
@@ -404,7 +393,7 @@ export function ChatInterface() {
               onScrolledPastTop={handleHeaderScrollState}
             />
             </div>
-
+            
             {/* Input Area */}
             <InputContainer
               // Centered empty state
@@ -414,7 +403,7 @@ export function ChatInterface() {
                   ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
                   : "sticky bottom-0 left-0 right-0 z-30 p-6"
               }
-
+              
               // pass through your existing state/handlers/refs
               attachments={attachments}
               isPrivateMode={isPrivateMode}
@@ -435,7 +424,7 @@ export function ChatInterface() {
               containerRef={composerContainerRef}
               emptyWrapperStyle={emptyWrapperStyle}
               textareaMaxHeight={textareaMaxHeight}
-
+              
               // UI deps
               AgentIcon={AgentIcon}
               Tooltip={Tooltip}
@@ -445,7 +434,7 @@ export function ChatInterface() {
               currentAgent={currentAgent}
               Textarea={Textarea}
             />
-
+            
             {/* User Profile Modal */}
             <UserProfilePanel
               open={showUserProfile}
@@ -455,7 +444,7 @@ export function ChatInterface() {
               onLogout={handleLogout}
               user={userProfile}
             />
-
+            
             {/* Image Preview Modal */}
             {selectedImage && (
               <div

@@ -27,6 +27,7 @@ type ConversationsCtx = {
   setCurrentMessage: (v: string) => void;
   setThinkingState?: (v: any) => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  onSearch?: () => void;
 };
 
 export function createConversationHandlers(ctx: ConversationsCtx) {
@@ -153,6 +154,53 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
-  return { handleConversationSelect, handleDeleteConversation, handleNewChat, handleTitleClick, handleLoadMoreConversations, clearChatAndStopThinking };
+  const handleDeleteCurrentConversation = () => {
+    if (!currentConversation?.id) {
+      toast({ title: 'No conversation selected', description: 'Select a conversation to delete first.', duration: 2000 });
+      return;
+    }
+    void handleDeleteConversation(currentConversation.id);
+  };
+
+  const handleArchiveCurrentConversation = () => {
+    if (!currentConversation?.id) {
+      toast({ title: 'No conversation selected', description: 'Select a conversation to archive first.', duration: 2000 });
+      return;
+    }
+    toast({ title: 'Archive coming soon', description: 'Conversation archiving is not available yet.', duration: 2500 });
+  };
+
+  const handleReportCurrentConversation = () => {
+    if (!currentConversation?.id) {
+      toast({ title: 'No conversation selected', description: 'Select a conversation to report first.', duration: 2000 });
+      return;
+    }
+    toast({ title: 'Report coming soon', description: 'Conversation reporting will be available soon.', duration: 2500 });
+  };
+
+  const handleOpenSearch = () => {
+    if (ctx.onSearch) {
+      ctx.onSearch();
+      return;
+    }
+    toast({
+      title: 'Conversation search coming soon',
+      description: 'We’re building a smarter search experience.',
+      duration: 2500,
+    });
+  };
+
+  return {
+    handleConversationSelect,
+    handleDeleteConversation,
+    handleNewChat,
+    handleTitleClick,
+    handleLoadMoreConversations,
+    clearChatAndStopThinking,
+    handleDeleteCurrentConversation,
+    handleArchiveCurrentConversation,
+    handleReportCurrentConversation,
+    handleOpenSearch,
+  };
 }
 

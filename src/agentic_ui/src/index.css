@@ -191,12 +191,12 @@ All colors MUST be HSL.
 @layer base {
   /* Subtle scrollbar styling for sidebar content */
   [data-sidebar="content"] {
-    scrollbar-width: thin;
+    scrollbar-width: auto;
     scrollbar-color: rgb(58, 58, 62) transparent;
   }
 
   [data-sidebar="content"]::-webkit-scrollbar {
-    width: 12px;
+    width: 16px;
   }
 
   [data-sidebar="content"]::-webkit-scrollbar-track {
