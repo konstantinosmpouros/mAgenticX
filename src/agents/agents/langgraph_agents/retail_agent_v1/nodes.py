@@ -5,7 +5,7 @@ from typing import Literal, Any
 from pydantic import BaseModel
 
 from config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
-from retail_agents.retail_agent_v1.agents import (
+from agents.langgraph_agents.retail_agent_v1.agents import (
     analysis_agent,
     simple_gen_agent,
     sql_gen_agent,
@@ -13,7 +13,7 @@ from retail_agents.retail_agent_v1.agents import (
     answer_agent,
 )
 
-from retail_agents.retail_agent_v1.prompt_templates import (
+from agents.langgraph_agents.retail_agent_v1.prompt_templates import (
     schema_help_template,
     answer_gen_template
 )

@@ -9,7 +9,7 @@ from langchain.schema import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 
 from config import HR_ENDPOINT as ENDPOINT
-from hr_agents.hr_policies_agent_v1.agents import (
+from agents.langgraph_agents.hr_policies_agent_v1.agents import (
     analysis_agent,
     simple_gen_agent,
     reflection_agent,
@@ -20,7 +20,7 @@ from hr_agents.hr_policies_agent_v1.agents import (
     doc_ranking_agent,
 )
 
-from hr_agents.hr_policies_agent_v1.prompt_templates import (
+from agents.langgraph_agents.hr_policies_agent_v1.prompt_templates import (
     non_hr_gen_template,
     hr_gen_template
 )

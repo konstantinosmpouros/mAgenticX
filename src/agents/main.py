@@ -6,13 +6,12 @@ import sys
 PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
-# Load agents
-from orthodox_agents import orthodoxai_agent_v1
-from hr_agents import hr_policies_agent_v1
-from retail_agents import retail_agent_v1
-
-# Load moderation
-# from moderation import moderation_agent
+# Load LangGraph agents
+from agents.langgraph_agents import (
+    orthodoxai_agent_v1,
+    hr_policies_agent_v1,
+    retail_agent_v1
+)
 
 import asyncio
 import json

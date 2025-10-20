@@ -1,1 +1,0 @@
-from hr_agents.hr_policies_agent_v1.workflow import agent as hr_policies_agent_v1

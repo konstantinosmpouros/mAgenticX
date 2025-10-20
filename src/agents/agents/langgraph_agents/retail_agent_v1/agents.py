@@ -13,7 +13,7 @@ from llms import (
 from langgraph.prebuilt import create_react_agent as react_agent
 
 # Structured Outputs
-from retail_agents.retail_agent_v1.structured_outputs import (
+from agents.langgraph_agents.retail_agent_v1.structured_outputs import (
     AnalysisOutput,
     SQLQueryOutput,
 )
@@ -28,7 +28,7 @@ from tools import (
 tools = financial_tools + search_tools + articles_tools + computer_vision_tools
 
 # Prompt Template
-from retail_agents.retail_agent_v1.prompt_templates import (
+from agents.langgraph_agents.retail_agent_v1.prompt_templates import (
     analyzer_template,
     sql_gen_template,
     sql_error_gen_template,

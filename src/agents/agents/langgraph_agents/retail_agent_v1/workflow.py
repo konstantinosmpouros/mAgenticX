@@ -1,4 +1,4 @@
-from retail_agents.retail_agent_v1.nodes import (
+from agents.langgraph_agents.retail_agent_v1.nodes import (
     RetailV1_State,
     analysis,
     check_intent,

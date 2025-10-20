@@ -1,7 +1,7 @@
-from hr_agents.hr_policies_agent_v1.nodes import (
-    HRPoliciesV1_State,
+from agents.langgraph_agents.orthodox_agent_v1.nodes import (
+    OrthodoxV1_State,
     analysis,
-    check_if_hr,
+    check_if_religious,
     simple_generation,
     query_gen,
     retrieval,
@@ -9,53 +9,54 @@ from hr_agents.hr_policies_agent_v1.nodes import (
     complex_generation,
     reflection,
     check_reflection,
-    doc_ranking,
 )
 
 from langgraph.graph import START, END, StateGraph
 
 
 # Initialize the workflow
-workflow = StateGraph(HRPoliciesV1_State)
+workflow = StateGraph(OrthodoxV1_State)
 
 # Add the nodes
 workflow.add_node('analysis', analysis)
 workflow.add_node('simple_generation', simple_generation)
 workflow.add_node('query_gen', query_gen)
 workflow.add_node('retrieval', retrieval)
-workflow.add_node('doc_ranking', doc_ranking)
-workflow.add_node('reflectioner', reflection)
 workflow.add_node('summarizer', summarization)
 workflow.add_node('complex_generation', complex_generation)
+workflow.add_node('reflectioner', reflection)
 
-
-# Define the edges of the workflow
+# Entry edge
 workflow.add_edge(START, "analysis")
 workflow.add_conditional_edges(
     "analysis",
-    check_if_hr,
+    check_if_religious,
     {
         "query_gen": "query_gen",
         "simple_generation": "simple_generation",
     },
 )
 workflow.add_edge("simple_generation", END)
+
+# The linear “true” branch
 workflow.add_edge("query_gen", "retrieval")
-workflow.add_edge("retrieval", "doc_ranking")
-workflow.add_edge("doc_ranking", "reflectioner")
+workflow.add_edge("retrieval", "summarizer")
+workflow.add_edge("summarizer", "complex_generation")
+workflow.add_edge("complex_generation", "reflectioner")
+
+# Wire up the two reflection branches
 workflow.add_conditional_edges(
     "reflectioner",
     check_reflection,
     {
         "query_gen": "query_gen",
-        "summarizer": "summarizer",
+        "end": END,
     },
 )
-workflow.add_edge("summarizer", "complex_generation")
-workflow.add_edge("complex_generation", END)
-
 
 # Compile the workflow
 agent = workflow.compile()
+
+
 
 

@@ -126,24 +126,28 @@ export default function Header({
                                 <DropdownMenu.Content
                                     sideOffset={8}
                                     align="end"
-                                    className="z-50 w-48 rounded-xl border border-border/60 bg-background text-foreground shadow-lg"
+                                    className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none"
                                 >
                                     <DropdownMenu.Item
                                         onSelect={() => {
                                             onArchiveConversation?.();
                                         }}
-                                        className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                                        className="flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-base text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
                                     >
-                                        <Archive size={16} className="text-muted-foreground" />
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                            <Archive size={18} />
+                                        </div>
                                         <span>Archive</span>
                                     </DropdownMenu.Item>
                                     <DropdownMenu.Item
                                         onSelect={() => {
                                             onReportConversation?.();
                                         }}
-                                        className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                                        className="flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-base text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
                                     >
-                                        <Flag size={16} className="text-muted-foreground" />
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                            <Flag size={18} />
+                                        </div>
                                         <span>Report</span>
                                     </DropdownMenu.Item>
                                     <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
@@ -151,9 +155,11 @@ export default function Header({
                                         onSelect={() => {
                                             onDeleteConversation?.();
                                         }}
-                                        className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive"
+                                        className="flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-base text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
                                     >
-                                        <Trash2 size={16} />
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-destructive">
+                                            <Trash2 size={18} />
+                                        </div>
                                         <span>Delete</span>
                                     </DropdownMenu.Item>
                                 </DropdownMenu.Content>

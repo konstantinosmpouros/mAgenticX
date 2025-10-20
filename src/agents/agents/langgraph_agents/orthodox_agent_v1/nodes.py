@@ -9,7 +9,7 @@ from langchain.schema import BaseMessage
 from langchain.prompts import ChatPromptTemplate
 
 from config import ORTHODOX_ENDPOINT as ENDPOINT
-from orthodox_agents.orthodox_agent_v1.agents import (
+from agents.langgraph_agents.orthodox_agent_v1.agents import (
     analysis_agent,
     simple_gen_agent,
     reflection_agent,
@@ -23,7 +23,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import StreamWriter
 from langchain_core.messages.ai import AIMessageChunk
 
-from orthodox_agents.orthodox_agent_v1.prompt_templates import (
+from agents.langgraph_agents.orthodox_agent_v1.prompt_templates import (
     nonreligious_gen_template,
     religious_gen_template
 )
