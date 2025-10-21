@@ -8,7 +8,8 @@
 
 ## Agentic UI
 
-- In long conversation the input container is lagging. Fix it
+- In long conversation the input container is lagging. Fix it 
+- Refactor the Chat Container using this [sdk](https://ai-sdk.dev/elements/components/chatbot) along with [canvas and more artifacts solutions]() or with the [shadcn](https://www.shadcn.io/ai/branch)
 - In the conversation history, add in the end a skeleton to distract the user till it loads more.
 - The markdown boxes of the messages need fix. Check for ready to use versions.
 
