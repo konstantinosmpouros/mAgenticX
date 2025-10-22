@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
 import ThinkingList from "@/components/ui/thinkingList";
+import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import {
   Download,
   FileText,
@@ -239,17 +240,26 @@ export default function ConversationContainer({
                           transition-colors cursor-pointer max-w-[85%] md:max-w-[85%] w-full"
                         onClick={() => onToggleThinking(message.id)}
                       >
-                        <span>
-                          {message.thinkingTime
-                            ? (() => {
-                                const t = message.thinkingTime as number;
-                                const m = Math.floor(t / 60);
-                                const s = t % 60;
-                                const fmt = m > 0 ? `${m}m ${s}s` : `${s}s`;
-                                return `Thought for ${fmt}`;
-                              })()
-                            : 'Thinking...'}
-                        </span>
+                        {message.thinkingTime ? (
+                          <span>
+                            {(() => {
+                              const t = message.thinkingTime as number;
+                              const m = Math.floor(t / 60);
+                              const s = t % 60;
+                              const fmt = m > 0 ? `${m}m ${s}s` : `${s}s`;
+                              return `Thought for ${fmt}`;
+                            })()}
+                          </span>
+                        ) : (
+                          <ShimmeringText
+                            text="Reasoning..."
+                            duration={1.1}
+                            pause={1.4}
+                            color="hsl(var(--muted-foreground))"
+                            shimmeringColor="#2b2d36"
+                            className="text-xs md:text-sm font-medium"
+                          />
+                        )}
                         {expandedThinking[message.id] ? (
                           <ChevronDown className="h-3 w-3 " />
                         ) : (
@@ -473,7 +483,16 @@ export default function ConversationContainer({
                 : 'max-h-0 opacity-0 overflow-hidden'
             }`}
           >
-            <div className="text-sm text-muted-foreground mb-1">Thinking...</div>
+            <div className="mb-1">
+              <ShimmeringText
+                text="Reasoning..."
+                duration={1.1}
+                pause={1.4}
+                color="hsl(var(--muted-foreground))"
+                shimmeringColor="#2b2d36"
+                className="text-sm font-medium text-muted-foreground"
+              />
+            </div>
             {thinkingState && (
               <ThinkingList
                 thoughts={thinkingState.thoughts.slice(0, thinkingState.currentThoughtIndex + 1)}

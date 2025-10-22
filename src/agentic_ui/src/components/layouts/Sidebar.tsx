@@ -191,9 +191,9 @@ export default function AppSidebar({
             <SidebarMenuAction
               asChild
               showOnHover={false}
-              className="right-2 top-1.5 group-data-[collapsible=icon]:hidden"
+              className="right-2 top-1.5 -translate-y-0.5 group-data-[collapsible=icon]:hidden"
             >
-              <SidebarTrigger className="size-8" />
+              <SidebarTrigger className="size-9 [&_svg]:h-5 [&_svg]:w-5" />
             </SidebarMenuAction>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -204,12 +204,12 @@ export default function AppSidebar({
               size="lg"
               onClick={handleNewChatClick}
               className={cn(
-                "gap-2 rounded-xl bg-transparent px-3 py-2.5 transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
+                "!h-10 gap-2 rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-1 group-data-[collapsible=icon]:self-start"
               )}
               tooltip="Start a new chat"
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl group-data-[collapsible=icon]:ml-1 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8">
                 <FiEdit className="h-4 w-4" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">New chat</span>
@@ -220,13 +220,13 @@ export default function AppSidebar({
               size="lg"
               onClick={handleSearchClick}
               className={cn(
-                "gap-2 rounded-xl bg-transparent px-3 py-2.5 transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
+                "!h-10 gap-2 rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-1 group-data-[collapsible=icon]:self-start"
               )}
               tooltip="Search"
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl">
-                <Search className="h-5 w-5" />
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl group-data-[collapsible=icon]:ml-1 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8">
+                <Search className="h-[1.125rem] w-[1.125rem]" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">Search</span>
             </SidebarMenuButton>

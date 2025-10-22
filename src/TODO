@@ -8,10 +8,11 @@
 
 ## Agentic UI
 
-- In long conversation the input container is lagging. Fix it 
-- Refactor the Chat Container using this [sdk](https://ai-sdk.dev/elements/components/chatbot) along with [canvas and more artifacts solutions]() or with the [shadcn](https://www.shadcn.io/ai/branch)
+- In long conversation the input container is lagging. Fix it.
+- Refactor the Chat Container using this [sdk](https://ai-sdk.dev/elements/components/chatbot) along with canvas and more artifacts solutions.
 - In the conversation history, add in the end a skeleton to distract the user till it loads more.
 - The markdown boxes of the messages need fix. Check for ready to use versions.
+- Give in the agents the personal info of the user in the prompt like name and role
 
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui
 - Implement a tab in the profile panel to show all the images, like openai library
@@ -26,6 +27,7 @@
 - Replace tools with mcp
 - Make all agents OOP in order to pass configs for llms, tools etc.
 - Remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
+- Give in the agents the personal info of the user in the prompt like name and role
 
 ## Dialogue Bridge
 
@@ -34,3 +36,4 @@
 - Create the functionality of doc description and add it to the db as well as a column.
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document
+- Give in the agents the personal info of the user in the prompt like name and role
