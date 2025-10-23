@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
+import { Response } from "@/components/ui/ai-elements/response";
 import ThinkingList from "@/components/ui/thinkingList";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import {
@@ -292,10 +292,9 @@ export default function ConversationContainer({
                       }`}
                     >
                       <div className="space-y-3 min-w-0">
-                        <MarkdownRenderer
-                          content={message.content}
-                          className="leading-relaxed break-words"
-                        />
+                        <Response className="prose prose-sm max-w-none text-inherit dark:prose-invert leading-relaxed break-words">
+                          {message.content ?? ""}
+                        </Response>
                         <div className="text-sm opacity-70 flex items-center gap-2">
                           <span>
                             {message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
