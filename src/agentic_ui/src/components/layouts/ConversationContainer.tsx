@@ -235,13 +235,13 @@ export default function ConversationContainer({
                     {message.thinking && message.sender === 'ai' && (
                       <div
                         className="
-                          flex items-center gap-2 text-xs md:text-sm font-medium 
+                          flex items-center gap-2 text-sm md:text-[0.95rem] font-medium 
                           text-muted-foreground hover:text-foreground 
                           transition-colors cursor-pointer max-w-[85%] md:max-w-[85%] w-full"
                         onClick={() => onToggleThinking(message.id)}
                       >
                         {message.thinkingTime ? (
-                          <span>
+                          <span className="font-medium">
                             {(() => {
                               const t = message.thinkingTime as number;
                               const m = Math.floor(t / 60);
@@ -257,7 +257,7 @@ export default function ConversationContainer({
                             pause={1.4}
                             color="hsl(var(--muted-foreground))"
                             shimmeringColor="#2b2d36"
-                            className="text-xs md:text-sm font-medium"
+                            className="text-sm md:text-[0.95rem] font-medium"
                           />
                         )}
                         {expandedThinking[message.id] ? (
@@ -489,7 +489,7 @@ export default function ConversationContainer({
                 pause={1.4}
                 color="hsl(var(--muted-foreground))"
                 shimmeringColor="#2b2d36"
-                className="text-sm font-medium text-muted-foreground"
+                className="text-sm md:text-[0.95rem] font-medium text-muted-foreground"
               />
             </div>
             {thinkingState && (
