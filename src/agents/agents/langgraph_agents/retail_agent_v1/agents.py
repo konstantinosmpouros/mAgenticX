@@ -46,5 +46,5 @@ simple_gen_agent = react_agent(model=gpt_4_1_mini, tools=tools)
 sql_gen_agent = sql_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
 sql_error_gen_agent = sql_error_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
 
-answer_agent = react_agent(model=gpt_5, tools=tools)
+answer_agent = react_agent(model=gpt_4o, tools=tools)
 

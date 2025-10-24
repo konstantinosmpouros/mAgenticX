@@ -5,17 +5,23 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Response } from "@/components/ui/ai-elements/response";
-import ThinkingList from "@/components/ui/thinkingList";
+import {
+  ChainOfThought,
+  ChainOfThoughtHeader,
+  ChainOfThoughtContent,
+  ChainOfThoughtStep,
+} from "@/components/ui/ai-elements/chain-of-thought";
+import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import {
   Download,
   FileText,
-  ChevronDown,
-  ChevronRight,
   Copy,
   Check,
   ThumbsDown,
   ThumbsUp,
+  Wrench,
+  CheckCircle2,
 } from "lucide-react";
 import { VscEye } from "react-icons/vsc";
 import type { LucideIcon } from "lucide-react";
@@ -57,6 +63,81 @@ type ConversationContainerProps = {
   onScrolledPastTop?: (isScrolled: boolean) => void;
 };
 
+const toolPrefix = /^\s*\[tool\]\s*/i;
+
+const formatThinkingDuration = (thinkingTime?: number) => {
+  if (typeof thinkingTime !== "number" || Number.isNaN(thinkingTime)) {
+    return null;
+  }
+  const minutes = Math.floor(thinkingTime / 60);
+  const seconds = thinkingTime % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+};
+
+type ThoughtStepOptions = {
+  activeIndex: number;
+  isComplete: boolean;
+};
+
+const buildChainOfThoughtSteps = (
+  thoughts: string[],
+  { activeIndex, isComplete }: ThoughtStepOptions
+): React.ReactNode => {
+  const normalizedIndex = Math.min(
+    Math.max(activeIndex ?? -1, -1),
+    thoughts.length - 1
+  );
+
+  const steps: React.ReactNode[] = thoughts.map((raw, index) => {
+    const text = String(raw ?? "");
+    const isTool = toolPrefix.test(text);
+    const cleanText = text.replace(toolPrefix, "").trim();
+    const status: "complete" | "active" | "pending" = isComplete
+      ? "complete"
+      : normalizedIndex < 0
+      ? "pending"
+      : index < normalizedIndex
+      ? "complete"
+      : index === normalizedIndex
+      ? "active"
+      : "pending";
+
+    const labelSegments = [`Step ${index + 1}`];
+    if (isTool) {
+      labelSegments.push("Tool");
+    }
+
+    return (
+      <ChainOfThoughtStep
+        key={`cot-step-${index}`}
+        icon={isTool ? Wrench : undefined}
+        label={labelSegments.join(" · ")}
+        status={status}
+        className="text-sm"
+      >
+        <MarkdownRenderer
+          content={cleanText || "Working..."}
+          className="text-muted-foreground text-sm leading-relaxed"
+        />
+      </ChainOfThoughtStep>
+    );
+  });
+
+  if (isComplete) {
+    steps.push(
+      <ChainOfThoughtStep
+        key="cot-step-complete"
+        icon={CheckCircle2}
+        label="Completed"
+        status="complete"
+        className="text-sm"
+      />
+    );
+  }
+
+  return steps.length ? steps : null;
+};
+
 export default function ConversationContainer({
   messages,
   loadingConversation,
@@ -80,6 +161,8 @@ export default function ConversationContainer({
   onScrolledPastTop,
 }: ConversationContainerProps) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
+  const lastRunStartRef = React.useRef<number | null>(null);
+  const [liveThinkingOpen, setLiveThinkingOpen] = React.useState(false);
 
   const handleScroll = React.useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
@@ -95,6 +178,51 @@ export default function ConversationContainer({
     if (!viewport) return;
     onScrolledPastTop(viewport.scrollTop > 4);
   }, [messages.length, onScrolledPastTop]);
+
+  React.useEffect(() => {
+    if (!thinkingState) {
+      lastRunStartRef.current = null;
+      setLiveThinkingOpen(false);
+      return;
+    }
+
+    const runKey = thinkingState.startTime ?? null;
+    if (runKey !== null && runKey !== lastRunStartRef.current) {
+      lastRunStartRef.current = runKey;
+      if (thinkingState.isActive) {
+        setLiveThinkingOpen(true);
+      }
+      return;
+    }
+
+    if (!thinkingState.isActive && thinkingState.isDone) {
+      setLiveThinkingOpen(false);
+    }
+  }, [thinkingState]);
+
+  const liveThoughts =
+    thinkingState && thinkingState.thoughts.length
+      ? thinkingState.thoughts.slice(
+          0,
+          Math.max(
+            0,
+            Math.min(
+              (thinkingState.currentThoughtIndex ?? -1) + 1,
+              thinkingState.thoughts.length
+            )
+          )
+        )
+      : [];
+
+  const liveActiveIndex = thinkingState
+    ? Math.min(
+        Math.max(thinkingState.currentThoughtIndex ?? -1, -1),
+        liveThoughts.length - 1
+      )
+    : -1;
+
+  const shouldShowLiveChain =
+    Boolean(thinkingState) && (thinkingState.isActive || liveThinkingOpen);
 
   return (
     <div className="flex-1 overflow-hidden relative">
@@ -233,55 +361,40 @@ export default function ConversationContainer({
                     } group/message`}
                   >
                     {message.thinking && message.sender === 'ai' && (
-                      <div
-                        className="
-                          flex items-center gap-2 text-sm md:text-[0.95rem] font-medium 
-                          text-muted-foreground hover:text-foreground 
-                          transition-colors cursor-pointer max-w-[85%] md:max-w-[85%] w-full"
-                        onClick={() => onToggleThinking(message.id)}
+                      <ChainOfThought
+                        className="max-w-[85%] md:max-w-[85%] w-full space-y-2"
+                        open={Boolean(expandedThinking[message.id])}
+                        onOpenChange={(open) => {
+                          const isOpen = Boolean(expandedThinking[message.id]);
+                          if (open !== isOpen) {
+                            onToggleThinking(message.id);
+                          }
+                        }}
                       >
-                        {message.thinkingTime ? (
-                          <span className="font-medium">
-                            {(() => {
-                              const t = message.thinkingTime as number;
-                              const m = Math.floor(t / 60);
-                              const s = t % 60;
-                              const fmt = m > 0 ? `${m}m ${s}s` : `${s}s`;
-                              return `Thought for ${fmt}`;
-                            })()}
-                          </span>
-                        ) : (
-                          <ShimmeringText
-                            text="Reasoning..."
-                            duration={1.1}
-                            pause={1.4}
-                            color="hsl(var(--muted-foreground))"
-                            shimmeringColor="#2b2d36"
-                            className="text-sm md:text-[0.95rem] font-medium"
-                          />
-                        )}
-                        {expandedThinking[message.id] ? (
-                          <ChevronDown className="h-3 w-3 " />
-                        ) : (
-                          <ChevronRight className="h-3 w-3" />
-                        )}
-                      </div>
-                    )}
-
-                    {message.thinking && message.sender === 'ai' && (
-                      <div
-                        className={`transition-all duration-300 ease-smooth ${
-                          expandedThinking[message.id]
-                            ? 'mt-2 opacity-100 max-h-none overflow-visible'
-                            : 'max-h-0 opacity-0 overflow-hidden'
-                        }`}
-                      >
-                        <ThinkingList
-                          thoughts={message.thinking}
-                          isComplete
-                          className="max-w-[85%] md:max-w-[85%] w-full"
-                        />
-                      </div>
+                        <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground hover:text-foreground">
+                          {(() => {
+                            const durationLabel = formatThinkingDuration(message.thinkingTime);
+                            return durationLabel ? (
+                              `Thought for ${durationLabel}`
+                            ) : (
+                              <ShimmeringText
+                                text="Reasoning..."
+                                duration={1.1}
+                                pause={1.4}
+                                color="hsl(var(--muted-foreground))"
+                                shimmeringColor="#2b2d36"
+                                className="text-sm md:text-[0.95rem] font-medium"
+                              />
+                            );
+                          })()}
+                        </ChainOfThoughtHeader>
+                        <ChainOfThoughtContent className="[&>div:last-child>div:first-child>div:last-child]:hidden">
+                          {buildChainOfThoughtSteps(message.thinking!, {
+                            activeIndex: message.thinking!.length - 1,
+                            isComplete: true,
+                          })}
+                        </ChainOfThoughtContent>
+                      </ChainOfThought>
                     )}
 
                     <Card
@@ -475,31 +588,35 @@ export default function ConversationContainer({
           {AiTransitionIndicator ? <AiTransitionIndicator /> : null}
 
 
-          <div
-            className={`transition-all duration-300 ease-smooth ${
-              thinkingState?.isActive
-                ? 'mt-2 opacity-100 max-h-none overflow-visible'
-                : 'max-h-0 opacity-0 overflow-hidden'
-            }`}
-          >
-            <div className="mb-1">
-              <ShimmeringText
-                text="Reasoning..."
-                duration={1.1}
-                pause={1.4}
-                color="hsl(var(--muted-foreground))"
-                shimmeringColor="#2b2d36"
-                className="text-sm md:text-[0.95rem] font-medium text-muted-foreground"
-              />
-            </div>
-            {thinkingState && (
-              <ThinkingList
-                thoughts={thinkingState.thoughts.slice(0, thinkingState.currentThoughtIndex + 1)}
-                isComplete={thinkingState?.isDone}
-                className="max-w-[85%] md:max-w-[85%]"
-              />
-            )}
-          </div>
+          {shouldShowLiveChain && thinkingState && (
+            <ChainOfThought
+              key={`live-thinking-${thinkingState.startTime ?? "active"}`}
+              className="max-w-[85%] md:max-w-[85%] w-full space-y-2"
+              open={liveThinkingOpen}
+              onOpenChange={setLiveThinkingOpen}
+            >
+              <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground">
+                {thinkingState.isActive ? (
+                  <ShimmeringText
+                    text="Reasoning..."
+                    duration={1.1}
+                    pause={1.4}
+                    color="hsl(var(--muted-foreground))"
+                    shimmeringColor="#2b2d36"
+                    className="text-sm md:text-[0.95rem] font-medium"
+                  />
+                ) : (
+                  "Reasoning complete"
+                )}
+              </ChainOfThoughtHeader>
+              <ChainOfThoughtContent className="[&>div:last-child>div:first-child>div:last-child]:hidden">
+                {buildChainOfThoughtSteps(liveThoughts, {
+                  activeIndex: liveActiveIndex,
+                  isComplete: Boolean(thinkingState.isDone),
+                })}
+              </ChainOfThoughtContent>
+            </ChainOfThought>
+          )}
 
           <div ref={messagesEndRef} />
         </div>

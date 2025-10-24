@@ -61,8 +61,8 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
-      - username=${username}
-      - password=${password}
+      - username=${ai_username}
+      - password=${ai_password}
       - display_name=Konstantinos_Bouros
       - email=kostasbouros@hotmail.gr
       - department=AI&PA
