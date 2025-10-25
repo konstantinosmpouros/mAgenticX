@@ -225,3 +225,22 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Chat markdown content overrides */
+.chat-markdown ul,
+.chat-markdown ol {
+  margin-left: 0;
+  padding-left: 1.25rem;
+  list-style-position: outside;
+}
+
+.chat-markdown li {
+  margin-left: 0;
+}
+
+.chat-markdown ul ul,
+.chat-markdown ul ol,
+.chat-markdown ol ul,
+.chat-markdown ol ol {
+  margin-top: 0.25rem;
+}

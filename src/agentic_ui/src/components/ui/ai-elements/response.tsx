@@ -10,7 +10,8 @@ export const Response = memo(
   ({ className, ...props }: ResponseProps) => (
     <Streamdown
       className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "leading-relaxed break-words text-inherit",
         className
       )}
       {...props}

@@ -189,7 +189,7 @@ export function InputContainer(props: InputContainerProps) {
             <div className="mx-auto max-w-3xl pointer-events-auto">
                 {/* Floating Input Container */}
                 <div
-                    className={`bg-background rounded-3xl shadow-lg px-3 pt-3 pb-1 ${
+                    className={`bg-background rounded-[2rem] shadow-lg px-3 pt-3 pb-1 ${
                         isPrivateMode ? "border-2 border-primary/50" : "border"
                     }`}
                 >
@@ -301,7 +301,7 @@ export function InputContainer(props: InputContainerProps) {
                                         align="center"
                                         className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                     >
-                                        <p>Voice Input</p>
+                                        <p>Dictate</p>
                                     </TooltipContent>
                                 </Tooltip>
 

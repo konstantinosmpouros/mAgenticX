@@ -4,7 +4,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnableLambda
 from langgraph.graph import StateGraph
 
-from agui import AGUIEmitter, agui_emitter
+from agui import AGUIEmitter
 from utils import make_merge_with_template
 from tools import (
     articles_tools,
@@ -16,7 +16,7 @@ from tools import (
 ConfigSource = Mapping[str, Any]
 
 
-class LangGraphAgentTemplate:
+class LangGraphAgent:
     """Reusable parent template providing shared agent infrastructure.
     
     Subclasses inherit:
@@ -25,18 +25,18 @@ class LangGraphAgentTemplate:
         - A configurable tool registry that is filtered by external config.
         - A build lifecycle that compiles LangGraph workflows into runnable graphs.
 
-    Concrete agent template can customize their behavior by either overriding ``workflow``
-    entirely or, preferably, by supplying implementations for the trio of graph
-    hooks: ``graph_state_type``, ``register_graph_nodes`` and
+    Concrete agent templates customize their behavior by implementing the trio of
+    graph hooks: ``graph_state_type``, ``register_graph_nodes`` and
     ``register_graph_edges``. The default ``workflow`` implementation will invoke
     those hooks in order to assemble the graph before compilation. Async execution
-    hooks (``ainvoke``/``astream``) must still be provided by subclasses.
+    helpers (``ainvoke``/``astream``) are provided so subclasses can focus on graph
+    construction only.
     """
     
     name: str = "base-agent"
     version: str = "0.0.1"
     
-    agui: AGUIEmitter = agui_emitter
+    agui: AGUIEmitter = AGUIEmitter()
     
     tool_registry: Sequence[Any] = (
         *financial_tools,
@@ -45,22 +45,23 @@ class LangGraphAgentTemplate:
         *computer_vision_tools,
     )
     
-    def __init__(self, *, name: str = None, version: str = None, config: Optional[ConfigSource] = None) -> None:
-        # Instance metadata
-        self.name = name or self.name
-        self.version = version or self.version
-        
-        # Configuration & tool resolution
+    def __init__(self, *, config: Optional[ConfigSource] = None) -> None:        
+        # Configuration
         self.config: Dict[str, Any] = self._validate_config(config) if config else {}
+        
+        # Configured tool selectors
         self.config_tools: Sequence[Mapping[str, Any]] = self.config.get("tools", [])
         self.config_tool_names: List[str] = [item["tool_name"] for item in self.config_tools] if self.config_tools else []
         
         # Resolved tools
         self.tools: List[Any] = self.resolve_tools()
-        self.tools_names: List[str] = [tool.name for tool in self.tools if self.tools]
+        self.tools_names: List[str] = [tool.name for tool in self.tools]
         
         # Compiled workflow graph
         self.graph = None
+        
+        # Precompile the workflow so subclasses can invoke immediately
+        self._ensure_graph_compiled()
 
 
 
@@ -140,7 +141,7 @@ class LangGraphAgentTemplate:
         return graph
 
 
-    def build(self) -> StateGraph:
+    def build(self) -> None:
         """
         Compile the workflow into an executable graph.
         
@@ -148,12 +149,14 @@ class LangGraphAgentTemplate:
         overrides previous selections before compiling.
         """
         
+        if self.graph is not None:
+            return
+
         graph = self.workflow()
         if not isinstance(graph, StateGraph):
             raise TypeError("workflow() must return a LangGraph StateGraph instance.")
         
         self.graph = graph.compile()
-        return self.graph
 
 
 
@@ -161,11 +164,12 @@ class LangGraphAgentTemplate:
     # Async inference functions
     # ---------------------------------------------------------------------
     async def ainvoke(self, *args: Any, **kwargs: Any):
-        raise NotImplementedError("Override ainvoke() in subclasses.")
+        return await self.graph.ainvoke(*args, **kwargs)
 
 
     async def astream(self, *args: Any, **kwargs: Any):
-        raise NotImplementedError("Override astream() in subclasses.")
+        async for chunk in self.graph.astream(*args, **kwargs):
+            yield chunk
 
 
 
@@ -201,11 +205,11 @@ class LangGraphAgentTemplate:
             raise TypeError("Tool entries must be provided as a list of mappings.")
         
         normalised: List[Dict[str, Any]] = []
-        for item in tools:
+        for tool in tools:
             # Validate entry type
-            if not isinstance(item, Mapping):
+            if not isinstance(tool, Mapping):
                 raise TypeError("Each tool entry must be a mapping containing at least a 'tool_name'.")
-            candidate = dict(item)
+            candidate = dict(tool)
             
             # Validate tool name
             raw_name = candidate.get("tool_name")
@@ -220,3 +224,8 @@ class LangGraphAgentTemplate:
         return normalised
 
 
+    def _ensure_graph_compiled(self):
+        """Compile the workflow on first use and return the runnable graph."""
+        if self.graph is None:
+            self.build()
+        return self.graph

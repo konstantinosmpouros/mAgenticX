@@ -1,1 +1,1 @@
-from blueprints.langgraph_agent import LangGraphAgentTemplate
+from blueprints.langgraph_agent import LangGraphAgent

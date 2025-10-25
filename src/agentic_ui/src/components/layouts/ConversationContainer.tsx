@@ -405,9 +405,7 @@ export default function ConversationContainer({
                       }`}
                     >
                       <div className="space-y-3 min-w-0">
-                        <Response className="prose prose-sm max-w-none text-inherit dark:prose-invert leading-relaxed break-words">
-                          {message.content ?? ""}
-                        </Response>
+                        <Response>{message.content ?? ""}</Response>
                         <div className="text-sm opacity-70 flex items-center gap-2">
                           <span>
                             {message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
