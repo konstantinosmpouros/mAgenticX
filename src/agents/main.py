@@ -8,9 +8,9 @@ sys.path.append(str(PACKAGE_ROOT))
 
 # Load LangGraph agents
 from agents.langgraph_agents import (
-    orthodoxai_agent_v1,
     hr_policies_agent_v1,
     RetailAgentV1,
+    OrthodoxAgentV1,
 )
 
 import asyncio
@@ -69,17 +69,10 @@ class Request(BaseModel):
 async def stream_agent(req: Request):
     """Stream responses from the OrthodoxAI v1 agent."""
     async def event_stream():
+        agent = OrthodoxAgentV1(config=req.config)
         try:
-            async for msg in orthodoxai_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
-                # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
-                if isinstance(msg, (str, bytes)):
-                    if isinstance(msg, str):
-                        yield msg.encode("utf-8")
-                    else:
-                        yield msg
-                else:
-                    # Fallback: wrap dicts as SSE data lines
-                    yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+            async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
+                yield msg
         except asyncio.CancelledError:
             # Client disconnected; stop quietly to avoid noisy logs
             return
@@ -126,7 +119,6 @@ async def stream_agent(req: Request):
     """Stream responses from the Retail v1 agent."""
     async def event_stream():
         agent = RetailAgentV1(config=req.config)
-        agent.build()
         try:
             async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
                 yield msg

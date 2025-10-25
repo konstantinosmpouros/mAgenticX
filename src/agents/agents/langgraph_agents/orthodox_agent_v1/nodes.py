@@ -1,52 +1,40 @@
-import json
 import asyncio
-import httpx
+import json
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal
 from uuid import uuid4
 
-from typing import Literal, Union, List, Any, Dict
+import httpx
 from pydantic import BaseModel
-from langchain.schema import BaseMessage
-from langchain.prompts import ChatPromptTemplate
 
 from config import ORTHODOX_ENDPOINT as ENDPOINT
-from agents.langgraph_agents.orthodox_agent_v1.agents import (
-    analysis_agent,
-    simple_gen_agent,
-    reflection_agent,
-    query_reflective_agent,
-    query_no_reflective_agent,
-    complex_gen_agent,
-    summarizer_agent
-)
-
-from langchain_core.runnables import RunnableConfig
-from langgraph.types import StreamWriter
-from langchain_core.messages.ai import AIMessageChunk
-
+from agents.langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
 from agents.langgraph_agents.orthodox_agent_v1.prompt_templates import (
     nonreligious_gen_template,
-    religious_gen_template
+    religious_gen_template,
 )
-from agui import agui_emitter
+from agui import AGUIEmitter
+from langchain_core.messages.ai import AIMessageChunk
+from langchain_core.runnables import RunnableConfig
+from langgraph.types import StreamWriter
 
 
 class OrthodoxV1_State(BaseModel):
     user_input: Any
     
-    # Message identifier for AG-UI streaming correlation
     message_id: str | None = None
     
     analysis_results: Any = None
-    analysis_str: str = None
+    analysis_str: str | None = None
     
-    vector_queries: List[str] = None
-    retrieved_content: List[Dict] = None
-    summarization: str = None
+    vector_queries: List[str] | None = None
+    retrieved_content: List[Dict[str, Any]] | str | None = None
+    summarization: Any = None
     
     reflection: Any = None
-    reflection_str: str = None
+    reflection_str: str | None = None
     
-    response: str = None
+    response: str | None = None
     
     cycle_numbers: int = 0
     
@@ -54,210 +42,219 @@ class OrthodoxV1_State(BaseModel):
         return getattr(self, key)
 
 
-
-async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
-    """Parse the user question and classify it.
-
-    This node is IO-bound (LLM call) so we expose it as async and call the
-    asynchronous `.ainvoke` method provided by the LangChain agent wrappers.
-    """
-    user_msg = state['user_input']
-    message_id = state.message_id or str(uuid4())
-    
-    # AG-UI start thinking session for all non-final emissions
-    agui_emitter.thinking_start(writer)
-    analysis_results = await analysis_agent.ainvoke(user_msg, config)
-    
-    analysis_str = (
-        f"***Classification***: This question is **{analysis_results.is_religious}**.  \n"
-        f"***Topic***: The question is focusing on {', '.join(analysis_results.key_topics)}.  \n"
-        f"***Context requirements***: {analysis_results.context_requirements}.  \n"
-        f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
-        f"***Reasoning***: {analysis_results.reasoning}"
-    )
-    agui_emitter.thought(writer, analysis_str)
-    return {
-        'analysis_results': analysis_results,
-        'analysis_str': analysis_str,
-        'message_id': message_id
-    }
+@dataclass
+class OrthodoxNodes:
+    analysis: Any
+    check_if_religious: Any
+    simple_generation: Any
+    query_gen: Any
+    retrieval: Any
+    summarization: Any
+    complex_generation: Any
+    reflection: Any
+    check_reflection: Any
 
 
-def check_if_religious(state: OrthodoxV1_State) -> Literal["query_gen", "simple_generation"]:
-    """Fast synchronous branching helper (no IO)."""
-    return 'query_gen' if state['analysis_results'].is_religious == "Religious" else 'simple_generation'
+def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> OrthodoxNodes:
+    """Bind Orthodox workflow nodes to the provided agents and AG-UI emitter."""
 
-
-async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
-    # AG-UI end thinking session, final response begins streaming
-    agui_emitter.thinking_end(writer)
-    agui_emitter.response_start(writer, state["message_id"])
-    
-    payload = {"analysis_results": state["analysis_str"]}
-    prompt = nonreligious_gen_template.invoke(payload)
-    
-    response = ''
-    async for mode, chunk in simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
-        if mode == 'messages':
-            message_chunk, _ = chunk
-            if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                agui_emitter.response_chunk(writer, state["message_id"], message_chunk.content)
-                response += message_chunk.content
-        elif mode == 'updates':
-            # chunk is a dict, containing updates per node
-            if "agent" in chunk:
-                agent_msg = chunk['agent']['messages'][0]
-                if getattr(agent_msg, "tool_calls", None):
-                    for tool_call in agent_msg.tool_calls:
-                        agui_emitter.tool_call_start(
-                            writer,
-                            tool_call["id"],
-                            state["message_id"],
-                            tool_call.get('name'),
-                            tool_call.get('args'),
-                        )
-            elif "tools" in chunk:
-                tool_msg = chunk['tools']['messages'][0]
-                agui_emitter.tool_call_result(
-                    writer,
-                    tool_call["id"],
-                    state["message_id"],
-                    tool_msg.content,
-                )
-    agui_emitter.response_end(writer, state["message_id"])
-    return {"response": response}
-
-
-async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
-    analysis_str = state['analysis_str']
-    reflection = state["reflection_str"]
-    
-    if reflection:
-        payload = {
-            "analysis_results": analysis_str,
-            "reflection": reflection
-        }
-        response = await query_reflective_agent.ainvoke(payload, config)
-    else:
-        payload = {
-            "analysis_results": analysis_str
-        }
-        response = await query_no_reflective_agent.ainvoke(payload, config)
-    
-    # Emit a reasoning header via the writer
-    lines = ["I will perform a research in the database for the following fields:"]
-    for idx, q in enumerate(response.queries, start=1):
-        lines.append(f"{idx}. {q}")
-    header_content = "\n".join(lines)
-    
-    agui_emitter.thought(writer, header_content)
-    return {"vector_queries": response.queries}
-
-
-async def retrieval(state: OrthodoxV1_State, writer: StreamWriter):
-    retrieved_docs = []
-    tcid = str(uuid4())
-    async def fetch_single(query: str):
-        nonlocal retrieved_docs
-        async with httpx.AsyncClient() as client:
-            r = await client.post(ENDPOINT, json={"query": query, "k": 10}, timeout=30)
-            r.raise_for_status()
-            retrieved_docs.extend(r.json()["documents"])
-    
-    agui_emitter.tool_call_start(writer, tcid, state["message_id"], "vector_db.search", {"queries": state["vector_queries"], "k": 10})
-    await asyncio.gather(*(fetch_single(q) for q in state["vector_queries"]))
-    agui_emitter.tool_call_result(writer, tcid, state["message_id"], f"Gathered in total {len(retrieved_docs)} relevant documents.")
-    
-    return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
-
-
-async def summarization(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
-    retrieved_docs = state['retrieved_content']
-    analysis_str = state['analysis_str']
-    
-    payload = {
-        "retrieved_docs": retrieved_docs,
-        "analysis_results": analysis_str,
-    }
-    
-    summarization = await summarizer_agent.ainvoke(payload, config)
-    agui_emitter.thought(writer, summarization.content)
-    return {"summarization": summarization}
-
-
-async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
-    payload = {
-        "summarization": state["summarization"],
-        "analysis_results": state["analysis_str"],
-    }
-    prompt = religious_gen_template.invoke(payload)
-    
-    # invoke the generation agent
-    response = ''
-    # End thinking session; final response begins streaming
-    async for update in complex_gen_agent.astream(prompt, stream_mode=["updates"]):
-        _, payload = update
+    async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+        user_msg = state["user_input"]
+        message_id = state.message_id or str(uuid4())
         
-        if "agent" in payload:
-            message = payload['agent']['messages'][0]
+        agui.thinking_start(writer)
+        analysis_results = await agents.analysis_agent.ainvoke(user_msg, config)
+        
+        analysis_str = (
+            f"***Classification***: This question is **{analysis_results.is_religious}**.  \n"
+            f"***Topic***: The question is focusing on {', '.join(analysis_results.key_topics)}.  \n"
+            f"***Context requirements***: {analysis_results.context_requirements}.  \n"
+            f"***Overall complexity***: {analysis_results.query_complexity}.  \n"
+            f"***Reasoning***: {analysis_results.reasoning}"
+        )
+        agui.thought(writer, analysis_str)
+        return {
+            "analysis_results": analysis_results,
+            "analysis_str": analysis_str,
+            "message_id": message_id,
+        }
+
+    def check_if_religious(state: OrthodoxV1_State) -> Literal["query_gen", "simple_generation"]:
+        return "query_gen" if state["analysis_results"].is_religious == "Religious" else "simple_generation"
+
+    async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+        agui.thinking_end(writer)
+        agui.response_start(writer, state["message_id"])
+        
+        payload = {"analysis_results": state["analysis_str"]}
+        prompt = nonreligious_gen_template.invoke(payload)
+        
+        response = ""
+        last_tool_call_id: str | None = None
+        
+        async for mode, chunk in agents.simple_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
+            if mode == "messages":
+                message_chunk, _ = chunk
+                if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
+                    agui.response_chunk(writer, state["message_id"], message_chunk.content)
+                    response += message_chunk.content
+            elif mode == "updates":
+                if "agent" in chunk:
+                    agent_msg = chunk["agent"]["messages"][0]
+                    if getattr(agent_msg, "tool_calls", None):
+                        for tool_call in agent_msg.tool_calls:
+                            last_tool_call_id = tool_call["id"]
+                            agui.tool_call_start(
+                                writer,
+                                tool_call["id"],
+                                state["message_id"],
+                                tool_call.get("name"),
+                                tool_call.get("args"),
+                            )
+                elif "tools" in chunk:
+                    tool_msg = chunk["tools"]["messages"][0]
+                    call_id = getattr(tool_msg, "tool_call_id", None) or last_tool_call_id
+                    if call_id:
+                        agui.tool_call_result(
+                            writer,
+                            call_id,
+                            state["message_id"],
+                            tool_msg.content,
+                        )
+                        
+        agui.response_end(writer, state["message_id"])
+        return {"response": response}
+
+    async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+        analysis_str = state["analysis_str"]
+        reflection = state["reflection"]
+        
+        if reflection and getattr(reflection, "requires_additional_retrieval", False):
+            payload = {
+                "analysis_results": analysis_str,
+                "reflection": reflection,
+            }
+            response = await agents.query_reflective_agent.ainvoke(payload, config)
+        else:
+            payload = {"analysis_results": analysis_str}
+            response = await agents.query_no_reflective_agent.ainvoke(payload, config)
+        
+        lines = ["I will perform a research in the database for the following fields:"]
+        for idx, q in enumerate(response.queries, start=1):
+            lines.append(f"{idx}. {q}")
+        agui.thought(writer, "\n".join(lines))
+        return {"vector_queries": response.queries}
+
+    async def retrieval(state: OrthodoxV1_State, writer: StreamWriter):
+        retrieved_docs: List[Dict[str, Any]] = []
+        tcid = str(uuid4())
+        
+        async def fetch_single(query: str):
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(ENDPOINT, json={"query": query, "k": 10}, timeout=30)
+                resp.raise_for_status()
+                retrieved_docs.extend(resp.json()["documents"])
+                
+        queries = state["vector_queries"] or []
+        agui.tool_call_start(writer, tcid, state["message_id"], "vector_db.search", {"queries": queries, "k": 10})
+        if queries:
+            await asyncio.gather(*(fetch_single(q) for q in queries))
+        agui.tool_call_result(
+            writer,
+            tcid,
+            state["message_id"],
+            f"Gathered in total {len(retrieved_docs)} relevant documents.",
+        )
+        
+        return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
+
+    async def summarization(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+        payload = {
+            "retrieved_docs": state["retrieved_content"],
+            "analysis_results": state["analysis_str"],
+        }
+        summary = await agents.summarizer_agent.ainvoke(payload, config)
+        agui.thought(writer, summary.content)
+        return {"summarization": summary}
+
+    async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+        payload = {
+            "summarization": state["summarization"],
+            "analysis_results": state["analysis_str"],
+        }
+        prompt = religious_gen_template.invoke(payload)
+        
+        response = ""
+        async for update in agents.complex_gen_agent.astream(prompt, stream_mode=["updates"]):
+            _, payload = update
             
-            if getattr(message, "tool_calls", None):
-                for tool in message.tool_calls:
-                    agui_emitter.tool_call_start(
-                        writer,
-                        tool.get("id"),
-                        state["message_id"],
-                        tool.get('name'),
-                        tool.get('args'),
-                    )
-            elif getattr(message, "content", None):
-                response += message.content
-        elif "tools" in payload:
-            tool_msg = update['tools']['messages'][0]
-            agui_emitter.tool_call_result(
-                writer,
-                tool_msg.get("id"),
-                state["message_id"],
-                tool_msg.get("content"),
+            if "agent" in payload:
+                message = payload["agent"]["messages"][0]
+                if getattr(message, "tool_calls", None):
+                    for tool in message.tool_calls:
+                        agui.tool_call_start(
+                            writer,
+                            tool.get("id"),
+                            state["message_id"],
+                            tool.get("name"),
+                            tool.get("args"),
+                        )
+                elif getattr(message, "content", None):
+                    response += message.content
+            elif "tools" in payload:
+                tool_msg = payload["tools"]["messages"][0]
+                agui.tool_call_result(
+                    writer,
+                    tool_msg.get("id"),
+                    state["message_id"],
+                    tool_msg.get("content"),
+                )
+        
+        return {"response": response}
+
+    async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+        payload = {
+            "analysis_results": state["analysis_str"],
+            "generated_response": state["response"],
+        }
+        reflection = await agents.reflection_agent.ainvoke(payload, config)
+        
+        if reflection.requires_additional_retrieval:
+            reflection_str = (
+                f"Additional retrieval needed: **Yes**.  \n"
+                f"Reflection: {reflection.reflection}.  \n"
+                f"Recommended next steps: {reflection.recommended_next_steps}"
             )
-    
-    return {"response": response}
+        else:
+            reflection_str = "No additional retrieval is required."
+        
+        agui.thought(writer, reflection_str)
+        return {
+            "reflection": reflection,
+            "reflection_str": reflection_str,
+            "cycle_numbers": state.cycle_numbers + (1 if reflection.requires_additional_retrieval else 0),
+        }
 
+    def check_reflection(state: OrthodoxV1_State, writer: StreamWriter) -> Literal["query_gen", "end"]:
+        requires_more = state["reflection"].requires_additional_retrieval
+        if requires_more and state["cycle_numbers"] < 1:
+            return "query_gen"
+        
+        agui.thinking_end(writer)
+        agui.response_start(writer, state["message_id"])
+        if state["response"]:
+            agui.response_content(writer, state["message_id"], state["response"])
+        agui.response_end(writer, state["message_id"])
+        return "end"
 
-async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter) -> OrthodoxV1_State:
-    analysis_str = state["analysis_str"]
-    gen_resp = state["response"]
-    
-    payload = {
-        "analysis_results": analysis_str,
-        "generated_response": gen_resp,
-    }
-    
-    reflection = await reflection_agent.ainvoke(payload, config)
-    reflection_str = (
-        f"Additional retrieval needed: **{'Yes' if reflection.requires_additional_retrieval else 'No'}**.  \n"
-        f"Reflection: {reflection.reflection}.  \n"
-        f"Recommended next steps: {reflection.recommended_next_steps}"
-        if reflection.requires_additional_retrieval
-        else "No additional retrieval is required."
+    return OrthodoxNodes(
+        analysis=analysis,
+        check_if_religious=check_if_religious,
+        simple_generation=simple_generation,
+        query_gen=query_gen,
+        retrieval=retrieval,
+        summarization=summarization,
+        complex_generation=complex_generation,
+        reflection=reflection,
+        check_reflection=check_reflection,
     )
-    
-    agui_emitter.thought(writer, reflection_str)
-    return {
-        "reflection": reflection,
-        "reflection_str": reflection_str,
-        "cycle_numbers": state.cycle_numbers + (1 if reflection.requires_additional_retrieval else 0),
-    }
-
-
-def check_reflection(state: OrthodoxV1_State, writer: StreamWriter) -> Literal["query_gen", "end"]:
-    if state['reflection'].requires_additional_retrieval and state['cycle_numbers'] < 2:
-        return 'query_gen'
-    else:
-        agui_emitter.thinking_end(writer)
-        agui_emitter.response_start(writer, state["message_id"])
-        agui_emitter.response_content(writer, state["message_id"], state["response"])
-        agui_emitter.response_end(writer, state["message_id"])
-        return 'end'
-
-

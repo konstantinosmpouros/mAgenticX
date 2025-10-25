@@ -106,9 +106,11 @@ class LangGraphAgent:
         """Instantiate LLM chains / helpers and store them on ``self.agents``."""
         raise NotImplementedError("Subclasses must implement register_agents().")
 
+
     def register_nodes(self) -> None:
         """Create node callables (usually closing over ``self.agents``/``self.agui``)."""
         raise NotImplementedError("Subclasses must implement register_nodes().")
+
 
     def register_agents_and_nodes(self) -> None:
         """
@@ -120,6 +122,7 @@ class LangGraphAgent:
             return
         self.register_agents()
         self.register_nodes()
+
 
     def register_graph_nodes(self, graph: StateGraph) -> None:
         """Attach node handlers to the provided graph instance."""
