@@ -1,12 +1,10 @@
+import json
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
 from pydantic import BaseModel
 
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import RunnableLambda
 from langgraph.graph import StateGraph
 
 from agui import AGUIEmitter
-from utils import make_merge_with_template
 from tools import (
     articles_tools,
     computer_vision_tools,
@@ -33,20 +31,20 @@ class LangGraphAgent:
     helpers (``ainvoke``/``astream``) are provided so subclasses can focus on graph
     construction only.
     """
-    
+
     name: str = "base-agent"
     version: str = "0.0.1"
-    
+
     agui: AGUIEmitter = AGUIEmitter()
-    
+
     tool_registry: Sequence[Any] = (
         *financial_tools,
         *search_tools,
         *articles_tools,
         *computer_vision_tools,
     )
-    
-    def __init__(self, *, config: Optional[ConfigSource] = None) -> None:        
+
+    def __init__(self, *, config: Optional[ConfigSource] = None) -> None:
         # Configuration
         self.config: Dict[str, Any] = self._validate_config(config) if config else {}
         
@@ -59,9 +57,9 @@ class LangGraphAgent:
         self.tools_names: List[str] = [tool.name for tool in self.tools]
         
         # Agent components
-        self.state: BaseModel = None
-        self.agents: Dict[str, Any] = None
-        self.nodes: Dict[str, Any] = None
+        self.state: Type[BaseModel] | None = None
+        self.agents: Any = None
+        self.nodes: Any = None
         self.graph = None
 
 
@@ -114,7 +112,7 @@ class LangGraphAgent:
 
     def register_agents_and_nodes(self) -> None:
         """
-        Default hook that initialises agents then nodes once per template instance.
+        Default hook that initialize agents then nodes once per template instance.
         Automatically invoked by ``workflow()`` before any graph wiring occurs, so
         subclasses normally override only ``register_agents`` / ``register_nodes``.
         """
@@ -122,7 +120,7 @@ class LangGraphAgent:
             return
         self.register_agents()
         self.register_nodes()
-    
+
     def register_graph_nodes(self, graph: StateGraph) -> None:
         """Attach node handlers to the provided graph instance."""
         raise NotImplementedError("Subclasses must implement register_graph_nodes().")
@@ -156,7 +154,7 @@ class LangGraphAgent:
         """Compile the workflow into an executable graph."""
         if self.graph is not None:
             return
-
+        
         graph = self.workflow()
         if not isinstance(graph, StateGraph):
             raise TypeError("workflow() must return a LangGraph StateGraph instance.")
@@ -167,26 +165,25 @@ class LangGraphAgent:
 
 
     # ---------------------------------------------------------------------
-    # Async inference functions
+    # Async inference function
     # ---------------------------------------------------------------------
-    async def ainvoke(self, *args: Any, **kwargs: Any):
-        return await self.graph.ainvoke(*args, **kwargs)
-
-
     async def astream(self, *args: Any, **kwargs: Any):
         async for chunk in self.graph.astream(*args, **kwargs):
-            yield chunk
+            # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
+                if isinstance(chunk, (str, bytes)):
+                    if isinstance(chunk, str):
+                        yield chunk.encode("utf-8")
+                    else:
+                        yield chunk
+                else:
+                    # Fallback: wrap dicts as SSE data lines
+                    yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
 
 
 
     # ---------------------------------------------------------------------
     # Internal helpers
     # ---------------------------------------------------------------------
-    def merge_with_template(self, template: ChatPromptTemplate) -> RunnableLambda:
-        """Return a Runnable that injects the agent's system template."""
-        return RunnableLambda(make_merge_with_template(template))
-
-
     def _validate_config(self, config: ConfigSource) -> Dict[str, Any]:
         """Validate and normalise a config mapping coming from the UI."""
         # Validate config type

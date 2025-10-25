@@ -10,7 +10,7 @@ sys.path.append(str(PACKAGE_ROOT))
 from agents.langgraph_agents import (
     orthodoxai_agent_v1,
     hr_policies_agent_v1,
-    retail_agent_v1
+    RetailAgentV1,
 )
 
 import asyncio
@@ -19,7 +19,7 @@ import traceback
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-from typing import Any, List, Dict
+from typing import Any, Dict, List, Optional
 
 
 app = FastAPI()
@@ -62,6 +62,7 @@ async def _configure_loop_exception_handler():
 class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
     user_input: List[Dict[str, Any]]
+    config: Optional[Dict[str, Any]] = None
 
 
 @app.post("/OrthodoxAI/v1/stream", status_code=200)
@@ -124,17 +125,11 @@ async def stream_agent(req: Request):
 async def stream_agent(req: Request):
     """Stream responses from the Retail v1 agent."""
     async def event_stream():
+        agent = RetailAgentV1(config=req.config)
+        agent.build()
         try:
-            async for msg in retail_agent_v1.astream({"user_input": req.user_input}, stream_mode="custom"):
-                # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
-                if isinstance(msg, (str, bytes)):
-                    if isinstance(msg, str):
-                        yield msg.encode("utf-8")
-                    else:
-                        yield msg
-                else:
-                    # Fallback: wrap dicts as SSE data lines
-                    yield ("data: " + json.dumps(msg) + "\n\n").encode("utf-8")
+            async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
+                yield msg
         except asyncio.CancelledError:
             # Client disconnected; stop quietly to avoid noisy logs
             return
