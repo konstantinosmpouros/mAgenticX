@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
+from pydantic import BaseModel
 
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnableLambda
@@ -57,11 +58,11 @@ class LangGraphAgent:
         self.tools: List[Any] = self.resolve_tools()
         self.tools_names: List[str] = [tool.name for tool in self.tools]
         
-        # Compiled workflow graph
+        # Agent components
+        self.state: BaseModel = None
+        self.agents: Dict[str, Any] = None
+        self.nodes: Dict[str, Any] = None
         self.graph = None
-        
-        # Precompile the workflow so subclasses can invoke immediately
-        self._ensure_graph_compiled()
 
 
 
@@ -70,14 +71,8 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     @property
     def metadata(self) -> Dict[str, str]:
-        """Expose a lightweight metadata dictionary (name, version)."""
-        return {
-            "name": self.name,
-            "version": self.version,
-            "tool_count": str(len(self.tools)),
-            "tools_received": self.config_tool_names,
-            "tools_resolved": self.tools_names,
-        }
+        """Expose a lightweight metadata dictionary."""
+        return {"name": self.name, "version": self.version}
 
 
 
@@ -109,11 +104,25 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Graph/Workflow lifecycle
     # ---------------------------------------------------------------------
-    def graph_state_type(self) -> Type[Any]:
-        """Return the state container used when initialising the LangGraph."""
-        raise NotImplementedError("Subclasses must implement graph_state_type().")
+    def register_agents(self) -> None:
+        """Instantiate LLM chains / helpers and store them on ``self.agents``."""
+        raise NotImplementedError("Subclasses must implement register_agents().")
 
+    def register_nodes(self) -> None:
+        """Create node callables (usually closing over ``self.agents``/``self.agui``)."""
+        raise NotImplementedError("Subclasses must implement register_nodes().")
 
+    def register_agents_and_nodes(self) -> None:
+        """
+        Default hook that initialises agents then nodes once per template instance.
+        Automatically invoked by ``workflow()`` before any graph wiring occurs, so
+        subclasses normally override only ``register_agents`` / ``register_nodes``.
+        """
+        if self.agents is not None and self.nodes is not None:
+            return
+        self.register_agents()
+        self.register_nodes()
+    
     def register_graph_nodes(self, graph: StateGraph) -> None:
         """Attach node handlers to the provided graph instance."""
         raise NotImplementedError("Subclasses must implement register_graph_nodes().")
@@ -131,24 +140,20 @@ class LangGraphAgent:
         Subclasses may override this method directly, but most implementations will
         benefit from customizing the three hook methods invoked here instead.
         """
-        state_type = self.graph_state_type()
-        if state_type is None:
-            raise ValueError("graph_state_type() must return a state class.")
+        if self.state is None:
+            raise ValueError("Subclasses must assign a state model before build().")
         
-        graph = StateGraph(state_type)
+        if self.agents is None or self.nodes is None:
+            self.register_agents_and_nodes()
+        
+        graph = StateGraph(self.state)
         self.register_graph_nodes(graph)
         self.register_graph_edges(graph)
         return graph
 
 
     def build(self) -> None:
-        """
-        Compile the workflow into an executable graph.
-        
-        Optionally accepts a config source or an explicit tool selector that
-        overrides previous selections before compiling.
-        """
-        
+        """Compile the workflow into an executable graph."""
         if self.graph is not None:
             return
 
@@ -157,6 +162,7 @@ class LangGraphAgent:
             raise TypeError("workflow() must return a LangGraph StateGraph instance.")
         
         self.graph = graph.compile()
+        return
 
 
 
@@ -222,10 +228,3 @@ class LangGraphAgent:
             normalised.append(candidate)
             
         return normalised
-
-
-    def _ensure_graph_compiled(self):
-        """Compile the workflow on first use and return the runnable graph."""
-        if self.graph is None:
-            self.build()
-        return self.graph
