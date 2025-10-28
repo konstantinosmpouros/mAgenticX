@@ -12,5 +12,8 @@ notebooks/vectorstore/*
 notebooks/knowledge_base/*
 
 src/vectorstores/*
+src/vault/vault_init.sh
+src/vault/data/raft/*
+src/vault/data/vault.db
 
 data/*

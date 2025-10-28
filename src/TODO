@@ -9,6 +9,7 @@
 ## Agentic UI
 
 - In the conversation history, add in the end a skeleton to distract the user till it loads more.
+- Create a panel for the available tools and send the configs to the dialogue bridge
 - Give in the agents the personal info of the user in the prompt like name and role
 - There can be timeout errors especially in the orthodox agent.
 
@@ -34,3 +35,4 @@
 - Fix and uncomment the generate title api call cause in 2-3 images it hit time out exception
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document
 - Give in the agents the personal info of the user in the prompt like name and role
+- Create a get_available_tools API for the UI and send the configs for the inference too.
