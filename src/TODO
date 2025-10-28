@@ -8,7 +8,6 @@
 
 ## Agentic UI
 
-- Refactor the Chat Container using this [sdk](https://ai-sdk.dev/elements/components/chatbot) along with canvas and more artifacts solutions.
 - In the conversation history, add in the end a skeleton to distract the user till it loads more.
 - Give in the agents the personal info of the user in the prompt like name and role
 - There can be timeout errors especially in the orthodox agent.
@@ -23,8 +22,7 @@
 - Improve the current agent's architecture
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Create a deep research agent with deep agents and make it available
-- Replace tools with mcp
-- Make all agents OOP in order to pass configs for llms, tools etc.
+- Replace tools with mcp in a different directory than agents. Configure the server with all the tools and the registry will be stored in the main.py in agents and expose an API so the UI can get the available tools.
 - Remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 - Give in the agents the personal info of the user in the prompt like name and role
 

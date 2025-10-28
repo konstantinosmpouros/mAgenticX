@@ -59,6 +59,7 @@ async def _configure_loop_exception_handler():
     old = loop.get_exception_handler()
     loop.set_exception_handler(_make_loop_exception_handler(old))
 
+
 class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
     user_input: List[Dict[str, Any]]
@@ -73,12 +74,8 @@ async def stream_agent(req: Request):
         try:
             async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
                 yield msg
-        except asyncio.CancelledError:
-            # Client disconnected; stop quietly to avoid noisy logs
-            return
-        except (BrokenPipeError, ConnectionResetError):
-            # Downstream closed; no further writes
-            return
+        except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
+            return # Downstream closed; no further writes or Client disconnected; stop quietly to avoid noisy logs
         except Exception as e:
             err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
@@ -94,12 +91,8 @@ async def stream_agent(req: Request):
         try:
             async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
                 yield msg
-        except asyncio.CancelledError:
-            # Client disconnected; stop quietly to avoid noisy logs
-            return
-        except (BrokenPipeError, ConnectionResetError):
-            # Downstream closed; no further writes
-            return
+        except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
+            return # Downstream closed; no further writes or Client disconnected; stop quietly to avoid noisy logs
         except Exception as e:
             err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
@@ -115,12 +108,8 @@ async def stream_agent(req: Request):
         try:
             async for msg in agent.astream({"user_input": req.user_input}, stream_mode="custom"):
                 yield msg
-        except asyncio.CancelledError:
-            # Client disconnected; stop quietly to avoid noisy logs
-            return
-        except (BrokenPipeError, ConnectionResetError):
-            # Downstream closed; no further writes
-            return
+        except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
+            return # Downstream closed; no further writes or Client disconnected; stop quietly to avoid noisy logs
         except Exception as e:
             err = {"type": "RUN_ERROR", "message": _format_run_error_message(e)}
             yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
