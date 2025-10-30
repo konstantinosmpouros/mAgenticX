@@ -1,7 +1,6 @@
 import os
 from uuid import uuid4
 import base64
-from datetime import datetime
 
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
@@ -11,7 +10,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
-from sqlalchemy import text, select
+from sqlalchemy import select
 from sqlalchemy import (
     Column,
     String,

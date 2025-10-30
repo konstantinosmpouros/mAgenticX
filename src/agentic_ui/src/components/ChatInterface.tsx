@@ -44,6 +44,7 @@ export function ChatInterface() {
   const initialSession = typeof window !== 'undefined' ? loadSession() : null;
   const hasValidSession = isSessionValid(initialSession);
   const initialUserId = hasValidSession ? initialSession!.userId : null;
+  const initialToken = hasValidSession ? initialSession!.token : null;
   const initialUserProfile = hasValidSession ? initialSession!.user ?? null : null;
   const initialLoggedIn = Boolean(initialUserId);
   
@@ -69,6 +70,7 @@ export function ChatInterface() {
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
   
   const [userProfile, setUserProfile] = useState<UserProfile | null>(initialUserProfile);
+  const [authToken, setAuthToken] = useState<string | null>(initialToken);
   
   // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
@@ -141,7 +143,7 @@ export function ChatInterface() {
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
-  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
+  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, setAuthToken, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
   useUIPersistEffect({
     userId,
@@ -179,6 +181,7 @@ export function ChatInterface() {
     toast: toastWrapper,
     userId,
     currentConversation,
+    authToken,
   });
   
   
@@ -200,6 +203,7 @@ export function ChatInterface() {
   // Inference handler
   const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
     userId,
+    authToken,
     selectedAgent,
     isPrivateMode,
     messages: currentConversation?.messages ?? [],
@@ -236,6 +240,7 @@ export function ChatInterface() {
     handleOpenSearch,
   } = createConversationHandlers({
     userId,
+    authToken,
     conversations,
     setConversations,
     currentConversation,
@@ -285,6 +290,7 @@ export function ChatInterface() {
     setLoginUsername,
     setLoginPassword,
     setShowUserProfile,
+    setAuthToken,
     clearChatAndStopThinking,
     toast: toastWrapper,
     loginUsername,
@@ -294,6 +300,7 @@ export function ChatInterface() {
   // Feedback handlers
   const { handleLike, handleDislike } = createFeedbackHandlers({
     userId,
+    authToken,
     currentConversation,
     setConversationMessages,
   });

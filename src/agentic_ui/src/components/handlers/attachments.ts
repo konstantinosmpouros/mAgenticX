@@ -8,6 +8,7 @@ type AttachmentsCtx = {
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   userId?: string | null;
   currentConversation?: ConversationDetail | null;
+  authToken: string | null;
 };
 
 export function createAttachmentHandlers(ctx: AttachmentsCtx) {
@@ -151,9 +152,12 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleFileDownload = (attachment: any, message: MessageOut) => {
-    const { userId, currentConversation } = ctx;
-    if (!userId || !currentConversation) return;
+  const handleFileDownload = async (attachment: any, message: MessageOut) => {
+    const { userId, currentConversation, authToken } = ctx;
+    if (!userId || !currentConversation || !authToken) {
+      toast({ title: 'Download unavailable', description: 'You must be signed in to download attachments', variant: 'destructive', duration: 3000 });
+      return;
+    }
 
     if (!attachment?.blobId) {
       toast({ title: 'Download unavailable', description: 'This attachment cannot be downloaded', variant: 'destructive', duration: 3000 });
@@ -162,12 +166,13 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
 
     try {
       toast({ title: 'Download starting', description: `Preparing ${attachment.name}`, duration: 2000 });
-      downloadAttachment({
+      await downloadAttachment({
         userId,
         conversationId: currentConversation.id,
         messageId: message.id,
         blobId: attachment.blobId,
         filename: attachment.name,
+        token: authToken,
       });
     } catch (error) {
       console.error('Download failed:', error);

@@ -27,8 +27,8 @@ from database import (
     AttachmentTable,
     BlobTable,
 )
-from vault_client import VaultAuthenticator, VaultAuthError
-from schemas import (
+from vault_auth.client import VaultAuthenticator, VaultAuthError
+from database.schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
     ConversationIn, MessageIn, MessageOut,
     UpdateConversationResponse,
@@ -48,6 +48,7 @@ from utils import (
     init_message,
     _preview,
 )
+from vault_auth.auth import require_token_claims
 
 _vault_authenticator: VaultAuthenticator | None = None
 
@@ -186,7 +187,10 @@ async def createConversation(
 # READ APIS
 #-----------------------------------------------------------------------------------
 @app.get("/agents", response_model=List[AgentPublic], status_code=status.HTTP_200_OK)
-async def getAvailableAgents(db: AsyncSession = Depends(get_db)):
+async def getAvailableAgents(
+    _: dict = Depends(require_token_claims),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Fetch active agents from the cache, falling back to the database if needed.
     """
@@ -242,7 +246,6 @@ async def getConvDetails(
     return ConversationDetail.model_validate(current_conv)
 
 
-# TODO: This needs a bit more validation l think
 @app.get(
     "/users/{user_id}/conversations/{conversation_id}/messages/{message_id}/blobs/{blob_id}",
 )
@@ -251,6 +254,7 @@ async def downloadBlobStream(
     conversation_id: str,
     message_id: str,
     blob_id: str,
+    _current_user: UserTable = Depends(validate_userId),
     range_header: str | None = Header(default=None, alias="Range"),
     db: AsyncSession = Depends(get_db),
 ):

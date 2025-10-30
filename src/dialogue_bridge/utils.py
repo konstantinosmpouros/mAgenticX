@@ -1,14 +1,11 @@
 import base64
-from typing import Optional, List, Dict, Iterable
+from typing import Optional, List, Dict, Iterable, Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import Depends, HTTPException
-
-# from langchain.schema import SystemMessage, HumanMessage
-# from langchain_openai import ChatOpenAI
 
 from database import (
     get_db,
@@ -19,11 +16,11 @@ from database import (
     AttachmentTable,
     BlobTable
 )
+from vault_auth.auth import require_token_claims
 
-from schemas import (
+from database.schemas import (
     MessageIn,
     AttachmentIn,
-    TitleOut,
 )
 
 
@@ -59,8 +56,12 @@ async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
     return agent
 
 
-async def validate_userId(user_id: str, db: AsyncSession = Depends(get_db)) -> UserTable:
-    """Generic authenticator by user id"""
+async def validate_userId(
+    user_id: str,
+    token_claims: Dict[str, Any] = Depends(require_token_claims),
+    db: AsyncSession = Depends(get_db)
+) -> UserTable:
+    """Ensure the caller's JWT authorises access to the requested user."""
     result = await db.execute(
         select(UserTable).filter_by(id=user_id)
     )
@@ -68,6 +69,40 @@ async def validate_userId(user_id: str, db: AsyncSession = Depends(get_db)) -> U
     
     if not user:
         raise HTTPException(401, "Invalid or unknown user")
+
+    identifiers: set[str] = set()
+    candidate_values = [
+        token_claims.get("sub"),
+        token_claims.get("entity_id"),
+        token_claims.get("user_id"),
+        token_claims.get("id"),
+    ]
+    metadata = token_claims.get("metadata")
+    if isinstance(metadata, dict):
+        candidate_values.extend(
+            metadata.get(key)
+            for key in ("vault_user_id", "user_id", "id")
+        )
+
+    for value in candidate_values:
+        if value is None:
+            continue
+        identifiers.add(str(value))
+
+    if not identifiers:
+        raise HTTPException(
+            status_code=403,
+            detail="Token missing subject identifiers.",
+        )
+
+    if (
+        str(user.vault_user_id) not in identifiers
+        and str(user.id) not in identifiers
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Token does not grant access to this user.",
+        )
     return user
 
 

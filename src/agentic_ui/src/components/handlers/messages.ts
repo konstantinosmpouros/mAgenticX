@@ -6,25 +6,27 @@ type SetConversationMessages = (updater: (prev: MessageOut[]) => MessageOut[]) =
 
 export const createFeedbackHandlers = ({
   userId,
+  authToken,
   currentConversation,
   setConversationMessages,
 }: {
   userId: string | null;
+  authToken: string | null;
   currentConversation: ConversationDetail | null;
   setConversationMessages: SetConversationMessages;
 }) => {
   const handleLike = async (message: MessageOut) => {
-    if (!userId || !currentConversation) return;
+    if (!userId || !currentConversation || !authToken) return;
     try {
-      const updated = await apiLikeMessage(userId, currentConversation.id, message.id);
+      const updated = await apiLikeMessage(userId, currentConversation.id, message.id, authToken);
       setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
     } catch (_) {}
   };
 
   const handleDislike = async (message: MessageOut) => {
-    if (!userId || !currentConversation) return;
+    if (!userId || !currentConversation || !authToken) return;
     try {
-      const updated = await apiDislikeMessage(userId, currentConversation.id, message.id);
+      const updated = await apiDislikeMessage(userId, currentConversation.id, message.id, authToken);
       setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
     } catch (_) {}
   };

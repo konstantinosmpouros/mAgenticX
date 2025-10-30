@@ -12,6 +12,7 @@ type AuthCtx = {
   setLoginUsername: (v: string) => void;
   setLoginPassword: (v: string) => void;
   setShowUserProfile: (v: boolean) => void;
+  setAuthToken: (v: string | null) => void;
   clearChatAndStopThinking: () => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   loginUsername: string;
@@ -19,22 +20,42 @@ type AuthCtx = {
 };
 
 export function createAuthHandlers(ctx: AuthCtx) {
-  const { setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setLoginUsername, setLoginPassword, setShowUserProfile, clearChatAndStopThinking, toast, loginUsername, loginPassword } = ctx;
+  const {
+    setIsLoggedIn,
+    setUserId,
+    setUserProfile,
+    setAgents,
+    setConversations,
+    setLoginUsername,
+    setLoginPassword,
+    setShowUserProfile,
+    setAuthToken,
+    clearChatAndStopThinking,
+    toast,
+    loginUsername,
+    loginPassword,
+  } = ctx;
 
   const handleLogin = async () => {
     try {
       const response = await authenticate({ username: loginUsername.trim(), password: loginPassword.trim() });
 
-      if (response.authenticated && response.user && response.user.id) {
+      if (response.authenticated && response.user && response.user.id && response.token) {
         const user = response.user;
+        const ttlSeconds = typeof response.tokenTtl === 'number' && response.tokenTtl > 0 ? response.tokenTtl : 3600;
+        const ttlMs = ttlSeconds * 1000;
         setTimeout(async () => {
           setIsLoggedIn(true);
           setUserProfile(user);
           setUserId(user.id);
+          setAuthToken(response.token);
           // Persist session with 1 hour TTL
-          saveSession(user, 60 * 60 * 1000);
+          saveSession(user, response.token, ttlMs);
           try {
-            const [agentsList, conversationsList] = await Promise.all([getAgents(), getConversations(user.id)]);
+            const [agentsList, conversationsList] = await Promise.all([
+              getAgents(response.token),
+              getConversations(user.id, response.token),
+            ]);
             setAgents(agentsList);
             setConversations(sortByUpdatedAtDesc(conversationsList));
           } catch (e) {
@@ -57,6 +78,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
   const handleLogoutLocal = () => {
     clearSession();
     setUserProfile(null);
+    setAuthToken(null);
   };
 
   const handleLogout = () => {

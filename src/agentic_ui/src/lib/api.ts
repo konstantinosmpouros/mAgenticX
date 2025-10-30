@@ -17,6 +17,11 @@ import { parseSSE } from "./utils";
 import type { LucideIcon } from "lucide-react";
 import * as Icons from "lucide-react";
 
+const withAuth = (token: string, headers: Record<string, string> = {}): Record<string, string> => ({
+  ...headers,
+  Authorization: `Bearer ${token}`,
+});
+
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
   const res = await fetch("/api/authenticate", {
@@ -45,7 +50,7 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
 }
 
 // Fetch agents from backend via nginx proxy
-export async function getAgents(): Promise<Agent[]> {
+export async function getAgents(token: string): Promise<Agent[]> {
   const mapIcon = (name: string): LucideIcon => {
     const Icon = (Icons as Record<string, any>)[name] as LucideIcon | undefined;
     // Fallback gracefully to Building2 if icon name is invalid
@@ -53,7 +58,7 @@ export async function getAgents(): Promise<Agent[]> {
   };
   
   const res = await fetch("/api/agents", {
-    headers: { "Accept": "application/json" },
+    headers: withAuth(token, { "Accept": "application/json" }),
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch agents: ${res.status}`);
@@ -68,9 +73,14 @@ export async function getAgents(): Promise<Agent[]> {
 }
 
 // Fetch conversations for a user
-export async function getConversations(userId: string, page: number = 1, size: number = 10): Promise<ConversationSummary[]> {
+export async function getConversations(
+  userId: string,
+  token: string,
+  page: number = 1,
+  size: number = 10,
+): Promise<ConversationSummary[]> {
   const res = await fetch(`/api/users/${userId}/conversations?page=${page}&size=${size}`, {
-    headers: { "Accept": "application/json" },
+    headers: withAuth(token, { "Accept": "application/json" }),
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch conversations: ${res.status}`);
@@ -82,9 +92,13 @@ export async function getConversations(userId: string, page: number = 1, size: n
 }
 
 // Fetch conversation details with full message history
-export async function getConversationDetail(userId: string, conversationId: string): Promise<ConversationDetail> {
+export async function getConversationDetail(
+  userId: string,
+  conversationId: string,
+  token: string,
+): Promise<ConversationDetail> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, {
-    headers: { "Accept": "application/json" },
+    headers: withAuth(token, { "Accept": "application/json" }),
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch conversation details: ${res.status}`);
@@ -125,10 +139,10 @@ export async function getConversationDetail(userId: string, conversationId: stri
 }
 
 // Delete a conversation
-export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
+export async function deleteConversation(userId: string, conversationId: string, token: string): Promise<void> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, {
     method: "DELETE",
-    headers: { "Accept": "application/json" },
+    headers: withAuth(token, { "Accept": "application/json" }),
   });
   if (!res.ok) {
     throw new Error(`Failed to delete conversation: ${res.status}`);
@@ -136,13 +150,17 @@ export async function deleteConversation(userId: string, conversationId: string)
 }
 
 // Create a new conversation with the first message
-export async function createConversation(userId: string, payload: ConversationIn): Promise<CreateConversationResponse> {
+export async function createConversation(
+  userId: string,
+  token: string,
+  payload: ConversationIn,
+): Promise<CreateConversationResponse> {
   const res = await fetch(`/api/users/${userId}/conversations`, {
     method: "POST",
-    headers: {
+    headers: withAuth(token, {
       "Content-Type": "application/json",
       "Accept": "application/json"
-    },
+    }),
     body: JSON.stringify(payload),
   });
 
@@ -182,13 +200,18 @@ export async function createConversation(userId: string, payload: ConversationIn
 }
 
 // Add a message to an existing conversation
-export async function addMessageToConversation(userId: string, conversationId: string, payload: MessageIn): Promise<UpdateConversationResponse> {
+export async function addMessageToConversation(
+  userId: string,
+  conversationId: string,
+  token: string,
+  payload: MessageIn,
+): Promise<UpdateConversationResponse> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages`, {
     method: "POST",
-    headers: {
+    headers: withAuth(token, {
       "Content-Type": "application/json",
       "Accept": "application/json"
-    },
+    }),
     body: JSON.stringify(payload),
   });
   
@@ -242,10 +265,15 @@ export async function addMessageToConversation(userId: string, conversationId: s
 }
 
 // Like/dislike a message (toggle semantics on server)
-export async function likeMessage(userId: string, conversationId: string, messageId: string): Promise<MessageOut> {
+export async function likeMessage(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  token: string,
+): Promise<MessageOut> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/like`, {
     method: 'POST',
-    headers: { 'Accept': 'application/json' },
+    headers: withAuth(token, { 'Accept': 'application/json' }),
   });
   if (!res.ok) throw new Error(`Failed to like message: ${res.status}`);
   const m = await res.json();
@@ -262,10 +290,15 @@ export async function likeMessage(userId: string, conversationId: string, messag
   } as MessageOut;
 }
 
-export async function dislikeMessage(userId: string, conversationId: string, messageId: string): Promise<MessageOut> {
+export async function dislikeMessage(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  token: string,
+): Promise<MessageOut> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/dislike`, {
     method: 'POST',
-    headers: { 'Accept': 'application/json' },
+    headers: withAuth(token, { 'Accept': 'application/json' }),
   });
   if (!res.ok) throw new Error(`Failed to dislike message: ${res.status}`);
   const m = await res.json();
@@ -291,36 +324,47 @@ type DownloadAttachmentParams = {
   filename?: string;
 };
 
-export function downloadAttachment({
+export async function downloadAttachment({
   userId,
   conversationId,
   messageId,
   blobId,
   filename,
-}: DownloadAttachmentParams): void {
+  token,
+}: DownloadAttachmentParams & { token: string }): Promise<void> {
   const url = `/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/${blobId}`;
+  const res = await fetch(url, {
+    headers: withAuth(token),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to download attachment: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
-  anchor.href = url;
+  anchor.href = objectUrl;
   if (filename) {
     anchor.download = filename;
   }
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
+  URL.revokeObjectURL(objectUrl);
 }
 
 // Start streaming inference by requesting the bridge SSE endpoint
 export async function streamInference(
   userId: string,
   conversationId: string,
+  token: string,
   onEvent: (e: AGUIEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, {
     method: 'POST',
-    headers: {
+    headers: withAuth(token, {
       'Accept': 'text/event-stream',
-    },
+    }),
     signal,
   });
   if (!res.ok || !res.body) {

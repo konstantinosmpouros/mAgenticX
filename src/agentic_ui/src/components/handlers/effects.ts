@@ -50,9 +50,10 @@ export function useAuthRehydrateEffect(params: {
   setCurrentConversation?: (v: any) => void;
   setMessages?: (v: any) => void;
   setIsPrivateMode?: (v: boolean) => void;
+  setAuthToken?: (v: string | null) => void;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 }) {
-  const { setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode } = params;
+  const { setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode, setAuthToken } = params;
   const started = useRef(false);
 
   useEffect(() => {
@@ -64,8 +65,10 @@ export function useAuthRehydrateEffect(params: {
     setIsLoggedIn(true);
     setUserId(session!.userId);
     const sessionUser = session?.user ?? null;
-    setUserProfile(sessionUser);
-    Promise.all([getAgents(), getConversations(session!.userId)])
+    setUserProfile(sessionUser);
+    if (setAuthToken && session?.token) setAuthToken(session.token);
+
+    Promise.all([getAgents(session!.token), getConversations(session!.userId, session!.token)])
       .then(([agents, conversations]) => {
         setAgents(agents);
         setConversations(sortByUpdatedAtDesc(conversations));

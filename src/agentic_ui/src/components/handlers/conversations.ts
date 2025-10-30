@@ -4,6 +4,7 @@ import type { ConversationDetail, ConversationSummary } from '@/lib/types';
 
 type ConversationsCtx = {
   userId: string | null;
+  authToken: string | null;
   conversations: ConversationSummary[];
   setConversations: (updater: (prev: ConversationSummary[]) => ConversationSummary[]) => void;
   currentConversation: ConversationDetail | null;
@@ -33,6 +34,7 @@ type ConversationsCtx = {
 export function createConversationHandlers(ctx: ConversationsCtx) {
   const {
     userId,
+    authToken,
     conversations,
     setConversations,
     currentConversation,
@@ -81,13 +83,13 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   const handleConversationSelect = async (conversation: ConversationSummary) => {
     handleStopStreaming?.();
-    if (!userId || (ctx as any).loadingConversation) return;
+    if (!userId || !authToken || (ctx as any).loadingConversation) return;
     setLoadingConversation(true);
     setIsClearing(true);
 
     setTimeout(async () => {
       try {
-        const conversationDetail = await getConversationDetail(userId, conversation.id);
+        const conversationDetail = await getConversationDetail(userId, conversation.id, authToken);
         setTimeout(() => {
           setSelectedAgent(conversationDetail.agentId);
           setCurrentConversation(conversationDetail);
@@ -114,11 +116,11 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   };
 
   const handleLoadMoreConversations = async () => {
-    if (!userId || convIsLoadingMore || !convHasMore) return;
+    if (!userId || !authToken || convIsLoadingMore || !convHasMore) return;
     setConvIsLoadingMore(true);
     try {
       const nextPage = convPage + 1;
-      const items = await getConversations(userId, nextPage, pageSize);
+      const items = await getConversations(userId, authToken, nextPage, pageSize);
       if (!items || items.length === 0) {
         setConvHasMore(false);
       } else {
@@ -142,9 +144,9 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   const handleDeleteConversation = async (conversationId: string, event?: React.MouseEvent) => {
     event?.stopPropagation();
-    if (!userId) return;
+    if (!userId || !authToken) return;
     try {
-      await deleteConversation(userId, conversationId);
+      await deleteConversation(userId, conversationId, authToken);
       setConversations(conversations.filter(c => c.id !== conversationId) as any);
       if (conversationId === currentConversation?.id) clearChatAndStopThinking();
       toast({ title: 'Conversation deleted', description: 'The conversation has been removed from your history', duration: 2000 });

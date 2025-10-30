@@ -6,6 +6,7 @@ import { streamAguiRun } from './agui';
 import type { MutableRefObject } from 'react';
 
 type InferenceCtx = {
+  authToken: string | null;
   userId: string | null;
   selectedAgent: string;
   isPrivateMode: boolean;
@@ -38,6 +39,7 @@ type InferenceCtx = {
 
 export function createInferenceHandlers(ctx: InferenceCtx) {
   const {
+    authToken,
     userId,
     selectedAgent,
     isPrivateMode,
@@ -74,6 +76,11 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       }
     }
     
+    if (!userId || !authToken) {
+      toast({ title: 'Authentication required', description: 'Please sign in again to continue.', variant: 'destructive' });
+      return;
+    }
+
     // Mark sending state
     setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
@@ -125,7 +132,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           },
         };
         
-        const response = await createConversation(userId!, conversationPayload);
+        const response = await createConversation(userId!, authToken, conversationPayload);
         setCurrentConversation(response.detail);
         
         // Replace temp  message with authoritative messages from server
@@ -138,6 +145,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
+          token: authToken,
           conversationId: response.detail.id,
           setMessages,
           setThinkingState,
@@ -160,7 +168,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           attachments: apiAttachments,
         };
         
-        const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
+        const response = await addMessageToConversation(userId!, currentConversation!.id, authToken, messagePayload);
         // Replace temp message with API message
         setMessages(prev => prev.map(m => (m.id === tempId ? response.message : m)));
         
@@ -175,6 +183,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
+          token: authToken,
           conversationId: currentConversation!.id,
           setMessages,
           setThinkingState,
@@ -212,4 +221,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
 
   return { handleSendMessage, handleStopStreaming };
 }
+
+
+
+
+
+
 
