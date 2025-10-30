@@ -10,7 +10,7 @@ The dialogue bridge is a FastAPI back end that sits between the Agentic UI and t
 - Persist conversations, messages, and binary attachments using SQLAlchemy models mapped to Postgres tables.
 - Provide pagination and filtering APIs for listing conversation history.
 - Proxy inference streams by rebuilding chat history, calling the agent endpoint, and forwarding SSE bytes to the UI.
-- Seed default users and agents on startup so the UI has something to interact with immediately.
+- Seed active agents on startup so the UI roster stays in sync with the agents service.
 
 ## Key Technologies
 
@@ -22,7 +22,7 @@ The dialogue bridge is a FastAPI back end that sits between the Agentic UI and t
 
 ## API Highlights
 
-- `POST /authenticate` validates username/password combinations (hashed with SHA-256).
+- `POST /authenticate` delegates credential checks to Vault, exchanges the login for an OIDC JWT, and upserts the user locally.
 - `GET /agents` lists active agents stored in the database.
 - `POST /users/{user_id}/conversations` creates a conversation plus the first message (with optional attachments).
 - `GET /users/{user_id}/conversations` and pagination helpers return conversation summaries.
@@ -34,12 +34,17 @@ Refer to `main.py` for the complete list and response schemas.
 
 ## Data Model
 
-`database.py` defines SQLAlchemy ORM tables for users, agents, conversations, messages, attachments, and binary blobs. Relationships cascade deletes and enforce per-user isolation. Seed helpers insert a default user (from env vars) and register agent metadata that points at the agents service URLs.
+`database.py` defines SQLAlchemy ORM tables for users, agents, conversations, messages, attachments, and binary blobs. Relationships cascade deletes and enforce per-user isolation. Users now store the immutable `vault_user_id` returned by Vault; records are created lazily the first time a Vault-authenticated user signs in. Startup seed logic only registers agent metadata that points at the agents service URLs.
 
 ## Configuration
 
 - `DATABASE_URL` (required): async SQLAlchemy URL for Postgres, e.g. `postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db`.
-- `username` and `password`: credentials for the default seeded user; consumed by `seed_users`.
+- `VAULT_ADDR` (required): base URL for the Vault instance, e.g. `http://127.0.0.1:8200`.
+- `VAULT_USERPASS_MOUNT`: login mount used for username/password auth (defaults to `userpass`).
+- `VAULT_OIDC_ROLE`: name of the Vault OIDC role that issues JWTs (defaults to `agenticx`).
+- `VAULT_OIDC_PATH`: path prefix for the OIDC token endpoint (defaults to `identity/oidc/token`).
+- `VAULT_NAMESPACE`: optional namespace header for multi-tenant Vault deployments.
+- `VAULT_HTTP_TIMEOUT`: request timeout (seconds) for Vault calls; defaults to `10`.
 - Service binds to port `8002` and connects to the `backend` and `frontend` compose networks.
 
 ## Local Development
@@ -49,8 +54,9 @@ cd src/dialogue_bridge
 python -m venv .venv && .\.venv\Scripts\activate
 pip install fastapi fastapi_pagination httpx uvicorn sqlalchemy[asyncio] asyncpg aiosqlite pydantic langchain langchain-openai
 set DATABASE_URL=postgresql+asyncpg://admin:admin@localhost:5432/chat_db
-set username=admin
-set password=your-password
+set VAULT_ADDR=http://127.0.0.1:8200
+set VAULT_USERPASS_MOUNT=userpass
+set VAULT_OIDC_ROLE=agenticx
 uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 ```
 

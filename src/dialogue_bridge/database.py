@@ -1,6 +1,5 @@
 import os
 from uuid import uuid4
-import hashlib
 import base64
 from datetime import datetime
 
@@ -12,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
-from sqlalchemy import text
+from sqlalchemy import text, select
 from sqlalchemy import (
     Column,
     String,
@@ -28,8 +27,6 @@ from sqlalchemy import (
 
 
 def gen_uuid() -> str: return str(uuid4())
-
-def hash_password(pw: str) -> str: return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
 def b64_encode(b: bytes) -> str: return base64.b64encode(b).decode("ascii")
 
@@ -65,7 +62,7 @@ Base = declarative_base()
 
 async def get_db() -> AsyncSession: # type: ignore
     """
-    FastAPI dependency — yields a database session.
+    FastAPI dependency - yields a database session.
     Usage: `db: AsyncSession = Depends(get_db)`
     """
     async with SessionLocal() as session:
@@ -100,7 +97,7 @@ class UserTable(Base):
     
     id = Column(String, primary_key=True, default=gen_uuid)
     username = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)
+    vault_user_id = Column(String, unique=True, index=True, nullable=False)
     
     email = Column(String, unique=True, index=True, nullable=True)
     display_name = Column(String, nullable=True)
@@ -220,73 +217,58 @@ class BlobTable(Base):
 
 
 # -------------------------------------------------------------------------------
-# Seed the DB with data in the initialization
+# User helpers
 # -------------------------------------------------------------------------------
-async def seed_users(session: AsyncSession) -> None:
-    """Insert DEFAULT_USERS once; re-runs refresh profile metadata."""
-    username = os.getenv("username") or "agentic_user"
-    password = os.getenv("password") or "agentic_password"
-    
-    display_name = os.getenv("display_name", username).replace("_", " ")
-    full_name = os.getenv("USER_FULL_NAME", display_name)
-    
-    email = os.getenv("email", None)
-    if email is None and username:
-        email = f"{username}@example.com"
-    
-    avatar_url = os.getenv("avatar_url", None)
-    department = os.getenv("department")
-    role_title = os.getenv("role_title").replace("_", " ")
-    prefers_agentic_chat = os.getenv("prefers_agentic_chat", False)
-    
-    default_user = {
-        "username": username,
-        "password": password,
-        "email": email,
-        "display_name": display_name,
-        "avatar_url": avatar_url,
-        "full_name": full_name,
-        "department": department,
-        "role_title": role_title,
-        "last_login_at": None,
-        "prefers_agentic_chat": prefers_agentic_chat,
-    }
-    
-    for u in [default_user]:
-        hashed_pw = hash_password(u["password"])
-        stmt = (
-            insert(UserTable)
-            .values(
-                id=gen_uuid(),
-                username=u["username"],
-                password=hashed_pw,
-                email=u["email"],
-                display_name=u["display_name"],
-                avatar_url=u["avatar_url"],
-                full_name=u["full_name"],
-                department=u["department"],
-                role_title=u["role_title"],
-                last_login_at=u["last_login_at"],
-                prefers_agentic_chat=u["prefers_agentic_chat"],
-            )
-            .on_conflict_do_update(
-                index_elements=["username"],
-                set_={
-                    "password": hashed_pw,
-                    "email": u["email"],
-                    "display_name": u["display_name"],
-                    "avatar_url": u["avatar_url"],
-                    "full_name": u["full_name"],
-                    "department": u["department"],
-                    "role_title": u["role_title"],
-                    "last_login_at": u["last_login_at"],
-                    "updated_at": func.now(),
-                },
-            )
-        )
-        await session.execute(stmt)
+async def upsert_user_from_vault(
+    session: AsyncSession,
+    *,
+    vault_user_id: str,
+    username: str,
+    metadata: dict | None = None,
+) -> UserTable:
+    """
+    Ensure a Vault-authenticated user exists locally.
+    - Creates a new user row when first seen.
+    - Updates mutable profile fields on subsequent logins.
+    """
+    metadata = metadata or {}
 
-    await session.commit()
+    result = await session.execute(
+        select(UserTable).where(UserTable.vault_user_id == vault_user_id)
+    )
+    user: UserTable | None = result.scalar_one_or_none()
+
+    if user is None:
+        user = UserTable(
+            id=gen_uuid(),
+            vault_user_id=vault_user_id,
+            username=username,
+        )
+        session.add(user)
+        # Flush early so relationships can reference the user within the same transaction.
+        await session.flush()
+
+    # Always refresh username to keep local record aligned with Vault.
+    user.username = username
+
+    # Update selected metadata only when the Vault response includes a value.
+    mutable_fields = (
+        "email",
+        "display_name",
+        "avatar_url",
+        "full_name",
+        "department",
+        "role_title",
+        "prefers_agentic_chat",
+    )
+    for field in mutable_fields:
+        if field in metadata and metadata[field] is not None:
+            setattr(user, field, metadata[field])
+
+    if "last_login_at" in metadata and metadata["last_login_at"] is not None:
+        user.last_login_at = metadata["last_login_at"]
+
+    return user
 
 
 async def seed_agents(session: AsyncSession) -> None:

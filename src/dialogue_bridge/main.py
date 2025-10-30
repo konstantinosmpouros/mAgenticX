@@ -19,8 +19,7 @@ from fastapi_pagination.ext.sqlalchemy import paginate
 
 from database import (
     Base, engine, get_db,
-    seed_users, seed_agents,
-    hash_password,
+    seed_agents, upsert_user_from_vault,
     UserTable,
     AgentTable,
     ConversationTable,
@@ -28,6 +27,7 @@ from database import (
     AttachmentTable,
     BlobTable,
 )
+from vault_client import VaultAuthenticator, VaultAuthError
 from schemas import (
     ConversationDetail, ConversationSummary, CreateConversationResponse,
     ConversationIn, MessageIn, MessageOut,
@@ -49,6 +49,15 @@ from utils import (
     _preview,
 )
 
+_vault_authenticator: VaultAuthenticator | None = None
+
+
+def get_vault_authenticator() -> VaultAuthenticator:
+    global _vault_authenticator
+    if _vault_authenticator is None:
+        _vault_authenticator = VaultAuthenticator()
+    return _vault_authenticator
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,7 +67,6 @@ async def lifespan(app: FastAPI):
     
     # 2) Seed users & agents, then demo data
     async with AsyncSession(engine) as session:
-        await seed_users(session)
         await seed_agents(session)
 
         result = await session.execute(
@@ -79,24 +87,50 @@ add_pagination(app)
 @app.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 async def authenticate(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
     """
-    Simple credential check. Returns True + user_id on success, False and None otherwise.
+    Authenticate the user against Vault, ensure they exist locally, and return a JWT.
     """
     try:
-        res = await db.execute(
-            select(UserTable).filter_by(
-                username=creds.username,
-                password=hash_password(creds.password)
-            )
-        )
-        user = res.scalar_one_or_none()
-        if user:
-            user.last_login_at = datetime.utcnow()
-            await db.commit()
-            await db.refresh(user)
-            return AuthResponse(authenticated=True, user_id=user.id, user=user)
-        return AuthResponse()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        authenticator = get_vault_authenticator()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        auth_result = await authenticator.authenticate(creds.username, creds.password)
+    except VaultAuthError as exc:
+        status_code = exc.status_code or status.HTTP_500_INTERNAL_SERVER_ERROR
+        if status_code < 400 or status_code >= 500:
+            status_code = status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    login_time = datetime.utcnow()
+
+    user = await upsert_user_from_vault(
+        db,
+        vault_user_id=auth_result.vault_user_id,
+        username=auth_result.username,
+        metadata={"last_login_at": login_time},
+    )
+
+    user.last_login_at = login_time
+    await db.commit()
+    await db.refresh(user)
+
+    return AuthResponse(
+        authenticated=True,
+        user_id=user.id,
+        user=user,
+        token=auth_result.jwt,
+        tokenTtl=auth_result.ttl,
+        vaultUserId=auth_result.vault_user_id,
+    )
 
 
 

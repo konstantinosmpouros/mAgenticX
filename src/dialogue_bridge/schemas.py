@@ -21,6 +21,7 @@ class UserProfile(BaseModel):
 
     id: str
     username: str
+    vaultUserId: str = Field(..., validation_alias="vault_user_id")
     email: Optional[str] = None
     displayName: Optional[str] = Field(None, validation_alias="display_name")
     fullName: Optional[str] = Field(None, validation_alias="full_name")
@@ -38,6 +39,9 @@ class AuthResponse(BaseModel):
     authenticated: bool = False
     user_id: str | None = None
     user: UserProfile | None = None
+    token: Optional[str] = None
+    tokenTtl: Optional[int] = None
+    vaultUserId: Optional[str] = Field(None, validation_alias="vault_user_id")
 
 
 

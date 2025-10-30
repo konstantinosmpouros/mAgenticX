@@ -12,6 +12,7 @@ export type AuthRequest = {
 export type UserProfile = {
     id: string;
     username: string;
+    vaultUserId: string;
     email?: string;
     displayName?: string;
     fullName?: string;
@@ -29,6 +30,9 @@ export type AuthResponse = {
     authenticated: boolean;
     user_id?: string;
     user?: UserProfile;
+    token?: string;
+    tokenTtl?: number;
+    vaultUserId?: string;
 };
 
 
