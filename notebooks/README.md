@@ -1,52 +1,35 @@
+﻿# Notebooks
 
-# 🧪 OrthodoxAI Notebooks
+## Overview
+This directory hosts exploratory Jupyter notebooks that inform the production services. They cover agent workflow experiments, retrieval evaluations, speech-to-text analysis, and tooling prototypes. Outputs here are not packaged for deployment but provide the reference implementations that shaped the `agents`, `rag_service`, and `dialogue_bridge` codebases.
 
-This directory contains a collection of exploratory Jupyter notebooks used to prototype and validate core components of the OrthodoxAI multi-agent system.
+## How It Fits
+Notebook experiments act as a proving ground for ideas that later move into the core services. Treat this area as a sandbox for research, benchmarking, and documentation of investigative work.
 
-These notebooks serve as an experimental space to test ideas, evaluate models, and build workflows before integrating them into the main production codebase.
+## Contents
+- `Agents.ipynb` - experiments with LangGraph orchestration, prompt templates, and tool routing for the OrthodoxAI, HR, and Retail agents.
+- `RAG.ipynb` - retrieval evaluations, collection curation, and sanity checks for the Chroma-backed knowledge base.
+- `STT_Analysis.ipynb` - comparisons of transcription providers (OpenAI Whisper, ElevenLabs, etc.) plus audio preparation utilities.
+- `Tools.ipynb` - prototyping of utility functions later wrapped as LangChain tools (financial data, search APIs, document processing).
+- `knowledge_base/` - curated data sources used when building RAG collections (HR policy revisions, Orthodox resources, etc.).
+- `vectorstore/` - scratch space for local Chroma indexes generated during notebook runs.
+- `logs/` - captured metrics and intermediate JSON dumps from experiments.
+- `utils.py` - helper functions shared across notebooks (audio discovery, duration calculation, theme extraction).
 
+## Getting Started
+Create an isolated environment and install the dependencies you need for the notebook you plan to run. A minimal setup looks like:
 
-
-## 💡 Purpose
-
-The `notebooks/` folder allows for rapid iteration and concept development, including:
-
-- Evaluating transcription quality from various STT model providers(e.g., ElevenLabs, OpenAI)
-- Testing embedding models and vector store indexing
-- Experimenting with prompt engineering and agent behaviors
-- Prototyping RAG pipelines and memory management
-- Visualizing graph workflows and retrieval results
-
-
-
-## 📓 Notebook Index
-
-| Notebook            | Description |
-|---------------------|-------------|
-| `Agents.ipynb`      | Prototypes agent behaviors, workflows, and communication patterns within the OrthodoxAI system. Used to simulate agent interaction and decision-making before building out the full LangGraph-based flow. |
-| `STT_Analysis.ipynb`| Evaluates and compares speech-to-text (STT) performance using models like Whisper. Includes analysis of transcript quality and preprocessing techniques. |
-| `Tools.ipynb`       | Tests and develops helper tools and utilities such as file converters, audio preprocessors, or format normalizers. Supports building reusable components for the main pipeline. |
-
-
-
-
-## 🛠️ Running the Notebooks
-
-Install Jupyter and dependencies if you haven’t already:
-
-```bash
-pip install jupyterlab
-```
-
-Then launch the notebook interface:
-
-```bash
+```shell
+cd notebooks
+python -m venv .venv
+.\.venv\Scripts\activate    # use source .venv/bin/activate on POSIX
+pip install jupyterlab pandas duckdb openpyxl chromadb langchain-openai pydub mutagen
 jupyter lab
 ```
 
+Set `OPENAI_API_KEY` (and any other provider keys) in your shell before running notebooks that call external APIs.
 
-
-## 📌 Disclaimer
-
-These notebooks are **work-in-progress** tools for research and development. Final, production-ready versions of the logic are integrated into the main pipeline (`OrthodoxAI/src`).
-
+## Usage Notes
+- Notebooks may write temporary files into `logs/` or `vectorstore/`; clear these directories if you want a clean slate.
+- Keep large datasets out of version control. Store source documents under `knowledge_base/` and reference them from the notebooks.
+- When an experiment yields production-ready logic, port the code into the appropriate service (`src/agents`, `src/rag_service`, etc.) and keep the notebook as documentation.

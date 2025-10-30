@@ -1,69 +1,52 @@
-# RAG Service
+﻿# RAG Service
 
 ## Overview
+The RAG service is a FastAPI microservice exposing vector retrieval and spreadsheet analytics used by the LangGraph agents. It wraps a Chroma REST client, generates embeddings via OpenAI, and loads Excel workbooks into an in-memory DuckDB database during startup.
 
-FastAPI microservice that exposes retrieval and lightweight analytics capabilities consumed by the LangGraph agents. It connects to an external Chroma DB instance over REST, generates embeddings with OpenAI, and loads Excel workbooks into an in-memory DuckDB database for SQL-style analytics.
+## Service Role
+This microservice decouples retrieval and analytics concerns from the conversational agents. It offers a stable contract for fetching contextual documents and running lightweight SQL across curated spreadsheets so agents can stay focused on reasoning.
+
+## Directory Highlights
+Within this folder you will find the FastAPI app, configuration module that wires DuckDB and Chroma, request schemas, Dockerfile, and supporting data directory. Together they provide everything required to run the service on its own or as part of the full stack.
 
 ## Responsibilities
+- Connect to the Chroma server (`vectordb`) over REST and provide async top-k document retrieval for named collections.
+- Boot Excel files from `data/` into DuckDB tables and expose schema introspection plus SQL execution endpoints.
+- Provide lightweight JSON APIs consumed by agents for grounding and analytics.
 
-- Retrieve top-k documents from named Chroma collections using `langchain-chroma`.
-- Translate Excel workbooks stored in `data/` into DuckDB tables and expose schema plus SQL execution endpoints.
-- Provide simple HTTP APIs for the agents to ground their answers with factual context.
+## Retrieval Workflow
+`config.py` constructs a `chromadb.HttpClient` with host/port from `RAG_HOST` and `RAG_PORT`, plus `langchain-openai` embeddings (`text-embedding-3-large`). Each `/retrieve/{collection}` request builds a LangChain `Chroma` retriever and calls `ainvoke` to fetch the requested number of documents. Responses include the original query, `k`, and an array of `{content, metadata}` entries. HTTP 404 signals that no documents were returned.
 
-## Key Technologies
-
-- FastAPI and Uvicorn for the HTTP layer (`main.py`).
-- `chromadb` REST client plus `langchain-chroma` to build retrievers around Chroma collections.
-- OpenAI `text-embedding-3-large` via `langchain-openai` for embedding queries.
-- DuckDB and Pandas to register Excel sheets as queryable tables.
-- Pydantic v2 for request validation.
+## Excel Analytics
+At startup the service scans `data/` for `.xlsx/.xls/.xlsm` files, sanitises names into snake_case table identifiers, reads the first worksheet with pandas, and registers it with DuckDB. Metadata for each table (original schema) is stored in `TABLES`. `GET /excel/{table}/schema` runs `DESCRIBE` to list column names and types; `POST /excel/{table}/query/sql` executes arbitrary SQL (validated to ensure the table exists) and returns `row_count` plus `data` records. Errors are surfaced as 400 responses. If no workbook loads successfully the service fails fast at startup.
 
 ## API Reference
+- `POST /retrieve/{collection_name}` with body `{"query": "...", "k": 4}` -> top-k documents from the named Chroma collection.
+- `GET /excel/{table}/schema` -> array of `{column, type}` pairs for the registered DuckDB table.
+- `POST /excel/{table}/query/sql` with body `{"sql": "SELECT ... FROM table ..."}` -> executes SQL against DuckDB and returns JSON rows.
 
-- `POST /retrieve/{collection_name}`: body `{ "query": str, "k": int }`. Returns the top-k `page_content` plus metadata documents.
-- `GET /excel/{table}/schema`: returns column names and DuckDB types for a registered table.
-- `POST /excel/{table}/query/sql`: body `{ "sql": str }`. Executes the provided SQL (must reference the same table) and returns `row_count` plus JSON rows.
-
-All responses use standard JSON and raise HTTP 4xx/5xx when retrieval fails or no data is found.
-
-## Startup Workflow
-
-`config.py` loads Excel files from `data/`, sanitises table names, registers them with DuckDB, and builds a registry (`TABLES`). The FastAPI app creates a Chroma REST client per request using `RAG_HOST` and `RAG_PORT`, then wraps it with a LangChain retriever.
+All endpoints raise 4xx/5xx on failure and use standard JSON responses.
 
 ## Configuration
-
-- `OPENAI_API_KEY` (required) for embeddings.
-- `RAG_HOST` and `RAG_PORT` identify the Chroma REST endpoint (defaults align with the `vectordb` compose service).
-- Service listens on port `8001` and is reachable from both the `agents` container and, optionally, other services in the compose network.
-- Excel files must live in `src/rag_service/data/`; at least one readable workbook is required at startup.
+- `OPENAI_API_KEY` (required) - passed to `OpenAIEmbeddings`.
+- `RAG_HOST`, `RAG_PORT` - location of the Chroma REST API (defaults align with the compose `vectordb` service).
+- Excel files must be present under `data/` before startup.
+- The FastAPI app listens on port 8001; the compose service attaches to both `backend` and `frontend` networks so agents can reach it.
 
 ## Local Development
-
 ```shell
 cd src/rag_service
-python -m venv .venv && .\.venv\Scripts\activate
+python -m venv .venv
+.\.venv\Scripts\activate    # use source .venv/bin/activate on POSIX
 pip install -r requirements.txt
-set OPENAI_API_KEY=your-key
+
+set OPENAI_API_KEY=sk-...
 set RAG_HOST=localhost
 set RAG_PORT=8000
 uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Run a Chroma instance separately (see `vectordb` notes) and ensure the `data/` directory has Excel files before starting the server. Replace `set` with `export` on POSIX shells.
+Run a Chroma server locally (see `README_CHROMA.md`) and ensure the `data/` directory contains at least one readable workbook.
 
 ## Docker Notes
-
-Dockerfile is based on `python:3.10-slim`, installs build tools, installs `requirements.txt`, copies the service code, and launches Uvicorn. In compose the service is named `rag_service` and depends on the `vectordb` container that provides the Chroma REST API plus persistent volume `vectorstore` mapped to `src/vectorstores/chroma_db_openai`.
-
-## Code Map
-
-- `main.py`: FastAPI endpoints for retrieval and Excel SQL.
-- `config.py`: env handling, Chroma client settings, DuckDB bootstrap, embedding factory.
-- `schemas.py`: Pydantic models for incoming requests.
-- `data/`: Excel inputs that become DuckDB tables at runtime.
-- `Dockerfile` and `requirements.txt`: container build and dependencies.
-
-## Service Interactions
-
-- Upstream: uses the `vectordb` service (Chroma) and OpenAI embeddings.
-- Downstream: consumed by the `agents` service for both RAG document retrieval and Excel analytics.
+The Dockerfile is based on `python:3.10-slim`, installs system build tools plus dependencies from `requirements.txt`, copies the service, and starts Uvicorn. In compose the container depends on `vectordb`, inherits OpenAI credentials, and shares the internal network with the agents service.

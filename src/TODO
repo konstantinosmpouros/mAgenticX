@@ -17,6 +17,7 @@
 - Implement a tab in the profile panel to show all the images, like openai library
 - Check what to do with the audio input
 - Create one more chat workflow like gemini code or cursor (agentic chat)
+- Reactive theme toggle buttons, [integrate it!](https://www.shadcn.io/button/theme-toggle)
 
 ## Agents
 

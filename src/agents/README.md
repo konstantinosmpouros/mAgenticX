@@ -1,63 +1,78 @@
-# Agents Service
+﻿# Agents Service
 
 ## Overview
+The agents service wraps a collection of LangGraph workflows behind a FastAPI surface. It streams AG-UI compatible server-sent events that the dialogue bridge forwards to the Agentic UI. Each workflow combines OpenAI models, retrieval helpers, and domain-specific tools to deliver grounded responses.
 
-The `agents` container hosts the LangGraph-based inference workflows that power each conversational persona. A FastAPI app wraps three compiled graphs (OrthodoxAI v1, HR Policies v1, Retail v1) and streams their responses using the AG-UI server-sent events protocol so the UI receives thought, tool, and message frames in real time.
+## Service Goals
+This service exists to encapsulate complex reasoning flows behind a lightweight HTTP interface. It emphasises modular graph construction, clear agent boundaries, and observability so new personas can be added without disrupting existing ones.
+
+## What Lives Here
+Inside this directory you will find the FastAPI entrypoint, reusable LangGraph blueprints, persona-specific graph implementations, and the shared tool catalogue. Supporting utilities sit alongside the agents so their behaviour remains self-contained.
 
 ## Responsibilities
+- Compile and host LangGraph workflows for each persona (OrthodoxAI v1, HR Policies v1, Retail v1).
+- Normalise incoming chat history (text plus image URLs/data URLs) into LangChain message objects.
+- Invoke retrieval and analytics tools (vector search, Excel SQL, external APIs) and surface the intermediate thinking/tool events via AG-UI frames.
+- Stream responses incrementally over SSE, including graceful `RUN_ERROR` frames when exceptions occur.
 
-- Host the agent workflows compiled with LangGraph `StateGraph`.
-- Marshal requests from the dialogue bridge into the LangGraph runtime and stream responses as SSE frames.
-- Invoke retrieval and analytics tools backed by the `rag_service` (vector search and Excel SQL execution).
-- Coordinate shared utilities for tool schemas, moderation, and OpenAI model access across agents.
+## Architecture
+- `main.py` registers `POST /OrthodoxAI/v1/stream`, `/HRPolicies/v1/stream`, and `/Retail/v1/stream`, each instantiating the corresponding LangGraph agent and yielding its `astream` output.
+- `blueprints/langgraph_agent.py` provides the `LangGraphAgent` base class: it validates optional tool selections supplied in the request `config`, resolves tool instances, builds the LangGraph `StateGraph`, and compiles it once per agent instance.
+- `agents/langgraph_agents/*` hold the concrete workflows. Each package defines a `State` model, constructs reusable LLM chains (`agents.py`), builds node callables (`nodes.py`), and wires the graph edges (`__init__.py`).
+- `agui.py` contains the `AGUIEmitter`, a thin wrapper over `ag_ui.core` that emits the correct AG-UI events for runs, thinking, tool calls, and assistant messages.
+- `utils.py` exposes helpers such as `normalise_user_input`, which strips system prompts, validates multimodal content, and produces LangChain message objects.
 
-## Key Technologies
+## Agent Workflows
+- **OrthodoxAI v1**: Classifies the request, optionally generates retrieval queries and reflections, performs document summarisation, and loops through a reflection stage to decide whether another retrieval pass is needed before producing the final answer. Tools can be injected via the request config.
+- **HR Policies v1**: Runs a similar multi-stage pipeline with HR-specific prompts, includes document ranking and a reflection gate that can route back to query generation when additional evidence is needed.
+- **Retail Agent v1**: Detects intent, decides between direct answering and data analysis, generates SQL queries executed through the RAG service (DuckDB), and produces a final summary enriched with tabular insights.
 
-- FastAPI and Uvicorn for the HTTP surface (`main.py`).
-- LangGraph plus LangChain components for graph construction and tool execution.
-- `ag_ui.core` and the custom `AGUIEmitter` (`agui.py`) for AG-UI compatible event encoding.
-- OpenAI GPT models (via `langchain-openai`) for reasoning and generation.
-- Async streaming interfaces (`astream`) for incremental agent output.
+## Tooling
+`tools/tools.py` defines reusable LangChain tools grouped into:
+- Financial analytics (Alpha Vantage series, exchange rates, market news, gainers/losers).
+- Search utilities (Google Trends via PyTrends, Wikipedia, Wikidata, PubMed).
+- Research helpers (ArXiv content and summary retrievers).
+- Computer vision (DALL-E 3 image generation via `OpenAIDALLEImageGenerationTool`).
+Tools are selected at runtime by name; request configs can provide a `tools` list to restrict which tools are available to the agent.
 
-## API Surface
+## Streaming Model
+Each endpoint expects a JSON body:
+```json
+{
+  "user_input": [
+    {"role": "user", "content": "..."}
+  ],
+  "config": {"tools": [{"tool_name": "search_wikipedia"}]}
+}
+```
+Responses are SSE streams already encoded for AG-UI consumption (run lifecycle, thinking blocks, tool call metadata, text chunks). Errors are wrapped in a `{ "type": "RUN_ERROR", "message": "..." }` frame so the UI can present them gracefully.
 
-- `POST /OrthodoxAI/v1/stream` - Streams Orthodox theological answers with multi-stage retrieval, summarisation, and reflection.
-- `POST /HRPolicies/v1/stream` - Streams HR guidance grounded in the HR RAG collection.
-- `POST /Retail/v1/stream` - Streams retail analytics that blend natural language reasoning with DuckDB insights fetched through the `rag_service` Excel endpoints.
-
-Each endpoint accepts `{ "user_input": [{ "role": "...", "content": "..." }, ...] }` and returns an SSE stream already encoded for the AG-UI frontend.
-
-## Runtime Configuration
-
-- `OPENAI_API_KEY` (required): used by all LangChain LLM and embedding calls.
-- `RAG_HOST` and `RAG_PORT`: point tool calls at the RAG microservice (defaults to `rag_service:8001` when running with compose).
-- Container listens on port `8003` and is joined to both the `backend` and `frontend` networks so the dialogue bridge and UI can access it.
+## Configuration
+- `OPENAI_API_KEY` (required) - used by LangChain LLM and embedding calls.
+- `RAG_HOST`, `RAG_PORT` - point tools at the RAG service (defaults: `rag_service`, `8001`).
+- Optional request-time `config.tools` entries let the UI limit available tool functions per conversation.
 
 ## Local Development
-
 ```shell
 cd src/agents
-python -m venv .venv && .\.venv\Scripts\activate
+python -m venv .venv
+.\.venv\Scripts\activate    # use source .venv/bin/activate on POSIX
 pip install -r requirements.txt
+
+set OPENAI_API_KEY=sk-...
+set RAG_HOST=localhost
+set RAG_PORT=8001
 uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
-The agents expect the RAG service to be reachable and Chroma collections to exist; run `rag_service` and `vectordb` alongside for end-to-end testing.
+Ensure the RAG service and Chroma (`vectordb`) are reachable before streaming agents that require retrieval or analytics.
 
 ## Docker Notes
+The Dockerfile is based on `python:3.10-slim`, installs build essentials and the dependencies in `requirements.txt`, copies the project, and launches Uvicorn. The compose service binds port 8003, depends on `rag_service`, and receives the OpenAI API key and RAG host/port via environment variables.
 
-The Dockerfile builds from `python:3.10-slim`, installs build essentials plus the dependencies in `requirements.txt`, copies the source tree, and starts Uvicorn (with `--reload` enabled for dev workflows). When `docker compose` builds the `agents` image it uses this folder as the context.
-
-## Code Map
-
-- `main.py`: FastAPI routes and SSE streaming glue.
-- `agui.py`: Reusable AG-UI emitter that formats LangGraph events.
-- `config.py`: Shared configuration for RAG endpoints and collection names.
-- `orthodox_agents/`, `hr_agents/`, `retail_agents/`: LangGraph graph definitions, nodes, and prompts for each persona.
-- `tools/`: Tool wrappers used inside the graphs (Excel SQL, RAG retrieval, telemetry helpers).
-- `llms.py`, `moderation.py`: Shared model factories and guardrails.
-
-## Service Interactions
-
-- Upstream: relies on `rag_service` for vector search and Excel analytics, plus OpenAI APIs for LLM calls.
-- Downstream: consumed exclusively by `dialogue_bridge`, which proxies SSE responses to the `agentic_ui` frontend.
+## Extending the Service
+To add a new agent:
+1. Create a package under `agents/langgraph_agents/` with state models, prompts, nodes, and registration logic mirroring the existing agents.
+2. Expose a class that subclasses `LangGraphAgent` and wires the graph in `__init__.py`.
+3. Register a new route in `main.py`.
+4. Update the dialogue bridge seed data (`seed_agents`) so the UI can discover the agent.

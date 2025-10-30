@@ -1,46 +1,41 @@
-# Vector DB Service
+﻿# Vector DB Service
 
 ## Overview
+The `vectordb` service wraps the official `chromadb/chroma:0.6.3` image and exposes Chroma's REST API to other containers. It is the persistent backing store for embeddings created by the agents and the RAG service.
 
-The `vectordb` service packages the official `chromadb/chroma:0.6.3` image and exposes Chroma's REST API to other containers in the stack. It persists embeddings to a bind-mounted directory so collections survive restarts and provides the backing store required by `rag_service` and the LangGraph agents.
+## Service Context
+The vector database gives the platform a durable home for embeddings and collection metadata. It stays internal to the compose network so only trusted services interact with it directly.
+
+## What Lives Here
+This document explains how the container is configured, how to run it standalone for debugging, and how other services depend on it. There is no application code—only deployment guidance and operational tips.
 
 ## Responsibilities
+- Serve the Chroma REST API on port 8000 inside the compose network.
+- Persist collections to a bind-mounted directory so data survives container restarts.
+- Remain internal to the `backend` Docker network (no host port is published in compose).
 
-- Host a Chroma server reachable on port `8000` within the Docker network.
-- Store vector collections for retrieval-augmented workflows.
-- Remain internal to the `backend` network so only trusted services can access it.
+## Configuration (compose defaults)
+- `IS_PERSISTENT=TRUE`
+- `PERSIST_DIRECTORY=/chroma/chroma`
+- `ANONYMIZED_TELEMETRY=FALSE`
+- Volume: `vectorstore:/chroma/chroma` (binds to `./src/vectorstores/chroma_db_openai` on the host)
 
-## Configuration
+## Local Usage
+To run Chroma outside the compose stack:
 
-Environment variables are set in `docker-compose.yaml`:
-- `IS_PERSISTENT=TRUE`: enables disk-backed storage.
-- `PERSIST_DIRECTORY=/chroma/chroma`: internal path where Chroma writes collections.
-- `ANONYMIZED_TELEMETRY=FALSE`: disables outbound telemetry.
-
-## Data Persistence
-
-A named volume `vectorstore` is bound to `./vectorstores/chroma_db_openai`. Populate this directory with pre-built collections or allow the ingestion process to write into it. Make sure the host folder exists with the right permissions before launching the stack.
-
-## Local Execution
-
-To run Chroma outside compose:
-
-```
-docker run --rm -p 8000:8000 \
-  -e IS_PERSISTENT=TRUE \
-  -e PERSIST_DIRECTORY=/chroma/chroma \
-  -e ANONYMIZED_TELEMETRY=FALSE \
-  -v $(pwd)/src/vectorstores/chroma_db_openai:/chroma/chroma \
+```shell
+docker run --rm -p 8000:8000 ^
+  -e IS_PERSISTENT=TRUE ^
+  -e PERSIST_DIRECTORY=/chroma/chroma ^
+  -e ANONYMIZED_TELEMETRY=FALSE ^
+  -v %cd%\src\vectorstores\chroma_db_openai:/chroma/chroma ^
   chromadb/chroma:0.6.3
 ```
 
-`rag_service` and `agents` can then reach it at `http://localhost:8000` when developing locally.
+Add a `ports` section to `src/docker-compose.yaml` if you need to reach Chroma from the host for debugging (the default setup keeps it internal).
 
-## Compose Integration
+## Interaction with Other Services
+- `rag_service` connects via `chromadb.HttpClient` using `RAG_HOST=vectordb` and `RAG_PORT=8000`.
+- The `agents` service indirectly relies on Chroma through the RAG microservice.
 
-`docker-compose.yaml` attaches the container to the `backend` network and omits a `ports` section so it remains reachable only from sibling services (`rag_service`). Adjust the compose file if you need to expose Chroma outside Docker for debugging.
-
-## Service Interactions
-
-- Upstream: none (managed image).
-- Downstream: `rag_service` connects over REST and builds retrievers; `agents` rely on that service to fetch documents stored here.
+Keep the host directory writable so Chroma can create and update collection data. Remove the volume to reset the vector store.
