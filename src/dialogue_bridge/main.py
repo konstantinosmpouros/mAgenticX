@@ -1,6 +1,7 @@
 import json
 import asyncio
 import base64
+import os
 import traceback
 from datetime import datetime
 from typing import List
@@ -10,7 +11,7 @@ from fastapi.responses import StreamingResponse
 import httpx
 from contextlib import asynccontextmanager
 
-from sqlalchemy import select, func, desc, text
+from sqlalchemy import select, func, desc, text, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,9 +49,20 @@ from utils import (
     init_message,
     _preview,
 )
-from vault_auth.auth import require_token_claims
+from vault_auth.auth import (
+    SESSION_COOKIE_DOMAIN,
+    SESSION_COOKIE_NAME,
+    SESSION_COOKIE_SAMESITE,
+    SESSION_COOKIE_SECURE,
+    SESSION_REFRESH_COOKIE_NAME,
+    TokenVerificationError,
+    get_jwt_verifier,
+    require_refresh_token,
+    require_token_claims,
+)
 
 _vault_authenticator: VaultAuthenticator | None = None
+_DEFAULT_TOKEN_TTL = int(os.getenv("SESSION_COOKIE_DEFAULT_TTL", "3600"))
 
 
 def get_vault_authenticator() -> VaultAuthenticator:
@@ -86,7 +98,11 @@ add_pagination(app)
 # USER APIS
 #-----------------------------------------------------------------------------------
 @app.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
-async def authenticate(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
+async def authenticate(
+    creds: AuthRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """
     Authenticate the user against Vault, ensure they exist locally, and return a JWT.
     """
@@ -124,13 +140,157 @@ async def authenticate(creds: AuthRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(user)
 
+    max_age = auth_result.ttl if auth_result.ttl and auth_result.ttl > 0 else _DEFAULT_TOKEN_TTL
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=auth_result.jwt,
+        max_age=max_age,
+        expires=max_age,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite=SESSION_COOKIE_SAMESITE,
+        domain=SESSION_COOKIE_DOMAIN,
+        path="/",
+    )
+
+    refresh_max_age = auth_result.client_token_ttl if auth_result.client_token_ttl and auth_result.client_token_ttl > 0 else max_age
+    response.set_cookie(
+        key=SESSION_REFRESH_COOKIE_NAME,
+        value=auth_result.client_token,
+        max_age=refresh_max_age,
+        expires=refresh_max_age,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite=SESSION_COOKIE_SAMESITE,
+        domain=SESSION_COOKIE_DOMAIN,
+        path="/",
+    )
+
     return AuthResponse(
         authenticated=True,
         user_id=user.id,
         user=user,
-        token=auth_result.jwt,
         tokenTtl=auth_result.ttl,
         vaultUserId=auth_result.vault_user_id,
+    )
+
+
+@app.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> Response:
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        domain=SESSION_COOKIE_DOMAIN,
+    )
+    response.delete_cookie(
+        key=SESSION_REFRESH_COOKIE_NAME,
+        path="/",
+        domain=SESSION_COOKIE_DOMAIN,
+    )
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@app.post("/session/refresh", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+async def refresh_session(
+    response: Response,
+    refresh_token: str = Depends(require_refresh_token),
+    db: AsyncSession = Depends(get_db),
+) -> AuthResponse:
+    try:
+        authenticator = get_vault_authenticator()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        refresh_result = await authenticator.refresh_session(refresh_token)
+    except VaultAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        verifier = get_jwt_verifier()
+        claims = await verifier.verify(refresh_result.jwt)
+    except (RuntimeError, TokenVerificationError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    identifiers: set[str] = set()
+    for key in ("sub", "entity_id", "user_id", "id"):
+        value = claims.get(key)
+        if value is not None:
+            identifiers.add(str(value))
+    metadata = claims.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("vault_user_id", "user_id", "id"):
+            value = metadata.get(key)
+            if value is not None:
+                identifiers.add(str(value))
+
+    if not identifiers:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token missing subject identifiers.",
+        )
+
+    stmt = select(UserTable).where(
+        or_(
+            UserTable.id.in_(identifiers),
+            UserTable.vault_user_id.in_(identifiers),
+        )
+    )
+    result = await db.execute(stmt)
+    user: UserTable | None = result.scalars().first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not recognised for refreshed token.",
+        )
+
+    max_age = refresh_result.ttl if refresh_result.ttl and refresh_result.ttl > 0 else _DEFAULT_TOKEN_TTL
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=refresh_result.jwt,
+        max_age=max_age,
+        expires=max_age,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite=SESSION_COOKIE_SAMESITE,
+        domain=SESSION_COOKIE_DOMAIN,
+        path="/",
+    )
+
+    refresh_max_age = refresh_result.client_token_ttl if refresh_result.client_token_ttl and refresh_result.client_token_ttl > 0 else max_age
+    response.set_cookie(
+        key=SESSION_REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        max_age=refresh_max_age,
+        expires=refresh_max_age,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite=SESSION_COOKIE_SAMESITE,
+        domain=SESSION_COOKIE_DOMAIN,
+        path="/",
+    )
+
+    return AuthResponse(
+        authenticated=True,
+        user_id=user.id,
+        user=user,
+        tokenTtl=refresh_result.ttl,
+        vaultUserId=user.vault_user_id,
     )
 
 

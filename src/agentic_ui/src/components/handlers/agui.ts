@@ -18,7 +18,6 @@ type ToastFn = (opts: { title: string; description?: string; variant?: string; d
 
 export type AguiStreamOptions = {
   userId: string;
-  token: string;
   conversationId: string;
   setMessages: MessageSetter;
   setThinkingState: ThinkingSetter;
@@ -32,7 +31,6 @@ export type AguiStreamOptions = {
 export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   const {
     userId,
-    token,
     conversationId,
     setMessages,
     setThinkingState,
@@ -167,7 +165,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       } as any;
       
       try {
-        const resp = await addMessageToConversation(userId, conversationId, token, payload);
+        const resp = await addMessageToConversation(userId, conversationId, payload);
         const id = runtime.stagedMessageId;
         setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
         setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
@@ -199,7 +197,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       } as any;
       
       try {
-        const resp = await addMessageToConversation(userId, conversationId, token, payload);
+        const resp = await addMessageToConversation(userId, conversationId, payload);
         const id = runtime.stagedMessageId;
         if (id) {
           setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
@@ -219,7 +217,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   };
   
   try {
-    await streamInference(userId, conversationId, token, onEvent, signal);
+    await streamInference(userId, conversationId, onEvent, signal);
   } catch (err) {
     const name = (err as any)?.name;
     if (name === 'AbortError') {

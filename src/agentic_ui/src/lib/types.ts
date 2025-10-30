@@ -30,7 +30,6 @@ export type AuthResponse = {
     authenticated: boolean;
     user_id?: string;
     user?: UserProfile;
-    token?: string;
     tokenTtl?: number;
     vaultUserId?: string;
 };

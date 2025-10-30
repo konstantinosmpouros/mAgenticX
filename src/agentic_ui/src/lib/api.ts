@@ -1,4 +1,4 @@
-import type { 
+import type {
   Agent,
   AgentPublic,
   AuthRequest,
@@ -11,27 +11,32 @@ import type {
   MessageIn,
   UpdateConversationResponse,
   AGUIEvent,
-  } from "./types";
+} from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
 import { parseSSE } from "./utils";
 import type { LucideIcon } from "lucide-react";
 import * as Icons from "lucide-react";
 
-const withAuth = (token: string, headers: Record<string, string> = {}): Record<string, string> => ({
-  ...headers,
-  Authorization: `Bearer ${token}`,
+const withCredentials = (init: RequestInit = {}): RequestInit => ({
+  ...init,
+  credentials: "include",
 });
+
+const emitUnauthorized = () => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("mx:unauthorized"));
+};
 
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
-  const res = await fetch("/api/authenticate", {
+  const res = await fetch("/api/authenticate", withCredentials({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Accept": "application/json"
+      "Accept": "application/json",
     },
     body: JSON.stringify(credentials),
-  });
+  }));
   if (!res.ok) {
     throw new Error(`Failed to authenticate: ${res.status}`);
   }
@@ -49,18 +54,44 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
   return data as AuthResponse;
 }
 
+export async function refreshSession(): Promise<AuthResponse> {
+  const res = await fetch("/api/session/refresh", withCredentials({
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+    },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to refresh session: ${res.status}`);
+  }
+  const data = await res.json();
+  if (data && typeof data === "object" && data.user) {
+    const user = data.user as any;
+    data.user = {
+      ...user,
+      prefersAgenticChat: Boolean(user.prefersAgenticChat),
+      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+      updatedAt: user.updatedAt ? new Date(user.updatedAt) : new Date(),
+      lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : undefined,
+    };
+  }
+  return data as AuthResponse;
+}
+
 // Fetch agents from backend via nginx proxy
-export async function getAgents(token: string): Promise<Agent[]> {
+export async function getAgents(): Promise<Agent[]> {
   const mapIcon = (name: string): LucideIcon => {
     const Icon = (Icons as Record<string, any>)[name] as LucideIcon | undefined;
     // Fallback gracefully to Building2 if icon name is invalid
     return Icon || Icons.Building2;
   };
-  
-  const res = await fetch("/api/agents", {
-    headers: withAuth(token, { "Accept": "application/json" }),
-  });
+
+  const res = await fetch("/api/agents", withCredentials({
+    headers: { "Accept": "application/json" },
+  }));
   if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to fetch agents: ${res.status}`);
   }
   const data = (await res.json()) as AgentPublic[];
@@ -75,14 +106,14 @@ export async function getAgents(token: string): Promise<Agent[]> {
 // Fetch conversations for a user
 export async function getConversations(
   userId: string,
-  token: string,
   page: number = 1,
   size: number = 10,
 ): Promise<ConversationSummary[]> {
-  const res = await fetch(`/api/users/${userId}/conversations?page=${page}&size=${size}`, {
-    headers: withAuth(token, { "Accept": "application/json" }),
-  });
+  const res = await fetch(`/api/users/${userId}/conversations?page=${page}&size=${size}`, withCredentials({
+    headers: { "Accept": "application/json" },
+  }));
   if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to fetch conversations: ${res.status}`);
   }
   // Backend returns a Page shape: { items, total, page, size }
@@ -95,16 +126,16 @@ export async function getConversations(
 export async function getConversationDetail(
   userId: string,
   conversationId: string,
-  token: string,
 ): Promise<ConversationDetail> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, {
-    headers: withAuth(token, { "Accept": "application/json" }),
-  });
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withCredentials({
+    headers: { "Accept": "application/json" },
+  }));
   if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to fetch conversation details: ${res.status}`);
   }
   const data = (await res.json()) as ConversationDetail;
-  
+
   // Transform backend messages to frontend format
   const transformedMessages: MessageOut[] = data.messages.map((msg) => ({
     id: msg.id,
@@ -117,7 +148,7 @@ export async function getConversationDetail(
     attachments: msg.attachments.map((att: any) => ({
       ...att,
       timestamp: new Date(att.timestamp),
-      blobId: att.blobId
+      blobId: att.blobId,
     })),
     thinking: msg.thinking || undefined,
     thinkingTime: msg.thinkingTime || undefined,
@@ -134,17 +165,17 @@ export async function getConversationDetail(
     created_at: new Date(data.created_at),
     updated_at: new Date(data.updated_at),
     messages: transformedMessages,
-    
   };
 }
 
 // Delete a conversation
-export async function deleteConversation(userId: string, conversationId: string, token: string): Promise<void> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, {
+export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withCredentials({
     method: "DELETE",
-    headers: withAuth(token, { "Accept": "application/json" }),
-  });
+    headers: { "Accept": "application/json" },
+  }));
   if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to delete conversation: ${res.status}`);
   }
 }
@@ -152,31 +183,34 @@ export async function deleteConversation(userId: string, conversationId: string,
 // Create a new conversation with the first message
 export async function createConversation(
   userId: string,
-  token: string,
   payload: ConversationIn,
 ): Promise<CreateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations`, {
+  const res = await fetch(`/api/users/${userId}/conversations`, withCredentials({
     method: "POST",
-    headers: withAuth(token, {
+    headers: {
       "Content-Type": "application/json",
-      "Accept": "application/json"
-    }),
+      "Accept": "application/json",
+    },
     body: JSON.stringify(payload),
-  });
+  }));
 
   if (!res.ok) {
+    if (res.status === 401) {
+      emitUnauthorized();
+      throw new Error(`Failed to create conversation: ${res.status}`);
+    }
     if (res.status === 413) {
       // Show a friendly message tailored to the limits you set
       throw new Error(
         `Your message is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). ` +
-        `Try smaller files or fewer attachments.`
+        `Try smaller files or fewer attachments.`,
       );
     }
     throw new Error(`Failed to create conversation: ${res.status}`);
   }
 
   const data = await res.json();
-  
+
   // Transform the response to match our CreateConversationResponse type
   return {
     detail: {
@@ -191,11 +225,11 @@ export async function createConversation(
         attachments: message.attachments.map((attachment: any) => ({
           ...attachment,
           timestamp: new Date(attachment.timestamp),
-          blobId: attachment.blobId || attachment.blob_id // Handle both camelCase and snake_case
-        }))
-      }))
+          blobId: attachment.blobId || attachment.blob_id, // Handle both camelCase and snake_case
+        })),
+      })),
     },
-    summary: data.summary
+    summary: data.summary,
   };
 }
 
@@ -203,31 +237,33 @@ export async function createConversation(
 export async function addMessageToConversation(
   userId: string,
   conversationId: string,
-  token: string,
   payload: MessageIn,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages`, {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages`, withCredentials({
     method: "POST",
-    headers: withAuth(token, {
+    headers: {
       "Content-Type": "application/json",
-      "Accept": "application/json"
-    }),
+      "Accept": "application/json",
+    },
     body: JSON.stringify(payload),
-  });
-  
+  }));
+
   if (!res.ok) {
+    if (res.status === 401) {
+      emitUnauthorized();
+      throw new Error(`Failed to add message: ${res.status}`);
+    }
     if (res.status === 413) {
       throw new Error(
         `Your message is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). ` +
-        `Try smaller files or fewer attachments.`
+        `Try smaller files or fewer attachments.`,
       );
     }
-    throw new Error(`Failed to add message to conversation: ${res.status}`);
+    throw new Error(`Failed to add message: ${res.status}`);
   }
-  
+
   const data = await res.json();
-  
-  // Backward-compat: if server still returns detail, derive the last message
+
   if (data.detail) {
     const last = data.detail.messages[data.detail.messages.length - 1];
     return {
@@ -239,14 +275,13 @@ export async function addMessageToConversation(
         attachments: (last.attachments || []).map((att: any) => ({
           ...att,
           timestamp: new Date(att.timestamp),
-          blobId: att.blobId || att.blob_id
+          blobId: att.blobId || att.blob_id,
         })),
       },
       summary: data.summary,
     } as UpdateConversationResponse;
   }
-  
-  // New shape: { message, summary }
+
   const m = data.message;
   return {
     message: {
@@ -264,18 +299,19 @@ export async function addMessageToConversation(
   } as UpdateConversationResponse;
 }
 
-// Like/dislike a message (toggle semantics on server)
 export async function likeMessage(
   userId: string,
   conversationId: string,
   messageId: string,
-  token: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/like`, {
-    method: 'POST',
-    headers: withAuth(token, { 'Accept': 'application/json' }),
-  });
-  if (!res.ok) throw new Error(`Failed to like message: ${res.status}`);
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/like`, withCredentials({
+    method: "POST",
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to like message: ${res.status}`);
+  }
   const m = await res.json();
   return {
     ...m,
@@ -294,13 +330,15 @@ export async function dislikeMessage(
   userId: string,
   conversationId: string,
   messageId: string,
-  token: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/dislike`, {
-    method: 'POST',
-    headers: withAuth(token, { 'Accept': 'application/json' }),
-  });
-  if (!res.ok) throw new Error(`Failed to dislike message: ${res.status}`);
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/dislike`, withCredentials({
+    method: "POST",
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to dislike message: ${res.status}`);
+  }
   const m = await res.json();
   return {
     ...m,
@@ -330,13 +368,11 @@ export async function downloadAttachment({
   messageId,
   blobId,
   filename,
-  token,
-}: DownloadAttachmentParams & { token: string }): Promise<void> {
+}: DownloadAttachmentParams): Promise<void> {
   const url = `/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/${blobId}`;
-  const res = await fetch(url, {
-    headers: withAuth(token),
-  });
+  const res = await fetch(url, withCredentials());
   if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to download attachment: ${res.status}`);
   }
   const blob = await res.blob();
@@ -356,32 +392,35 @@ export async function downloadAttachment({
 export async function streamInference(
   userId: string,
   conversationId: string,
-  token: string,
   onEvent: (e: AGUIEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, {
-    method: 'POST',
-    headers: withAuth(token, {
-      'Accept': 'text/event-stream',
-    }),
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, withCredentials({
+    method: "POST",
+    headers: {
+      "Accept": "text/event-stream",
+    },
     signal,
-  });
-  if (!res.ok || !res.body) {
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to start inference stream: ${res.status}`);
   }
-  
+  if (!res.body) {
+    throw new Error(`Failed to start inference stream: ${res.status}`);
+  }
+
   const reader = res.body.getReader();
   const textDecoder = new TextDecoder();
-  let buffer = '';
+  let buffer = "";
   const cancelReader = () => {
     try { reader.cancel(); } catch {}
   };
-  signal?.addEventListener('abort', cancelReader, { once: true });
+  signal?.addEventListener("abort", cancelReader, { once: true });
   try {
     while (true) {
       if (signal?.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
+        throw new DOMException("Aborted", "AbortError");
       }
       const { value, done } = await reader.read();
       if (done) break;
@@ -395,7 +434,7 @@ export async function streamInference(
       buffer = parseSSE(buffer + "\n", onEvent);
     }
   } finally {
-    signal?.removeEventListener?.('abort', cancelReader as any);
+    signal?.removeEventListener?.("abort", cancelReader as any);
     try { reader.releaseLock(); } catch {}
   }
 }

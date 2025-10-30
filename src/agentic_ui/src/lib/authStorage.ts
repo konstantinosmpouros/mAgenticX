@@ -3,7 +3,6 @@ import type { UserProfile } from './types';
 export type StoredSession = {
   userId: string;
   expiresAt: number; // epoch ms
-  token: string;
   user?: UserProfile;
   lastConversationId?: string | null;
   selectedAgent?: string | null;
@@ -19,7 +18,6 @@ type PersistedUserProfile = Omit<UserProfile, 'createdAt' | 'updatedAt' | 'lastL
 type PersistedSession = {
   userId: string;
   expiresAt: number;
-  token: string;
   user?: PersistedUserProfile;
   lastConversationId?: string | null;
   selectedAgent?: string | null;
@@ -52,11 +50,10 @@ function deserializeUser(data?: PersistedUserProfile): UserProfile | undefined {
   };
 }
 
-export function saveSession(user: UserProfile, token: string, ttlMs: number = DEFAULT_TTL_MS) {
+export function saveSession(user: UserProfile, ttlMs: number = DEFAULT_TTL_MS) {
   const payload: PersistedSession = {
     userId: user.id,
     expiresAt: Date.now() + ttlMs,
-    token,
     user: serializeUser(user),
   };
   try {
@@ -71,7 +68,7 @@ export function loadSession(): StoredSession | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const data = JSON.parse(raw) as PersistedSession;
-    if (!data?.userId || !data?.expiresAt || !data?.token) return null;
+    if (!data?.userId || !data?.expiresAt) return null;
     if (Date.now() > data.expiresAt) {
       clearSession();
       return null;
@@ -79,7 +76,6 @@ export function loadSession(): StoredSession | null {
     return {
       userId: data.userId,
       expiresAt: data.expiresAt,
-      token: data.token,
       user: deserializeUser(data.user),
       lastConversationId: data.lastConversationId,
       selectedAgent: data.selectedAgent,
@@ -114,12 +110,10 @@ export function updateSession(partial: Partial<Omit<StoredSession, 'expiresAt'>>
       expiresAt: existing.expiresAt,
       userId: partial.userId ?? existing.userId,
       user: partial.user ?? existing.user,
-      token: partial.token ?? existing.token,
     };
     const payload: PersistedSession = {
       userId: merged.userId,
       expiresAt: merged.expiresAt,
-      token: merged.token,
       user: serializeUser(merged.user),
       lastConversationId: merged.lastConversationId,
       selectedAgent: merged.selectedAgent,

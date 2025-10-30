@@ -39,7 +39,6 @@ class AuthResponse(BaseModel):
     authenticated: bool = False
     user_id: str | None = None
     user: UserProfile | None = None
-    token: Optional[str] = None
     tokenTtl: Optional[int] = None
     vaultUserId: Optional[str] = Field(None, validation_alias="vault_user_id")
 

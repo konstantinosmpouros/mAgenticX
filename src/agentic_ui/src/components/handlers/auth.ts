@@ -12,7 +12,6 @@ type AuthCtx = {
   setLoginUsername: (v: string) => void;
   setLoginPassword: (v: string) => void;
   setShowUserProfile: (v: boolean) => void;
-  setAuthToken: (v: string | null) => void;
   clearChatAndStopThinking: () => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   loginUsername: string;
@@ -29,7 +28,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setLoginUsername,
     setLoginPassword,
     setShowUserProfile,
-    setAuthToken,
     clearChatAndStopThinking,
     toast,
     loginUsername,
@@ -40,7 +38,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
     try {
       const response = await authenticate({ username: loginUsername.trim(), password: loginPassword.trim() });
 
-      if (response.authenticated && response.user && response.user.id && response.token) {
+      if (response.authenticated && response.user && response.user.id) {
         const user = response.user;
         const ttlSeconds = typeof response.tokenTtl === 'number' && response.tokenTtl > 0 ? response.tokenTtl : 3600;
         const ttlMs = ttlSeconds * 1000;
@@ -48,13 +46,12 @@ export function createAuthHandlers(ctx: AuthCtx) {
           setIsLoggedIn(true);
           setUserProfile(user);
           setUserId(user.id);
-          setAuthToken(response.token);
           // Persist session with 1 hour TTL
-          saveSession(user, response.token, ttlMs);
+          saveSession(user, ttlMs);
           try {
             const [agentsList, conversationsList] = await Promise.all([
-              getAgents(response.token),
-              getConversations(user.id, response.token),
+              getAgents(),
+              getConversations(user.id),
             ]);
             setAgents(agentsList);
             setConversations(sortByUpdatedAtDesc(conversationsList));
@@ -78,7 +75,12 @@ export function createAuthHandlers(ctx: AuthCtx) {
   const handleLogoutLocal = () => {
     clearSession();
     setUserProfile(null);
-    setAuthToken(null);
+    void fetch("/api/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch((error) => {
+      console.warn("Failed to notify server about logout:", error);
+    });
   };
 
   const handleLogout = () => {

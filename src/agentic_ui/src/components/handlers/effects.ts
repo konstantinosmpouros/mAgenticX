@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { Agent, ThinkingState, UserProfile } from '@/lib/types';
-import { loadSession, isSessionValid, clearSession, updateSession } from '@/lib/authStorage';
+import { loadSession, isSessionValid, clearSession, updateSession, saveSession } from '@/lib/authStorage';
 import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
-import { getAgents, getConversations } from '@/lib/api';
+import { getAgents, getConversations, refreshSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import type { CSSProperties, RefObject } from 'react';
 
@@ -50,10 +50,9 @@ export function useAuthRehydrateEffect(params: {
   setCurrentConversation?: (v: any) => void;
   setMessages?: (v: any) => void;
   setIsPrivateMode?: (v: boolean) => void;
-  setAuthToken?: (v: string | null) => void;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 }) {
-  const { setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode, setAuthToken } = params;
+  const { setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode } = params;
   const started = useRef(false);
 
   useEffect(() => {
@@ -66,9 +65,8 @@ export function useAuthRehydrateEffect(params: {
     setUserId(session!.userId);
     const sessionUser = session?.user ?? null;
     setUserProfile(sessionUser);
-    if (setAuthToken && session?.token) setAuthToken(session.token);
 
-    Promise.all([getAgents(session!.token), getConversations(session!.userId, session!.token)])
+    Promise.all([getAgents(), getConversations(session!.userId)])
       .then(([agents, conversations]) => {
         setAgents(agents);
         setConversations(sortByUpdatedAtDesc(conversations));
@@ -112,6 +110,121 @@ export function useAuthRehydrateEffect(params: {
         clearSession();
       });
   }, []);
+}
+
+export function useSessionAutoRefreshEffect(params: {
+  isLoggedIn: boolean;
+  setIsLoggedIn: (v: boolean) => void;
+  setUserId: (v: string | null) => void;
+  setUserProfile: (v: UserProfile | null) => void;
+  toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+}) {
+  const { isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast } = params;
+  const timerRef = useRef<number | null>(null);
+  const refreshingRef = useRef(false);
+  const scheduleRef = useRef<() => void>(() => {});
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const performRefresh = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    try {
+      const result = await refreshSession();
+      const existing = loadSession();
+      const ttlMs =
+        typeof result.tokenTtl === 'number' && result.tokenTtl > 0
+          ? result.tokenTtl * 1000
+          : 60 * 60 * 1000;
+
+      const userToPersist = result.user ?? existing?.user ?? null;
+      if (userToPersist) {
+        saveSession(userToPersist, ttlMs);
+        if (existing) {
+          updateSession({
+            lastConversationId: existing.lastConversationId,
+            selectedAgent: existing.selectedAgent,
+            isPrivateMode: existing.isPrivateMode,
+          });
+        }
+        if (result.user) {
+          setUserProfile(result.user);
+        } else if (existing?.user) {
+          setUserProfile(existing.user);
+        }
+        if (userToPersist.id) {
+          setUserId(userToPersist.id);
+        } else if (existing?.userId) {
+          setUserId(existing.userId);
+        }
+      }
+
+      setIsLoggedIn(true);
+      scheduleRef.current();
+    } catch (error) {
+      console.error('Session refresh failed:', error);
+      clearTimer();
+      clearSession();
+      setIsLoggedIn(false);
+      setUserId(null);
+      setUserProfile(null);
+      toast?.({
+        title: 'Session expired',
+        description: 'Please sign in again.',
+        variant: 'warning',
+        duration: 4000,
+      });
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, [clearTimer, setIsLoggedIn, setUserId, setUserProfile, toast]);
+
+  const scheduleRefresh = useCallback(() => {
+    clearTimer();
+    if (!isLoggedIn) {
+      return;
+    }
+    const session = loadSession();
+    if (!session) return;
+
+    const remaining = session.expiresAt - Date.now();
+    if (remaining <= 0) {
+      void performRefresh();
+      return;
+    }
+
+    const bufferMs = 2 * 60 * 1000;
+    const delay = remaining > bufferMs ? remaining - bufferMs : Math.max(remaining - 5000, 0);
+
+    if (delay <= 0) {
+      void performRefresh();
+      return;
+    }
+
+    timerRef.current = window.setTimeout(() => {
+      void performRefresh();
+    }, delay);
+  }, [clearTimer, isLoggedIn, performRefresh]);
+
+  useEffect(() => {
+    scheduleRef.current = scheduleRefresh;
+  }, [scheduleRefresh]);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      clearTimer();
+      return;
+    }
+    scheduleRefresh();
+    return () => {
+      clearTimer();
+    };
+  }, [isLoggedIn, scheduleRefresh, clearTimer]);
 }
 
 export function useSessionStateSyncEffect(params: {

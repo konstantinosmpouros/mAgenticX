@@ -5,13 +5,20 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import httpx
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 
 class TokenVerificationError(Exception):
     """Raised when a JWT cannot be validated."""
+
+
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "mx_session")
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+SESSION_COOKIE_DOMAIN = os.getenv("SESSION_COOKIE_DOMAIN")
+SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "lax")
+SESSION_REFRESH_COOKIE_NAME = os.getenv("SESSION_REFRESH_COOKIE_NAME", f"{SESSION_COOKIE_NAME}_refresh")
 
 
 @dataclass(slots=True)
@@ -152,14 +159,19 @@ def get_jwt_verifier() -> VaultJWTVerifier:
 
 
 async def require_access_token(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> str:
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing bearer token",
-        )
-    token = credentials.credentials.strip()
+    token: Optional[str] = None
+
+    if credentials is not None and credentials.scheme.lower() == "bearer":
+        token = credentials.credentials.strip()
+
+    if not token and request is not None:
+        cookie_token = request.cookies.get(SESSION_COOKIE_NAME)
+        if cookie_token:
+            token = cookie_token.strip()
+
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -187,3 +199,14 @@ async def require_token_claims(
             detail=str(exc),
         ) from exc
 
+
+async def require_refresh_token(
+    request: Request,
+) -> str:
+    token = request.cookies.get(SESSION_REFRESH_COOKIE_NAME)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing refresh token",
+        )
+    return token.strip()
