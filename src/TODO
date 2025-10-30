@@ -3,8 +3,6 @@
 ## General
 
 - Plug tool in FastAPI that auto-generates documentation for all available APIs (/docs)
-- Create flow diagrams so a viewer of the repo can understand fast what is happening
-- Add the hashicorp Vault for password and key management and update the whole project accordingly. Add also the hashicorp vault authenticator of OAuth and JWT authentication to vault
 
 ## Agentic UI
 
