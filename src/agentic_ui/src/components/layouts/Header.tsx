@@ -47,7 +47,7 @@ export default function Header({
                 <Select value={selectedAgent} onValueChange={onAgentChange}>
                     <SelectTrigger
                         onMouseDown={(e) => e.preventDefault()}
-                        className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-background/70 text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-muted/60 dark:bg-background/40 dark:text-foreground dark:hover:bg-muted/40 justify-start gap-2 px-3 h-11"
+                        className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-muted/60 data-[state=open]:bg-muted/60 dark:bg-transparent dark:text-foreground dark:hover:bg-muted/40 dark:data-[state=open]:bg-muted/40 justify-start gap-2 px-3 h-11"
                     >
                         <SelectValue placeholder="Select an agent">
                             <div className="flex items-center gap-2.5">

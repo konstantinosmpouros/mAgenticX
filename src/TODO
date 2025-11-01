@@ -3,6 +3,7 @@
 ## General
 
 - Plug tool in FastAPI that auto-generates documentation for all available APIs (/docs)
+- In the mobile view the sidebar doesn't exist cause its too shrunk.
 
 ## Agentic UI
 
@@ -10,10 +11,10 @@
 - Create a panel for the available tools and send the configs to the dialogue bridge
 - Give in the agents the personal info of the user in the prompt like name and role
 - There can be timeout errors especially in the orthodox agent.
+- Complete the dictate workflow where the user dictate and then its a speech to text api call to openai.
 
 - Make the title creation functionality for a new conversation a bg task and in the end, update the conversation db, and ui
 - Implement a tab in the profile panel to show all the images, like openai library
-- Check what to do with the audio input
 - Create one more chat workflow like gemini code or cursor (agentic chat)
 - Reactive theme toggle buttons, [integrate it!](https://www.shadcn.io/button/theme-toggle)
 
@@ -25,6 +26,7 @@
 - Replace tools with mcp in a different directory than agents. Configure the server with all the tools and the registry will be stored in the main.py in agents and expose an API so the UI can get the available tools.
 - Remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 - Give in the agents the personal info of the user in the prompt like name and role
+- Update the retrieval process and the whole RAG pipelines
 
 ## Dialogue Bridge
 

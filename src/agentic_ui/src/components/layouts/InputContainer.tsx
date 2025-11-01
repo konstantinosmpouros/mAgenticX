@@ -1,12 +1,13 @@
 import React from "react";
 import type { LucideIcon } from 'lucide-react';
-import { Plus, FileText } from "lucide-react";
+import { Plus, FileText, Check, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
+import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 
 type InputContainerProps = {
     /** Replace "top-1/2 -translate-y-1/2" with anything you want */
@@ -46,6 +47,9 @@ type InputContainerProps = {
     toast?: (opts: { title: string; description?: string; duration?: number }) => void;
     currentAgent?: { name?: string; description?: string } | null;
     Textarea: any;
+    onDictationStart?: () => void;
+    onDictationCancel?: () => void;
+    onDictationSubmit?: (audioBlob: Blob) => void;
 };
 
 // Random welcome quotes (use {agent} to inject the agent's name)
@@ -92,6 +96,9 @@ export function InputContainer(props: InputContainerProps) {
         toast,
         currentAgent,
         Textarea,
+        onDictationStart,
+        onDictationCancel,
+        onDictationSubmit,
     } = props;
 
     
@@ -130,6 +137,146 @@ export function InputContainer(props: InputContainerProps) {
     );
     
     const prefersReducedMotion = useReducedMotion();
+
+    const [isDictationMode, setIsDictationMode] = React.useState(false);
+    const [hasDictationRecording, setHasDictationRecording] = React.useState(false);
+    const [pendingDictationSubmit, setPendingDictationSubmit] = React.useState(false);
+
+    const recorderControls = useVoiceVisualizer({
+        onStartRecording: () => {
+            setIsDictationMode(true);
+            setHasDictationRecording(false);
+            setPendingDictationSubmit(false);
+            onDictationStart?.();
+        },
+        onStopRecording: () => {
+            setHasDictationRecording(true);
+        },
+        onClearCanvas: () => {
+            setIsDictationMode(false);
+            setHasDictationRecording(false);
+            setPendingDictationSubmit(false);
+        },
+        onErrorPlayingAudio: (error) => {
+            toast?.({
+                title: "Voice input error",
+                description: error.message,
+                duration: 4000,
+            });
+        },
+    });
+
+    const {
+        startRecording,
+        stopRecording,
+        clearCanvas,
+        recordedBlob,
+        isRecordingInProgress,
+        isProcessingStartRecording,
+        isProcessingRecordedAudio,
+    } = recorderControls;
+
+    React.useEffect(() => {
+        if (!pendingDictationSubmit) return;
+        if (!recordedBlob) return;
+        onDictationSubmit?.(recordedBlob);
+        setPendingDictationSubmit(false);
+        setIsDictationMode(false);
+        setHasDictationRecording(false);
+        clearCanvas();
+    }, [pendingDictationSubmit, recordedBlob, clearCanvas, onDictationSubmit]);
+
+    const isDictationProcessing = isProcessingStartRecording || isProcessingRecordedAudio;
+
+    const handleDictationRequest = React.useCallback(() => {
+        if (isDictationProcessing) return;
+        try {
+            startRecording();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to access your microphone.";
+            toast?.({
+                title: "Microphone unavailable",
+                description: message,
+                duration: 4000,
+            });
+            setIsDictationMode(false);
+            setHasDictationRecording(false);
+        }
+    }, [isDictationProcessing, startRecording, toast]);
+
+    const handleCancelDictation = React.useCallback(() => {
+        if (!isDictationMode) return;
+        try {
+            if (isRecordingInProgress) {
+                stopRecording();
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to stop recording.";
+            toast?.({
+                title: "Voice input error",
+                description: message,
+                duration: 3000,
+            });
+        }
+        onDictationCancel?.();
+        setIsDictationMode(false);
+        setHasDictationRecording(false);
+        setPendingDictationSubmit(false);
+        clearCanvas();
+    }, [
+        clearCanvas,
+        isDictationMode,
+        isRecordingInProgress,
+        onDictationCancel,
+        stopRecording,
+        toast,
+    ]);
+
+    const handleConfirmDictation = React.useCallback(() => {
+        if (!isDictationMode) return;
+        if (isRecordingInProgress) {
+            setPendingDictationSubmit(true);
+            try {
+                stopRecording();
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Unable to stop recording.";
+                toast?.({
+                    title: "Voice input error",
+                    description: message,
+                    duration: 3000,
+                });
+                setPendingDictationSubmit(false);
+            }
+            return;
+        }
+
+        if (!recordedBlob) {
+            toast?.({
+                title: "No recording captured",
+                description: "Try recording again before submitting.",
+                duration: 2500,
+            });
+            return;
+        }
+
+        onDictationSubmit?.(recordedBlob);
+        setIsDictationMode(false);
+        setHasDictationRecording(false);
+        setPendingDictationSubmit(false);
+        clearCanvas();
+    }, [
+        clearCanvas,
+        isDictationMode,
+        isRecordingInProgress,
+        onDictationSubmit,
+        recordedBlob,
+        stopRecording,
+        toast,
+    ]);
+
+    const canConfirmDictation = isRecordingInProgress || hasDictationRecording;
+    const isCancelDisabled = isDictationProcessing && !isRecordingInProgress;
+    const confirmButtonDisabled = !canConfirmDictation || isDictationProcessing;
     
     const quoteVariants = {
         initial: { opacity: 0, y: prefersReducedMotion ? 0 : 8 },
@@ -238,42 +385,63 @@ export function InputContainer(props: InputContainerProps) {
 
                         {/* Text Input Area */}
                         <div className="w-full">
-                            <Textarea
-                                ref={(textarea: any) => {
-                                    (textareaRef as any).current = textarea;
-                                }}
-                                value={currentMessage}
-                                onChange={(e: any) => setCurrentMessage(e.target.value)}
-                                onPaste={handlePaste}
-                                placeholder={`Message ${currentAgent?.name}...`}
-                                onKeyDown={(e: any) => {
-                                    if (
-                                        e.key === "Enter" &&
-                                        !e.shiftKey &&
-                                        !thinkingActive &&
-                                        !isStreaming &&
-                                        (currentMessage.trim() || attachments.length > 0)
-                                    ) {
-                                        e.preventDefault();
-                                        handleSendMessage();
-                                    }
-                                }}
-                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground w-full"
-                                rows={1}
-                                style={{ height: "auto", maxHeight: textareaMaxHeight }}
-                            />
+                            {!isDictationMode ? (
+                                <Textarea
+                                    ref={(textarea: any) => {
+                                        (textareaRef as any).current = textarea;
+                                    }}
+                                    value={currentMessage}
+                                    onChange={(e: any) => setCurrentMessage(e.target.value)}
+                                    onPaste={handlePaste}
+                                    placeholder={`Message ${currentAgent?.name}...`}
+                                    onKeyDown={(e: any) => {
+                                        if (
+                                            e.key === "Enter" &&
+                                            !e.shiftKey &&
+                                            !thinkingActive &&
+                                            !isStreaming &&
+                                            (currentMessage.trim() || attachments.length > 0)
+                                        ) {
+                                            e.preventDefault();
+                                            handleSendMessage();
+                                        }
+                                    }}
+                                    className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground w-full"
+                                    rows={1}
+                                    style={{ height: "auto", maxHeight: textareaMaxHeight }}
+                                />
+                            ) : (
+                                <div className="px-3 pt-1 pb-2">
+                                    <VoiceVisualizer
+                                        controls={recorderControls}
+                                        isDefaultUIShown={false}
+                                        isControlPanelShown={false}
+                                        height={42}
+                                        backgroundColor="transparent"
+                                        mainBarColor="rgba(255,255,255,0.85)"
+                                        secondaryBarColor="rgba(255,255,255,0.25)"
+                                        barWidth={2}
+                                        gap={1}
+                                        rounded={2}
+                                        canvasContainerClassName="w-full h-12 [&>canvas]:scale-y-[2.35] [&>canvas]:origin-center"
+                                        mainContainerClassName="w-full"
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Action Buttons */}
                         <div className="flex items-center justify-between gap-3">
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
-                                    <div
-                                        className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
+                                    <button
+                                        type="button"
+                                        className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
                                         onClick={() => fileInputRef.current?.click()}
+                                        aria-label="Attach files"
                                     >
                                         <Plus size={20} className="text-muted-foreground active:text-white" />
-                                    </div>
+                                    </button>
                                 </TooltipTrigger>
                                 <TooltipContent
                                     side="top"
@@ -284,49 +452,95 @@ export function InputContainer(props: InputContainerProps) {
                                 </TooltipContent>
                             </Tooltip>
 
-                            <div className="flex items-center gap-2">
-                                <Tooltip delayDuration={0}>
-                                    <TooltipTrigger asChild>
-                                        <div
-                                            className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110"
-                                            onClick={() =>
-                                                toast?.({ title: "Voice input", description: "Feature coming soon!", duration: 2000 })
-                                            }
+                            {!isDictationMode ? (
+                                <div className="flex items-center gap-2">
+                                    <Tooltip delayDuration={0}>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                onClick={handleDictationRequest}
+                                                disabled={isDictationProcessing || isStreaming}
+                                                aria-label="Start voice dictation"
+                                            >
+                                                <VscMicFilled size={21} className="text-muted-foreground active:text-white" />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                            side="top"
+                                            align="center"
+                                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
-                                            <VscMicFilled size={21} className="text-muted-foreground active:text-white" />
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                        side="top"
-                                        align="center"
-                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                    >
-                                        <p>Dictate</p>
-                                    </TooltipContent>
-                                </Tooltip>
+                                            <p>{isDictationProcessing ? "Preparing microphone..." : "Dictate"}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
 
-                                <Tooltip delayDuration={0}>
-                                    <TooltipTrigger asChild>
-                                        <StarBorder
-                                            as="button"
-                                            innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center border-0 rounded-full"
-                                            className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
-                                            color="hsl(var(--primary))"
-                                            thickness={2}
-                                            onClick={() => {
-                                                if (isStreaming) {
-                                                    handleStopStreaming?.();
-                                                } else {
-                                                    handleSendMessage();
-                                                }
-                                            }}
-                                            disabled={isStreaming ? false : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive)}
+                                    <Tooltip delayDuration={0}>
+                                        <TooltipTrigger asChild>
+                                            <StarBorder
+                                                as="button"
+                                                innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center border-0 rounded-full"
+                                                className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
+                                                color="hsl(var(--primary))"
+                                                thickness={2}
+                                                onClick={() => {
+                                                    if (isStreaming) {
+                                                        handleStopStreaming?.();
+                                                    } else {
+                                                        handleSendMessage();
+                                                    }
+                                                }}
+                                                disabled={isDictationMode || (isStreaming ? false : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive))}
+                                            >
+                                                {isStreaming ? <FaStop size={16} /> : <HiArrowUp size={16} />}
+                                            </StarBorder>
+                                        </TooltipTrigger>
+                                    </Tooltip>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Tooltip delayDuration={0}>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:bg-muted active:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                onClick={handleCancelDictation}
+                                                disabled={isCancelDisabled}
+                                                aria-label="Cancel voice dictation"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                            side="top"
+                                            align="center"
+                                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
-                                            {isStreaming ? <FaStop size={16} /> : <HiArrowUp size={16} />}
-                                        </StarBorder>
-                                    </TooltipTrigger>
-                                </Tooltip>
-                            </div>
+                                            <p>Discard recording</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip delayDuration={0}>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="w-10 h-10 rounded-full border border-primary/60 bg-primary/15 text-primary flex items-center justify-center transition-smooth hover:bg-primary/25 active:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                onClick={handleConfirmDictation}
+                                                disabled={confirmButtonDisabled}
+                                                aria-label="Use recording"
+                                            >
+                                                <Check size={18} />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                            side="top"
+                                            align="center"
+                                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                        >
+                                            <p>Use recording</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
