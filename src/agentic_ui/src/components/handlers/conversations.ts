@@ -30,6 +30,8 @@ type ConversationsCtx = {
   onSearch?: () => void;
 };
 
+const LOAD_MORE_DELAY_MS = 1200;
+
 export function createConversationHandlers(ctx: ConversationsCtx) {
   const {
     userId,
@@ -119,6 +121,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     try {
       const nextPage = convPage + 1;
       const items = await getConversations(userId, nextPage, pageSize);
+      await new Promise<void>((resolve) => setTimeout(resolve, LOAD_MORE_DELAY_MS));
       if (!items || items.length === 0) {
         setConvHasMore(false);
       } else {

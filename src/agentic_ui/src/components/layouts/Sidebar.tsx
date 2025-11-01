@@ -1,5 +1,5 @@
 import * as React from "react";
-import { MessageSquare, X, Loader2, Building2, PanelLeft, Search } from "lucide-react";
+import { MessageSquare, X, Building2, PanelLeft, Search } from "lucide-react";
 import { FiEdit } from "react-icons/fi";
 
 import type { Agent, ConversationSummary, UserProfile } from "@/lib/types";
@@ -20,6 +20,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type AppSidebarProps = {
   conversations: ConversationSummary[];
@@ -36,6 +37,25 @@ type AppSidebarProps = {
   agents: Agent[];
   userProfile: UserProfile | null;
 };
+
+const ConversationLoadingSkeleton = ({ count = 3 }: { count?: number }) => (
+  <div className="space-y-2 pt-2" aria-hidden="true">
+    {Array.from({ length: count }).map((_, index) => (
+      <div
+        key={`conversation-skeleton-${index}`}
+        className="rounded-xl px-3 py-3"
+      >
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <div className="flex flex-1 flex-col gap-2">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 export default function AppSidebar({
   conversations,
@@ -275,7 +295,7 @@ export default function AppSidebar({
                               </div>
                             ),
                           }}
-                          className="items-start gap-2.5 rounded-xl bg-transparent py-3 text-left shadow-none transition hover:bg-muted/15 focus-visible:ring-2 data-[active=true]:bg-muted/25 data-[active=true]:text-foreground !h-auto min-h-[4rem]"
+                          className="items-start gap-2.5 rounded-xl bg-transparent py-2.5 text-left shadow-none transition hover:bg-muted/15 focus-visible:ring-2 data-[active=true]:bg-muted/25 data-[active=true]:text-foreground !h-auto min-h-[3.75rem]"
                         >
                           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                             <Icon size={16} />
@@ -313,11 +333,7 @@ export default function AppSidebar({
                   })}
                 </SidebarMenu>
               )}
-              {isLoadingMore && (
-                <div className="flex justify-center py-2">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              )}
+              {isLoadingMore && <ConversationLoadingSkeleton />}
             </SidebarGroupContent>
           </SidebarGroup>
         )}
