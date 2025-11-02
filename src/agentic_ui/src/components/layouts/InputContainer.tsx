@@ -9,6 +9,8 @@ import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 
+export type DictationStatus = "idle" | "recording" | "review" | "submitting";
+
 type InputContainerProps = {
     /** Replace "top-1/2 -translate-y-1/2" with anything you want */
     positionClass?: string;
@@ -47,11 +49,9 @@ type InputContainerProps = {
     toast?: (opts: { title: string; description?: string; duration?: number }) => void;
     currentAgent?: { name?: string; description?: string } | null;
     Textarea: any;
-    onDictationStart?: () => void;
-    onDictationCancel?: () => void;
     onDictationSubmit?: (audioBlob: Blob) => void;
-    dictationActive?: boolean;
-    dictationSubmitting?: boolean;
+    onDictationStatusChange?: (status: DictationStatus) => void;
+    dictationStatus?: DictationStatus;
 };
 
 // Random welcome quotes (use {agent} to inject the agent's name)
@@ -98,11 +98,9 @@ export function InputContainer(props: InputContainerProps) {
         toast,
         currentAgent,
         Textarea,
-        onDictationStart,
-        onDictationCancel,
         onDictationSubmit,
-        dictationActive = false,
-        dictationSubmitting = false,
+        onDictationStatusChange,
+        dictationStatus = "idle",
     } = props;
 
     
@@ -142,30 +140,29 @@ export function InputContainer(props: InputContainerProps) {
     
     const prefersReducedMotion = useReducedMotion();
 
-    const [isDictationMode, setIsDictationMode] = React.useState(false);
-    const [hasDictationRecording, setHasDictationRecording] = React.useState(false);
-    const [pendingDictationSubmit, setPendingDictationSubmit] = React.useState(false);
-    const submissionTokenRef = React.useRef<number | null>(null);
-    const lastHandledTokenRef = React.useRef<number | null>(null);
+    const submitAfterStopRef = React.useRef(false);
+    const cancelRequestedRef = React.useRef(false);
 
     const recorderControls = useVoiceVisualizer({
         onStartRecording: () => {
-            setIsDictationMode(true);
-            setHasDictationRecording(false);
-            setPendingDictationSubmit(false);
-            submissionTokenRef.current = null;
-            lastHandledTokenRef.current = null;
-            onDictationStart?.();
+            submitAfterStopRef.current = false;
+            cancelRequestedRef.current = false;
+            onDictationStatusChange?.("recording");
         },
         onStopRecording: () => {
-            setHasDictationRecording(true);
+            if (cancelRequestedRef.current) {
+                cancelRequestedRef.current = false;
+                onDictationStatusChange?.("idle");
+                return;
+            }
+            onDictationStatusChange?.(
+                submitAfterStopRef.current ? "submitting" : "review",
+            );
         },
         onClearCanvas: () => {
-            setIsDictationMode(false);
-            setHasDictationRecording(false);
-            setPendingDictationSubmit(false);
-            submissionTokenRef.current = null;
-            lastHandledTokenRef.current = null;
+            if (dictationStatus !== "submitting") {
+                onDictationStatusChange?.("idle");
+            }
         },
         onErrorPlayingAudio: (error) => {
             toast?.({
@@ -217,35 +214,10 @@ export function InputContainer(props: InputContainerProps) {
         _setIsProcessingAudioOnComplete,
     } = recorderControls;
 
-    React.useEffect(() => {
-        if (!pendingDictationSubmit) return;
-        if (!recordedBlob) return;
-        const token = submissionTokenRef.current;
-        if (!token || token === lastHandledTokenRef.current) {
-            return;
-        }
-        lastHandledTokenRef.current = token;
-        onDictationSubmit?.(recordedBlob);
-        setPendingDictationSubmit(false);
-        setIsDictationMode(false);
-        setHasDictationRecording(false);
-        clearCanvas();
-        submissionTokenRef.current = null;
-        try {
-            _setIsProcessingAudioOnComplete?.(false);
-        } catch {
-            // ignore
-        }
-    }, [
-        pendingDictationSubmit,
-        recordedBlob,
-        clearCanvas,
-        onDictationSubmit,
-        _setIsProcessingAudioOnComplete,
-    ]);
-
     const isDictationProcessing = isProcessingStartRecording || isProcessingRecordedAudio;
-    const isDictationBusy = isDictationProcessing || dictationSubmitting;
+    const isDictationSubmitting = dictationStatus === "submitting";
+    const isInDictationMode = dictationStatus !== "idle";
+    const isDictationBusy = isDictationProcessing || isDictationSubmitting;
 
     React.useEffect(() => {
         if (!isProcessingRecordedAudio) {
@@ -258,9 +230,12 @@ export function InputContainer(props: InputContainerProps) {
     }, [isProcessingRecordedAudio, _setIsProcessingAudioOnComplete]);
 
     const handleDictationRequest = React.useCallback(() => {
-        if (isDictationBusy) return;
+        if (isDictationBusy || dictationStatus !== "idle") return;
         try {
+            submitAfterStopRef.current = false;
+            cancelRequestedRef.current = false;
             startRecording();
+            onDictationStatusChange?.("recording");
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to access your microphone.";
             toast?.({
@@ -268,13 +243,14 @@ export function InputContainer(props: InputContainerProps) {
                 description: message,
                 duration: 4000,
             });
-            setIsDictationMode(false);
-            setHasDictationRecording(false);
+            onDictationStatusChange?.("idle");
+            submitAfterStopRef.current = false;
         }
-    }, [isDictationBusy, startRecording, toast]);
+    }, [dictationStatus, isDictationBusy, onDictationStatusChange, startRecording, toast]);
 
     const handleCancelDictation = React.useCallback(() => {
-        if (!isDictationMode) return;
+        if (dictationStatus === "idle" || dictationStatus === "submitting") return;
+        cancelRequestedRef.current = true;
         try {
             if (isRecordingInProgress) {
                 stopRecording();
@@ -287,13 +263,9 @@ export function InputContainer(props: InputContainerProps) {
                 duration: 3000,
             });
         }
-        onDictationCancel?.();
-        setIsDictationMode(false);
-        setHasDictationRecording(false);
-        setPendingDictationSubmit(false);
+        onDictationStatusChange?.("idle");
         clearCanvas();
-        submissionTokenRef.current = null;
-        lastHandledTokenRef.current = null;
+        submitAfterStopRef.current = false;
         try {
             _setIsProcessingAudioOnComplete?.(false);
         } catch {
@@ -301,29 +273,31 @@ export function InputContainer(props: InputContainerProps) {
         }
     }, [
         clearCanvas,
-        isDictationMode,
+        dictationStatus,
         isRecordingInProgress,
-        onDictationCancel,
+        onDictationStatusChange,
         stopRecording,
         toast,
         _setIsProcessingAudioOnComplete,
     ]);
 
     const handleConfirmDictation = React.useCallback(() => {
-        if (!isDictationMode) return;
+        if (dictationStatus === "idle" || dictationStatus === "submitting") return;
+        cancelRequestedRef.current = false;
         if (isRecordingInProgress) {
-            setPendingDictationSubmit(true);
-            submissionTokenRef.current = Date.now();
             try {
+                submitAfterStopRef.current = true;
+                onDictationStatusChange?.("submitting");
                 stopRecording();
             } catch (error) {
+                submitAfterStopRef.current = false;
+                onDictationStatusChange?.("recording");
                 const message = error instanceof Error ? error.message : "Unable to stop recording.";
                 toast?.({
                     title: "Voice input error",
                     description: message,
                     duration: 3000,
                 });
-                setPendingDictationSubmit(false);
             }
             return;
         }
@@ -337,23 +311,16 @@ export function InputContainer(props: InputContainerProps) {
             return;
         }
 
-        const token = Date.now();
-        submissionTokenRef.current = token;
-        lastHandledTokenRef.current = token;
+        submitAfterStopRef.current = false;
+        onDictationStatusChange?.("submitting");
         onDictationSubmit?.(recordedBlob);
-        setIsDictationMode(false);
-        setHasDictationRecording(false);
-        setPendingDictationSubmit(false);
-        clearCanvas();
-        submissionTokenRef.current = null;
         try {
             _setIsProcessingAudioOnComplete?.(false);
         } catch {
             // ignore
         }
     }, [
-        clearCanvas,
-        isDictationMode,
+        dictationStatus,
         isRecordingInProgress,
         onDictationSubmit,
         recordedBlob,
@@ -362,11 +329,36 @@ export function InputContainer(props: InputContainerProps) {
         _setIsProcessingAudioOnComplete,
     ]);
 
-    const canConfirmDictation = isRecordingInProgress || hasDictationRecording;
-    const isCancelDisabled = dictationSubmitting;
+    React.useEffect(() => {
+        if (!submitAfterStopRef.current) return;
+        if (!recordedBlob) return;
+        submitAfterStopRef.current = false;
+        onDictationStatusChange?.("submitting");
+        onDictationSubmit?.(recordedBlob);
+        try {
+            _setIsProcessingAudioOnComplete?.(false);
+        } catch {
+            // ignore
+        }
+    }, [recordedBlob, onDictationStatusChange, onDictationSubmit, _setIsProcessingAudioOnComplete]);
+
+    const lastStatusRef = React.useRef<DictationStatus>(dictationStatus);
+    React.useEffect(() => {
+        if (dictationStatus === "idle" && lastStatusRef.current !== "idle") {
+            clearCanvas();
+            try {
+                _setIsProcessingAudioOnComplete?.(false);
+            } catch {
+                // ignore
+            }
+        }
+        lastStatusRef.current = dictationStatus;
+    }, [clearCanvas, dictationStatus, _setIsProcessingAudioOnComplete]);
+
+    const isCancelDisabled = isDictationSubmitting;
     const confirmButtonDisabled =
         (!isRecordingInProgress && !recordedBlob) ||
-        dictationSubmitting;
+        isDictationSubmitting;
     
     const quoteVariants = {
         initial: { opacity: 0, y: prefersReducedMotion ? 0 : 8 },
@@ -475,7 +467,7 @@ export function InputContainer(props: InputContainerProps) {
 
                         {/* Text Input Area */}
                         <div className="w-full">
-                            {!isDictationMode ? (
+                            {dictationStatus === "idle" ? (
                                 <Textarea
                                     ref={(textarea: any) => {
                                         (textareaRef as any).current = textarea;
@@ -543,7 +535,7 @@ export function InputContainer(props: InputContainerProps) {
                                 </TooltipContent>
                             </Tooltip>
 
-                            {!isDictationMode ? (
+                            {dictationStatus === "idle" ? (
                                 <div className="flex items-center gap-2">
                                     <Tooltip delayDuration={0}>
                                         <TooltipTrigger asChild>
@@ -551,7 +543,7 @@ export function InputContainer(props: InputContainerProps) {
                                                 type="button"
                                                 className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
                                                 onClick={handleDictationRequest}
-                                                disabled={isDictationBusy || isStreaming || dictationActive}
+                                                disabled={isDictationBusy || isStreaming || isInDictationMode}
                                                 aria-label="Start voice dictation"
                                             >
                                                 <VscMicFilled size={21} className="text-muted-foreground active:text-white" />
@@ -563,7 +555,7 @@ export function InputContainer(props: InputContainerProps) {
                                             className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
                                             <p>
-                                                {dictationSubmitting
+                                                {isDictationSubmitting
                                                     ? "Transcribing..."
                                                     : isDictationProcessing
                                                         ? "Preparing microphone..."
@@ -588,9 +580,8 @@ export function InputContainer(props: InputContainerProps) {
                                                     }
                                                 }}
                                                 disabled={
-                                                    isDictationMode ||
-                                                    dictationSubmitting ||
-                                                    dictationActive ||
+                                                    isInDictationMode ||
+                                                    isDictationSubmitting ||
                                                     (isStreaming
                                                         ? false
                                                         : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive))
@@ -632,7 +623,7 @@ export function InputContainer(props: InputContainerProps) {
                                                 disabled={confirmButtonDisabled}
                                                 aria-label="Use recording"
                                             >
-                                                {dictationSubmitting ? (
+                                                {isDictationSubmitting ? (
                                                     <Loader2 size={18} className="animate-spin" />
                                                 ) : (
                                                     <Check size={18} />

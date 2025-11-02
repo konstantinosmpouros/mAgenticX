@@ -38,7 +38,7 @@ import AppSidebar from "@/components/layouts/Sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import UserProfilePanel from "@/components/layouts/UserProfilePanel";
 import ConversationContainer from "@/components/layouts/ConversationContainer";
-import { InputContainer } from "@/components/layouts/InputContainer";
+import { InputContainer, type DictationStatus } from "@/components/layouts/InputContainer";
 
 
 export function ChatInterface() {
@@ -102,9 +102,8 @@ export function ChatInterface() {
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
 
-  // Dictation state
-  const [isDictationActive, setIsDictationActive] = useState(false);
-  const [isDictationSubmitting, setIsDictationSubmitting] = useState(false);
+  // Dictation state machine
+  const [dictationStatus, setDictationStatus] = useState<DictationStatus>("idle");
   
   // Function to set conversation messages
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
@@ -142,15 +141,9 @@ export function ChatInterface() {
     });
   };
 
-  const handleDictationStart = useCallback(() => {
-    setIsDictationActive(true);
-    setIsDictationSubmitting(false);
-  }, []);
-
-  const handleDictationCancel = useCallback(() => {
-    setIsDictationActive(false);
-    setIsDictationSubmitting(false);
-  }, []);
+  const handleDictationStatusChange = useCallback((status: DictationStatus) => {
+    setDictationStatus(prev => (prev === status ? prev : status));
+  }, [setDictationStatus]);
 
   const handleDictationSubmit = useCallback(async (audioBlob: Blob) => {
     if (!userId) {
@@ -159,12 +152,11 @@ export function ChatInterface() {
         description: 'Please sign in again to continue.',
         variant: 'destructive',
       });
-      setIsDictationActive(false);
-      setIsDictationSubmitting(false);
+      setDictationStatus('idle');
       return;
     }
 
-    setIsDictationSubmitting(true);
+    setDictationStatus('submitting');
     try {
       const mime = audioBlob.type || 'audio/webm';
       const [, rawExt = 'webm'] = mime.split('/');
@@ -195,10 +187,9 @@ export function ChatInterface() {
         variant: 'destructive',
       });
     } finally {
-      setIsDictationSubmitting(false);
-      setIsDictationActive(false);
+      setDictationStatus('idle');
     }
-  }, [userId, toastWrapper, setCurrentMessage, textareaRef, transcribeDictation]);
+  }, [userId, toastWrapper, setCurrentMessage, textareaRef, transcribeDictation, setDictationStatus]);
   
   // Effects
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
@@ -504,11 +495,9 @@ export function ChatInterface() {
               containerRef={composerContainerRef}
               emptyWrapperStyle={emptyWrapperStyle}
               textareaMaxHeight={textareaMaxHeight}
-              onDictationStart={handleDictationStart}
-              onDictationCancel={handleDictationCancel}
               onDictationSubmit={handleDictationSubmit}
-              dictationActive={isDictationActive}
-              dictationSubmitting={isDictationSubmitting}
+              onDictationStatusChange={handleDictationStatusChange}
+              dictationStatus={dictationStatus}
               
               // UI deps
               AgentIcon={AgentIcon}
