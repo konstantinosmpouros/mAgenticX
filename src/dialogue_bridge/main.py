@@ -6,7 +6,7 @@ import traceback
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, Depends, HTTPException, status, Header, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Response, UploadFile, File
 from fastapi.responses import StreamingResponse
 import httpx
 from contextlib import asynccontextmanager
@@ -36,6 +36,7 @@ from database.schemas import (
     ImageOut,
     AuthRequest, AuthResponse,
     AgentPublic,
+    DictationResponse,
 )
 from utils import (
     serialise_message_with_images_for_agent,
@@ -292,6 +293,82 @@ async def refresh_session(
         tokenTtl=refresh_result.ttl,
         vaultUserId=user.vault_user_id,
     )
+
+
+
+#-----------------------------------------------------------------------------------
+# DICTATION APIS
+#-----------------------------------------------------------------------------------
+@app.post(
+    "/users/{user_id}/dictation/transcribe",
+    response_model=DictationResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def transcribe_dictation(
+    user_id: str,
+    audio: UploadFile = File(...),
+    _: UserTable = Depends(validate_userId),
+) -> DictationResponse:
+    """
+    Accept an audio upload from the UI, proxy it to the agents STT endpoint,
+    and return the transcription text.
+    """
+    _AGENTS_STT_ENDPOINT = "http://agents:8003/dictate/transcribe"
+    filename = audio.filename or "dictation.wav"
+
+    try:
+        audio_bytes = await audio.read()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read uploaded audio file: {exc}",
+        ) from exc
+
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded audio file is empty.",
+        )
+
+    content_type = audio.content_type or "application/octet-stream"
+    files = {
+        "file": (filename, audio_bytes, content_type),
+    }
+
+    timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(_AGENTS_STT_ENDPOINT, files=files)
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail_snippet = exc.response.text.strip()
+        if len(detail_snippet) > 200:
+            detail_snippet = detail_snippet[:197] + "..."
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"STT service error ({exc.response.status_code}): {detail_snippet or 'No response body'}",
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to reach STT service: {exc}",
+        ) from exc
+
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="STT service returned invalid JSON payload.",
+        ) from exc
+
+    try:
+        return DictationResponse.model_validate(payload)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"STT service payload validation failed: {exc}",
+        ) from exc
 
 
 
@@ -708,7 +785,7 @@ async def dislikeMessage(
 
 
 #-----------------------------------------------------------------------------------
-# DELETE CONVERSATION APIS
+# DELETE APIS
 #-----------------------------------------------------------------------------------
 @app.delete(
     "/users/{user_id}/conversations/{conversation_id}",
@@ -759,7 +836,7 @@ async def startInferenceStream(
     history = [serialise_message_with_images_for_agent(m) for m in current_conv.messages]
     
     async def event_stream():
-        timeout = httpx.Timeout(60.0, connect=30.0)
+        timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 try:

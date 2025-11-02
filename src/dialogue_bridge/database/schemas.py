@@ -44,6 +44,15 @@ class AuthResponse(BaseModel):
 
 
 
+# -------------------------------------------
+# DICTATION DTO
+# -------------------------------------------
+class DictationResponse(BaseModel):
+    """Speech-to-text transcription payload returned to the UI."""
+    text: str
+
+
+
 #-------------------------------------------
 # AGENTS DTO
 #-------------------------------------------

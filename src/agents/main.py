@@ -14,12 +14,15 @@ from agents.langgraph_agents import (
 )
 
 import asyncio
+import io
 import json
 import traceback
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from typing import Any, Dict, List, Optional
+
+from openai import OpenAI
 
 
 app = FastAPI()
@@ -64,6 +67,65 @@ class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
     user_input: List[Dict[str, Any]]
     config: Optional[Dict[str, Any]] = None
+
+
+class TranscriptionResponse(BaseModel):
+    text: str
+
+
+@app.post("/dictate/transcribe", response_model=TranscriptionResponse, status_code=status.HTTP_200_OK)
+async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionResponse:
+    """
+    Transcribe an uploaded audio file using OpenAI's Speech-to-Text capability.
+    """
+    _OPENAI_STT_MODEL = "gpt-4o-transcribe"
+    _OPENAI_CLIENT = OpenAI()
+    
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Audio file upload is required.",
+        )
+    
+    try:
+        audio_bytes = await file.read()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read uploaded audio file: {exc}",
+        ) from exc
+    
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded audio file is empty.",
+        )
+    
+    audio_stream = io.BytesIO(audio_bytes)
+    audio_stream.name = file.filename
+    
+    try:
+        transcription = _OPENAI_CLIENT.audio.transcriptions.create(
+            model=_OPENAI_STT_MODEL,
+            file=audio_stream,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"OpenAI transcription request failed: {exc}",
+        ) from exc
+    
+    text = getattr(transcription, "text", None)
+    if text is None and isinstance(transcription, dict):
+        text = transcription.get("text")
+    
+    if text is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="OpenAI transcription response did not include text.",
+        )
+    
+    return TranscriptionResponse(text=text)
 
 
 @app.post("/OrthodoxAI/v1/stream", status_code=200)

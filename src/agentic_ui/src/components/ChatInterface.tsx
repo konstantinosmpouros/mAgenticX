@@ -29,6 +29,7 @@ import {
   useCenteredComposerLayout
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
+import { transcribeDictation } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -100,6 +101,10 @@ export function ChatInterface() {
   // Sticky user action bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
+
+  // Dictation state
+  const [isDictationActive, setIsDictationActive] = useState(false);
+  const [isDictationSubmitting, setIsDictationSubmitting] = useState(false);
   
   // Function to set conversation messages
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
@@ -136,6 +141,64 @@ export function ChatInterface() {
       duration: opts.duration,
     });
   };
+
+  const handleDictationStart = useCallback(() => {
+    setIsDictationActive(true);
+    setIsDictationSubmitting(false);
+  }, []);
+
+  const handleDictationCancel = useCallback(() => {
+    setIsDictationActive(false);
+    setIsDictationSubmitting(false);
+  }, []);
+
+  const handleDictationSubmit = useCallback(async (audioBlob: Blob) => {
+    if (!userId) {
+      toastWrapper({
+        title: 'Authentication required',
+        description: 'Please sign in again to continue.',
+        variant: 'destructive',
+      });
+      setIsDictationActive(false);
+      setIsDictationSubmitting(false);
+      return;
+    }
+
+    setIsDictationSubmitting(true);
+    try {
+      const mime = audioBlob.type || 'audio/webm';
+      const [, rawExt = 'webm'] = mime.split('/');
+      const ext = rawExt.split(';')[0] || rawExt || 'webm';
+      const filename = `dictation-${Date.now()}.${ext}`;
+      const transcript = await transcribeDictation(userId, audioBlob, filename);
+      const trimmedTranscript = transcript.trim();
+
+      if (!trimmedTranscript) {
+        toastWrapper({
+          title: 'No speech detected',
+          description: 'The transcription was empty. Please try recording again.',
+          variant: 'destructive',
+        });
+      } else {
+        setCurrentMessage(prev => {
+          if (!prev) return trimmedTranscript;
+          const needsSeparator = !/\s$/.test(prev);
+          return `${prev}${needsSeparator ? ' ' : ''}${trimmedTranscript}`;
+        });
+        textareaRef.current?.focus();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Voice transcription failed. Please try again.';
+      toastWrapper({
+        title: 'Dictation failed',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDictationSubmitting(false);
+      setIsDictationActive(false);
+    }
+  }, [userId, toastWrapper, setCurrentMessage, textareaRef, transcribeDictation]);
   
   // Effects
   useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
@@ -441,6 +504,11 @@ export function ChatInterface() {
               containerRef={composerContainerRef}
               emptyWrapperStyle={emptyWrapperStyle}
               textareaMaxHeight={textareaMaxHeight}
+              onDictationStart={handleDictationStart}
+              onDictationCancel={handleDictationCancel}
+              onDictationSubmit={handleDictationSubmit}
+              dictationActive={isDictationActive}
+              dictationSubmitting={isDictationSubmitting}
               
               // UI deps
               AgentIcon={AgentIcon}

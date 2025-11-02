@@ -388,6 +388,35 @@ export async function downloadAttachment({
   URL.revokeObjectURL(objectUrl);
 }
 
+// Transcribe an audio dictation blob via the backend
+export async function transcribeDictation(
+  userId: string,
+  audio: Blob,
+  filename?: string,
+): Promise<string> {
+  const formData = new FormData();
+  const safeName = filename || "dictation.webm";
+  formData.append("audio", audio, safeName);
+
+  const res = await fetch(`/api/users/${userId}/dictation/transcribe`, withCredentials({
+    method: "POST",
+    headers: { "Accept": "application/json" },
+    body: formData,
+  }));
+
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to transcribe dictation: ${res.status}`);
+  }
+
+  const data = await res.json();
+  if (!data || typeof data.text !== "string") {
+    throw new Error("Invalid dictation response.");
+  }
+
+  return data.text;
+}
+
 // Start streaming inference by requesting the bridge SSE endpoint
 export async function streamInference(
   userId: string,

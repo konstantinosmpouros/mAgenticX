@@ -233,7 +233,10 @@ async def upsert_user_from_vault(
     metadata = metadata or {}
 
     result = await session.execute(
-        select(UserTable).where(UserTable.vault_user_id == vault_user_id)
+        select(UserTable).where(
+            UserTable.vault_user_id == vault_user_id,
+            UserTable.is_active == True,
+        )
     )
     user: UserTable | None = result.scalar_one_or_none()
 
