@@ -8,7 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import AgentTable, Base, engine, seed_agents
 from utils import prime_agent_cache
 
-from apis import crud_router, auth_router, inference_router, utils_router
+from apis import (
+    auth_router,
+    inference_router,
+    utils_router,
+    conversations_router,
+    messages_router,
+    attachments_router
+)
 
 
 @asynccontextmanager
@@ -34,6 +41,8 @@ app = FastAPI(title="Bridge Service", lifespan=lifespan)
 add_pagination(app)
 
 app.include_router(auth_router)
-app.include_router(crud_router)
 app.include_router(inference_router)
 app.include_router(utils_router)
+app.include_router(conversations_router)
+app.include_router(messages_router)
+app.include_router(attachments_router)
