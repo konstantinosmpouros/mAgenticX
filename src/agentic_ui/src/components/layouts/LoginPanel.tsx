@@ -83,7 +83,7 @@ export default function LoginPanel({
                                     value={username}
                                     onChange={(e) => onUsernameChange(e.target.value)}
                                     placeholder="Your username"
-                                    className="h-12 rounded-xl border-white/18 bg-white/12 text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
+                                    className="h-12 rounded-xl !border-white/18 !bg-[#3b3b3b] text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
                                 />
                             </div>
 
@@ -98,7 +98,7 @@ export default function LoginPanel({
                                         value={password}
                                         onChange={(e) => onPasswordChange(e.target.value)}
                                         placeholder="Your password"
-                                        className="h-12 rounded-xl border-white/18 bg-white/12 pr-12 text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
+                                        className="h-12 rounded-xl !border-white/18 !bg-[#3b3b3b] pr-12 text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
                                     />
                                     {password.trim() && (
                                         <button
