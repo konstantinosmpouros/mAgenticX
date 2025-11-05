@@ -7,12 +7,15 @@
 </div>
 
 ## Overview
+
 mAgenticX combines a React front end with FastAPI backends, LangGraph agents, and dedicated retrieval services. Conversations, attachments, and telemetry are streamed via the AG-UI protocol and stored durably in Postgres.
 
 ## Purpose
+
 The platform helps teams explore multi-agent scenarios where specialised assistants collaborate. It focuses on transparency—surfacing thoughts, tool calls, and context—while keeping the development experience modular and testable.
 
 ## High-Level Structure
+
 The repository is organised as a suite of services that can run together through Docker Compose or individually for local development. Each component owns a clear responsibility and communicates over HTTP interfaces.
 
 | Layer | What it does | Key Technologies |
@@ -36,6 +39,7 @@ The repository is organised as a suite of services that can run together through
 | `vault` | HashiCorp Vault for login + JWT issuance (internal network). | internal service |
 
 ## Request Flow
+
 1. The UI authenticates through the bridge, which exchanges credentials with Vault and sets session cookies.
 2. Authenticated calls retrieve agent rosters, conversations, and attachments after JWT validation against Vault JWKS.
 3. Inference requests forward chat history (including inline images) to the selected LangGraph endpoint and stream AG-UI frames back to the browser.
@@ -71,6 +75,7 @@ docker compose -f src/docker-compose.yaml down
 After the Vault container boots for the first time, run `src/vault/vault_init.sh` to initialise, unseal, create a userpass login, and provision the OIDC role consumed by the bridge.
 
 ## Local Development
+
 Run services independently when iterating. Each README in the corresponding directory goes into detail; highlights are below.
 
 | Service | Local bootstrap |
@@ -97,6 +102,7 @@ Run services independently when iterating. Each README in the corresponding dire
 | `src/docker-compose.yaml` | Compose orchestration for the full stack. |
 
 ## Tooling & Workflow Tips
+
 - Run `npm run lint` in `src/agentic_ui` to keep the frontend tidy.
 - Python services benefit from Uvicorn’s auto-reload for rapid iteration.
 - Use `docker compose logs -f <service>` to tail container output while exercising the stack.

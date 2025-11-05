@@ -100,6 +100,7 @@ export async function getAgents(): Promise<Agent[]> {
     name: a.name,
     description: a.description,
     icon: mapIcon(a.icon),
+    version: a.version,
   }));
 }
 

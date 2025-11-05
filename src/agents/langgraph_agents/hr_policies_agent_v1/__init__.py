@@ -12,7 +12,12 @@ class HRPoliciesAgentV1(LangGraphAgent):
     """LangGraph template implementation for the HR Policies workflow."""
 
     name = "hr-policies-agent-v1"
+    agent_id = "HR-Policies v1"
+    label = "HR Policies"
     version = "1.0.0"
+    description = "HR policies, leave, benefits, and procedures"
+    icon = "Building2"
+    stream_mode = "custom"
 
     def __init__(self, *, config=None):
         super().__init__(config=config)

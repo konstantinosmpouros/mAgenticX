@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import select
@@ -12,8 +12,8 @@ from database.schemas import (
     CreateConversationResponse,
 )
 from utils import (
+    get_agent_by_id,
     init_conv,
-    validate_agentId,
     validate_convId,
     validate_convId_full,
     validate_userId,
@@ -39,8 +39,10 @@ async def createConversation(
     Create a new conversation for the user and persist the very first message
     (with optional attachments). Returns the full conversation detail.
     """
-    # Validate agent
-    agent = await validate_agentId(db, payload.agentId)
+    # Fetch agent metadata
+    agent = await get_agent_by_id(payload.agentId)
+    if agent is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
     
     # Create conversation + first message atomically
     try:

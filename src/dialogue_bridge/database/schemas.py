@@ -60,10 +60,11 @@ class AgentFull(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     
     id: str
+    slug: str
     name: str
     description: str
     icon: str
-    url: str
+    version: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -75,6 +76,7 @@ class AgentPublic(BaseModel):
     name: str
     description: str
     icon: str
+    version: Optional[str] = None
 
 
 

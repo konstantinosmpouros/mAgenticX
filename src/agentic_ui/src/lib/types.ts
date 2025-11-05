@@ -45,6 +45,7 @@ export type AgentPublic = {
     name: string;
     description: string;
     icon: string; // Lucide icon name string, e.g., "Building2"
+    version?: string;
 };
 
 // Agent type used in the application
@@ -53,6 +54,7 @@ export type Agent = {
     name: string;
     description: string;
     icon: LucideIcon;
+    version?: string;
 };
 
 

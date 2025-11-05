@@ -12,7 +12,12 @@ class OrthodoxAgentV1(LangGraphAgent):
     """LangGraph template implementation for the OrthodoxAI v1 workflow."""
 
     name = "orthodox-agent-v1"
+    agent_id = "OrthodoxAI v1"
+    label = "OrthodoxAI"
     version = "1.0.0"
+    description = "Orthodox biblical and theological insights"
+    icon = "BookOpen"
+    stream_mode = "custom"
 
     def __init__(self, *, config=None):
         super().__init__(config=config)

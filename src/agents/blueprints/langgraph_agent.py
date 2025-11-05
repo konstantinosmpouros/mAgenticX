@@ -1,4 +1,6 @@
+import asyncio
 import json
+import traceback
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
 from pydantic import BaseModel
 
@@ -32,11 +34,16 @@ class LangGraphAgent:
     construction only.
     """
 
+    # Stable slug used for registry lookups and URL routing
     name: str = "base-agent"
+    # Human-readable identifiers exposed to downstream consumers
+    agent_id: str = "base-agent"
+    label: str = "Base Agent"
     version: str = "0.0.1"
     type: str = "langgraph agent"
-    description: str = None
-    icon: str = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    stream_mode: str = "custom"
 
     agui: AGUIEmitter = AGUIEmitter()
 
@@ -71,12 +78,21 @@ class LangGraphAgent:
     # Metadata & utilities
     # ---------------------------------------------------------------------
     @property
-    def metadata(self) -> Dict[str, str]:
-        """Expose a lightweight metadata dictionary."""
-        return {"name": self.name,
-                "version": self.version,
-                "type": self.type,
-                "description": self.description or ""
+    def metadata(self) -> Dict[str, Any]:
+        """Expose the class-level manifest for this agent instance."""
+        return self.__class__.manifest()
+
+    @classmethod
+    def manifest(cls) -> Dict[str, Any]:
+        """Return the registry manifest describing this agent template."""
+        return {
+            "id": cls.agent_id,
+            "slug": cls.name,
+            "name": cls.label,
+            "version": cls.version,
+            "type": cls.type,
+            "description": cls.description or "",
+            "icon": cls.icon or "",
         }
 
 
@@ -177,17 +193,18 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Async inference function
     # ---------------------------------------------------------------------
-    async def astream(self, *args: Any, **kwargs: Any):
-        async for chunk in self.graph.astream(*args, **kwargs):
-            # If nodes emit pre-encoded SSE frames (AG-UI EventEncoder), forward as-is
+    async def astream(self, payload: Mapping[str, Any]) -> Any:
+        """Stream LangGraph chunks as SSE bytes using the configured stream mode."""
+        try:
+            async for chunk in self.graph.astream(payload, stream_mode=self.stream_mode):
                 if isinstance(chunk, (str, bytes)):
-                    if isinstance(chunk, str):
-                        yield chunk.encode("utf-8")
-                    else:
-                        yield chunk
+                    yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
                 else:
-                    # Fallback: wrap dicts as SSE data lines
                     yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+        except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
+            return
+        except Exception as exc:  # noqa: BLE001
+            yield self._encode_run_error(exc)
 
 
 
@@ -235,3 +252,17 @@ class LangGraphAgent:
             normalised.append(candidate)
             
         return normalised
+
+    @staticmethod
+    def _format_run_error_message(exc: BaseException) -> str:
+        """Create a verbose error description suitable for RUN_ERROR frames."""
+        tb = traceback.format_exc()
+        if tb and tb.strip() and tb.strip() != "NoneType: None":
+            return tb.strip()
+        return f"{type(exc).__name__}: {exc}"
+
+    @classmethod
+    def _encode_run_error(cls, exc: BaseException) -> bytes:
+        """Return an SSE-formatted RUN_ERROR frame."""
+        err = {"type": "RUN_ERROR", "message": cls._format_run_error_message(exc)}
+        return ("data: " + json.dumps(err) + "\n\n").encode("utf-8")

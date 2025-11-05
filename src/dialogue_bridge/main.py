@@ -5,8 +5,8 @@ from fastapi_pagination import add_pagination
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import AgentTable, Base, engine, seed_agents
-from utils import prime_agent_cache
+from database import AgentTable, Base, engine
+from utils import prime_agent_cache, sync_agents_with_service, _load_active_agents
 
 from apis import (
     auth_router,
@@ -24,15 +24,13 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Seed agents and prime cache
-    async with AsyncSession(engine) as session:
-        await seed_agents(session)
-
-        result = await session.execute(
-            select(AgentTable).where(AgentTable.is_active == True)
-        )
-        agents = list(result.scalars().all())
-        prime_agent_cache(agents)
+    # Sync agents and prime cache
+    async with AsyncSession(engine) as db:
+        agents = await sync_agents_with_service(db)
+        if not agents:
+            agents = _load_active_agents()
+            if agents:
+                prime_agent_cache(agents)
 
     yield
 

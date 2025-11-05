@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import ConversationTable, UserTable, get_db
 from utils import (
+    build_agent_stream_url,
+    get_agent_by_id,
     serialise_message_with_images_for_agent,
-    validate_agentId,
     validate_convId_full,
     validate_userId,
 )
@@ -33,15 +34,18 @@ async def startInferenceStream(
     """
     Proxy an inference stream from the selected agent to the UI as SSE.
     - Builds chat history for the agent as List[Dict[str, str]] (role/content only).
-    - Looks up the agent URL from the conversation's agent.
-    - POSTs to the agent stream endpoint and forwards bytes as-is.
+    - Looks up the agent slug from the conversation's agent.
+    - POSTs to the agents service stream endpoint and forwards bytes as-is.
     Image attachments are forwarded to the agent as base64 data URLs.
     """
-    # Resolve agent URL
-    agent = await validate_agentId(db, current_conv.agent_id)
-    agent_url = agent.url if agent else None
-    if not agent_url:
-        raise HTTPException(status_code=500, detail="Agent URL not found for this conversation")
+    # Resolve agent stream endpoint
+    agent = await get_agent_by_id(current_conv.agent_id)
+    if agent is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Agent metadata unavailable for this conversation")
+    agent_slug = getattr(agent, "slug", None)
+    if not agent_slug:
+        raise HTTPException(status_code=500, detail="Agent slug not available for this conversation")
+    agent_url = build_agent_stream_url(agent_slug)
 
     # Build full chat history (role/content only)
     history = [serialise_message_with_images_for_agent(m) for m in current_conv.messages]

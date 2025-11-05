@@ -1,9 +1,14 @@
 import base64
-from typing import Optional, List, Dict, Iterable, Any
+import logging
+import os
+from typing import Optional, List, Dict, Iterable, Any, Sequence
 
-from sqlalchemy import select
+import httpx
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.sql import func
 
 from fastapi import Depends, HTTPException
 
@@ -24,6 +29,10 @@ from database.schemas import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+AGENTS_SERVICE_URL = os.getenv("AGENTS_SERVICE_URL", "http://agents:8003")
+_AGENTS_DISCOVERY_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/agents"
 _AGENT_CACHE: Dict[str, AgentTable] = {}
 
 
@@ -38,22 +47,113 @@ def get_cached_agents() -> List[AgentTable]:
     return list(_AGENT_CACHE.values())
 
 
-async def validate_agentId(db: AsyncSession, agent_id: str) -> AgentTable:
+def build_agent_stream_url(slug: str) -> str:
+    """Return the streaming endpoint for a given agent slug."""
+    return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{slug}/stream"
+
+
+async def _load_active_agents(db: AsyncSession) -> List[AgentTable]:
+    result = await db.execute(select(AgentTable).where(AgentTable.is_active == True))
+    return list(result.scalars().all())
+
+
+async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
+    """
+    Discover agents from the agents service, upsert them into the database, and
+    toggle their active status. If the agents service is unreachable, fall back
+    to the currently active agents stored in the database.
+    """
+    # Fetch agent manifests from the agents service
+    manifests: Sequence[Dict[str, Any]] | None = None
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(_AGENTS_DISCOVERY_ENDPOINT)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list):
+                manifests = data
+            else:
+                logger.warning("Unexpected agents payload shape: %s", type(data).__name__)
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to refresh agents from service: %s", exc)
+
+    # If unable to fetch manifests, fall back to active agents in DB (this should never be empty)
+    if manifests is None:
+        fallback = await _load_active_agents(db)
+        if fallback:
+            prime_agent_cache(fallback)
+        return fallback
+
+    manifest_ids: set[str] = set()
+    operations_performed = False
+
+    # Upsert discovered agents into the database
+    for manifest in manifests:
+        agent_id = manifest.get("id")
+        slug = manifest.get("slug") or manifest.get("name") or agent_id
+        if not agent_id or not slug:
+            logger.warning("Skipping agent manifest missing id/slug: %s", manifest)
+            continue
+        manifest_ids.add(str(agent_id))
+
+        stmt = (
+            insert(AgentTable)
+            .values(
+                id=str(agent_id),
+                slug=str(slug),
+                name=manifest.get("name") or str(agent_id),
+                description=manifest.get("description") or "",
+                icon=manifest.get("icon") or "",
+                version=manifest.get("version"),
+                is_active=True,
+            )
+            .on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "slug": str(slug),
+                    "name": manifest.get("name") or str(agent_id),
+                    "description": manifest.get("description") or "",
+                    "icon": manifest.get("icon") or "",
+                    "version": manifest.get("version"),
+                    "is_active": True,
+                    "updated_at": func.now(),  # type: ignore[name-defined]
+                },
+            )
+        )
+        await db.execute(stmt)
+        operations_performed = True
+
+    # Deactivate agents not present in the latest manifests
+    if manifest_ids:
+        await db.execute(
+            update(AgentTable)
+            .where(AgentTable.id.notin_(list(manifest_ids)))
+            .values(is_active=False)
+        )
+        operations_performed = True
+    else:
+        await db.execute(update(AgentTable).values(is_active=False))
+        operations_performed = True
+
+    # Commit changes
+    if operations_performed:
+        await db.commit()
+
+    # Load and cache active agents
+    refreshed = await _load_active_agents(db)
+    prime_agent_cache(refreshed)
+    return refreshed
+
+
+async def get_agent_by_id(agent_id: str) -> AgentTable | None:
+    """Fetch an agent from cache or database without enforcing validation semantics."""
     agent = _AGENT_CACHE.get(agent_id)
-    if agent is not None:
+    if agent is not None and getattr(agent, "is_active", True):
         return agent
 
-    q = select(AgentTable).where(
-        AgentTable.id == agent_id,
-        AgentTable.is_active == True
-    )
-    res = await db.execute(q)
-    agent = res.scalar_one_or_none()
-    if not agent:
-        raise HTTPException(status_code=400, detail="Unknown or inactive agent.")
-
-    _AGENT_CACHE[agent.id] = agent
-    return agent
+    # Cache should always be populated during startup sync; return None if not found.
+    return None
 
 
 async def validate_userId(

@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, File, UploadFile, status, HTTPException
 import httpx
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import AgentTable, get_db, UserTable
+from database import get_db, UserTable
 from database.schemas import AgentPublic, DictationResponse
-from utils import get_cached_agents, prime_agent_cache, validate_userId
+from utils import (
+    AGENTS_SERVICE_URL,
+    get_cached_agents,
+    sync_agents_with_service,
+    validate_userId,
+)
 from vault_auth.auth import require_token_claims
 
 
@@ -26,7 +30,7 @@ async def transcribe_dictation(
     Accept an audio upload from the UI, proxy it to the agents STT endpoint,
     and return the transcription text.
     """
-    _AGENTS_STT_ENDPOINT = "http://agents:8003/dictate/transcribe"
+    _AGENTS_STT_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/dictate/transcribe"
     filename = audio.filename or "dictation.wav"
 
     try:
@@ -84,19 +88,16 @@ async def transcribe_dictation(
         ) from exc
 
 
-
 @router.get("/agents", response_model=list[AgentPublic], status_code=status.HTTP_200_OK)
 async def get_available_agents(
     _: dict = Depends(require_token_claims),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Fetch active agents from the cache, falling back to the database if needed.
+    Return the active agents, preferring the in-memory cache and refreshing
+    from the agents service only when the cache is empty.
     """
     agents = get_cached_agents()
     if not agents:
-        result = await db.execute(select(AgentTable).where(AgentTable.is_active == True))
-        agents = list(result.scalars().all())
-        if agents:
-            prime_agent_cache(agents)
+        agents = await sync_agents_with_service(db)
     return [AgentPublic.model_validate(a) for a in agents]
