@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AgentTable, Base, engine
-from utils import prime_agent_cache, sync_agents_with_service, _load_active_agents
+from utils import sync_agents_with_service
 
 from apis import (
     auth_router,
@@ -23,14 +23,6 @@ async def lifespan(app: FastAPI):
     # Initialize database schema
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    # Sync agents and prime cache
-    async with AsyncSession(engine) as db:
-        agents = await sync_agents_with_service(db)
-        if not agents:
-            agents = _load_active_agents()
-            if agents:
-                prime_agent_cache(agents)
 
     yield
 

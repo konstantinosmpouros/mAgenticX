@@ -77,18 +77,10 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
                 logger.warning("Unexpected agents payload shape: %s", type(data).__name__)
     except httpx.HTTPError as exc:
         logger.warning("Failed to refresh agents from service: %s", exc)
-
-    # If unable to fetch manifests, fall back to active agents in DB (this should never be empty)
-    if manifests is None:
-        fallback = await _load_active_agents(db)
-        if fallback:
-            prime_agent_cache(fallback)
-        return fallback
-
-    manifest_ids: set[str] = set()
-    operations_performed = False
+        raise HTTPException(503, "Agents service unreachable for agent synchronization.") from exc
 
     # Upsert discovered agents into the database
+    manifest_ids: set[str] = set()
     for manifest in manifests:
         agent_id = manifest.get("id")
         slug = manifest.get("slug") or manifest.get("name") or agent_id
@@ -122,7 +114,6 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
             )
         )
         await db.execute(stmt)
-        operations_performed = True
 
     # Deactivate agents not present in the latest manifests
     if manifest_ids:
@@ -131,14 +122,12 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
             .where(AgentTable.id.notin_(list(manifest_ids)))
             .values(is_active=False)
         )
-        operations_performed = True
     else:
         await db.execute(update(AgentTable).values(is_active=False))
-        operations_performed = True
+
 
     # Commit changes
-    if operations_performed:
-        await db.commit()
+    await db.commit()
 
     # Load and cache active agents
     refreshed = await _load_active_agents(db)
@@ -161,7 +150,7 @@ async def validate_userId(
     token_claims: Dict[str, Any] = Depends(require_token_claims),
     db: AsyncSession = Depends(get_db)
 ) -> UserTable:
-    """Ensure the caller's JWT authorises access to the requested user."""
+    """Ensure the caller's JWT authorizes access to the requested user."""
     result = await db.execute(
         select(UserTable).filter_by(id=user_id)
     )

@@ -97,7 +97,9 @@ async def get_available_agents(
     Return the active agents, preferring the in-memory cache and refreshing
     from the agents service only when the cache is empty.
     """
+    # Try to get agents from cache first
     agents = get_cached_agents()
+    # If cache is empty, sync with agents service once more
     if not agents:
         agents = await sync_agents_with_service(db)
     return [AgentPublic.model_validate(a) for a in agents]

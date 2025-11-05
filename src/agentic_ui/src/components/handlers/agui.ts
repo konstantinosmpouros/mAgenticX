@@ -232,6 +232,14 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       return;
     }
     console.error('Stream error', err);
+    const stagedId = runtime.stagedMessageId;
+    if (stagedId) {
+      setMessages((prev: MessageOut[]) => prev.filter((m) => m.id !== stagedId));
+    }
+    setThinkingState((prev: any) =>
+      prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : null,
+    );
+    if (setShowAiTransition) setShowAiTransition(false);
     toast({ title: 'Stream error', description: 'The agent stream ended unexpectedly.', variant: 'destructive' });
   }
 }

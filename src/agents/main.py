@@ -58,7 +58,7 @@ async def _lifespan(app: FastAPI):
         loop.set_exception_handler(old)
 
 
-app = FastAPI(lifespan=_lifespan, title="Agents Service", )
+app = FastAPI(lifespan=_lifespan, title="Agents Service")
 
 
 class Request(BaseModel):
