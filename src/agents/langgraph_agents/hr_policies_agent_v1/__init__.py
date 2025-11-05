@@ -1,8 +1,8 @@
 from langgraph.graph import StateGraph, START, END
 
 from blueprints import LangGraphAgent
-from agents.langgraph_agents.hr_policies_agent_v1.agents import build_hr_agents
-from agents.langgraph_agents.hr_policies_agent_v1.nodes import (
+from langgraph_agents.hr_policies_agent_v1.agents import build_hr_agents
+from langgraph_agents.hr_policies_agent_v1.nodes import (
     HRPoliciesV1_State,
     build_hr_nodes,
 )

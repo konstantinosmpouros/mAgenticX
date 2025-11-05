@@ -7,8 +7,8 @@ import httpx
 from pydantic import BaseModel
 
 from config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
-from agents.langgraph_agents.retail_agent_v1.agents import RetailAgents
-from agents.langgraph_agents.retail_agent_v1.prompt_templates import (
+from langgraph_agents.retail_agent_v1.agents import RetailAgents
+from langgraph_agents.retail_agent_v1.prompt_templates import (
     schema_help_template,
     answer_gen_template,
 )
@@ -55,6 +55,7 @@ class RetailNodes:
 def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNodes:
     """Create runtime-bound node callables that close over agents and AG-UI."""
 
+
     async def analysis(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter):
         message_id = state["message_id"] or str(uuid4())
         agui.thinking_start(writer)
@@ -97,9 +98,11 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
             "message_id": message_id,
         }
 
+
     async def check_intent(state: RetailV1_State, config: RunnableConfig) -> Literal["query_gen", "simple_generation"]:
         """Decide whether to generate SQL or reply directly."""
         return "query_gen" if state["analysis_results"].intent == "data" else "simple_generation"
+
 
     async def simple_generation(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter):
         payload = {
@@ -147,6 +150,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         agui.response_end(writer, state["message_id"])
         return {"response": response}
 
+
     async def query_gen(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter):
         agui.thought(writer, "Generating SQL query based on analysis results…")
 
@@ -174,6 +178,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
             sql_output = await agents.sql_gen_agent.ainvoke(payload, config)
 
         return {"sql_query": sql_output.sql_query, "sql_cycle": state["sql_cycle"] + 1}
+
 
     async def query_execution(state: RetailV1_State, writer: StreamWriter):
         agui.thought(writer, "Executing SQL query…")
@@ -221,12 +226,14 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
             "error_message": None,
         }
 
+
     async def check_sql_results(state: RetailV1_State, writer: StreamWriter) -> Literal["complex_generation", "query_gen"]:
         if state["error_message"] is not None and state["sql_cycle"] < 2:
             agui.thought(writer, "❌ Error executing SQL query. Will retry with error-aware generator…")
             return "query_gen"
         agui.thought(writer, "✅ SQL executed successfully. Moving to final answer generation…")
         return "complex_generation"
+
 
     async def complex_generation(state: RetailV1_State, config: RunnableConfig, writer: StreamWriter):
         agui.thinking_end(writer)
@@ -273,6 +280,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
 
         agui.response_end(writer, state["message_id"])
         return {"response": response}
+
 
     return RetailNodes(
         analysis=analysis,

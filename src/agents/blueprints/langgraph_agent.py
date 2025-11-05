@@ -34,6 +34,9 @@ class LangGraphAgent:
 
     name: str = "base-agent"
     version: str = "0.0.1"
+    type: str = "langgraph agent"
+    description: str = None
+    icon: str = None
 
     agui: AGUIEmitter = AGUIEmitter()
 
@@ -70,7 +73,11 @@ class LangGraphAgent:
     @property
     def metadata(self) -> Dict[str, str]:
         """Expose a lightweight metadata dictionary."""
-        return {"name": self.name, "version": self.version}
+        return {"name": self.name,
+                "version": self.version,
+                "type": self.type,
+                "description": self.description or ""
+        }
 
 
 

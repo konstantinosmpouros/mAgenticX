@@ -1,8 +1,8 @@
 from langgraph.graph import StateGraph, START, END
 
 from blueprints import LangGraphAgent
-from agents.langgraph_agents.orthodox_agent_v1.agents import build_orthodox_agents
-from agents.langgraph_agents.orthodox_agent_v1.nodes import (
+from langgraph_agents.orthodox_agent_v1.agents import build_orthodox_agents
+from langgraph_agents.orthodox_agent_v1.nodes import (
     OrthodoxV1_State,
     build_orthodox_nodes,
 )

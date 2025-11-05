@@ -1,8 +1,8 @@
 from langgraph.graph import StateGraph
 
 from blueprints import LangGraphAgent
-from agents.langgraph_agents.retail_agent_v1.agents import build_retail_agents
-from agents.langgraph_agents.retail_agent_v1.nodes import RetailV1_State, build_retail_nodes
+from langgraph_agents.retail_agent_v1.agents import build_retail_agents
+from langgraph_agents.retail_agent_v1.nodes import RetailV1_State, build_retail_nodes
 
 
 class RetailAgentV1(LangGraphAgent):

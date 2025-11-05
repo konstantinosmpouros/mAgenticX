@@ -6,11 +6,11 @@ from langgraph.prebuilt import create_react_agent as react_agent
 
 from utils import make_merge_with_template
 from llms import gpt_o4_mini, gpt_4_1_mini, gpt_4o
-from agents.langgraph_agents.retail_agent_v1.structured_outputs import (
+from langgraph_agents.retail_agent_v1.structured_outputs import (
     AnalysisOutput,
     SQLQueryOutput,
 )
-from agents.langgraph_agents.retail_agent_v1.prompt_templates import (
+from langgraph_agents.retail_agent_v1.prompt_templates import (
     analyzer_template,
     sql_gen_template,
     sql_error_gen_template,

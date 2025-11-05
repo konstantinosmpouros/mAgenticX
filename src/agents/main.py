@@ -7,7 +7,7 @@ PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
 # Load LangGraph agents
-from agents.langgraph_agents import (
+from langgraph_agents import (
     HRPoliciesAgentV1,
     RetailAgentV1,
     OrthodoxAgentV1,

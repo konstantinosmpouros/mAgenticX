@@ -8,8 +8,8 @@ import httpx
 from pydantic import BaseModel, Field
 
 from config import HR_ENDPOINT as ENDPOINT
-from agents.langgraph_agents.hr_policies_agent_v1.agents import HRAgents
-from agents.langgraph_agents.hr_policies_agent_v1.prompt_templates import (
+from langgraph_agents.hr_policies_agent_v1.agents import HRAgents
+from langgraph_agents.hr_policies_agent_v1.prompt_templates import (
     non_hr_gen_template,
     hr_gen_template,
 )

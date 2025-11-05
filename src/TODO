@@ -17,6 +17,7 @@
 
 ## Agents
 
+- Make one general API for all the agent object and move the error handling in the blueprint and if so delete the url from the agents in the db, create an api with all the available objects/agents found in the agents dir and populate the ui with this api and no need for url mapping per agent, just the name of the agent object to create the object and start streaming. Also the blueprints should have the info of the agent needed for the UI and the BFF should populate the db with the available agents and if a new agent was found from the get available agents that doesn't exist in the db, upsert it. This can automatically update the is_active flag.
 - Improve the current agent's architecture
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Create a deep research agent with deep agents and make it available

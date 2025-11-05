@@ -6,12 +6,12 @@ from langgraph.prebuilt import create_react_agent as react_agent
 
 from utils import make_merge_with_template
 from llms import gpt_o4_mini, gpt_o3_mini, gpt_4o, gpt_5
-from agents.langgraph_agents.orthodox_agent_v1.structured_outputs import (
+from langgraph_agents.orthodox_agent_v1.structured_outputs import (
     AnalyzerOutput,
     ReflectionOutput,
     RetrievalQueriesOutput,
 )
-from agents.langgraph_agents.orthodox_agent_v1.prompt_templates import (
+from langgraph_agents.orthodox_agent_v1.prompt_templates import (
     analyzer_template,
     summarization_template,
     reflection_template,

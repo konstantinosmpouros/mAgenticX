@@ -8,8 +8,8 @@ import httpx
 from pydantic import BaseModel
 
 from config import ORTHODOX_ENDPOINT as ENDPOINT
-from agents.langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
-from agents.langgraph_agents.orthodox_agent_v1.prompt_templates import (
+from langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
+from langgraph_agents.orthodox_agent_v1.prompt_templates import (
     nonreligious_gen_template,
     religious_gen_template,
 )
