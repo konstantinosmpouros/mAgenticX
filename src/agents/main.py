@@ -1,5 +1,4 @@
 # Path setup
-from contextlib import asynccontextmanager
 from pathlib import Path
 import os
 import sys
@@ -7,22 +6,18 @@ import sys
 PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
-# Load LangGraph agents (module import ensures subclasses are registered)
-import langgraph_agents
 
 import asyncio
 import io
-import inspect
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Type
+from typing import List
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from contextlib import asynccontextmanager
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 from openai import OpenAI
-
-from blueprints import LangGraphAgent
+from schemas import Request, TranscriptionResponse, AgentManifest
+from utils import AGENT_REGISTRY, _instantiate_agent
 
 
 
@@ -61,65 +56,9 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(lifespan=_lifespan, title="Agents Service")
 
 
-class Request(BaseModel):
-    """Pydantic model for incoming requests: a list of user input dictionaries."""
-    user_input: List[Dict[str, Any]]
-    config: Optional[Dict[str, Any]] = None
-
-
-class TranscriptionResponse(BaseModel):
-    text: str
-
-
-class AgentManifest(BaseModel):
-    id: str
-    slug: str
-    name: str
-    version: Optional[str] = None
-    type: str
-    description: str
-    icon: str
-
-
-@dataclass(frozen=True)
-class AgentDefinition:
-    slug: str
-    cls: Type[LangGraphAgent]
-    manifest: Dict[str, Any]
-
-
-def _discover_agents() -> Dict[str, AgentDefinition]:
-    """Inspect langgraph_agents exports and register available agent templates."""
-    registry: Dict[str, AgentDefinition] = {}
-    for attr_name in dir(langgraph_agents):
-        candidate = getattr(langgraph_agents, attr_name, None)
-        if not inspect.isclass(candidate):
-            continue
-        if not issubclass(candidate, LangGraphAgent) or candidate is LangGraphAgent:
-            continue
-        slug = getattr(candidate, "name", None)
-        if not isinstance(slug, str) or not slug:
-            continue
-        manifest = candidate.manifest()
-        registry[slug] = AgentDefinition(slug=slug, cls=candidate, manifest=manifest)
-    return registry
-
-
-AGENT_REGISTRY: Dict[str, AgentDefinition] = _discover_agents()
-
-
-def _instantiate_agent(definition: AgentDefinition, *, config: Optional[Dict[str, Any]]) -> LangGraphAgent:
-    """Instantiate an agent template, wrapping errors into HTTPExceptions."""
-    try:
-        return definition.cls(config=config)
-    except Exception as exc:  # noqa: BLE001
-        detail = f"Failed to initialise agent '{definition.slug}': {exc}"
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
-
-
-# --------------------------------------
+# ------------------------------------------------------------------
 # Dictation Endpoint
-# --------------------------------------
+# ------------------------------------------------------------------
 @app.post("/dictate/transcribe", response_model=TranscriptionResponse, status_code=status.HTTP_200_OK)
 async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionResponse:
     """
@@ -176,9 +115,9 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
 
 
 
-# --------------------------------------
+# ------------------------------------------------------------------
 # Available Agent Endpoint
-# --------------------------------------
+# ------------------------------------------------------------------
 @app.get("/agents", response_model=List[AgentManifest], status_code=status.HTTP_200_OK)
 async def get_available_agents() -> List[AgentManifest]:
     """Return the discovered LangGraph agent manifests for downstream services."""
@@ -188,9 +127,9 @@ async def get_available_agents() -> List[AgentManifest]:
 
 
 
-# --------------------------------------
+# ------------------------------------------------------------------
 # Agent Interaction Endpoint
-# --------------------------------------
+# ------------------------------------------------------------------
 @app.post("/agents/{agent_slug}/stream", status_code=status.HTTP_200_OK)
 async def stream_agent(agent_slug: str, req: Request):
     """Stream responses from the requested agent template."""
