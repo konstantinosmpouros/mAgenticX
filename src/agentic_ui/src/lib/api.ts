@@ -349,7 +349,17 @@ export async function streamInference(
   }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to start inference stream: ${res.status}`);
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore body parse issues
+    }
+    const error = new Error(detail || `Failed to start inference stream: ${res.status}`);
+    (error as any).status = res.status;
+    (error as any).detail = detail;
+    throw error;
   }
   if (!res.body) {
     throw new Error(`Failed to start inference stream: ${res.status}`);

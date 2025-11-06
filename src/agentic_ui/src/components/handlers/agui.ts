@@ -240,7 +240,19 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : null,
     );
     if (setShowAiTransition) setShowAiTransition(false);
-    toast({ title: 'Stream error', description: 'The agent stream ended unexpectedly.', variant: 'destructive' });
+    const status = (err as any)?.status;
+    const detail = (err as any)?.detail;
+    const description =
+      status === 404
+        ? 'Agent metadata not found. Please select a different agent and try again.'
+        : detail
+          ? `The agent stream ended unexpectedly: ${detail}`
+          : 'The agent stream ended unexpectedly.';
+    toast({
+      title: 'Stream error',
+      description,
+      variant: 'destructive',
+    });
   }
 }
 

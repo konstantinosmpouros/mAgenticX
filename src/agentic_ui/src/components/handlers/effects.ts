@@ -29,15 +29,28 @@ export function useEnsureDefaultAgentEffect(params: {
   agents: Agent[];
   selectedAgent: string;
   setSelectedAgent: (v: string) => void;
+  allowMissingAgentId?: string | null;
 }) {
-  const { isLoggedIn, userId, agents, selectedAgent, setSelectedAgent } = params;
+  const {
+    isLoggedIn,
+    userId,
+    agents,
+    selectedAgent,
+    setSelectedAgent,
+    allowMissingAgentId,
+  } = params;
 
   useEffect(() => {
     if (isLoggedIn && userId && agents.length > 0) {
       const exists = agents.some(a => a.id === selectedAgent);
-      if (!exists) setSelectedAgent(agents[0].id);
+      if (!exists) {
+        if (allowMissingAgentId && selectedAgent === allowMissingAgentId) {
+          return;
+        }
+        setSelectedAgent(agents[0].id);
+      }
     }
-  }, [isLoggedIn, userId, agents]);
+  }, [isLoggedIn, userId, agents, selectedAgent, allowMissingAgentId, setSelectedAgent]);
 }
 
 export function useAuthRehydrateEffect(params: {

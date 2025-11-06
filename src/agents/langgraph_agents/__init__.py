@@ -1,3 +1,3 @@
 from langgraph_agents.hr_policies_agent_v1 import HRPoliciesAgentV1
-# from langgraph_agents.orthodox_agent_v1 import OrthodoxAgentV1
-# from langgraph_agents.retail_agent_v1 import RetailAgentV1
+from langgraph_agents.orthodox_agent_v1 import OrthodoxAgentV1
+from langgraph_agents.retail_agent_v1 import RetailAgentV1

@@ -58,6 +58,7 @@ export function ChatInterface() {
   
   // Main variables use for storing info from the db and present it constantly
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   
   // Conversation list pagination state (persist across sidebar open/close)
@@ -198,7 +199,27 @@ export function ChatInterface() {
   }, [userId, toastWrapper, setCurrentMessage, textareaRef, transcribeDictation, setDictationStatus]);
   
   // Effects
-  useEnsureDefaultAgentEffect({ isLoggedIn, userId, agents, selectedAgent, setSelectedAgent });
+  useEnsureDefaultAgentEffect({
+    isLoggedIn,
+    userId,
+    agents,
+    selectedAgent,
+    setSelectedAgent,
+    allowMissingAgentId: inactiveAgentFallback?.id ?? currentConversation?.agent?.id ?? null,
+  });
+  useEffect(() => {
+    if (!currentConversation?.agent) {
+      setInactiveAgentFallback(null);
+      return;
+    }
+    const convAgent = currentConversation.agent;
+    const existsInList = agents.some((agent) => agent.id === convAgent.id);
+    if (!existsInList || !convAgent.isActive) {
+      setInactiveAgentFallback(convAgent);
+    } else {
+      setInactiveAgentFallback(null);
+    }
+  }, [currentConversation, agents]);
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
   useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
@@ -301,6 +322,8 @@ export function ChatInterface() {
     setConversations,
     currentConversation,
     handleStopStreaming,
+    agents,
+    setInactiveAgentFallback,
     setLoadingConversation,
     setIsClearing,
     setSelectedAgent,
@@ -389,7 +412,12 @@ export function ChatInterface() {
   });
   
   // Determine current agent and its icon
-  const currentAgent = agents.find(a => a.id === selectedAgent);
+  const conversationAgent = currentConversation?.agent ?? null;
+  const selectedAgentFromList = agents.find(a => a.id === selectedAgent) ?? null;
+  const fallbackSelectedAgent =
+    inactiveAgentFallback && inactiveAgentFallback.id === selectedAgent ? inactiveAgentFallback : null;
+  const effectiveSelectedAgent = selectedAgentFromList ?? fallbackSelectedAgent ?? null;
+  const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   const AgentIcon = currentAgent?.icon || Building2;
   
   // Main Chat Interface
@@ -429,6 +457,7 @@ export function ChatInterface() {
             {/* Header */}
             <Header
               agents={agents}
+              inactiveAgent={inactiveAgentFallback}
               selectedAgent={selectedAgent}
               onAgentChange={handleAgentChange}
               showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
@@ -448,27 +477,27 @@ export function ChatInterface() {
             {/* Chat Messages Container*/}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <ConversationContainer
-              messages={currentConversation?.messages ?? []}
-              loadingConversation={loadingConversation}
-              isClearing={isClearing}
-              expandedThinking={expandedThinking}
-              isImageFile={isImageFile}
-              onDownloadAttachment={handleFileDownload}
-              onImageClick={handleImageClick}
-              onToggleThinking={toggleThinking}
-              copiedId={copiedId}
-              onCopy={handleCopy}
-              onLike={handleLike}
-              onDislike={handleDislike}
-              stickyUserBarId={stickyUserBarId}
-              onFlashUserActionBar={flashUserActionBar}
-              AiTransitionIndicator={AiTransitionIndicator}
-              thinkingState={thinkingState}
-              messagesEndRef={messagesEndRef}
-              AgentIcon={AgentIcon}
-              currentAgent={currentAgent}
-              onScrolledPastTop={handleHeaderScrollState}
-            />
+                messages={currentConversation?.messages ?? []}
+                loadingConversation={loadingConversation}
+                isClearing={isClearing}
+                expandedThinking={expandedThinking}
+                isImageFile={isImageFile}
+                onDownloadAttachment={handleFileDownload}
+                onImageClick={handleImageClick}
+                onToggleThinking={toggleThinking}
+                copiedId={copiedId}
+                onCopy={handleCopy}
+                onLike={handleLike}
+                onDislike={handleDislike}
+                stickyUserBarId={stickyUserBarId}
+                onFlashUserActionBar={flashUserActionBar}
+                AiTransitionIndicator={AiTransitionIndicator}
+                thinkingState={thinkingState}
+                messagesEndRef={messagesEndRef}
+                AgentIcon={AgentIcon}
+                currentAgent={currentAgent ?? undefined}
+                onScrolledPastTop={handleHeaderScrollState}
+              />
             </div>
             
             {/* Input Area */}
@@ -511,7 +540,7 @@ export function ChatInterface() {
               TooltipTrigger={TooltipTrigger}
               TooltipContent={TooltipContent}
               toast={toast}
-              currentAgent={currentAgent}
+              currentAgent={currentAgent ?? undefined}
               Textarea={Textarea}
             />
             
@@ -553,4 +582,3 @@ export function ChatInterface() {
     </SidebarProvider>
   );
 }
-

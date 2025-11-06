@@ -415,7 +415,7 @@ export default function ConversationContainer({
                             <>
                               <span className="flex items-center gap-1">
                                 <AgentIcon size={14} />
-                                {currentAgent?.name}
+                                {currentAgent?.name ?? "Unknown agent"}
                               </span>
 
                               <div className="flex justify-start gap-1">

@@ -41,7 +41,10 @@ async def startInferenceStream(
     # Resolve agent stream endpoint
     agent = await get_agent_by_id(current_conv.agent_id)
     if agent is None:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Agent metadata unavailable for this conversation")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent metadata unavailable for this conversation",
+        )
     agent_slug = getattr(agent, "slug", None)
     if not agent_slug:
         raise HTTPException(status_code=500, detail="Agent slug not available for this conversation")

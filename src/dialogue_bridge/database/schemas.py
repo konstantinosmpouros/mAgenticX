@@ -92,8 +92,6 @@ class ConversationSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     
     id: str
-    agentId: str = Field(..., validation_alias="agent_id")
-    agentName: Optional[str] = Field(None, validation_alias="agent_name")
     agent: AgentPublic = Field(..., validation_alias="agent")
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")
@@ -155,8 +153,6 @@ class ConversationDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     
     id: str
-    agentId: str = Field(..., validation_alias="agent_id")
-    agentName: Optional[str] = Field(None, validation_alias="agent_name")
     agent: AgentPublic = Field(..., validation_alias="agent")
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")

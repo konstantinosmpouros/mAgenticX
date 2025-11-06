@@ -1,6 +1,6 @@
 import { getConversationDetail, deleteConversation, getConversations } from '@/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
-import type { ConversationDetail, ConversationSummary } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationSummary } from '@/lib/types';
 
 type ConversationsCtx = {
   userId: string | null;
@@ -8,6 +8,8 @@ type ConversationsCtx = {
   setConversations: (updater: (prev: ConversationSummary[]) => ConversationSummary[]) => void;
   currentConversation: ConversationDetail | null;
   handleStopStreaming?: () => void;
+  agents: Agent[];
+  setInactiveAgentFallback: (agent: Agent | null) => void;
 
   convPage: number;
   setConvPage: Dispatch<SetStateAction<number>>;
@@ -39,7 +41,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setConversations,
     currentConversation,
     handleStopStreaming,
-
+    agents,
+    setInactiveAgentFallback,
     convPage,
     setConvPage,
     convHasMore,
@@ -47,7 +50,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     convIsLoadingMore,
     setConvIsLoadingMore,
     pageSize,
-
     setLoadingConversation,
     setIsClearing,
     setSelectedAgent,
@@ -62,6 +64,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   const clearChatAndStopThinking = () => {
     handleStopStreaming?.();
     setIsClearing(true);
+    const defaultAgentId = agents[0]?.id ?? "";
+    setInactiveAgentFallback(null);
     setTimeout(() => {
       ctx.setThinkingState?.(null);
       setExpandedThinking({});
@@ -69,6 +73,9 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setCurrentMessage('');
       setCurrentConversation(null);
       setIsPrivateMode(false);
+      if (defaultAgentId) {
+        setSelectedAgent(defaultAgentId);
+      }
       setTimeout(() => setIsClearing(false), 150);
     }, 200);
   };
@@ -86,6 +93,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     if (!userId || (ctx as any).loadingConversation) return;
     setLoadingConversation(true);
     setIsClearing(true);
+    setInactiveAgentFallback(null);
 
     setTimeout(async () => {
       try {
