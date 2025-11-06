@@ -3,6 +3,7 @@ from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from database import ConversationTable, get_db, UserTable
 from database.schemas import (
@@ -88,6 +89,7 @@ async def getConvsSummary(
     # fetch all full rows statement
     stmt = (
         select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
         .where(
             ConversationTable.user_id == user_id,
             ConversationTable.is_private == False,

@@ -10,22 +10,20 @@ import type {
   CreateConversationResponse,
   MessageIn,
   UpdateConversationResponse,
+  DownloadAttachmentParams,
   AGUIEvent,
 } from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
 import { parseSSE } from "./utils";
-import type { LucideIcon } from "lucide-react";
-import * as Icons from "lucide-react";
+import {
+  mapIcon,
+  withCredentials,
+  emitUnauthorized,
+  transformConversationDetail,
+  transformConversationSummary,
+  transformMessage,
+} from "./consts";
 
-const withCredentials = (init: RequestInit = {}): RequestInit => ({
-  ...init,
-  credentials: "include",
-});
-
-const emitUnauthorized = () => {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent("mx:unauthorized"));
-};
 
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
@@ -54,6 +52,8 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
   return data as AuthResponse;
 }
 
+
+// Refresh user session
 export async function refreshSession(): Promise<AuthResponse> {
   const res = await fetch("/api/session/refresh", withCredentials({
     method: "POST",
@@ -79,14 +79,9 @@ export async function refreshSession(): Promise<AuthResponse> {
   return data as AuthResponse;
 }
 
+
 // Fetch agents from backend via nginx proxy
 export async function getAgents(): Promise<Agent[]> {
-  const mapIcon = (name: string): LucideIcon => {
-    const Icon = (Icons as Record<string, any>)[name] as LucideIcon | undefined;
-    // Fallback gracefully to Building2 if icon name is invalid
-    return Icon || Icons.Building2;
-  };
-
   const res = await fetch("/api/agents", withCredentials({
     headers: { "Accept": "application/json" },
   }));
@@ -101,8 +96,10 @@ export async function getAgents(): Promise<Agent[]> {
     description: a.description,
     icon: mapIcon(a.icon),
     version: a.version,
+    isActive: Boolean((a as any).isActive ?? (a as any).is_active ?? true),
   }));
 }
+
 
 // Fetch conversations for a user
 export async function getConversations(
@@ -120,8 +117,9 @@ export async function getConversations(
   // Backend returns a Page shape: { items, total, page, size }
   const data = await res.json();
   const items = Array.isArray(data) ? data : (data?.items ?? []);
-  return items as ConversationSummary[];
+  return (items as any[]).map(transformConversationSummary);
 }
+
 
 // Fetch conversation details with full message history
 export async function getConversationDetail(
@@ -135,39 +133,10 @@ export async function getConversationDetail(
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to fetch conversation details: ${res.status}`);
   }
-  const data = (await res.json()) as ConversationDetail;
-
-  // Transform backend messages to frontend format
-  const transformedMessages: MessageOut[] = data.messages.map((msg) => ({
-    id: msg.id,
-    content: msg.content || "",
-    sender: msg.sender,
-    type: msg.type,
-    liked: (msg as any).liked ?? undefined,
-    created_at: new Date(msg.created_at),
-    updated_at: new Date(msg.updated_at),
-    attachments: msg.attachments.map((att: any) => ({
-      ...att,
-      timestamp: new Date(att.timestamp),
-      blobId: att.blobId,
-    })),
-    thinking: msg.thinking || undefined,
-    thinkingTime: msg.thinkingTime || undefined,
-    error: msg.error || undefined,
-    errorMessage: msg.errorMessage || undefined,
-  }));
-
-  return {
-    id: data.id,
-    agentId: data.agentId,
-    agentName: data.agentName || "Unknown Agent",
-    title: data.title || "",
-    isPrivate: data.isPrivate,
-    created_at: new Date(data.created_at),
-    updated_at: new Date(data.updated_at),
-    messages: transformedMessages,
-  };
+  const data = await res.json();
+  return transformConversationDetail(data);
 }
+
 
 // Delete a conversation
 export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
@@ -180,6 +149,7 @@ export async function deleteConversation(userId: string, conversationId: string)
     throw new Error(`Failed to delete conversation: ${res.status}`);
   }
 }
+
 
 // Create a new conversation with the first message
 export async function createConversation(
@@ -212,27 +182,12 @@ export async function createConversation(
 
   const data = await res.json();
 
-  // Transform the response to match our CreateConversationResponse type
-  return {
-    detail: {
-      ...data.detail,
-      created_at: new Date(data.detail.created_at),
-      updated_at: new Date(data.detail.updated_at),
-      messages: data.detail.messages.map((message: any) => ({
-        ...message,
-        liked: message.liked ?? undefined,
-        created_at: new Date(message.created_at),
-        updated_at: new Date(message.updated_at),
-        attachments: message.attachments.map((attachment: any) => ({
-          ...attachment,
-          timestamp: new Date(attachment.timestamp),
-          blobId: attachment.blobId || attachment.blob_id, // Handle both camelCase and snake_case
-        })),
-      })),
-    },
-    summary: data.summary,
-  };
+  const detail = transformConversationDetail(data.detail);
+  const summary = transformConversationSummary(data.summary);
+
+  return { detail, summary };
 }
+
 
 // Add a message to an existing conversation
 export async function addMessageToConversation(
@@ -266,40 +221,23 @@ export async function addMessageToConversation(
   const data = await res.json();
 
   if (data.detail) {
-    const last = data.detail.messages[data.detail.messages.length - 1];
+    const detail = transformConversationDetail(data.detail);
+    const last = detail.messages[detail.messages.length - 1];
     return {
-      message: {
-        ...last,
-        liked: last.liked ?? undefined,
-        created_at: new Date(last.created_at),
-        updated_at: new Date(last.updated_at),
-        attachments: (last.attachments || []).map((att: any) => ({
-          ...att,
-          timestamp: new Date(att.timestamp),
-          blobId: att.blobId || att.blob_id,
-        })),
-      },
-      summary: data.summary,
+      message: last,
+      summary: transformConversationSummary(data.summary),
     } as UpdateConversationResponse;
   }
 
   const m = data.message;
   return {
-    message: {
-      ...m,
-      liked: m.liked ?? undefined,
-      created_at: new Date(m.created_at),
-      updated_at: new Date(m.updated_at),
-      attachments: (m.attachments || []).map((att: any) => ({
-        ...att,
-        timestamp: new Date(att.timestamp),
-        blobId: att.blobId || att.blob_id,
-      })),
-    },
-    summary: data.summary,
+    message: transformMessage(m),
+    summary: transformConversationSummary(data.summary),
   } as UpdateConversationResponse;
 }
 
+
+// Like a message
 export async function likeMessage(
   userId: string,
   conversationId: string,
@@ -314,19 +252,11 @@ export async function likeMessage(
     throw new Error(`Failed to like message: ${res.status}`);
   }
   const m = await res.json();
-  return {
-    ...m,
-    liked: m.liked ?? undefined,
-    created_at: new Date(m.created_at),
-    updated_at: new Date(m.updated_at),
-    attachments: (m.attachments || []).map((att: any) => ({
-      ...att,
-      timestamp: new Date(att.timestamp),
-      blobId: att.blobId || att.blob_id,
-    })),
-  } as MessageOut;
+  return transformMessage(m);
 }
 
+
+// Dislike a message
 export async function dislikeMessage(
   userId: string,
   conversationId: string,
@@ -341,28 +271,11 @@ export async function dislikeMessage(
     throw new Error(`Failed to dislike message: ${res.status}`);
   }
   const m = await res.json();
-  return {
-    ...m,
-    liked: m.liked ?? undefined,
-    created_at: new Date(m.created_at),
-    updated_at: new Date(m.updated_at),
-    attachments: (m.attachments || []).map((att: any) => ({
-      ...att,
-      timestamp: new Date(att.timestamp),
-      blobId: att.blobId || att.blob_id,
-    })),
-  } as MessageOut;
+  return transformMessage(m);
 }
 
-// Download non-image attachment
-type DownloadAttachmentParams = {
-  userId: string;
-  conversationId: string;
-  messageId: string;
-  blobId: string;
-  filename?: string;
-};
 
+// Download an attachment blob
 export async function downloadAttachment({
   userId,
   conversationId,
@@ -388,6 +301,7 @@ export async function downloadAttachment({
   document.body.removeChild(anchor);
   URL.revokeObjectURL(objectUrl);
 }
+
 
 // Transcribe an audio dictation blob via the backend
 export async function transcribeDictation(
@@ -417,6 +331,7 @@ export async function transcribeDictation(
 
   return data.text;
 }
+
 
 // Start streaming inference by requesting the bridge SSE endpoint
 export async function streamInference(

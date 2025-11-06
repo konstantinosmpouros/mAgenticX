@@ -196,9 +196,13 @@ async def validate_userId(
 
 
 async def validate_convId(user_id: str, conversation_id: str, db: AsyncSession = Depends(get_db)) -> ConversationTable:
-    q = select(ConversationTable).where(
-        ConversationTable.id == conversation_id,
-        ConversationTable.user_id == user_id,
+    q = (
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(
+            ConversationTable.id == conversation_id,
+            ConversationTable.user_id == user_id,
+        )
     )
     res = await db.execute(q)
     conv: ConversationTable | None = res.scalar_one_or_none()
@@ -211,6 +215,7 @@ async def validate_convId_full(user_id: str, conversation_id: str, db: AsyncSess
     q = (
         select(ConversationTable)
         .options(
+            selectinload(ConversationTable.agent),
             selectinload(ConversationTable.messages)
             .selectinload(MessageTable.attachments)
             .selectinload(AttachmentTable.blob)

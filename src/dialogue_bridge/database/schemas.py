@@ -77,6 +77,7 @@ class AgentPublic(BaseModel):
     description: str
     icon: str
     version: Optional[str] = None
+    isActive: bool = Field(..., validation_alias="is_active")
 
 
 
@@ -93,6 +94,7 @@ class ConversationSummary(BaseModel):
     id: str
     agentId: str = Field(..., validation_alias="agent_id")
     agentName: Optional[str] = Field(None, validation_alias="agent_name")
+    agent: AgentPublic = Field(..., validation_alias="agent")
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")
     lastMessage: Optional[str] = Field(None, validation_alias="last_message_preview")
@@ -155,6 +157,7 @@ class ConversationDetail(BaseModel):
     id: str
     agentId: str = Field(..., validation_alias="agent_id")
     agentName: Optional[str] = Field(None, validation_alias="agent_name")
+    agent: AgentPublic = Field(..., validation_alias="agent")
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")
     created_at: datetime = Field(..., validation_alias="created_at")

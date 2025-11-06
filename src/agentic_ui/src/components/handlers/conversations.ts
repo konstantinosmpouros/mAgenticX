@@ -91,7 +91,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       try {
         const conversationDetail = await getConversationDetail(userId, conversation.id);
         setTimeout(() => {
-          setSelectedAgent(conversationDetail.agentId);
+          setSelectedAgent(conversationDetail.agent?.id || "");
           setCurrentConversation(conversationDetail);
           setIsPrivateMode(conversationDetail.isPrivate || false);
           setIsClearing(false);
@@ -99,7 +99,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       } catch (error) {
         console.error('Failed to load conversation:', error);
         toast({ title: 'Failed to load conversation', description: 'There was an error loading the conversation. Please try again.', variant: 'destructive', duration: 3000 });
-        setSelectedAgent(conversation.agentId);
+        setSelectedAgent(conversation.agent?.id || "");
         const fallbackDetail: ConversationDetail = {
           ...conversation,
           created_at: new Date(conversation.created_at) as any,

@@ -68,7 +68,7 @@ async def addMessageToConversation(
     
     # Refresh conversation row so auto-updated columns (e.g., updated_at) are loaded
     message_out = MessageOut.model_validate(msg_row)
-    await db.refresh(current_conv)
+    await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
     summary = ConversationSummary.model_validate(current_conv)
     
     return UpdateConversationResponse(message=message_out, summary=summary)

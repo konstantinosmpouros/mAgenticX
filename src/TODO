@@ -9,7 +9,7 @@
 
 - Create a panel for the available tools and send the configs to the dialogue bridge
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
-- if l have a conversation with an agent that is not available not the drop down is empty and the conv summary has "Untitled Chat" as title and the default icon as well. Also if l load the conv the action bar in every ai message that had the agent name, now doesn't have it. The solution is to load in the conv summaries the full agent along side the conv-summary object and in the conv-details object as well and in order to present the info of the agent but in the drop down have an info icon that when hover will say the agent is inactive.
+- if l have a conversation with an agent that is not available not the drop down is empty and the conv summary has "Untitled Chat" as title and the default icon as well. Also if l load the conv the action bar in every ai message that had the agent name, now doesn't have it. The solution is to load in the conv summaries the full agent along side the conv-summary object and in the conv-details object as well and in order to present the info of the agent but in the drop down have an info icon that when hover will say the agent is inactive. Also the sidebar is agent icons and agent name might be populated by the available agents, thats why they don't exist
 
 - Make the title creation functionality for a new conversation as bg task and in the end, update the conversation db, and ui page header
 - Implement a tab in the sidebar to show all the images, like openai library

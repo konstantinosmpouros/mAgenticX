@@ -120,8 +120,14 @@ export function ChatInterface() {
       const now = new Date();
       return {
         id: '',
-        agentId: selectedAgent,
-        agentName: agentMeta?.name || '',
+        agent: agentMeta ?? {
+          id: selectedAgent,
+          name: agentMeta?.name || 'Unknown agent',
+          description: agentMeta?.description ?? '',
+          icon: agentMeta?.icon ?? Building2,
+          version: agentMeta?.version,
+          isActive: agentMeta?.isActive ?? true,
+        },
         title: '',
         isPrivate: isPrivateMode,
         created_at: now,

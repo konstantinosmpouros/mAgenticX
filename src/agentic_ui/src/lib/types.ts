@@ -46,6 +46,7 @@ export type AgentPublic = {
     description: string;
     icon: string; // Lucide icon name string, e.g., "Building2"
     version?: string;
+    isActive: boolean;
 };
 
 // Agent type used in the application
@@ -55,6 +56,7 @@ export type Agent = {
     description: string;
     icon: LucideIcon;
     version?: string;
+    isActive: boolean;
 };
 
 
@@ -65,8 +67,7 @@ export type Agent = {
 // Raw shape returned by backend for conversations
 export type ConversationSummary = {
     id: string;
-    agentId: string;
-    agentName?: string;
+    agent: Agent;
     title?: string;
     isPrivate: boolean;
     lastMessage?: string;
@@ -77,8 +78,7 @@ export type ConversationSummary = {
 // Backend conversation detail type from API response
 export type ConversationDetail = {
     id: string;
-    agentId: string;
-    agentName?: string;
+    agent: Agent;
     title?: string;
     isPrivate: boolean;
     created_at: Date;
@@ -112,7 +112,6 @@ export type AttachmentOut = {
     blobId?: string;
     data?: string; // Base64 encoded image data for images
 };
-
 
 
 // ------------------------------------------------------
@@ -156,6 +155,15 @@ export type CreateConversationResponse = {
 export type UpdateConversationResponse = {
     message: MessageOut;
     summary: ConversationSummary;
+};
+
+// Parameters required to download an attachment from the backend
+export type DownloadAttachmentParams = {
+    userId: string;
+    conversationId: string;
+    messageId: string;
+    blobId: string;
+    filename?: string;
 };
 
 

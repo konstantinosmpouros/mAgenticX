@@ -273,13 +273,16 @@ export default function AppSidebar({
               ) : (
                 <SidebarMenu>
                   {conversations.map((conversation) => {
-                    const agent = agents.find((a) => a.id === conversation.agentId);
-                    const Icon = agent?.icon || Building2;
+                    const agent = conversation.agent;
+                    const Icon = agent?.icon ?? Building2;
                     const conversationTitle =
                       conversation.title && conversation.title.trim() !== ""
                         ? conversation.title
                         : agent?.name || "Untitled chat";
                     const lastMessage = conversation.lastMessage || "No messages yet";
+                    const subtitle = agent?.name
+                      ? `${agent.name}${lastMessage ? ` - ${lastMessage}` : ""}`
+                      : lastMessage;
 
                     return (
                       <SidebarMenuItem key={conversation.id}>
@@ -291,7 +294,7 @@ export default function AppSidebar({
                             children: (
                               <div className="flex flex-col gap-0.5">
                                 <span className="text-sm font-medium">{conversationTitle}</span>
-                                <span className="text-xs text-muted-foreground">{lastMessage}</span>
+                                <span className="text-xs text-muted-foreground">{subtitle}</span>
                               </div>
                             ),
                           }}
@@ -306,14 +309,14 @@ export default function AppSidebar({
                             </span>
                             <span
                               className="text-xs text-muted-foreground leading-snug"
-                              style={{
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
-                              }}
-                            >
-                              {lastMessage}
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                          >
+                              {subtitle}
                             </span>
                           </div>
                         </SidebarMenuButton>
