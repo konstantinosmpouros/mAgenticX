@@ -61,10 +61,11 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     toast,
   } = ctx;
 
-  const clearChatAndStopThinking = () => {
+  const clearChatAndStopThinking = (options?: { preserveAgent?: boolean }) => {
     handleStopStreaming?.();
     setIsClearing(true);
-    const defaultAgentId = agents[0]?.id ?? "";
+    const defaultAgentId =
+      agents.find((agent) => agent.isActive)?.id ?? agents[0]?.id ?? "";
     setInactiveAgentFallback(null);
     setTimeout(() => {
       ctx.setThinkingState?.(null);
@@ -73,7 +74,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setCurrentMessage('');
       setCurrentConversation(null);
       setIsPrivateMode(false);
-      if (defaultAgentId) {
+      if (!options?.preserveAgent && defaultAgentId) {
         setSelectedAgent(defaultAgentId);
       }
       setTimeout(() => setIsClearing(false), 150);
