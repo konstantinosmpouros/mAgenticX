@@ -30,6 +30,8 @@ services:
     restart: unless-stopped
     ports:
       - "8003:8003"
+    volumes:
+      - agents_checkpoints:/app/checkpoints
     networks:
       - backend
       - frontend
@@ -154,4 +156,6 @@ volumes:
       type: none
       o: bind
       device: ./vault/data
+
+  agents_checkpoints:
 

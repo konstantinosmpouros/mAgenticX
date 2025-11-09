@@ -3,6 +3,7 @@ from langgraph.graph import StateGraph
 from blueprints import LangGraphAgent
 from langgraph_agents.retail_agent_v1.agents import build_retail_agents
 from langgraph_agents.retail_agent_v1.nodes import RetailV1_State, build_retail_nodes
+from langgraph.graph import START, END
 
 
 class RetailAgentV1(LangGraphAgent):
@@ -16,8 +17,8 @@ class RetailAgentV1(LangGraphAgent):
     icon = "ShoppingBag"
     stream_mode = "custom"
 
-    def __init__(self, *, config=None):
-        super().__init__(config=config)
+    def __init__(self, *, config=None, run_config=None):
+        super().__init__(config=config, run_config=run_config)
         self.state = RetailV1_State
         self.build()
 
@@ -41,8 +42,6 @@ class RetailAgentV1(LangGraphAgent):
 
 
     def register_graph_edges(self, graph: StateGraph) -> None:
-        from langgraph.graph import START, END
-        
         graph.add_edge(START, "analysis")
         graph.add_conditional_edges(
             "analysis",

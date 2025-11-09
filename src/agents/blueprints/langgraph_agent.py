@@ -1,10 +1,13 @@
 import asyncio
 import json
+import os
 import traceback
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
 from pydantic import BaseModel
 
 from langgraph.graph import StateGraph
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from agui import AGUIEmitter
 from tools import (
@@ -18,24 +21,24 @@ ConfigSource = Mapping[str, Any]
 
 
 class LangGraphAgent:
-    """Reusable parent template providing shared agent infrastructure.
-    
-    Subclasses inherit:
-        - An AG-UI emitter instance for consistent UI event streaming.
-        - Prompt merge helpers for combining system templates with user input.
-        - A configurable tool registry that is filtered by external config.
-        - A build lifecycle that compiles LangGraph workflows into runnable graphs.
+    """Reusable template that wires LangGraph agents into the service runtime.
 
-    Concrete agent templates customize their behavior by implementing the trio of
-    graph hooks: ``graph_state_type``, ``register_graph_nodes`` and
-    ``register_graph_edges``. The default ``workflow`` implementation will invoke
-    those hooks in order to assemble the graph before compilation. Async execution
-    helpers (``ainvoke``/``astream``) are provided so subclasses can focus on graph
-    construction only.
+    Responsibilities shared by every subclass:
+        • normalised tool resolution driven by UI/back-end config
+        • a consistent AG-UI emitter for streaming thoughts/events
+        • a build lifecycle that registers nodes/edges then compiles the graph
+        • optional SQLite checkpointing via ``configure_sqlite_checkpointer()``
+
+    Concrete agents implement the three hooks ``register_agents()``,
+    ``register_nodes()`` and ``register_graph_edges()`` to describe their
+    workflow. The default ``workflow()`` takes care of assembling a
+    ``StateGraph`` while ``astream()`` exposes LangGraph's streaming API so the
+    FastAPI layer can proxy responses without additional plumbing.
     """
 
     # Stable slug used for registry lookups and URL routing
     name: str = "base-agent"
+
     # Human-readable identifiers exposed to downstream consumers
     agent_id: str = "base-agent"
     label: str = "Base Agent"
@@ -54,9 +57,15 @@ class LangGraphAgent:
         *computer_vision_tools,
     )
 
-    def __init__(self, *, config: Optional[ConfigSource] = None) -> None:
+    def __init__(
+        self,
+        *,
+        config: Optional[ConfigSource] = None,
+        run_config: Optional[Mapping[str, Any]] = None,
+    ) -> None:
         # Configuration
         self.config: Dict[str, Any] = self._validate_config(config) if config else {}
+        self.run_config: Optional[Mapping[str, Any]] = run_config
         
         # Configured tool selectors
         self.config_tools: Sequence[Mapping[str, Any]] = self.config.get("tools", [])
@@ -65,6 +74,9 @@ class LangGraphAgent:
         # Resolved tools
         self.tools: List[Any] = self.resolve_tools()
         self.tools_names: List[str] = [tool.name for tool in self.tools]
+        
+        # LangGraph checkpointer path
+        self.checkpointer_path: str = self.checkpoints_db_path()
         
         # Agent components
         self.state: Type[BaseModel] | None = None
@@ -82,6 +94,7 @@ class LangGraphAgent:
         """Expose the class-level manifest for this agent instance."""
         return self.__class__.manifest()
 
+
     @classmethod
     def manifest(cls) -> Dict[str, Any]:
         """Return the registry manifest describing this agent template."""
@@ -94,31 +107,6 @@ class LangGraphAgent:
             "description": cls.description or "",
             "icon": cls.icon or "",
         }
-
-
-
-    # ---------------------------------------------------------------------
-    # Tool management
-    # ---------------------------------------------------------------------
-    def resolve_tools(self) -> List[Any]:
-        """Resolve validated tool names into concrete tool instances."""
-        if not self.config_tool_names:
-            return []
-        
-        tool_lookup: Dict[str, Any] = {tool.name: tool for tool in self.tool_registry}
-        resolved: List[Any] = []
-        seen: set[str] = set()
-        
-        for key in self.config_tool_names:
-            tool = tool_lookup.get(key)
-            if tool is None:
-                raise KeyError(f"Unknown tool selector '{key}'.")
-            
-            if key not in seen:
-                resolved.append(tool)
-                seen.add(key)
-        
-        return resolved
 
 
 
@@ -185,7 +173,7 @@ class LangGraphAgent:
         if not isinstance(graph, StateGraph):
             raise TypeError("workflow() must return a LangGraph StateGraph instance.")
         
-        self.graph = graph.compile()
+        self.graph = graph
         return
 
 
@@ -193,14 +181,27 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Async inference function
     # ---------------------------------------------------------------------
-    async def astream(self, payload: Mapping[str, Any]) -> Any:
+    async def astream(
+        self,
+        payload: Mapping[str, Any],
+        run_config: Optional[Mapping[str, Any]] = None,
+    ) -> Any:
         """Stream LangGraph chunks as SSE bytes using the configured stream mode."""
         try:
-            async for chunk in self.graph.astream(payload, stream_mode=self.stream_mode):
-                if isinstance(chunk, (str, bytes)):
-                    yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                else:
-                    yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+            # Use provided run_config or default to instance's run_config
+            cfg = run_config if run_config is not None else self.run_config
+            async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
+                # Compile graph if not already done
+                if self.graph is None:
+                    self.build()
+                
+                # Compile with checkpointer and stream
+                self.graph = self.graph.compile(checkpointer=checkpointer)
+                async for chunk in self.graph.astream(payload, config=cfg, stream_mode=self.stream_mode):
+                    if isinstance(chunk, (str, bytes)):
+                        yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                    else:
+                        yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
             return
         except Exception as exc:  # noqa: BLE001
@@ -209,10 +210,46 @@ class LangGraphAgent:
 
 
     # ---------------------------------------------------------------------
+    # Tool management
+    # ---------------------------------------------------------------------
+    def resolve_tools(self) -> List[Any]:
+        """Resolve validated tool names into concrete tool instances."""
+        if not self.config_tool_names:
+            return []
+        
+        tool_lookup: Dict[str, Any] = {tool.name: tool for tool in self.tool_registry}
+        resolved: List[Any] = []
+        seen: set[str] = set()
+        
+        for key in self.config_tool_names:
+            tool = tool_lookup.get(key)
+            if tool is None:
+                raise KeyError(f"Unknown tool selector '{key}'.")
+            
+            if key not in seen:
+                resolved.append(tool)
+                seen.add(key)
+        
+        return resolved
+
+
+
+    # ---------------------------------------------------------------------
+    # Checkpoint helpers
+    # ---------------------------------------------------------------------
+    def checkpoints_db_path(self) -> str:
+        """Return the filesystem path where checkpoints will be stored."""
+        agent_dir = Path("/app/checkpoints") / "langgraph" / self.name.strip()
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        return str(agent_dir / "checkpoints.db")
+
+
+
+    # ---------------------------------------------------------------------
     # Internal helpers
     # ---------------------------------------------------------------------
     def _validate_config(self, config: ConfigSource) -> Dict[str, Any]:
-        """Validate and normalise a config mapping coming from the UI."""
+        """Validate and normalise a config mapping coming from the UI - Backend."""
         # Validate config type
         if not isinstance(config, Mapping):
             raise TypeError("Agent config must be provided as a mapping (dict).")
@@ -253,6 +290,11 @@ class LangGraphAgent:
             
         return normalised
 
+
+
+    # ---------------------------------------------------------------------
+    # Error handling & SSE encoding
+    # ---------------------------------------------------------------------
     @staticmethod
     def _format_run_error_message(exc: BaseException) -> str:
         """Create a verbose error description suitable for RUN_ERROR frames."""
@@ -260,6 +302,7 @@ class LangGraphAgent:
         if tb and tb.strip() and tb.strip() != "NoneType: None":
             return tb.strip()
         return f"{type(exc).__name__}: {exc}"
+
 
     @classmethod
     def _encode_run_error(cls, exc: BaseException) -> bytes:

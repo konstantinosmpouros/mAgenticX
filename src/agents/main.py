@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 
 from openai import OpenAI
 from schemas import Request, TranscriptionResponse, AgentManifest
-from utils import AGENT_REGISTRY, _instantiate_agent
+from utils import AGENT_REGISTRY
 
 
 
@@ -139,11 +139,19 @@ async def stream_agent(agent_slug: str, req: Request):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown agent '{agent_slug}'.",
         )
-
-    agent = _instantiate_agent(definition, config=req.config)
-
+    
+    config_map = req.config or {}
+    agent_config = config_map.get("agent_config", {})
+    run_config = config_map.get("run_config")
+    
+    try:
+        agent = definition.cls(config=agent_config, run_config=run_config)
+    except Exception as exc:
+        detail = f"Failed to initialise agent '{definition.slug}': {exc}"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+    
     async def event_stream():
         async for msg in agent.astream({"user_input": req.user_input}):
             yield msg
-
+    
     return StreamingResponse(event_stream(), media_type="text/event-stream")

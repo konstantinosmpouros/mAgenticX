@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
     user_input: List[Dict[str, Any]]
-    config: Optional[Dict[str, Any]] = None
+    config: Dict[str, Any]
 
 
 class TranscriptionResponse(BaseModel):

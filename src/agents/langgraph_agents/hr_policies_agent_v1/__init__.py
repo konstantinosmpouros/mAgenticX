@@ -19,8 +19,8 @@ class HRPoliciesAgentV1(LangGraphAgent):
     icon = "Building2"
     stream_mode = "custom"
 
-    def __init__(self, *, config=None):
-        super().__init__(config=config)
+    def __init__(self, *, config=None, run_config=None):
+        super().__init__(config=config, run_config=run_config)
         self.state = HRPoliciesV1_State
         self.build()
 

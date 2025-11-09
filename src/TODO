@@ -9,6 +9,7 @@
 
 - Create a panel for the available tools and send the configs to the dialogue bridge
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
+- In the session persistence the current conversation is not save properly any more cause of the available agent functionality we added.
 
 - Make the title creation functionality for a new conversation as bg task and in the end, update the conversation db, and ui page header
 - Implement a tab in the sidebar to show all the images, like openai library
@@ -18,6 +19,7 @@
 ## Agents
 
 - Improve the current agent's architecture
+- Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic)
 - Create a deep research agent with deep agents and make it available
 - Replace tools with mcp in a different directory than agents. Configure the server with all the tools and the registry will be stored in the main.py in agents and expose an API so the UI can get the available tools.

@@ -58,10 +58,26 @@ async def startInferenceStream(
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 try:
+                    payload = {
+                        "user_input": history,
+                        "config": {
+                            "run_config": {
+                                "configurable": {
+                                    "thread_id": str(conversation_id),
+                                    "checkpoint_ns": str(agent_slug),
+                                }
+                            },
+                            "agent_config": {
+                                "user_id": str(user_id),
+                                "conversation_id": str(conversation_id),
+                                # "user_summary": None,
+                            },
+                        },
+                    }
                     async with client.stream(
                         "POST",
                         agent_url,
-                        json={"user_input": history},
+                        json=payload,
                         headers={"Accept": "text/event-stream"},
                     ) as r:
                         r.raise_for_status()
