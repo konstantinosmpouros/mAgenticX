@@ -13,10 +13,11 @@ import {
     Sparkles,
     MoonStar,
 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { UserProfile } from "@/lib/types";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Props = {
     open: boolean;
@@ -27,6 +28,71 @@ type Props = {
     user: UserProfile | null;
 };
 
+type McpServer = {
+    id: string;
+    name: string;
+    description: string;
+    region: string;
+    latency: string;
+    enabled: boolean;
+};
+
+const mcpServersData: McpServer[] = [
+    {
+        id: "atlas-lab",
+        name: "Atlas Lab",
+        description: "Research-focused toolset for doc QA",
+        region: "us-west-1",
+        latency: "42ms avg",
+        enabled: true,
+    },
+    {
+        id: "hyperion-prod",
+        name: "Hyperion Prod",
+        description: "Customer-facing automation cluster",
+        region: "eu-central-1",
+        latency: "88ms avg",
+        enabled: false,
+    },
+    {
+        id: "daedalus-rnd",
+        name: "Daedalus R&D",
+        description: "Experimental creative studio stack",
+        region: "ap-southeast-2",
+        latency: "133ms avg",
+        enabled: true,
+    },
+];
+
+const MCP_ICON_SRCS = {
+    grey: "/mcp-server-stroke-rounded (3).png",
+    darkGrey: "/mcp-server-stroke-rounded (4).png",
+    white: "/mcp-server-Stroke-Rounded (2).png",
+    magenta: "/mcp-server-Stroke-Rounded (1).png",
+    black: "/mcp-server-Stroke-Rounded.png",
+} as const;
+
+type McpIconVariant = keyof typeof MCP_ICON_SRCS;
+
+const McpIcon = ({
+    size = 22,
+    className,
+    variant = "grey",
+}: {
+    size?: number;
+    className?: string;
+    variant?: McpIconVariant;
+}) => (
+    <img
+        src={MCP_ICON_SRCS[variant]}
+        alt="MCP servers"
+        width={size}
+        height={size}
+        className={cn("object-contain", className)}
+        draggable={false}
+    />
+);
+
 export default function UserProfilePanel({
     open,
     onClose,
@@ -35,8 +101,56 @@ export default function UserProfilePanel({
     onLogout,
     user,
 }: Props) {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [userCollapsed, setUserCollapsed] = useState(false);
+    const [forcedCollapsed, setForcedCollapsed] = useState(false);
+    const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
+    const [serverToggles, setServerToggles] = useState<Record<string, boolean>>(() =>
+        mcpServersData.reduce<Record<string, boolean>>((acc, server) => {
+            acc[server.id] = server.enabled;
+            return acc;
+        }, {})
+    );
     const { theme, setTheme } = useTheme();
+
+    const handleToggleServer = (serverId: string) => {
+        setServerToggles((prev) => ({
+            ...prev,
+            [serverId]: !prev[serverId],
+        }));
+    };
+
+    const handleToggleSidebar = () => {
+        if (forcedCollapsed) return;
+        setSidebarCollapsed((prev) => {
+            const next = !prev;
+            setUserCollapsed(next);
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        const COLLAPSE_BREAKPOINT = 1100;
+        const EXPAND_BREAKPOINT = 1280;
+
+        const handleResize = () => {
+            const width = window.innerWidth;
+            if (width < COLLAPSE_BREAKPOINT && !forcedCollapsed) {
+                setForcedCollapsed(true);
+                setSidebarCollapsed(true);
+                return;
+            }
+
+            if (width >= EXPAND_BREAKPOINT && forcedCollapsed) {
+                setForcedCollapsed(false);
+                setSidebarCollapsed(userCollapsed);
+            }
+        };
+
+        handleResize();
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, [forcedCollapsed, userCollapsed]);
 
     if (!open) return null;
 
@@ -73,6 +187,7 @@ export default function UserProfilePanel({
 
     const navItems = [
         { id: "profile", label: "User Profile", icon: User },
+        { id: "mcp", label: "MCP Servers", icon: McpIcon },
         { id: "appearance", label: "Appearance", icon: Palette },
         { id: "settings", label: "Settings", icon: Settings },
         { id: "help", label: "Help", icon: HelpCircle },
@@ -109,138 +224,147 @@ export default function UserProfilePanel({
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-10 dark">
+        <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-10">
             <div
-                className="absolute inset-0 z-0 bg-[rgba(10,12,18,0.82)] backdrop-blur-[18px] transition-opacity"
+                className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm transition-opacity"
                 onClick={onClose}
             />
             <div className="relative z-10 w-full max-w-5xl">
-                <Card className="relative flex h-[min(46rem,85vh)] w-full overflow-hidden rounded-[32px] border border-white/12 bg-gradient-to-br from-[#1e212b]/94 via-[#12151d]/97 to-[#090b12]/98 text-white shadow-[0_44px_120px_-46px_rgba(5,8,15,0.9)] backdrop-blur-[30px] animate-scale-in">
-                    <div
-                        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18)_0%,_rgba(16,22,33,0)_70%)] opacity-75"
-                        aria-hidden="true"
-                    />
-                    <div
-                        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(140,140,155,0.15)_0%,_rgba(12,18,28,0)_72%)] opacity-55 mix-blend-lighten"
-                        aria-hidden="true"
-                    />
-                    <div
-                        className="pointer-events-none absolute inset-x-20 bottom-[-5rem] h-48 rounded-full bg-white/12 blur-[120px] opacity-70"
-                        aria-hidden="true"
-                    />
-
+                <Card className="relative flex h-[min(46rem,85vh)] w-full overflow-hidden rounded-[28px] border border-border/60 bg-card text-foreground shadow-2xl animate-scale-in">
                     <div className="relative z-10 flex h-full w-full">
                         <aside
                             className={cn(
-                                "relative flex h-full flex-col border-r border-white/12 bg-[linear-gradient(210deg,rgba(34,38,46,0.92),rgba(12,15,22,0.96))] px-3 py-8 backdrop-blur-2xl transition-all duration-500 ease-in-out",
+                                "relative flex h-full flex-col overflow-hidden border-r border-border/50 bg-muted/30 px-3 py-6 transition-[width] duration-300 ease-in-out",
                                 sidebarCollapsed ? "w-[4.5rem]" : "w-64"
                             )}
-                            onMouseEnter={() => setSidebarCollapsed(false)}
-                            onMouseLeave={() => setSidebarCollapsed(true)}
                         >
-                            <div
-                                className="pointer-events-none absolute inset-0 bg-[linear-gradient(188deg,rgba(255,255,255,0.08)_0%,rgba(19,23,33,0.45)_46%,rgba(12,16,24,0.82)_100%)] opacity-90"
-                                aria-hidden="true"
-                            />
-                            <div
-                                className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-white/25 to-transparent"
-                                aria-hidden="true"
-                            />
-
                             <Button
-                                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                                onClick={handleToggleSidebar}
                                 size="icon"
                                 variant="ghost"
-                                className="absolute top-5 right-2 z-20 h-8 w-8 rounded-full border border-white/15 bg-[linear-gradient(145deg,rgba(46,52,64,0.55),rgba(14,18,26,0.86))] text-white/80 shadow-[0_18px_44px_-30px_rgba(8,11,18,0.8)] backdrop-blur transition hover:bg-[linear-gradient(145deg,rgba(60,66,78,0.58),rgba(16,20,28,0.9))] hover:text-white"
+                                disabled={forcedCollapsed}
+                                className={cn(
+                                    "absolute top-4 right-2 z-10 h-8 w-8 rounded-full border border-border/60 bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground",
+                                    forcedCollapsed && "cursor-not-allowed opacity-70"
+                                )}
                             >
                                 {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
                             </Button>
 
-                            <div className="relative z-10 flex h-full flex-col">
-                                <div className="relative h-32 pb-2.5">
+                            <div className="flex h-full flex-col pt-6">
+                                <div className="relative h-28 pb-2">
                                     <div
                                         className={cn(
-                                            "absolute inset-0 flex flex-col items-center gap-4 text-center transition-all duration-300",
-                                            sidebarCollapsed
-                                                ? "translate-y-2 opacity-0"
-                                                : "translate-y-0 opacity-100"
+                                            "flex flex-col items-center gap-3 text-center transition-all duration-300",
+                                            sidebarCollapsed ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
                                         )}
                                     >
-                                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/25 bg-gradient-to-br from-white/30 via-white/12 to-transparent shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
-                                            <img
-                                                src="/logo2.png"
-                                                alt="mAgenticX mark"
-                                                className="h-9 w-9 object-contain"
-                                            />
+                                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card">
+                                            <img src="/logo2.png" alt="mAgenticX mark" className="h-9 w-9 object-contain" />
                                         </div>
                                         <div className="space-y-1">
-                                            <h2 className="text-base font-semibold tracking-tight text-white">
-                                                mAgenticX Profile
-                                            </h2>
-                                            <p className="text-[0.7rem] uppercase tracking-[0.28em] text-white/60">
+                                            <h2 className="text-sm font-semibold tracking-tight">mAgenticX Profile</h2>
+                                            <p className="text-[0.65rem] uppercase tracking-[0.25em] text-muted-foreground">
                                                 Manage your space
                                             </p>
                                         </div>
                                     </div>
                                 </div>
 
-                                <nav className="flex-1 space-y-2.5">
+                                <nav className="flex flex-1 flex-col justify-start gap-2.5 pt-4">
                                     {navItems.map((tab) => {
                                         const Icon = tab.icon;
                                         const isActive = activeTab === tab.id;
+                                        const iconSize = 20;
+                                        const isLightTheme = theme === "light";
+                                        const isHovered = hoveredNavId === tab.id;
 
-                                        return (
+                                        const mcpVariant: McpIconVariant =
+                                            tab.id === "mcp"
+                                                ? isActive
+                                                    ? "magenta"
+                                                    : isHovered
+                                                        ? isLightTheme
+                                                            ? "black"
+                                                            : "white"
+                                                        : isLightTheme
+                                                            ? "grey"
+                                                            : "darkGrey"
+                                                : "grey";
+
+                                        const navButton = (
                                             <button
-                                                key={tab.id}
                                                 onClick={() => setActiveTab(tab.id)}
+                                                onMouseEnter={() => setHoveredNavId(tab.id)}
+                                                onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
                                                 className={cn(
-                                                    "group relative flex w-full items-center rounded-2xl py-2.5 transition-all duration-300",
-                                                    sidebarCollapsed ? "justify-center px-1.5" : "px-3"
+                                                    "group relative flex w-full items-center rounded-xl py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40",
+                                                    sidebarCollapsed ? "justify-start pl-1 pr-0" : "justify-start px-3 text-left",
+                                                    isActive && "text-foreground"
                                                 )}
-                                                title={sidebarCollapsed ? tab.label : undefined}
+                                                title={!sidebarCollapsed ? tab.label : undefined}
+                                                aria-label={tab.label}
                                             >
-                                                {!sidebarCollapsed && (
-                                                    <div
-                                                        className={cn(
-                                                            "absolute inset-0 rounded-2xl border border-white/14 bg-white/[0.05] transition-all duration-300 group-hover:border-white/22 group-hover:bg-white/[0.07] group-hover:opacity-100",
-                                                            isActive &&
-                                                                "border-white/35 bg-white/[0.12] opacity-100 shadow-[0_26px_70px_-38px_rgba(10,12,18,0.7)]"
-                                                        )}
-                                                    />
-                                                )}
                                                 <div
                                                     className={cn(
-                                                        "relative z-10 flex w-full items-center transition-all duration-300",
-                                                        sidebarCollapsed ? "justify-center" : "gap-3"
+                                                        "flex w-full items-center transition-all duration-300",
+                                                        sidebarCollapsed ? "gap-0" : "gap-3"
                                                     )}
                                                 >
                                                     <div
                                                         className={cn(
-                                                            "flex h-10 w-10 items-center justify-center rounded-[1rem] border border-white/14 bg-white/[0.06] transition-all duration-300 group-hover:border-white/24 group-hover:bg-white/[0.09]",
-                                                            isActive &&
-                                                                "border-white/35 bg-white/[0.14] shadow-[0_20px_48px_-32px_rgba(8,11,18,0.75)]"
+                                                            "flex h-10 w-10 items-center justify-center rounded-lg border border-transparent transition-colors",
+                                                            isActive
+                                                                ? "border-primary/50 bg-primary/10 text-primary"
+                                                                : "text-muted-foreground group-hover:text-foreground"
                                                         )}
                                                     >
-                                                         <Icon
-                                                             size={18}
-                                                             className={cn(
-                                                                "text-white/70 transition-colors duration-300",
-                                                                isActive ? "text-white" : "group-hover:text-white"
-                                                            )}
-                                                        />
+                                                        {tab.id === "mcp" ? (
+                                                            <McpIcon size={20} variant={mcpVariant} />
+                                                        ) : (
+                                                            <Icon size={iconSize} />
+                                                        )}
                                                     </div>
-                                                    {!sidebarCollapsed && (
+                                                    <div
+                                                        className={cn(
+                                                            "overflow-hidden transition-all duration-200",
+                                                            sidebarCollapsed
+                                                                ? "max-w-0 opacity-0 delay-0"
+                                                                : "max-w-[220px] opacity-100 delay-200"
+                                                        )}
+                                                    >
                                                         <span
                                                             className={cn(
-                                                                "text-[0.66rem] font-semibold uppercase tracking-[0.32em] text-white/70 transition-colors duration-300",
-                                                                isActive ? "text-white" : "group-hover:text-white"
+                                                                "inline-block text-xs font-semibold uppercase tracking-[0.26em] whitespace-nowrap",
+                                                                sidebarCollapsed ? "ml-0" : "ml-3"
                                                             )}
                                                         >
                                                             {tab.label}
                                                         </span>
-                                                    )}
+                                                    </div>
                                                 </div>
                                             </button>
+                                        );
+
+                                        return (
+                                            <Fragment key={tab.id}>
+                                                {sidebarCollapsed ? (
+                                                    <Tooltip delayDuration={0}>
+                                                        <TooltipTrigger asChild>{navButton}</TooltipTrigger>
+                                                        <TooltipContent
+                                                            side="right"
+                                                            align="center"
+                                                            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-card"
+                                                        >
+                                                            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.32em]">
+                                                                {tab.label}
+                                                            </p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                ) : (
+                                                    navButton
+                                                )}
+                                            </Fragment>
                                         );
                                     })}
                                 </nav>
@@ -248,62 +372,77 @@ export default function UserProfilePanel({
                                 <button
                                     onClick={onLogout}
                                     className={cn(
-                                        "group relative mt-auto flex w-full items-center overflow-hidden rounded-2xl px-3 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-white/60 transition-all duration-300",
-                                        sidebarCollapsed ? "justify-center" : "gap-3"
+                                        "mt-auto flex w-full items-center rounded-xl border border-border/60 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive",
+                                        sidebarCollapsed ? "justify-start pl-3 pr-2 gap-0" : "gap-3 px-3"
                                     )}
                                     title={sidebarCollapsed ? "Logout" : undefined}
                                 >
-                                    <div className="absolute inset-0 rounded-2xl border border-white/14 bg-white/[0.05] opacity-85 transition-all duration-300 group-hover:border-white/22 group-hover:bg-white/[0.08] group-hover:opacity-100" />
-                                    <LogOut className="relative z-10 h-5 w-5 text-white/70 transition-colors group-hover:text-white" />
-                                    {!sidebarCollapsed && (
-                                        <span className="relative z-10 text-xs font-semibold uppercase tracking-[0.32em] text-white/75">
+                                    <LogOut className="h-5 w-5" />
+                                    <div
+                                        className={cn(
+                                            "overflow-hidden transition-all duration-200",
+                                            sidebarCollapsed
+                                                ? "max-w-0 opacity-0 delay-0"
+                                                : "max-w-[120px] opacity-100 delay-200"
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                "inline-block whitespace-nowrap text-xs font-semibold uppercase tracking-[0.26em]",
+                                                sidebarCollapsed ? "ml-0" : "ml-3"
+                                            )}
+                                        >
                                             Logout
                                         </span>
-                                    )}
+                                    </div>
                                 </button>
                             </div>
                         </aside>
 
                         <div className="relative flex-1 overflow-hidden">
                             <ScrollArea className="h-full w-full">
-                                <div className="space-y-10 px-8 py-10 text-white/90 sm:px-12">
+                                <div className="space-y-8 px-8 py-10 text-foreground sm:px-12">
                                     {activeTab === "profile" && (
-                                        <div className="space-y-10 animate-fade-in">
-                                            <div className="flex flex-col gap-8 rounded-2xl border border-white/12 bg-white/[0.05] p-8 shadow-[0_36px_96px_-48px_rgba(6,8,14,0.82)] backdrop-blur-2xl sm:flex-row sm:items-center sm:justify-between">
-                                                <div className="flex items-center gap-6">
-                                                    <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-white/20 bg-white/[0.08] shadow-[0_24px_70px_-42px_rgba(7,9,15,0.75)]">
-                                                        <User size={42} className="text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.24)]" />
+                                        <div className="space-y-8 animate-fade-in">
+                                            <div className="space-y-2 border-b border-border/60 pb-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                    Overview
+                                                </p>
+                                                <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div className="flex items-center gap-6">
+                                                        <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-border/60 bg-muted/30 text-muted-foreground">
+                                                            <User size={32} />
+                                                        </div>
+                                                        <div className="flex flex-col gap-1 text-left">
+                                                            <h3 className="text-2xl font-semibold">{displayName}</h3>
+                                                            <p className="text-sm text-muted-foreground">{displayEmail}</p>
+                                                            <p className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                                                                {displayRole}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-col gap-2 text-left">
-                                                        <h3 className="text-3xl font-semibold tracking-tight text-white">
-                                                            {displayName}
-                                                        </h3>
-                                                        <p className="text-sm text-white/70">{displayEmail}</p>
-                                                        <p className="inline-flex items-center rounded-full border border-white/18 bg-white/[0.07] px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-white/75">
-                                                            {displayRole}
-                                                        </p>
-                                                    </div>
-                                                </div>
 
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="relative h-11 w-11 rounded-full border border-white/18 bg-white/[0.08] text-white/75 shadow-[0_24px_66px_-36px_rgba(8,11,18,0.75)] transition hover:border-white/26 hover:bg-white/[0.12] hover:text-white"
-                                                >
-                                                    <Edit size={16} />
-                                                </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="flex h-11 items-center gap-2 rounded-full border-border/60 px-5 text-sm font-medium"
+                                                    >
+                                                        <Edit size={16} />
+                                                        Edit
+                                                    </Button>
+                                                </div>
                                             </div>
 
                                             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                                                 {profileFields.map((field) => (
                                                     <div
                                                         key={field.label}
-                                                        className="space-y-4 rounded-2xl border border-white/12 bg-white/[0.04] p-6 backdrop-blur-xl transition hover:border-white/18 hover:bg-white/[0.07] hover:shadow-[0_30px_76px_-46px_rgba(8,11,18,0.7)]"
+                                                        className="space-y-3 rounded-xl border border-border/60 bg-card p-5 shadow-sm"
                                                     >
-                                                        <span className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-white/60">
+                                                        <span className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                                                             {field.label}
                                                         </span>
-                                                        <div className="rounded-xl border border-white/14 bg-white/[0.07] px-4 py-3 text-sm font-medium text-white">
+                                                        <div className="rounded-lg border border-border/60 bg-muted/50 px-4 py-2 text-sm font-medium text-foreground">
                                                             {field.value}
                                                         </div>
                                                     </div>
@@ -312,69 +451,124 @@ export default function UserProfilePanel({
                                         </div>
                                     )}
 
-                                    {activeTab === "appearance" && (
-                                        <div className="space-y-8 animate-fade-in">
-                                            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-8 shadow-[0_34px_90px_-48px_rgba(6,8,14,0.82)] backdrop-blur-2xl">
-                                                <h3 className="text-2xl font-semibold text-white">
-                                                    Appearance Settings
-                                                </h3>
-                                                <p className="mt-2 text-sm text-white/65">
-                                                    Customize your visual experience
+                                    {activeTab === "mcp" && (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="space-y-2 border-b border-border/60 pb-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                    Integration
                                                 </p>
+                                                <h3 className="text-2xl font-semibold">MCP Servers</h3>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Manage which Model Context Protocol servers are exposed to your agents.
+                                                </p>
+                                            </div>
 
-                                                <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                                    {themeOptions.map((themeOption) => {
-                                                        const Icon = themeOption.icon;
-                                                        const isActive = theme === themeOption.value;
+                                            <div className="space-y-4">
+                                                {mcpServersData.map((server) => {
+                                                    const enabled = serverToggles[server.id];
+                                                    return (
+                                                        <div
+                                                            key={server.id}
+                                                            className="flex items-center justify-between rounded-2xl border border-border/70 bg-card/80 p-5 shadow-sm"
+                                                        >
+                                                            <div className="space-y-1.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="text-base font-semibold text-foreground">{server.name}</p>
+                                                                    <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                                                        {server.region}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-sm text-muted-foreground">{server.description}</p>
+                                                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                                    <span className={cn("font-semibold", enabled ? "text-emerald-400" : "text-muted-foreground")}>
+                                                                        {enabled ? "online" : "offline"}
+                                                                    </span>
+                                                                    <span className="text-muted-foreground/70">{server.latency}</span>
+                                                                </div>
+                                                            </div>
 
-                                                        return (
                                                             <button
-                                                                key={themeOption.value}
-                                                                onClick={() => setTheme(themeOption.value)}
+                                                                type="button"
+                                                                role="switch"
+                                                                aria-checked={enabled}
+                                                                onClick={() => handleToggleServer(server.id)}
                                                                 className={cn(
-                                                                    "group relative flex flex-col items-center gap-4 rounded-2xl border px-6 py-8 text-center transition-all duration-300",
-                                                                    isActive
-                                                                        ? "border-white/35 bg-white/[0.1] shadow-[0_28px_72px_-40px_rgba(8,11,18,0.75)]"
-                                                                        : "border-white/12 bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.08] hover:shadow-[0_24px_60px_-40px_rgba(8,11,18,0.7)]"
+                                                                    "relative inline-flex h-8 w-14 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                                                    enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/60"
                                                                 )}
                                                             >
-                                                                <div
-                                                                    className={cn(
-                                                                        "flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-white/[0.07] text-white/75 transition",
-                                                                        isActive
-                                                                            ? "border-white/40 text-white"
-                                                                            : "group-hover:border-white/25 group-hover:text-white"
-                                                                    )}
-                                                                >
-                                                                    <Icon size={24} />
-                                                                </div>
                                                                 <span
                                                                     className={cn(
-                                                                        "text-sm font-semibold uppercase tracking-[0.26em]",
-                                                                        isActive ? "text-white" : "text-white/70 group-hover:text-white"
+                                                                        "inline-block h-6 w-6 rounded-full bg-white shadow transition-transform",
+                                                                        enabled ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
                                                                     )}
-                                                                >
-                                                                    {themeOption.name}
-                                                                </span>
-                                                                {isActive && (
-                                                                    <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-[#cdb2ff] shadow-[0_0_10px_rgba(205,178,255,0.6)]" />
-                                                                )}
+                                                                />
                                                             </button>
-                                                        );
-                                                    })}
-                                                </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === "appearance" && (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="space-y-2 border-b border-border/60 pb-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                    Personalization
+                                                </p>
+                                                <h3 className="text-2xl font-semibold">Appearance Settings</h3>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Choose a theme that matches your workspace.
+                                                </p>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                {themeOptions.map((themeOption) => {
+                                                    const Icon = themeOption.icon;
+                                                    const isActive = theme === themeOption.value;
+
+                                                    return (
+                                                        <button
+                                                            key={themeOption.value}
+                                                            onClick={() => setTheme(themeOption.value)}
+                                                            className={cn(
+                                                                "flex flex-col items-center gap-3 rounded-xl border px-6 py-6 text-center transition-colors",
+                                                                isActive
+                                                                    ? "border-primary/60 bg-primary/10 text-foreground"
+                                                                    : "border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40"
+                                                            )}
+                                                        >
+                                                            <div
+                                                                className={cn(
+                                                                    "flex h-12 w-12 items-center justify-center rounded-xl border border-border/60 text-muted-foreground transition-colors",
+                                                                    isActive && "border-primary bg-primary/20 text-primary"
+                                                                )}
+                                                            >
+                                                                <Icon size={22} />
+                                                            </div>
+                                                            <span className="text-sm font-semibold uppercase tracking-[0.24em]">
+                                                                {themeOption.name}
+                                                            </span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {isActive ? "Active theme" : "Switch theme"}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
 
                                     {activeTab === "settings" && (
-                                        <div className="space-y-8 animate-fade-in">
-                                            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-8 shadow-[0_34px_90px_-48px_rgba(6,8,14,0.82)] backdrop-blur-2xl">
-                                                <h3 className="text-2xl font-semibold text-white">
-                                                    General Settings
-                                                </h3>
-                                                <p className="mt-2 text-sm text-white/65">
-                                                    Configure your application preferences
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="space-y-2 border-b border-border/60 pb-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                    Configuration
+                                                </p>
+                                                <h3 className="text-2xl font-semibold">General Settings</h3>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Configure your application preferences.
                                                 </p>
                                             </div>
 
@@ -382,12 +576,10 @@ export default function UserProfilePanel({
                                                 {settingsCards.map((setting) => (
                                                     <div
                                                         key={setting.title}
-                                                        className="rounded-2xl border border-white/12 bg-white/[0.04] p-8 text-left backdrop-blur-xl transition hover:border-white/18 hover:bg-white/[0.07] hover:shadow-[0_30px_76px_-46px_rgba(8,11,18,0.7)]"
+                                                        className="rounded-2xl border border-border/60 bg-card p-6 text-left shadow-sm"
                                                     >
-                                                        <h4 className="text-lg font-semibold text-white">
-                                                            {setting.title}
-                                                        </h4>
-                                                        <p className="mt-2 text-sm text-white/65">{setting.desc}</p>
+                                                        <h4 className="text-lg font-semibold">{setting.title}</h4>
+                                                        <p className="mt-2 text-sm text-muted-foreground">{setting.desc}</p>
                                                     </div>
                                                 ))}
                                             </div>
@@ -395,13 +587,14 @@ export default function UserProfilePanel({
                                     )}
 
                                     {activeTab === "help" && (
-                                        <div className="space-y-8 animate-fade-in">
-                                            <div className="rounded-2xl border border-white/12 bg-white/[0.05] p-8 shadow-[0_34px_90px_-48px_rgba(6,8,14,0.82)] backdrop-blur-2xl">
-                                                <h3 className="text-2xl font-semibold text-white">
-                                                    Help & Support
-                                                </h3>
-                                                <p className="mt-2 text-sm text-white/65">
-                                                    Get assistance and learn more
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="space-y-2 border-b border-border/60 pb-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                    Guidance
+                                                </p>
+                                                <h3 className="text-2xl font-semibold">Help & Support</h3>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Get assistance and learn more.
                                                 </p>
                                             </div>
 
@@ -409,12 +602,10 @@ export default function UserProfilePanel({
                                                 {helpCards.map((help) => (
                                                     <div
                                                         key={help.title}
-                                                        className="rounded-2xl border border-white/12 bg-white/[0.04] p-8 text-left backdrop-blur-xl transition hover:border-white/18 hover:bg-white/[0.07] hover:shadow-[0_30px_76px_-46px_rgba(8,11,18,0.7)]"
+                                                        className="rounded-2xl border border-border/60 bg-card p-6 text-left shadow-sm"
                                                     >
-                                                        <h4 className="text-lg font-semibold text-white">
-                                                            {help.title}
-                                                        </h4>
-                                                        <p className="mt-2 text-sm text-white/65">{help.desc}</p>
+                                                        <h4 className="text-lg font-semibold">{help.title}</h4>
+                                                        <p className="mt-2 text-sm text-muted-foreground">{help.desc}</p>
                                                     </div>
                                                 ))}
                                             </div>

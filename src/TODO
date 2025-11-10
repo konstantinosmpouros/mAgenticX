@@ -29,7 +29,6 @@
 
 ## Dialogue Bridge
 
-- In the inference process we shouldn't send all the images in the conversation, when an image is send create a handler and a new col to store a description of it and the images from older messages should be replaces with the description only. Alternative the images size must be shrunk in order to be lighter for the inference.
 - Create an API to process the files when the user uploads them, and chunk them, not append them in any vector store yet.
 - Create the functionality of doc description and add it to the db as well as a column.
 - Fix the generate title api call.
