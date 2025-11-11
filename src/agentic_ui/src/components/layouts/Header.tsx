@@ -5,6 +5,7 @@ import { Ghost, Archive, Flag, Trash2, MoreHorizontal, HelpCircle } from "lucide
 import type { Agent } from "@/lib/types";
 import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 type HeaderProps = {
     agents: Agent[];
@@ -46,7 +47,6 @@ export default function Header({
         () => displayAgents.find(a => a.id === selectedAgent),
         [displayAgents, selectedAgent]
     );
-    const SelectedIcon = selected?.icon;
     const showInactiveIndicator = Boolean(inactiveAgent && inactiveAgent.isActive === false);
 
     return (
@@ -54,17 +54,18 @@ export default function Header({
             className={`sticky top-0 z-40 w-full bg-transparent px-3 py-2 md:px-6 md:py-3 border-b transition-colors duration-200 ${showBottomBorder ? 'border-border/100 backdrop-blur-md' : 'border-transparent'}`}
         >
             <div className="flex w-full items-center gap-1.5 md:gap-3">
+                <SidebarTrigger
+                    aria-label="Toggle sidebar"
+                    className="inline-flex h-10 w-10 rounded-xl border border-transparent bg-transparent text-foreground transition-colors hover:border-border/60 hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+                />
                 <div className="flex items-center gap-2">
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
                         <SelectTrigger
                             onMouseDown={(e) => e.preventDefault()}
-                            className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-muted/60 data-[state=open]:bg-muted/60 dark:bg-transparent dark:text-foreground dark:hover:bg-muted/40 dark:data-[state=open]:bg-muted/40 justify-start gap-2 px-3 h-11"
+                            className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-muted/60 dark:bg-transparent dark:text-foreground dark:hover:bg-muted/40 justify-start gap-2 px-3 h-11"
                         >
                             <SelectValue placeholder="Select an agent">
-                                <div className="flex items-center gap-2.5">
-                                    {selected && SelectedIcon && (
-                                        <SelectedIcon size={18} className="text-muted-foreground shrink-0" />
-                                    )}
+                                <div className="flex items-center">
                                     {selected && (
                                         <span className="truncate text-lg text-foreground max-w-[8.5rem] md:max-w-[10.5rem]">
                                             {selected.name}

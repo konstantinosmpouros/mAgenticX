@@ -73,7 +73,7 @@ export default function AppSidebar({
   userProfile,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
-  const isCollapsed = state === "collapsed";
+  const isCollapsed = !isMobile && state === "collapsed";
   const [isLogoHovered, setIsLogoHovered] = React.useState(false);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
@@ -183,11 +183,16 @@ export default function AppSidebar({
               tooltip="Go to workspace"
               onClick={handleTitleClickInternal}
               className={cn(
-                "items-center gap-3 rounded-xl bg-transparent px-3 py-3 text-left transition hover:bg-muted/20",
+                "group items-center gap-3 rounded-xl bg-transparent px-3 py-3 text-left transition hover:bg-muted/20",
                 "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
               )}
             >
-              <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-sidebar-accent/40 transition">
+              <div
+                className={cn(
+                  "relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full transition",
+                  isCollapsed ? "bg-transparent" : "bg-sidebar-accent/40"
+                )}
+              >
                 <img
                   src="/8.png"
                   alt="mAgenticX logo"
@@ -349,7 +354,8 @@ export default function AppSidebar({
               onClick={handleOpenProfile}
               className={cn(
                 "gap-3 rounded-xl bg-transparent px-3 py-3 transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
+                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start",
+                "group-data-[collapsible=icon]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent"
               )}
               tooltip={{
                 children: (
