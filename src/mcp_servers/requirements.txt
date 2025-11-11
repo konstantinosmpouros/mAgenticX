@@ -1,0 +1,14 @@
+langchain==0.3.25
+langchain-community==0.3.24
+langchain-core==0.3.59
+langchain-openai==0.3.16
+langchain_anthropic
+langchain-chroma==0.2.3
+PyPDF2==3.0.1
+pytrends==4.9.2
+requests>=2.32.0
+pydantic==2.11.4
+python-dotenv==1.1.0
+openai>=1.51.0
+mcp==1.19.0
+anyio>=4.4.0

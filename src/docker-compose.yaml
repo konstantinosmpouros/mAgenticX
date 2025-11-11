@@ -36,6 +36,23 @@ services:
       - backend
       - frontend
 
+  mcp_servers: # 8005
+    container_name: mcp_servers
+    image: mcp_servers
+    build:
+      context: ./mcp_servers
+      dockerfile: Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    networks:
+      - backend
+      - frontend
+
 
   rag_service: # 8001
     container_name: rag_service
