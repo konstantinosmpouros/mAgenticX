@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 AGENTS_SERVICE_URL = os.getenv("AGENTS_SERVICE_URL", "http://agents:8003")
 _AGENTS_DISCOVERY_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/agents"
+_AGENTS_TOOLS_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/tools"
 _AGENT_CACHE: Dict[str, AgentTable] = {}
 
 
@@ -209,6 +210,40 @@ async def validate_convId(user_id: str, conversation_id: str, db: AsyncSession =
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return conv
+
+
+async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
+    """
+    Proxy the agents service `/tools` endpoint without caching so the UI gets
+    the freshest tool catalog directly from MCP.
+    """
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(_AGENTS_TOOLS_ENDPOINT)
+            resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to fetch tools from agents service: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Agents service unreachable for tools synchronization.",
+        ) from exc
+
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Agents service returned invalid JSON for tools.",
+        ) from exc
+
+    if not isinstance(payload, list):
+        raise HTTPException(
+            status_code=502,
+            detail="Agents service returned an unexpected tools payload.",
+        )
+
+    return payload
 
 
 async def validate_convId_full(user_id: str, conversation_id: str, db: AsyncSession = Depends(get_db)) -> ConversationTable:

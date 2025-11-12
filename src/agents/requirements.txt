@@ -17,3 +17,4 @@ openai>=1.51.0
 uvicorn==0.32.0
 ag-ui-protocol
 python-multipart==0.0.9
+mcp==1.19.0

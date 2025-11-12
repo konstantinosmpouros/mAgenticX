@@ -29,6 +29,7 @@ type AppSidebarProps = {
   onDeleteConversation: (id: string, e?: React.MouseEvent) => void;
   onLoadMore: () => void;
   isLoadingMore: boolean;
+  isInitialLoading: boolean;
   hasMore: boolean;
   onTitleClick: () => void;
   onNewChat: () => void;
@@ -64,6 +65,7 @@ export default function AppSidebar({
   onDeleteConversation,
   onLoadMore,
   isLoadingMore,
+  isInitialLoading,
   hasMore,
   onTitleClick,
   onNewChat,
@@ -164,6 +166,9 @@ export default function AppSidebar({
   const handleSidebarMouseLeave = React.useCallback(() => {
     setIsLogoHovered(false);
   }, []);
+
+  const showEmptyState = !isInitialLoading && !isLoadingMore && conversations.length === 0;
+  const showInitialSkeleton = isInitialLoading || (isLoadingMore && conversations.length === 0);
 
   return (
     <SidebarRoot
@@ -270,7 +275,9 @@ export default function AppSidebar({
               Chats
             </SidebarGroupLabel>
             <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
-              {conversations.length === 0 ? (
+              {showInitialSkeleton ? (
+                <ConversationLoadingSkeleton />
+              ) : showEmptyState ? (
                 <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-muted/10 py-10 text-center text-muted-foreground">
                   <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
                   <p className="text-sm">No conversations yet</p>
@@ -335,7 +342,7 @@ export default function AppSidebar({
                   })}
                 </SidebarMenu>
               )}
-              {isLoadingMore && <ConversationLoadingSkeleton />}
+              {!showInitialSkeleton && isLoadingMore && <ConversationLoadingSkeleton />}
             </SidebarGroupContent>
           </SidebarGroup>
         )}

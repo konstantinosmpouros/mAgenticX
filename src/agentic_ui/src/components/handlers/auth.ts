@@ -1,5 +1,5 @@
-import type { UserProfile } from '@/lib/types';
-import { authenticate, getAgents, getConversations } from '@/lib/api';
+import type { ToolMetadata, UserProfile } from '@/lib/types';
+import { authenticate, getAgents, getConversations, getTools } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession } from '@/lib/authStorage';
 
@@ -8,7 +8,9 @@ type AuthCtx = {
   setUserId: (v: string | null) => void;
   setUserProfile: (v: UserProfile | null) => void;
   setAgents: (v: any) => void;
+  setAvailableTools: (v: ToolMetadata[]) => void;
   setConversations: (v: any) => void;
+  setConversationsLoading: (v: boolean) => void;
   setLoginUsername: (v: string) => void;
   setLoginPassword: (v: string) => void;
   setShowUserProfile: (v: boolean) => void;
@@ -25,6 +27,8 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setUserProfile,
     setAgents,
     setConversations,
+    setAvailableTools,
+    setConversationsLoading,
     setLoginUsername,
     setLoginPassword,
     setShowUserProfile,
@@ -48,16 +52,35 @@ export function createAuthHandlers(ctx: AuthCtx) {
           setUserId(user.id);
           // Persist session with 1 hour TTL
           saveSession(user, ttlMs);
+          setConversationsLoading(true);
+          const agentsPromise = getAgents();
+          const toolsPromise = getTools();
+          const conversationsPromise = getConversations(user.id);
+
           try {
-            const [agentsList, conversationsList] = await Promise.all([
-              getAgents(),
-              getConversations(user.id),
-            ]);
+            const agentsList = await agentsPromise;
             setAgents(agentsList);
+          } catch (e) {
+            console.error("Failed to fetch agents after login:", e);
+            setAgents([]);
+          }
+
+          try {
+            const toolsList = await toolsPromise;
+            setAvailableTools(toolsList);
+          } catch (e) {
+            console.error("Failed to fetch tools after login:", e);
+            setAvailableTools([]);
+          }
+
+          try {
+            const conversationsList = await conversationsPromise;
             setConversations(sortByUpdatedAtDesc(conversationsList));
           } catch (e) {
-            setAgents([]);
+            console.error("Failed to fetch conversations after login:", e);
             setConversations([]);
+          } finally {
+            setConversationsLoading(false);
           }
         }, 600);
 
@@ -92,7 +115,9 @@ export function createAuthHandlers(ctx: AuthCtx) {
       setLoginUsername("");
       setLoginPassword("");
       setAgents([]);
+      setAvailableTools([]);
       setConversations([]);
+      setConversationsLoading(false);
       clearChatAndStopThinking();
     }, 300);
   };

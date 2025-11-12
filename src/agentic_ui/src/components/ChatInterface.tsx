@@ -5,7 +5,7 @@ import { Building2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, UserProfile } from "@/lib/types";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, UserProfile, ToolMetadata } from "@/lib/types";
 
 // Handlers (modularized)
 import { 
@@ -58,8 +58,10 @@ export function ChatInterface() {
   
   // Main variables use for storing info from the db and present it constantly
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [availableTools, setAvailableTools] = useState<ToolMetadata[]>([]);
   const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState<boolean>(false);
   
   // Conversation list pagination state (persist across sidebar open/close)
   const [convPage, setConvPage] = useState<number>(1);
@@ -222,7 +224,20 @@ export function ChatInterface() {
   }, [currentConversation, agents]);
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
-  useAuthRehydrateEffect({ setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages: setConversationMessages, setIsPrivateMode, toast: toastWrapper });
+  useAuthRehydrateEffect({
+    setIsLoggedIn,
+    setUserId,
+    setUserProfile,
+    setAgents,
+    setAvailableTools,
+    setConversations,
+    setConversationsLoading,
+    setSelectedAgent,
+    setCurrentConversation,
+    setMessages: setConversationMessages,
+    setIsPrivateMode,
+    toast: toastWrapper,
+  });
   useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
   useUIPersistEffect({
@@ -365,6 +380,8 @@ export function ChatInterface() {
     setUserId,
     setUserProfile,
     setAgents,
+    setConversationsLoading,
+    setAvailableTools,
     setConversations,
     setLoginUsername,
     setLoginPassword,
@@ -449,6 +466,7 @@ export function ChatInterface() {
         agents={agents}
         userProfile={userProfile}
         isLoadingMore={convIsLoadingMore}
+        isInitialLoading={conversationsLoading}
         hasMore={convHasMore}
       />
       <SidebarInset>
@@ -552,6 +570,7 @@ export function ChatInterface() {
               setActiveTab={setActiveProfileTab}
               onLogout={handleLogout}
               user={userProfile}
+              availableTools={availableTools}
             />
             
             {/* Image Preview Modal */}

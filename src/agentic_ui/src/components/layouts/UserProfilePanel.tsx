@@ -16,7 +16,7 @@ import {
 import { Fragment, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { UserProfile } from "@/lib/types";
+import { ToolMetadata, UserProfile } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Props = {
@@ -26,43 +26,8 @@ type Props = {
     setActiveTab: (tabId: string) => void;
     onLogout: () => void;
     user: UserProfile | null;
+    availableTools: ToolMetadata[];
 };
-
-type McpServer = {
-    id: string;
-    name: string;
-    description: string;
-    region: string;
-    latency: string;
-    enabled: boolean;
-};
-
-const mcpServersData: McpServer[] = [
-    {
-        id: "atlas-lab",
-        name: "Atlas Lab",
-        description: "Research-focused toolset for doc QA",
-        region: "us-west-1",
-        latency: "42ms avg",
-        enabled: true,
-    },
-    {
-        id: "hyperion-prod",
-        name: "Hyperion Prod",
-        description: "Customer-facing automation cluster",
-        region: "eu-central-1",
-        latency: "88ms avg",
-        enabled: false,
-    },
-    {
-        id: "daedalus-rnd",
-        name: "Daedalus R&D",
-        description: "Experimental creative studio stack",
-        region: "ap-southeast-2",
-        latency: "133ms avg",
-        enabled: true,
-    },
-];
 
 const MCP_ICON_SRCS = {
     grey: "/mcp-server-stroke-rounded (3).png",
@@ -100,25 +65,33 @@ export default function UserProfilePanel({
     setActiveTab,
     onLogout,
     user,
+    availableTools,
 }: Props) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [userCollapsed, setUserCollapsed] = useState(false);
     const [forcedCollapsed, setForcedCollapsed] = useState(false);
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
-    const [serverToggles, setServerToggles] = useState<Record<string, boolean>>(() =>
-        mcpServersData.reduce<Record<string, boolean>>((acc, server) => {
-            acc[server.id] = server.enabled;
-            return acc;
-        }, {})
-    );
+    const [serverToggles, setServerToggles] = useState<Record<string, boolean>>({});
     const { theme, setTheme } = useTheme();
 
-    const handleToggleServer = (serverId: string) => {
+    useEffect(() => {
+        setServerToggles((prev) => {
+            const next: Record<string, boolean> = {};
+            availableTools.forEach((tool) => {
+                const key = tool.name;
+                next[key] = key in prev ? prev[key] : true;
+            });
+            return next;
+        });
+    }, [availableTools]);
+
+    const handleToggleServer = (toolName: string) => {
         setServerToggles((prev) => ({
             ...prev,
-            [serverId]: !prev[serverId],
+            [toolName]: !prev[toolName],
         }));
     };
+
 
     const handleToggleSidebar = () => {
         if (forcedCollapsed) return;
@@ -491,57 +464,108 @@ export default function UserProfilePanel({
                                                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                     Integration
                                                 </p>
-                                                <h3 className="text-2xl font-semibold">MCP Servers</h3>
+                                                <h3 className="text-2xl font-semibold">MCP Tools</h3>
                                                 <p className="text-sm text-muted-foreground">
-                                                    Manage which Model Context Protocol servers are exposed to your agents.
+                                                    Review the live tool catalog exposed by the MCP server and decide which ones stay active.
                                                 </p>
                                             </div>
 
                                             <div className="space-y-3">
-                                                {mcpServersData.map((server) => {
-                                                    const enabled = serverToggles[server.id];
-                                                    return (
-                                                        <div key={server.id} className="px-1 py-4 first:pt-0 last:pb-0">
-                                                            <div className="flex items-center gap-4">
-                                                                <span
-                                                                    className={cn(
-                                                                        "h-2.5 w-2.5 rounded-full transition-colors",
-                                                                        enabled ? "bg-emerald-400" : "bg-muted-foreground/40"
-                                                                    )}
-                                                                />
-                                                                <div className="flex-1 space-y-1">
-                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                        <p className="text-base font-semibold text-foreground">{server.name}</p>
-                                                                        <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                                                                            {server.region}
-                                                                        </span>
+                                                {availableTools.length === 0 ? (
+                                                    <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+                                                        <p className="text-sm text-muted-foreground">
+                                                            No tools discovered yet. Ensure the MCP tools server is running and refresh after login.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    availableTools.map((tool) => {
+                                                        const enabled = serverToggles[tool.name] ?? true;
+                                                        const properties = (tool.inputSchema?.properties ?? {}) as Record<string, any>;
+                                                        const requiredKeys = Array.isArray(tool.inputSchema?.required)
+                                                            ? (tool.inputSchema?.required as string[])
+                                                            : [];
+                                                        const argLines = Object.entries(properties).map(([key, schema]) => {
+                                                            const typeRaw = Array.isArray(schema?.type)
+                                                                ? schema.type.join(" | ")
+                                                                : schema?.type || "any";
+                                                            const optionalSuffix = requiredKeys.includes(key) ? "" : " (optional)";
+                                                            const desc = typeof schema?.description === "string" ? `: ${schema.description}` : "";
+                                                            return `${key}${optionalSuffix} (${typeRaw})${desc}`;
+                                                        });
+                                                        const argsDescription = argLines.length
+                                                            ? argLines.join(" • ")
+                                                            : "No parameters documented.";
+
+                                                        const outputSchema = tool.outputSchema ?? {};
+                                                        const outputType = Array.isArray(outputSchema?.type)
+                                                            ? outputSchema.type.join(" | ")
+                                                            : outputSchema?.type;
+                                                        const outputDesc =
+                                                            typeof outputSchema?.description === "string"
+                                                                ? outputSchema.description
+                                                                : null;
+                                                        const returnsDescription =
+                                                            outputDesc ||
+                                                            (outputType ? `Returns a ${outputType} payload.` : "No return value specified.");
+
+                                                        return (
+                                                            <div key={tool.name} className="px-1 py-4 first:pt-0 last:pb-0">
+                                                                <div className="grid grid-cols-[auto,1fr,auto] gap-4">
+                                                                    <div className="flex w-4 justify-center pt-2">
+                                                                        <span
+                                                                            className={cn(
+                                                                                "h-2.5 w-2.5 rounded-full transition-colors",
+                                                                                enabled ? "bg-emerald-400" : "bg-muted-foreground/40"
+                                                                            )}
+                                                                        />
                                                                     </div>
-                                                                    <p className="text-sm text-muted-foreground">{server.description}</p>
+                                                                    <div className="flex-1 space-y-2">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <p className="text-base font-semibold text-foreground">{tool.name}</p>
+                                                                            <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                                                                {argLines.length === 0
+                                                                                    ? "0 parameters"
+                                                                                    : `${argLines.length} parameter${argLines.length > 1 ? "s" : ""}`}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-sm text-muted-foreground">
+                                                                            {(tool.description || "").trim() || "No description provided."}
+                                                                        </p>
+                                                                        <div className="space-y-1 text-sm leading-relaxed text-muted-foreground">
+                                                                            <p>
+                                                                                <span className="font-semibold text-foreground">Args:</span>{" "}
+                                                                                {argsDescription}
+                                                                            </p>
+                                                                            <p>
+                                                                                <span className="font-semibold text-foreground">Returns:</span>{" "}
+                                                                                {returnsDescription}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        role="switch"
+                                                                        aria-checked={enabled}
+                                                                        onClick={() => handleToggleServer(tool.name)}
+                                                                        className={cn(
+                                                                            "relative inline-flex h-6 w-11 items-center self-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                                                            enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/70"
+                                                                        )}
+                                                                    >
+                                                                        <span
+                                                                            className={cn(
+                                                                                "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                                                                                enabled ? "translate-x-[1.4rem] bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                                                                            )}
+                                                                        />
+                                                                    </button>
                                                                 </div>
 
-                                                                <button
-                                                                    type="button"
-                                                                    role="switch"
-                                                                    aria-checked={enabled}
-                                                                    onClick={() => handleToggleServer(server.id)}
-                                                                    className={cn(
-                                                                        "relative inline-flex h-6 w-11 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                                                                        enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/70"
-                                                                    )}
-                                                                >
-                                                                    <span
-                                                                        className={cn(
-                                                                            "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
-                                                                            enabled ? "translate-x-[1.4rem] bg-primary" : "translate-x-1 bg-muted-foreground/60"
-                                                                        )}
-                                                                    />
-                                                                </button>
+                                                                <div className="pointer-events-none mx-auto mt-4 h-px w-[96%] rounded-full bg-gradient-to-r from-transparent via-border/60 to-transparent last:hidden" />
                                                             </div>
-
-                                                            <div className="pointer-events-none mx-auto mt-4 h-px w-[96%] rounded-full bg-gradient-to-r from-transparent via-border/60 to-transparent last:hidden" />
-                                                        </div>
-                                                    );
-                                                })}
+                                                        );
+                                                    })
+                                                )}
                                             </div>
                                         </div>
                                     )}

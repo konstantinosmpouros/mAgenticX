@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { Agent, ThinkingState, UserProfile } from '@/lib/types';
+import type { Agent, ThinkingState, ToolMetadata, UserProfile } from '@/lib/types';
 import { loadSession, isSessionValid, clearSession, updateSession, saveSession } from '@/lib/authStorage';
 import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
-import { getAgents, getConversations, refreshSession } from '@/lib/api';
+import { getAgents, getConversations, getTools, refreshSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import type { CSSProperties, RefObject } from 'react';
 
@@ -58,14 +58,28 @@ export function useAuthRehydrateEffect(params: {
   setUserId: (v: string | null) => void;
   setUserProfile: (v: UserProfile | null) => void;
   setAgents: (v: any) => void;
+  setAvailableTools?: (v: ToolMetadata[]) => void;
   setConversations: (v: any) => void;
+  setConversationsLoading?: (v: boolean) => void;
   setSelectedAgent?: (v: string) => void;
   setCurrentConversation?: (v: any) => void;
   setMessages?: (v: any) => void;
   setIsPrivateMode?: (v: boolean) => void;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 }) {
-  const { setIsLoggedIn, setUserId, setUserProfile, setAgents, setConversations, setSelectedAgent, setCurrentConversation, setMessages, setIsPrivateMode } = params;
+  const {
+    setIsLoggedIn,
+    setUserId,
+    setUserProfile,
+    setAgents,
+    setAvailableTools,
+    setConversations,
+    setConversationsLoading,
+    setSelectedAgent,
+    setCurrentConversation,
+    setMessages,
+    setIsPrivateMode,
+  } = params;
   const started = useRef(false);
 
   useEffect(() => {
@@ -79,9 +93,11 @@ export function useAuthRehydrateEffect(params: {
     const sessionUser = session?.user ?? null;
     setUserProfile(sessionUser);
 
-    Promise.all([getAgents(), getConversations(session!.userId)])
-      .then(([agents, conversations]) => {
+    setConversationsLoading?.(true);
+    Promise.all([getAgents(), getTools(), getConversations(session!.userId)])
+      .then(([agents, tools, conversations]) => {
         setAgents(agents);
+        if (setAvailableTools) setAvailableTools(tools);
         setConversations(sortByUpdatedAtDesc(conversations));
         // Try full UI snapshot first
         if (setSelectedAgent && setCurrentConversation && setMessages) {
@@ -121,6 +137,9 @@ export function useAuthRehydrateEffect(params: {
       .catch(() => {
         // if we cannot hydrate, clear session
         clearSession();
+      })
+      .finally(() => {
+        setConversationsLoading?.(false);
       });
   }, []);
 }

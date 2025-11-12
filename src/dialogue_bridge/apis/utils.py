@@ -3,9 +3,10 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, UserTable
-from database.schemas import AgentPublic, DictationResponse
+from database.schemas import AgentPublic, DictationResponse, ToolManifest
 from utils import (
     AGENTS_SERVICE_URL,
+    fetch_tools_from_agents_service,
     get_cached_agents,
     sync_agents_with_service,
     validate_userId,
@@ -103,3 +104,12 @@ async def get_available_agents(
     if not agents:
         agents = await sync_agents_with_service(db)
     return [AgentPublic.model_validate(a) for a in agents]
+
+
+@router.get("/tools", response_model=list[ToolManifest], status_code=status.HTTP_200_OK)
+async def get_available_tools(
+    _: dict = Depends(require_token_claims),
+):
+    """Return the tools exposed by the MCP server via the agents service."""
+    payload = await fetch_tools_from_agents_service()
+    return [ToolManifest.model_validate(item) for item in payload]

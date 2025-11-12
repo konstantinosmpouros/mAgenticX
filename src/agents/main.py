@@ -16,8 +16,9 @@ from contextlib import asynccontextmanager
 from fastapi.responses import StreamingResponse
 
 from openai import OpenAI
-from schemas import Request, TranscriptionResponse, AgentManifest
+from schemas import Request, TranscriptionResponse, AgentManifest, ToolManifest
 from utils import AGENT_REGISTRY
+from utils.mcp_tools import MCPToolsClientError, list_mcp_tools
 
 
 
@@ -124,6 +125,36 @@ async def get_available_agents() -> List[AgentManifest]:
     manifests = [definition.manifest for definition in AGENT_REGISTRY.values()]
     manifests.sort(key=lambda item: item.get("name", ""))
     return [AgentManifest.model_validate(item) for item in manifests]
+
+
+
+# ------------------------------------------------------------------
+# Available Tool Endpoint
+# ------------------------------------------------------------------
+@app.get("/tools", response_model=List[ToolManifest], status_code=status.HTTP_200_OK)
+async def get_available_tools() -> List[ToolManifest]:
+    """Return the live tool catalog exposed by the MCP server."""
+    try:
+        tools = await list_mcp_tools()
+    except MCPToolsClientError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    manifests: List[ToolManifest] = []
+    for tool in tools:
+        manifests.append(
+            ToolManifest(
+                name=tool.name,
+                description=(tool.description or "").strip(),
+                input_schema=tool.inputSchema or {"type": "object", "properties": {}},
+                output_schema=tool.outputSchema,
+            )
+        )
+
+    manifests.sort(key=lambda item: item.name.lower())
+    return manifests
 
 
 

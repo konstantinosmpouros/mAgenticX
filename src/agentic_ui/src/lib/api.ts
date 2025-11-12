@@ -12,6 +12,7 @@ import type {
   UpdateConversationResponse,
   DownloadAttachmentParams,
   AGUIEvent,
+  ToolMetadata,
 } from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
 import { parseSSE } from "./utils";
@@ -97,6 +98,29 @@ export async function getAgents(): Promise<Agent[]> {
     icon: mapIcon(a.icon),
     version: a.version,
     isActive: Boolean((a as any).isActive ?? (a as any).is_active ?? true),
+  }));
+}
+
+
+export async function getTools(): Promise<ToolMetadata[]> {
+  const res = await fetch("/api/tools", withCredentials({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch tools: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  return data.map((tool: any) => ({
+    name: typeof tool?.name === "string" ? tool.name : "unknown-tool",
+    description: typeof tool?.description === "string" ? tool.description : "",
+    inputSchema: (tool?.input_schema && typeof tool.input_schema === "object") ? tool.input_schema : {},
+    outputSchema: tool?.output_schema && typeof tool.output_schema === "object"
+      ? tool.output_schema
+      : undefined,
   }));
 }
 

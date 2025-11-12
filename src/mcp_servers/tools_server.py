@@ -164,7 +164,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=int,
-        default=8020,
+        default=8005,
         help="Port for SSE/HTTP transports.",
     )
     parser.add_argument(

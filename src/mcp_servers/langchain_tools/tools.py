@@ -39,15 +39,7 @@ from .tools_schema import (
 
 @tool("search_wikidata", args_schema=SearchWikidataInput)
 def search_wikidata(query: str) -> str:
-    """
-    Searches Wikidata for a given query and returns the results.
-
-    Args:
-        query (str): The search term to look up in Wikidata.
-
-    Returns:
-        str: The retrieved information from Wikidata.
-    """
+    """Searches Wikidata for a given query and returns the results."""
     try:
         wikidata = WikidataQueryRun(api_wrapper=WikidataAPIWrapper())
         results = wikidata.run(query)
@@ -62,15 +54,7 @@ def search_wikidata(query: str) -> str:
 
 @tool("search_wikipedia", args_schema=SearchWikipediaInput)
 def search_wikipedia(query: str) -> str:
-    """
-    Searches Wikipedia for a given query and returns a summary.
-
-    Args:
-        query (str): The search term to look up in Wikipedia.
-
-    Returns:
-        str: A summary of the Wikipedia page found.
-    """
+    """Searches Wikipedia for a given query and returns a summary."""
     try:
         wikipedia = WikipediaAPIWrapper()
         results = wikipedia.run(query)
@@ -85,16 +69,7 @@ def search_wikipedia(query: str) -> str:
 
 @tool("search_google_trends", args_schema=SearchGoogleTrendsInput)
 def search_google_trends(keywords: List[str], timeframe: str = 'today 12-m') -> str:
-    """
-    Retrieves Google Trends data for given keywords over a specified timeframe.
-
-    Args:
-        keywords (List[str]): List of keywords to search on Google Trends.
-        timeframe (str): Timeframe for the trends data (default: 'today 12-m').
-
-    Returns:
-        str: Formatted Google Trends data (interest over time).
-    """
+    """Retrieves Google Trends data for given keywords over a specified timeframe."""
     try:
         # Initialize pytrends
         pytrends = TrendReq(hl='en-US', tz=360)
@@ -119,15 +94,7 @@ def search_google_trends(keywords: List[str], timeframe: str = 'today 12-m') -> 
 
 @tool("search_pubmed", args_schema=SearchPubmedInput)
 def search_pubmed(query: str) -> str:
-    """
-    Searches PubMed for biomedical literature related to the given query.
-
-    Args:
-        query (str): The search term to look up in PubMed.
-
-    Returns:
-        str: The retrieved PubMed search results or an error message.
-    """
+    """Searches PubMed for biomedical literature related to the given query."""
     try:
         # Initialize PubMed API Wrapper
         pubmed = PubMedAPIWrapper()
@@ -146,21 +113,7 @@ def search_pubmed(query: str) -> str:
 
 @tool("retrieve_arxiv_articles_content", args_schema=RetrieveArxivArticlesContentInput)
 def retrieve_arxiv_articles_content(query: str) -> list:
-    """
-    Retrieve academic papers content from ArXiv based on a search query.
-
-    Parameters:
-        query (str): The search query string to retrieve relevant papers content from arXiv.
-
-    Returns:
-        list: A list of dictionaries, where each dictionary includes the following keys:
-            - 'title' (str):        The paper's title.
-            - 'authors' (list/str): A list or string of authors.
-            - 'pdf_url' (str):      The direct PDF URL on arXiv.
-            - 'pdf_text' (list):    A list of strings, each entry corresponding to one page of the PDF.
-            - 'error' (str):        If any error occurs during PDF retrieval or parsing, 
-                                    this will contain the error message; otherwise it is None.
-    """
+    """Retrieve academic papers content from ArXiv based on a search query."""
 
     # 1) Initialize the ArXiv retriever and get documents
     retriever = ArxivRetriever(load_max_docs=3)
@@ -213,30 +166,14 @@ def retrieve_arxiv_articles_content(query: str) -> list:
 
 @tool("retrieve_arxiv_articles_summaries", args_schema=RetrieveArxivArticlesSummariesInput)
 def retrieve_arxiv_articles_summaries(query: str) -> str:
-    """
-    Retrieve academic papers summaries from ArXiv based on a search query.
-
-    Parameters:
-        query (str): The search string to query ArXiv (e.g., keywords or title).
-
-    Returns:
-        str: Article summaries in string format
-    """
+    """Retrieve academic papers summaries from ArXiv based on a search query."""
     # Initialize the ArXiv Api Wrapper and get the summaries
     arxiv = ArxivAPIWrapper()
     return arxiv.run(query)
 
 @tool("get_stock_market_news", args_schema=GetStockMarketNewsInput)
 def get_stock_market_news(stock: str) -> str:
-    """
-    Fetches stock market news sentiment data for a given stock.
-
-    Args:
-        stock (str): The stock ticker symbol (e.g., 'AAPL').
-
-    Returns:
-        str: News sentiment analysis for the stock.
-    """
+    """Fetches stock market news sentiment data for a given stock."""
     try:
         alpha_vantage = AlphaVantageAPIWrapper()
         result = alpha_vantage._get_market_news_sentiment(stock)
@@ -246,12 +183,7 @@ def get_stock_market_news(stock: str) -> str:
 
 @tool("get_top_gainers_losers_stock_data")
 def get_top_gainers_losers_stock_data() -> str:
-    """
-    Fetches the top gainers and losers in the stock market.
-
-    Returns:
-        str: List of top gainers and losers.
-    """
+    """Fetches the top gainers and losers in the stock market."""
     try:
         alpha_vantage = AlphaVantageAPIWrapper()
         result = alpha_vantage._get_top_gainers_losers()
@@ -261,15 +193,7 @@ def get_top_gainers_losers_stock_data() -> str:
 
 @tool("get_weekly_stock_data", args_schema=GetWeeklyStockDataInput)
 def get_weekly_stock_data(stock: str) -> str:
-    """
-    Fetches weekly historical stock data for a given stock.
-
-    Args:
-        stock (str): The stock ticker symbol (e.g., 'AAPL').
-
-    Returns:
-        str: Weekly historical stock data.
-    """
+    """Fetches weekly historical stock data for a given stock."""
     try:
         alpha_vantage = AlphaVantageAPIWrapper()
         result = alpha_vantage._get_time_series_weekly(stock)
@@ -279,15 +203,7 @@ def get_weekly_stock_data(stock: str) -> str:
 
 @tool("get_daily_stock_data", args_schema=GetDailyStockDataInput)
 def get_daily_stock_data(stock: str) -> str:
-    """
-    Fetches daily historical stock data for a given stock.
-
-    Args:
-        stock (str): The stock ticker symbol (e.g., 'AAPL').
-
-    Returns:
-        str: Historical stock data.
-    """
+    """Fetches daily historical stock data for a given stock."""
     try:
         alpha_vantage = AlphaVantageAPIWrapper()
         result = alpha_vantage._get_time_series_daily(stock)
@@ -297,16 +213,7 @@ def get_daily_stock_data(stock: str) -> str:
 
 @tool("get_current_exchange_rate", args_schema=GetCurrentStockDataInput)
 def get_current_exchange_rate(stock: str, currency: str) -> str:
-    """
-    Fetches the latest exchange rate for a given stock and currency.
-
-    Args:
-        stock (str): The stock ticker symbol (e.g., 'AAPL').
-        currency (str): The currency to convert to (e.g., 'USD').
-
-    Returns:
-        str: The exchange rate data.
-    """
+    """Fetches the latest exchange rate for a given stock and currency."""
     try:
         alpha_vantage = AlphaVantageAPIWrapper()
         result = alpha_vantage._get_exchange_rate(currency, stock)
@@ -316,17 +223,7 @@ def get_current_exchange_rate(stock: str, currency: str) -> str:
 
 @tool("image_generation", args_schema=ImageGenerationInput)
 def image_generation(description: str) -> str:
-    """
-    Generates an image using the Langchain Tool based on a text prompt.
-
-    Parameters:
-        description (str): A description of the scene to generate.
-
-    Returns:
-        str: A dictionary in string format with keys:
-            - 'image_url': URL of the generated image
-            - or an error message if generation fails
-    """
+    """Generates an image using the Langchain Tool based on a text prompt."""
     dalle_tool = OpenAIDALLEImageGenerationTool(
         api_wrapper=DallEAPIWrapper(
             model='dall-e-3',

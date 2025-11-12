@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 import base64
-from typing import List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 from datetime import datetime
 
 Senders = Literal["user", "ai"]
@@ -79,6 +79,13 @@ class AgentPublic(BaseModel):
     version: Optional[str] = None
     isActive: bool = Field(..., validation_alias="is_active")
 
+
+
+class ToolManifest(BaseModel):
+    name: str
+    description: str = ""
+    input_schema: Dict[str, Any]
+    output_schema: Optional[Dict[str, Any]] = None
 
 
 #-------------------------------------------

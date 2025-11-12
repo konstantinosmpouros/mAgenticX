@@ -24,6 +24,13 @@ class AgentManifest(BaseModel):
     icon: str
 
 
+class ToolManifest(BaseModel):
+    name: str
+    description: str = ""
+    input_schema: Dict[str, Any]
+    output_schema: Optional[Dict[str, Any]] = None
+
+
 @dataclass(frozen=True)
 class AgentDefinition:
     slug: str
