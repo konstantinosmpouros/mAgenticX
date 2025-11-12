@@ -407,3 +407,78 @@ export function useCenteredComposerLayout({
     textareaMaxHeight: effectiveTextareaMax,
   };
 }
+
+// ---------------------------------------------------------------------------
+// UI helpers
+// ---------------------------------------------------------------------------
+export function useSidebarInteractionEffect(params: {
+  isCollapsed: boolean;
+  toggleSidebar: () => void;
+}) {
+  const { isCollapsed, toggleSidebar } = params;
+  const [isLogoHovered, setIsLogoHovered] = useState(false);
+
+  useEffect(() => {
+    if (!isCollapsed) {
+      setIsLogoHovered(false);
+    }
+  }, [isCollapsed]);
+
+  const handleSidebarMouseEnter = useCallback(() => {
+    if (isCollapsed) {
+      setIsLogoHovered(true);
+    }
+  }, [isCollapsed]);
+
+  const handleSidebarMouseLeave = useCallback(() => {
+    setIsLogoHovered(false);
+  }, []);
+
+  const toggleCollapsedOnBlankArea = useCallback(
+    () => {
+      if (isCollapsed) {
+        toggleSidebar();
+      }
+    },
+    [isCollapsed, toggleSidebar],
+  );
+
+  return {
+    isLogoHovered,
+    handleSidebarMouseEnter,
+    handleSidebarMouseLeave,
+    toggleCollapsedOnBlankArea,
+  };
+}
+
+export function useProfileSidebarCollapseEffect(params: {
+  forcedCollapsed: boolean;
+  setForcedCollapsed: (v: boolean) => void;
+  setSidebarCollapsed: (v: boolean) => void;
+  userCollapsed: boolean;
+}) {
+  const { forcedCollapsed, setForcedCollapsed, setSidebarCollapsed, userCollapsed } = params;
+
+  useEffect(() => {
+    const COLLAPSE_BREAKPOINT = 1100;
+    const EXPAND_BREAKPOINT = 1280;
+
+    const handleResize = () => {
+      const width = window.innerWidth;
+      if (width < COLLAPSE_BREAKPOINT && !forcedCollapsed) {
+        setForcedCollapsed(true);
+        setSidebarCollapsed(true);
+        return;
+      }
+
+      if (width >= EXPAND_BREAKPOINT && forcedCollapsed) {
+        setForcedCollapsed(false);
+        setSidebarCollapsed(userCollapsed);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [forcedCollapsed, setForcedCollapsed, setSidebarCollapsed, userCollapsed]);
+}

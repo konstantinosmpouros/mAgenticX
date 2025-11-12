@@ -18,6 +18,7 @@ import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { ToolMetadata, UserProfile } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useProfileSidebarCollapseEffect } from "@/components/handlers";
 
 type Props = {
     open: boolean;
@@ -74,6 +75,13 @@ export default function UserProfilePanel({
     const [serverToggles, setServerToggles] = useState<Record<string, boolean>>({});
     const { theme, setTheme } = useTheme();
 
+    useProfileSidebarCollapseEffect({
+        forcedCollapsed,
+        setForcedCollapsed,
+        setSidebarCollapsed,
+        userCollapsed,
+    });
+
     useEffect(() => {
         setServerToggles((prev) => {
             const next: Record<string, boolean> = {};
@@ -101,29 +109,6 @@ export default function UserProfilePanel({
             return next;
         });
     };
-
-    useEffect(() => {
-        const COLLAPSE_BREAKPOINT = 1100;
-        const EXPAND_BREAKPOINT = 1280;
-
-        const handleResize = () => {
-            const width = window.innerWidth;
-            if (width < COLLAPSE_BREAKPOINT && !forcedCollapsed) {
-                setForcedCollapsed(true);
-                setSidebarCollapsed(true);
-                return;
-            }
-
-            if (width >= EXPAND_BREAKPOINT && forcedCollapsed) {
-                setForcedCollapsed(false);
-                setSidebarCollapsed(userCollapsed);
-            }
-        };
-
-        handleResize();
-        window.addEventListener("resize", handleResize);
-        return () => window.removeEventListener("resize", handleResize);
-    }, [forcedCollapsed, userCollapsed]);
 
     if (!open) return null;
 

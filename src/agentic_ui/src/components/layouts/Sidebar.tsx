@@ -21,6 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSidebarInteractionEffect } from "@/components/handlers";
 
 type AppSidebarProps = {
   conversations: ConversationSummary[];
@@ -76,13 +77,7 @@ export default function AppSidebar({
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
   const isCollapsed = !isMobile && state === "collapsed";
-  const [isLogoHovered, setIsLogoHovered] = React.useState(false);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    if (!isCollapsed) {
-      setIsLogoHovered(false);
-    }
-  }, [isCollapsed]);
   const rawProfileName =
     userProfile?.displayName ?? userProfile?.fullName ?? userProfile?.username ?? "";
   const profileName = rawProfileName.trim() || "Profile";
@@ -157,15 +152,15 @@ export default function AppSidebar({
     }
   }, [conversations.length, hasMore, isCollapsed, isLoadingMore, onLoadMore]);
 
-  const handleSidebarMouseEnter = React.useCallback(() => {
-    if (isCollapsed) {
-      setIsLogoHovered(true);
-    }
-  }, [isCollapsed]);
-
-  const handleSidebarMouseLeave = React.useCallback(() => {
-    setIsLogoHovered(false);
-  }, []);
+  const {
+    isLogoHovered,
+    handleSidebarMouseEnter,
+    handleSidebarMouseLeave,
+    toggleCollapsedOnBlankArea,
+  } = useSidebarInteractionEffect({
+    isCollapsed,
+    toggleSidebar,
+  });
 
   const showEmptyState = !isInitialLoading && !isLoadingMore && conversations.length === 0;
   const showInitialSkeleton = isInitialLoading || (isLoadingMore && conversations.length === 0);
@@ -268,13 +263,16 @@ export default function AppSidebar({
         ref={contentRef}
         className="flex-1 overflow-y-auto pl-2 pr-3 pb-4 pt-0"
         onScroll={handleScroll}
+        onClick={toggleCollapsedOnBlankArea}
       >
         {!isCollapsed && (
           <SidebarGroup className="flex flex-1 flex-col space-y-2">
             <SidebarGroupLabel className="pr-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Chats
             </SidebarGroupLabel>
-            <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
+            <SidebarGroupContent
+              className="min-h-0 flex-1 space-y-2"
+            >
               {showInitialSkeleton ? (
                 <ConversationLoadingSkeleton />
               ) : showEmptyState ? (
