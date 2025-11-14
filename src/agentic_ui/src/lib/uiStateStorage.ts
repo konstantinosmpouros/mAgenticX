@@ -1,7 +1,8 @@
 // Minimal IndexedDB-based persistence for large UI state (e.g., attachments)
 // Stores a per-user snapshot plus blobs for pending attachments.
 
-import type { ConversationDetail, MessageOut, ThinkingState } from '@/lib/types';
+import { mapIcon } from '@/lib/consts';
+import type { Agent, ConversationDetail, MessageOut, ThinkingState, ToolMetadata } from '@/lib/types';
 
 const DB_NAME = 'mx_ui_state';
 const STATE_STORE = 'state';
@@ -11,6 +12,21 @@ const DB_VERSION = 1;
 type SerializableDate = string;
 
 type AttachmentRef = { key: string; name: string; type: string; size?: number };
+
+type AgentSnapshot = {
+  id: string;
+  name: string;
+  description: string;
+  iconName?: string | null;
+  version?: string;
+  isActive: boolean;
+};
+
+type ConversationSnapshot = (Omit<ConversationDetail, 'created_at' | 'updated_at' | 'messages' | 'agent'> & {
+  created_at: SerializableDate | null;
+  updated_at: SerializableDate | null;
+  agent: AgentSnapshot | null;
+}) | null;
 
 export type UISnapshotSerializable = {
   version: 1;
@@ -23,6 +39,8 @@ export type UISnapshotSerializable = {
   sidebarOpen: boolean;
   activeProfileTab: string;
   selectedImage: string | null;
+  availableTools?: ToolMetadata[];
+  agents?: Agent[];
 
   // Conversation + messages (dates as ISO strings)
   currentConversation: (Omit<ConversationDetail, 'created_at' | 'updated_at' | 'messages'> & {
@@ -33,6 +51,104 @@ export type UISnapshotSerializable = {
 
   // Attachment references stored in IDB blob store
   attachmentsRefs: AttachmentRef[];
+};
+
+type PersistedSnapshot = Omit<UISnapshotSerializable, 'currentConversation' | 'agents'> & {
+  currentConversation: ConversationSnapshot;
+  agents?: AgentSnapshot[];
+};
+
+const createFallbackAgent = (): Agent => ({
+  id: "",
+  name: "Unknown Agent",
+  description: "",
+  icon: mapIcon(null),
+  iconName: null,
+  isActive: true,
+});
+
+const serializeAgentForStorage = (agent?: Agent | null): AgentSnapshot | null => {
+  if (!agent) return null;
+  const iconName = agent.iconName ?? ((agent.icon as unknown as { name?: string })?.name ?? null);
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description,
+    iconName,
+    version: agent.version,
+    isActive: agent.isActive,
+  };
+};
+
+const deserializeAgentFromStorage = (agent?: AgentSnapshot | null): Agent => {
+  if (!agent) {
+    return createFallbackAgent();
+  }
+  return {
+    ...agent,
+    iconName: agent.iconName ?? null,
+    icon: mapIcon(agent.iconName ?? undefined),
+  };
+};
+
+const serializeConversationForStorage = (conversation: UISnapshotSerializable['currentConversation']): ConversationSnapshot => {
+  if (!conversation) return null;
+  const { agent, ...rest } = conversation;
+  return {
+    ...rest,
+    agent: serializeAgentForStorage(agent),
+  };
+};
+
+const deserializeConversationFromStorage = (conversation: ConversationSnapshot): UISnapshotSerializable['currentConversation'] => {
+  if (!conversation) return null;
+  const { agent, ...rest } = conversation;
+  return {
+    ...rest,
+    agent: deserializeAgentFromStorage(agent),
+  };
+};
+
+const serializeAgentsListForStorage = (agents?: Agent[] | null): AgentSnapshot[] | undefined => {
+  if (!Array.isArray(agents) || agents.length === 0) return undefined;
+  const serialized = agents
+    .map((agent) => serializeAgentForStorage(agent))
+    .filter((item): item is AgentSnapshot => Boolean(item));
+  return serialized.length > 0 ? serialized : undefined;
+};
+
+const deserializeAgentsListFromStorage = (agents?: AgentSnapshot[] | null): Agent[] | undefined => {
+  if (!Array.isArray(agents) || agents.length === 0) return undefined;
+  return agents.map(deserializeAgentFromStorage);
+};
+
+const cloneSchema = (schema?: Record<string, any> | null): Record<string, any> => {
+  if (!schema) return {};
+  try {
+    return JSON.parse(JSON.stringify(schema)) as Record<string, any>;
+  } catch {
+    return {};
+  }
+};
+
+const serializeToolsForStorage = (tools?: ToolMetadata[]): ToolMetadata[] | undefined => {
+  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? "",
+    inputSchema: cloneSchema(tool.inputSchema as Record<string, any> | undefined),
+    outputSchema: tool.outputSchema ? cloneSchema(tool.outputSchema as Record<string, any> | undefined) : undefined,
+  }));
+};
+
+const deserializeToolsFromStorage = (tools?: ToolMetadata[]): ToolMetadata[] => {
+  if (!Array.isArray(tools)) return [];
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? "",
+    inputSchema: cloneSchema(tool.inputSchema as Record<string, any> | undefined),
+    outputSchema: tool.outputSchema ? cloneSchema(tool.outputSchema as Record<string, any> | undefined) : undefined,
+  }));
 };
 
 function openDB(): Promise<IDBDatabase> {
@@ -83,7 +199,7 @@ async function idbDelete(store: string, key: IDBValidKey): Promise<void> {
 
 export async function saveUISnapshot(userId: string, data: UISnapshotSerializable, attachments: File[]): Promise<void> {
   // Clean up previous attachment blobs for this user if present
-  const previous: UISnapshotSerializable | undefined = await idbGet(STATE_STORE, userId);
+  const previous: PersistedSnapshot | undefined = await idbGet(STATE_STORE, userId);
   if (previous?.attachmentsRefs) {
     await Promise.all(previous.attachmentsRefs.map(ref => idbDelete(BLOB_STORE, ref.key).catch(() => {})));
   }
@@ -99,13 +215,27 @@ export async function saveUISnapshot(userId: string, data: UISnapshotSerializabl
     })
   );
 
-  // Save snapshot JSON
-  const payload: UISnapshotSerializable = { ...data, attachmentsRefs, version: 1 } as any;
+  const {
+    currentConversation,
+    attachmentsRefs: _ignoredRefs,
+    availableTools: toolsSnapshot,
+    agents: agentsSnapshot,
+    ...rest
+  } = data as UISnapshotSerializable & { attachmentsRefs: AttachmentRef[] };
+  const payload: PersistedSnapshot = {
+    ...(rest as Omit<UISnapshotSerializable, 'currentConversation' | 'attachmentsRefs' | 'availableTools' | 'agents'>),
+    availableTools: serializeToolsForStorage(toolsSnapshot),
+    agents: serializeAgentsListForStorage(agentsSnapshot),
+    currentConversation: serializeConversationForStorage(currentConversation),
+    attachmentsRefs,
+    version: 1,
+  };
+
   await idbPut(STATE_STORE, userId, payload);
 }
 
 export async function loadUISnapshot(userId: string): Promise<{ snapshot: UISnapshotSerializable; attachments: File[] } | null> {
-  const saved: UISnapshotSerializable | undefined = await idbGet(STATE_STORE, userId);
+  const saved: PersistedSnapshot | undefined = await idbGet(STATE_STORE, userId);
   if (!saved) return null;
 
   // Reconstruct Files from blobs
@@ -118,7 +248,16 @@ export async function loadUISnapshot(userId: string): Promise<{ snapshot: UISnap
       // ignore missing blobs
     }
   }
-  return { snapshot: saved, attachments };
+
+  const { currentConversation, availableTools: storedTools, agents: storedAgents, ...rest } = saved;
+  const snapshot: UISnapshotSerializable = {
+    ...(rest as Omit<UISnapshotSerializable, 'currentConversation' | 'availableTools' | 'agents'>),
+    currentConversation: deserializeConversationFromStorage(currentConversation),
+    availableTools: deserializeToolsFromStorage(storedTools),
+    agents: deserializeAgentsListFromStorage(storedAgents),
+  };
+
+  return { snapshot, attachments };
 }
 
 // Helpers for converting Dates in messages/conversation when saving/restoring can be handled in caller.

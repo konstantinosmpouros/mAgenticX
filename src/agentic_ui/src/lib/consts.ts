@@ -43,14 +43,38 @@ const toDate = (value: any): Date => (value ? new Date(value) : new Date());
 export const transformAgent = (
   agent: AgentPublic | Record<string, any> | undefined,
   fallback?: Partial<AgentPublic>,
-): Agent => ({
-  id: agent?.id ?? fallback?.id ?? "",
-  name: agent?.name ?? fallback?.name ?? "Unknown Agent",
-  description: agent?.description ?? fallback?.description ?? "",
-  icon: mapIcon(agent?.icon ?? fallback?.icon),
-  version: agent?.version ?? fallback?.version,
-  isActive: agent?.isActive ?? fallback?.isActive ?? true,
-});
+): Agent => {
+  const resolvedIcon =
+    typeof (agent as any)?.icon === "string"
+      ? (agent as any).icon
+      : typeof (agent as any)?.iconName === "string"
+        ? (agent as any).iconName
+        : typeof fallback?.icon === "string"
+          ? fallback.icon
+          : typeof (fallback as any)?.iconName === "string"
+            ? (fallback as any).iconName
+            : null;
+  const resolvedIsActive =
+    typeof (agent as any)?.isActive === "boolean"
+      ? (agent as any).isActive
+      : typeof (agent as any)?.is_active === "boolean"
+        ? (agent as any).is_active
+        : typeof fallback?.isActive === "boolean"
+          ? fallback.isActive
+          : typeof (fallback as any)?.is_active === "boolean"
+            ? (fallback as any).is_active
+            : true;
+
+  return {
+    id: agent?.id ?? fallback?.id ?? "",
+    name: agent?.name ?? fallback?.name ?? "Unknown Agent",
+    description: agent?.description ?? fallback?.description ?? "",
+    icon: mapIcon(resolvedIcon),
+    iconName: resolvedIcon,
+    version: agent?.version ?? fallback?.version,
+    isActive: resolvedIsActive,
+  };
+};
 
 
 // Transform attachment object from backend to frontend type

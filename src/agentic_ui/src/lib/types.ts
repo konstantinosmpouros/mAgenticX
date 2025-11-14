@@ -55,6 +55,7 @@ export type Agent = {
     name: string;
     description: string;
     icon: LucideIcon;
+    iconName?: string | null;
     version?: string;
     isActive: boolean;
 };

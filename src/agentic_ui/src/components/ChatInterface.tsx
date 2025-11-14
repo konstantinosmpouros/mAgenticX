@@ -252,6 +252,8 @@ export function ChatInterface() {
       thinkingState,
       activeProfileTab,
       selectedImage,
+      availableTools,
+      agents,
       currentConversation: currentConversation
         ? {
             ...currentConversation,

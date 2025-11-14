@@ -5,6 +5,7 @@ export * from './agents';
 export * from './auth';
 export * from './thinking';
 export * from './effects';
+export * from './sessionEffects';
 export * from './ui';
 export * from './agui';
 export * from './messages';
