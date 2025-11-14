@@ -114,6 +114,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setMessages(prev => [...prev, tempMessage]);
     setCurrentMessage('');
     setAttachments([]);
+    if (setShowAiTransition) setShowAiTransition(true);
     
     try {
       // Create new conversation if needed

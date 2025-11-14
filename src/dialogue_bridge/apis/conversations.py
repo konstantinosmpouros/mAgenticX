@@ -13,6 +13,8 @@ from database.schemas import (
     CreateConversationResponse,
 )
 from utils import (
+    _preview,
+    generate_conversation_title,
     get_agent_by_id,
     init_conv,
     validate_convId,
@@ -44,6 +46,13 @@ async def createConversation(
     agent = await get_agent_by_id(payload.agentId)
     if agent is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
+
+    resolved_title = (payload.title or "").strip() if payload.title else None
+    
+    # Auto-generate a title when none was provided
+    if not resolved_title:
+        generated = await generate_conversation_title(payload.firstMessage)
+        resolved_title = generated or _preview(payload.firstMessage.content) or agent.name or "New conversation"
     
     # Create conversation + first message atomically
     try:
@@ -53,7 +62,7 @@ async def createConversation(
             user=current_user,
             agent=agent,
             is_private=payload.isPrivate,
-            title=payload.title,
+            title=resolved_title,
             first_message=payload.firstMessage,
         )
         await db.commit()

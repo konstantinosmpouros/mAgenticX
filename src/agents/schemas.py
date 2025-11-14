@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional, Type
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from blueprints import LangGraphAgent
 from dataclasses import dataclass
 
@@ -8,6 +8,17 @@ class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
     user_input: List[Dict[str, Any]]
     config: Dict[str, Any]
+
+
+class TitleRequest(BaseModel):
+    """Structured payload for generating a conversation title from the first user message."""
+    user_input: List[Dict[str, Any]]
+
+
+
+class ConversationTitle(BaseModel):
+    """Structured LLM response carrying only the generated title."""
+    title: str
 
 
 class TranscriptionResponse(BaseModel):

@@ -16,8 +16,16 @@ from contextlib import asynccontextmanager
 from fastapi.responses import StreamingResponse
 
 from openai import OpenAI
-from schemas import Request, TranscriptionResponse, AgentManifest, ToolManifest
-from utils import AGENT_REGISTRY
+
+from schemas import (
+    Request,
+    TitleRequest,
+    ConversationTitle,
+    TranscriptionResponse,
+    AgentManifest,
+    ToolManifest,
+)
+from utils import AGENT_REGISTRY, generate_title
 from utils.mcp_tools import MCPToolsClientError, list_mcp_tools
 
 
@@ -156,6 +164,15 @@ async def get_available_tools() -> List[ToolManifest]:
     manifests.sort(key=lambda item: item.name.lower())
     return manifests
 
+
+
+# ------------------------------------------------------------------
+# Title Generation Endpoint
+# ------------------------------------------------------------------
+@app.post("/titles/generate", response_model=ConversationTitle, status_code=status.HTTP_200_OK)
+async def generate_conversation_title(req: TitleRequest) -> ConversationTitle:
+    """Generate a short, descriptive title for a new conversation."""
+    return await generate_title(req)
 
 
 # ------------------------------------------------------------------

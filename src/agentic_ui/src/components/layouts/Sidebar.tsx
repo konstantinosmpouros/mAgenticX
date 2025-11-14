@@ -285,8 +285,10 @@ export default function AppSidebar({
                   {conversations.map((conversation) => {
                     const agent = conversation.agent;
                     const Icon = agent?.icon ?? Building2;
-                    const conversationTitle = agent?.name || "Untitled chat";
-                    const lastMessage = conversation.lastMessage || "No messages yet";
+                    const rawTitle = typeof conversation.title === "string" ? conversation.title.trim() : "";
+                    const lastMessage = (conversation.lastMessage ?? "").trim();
+                    const fallbackTitle = lastMessage || agent?.name || "Untitled chat";
+                    const resolvedTitle = rawTitle || fallbackTitle;
 
                     return (
                       <SidebarMenuItem key={conversation.id}>
@@ -296,33 +298,32 @@ export default function AppSidebar({
                           onClick={() => handleConversationSelect(conversation)}
                           tooltip={{
                             children: (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-medium">{conversationTitle}</span>
-                                <span className="text-xs text-muted-foreground">{lastMessage}</span>
+                              <div className="flex max-w-xs flex-col gap-0.5">
+                                <span className="text-sm font-medium">{resolvedTitle}</span>
+                                {lastMessage && (
+                                  <span
+                                    className="text-xs text-muted-foreground leading-snug"
+                                    style={{
+                                      display: "-webkit-box",
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: "vertical",
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    {lastMessage}
+                                  </span>
+                                )}
                               </div>
                             ),
                           }}
-                          className="items-start gap-2.5 rounded-xl bg-transparent py-2.5 text-left shadow-none transition hover:bg-muted/15 focus-visible:ring-2 data-[active=true]:bg-muted/25 data-[active=true]:text-foreground !h-auto min-h-[3.75rem]"
+                          className="items-center gap-2.5 rounded-xl bg-transparent py-2 text-left shadow-none transition hover:bg-muted/15 focus-visible:ring-2 data-[active=true]:bg-muted/25 data-[active=true]:text-foreground !h-auto min-h-[2.85rem]"
                         >
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                            <Icon size={16} />
+                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <Icon size={14} />
                           </div>
-                          <div className="flex min-w-0 flex-col gap-1">
-                            <span className="truncate text-sm font-medium text-foreground">
-                              {conversationTitle}
-                            </span>
-                            <span
-                              className="text-xs text-muted-foreground leading-snug"
-                              style={{
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
-                              }}
-                            >
-                              {lastMessage}
-                            </span>
-                          </div>
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {resolvedTitle}
+                          </span>
                         </SidebarMenuButton>
                         <SidebarMenuAction
                           aria-label="Delete conversation"

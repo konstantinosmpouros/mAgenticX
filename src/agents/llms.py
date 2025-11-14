@@ -26,6 +26,7 @@ gpt_o1_mini = ChatOpenAI(model=OPENAI_GPT_o1_MINI)
 gpt_4o = ChatOpenAI(model=OPENAI_GPT_4o)
 gpt_4_1_mini = ChatOpenAI(model=OPENAI_GPT_4_1_MINI)
 gpt_4_1 = ChatOpenAI(model=OPENAI_GPT_4_1)
+gpt_4o_titles = ChatOpenAI(model=OPENAI_GPT_4o, temperature=1, max_tokens=64)
 
 # Advanced models
 gpt_5 = ChatOpenAI(model=OPENAI_GPT_5)
