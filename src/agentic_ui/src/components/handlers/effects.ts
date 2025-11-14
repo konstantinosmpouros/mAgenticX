@@ -23,6 +23,10 @@ export function useAutoScrollEffect(messages: any[], thinkingState: ThinkingStat
   }, [messages, thinkingState, shouldAutoScroll]);
 }
 
+
+// ---------------------------------------------------------------------------
+// Ensure that a default agent is selected effect
+// ---------------------------------------------------------------------------
 export function useEnsureDefaultAgentEffect(params: {
   isLoggedIn: boolean;
   userId: string | null;
@@ -56,7 +60,7 @@ export function useEnsureDefaultAgentEffect(params: {
 
 
 // ---------------------------------------------------------------------------
-// UI helpers
+// Header divider appearance effect
 // ---------------------------------------------------------------------------
 export function useHeaderDividerEffect() {
   const [headerHasDivider, setHeaderHasDivider] = useState(false);
@@ -68,6 +72,10 @@ export function useHeaderDividerEffect() {
   return { headerHasDivider, handleHeaderScrollState };
 }
 
+
+// ---------------------------------------------------------------------------
+// Sidebar click interaction effect
+// ---------------------------------------------------------------------------
 export function useSidebarInteractionEffect(params: {
   isCollapsed: boolean;
   toggleSidebar: () => void;
@@ -108,6 +116,10 @@ export function useSidebarInteractionEffect(params: {
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// User Profile sidebar collapse effect
+// ---------------------------------------------------------------------------
 export function useProfileSidebarCollapseEffect(params: {
   forcedCollapsed: boolean;
   setForcedCollapsed: (v: boolean) => void;
@@ -140,6 +152,10 @@ export function useProfileSidebarCollapseEffect(params: {
   }, [forcedCollapsed, setForcedCollapsed, setSidebarCollapsed, userCollapsed]);
 }
 
+
+// ---------------------------------------------------------------------------
+// Centered composer layout effect
+// ---------------------------------------------------------------------------
 type CenteredComposerLayoutArgs = {
   isMessagesEmpty: boolean;
   textareaRef: RefObject<HTMLTextAreaElement>;

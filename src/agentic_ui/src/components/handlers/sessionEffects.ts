@@ -5,6 +5,10 @@ import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/ui
 import { getAgents, getConversations, getTools, refreshSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 
+
+// ---------------------------------------------------------------------------
+// Auth rehydrate effect
+// ---------------------------------------------------------------------------
 export function useAuthRehydrateEffect(params: {
   setIsLoggedIn: (v: boolean) => void;
   setUserId: (v: string | null) => void;
@@ -92,8 +96,26 @@ export function useAuthRehydrateEffect(params: {
 
       setConversationsLoading?.(true);
       try {
-        const agentsPromise = cachedAgentsRef.current ? Promise.resolve(cachedAgentsRef.current) : getAgents();
-        const toolsPromise = cachedToolsRef.current ? Promise.resolve(cachedToolsRef.current) : getTools();
+        const agentsPromise = getAgents()
+          .then((agents) => {
+            cachedAgentsRef.current = agents;
+            return agents;
+          })
+          .catch((error) => {
+            if (cachedAgentsRef.current) return cachedAgentsRef.current;
+            throw error;
+          });
+
+        const toolsPromise = getTools()
+          .then((tools) => {
+            cachedToolsRef.current = tools;
+            return tools;
+          })
+          .catch((error) => {
+            if (cachedToolsRef.current) return cachedToolsRef.current;
+            throw error;
+          });
+
         const conversationsPromise = getConversations(session!.userId);
 
         const [agents, tools, conversations] = await Promise.all([
@@ -103,10 +125,8 @@ export function useAuthRehydrateEffect(params: {
         ]);
 
         setAgents(agents);
-        if (!cachedAgentsRef.current) cachedAgentsRef.current = agents;
         if (setAvailableTools) {
           setAvailableTools(tools);
-          if (!cachedToolsRef.current) cachedToolsRef.current = tools;
         }
         setConversations(sortByUpdatedAtDesc(conversations));
       } catch {
@@ -120,6 +140,10 @@ export function useAuthRehydrateEffect(params: {
   }, []);
 }
 
+
+// ---------------------------------------------------------------------------
+// Session auto-refresh effect
+// ---------------------------------------------------------------------------
 export function useSessionAutoRefreshEffect(params: {
   isLoggedIn: boolean;
   setIsLoggedIn: (v: boolean) => void;
@@ -235,6 +259,10 @@ export function useSessionAutoRefreshEffect(params: {
   }, [isLoggedIn, scheduleRefresh, clearTimer]);
 }
 
+
+// ---------------------------------------------------------------------------
+// Session state sync effect
+// ---------------------------------------------------------------------------
 export function useSessionStateSyncEffect(params: {
   userId: string | null;
   selectedAgent: string;
@@ -248,6 +276,10 @@ export function useSessionStateSyncEffect(params: {
   }, [userId, selectedAgent, currentConversationId, isPrivateMode]);
 }
 
+
+// ---------------------------------------------------------------------------
+// UI persist effect
+// ---------------------------------------------------------------------------
 export function useUIPersistEffect(params: {
   userId: string | null;
   snapshot: UISnapshotSerializable;
