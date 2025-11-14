@@ -152,8 +152,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setShowAiTransition,
           signal: streamAbortRef.current.signal,
         });
-        streamAbortRef.current = null;
-
       }
 
       // Existing conversation: send message normally
@@ -189,7 +187,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setShowAiTransition,
           signal: streamAbortRef.current.signal,
         });
-        streamAbortRef.current = null;
       }
     } catch (error) {
       // Handle errors: show toast and remove temp message
@@ -197,11 +194,11 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       toast({ title: 'Error', description: 'Failed to send message. Please try again.', variant: 'destructive' });
       // Remove any temp message if present
       setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
-      if (setShowAiTransition) setShowAiTransition(false);
+    } finally {
       streamAbortRef.current = null;
+      setIsSendingMessage(false);
+      if (setShowAiTransition) setShowAiTransition(false);
     }
-    // Reset sending state
-    setIsSendingMessage(false);
   };
   // Handler to abort ongoing streaming
   const handleStopStreaming = () => {

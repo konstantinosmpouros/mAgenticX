@@ -55,6 +55,20 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     closedThinkingOnFirstChunk: false,
   };
   
+  const finalizeThinkingState = () => {
+    setThinkingState((prev: any) => {
+      if (!prev) return prev;
+      if (prev.isDone && !prev.isActive) return prev;
+      return {
+        ...prev,
+        isActive: false,
+        isDone: true,
+        endTime: prev.endTime ?? Date.now(),
+        currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1),
+      };
+    });
+  };
+  
   const onEvent = async (raw: unknown) => {
     if (aborted) return;
     const ev = parseEvent(raw);
@@ -225,10 +239,6 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       if (stagedId) {
         setMessages((prev: MessageOut[]) => prev.filter((m) => m.id !== stagedId));
       }
-      setThinkingState((prev: any) =>
-        prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev,
-      );
-      if (setShowAiTransition) setShowAiTransition(false);
       return;
     }
     console.error('Stream error', err);
@@ -236,10 +246,6 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     if (stagedId) {
       setMessages((prev: MessageOut[]) => prev.filter((m) => m.id !== stagedId));
     }
-    setThinkingState((prev: any) =>
-      prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : null,
-    );
-    if (setShowAiTransition) setShowAiTransition(false);
     const status = (err as any)?.status;
     const detail = (err as any)?.detail;
     const description =
@@ -253,6 +259,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       description,
       variant: 'destructive',
     });
+  } finally {
+    finalizeThinkingState();
+    if (setShowAiTransition) setShowAiTransition(false);
   }
 }
 

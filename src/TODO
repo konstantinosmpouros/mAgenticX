@@ -9,6 +9,7 @@
 
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - Make the title creation functionality for a new conversation as bg task and in the end, update the conversation db, and ui page header
+- In order to edit and have multi responses for every message we need to set parent id in the messages so when l say inference it will go from parent to parent to create the flow/conversation and the inference will be done with convID + messageID along with the edit of the message to inference.
 
 - Implement a tab in the sidebar to show all the images, like openai library
 - Create one more chat container similar to gemini code or cursor (agentic chat) with the copilot kit
@@ -29,7 +30,7 @@
 
 - Create an API to process the files when the user uploads them, and chunk them, not append them in any vector store yet.
 - Create the functionality of doc description and add it to the db as well as a column.
-- Fix the generate title api call.
-- For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document
-- Give in the agents the personal info of the user in the prompt like name and role (langchain context)
+- Create the generate title api call inside the create new conversation flow in order to lower the latency of this process.
+- For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document.
+- Give in the agents the personal info of the user in the prompt like name and role (langchain context).
 - Create a get_available_tools API for the UI and send the configs for the inference too.
