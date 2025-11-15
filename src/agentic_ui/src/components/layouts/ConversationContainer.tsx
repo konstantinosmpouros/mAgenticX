@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Response } from "@/components/ui/ai-elements/response";
 import {
+  Branch,
+  BranchMessages,
+  BranchNext,
+  BranchPage,
+  BranchPrevious,
+  BranchSelector,
+} from "@/components/ui/shadcn-io/ai/branch";
+import {
   ChainOfThought,
   ChainOfThoughtHeader,
   ChainOfThoughtContent,
@@ -61,6 +69,10 @@ type ConversationContainerProps = {
   AgentIcon: LucideIcon;
   currentAgent?: Agent;
   onScrolledPastTop?: (isScrolled: boolean) => void;
+  branchChildrenMap?: Record<string, MessageOut[]>;
+  branchSelections?: Record<string, number>;
+  onSelectBranch?: (parentId: string | null, branchIndex: number) => void;
+  branchRootKey?: string;
 };
 
 const toolPrefix = /^\s*\[tool\]\s*/i;
@@ -159,6 +171,10 @@ export default function ConversationContainer({
   AgentIcon,
   currentAgent,
   onScrolledPastTop,
+  branchChildrenMap = {},
+  branchSelections = {},
+  onSelectBranch,
+  branchRootKey = "__root__",
 }: ConversationContainerProps) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const lastRunStartRef = React.useRef<number | null>(null);
@@ -199,6 +215,45 @@ export default function ConversationContainer({
       setLiveThinkingOpen(false);
     }
   }, [thinkingState]);
+
+  const renderBranchControls = React.useCallback(
+    (
+      parentId: string | null,
+      options: MessageOut[] | undefined,
+      selectionIndex: number,
+      role: "assistant" | "user"
+    ) => {
+      if (!options || options.length <= 1) return null;
+      const clampedIndex = Math.min(Math.max(selectionIndex, 0), options.length - 1);
+      const branchKey = `${parentId ?? "root"}-${options.length}-${options.map((option) => option.id).join("-")}${
+        role
+      }-${clampedIndex}`;
+
+      return (
+        <Branch
+          key={branchKey}
+          defaultBranch={clampedIndex}
+          onBranchChange={(idx) => onSelectBranch?.(parentId, idx)}
+          className="inline-flex items-center gap-1"
+        >
+          <BranchMessages className="hidden">
+            {options.map((child) => (
+              <div key={child.id} />
+            ))}
+          </BranchMessages>
+          <BranchSelector
+            from={role}
+            className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground/80 px-0"
+          >
+            <BranchPrevious className="h-7 w-7" />
+            <BranchPage />
+            <BranchNext className="h-7 w-7" />
+          </BranchSelector>
+        </Branch>
+      );
+    },
+    [onSelectBranch]
+  );
 
   const liveThoughts =
     thinkingState && thinkingState.thoughts.length
@@ -524,15 +579,27 @@ export default function ConversationContainer({
                       </div>
                     </Card>
 
-                    {message.sender === 'user' && (
-                      <div className="flex justify-end">
+                    {message.sender === "user" && (
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <div className="flex flex-1 items-center">
+                          {renderBranchControls(
+                            message.parentMessageId ?? null,
+                            message.parentMessageId
+                              ? branchChildrenMap[message.parentMessageId]
+                              : branchChildrenMap[branchRootKey],
+                            message.parentMessageId
+                              ? branchSelections[message.parentMessageId] ?? 0
+                              : branchSelections[branchRootKey] ?? 0,
+                            "user"
+                          )}
+                        </div>
                         <div
                           className={`
                             transition-opacity
                             ${
                               stickyUserBarId === message.id
-                                ? 'opacity-100 pointer-events-auto'
-                                : 'opacity-0 group-hover/message:opacity-100 hover:opacity-100 pointer-events-none group-hover/message:pointer-events-auto hover:pointer-events-auto'
+                                ? "opacity-100 pointer-events-auto"
+                                : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 pointer-events-none group-hover/message:pointer-events-auto hover:pointer-events-auto"
                             }
                           `}
                         >
@@ -553,16 +620,16 @@ export default function ConversationContainer({
                                   onCopy(message.content!, message.id);
                                   onFlashUserActionBar(message.id);
                                 }}
-                                aria-label={copiedId === message.id ? 'Copied' : 'Copy'}
+                                aria-label={copiedId === message.id ? "Copied" : "Copy"}
                               >
                                 <span className="relative inline-block h-4 w-4">
                                   <Copy
                                     className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                      ${copiedId === message.id ? 'opacity-0 scale-75' : 'opacity-100 scale-100'}`}
+                                      ${copiedId === message.id ? "opacity-0 scale-75" : "opacity-100 scale-100"}`}
                                   />
                                   <Check
                                     className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                      ${copiedId === message.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+                                      ${copiedId === message.id ? "opacity-100 scale-100" : "opacity-0 scale-75"}`}
                                   />
                                 </span>
                               </Button>

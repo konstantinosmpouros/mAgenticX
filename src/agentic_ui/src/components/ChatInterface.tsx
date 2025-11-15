@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Building2, X } from "lucide-react";
@@ -39,6 +39,8 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import UserProfilePanel from "@/components/layouts/UserProfilePanel";
 import ConversationContainer from "@/components/layouts/ConversationContainer";
 import { InputContainer, type DictationStatus } from "@/components/layouts/InputContainer";
+
+const ROOT_BRANCH_KEY = "__root__";
 
 
 export function ChatInterface() {
@@ -105,6 +107,13 @@ export function ChatInterface() {
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
 
+  // Branch selections (parentId -> child index)
+  const [branchSelections, setBranchSelections] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    setBranchSelections({});
+  }, [currentConversation?.id]);
+
   // Dictation state machine
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>("idle");
   
@@ -139,6 +148,71 @@ export function ChatInterface() {
       } as ConversationDetail;
     });
   };
+
+  const { activeMessages, branchChildrenMap } = useMemo(() => {
+    const allMessages = currentConversation?.messages ?? [];
+    if (!allMessages.length) {
+      return {
+        activeMessages: [] as MessageOut[],
+        branchChildrenMap: {} as Record<string, MessageOut[]>,
+      };
+    }
+
+    const byParent = new Map<string | null, MessageOut[]>();
+    for (const message of allMessages) {
+      const key = message.parentMessageId ?? null;
+      if (!byParent.has(key)) {
+        byParent.set(key, []);
+      }
+      byParent.get(key)!.push(message);
+    }
+
+    const selectChild = (parentId: string | null, options: MessageOut[]) => {
+      if (!options.length) return undefined;
+      const selectionKey = parentId ?? ROOT_BRANCH_KEY;
+      const desiredIndex = branchSelections[selectionKey] ?? 0;
+      const clampedIndex = Math.min(Math.max(desiredIndex, 0), options.length - 1);
+      return options[clampedIndex];
+    };
+
+    const visited = new Set<string>();
+    const activePath: MessageOut[] = [];
+    const traverse = (node?: MessageOut) => {
+      if (!node || visited.has(node.id)) return;
+      visited.add(node.id);
+      activePath.push(node);
+      const children = byParent.get(node.id) ?? [];
+      if (!children.length) return;
+      traverse(selectChild(node.id, children));
+    };
+
+    const roots = byParent.get(null) ?? [];
+    const rootNode = selectChild(null, roots) ?? roots[0];
+    if (rootNode) {
+      traverse(rootNode);
+    }
+
+    const branchRecord: Record<string, MessageOut[]> = {};
+    byParent.forEach((value, key) => {
+      branchRecord[key ?? ROOT_BRANCH_KEY] = value;
+    });
+
+    return {
+      activeMessages: activePath.length ? activePath : allMessages,
+      branchChildrenMap: branchRecord,
+    };
+  }, [currentConversation?.messages, branchSelections]);
+
+  const handleBranchSelectionChange = useCallback(
+    (parentId: string | null, index: number) => {
+      setBranchSelections(prev => {
+        const key = parentId ?? ROOT_BRANCH_KEY;
+        if (prev[key] === index) return prev;
+        return { ...prev, [key]: index };
+      });
+    },
+    []
+  );
   
   // Create toast wrapper for handlers
   const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
@@ -301,7 +375,7 @@ export function ChatInterface() {
     userId,
     selectedAgent,
     isPrivateMode,
-    messages: currentConversation?.messages ?? [],
+    messages: activeMessages,
     attachments,
     agents,
     currentConversation,
@@ -497,7 +571,7 @@ export function ChatInterface() {
             {/* Chat Messages Container*/}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <ConversationContainer
-                messages={currentConversation?.messages ?? []}
+                messages={activeMessages}
                 loadingConversation={loadingConversation}
                 isClearing={isClearing}
                 expandedThinking={expandedThinking}
@@ -517,6 +591,10 @@ export function ChatInterface() {
                 AgentIcon={AgentIcon}
                 currentAgent={currentAgent ?? undefined}
                 onScrolledPastTop={handleHeaderScrollState}
+                branchChildrenMap={branchChildrenMap}
+                branchSelections={branchSelections}
+                onSelectBranch={handleBranchSelectionChange}
+                branchRootKey={ROOT_BRANCH_KEY}
               />
             </div>
             
