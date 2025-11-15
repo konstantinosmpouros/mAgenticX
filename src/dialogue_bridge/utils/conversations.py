@@ -37,14 +37,20 @@ async def init_conv(
     await db.flush()  # Ensure conv.id exists before creating the first message.
 
     # Immediately persist the first message within the same transaction.
-    await init_message(db, conv, first_message)
+    await init_message(db, conv, first_message, parent_message_id=None)
     return conv
 
 
-async def init_message(db: AsyncSession, conv: ConversationTable, payload: MessageIn) -> MessageTable:
+async def init_message(
+    db: AsyncSession,
+    conv: ConversationTable,
+    payload: MessageIn,
+    parent_message_id: str | None = None,
+) -> MessageTable:
     # Create the ORM row for the inbound payload, mirroring all metadata.
     msg = MessageTable(
         conversation_id=conv.id,
+        parent_message_id=parent_message_id,
         sender=payload.sender,
         type=payload.type,
         content=payload.content,

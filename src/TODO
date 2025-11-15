@@ -8,15 +8,16 @@
 ## Agentic UI
 
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
+- Make the images with memo too or use the shadcn or the ai-sdk cause if l send some images the chat lags.
 - In order to edit and have multi responses for every message we need to set parent id in the messages so when l say inference it will go from parent to parent to create the flow/conversation and the inference will be done with convID + messageID along with the edit of the message to inference.
 
 - Implement a tab in the sidebar to show all the images, like openai library
 - Create one more chat container similar to gemini code or cursor (agentic chat) with the copilot kit
-- Create one more simple chat container with the copilot kit for flexibility.
 - Reactive theme change buttons, [integrate it!](https://www.shadcn.io/button/theme-toggle)
 
 ## Agents
 
+- The checkpointer is essential in the human in the loop and also we must use the update_state(as_node='') function in order to let the user define or give instructions to the agent why the tool call should not be executed. Also what if we used the messageID as the thread id in the configs of the checkpointer? Cause we don't invoke with the new message but with the whole conversation so we might adding n * n-1 new data in the checkpointer database.
 - Improve the current agent's architecture.
 - Give in the agents the personal info of the user in the prompt like name and role. Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic).

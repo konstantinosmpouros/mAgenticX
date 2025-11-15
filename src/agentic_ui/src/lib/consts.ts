@@ -92,6 +92,7 @@ export const transformAttachment = (attachment: Record<string, any>) => ({
 // Transform message object from backend to frontend type
 export const transformMessage = (message: Record<string, any>): MessageOut => ({
   id: message.id,
+  parentMessageId: message.parentMessageId ?? message.parent_message_id ?? undefined,
   content: message.content ?? "",
   sender: message.sender,
   type: message.type,

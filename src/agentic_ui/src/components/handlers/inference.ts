@@ -59,6 +59,17 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     streamAbortRef,
   } = ctx;
 
+  const resolveLastPersistedMessageId = () => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const candidate = messages[i];
+      const id = candidate?.id;
+      if (!id) continue;
+      if (String(id).startsWith('temp-')) continue;
+      return id;
+    }
+    return null;
+  };
+
   const handleSendMessage = async () => {
     const currentMessage = ctx.currentMessage;
 
@@ -100,6 +111,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       data: a.dataB64,
     }));
     
+    const lastPersistedMessageId = resolveLastPersistedMessageId();
+
     // Show user's message immediately (with AttachmentOut shape)
     const tempId = `temp-${Date.now()}`;
     const tempMessage: MessageOut = {
@@ -128,6 +141,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
             type: attachments.length > 0 ? 'file' : 'text',
             content: currentMessage || undefined,
             attachments: apiAttachments,
+            parentMessageId: null,
           },
         };
         
@@ -140,11 +154,18 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         if (setShowAiTransition) setShowAiTransition(true);
         
         // Start streaming inference
+        const detailMessages = response.detail.messages || [];
+        const replyParentMessageId = detailMessages.length ? detailMessages[detailMessages.length - 1]?.id : undefined;
+        if (!replyParentMessageId) {
+          throw new Error('Conversation missing first message id.');
+        }
+
         if (streamAbortRef.current) streamAbortRef.current.abort();
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: response.detail.id,
+          replyParentMessageId,
           setMessages,
           setThinkingState,
           setCurrentConversation,
@@ -157,7 +178,11 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
 
       // Existing conversation: send message normally
       else {
+        if (!lastPersistedMessageId) {
+          throw new Error('Unable to determine parent message for the new entry.');
+        }
         const messagePayload: MessageIn = {
+          parentMessageId: lastPersistedMessageId,
           sender: 'user',
           type: attachments.length > 0 ? 'file' : 'text',
           content: currentMessage || undefined,
@@ -175,11 +200,14 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         // Update sidebar summary and keep ordering
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
         if (setShowAiTransition) setShowAiTransition(true);
+        const replyParentMessageId = response.message.id;
+
         if (streamAbortRef.current) streamAbortRef.current.abort();
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: currentConversation!.id,
+          replyParentMessageId,
           setMessages,
           setThinkingState,
           setCurrentConversation,

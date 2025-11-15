@@ -140,6 +140,7 @@ class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     
     id: str
+    parentMessageId: Optional[str] = Field(None, validation_alias="parent_message_id")
     content: Optional[str] = None
     sender: Senders
     type: Types
@@ -187,6 +188,7 @@ class MessageIn(BaseModel):
     Create a message (user/agent) with optional attachments.
     Either content or attachments must be provided.
     """
+    parentMessageId: Optional[str] = None
     sender: Senders
     type: Types
     content: Optional[str] = None

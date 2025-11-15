@@ -19,6 +19,7 @@ type ToastFn = (opts: { title: string; description?: string; variant?: string; d
 export type AguiStreamOptions = {
   userId: string;
   conversationId: string;
+  replyParentMessageId: string;
   setMessages: MessageSetter;
   setThinkingState: ThinkingSetter;
   setCurrentConversation: (updater: any) => void;
@@ -39,6 +40,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     toast,
     setShowAiTransition,
     signal,
+    replyParentMessageId,
   } = options;
   
   let aborted = false;
@@ -53,6 +55,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     stagedMessageId: '' as string,
     content: '' as string,
     closedThinkingOnFirstChunk: false,
+    parentMessageId: replyParentMessageId,
   };
   
   const finalizeThinkingState = () => {
@@ -174,6 +177,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
         sender: 'ai',
         type: 'text',
         content: runtime.content,
+        parentMessageId: runtime.parentMessageId,
         thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
         thinkingTime,
       } as any;
@@ -202,6 +206,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
         sender: 'ai',
         type: 'text',
         content: runtime.content || 'An error occurred while generating the response.',
+        parentMessageId: runtime.parentMessageId,
         error: true,
         errorMessage: errorMsg,
         thinking: runtime.thoughts.length ? runtime.thoughts : undefined,

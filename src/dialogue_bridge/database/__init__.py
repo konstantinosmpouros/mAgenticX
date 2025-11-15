@@ -155,6 +155,7 @@ class MessageTable(Base):
     
     id = Column(String, primary_key=True, default=gen_uuid)
     conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
     
     sender = Column(MessageSenderEnum, nullable=False)
     type = Column(MessageTypeEnum, nullable=False, server_default="text")
