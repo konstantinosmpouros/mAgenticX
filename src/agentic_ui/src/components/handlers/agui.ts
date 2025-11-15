@@ -97,6 +97,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
         isActive: true,
         isDone: false,
         startTime: runtime.thinkingStart,
+        branchPath: [...runtime.messagePath],
       });
       return;
     }

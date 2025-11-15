@@ -162,7 +162,12 @@ export function useBranchingHandlers({
     [setBranchSelections, rootKey]
   );
 
-  return { activeMessages, branchChildrenMap, handleBranchSelectionChange };
+  const activeBranchPath = useMemo(
+    () => (activeMessages ?? []).map((msg) => msg.id),
+    [activeMessages]
+  );
+
+  return { activeMessages, branchChildrenMap, handleBranchSelectionChange, activeBranchPath };
 }
 
 

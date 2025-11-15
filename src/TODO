@@ -1,10 +1,5 @@
 # TODO
 
-## General
-
-- Plug tool in FastAPI that auto-generates documentation for all available APIs (/docs)
-- In the mobile view the sidebar doesn't exist cause its too shrunk.
-
 ## Agentic UI
 
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)

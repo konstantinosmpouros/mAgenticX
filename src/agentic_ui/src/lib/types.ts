@@ -201,6 +201,7 @@ export type ThinkingState = {
     isDone: boolean;
     startTime: number;
     endTime?: number;
+    branchPath?: string[];
 };
 
 // Streaming Inference (AG-UI)

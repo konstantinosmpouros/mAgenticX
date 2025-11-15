@@ -184,6 +184,7 @@ export function ChatInterface() {
     activeMessages,
     branchChildrenMap,
     handleBranchSelectionChange,
+    activeBranchPath,
   } = useBranchingHandlers({
     messages: currentConversation?.messages,
     branchSelections,
@@ -556,6 +557,7 @@ export function ChatInterface() {
               branchSelections={branchSelections}
               onSelectBranch={handleBranchSelectionChange}
               branchRootKey={ROOT_BRANCH_KEY}
+              activeBranchPath={activeBranchPath}
               editingMessageId={editingMessageId}
               editingDraft={editingDraft}
               editingBusy={editingBusy}

@@ -76,6 +76,7 @@ type ConversationContainerProps = {
   branchSelections?: Record<string, number>;
   onSelectBranch?: (parentId: string | null, branchIndex: number) => void;
   branchRootKey?: string;
+  activeBranchPath?: string[];
   editingMessageId?: string | null;
   editingDraft?: string;
   editingBusy?: boolean;
@@ -160,6 +161,21 @@ const buildChainOfThoughtSteps = (
   return steps.length ? steps : null;
 };
 
+const isBranchPathActive = (branchPath?: string[], activePath?: string[]) => {
+  if (!branchPath || branchPath.length === 0) {
+    return true;
+  }
+  if (!activePath || activePath.length < branchPath.length) {
+    return false;
+  }
+  for (let i = 0; i < branchPath.length; i += 1) {
+    if (branchPath[i] !== activePath[i]) {
+      return false;
+    }
+  }
+  return true;
+};
+
 export default function ConversationContainer({
   messages,
   loadingConversation,
@@ -185,6 +201,7 @@ export default function ConversationContainer({
   branchSelections = {},
   onSelectBranch,
   branchRootKey = "__root__",
+  activeBranchPath,
   editingMessageId,
   editingDraft,
   editingBusy,
@@ -293,8 +310,15 @@ export default function ConversationContainer({
       )
     : -1;
 
+  const isViewingThinkingBranch = isBranchPathActive(
+    thinkingState?.branchPath,
+    activeBranchPath
+  );
+
   const shouldShowLiveChain =
-    Boolean(thinkingState) && (thinkingState.isActive || liveThinkingOpen);
+    Boolean(thinkingState) &&
+    isViewingThinkingBranch &&
+    (thinkingState.isActive || liveThinkingOpen);
 
   return (
     <div className="flex-1 overflow-hidden relative">
