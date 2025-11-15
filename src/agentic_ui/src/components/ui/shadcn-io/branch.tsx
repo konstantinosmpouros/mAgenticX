@@ -206,7 +206,7 @@ export const BranchPage = ({ className, ...props }: BranchPageProps) => {
       )}
       {...props}
     >
-      {currentBranch + 1} of {totalBranches}
+      {currentBranch + 1}/{totalBranches}
     </span>
   );
 };

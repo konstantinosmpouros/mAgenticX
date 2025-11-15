@@ -25,6 +25,7 @@ import {
   createAiTransitionHandlers,
   createStickyUserBarHandlers,
   createFeedbackHandlers,
+  createMessageEditHandlers,
   useBranchingHandlers,
   useHeaderDividerEffect,
   useCenteredComposerLayout
@@ -110,8 +111,19 @@ export function ChatInterface() {
   // Branch selections (parentId -> child index)
   const [branchSelections, setBranchSelections] = useState<Record<string, number>>({});
 
+  // Message editing state
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingDraft, setEditingDraft] = useState("");
+  const [editingBusy, setEditingBusy] = useState(false);
+
   useEffect(() => {
     setBranchSelections({});
+  }, [currentConversation?.id]);
+
+  useEffect(() => {
+    setEditingMessageId(null);
+    setEditingDraft("");
+    setEditingBusy(false);
   }, [currentConversation?.id]);
 
   // Dictation state machine
@@ -147,6 +159,25 @@ export function ChatInterface() {
         messages: nextMessages,
       } as ConversationDetail;
     });
+  };
+
+  const handleEditDraftChange = (value: string) => {
+    setEditingDraft(value);
+  };
+
+  const handleRequestEditMessage = (message: MessageOut) => {
+    if (message.sender !== "user") return;
+    setEditingMessageId(message.id);
+    setEditingDraft(message.content ?? "");
+    setEditingBusy(false);
+    setStickyUserBarId(message.id);
+  };
+
+  const handleCancelEditMessage = () => {
+    setEditingMessageId(null);
+    setEditingDraft("");
+    setEditingBusy(false);
+    setStickyUserBarId(null);
   };
 
   const {
@@ -269,10 +300,34 @@ export function ChatInterface() {
   
   // Create AI transition handlers
   const { AiTransitionIndicator } = createAiTransitionHandlers({ showAiTransition, thinkingState });
-  
+
   // Abort controller for streaming
   const streamAbortRef = useRef<AbortController | null>(null);
-  
+
+  const { handleConfirmEditMessage } = createMessageEditHandlers({
+    userId,
+    currentConversation,
+    setConversationMessages,
+    setCurrentConversation,
+    setConversations,
+    toast: toastWrapper,
+    setThinkingState,
+    setShowAiTransition,
+    streamAbortRef,
+    rootBranchKey: ROOT_BRANCH_KEY,
+    setBranchSelections,
+    setIsSendingMessage,
+  });
+
+  const submitEditFromState = () =>
+    handleConfirmEditMessage({
+      editingMessageId,
+      editingDraft,
+      setEditingMessageId,
+      setEditingDraft,
+      setEditingBusy,
+    });
+
   // Inference handler
   const { handleSendMessage, handleStopStreaming, handleDictationSubmit, handleDictationStatusChange } = createInferenceHandlers({
     userId,
@@ -394,6 +449,7 @@ export function ChatInterface() {
     userId,
     currentConversation,
     setConversationMessages,
+    toast: toastWrapper,
   });
   
   // Centered composer layout for input area
@@ -496,11 +552,18 @@ export function ChatInterface() {
                 AgentIcon={AgentIcon}
                 currentAgent={currentAgent ?? undefined}
                 onScrolledPastTop={handleHeaderScrollState}
-                branchChildrenMap={branchChildrenMap}
-                branchSelections={branchSelections}
-                onSelectBranch={handleBranchSelectionChange}
-                branchRootKey={ROOT_BRANCH_KEY}
-              />
+              branchChildrenMap={branchChildrenMap}
+              branchSelections={branchSelections}
+              onSelectBranch={handleBranchSelectionChange}
+              branchRootKey={ROOT_BRANCH_KEY}
+              editingMessageId={editingMessageId}
+              editingDraft={editingDraft}
+              editingBusy={editingBusy}
+              onRequestEdit={handleRequestEditMessage}
+              onChangeEditDraft={handleEditDraftChange}
+              onCancelEdit={handleCancelEditMessage}
+              onSubmitEdit={submitEditFromState}
+            />
             </div>
             
             {/* Input Area */}

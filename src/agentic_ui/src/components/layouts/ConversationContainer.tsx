@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Response } from "@/components/ui/ai-elements/response";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Branch,
   BranchMessages,
@@ -30,6 +31,8 @@ import {
   ThumbsUp,
   Wrench,
   CheckCircle2,
+  Pencil,
+  X as CloseIcon,
 } from "lucide-react";
 import { VscEye } from "react-icons/vsc";
 import type { LucideIcon } from "lucide-react";
@@ -73,6 +76,13 @@ type ConversationContainerProps = {
   branchSelections?: Record<string, number>;
   onSelectBranch?: (parentId: string | null, branchIndex: number) => void;
   branchRootKey?: string;
+  editingMessageId?: string | null;
+  editingDraft?: string;
+  editingBusy?: boolean;
+  onRequestEdit?: (message: MessageOut) => void;
+  onChangeEditDraft?: (value: string) => void;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: () => void;
 };
 
 const toolPrefix = /^\s*\[tool\]\s*/i;
@@ -175,6 +185,13 @@ export default function ConversationContainer({
   branchSelections = {},
   onSelectBranch,
   branchRootKey = "__root__",
+  editingMessageId,
+  editingDraft,
+  editingBusy,
+  onRequestEdit,
+  onChangeEditDraft,
+  onCancelEdit,
+  onSubmitEdit,
 }: ConversationContainerProps) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const lastRunStartRef = React.useRef<number | null>(null);
@@ -245,9 +262,9 @@ export default function ConversationContainer({
             from={role}
             className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground/80 px-0"
           >
-            <BranchPrevious className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60" />
-            <BranchPage />
-            <BranchNext className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60" />
+            <BranchPrevious className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-muted/60" />
+            <BranchPage className="mx-0" />
+            <BranchNext className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-muted/60" />
           </BranchSelector>
         </Branch>
       );
@@ -307,8 +324,16 @@ export default function ConversationContainer({
           )}
 
           {!loadingConversation &&
-            messages.map((message) => (
-              <div key={message.id} className="animate-fade-in-fast space-y-2">
+            messages.map((message) => {
+              const isEditingMessage = editingMessageId === message.id;
+              const userActionVisibilityClass = `transition-opacity ${
+                stickyUserBarId === message.id
+                  ? "opacity-100 pointer-events-auto"
+                  : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 pointer-events-none group-hover/message:pointer-events-auto hover:pointer-events-auto"
+              }`;
+
+              return (
+                <div key={message.id} className="animate-fade-in-fast space-y-2">
                 {message.attachments && message.attachments.length > 0 && (
                   <div className={`${message.sender === 'user' ? 'flex justify-end' : ''}`}>
                     <div className="max-w-[85%] md:max-w-[85%]">
@@ -409,7 +434,7 @@ export default function ConversationContainer({
                   </div>
                 )}
 
-                {message.content && (
+                {(message.content || isEditingMessage) && (
                   <div
                     className={`space-y-2 md:space-y-2 ${
                       message.sender === 'user' ? 'flex flex-col items-end' : ''
@@ -455,12 +480,24 @@ export default function ConversationContainer({
                     <Card
                       className={`${
                         message.sender === 'user'
-                          ? 'p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border max-w-[85%] md:max-w-[75%]'
+                          ? `p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border ${
+                              isEditingMessage ? 'w-full max-w-full' : 'max-w-[85%] md:max-w-[75%]'
+                            }`
                           : 'bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]'
                       }`}
                     >
                       <div className="space-y-3 min-w-0">
-                        <Response>{message.content ?? ""}</Response>
+                        {isEditingMessage ? (
+                          <Textarea
+                            value={editingDraft ?? ""}
+                            onChange={(event) => onChangeEditDraft?.(event.target.value)}
+                            disabled={editingBusy}
+                            autoFocus
+                            className="w-full min-h-[6rem] resize-none bg-transparent text-inherit border-none p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-none focus-visible:outline-none"
+                          />
+                        ) : (
+                          <Response>{message.content ?? ""}</Response>
+                        )}
                         <div className="text-sm opacity-70 flex items-center gap-2">
                           <span>
                             {message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -580,75 +617,124 @@ export default function ConversationContainer({
                     </Card>
 
                     {message.sender === "user" && (
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <div className="flex flex-1 items-center">
-                          {renderBranchControls(
-                            message.parentMessageId ?? null,
-                            message.parentMessageId
-                              ? branchChildrenMap[message.parentMessageId]
-                              : branchChildrenMap[branchRootKey],
-                            message.parentMessageId
-                              ? branchSelections[message.parentMessageId] ?? 0
-                              : branchSelections[branchRootKey] ?? 0,
-                            "user"
-                          )}
+                      isEditingMessage ? (
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1 text-muted-foreground hover:text-foreground"
+                            disabled={editingBusy}
+                            onClick={() => onCancelEdit?.()}
+                          >
+                            <CloseIcon className="h-4 w-4" />
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="gap-1"
+                            disabled={editingBusy}
+                            onClick={() => onSubmitEdit?.()}
+                          >
+                            <Check className="h-4 w-4" />
+                            Submit
+                          </Button>
                         </div>
-                        <div
-                          className={`
-                            transition-opacity
-                            ${
-                              stickyUserBarId === message.id
-                                ? "opacity-100 pointer-events-auto"
-                                : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 pointer-events-none group-hover/message:pointer-events-auto hover:pointer-events-auto"
-                            }
-                          `}
-                        >
-                          <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="
-                                  h-8 w-8 text-muted-foreground
-                                  hover:bg-muted/60 hover:!text-muted-foreground
-                                  active:!bg-muted/70 active:!text-muted-foreground
-                                  focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
-                                  focus:ring-0 focus-visible:ring-0 transition-colors
-                                "
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => {
-                                  onCopy(message.content!, message.id);
-                                  onFlashUserActionBar(message.id);
-                                }}
-                                aria-label={copiedId === message.id ? "Copied" : "Copy"}
-                              >
-                                <span className="relative inline-block h-4 w-4">
-                                  <Copy
-                                    className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                      ${copiedId === message.id ? "opacity-0 scale-75" : "opacity-100 scale-100"}`}
-                                  />
-                                  <Check
-                                    className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                      ${copiedId === message.id ? "opacity-100 scale-100" : "opacity-0 scale-75"}`}
-                                  />
-                                </span>
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent
-                              side="bottom"
-                              align="center"
-                              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                            >
-                              <p>Copy</p>
-                            </TooltipContent>
-                          </Tooltip>
+                      ) : (
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <div className={`flex flex-1 items-center ${userActionVisibilityClass}`}>
+                            {renderBranchControls(
+                              message.parentMessageId ?? null,
+                              message.parentMessageId
+                                ? branchChildrenMap[message.parentMessageId]
+                                : branchChildrenMap[branchRootKey],
+                              message.parentMessageId
+                                ? branchSelections[message.parentMessageId] ?? 0
+                                : branchSelections[branchRootKey] ?? 0,
+                              "user"
+                            )}
+                          </div>
+                          <div className={userActionVisibilityClass}>
+                            <div className="flex items-center gap-1.5">
+                              <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="
+                                      h-8 w-8 text-muted-foreground
+                                      hover:bg-muted/60 hover:!text-muted-foreground
+                                      active:!bg-muted/70 active:!text-muted-foreground
+                                      focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
+                                      focus:ring-0 focus-visible:ring-0 transition-colors
+                                    "
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      onCopy(message.content!, message.id);
+                                      onFlashUserActionBar(message.id);
+                                    }}
+                                    aria-label={copiedId === message.id ? "Copied" : "Copy"}
+                                  >
+                                    <span className="relative inline-block h-4 w-4">
+                                      <Copy
+                                        className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                          ${copiedId === message.id ? "opacity-0 scale-75" : "opacity-100 scale-100"}`}
+                                      />
+                                      <Check
+                                        className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                          ${copiedId === message.id ? "opacity-100 scale-100" : "opacity-0 scale-75"}`}
+                                      />
+                                    </span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="bottom"
+                                  align="center"
+                                  className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                >
+                                  <p>Copy</p>
+                                </TooltipContent>
+                              </Tooltip>
+                              {onRequestEdit && (
+                                <Tooltip delayDuration={0}>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="
+                                        h-8 w-8 text-muted-foreground
+                                        hover:bg-muted/60 hover:!text-muted-foreground
+                                        active:!bg-muted/70 active:!text-muted-foreground
+                                        focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
+                                        focus:ring-0 focus-visible:ring-0 transition-colors
+                                      "
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => onRequestEdit(message)}
+                                      aria-label="Edit message"
+                                    >
+                                      <Pencil className="h-5 w-5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="bottom"
+                                    align="center"
+                                    className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                  >
+                                    <p>Edit</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      )
                     )}
                   </div>
                 )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
 
           {AiTransitionIndicator ? <AiTransitionIndicator /> : null}
 

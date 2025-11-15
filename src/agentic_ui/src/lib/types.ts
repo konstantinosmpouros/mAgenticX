@@ -99,7 +99,7 @@ export type ConversationDetail = {
 // Backend message type from API response
 export type MessageOut = {
     id: string;
-    parentMessageId?: string;
+    parentMessageId?: string | null;
     content?: string;
     sender: string;
     type: string;
@@ -140,7 +140,7 @@ export type AttachmentIn = {
 export type MessageIn = {
     sender: string;
     type: string;
-    parentMessageId?: string;
+    parentMessageId?: string | null;
     content?: string;
     attachments?: AttachmentIn[];
     thinking?: string[];

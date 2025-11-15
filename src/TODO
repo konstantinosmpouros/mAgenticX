@@ -9,7 +9,7 @@
 
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - Make the images with memo too or use the shadcn or the ai-sdk cause if l send some images the chat lags.
-- Implement the edit functionality.
+- The thinking is shown if l have a branch above and change branch while streaming. The order in the conversation container is the problem and the streaming agent message should be added straight to the branch is should along with the thinking CoT.
 
 - Implement a tab in the sidebar to show all the images, like openai library
 - Create one more chat container similar to gemini code or cursor (agentic chat) with the copilot kit
@@ -28,7 +28,6 @@
 
 ## Dialogue Bridge
 
-- Create an edit api.
 - Create an API to process the files when the user uploads them, and chunk them, not append them in any vector store yet.
 - Create the functionality of doc description and add it to the db as well as a column.
 - For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document.

@@ -1,4 +1,4 @@
-import { validateAdd, validateAttachmentsForUpload } from '@/lib/uploadGuards';
+import { validateAdd } from '@/lib/uploadGuards';
 import { downloadAttachment } from '@/lib/api';
 import type { ConversationDetail, MessageOut } from '@/lib/types';
 

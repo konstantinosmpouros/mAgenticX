@@ -42,12 +42,7 @@ async def addMessageToConversation(
     Returns only the appended message (with attachments) and the updated sidebar summary.
     """
     parent_message_id = payload.parentMessageId
-    if parent_message_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="parentMessageId is required for follow-up messages.",
-        )
-
+    
     try:
         # 1) Persist the new message and capture it
         msg = await init_message(db, current_conv, payload, parent_message_id=parent_message_id)
