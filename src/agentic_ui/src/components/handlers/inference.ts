@@ -115,11 +115,13 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
 
     // Show user's message immediately (with AttachmentOut shape)
     const tempId = `temp-${Date.now()}`;
+    const tempParentId = messages.length === 0 ? null : lastPersistedMessageId;
     const tempMessage: MessageOut = {
       id: tempId,
       sender: 'user',
       type: attachments.length > 0 ? 'file' : 'text',
       content: currentMessage || undefined,
+      parentMessageId: tempParentId ?? undefined,
       created_at: new Date(),
       updated_at: new Date(),
       attachments: tempAttachmentsOut as any,

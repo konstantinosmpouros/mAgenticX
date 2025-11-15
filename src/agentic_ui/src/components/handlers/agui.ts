@@ -137,6 +137,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
         id: runtime.stagedMessageId,
         sender: 'ai',
         type: 'text',
+        parentMessageId: runtime.parentMessageId,
         content: '',
         attachments: [],
         created_at: new Date(),

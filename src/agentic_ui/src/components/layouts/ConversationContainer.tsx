@@ -245,9 +245,9 @@ export default function ConversationContainer({
             from={role}
             className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground/80 px-0"
           >
-            <BranchPrevious className="h-7 w-7" />
+            <BranchPrevious className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60" />
             <BranchPage />
-            <BranchNext className="h-7 w-7" />
+            <BranchNext className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60" />
           </BranchSelector>
         </Branch>
       );
