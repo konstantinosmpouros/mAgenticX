@@ -1,9 +1,10 @@
-import { createConversation, addMessageToConversation } from '@/lib/api';
+import { createConversation, addMessageToConversation, transcribeDictation } from '@/lib/api';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
 import { streamAguiRun } from './agui';
-import type { MutableRefObject } from 'react';
+import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
+import type { DictationStatus } from '@/components/layouts/InputContainer';
 
 type InferenceCtx = {
   userId: string | null;
@@ -18,7 +19,7 @@ type InferenceCtx = {
   
   // setters
   setMessages: (updater: (prev: MessageOut[]) => MessageOut[]) => void | ((v: MessageOut[]) => void);
-  setCurrentMessage: (v: string) => void;
+  setCurrentMessage: Dispatch<SetStateAction<string>>;
   setAttachments: (v: File[] | ((prev: File[]) => File[])) => void;
   setIsSendingMessage: (v: boolean) => void;
   setCurrentConversation: (v: ConversationDetail | null) => void;
@@ -33,6 +34,8 @@ type InferenceCtx = {
   setThinkingState: (updater: any) => void;
   // UI transition indicator between persistence and thinking start
   setShowAiTransition?: (v: boolean) => void;
+  setDictationStatus: Dispatch<SetStateAction<DictationStatus>>;
+  textareaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   streamAbortRef: MutableRefObject<AbortController | null>;
 };
 
@@ -56,6 +59,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     getImageUrl,
     setThinkingState,
     setShowAiTransition,
+    setDictationStatus,
+    textareaRef,
     streamAbortRef,
   } = ctx;
 
@@ -246,7 +251,57 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     }
   };
 
-  return { handleSendMessage, handleStopStreaming };
+  const handleDictationStatusChange = (status: DictationStatus) => {
+    setDictationStatus((prev) => (prev === status ? prev : status));
+  };
+
+  const handleDictationSubmit = async (audioBlob: Blob) => {
+    if (!userId) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please sign in again to continue.',
+        variant: 'destructive',
+      });
+      setDictationStatus('idle');
+      return;
+    }
+
+    setDictationStatus('submitting');
+    try {
+      const mime = audioBlob.type || 'audio/webm';
+      const [, rawExt = 'webm'] = mime.split('/');
+      const ext = rawExt.split(';')[0] || rawExt || 'webm';
+      const filename = `dictation-${Date.now()}.${ext}`;
+      const transcript = await transcribeDictation(userId, audioBlob, filename);
+      const trimmedTranscript = transcript.trim();
+
+      if (!trimmedTranscript) {
+        toast({
+          title: 'No speech detected',
+          description: 'The transcription was empty. Please try recording again.',
+          variant: 'destructive',
+        });
+      } else {
+        setCurrentMessage((prev) => {
+          if (!prev) return trimmedTranscript;
+          const needsSeparator = !/\s$/.test(prev);
+          return `${prev}${needsSeparator ? ' ' : ''}${trimmedTranscript}`;
+        });
+        textareaRef?.current?.focus();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Voice transcription failed. Please try again.';
+      toast({
+        title: 'Dictation failed',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setDictationStatus('idle');
+    }
+  };
+
+  return { handleSendMessage, handleStopStreaming, handleDictationSubmit, handleDictationStatusChange };
 }
 
 

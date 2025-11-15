@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Building2, X } from "lucide-react";
@@ -25,11 +25,11 @@ import {
   createAiTransitionHandlers,
   createStickyUserBarHandlers,
   createFeedbackHandlers,
+  useBranchingHandlers,
   useHeaderDividerEffect,
   useCenteredComposerLayout
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
-import { transcribeDictation } from "@/lib/api";
 
 // Chat Interface component
 import LoginPanel from "@/components/layouts/LoginPanel";
@@ -116,7 +116,7 @@ export function ChatInterface() {
 
   // Dictation state machine
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>("idle");
-  
+
   // Function to set conversation messages
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
     setCurrentConversation(prev => {
@@ -149,71 +149,17 @@ export function ChatInterface() {
     });
   };
 
-  const { activeMessages, branchChildrenMap } = useMemo(() => {
-    const allMessages = currentConversation?.messages ?? [];
-    if (!allMessages.length) {
-      return {
-        activeMessages: [] as MessageOut[],
-        branchChildrenMap: {} as Record<string, MessageOut[]>,
-      };
-    }
+  const {
+    activeMessages,
+    branchChildrenMap,
+    handleBranchSelectionChange,
+  } = useBranchingHandlers({
+    messages: currentConversation?.messages,
+    branchSelections,
+    setBranchSelections,
+    rootKey: ROOT_BRANCH_KEY,
+  });
 
-    const byParent = new Map<string | null, MessageOut[]>();
-    for (const message of allMessages) {
-      const key = message.parentMessageId ?? null;
-      if (!byParent.has(key)) {
-        byParent.set(key, []);
-      }
-      byParent.get(key)!.push(message);
-    }
-
-    const selectChild = (parentId: string | null, options: MessageOut[]) => {
-      if (!options.length) return undefined;
-      const selectionKey = parentId ?? ROOT_BRANCH_KEY;
-      const desiredIndex = branchSelections[selectionKey] ?? 0;
-      const clampedIndex = Math.min(Math.max(desiredIndex, 0), options.length - 1);
-      return options[clampedIndex];
-    };
-
-    const visited = new Set<string>();
-    const activePath: MessageOut[] = [];
-    const traverse = (node?: MessageOut) => {
-      if (!node || visited.has(node.id)) return;
-      visited.add(node.id);
-      activePath.push(node);
-      const children = byParent.get(node.id) ?? [];
-      if (!children.length) return;
-      traverse(selectChild(node.id, children));
-    };
-
-    const roots = byParent.get(null) ?? [];
-    const rootNode = selectChild(null, roots) ?? roots[0];
-    if (rootNode) {
-      traverse(rootNode);
-    }
-
-    const branchRecord: Record<string, MessageOut[]> = {};
-    byParent.forEach((value, key) => {
-      branchRecord[key ?? ROOT_BRANCH_KEY] = value;
-    });
-
-    return {
-      activeMessages: activePath.length ? activePath : allMessages,
-      branchChildrenMap: branchRecord,
-    };
-  }, [currentConversation?.messages, branchSelections]);
-
-  const handleBranchSelectionChange = useCallback(
-    (parentId: string | null, index: number) => {
-      setBranchSelections(prev => {
-        const key = parentId ?? ROOT_BRANCH_KEY;
-        if (prev[key] === index) return prev;
-        return { ...prev, [key]: index };
-      });
-    },
-    []
-  );
-  
   // Create toast wrapper for handlers
   const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
     toast({
@@ -224,56 +170,6 @@ export function ChatInterface() {
     });
   };
 
-  const handleDictationStatusChange = useCallback((status: DictationStatus) => {
-    setDictationStatus(prev => (prev === status ? prev : status));
-  }, [setDictationStatus]);
-
-  const handleDictationSubmit = useCallback(async (audioBlob: Blob) => {
-    if (!userId) {
-      toastWrapper({
-        title: 'Authentication required',
-        description: 'Please sign in again to continue.',
-        variant: 'destructive',
-      });
-      setDictationStatus('idle');
-      return;
-    }
-
-    setDictationStatus('submitting');
-    try {
-      const mime = audioBlob.type || 'audio/webm';
-      const [, rawExt = 'webm'] = mime.split('/');
-      const ext = rawExt.split(';')[0] || rawExt || 'webm';
-      const filename = `dictation-${Date.now()}.${ext}`;
-      const transcript = await transcribeDictation(userId, audioBlob, filename);
-      const trimmedTranscript = transcript.trim();
-
-      if (!trimmedTranscript) {
-        toastWrapper({
-          title: 'No speech detected',
-          description: 'The transcription was empty. Please try recording again.',
-          variant: 'destructive',
-        });
-      } else {
-        setCurrentMessage(prev => {
-          if (!prev) return trimmedTranscript;
-          const needsSeparator = !/\s$/.test(prev);
-          return `${prev}${needsSeparator ? ' ' : ''}${trimmedTranscript}`;
-        });
-        textareaRef.current?.focus();
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Voice transcription failed. Please try again.';
-      toastWrapper({
-        title: 'Dictation failed',
-        description: message,
-        variant: 'destructive',
-      });
-    } finally {
-      setDictationStatus('idle');
-    }
-  }, [userId, toastWrapper, setCurrentMessage, textareaRef, transcribeDictation, setDictationStatus]);
-  
   // Effects
   useEnsureDefaultAgentEffect({
     isLoggedIn,
@@ -283,6 +179,7 @@ export function ChatInterface() {
     setSelectedAgent,
     allowMissingAgentId: inactiveAgentFallback?.id ?? currentConversation?.agent?.id ?? null,
   });
+
   useEffect(() => {
     if (!currentConversation?.agent) {
       setInactiveAgentFallback(null);
@@ -296,8 +193,11 @@ export function ChatInterface() {
       setInactiveAgentFallback(null);
     }
   }, [currentConversation, agents]);
+
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
+
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
+
   useAuthRehydrateEffect({
     setIsLoggedIn,
     setUserId,
@@ -312,8 +212,11 @@ export function ChatInterface() {
     setIsPrivateMode,
     toast: toastWrapper,
   });
+
   useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
+
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
+
   useUIPersistEffect({
     userId,
     snapshot: {
@@ -371,7 +274,7 @@ export function ChatInterface() {
   const streamAbortRef = useRef<AbortController | null>(null);
   
   // Inference handler
-  const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
+  const { handleSendMessage, handleStopStreaming, handleDictationSubmit, handleDictationStatusChange } = createInferenceHandlers({
     userId,
     selectedAgent,
     isPrivateMode,
@@ -392,6 +295,8 @@ export function ChatInterface() {
     getImageUrl,
     setThinkingState,
     setShowAiTransition,
+    setDictationStatus,
+    textareaRef,
     streamAbortRef,
   });
   

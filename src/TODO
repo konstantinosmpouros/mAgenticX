@@ -9,6 +9,7 @@
 
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - Make the images with memo too or use the shadcn or the ai-sdk cause if l send some images the chat lags.
+- Implement the edit functionality.
 
 - Implement a tab in the sidebar to show all the images, like openai library
 - Create one more chat container similar to gemini code or cursor (agentic chat) with the copilot kit
@@ -27,7 +28,6 @@
 
 ## Dialogue Bridge
 
-- Make the inference to send the branch of the conversation not the whole conversation.
 - Create an edit api.
 - Create an API to process the files when the user uploads them, and chunk them, not append them in any vector store yet.
 - Create the functionality of doc description and add it to the db as well as a column.

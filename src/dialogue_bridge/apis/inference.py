@@ -36,8 +36,9 @@ async def startInferenceStream(
 ):
     """
     Proxy an inference stream from the selected agent to the UI as SSE.
+    - Validates the agent is available for the conversation and builds the agent endpoint.
+    - Validates and builds the message history for the requested branch (if provided).
     - Builds chat history for the agent as List[Dict[str, str]] (role/content only).
-    - Looks up the agent slug from the conversation's agent.
     - POSTs to the agents service stream endpoint and forwards bytes as-is.
     Image attachments are forwarded to the agent as base64 data URLs.
     """
@@ -57,6 +58,7 @@ async def startInferenceStream(
     message_ids = payload.messagePath if payload and payload.messagePath else None
     history_messages: list[MessageTable]
 
+    # Validate and order message IDs if provided to match the branch path
     if message_ids:
         cleaned_ids: list[str] = []
         for raw_id in message_ids:
@@ -90,8 +92,10 @@ async def startInferenceStream(
     else:
         history_messages = current_conv.messages
 
+    # Serialise messages for agent
     history = [serialise_message_with_images_for_agent(m) for m in history_messages]
 
+    # Stream inference from agent service to client
     async def event_stream():
         timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
         try:

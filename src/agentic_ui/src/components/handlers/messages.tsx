@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import type { FC } from 'react';
+import { useEffect, useRef, useMemo, useCallback } from 'react';
+import type { FC, Dispatch, SetStateAction } from 'react';
 import type { MessageOut, ConversationDetail, ThinkingState } from "@/lib/types";
 import { likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage } from "@/lib/api";
 
@@ -56,6 +56,93 @@ export function createStickyUserBarHandlers(ctx: { setStickyUserBarId: (id: stri
   };
 
   return { flashUserActionBar };
+}
+
+
+// ------------------------------------------------------------------------------
+// Branch selection handlers
+// ------------------------------------------------------------------------------
+type BranchSelections = Record<string, number>;
+
+type BranchingHandlersCtx = {
+  messages?: MessageOut[];
+  branchSelections: BranchSelections;
+  setBranchSelections: Dispatch<SetStateAction<BranchSelections>>;
+  rootKey?: string;
+};
+
+export function useBranchingHandlers({
+  messages,
+  branchSelections,
+  setBranchSelections,
+  rootKey = '__root__',
+}: BranchingHandlersCtx) {
+  const { activeMessages, branchChildrenMap } = useMemo(() => {
+    const allMessages = messages ?? [];
+    if (!allMessages.length) {
+      return {
+        activeMessages: [] as MessageOut[],
+        branchChildrenMap: {} as Record<string, MessageOut[]>,
+      };
+    }
+
+    const byParent = new Map<string | null, MessageOut[]>();
+    for (const message of allMessages) {
+      const key = message.parentMessageId ?? null;
+      if (!byParent.has(key)) {
+        byParent.set(key, []);
+      }
+      byParent.get(key)!.push(message);
+    }
+
+    const selectChild = (parentId: string | null, options: MessageOut[]) => {
+      if (!options.length) return undefined;
+      const selectionKey = parentId ?? rootKey;
+      const desiredIndex = branchSelections[selectionKey] ?? 0;
+      const clampedIndex = Math.min(Math.max(desiredIndex, 0), options.length - 1);
+      return options[clampedIndex];
+    };
+
+    const visited = new Set<string>();
+    const activePath: MessageOut[] = [];
+    const traverse = (node?: MessageOut) => {
+      if (!node || visited.has(node.id)) return;
+      visited.add(node.id);
+      activePath.push(node);
+      const children = byParent.get(node.id) ?? [];
+      if (!children.length) return;
+      traverse(selectChild(node.id, children));
+    };
+
+    const roots = byParent.get(null) ?? [];
+    const rootNode = selectChild(null, roots) ?? roots[0];
+    if (rootNode) {
+      traverse(rootNode);
+    }
+
+    const branchRecord: Record<string, MessageOut[]> = {};
+    byParent.forEach((value, key) => {
+      branchRecord[key ?? rootKey] = value;
+    });
+
+    return {
+      activeMessages: activePath.length ? activePath : allMessages,
+      branchChildrenMap: branchRecord,
+    };
+  }, [messages, branchSelections, rootKey]);
+
+  const handleBranchSelectionChange = useCallback(
+    (parentId: string | null, index: number) => {
+      setBranchSelections(prev => {
+        const key = parentId ?? rootKey;
+        if (prev[key] === index) return prev;
+        return { ...prev, [key]: index };
+      });
+    },
+    [setBranchSelections, rootKey]
+  );
+
+  return { activeMessages, branchChildrenMap, handleBranchSelectionChange };
 }
 
 
