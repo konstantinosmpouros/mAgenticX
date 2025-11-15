@@ -5,9 +5,11 @@ import traceback
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import ConversationTable, UserTable, get_db
+from database import ConversationTable, UserTable, MessageTable, get_db
+from database.schemas import InferenceStreamPayload
 from utils import (
     build_agent_stream_url,
     get_agent_by_id,
@@ -30,6 +32,7 @@ async def startInferenceStream(
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId_full),
     db: AsyncSession = Depends(get_db),
+    payload: InferenceStreamPayload | None = None,
 ):
     """
     Proxy an inference stream from the selected agent to the UI as SSE.
@@ -50,8 +53,44 @@ async def startInferenceStream(
         raise HTTPException(status_code=500, detail="Agent slug not available for this conversation")
     agent_url = build_agent_stream_url(agent_slug)
 
-    # Build full chat history (role/content only)
-    history = [serialise_message_with_images_for_agent(m) for m in current_conv.messages]
+    # Build chat history for the requested branch (fallback = whole conversation)
+    message_ids = payload.messagePath if payload and payload.messagePath else None
+    history_messages: list[MessageTable]
+
+    if message_ids:
+        cleaned_ids: list[str] = []
+        for raw_id in message_ids:
+            if not isinstance(raw_id, str):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="messagePath contains invalid ids.",
+                )
+            trimmed = raw_id.strip()
+            if not trimmed:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="messagePath contains invalid ids.",
+                )
+            cleaned_ids.append(trimmed)
+
+        if len(set(cleaned_ids)) != len(cleaned_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="messagePath contains duplicates.")
+
+        lookup = {message.id: message for message in current_conv.messages}
+        ordered_messages = []
+        for mid in cleaned_ids:
+            match = lookup.get(mid)
+            if not match:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="messagePath references messages outside this conversation.",
+                )
+            ordered_messages.append(match)
+        history_messages = ordered_messages
+    else:
+        history_messages = current_conv.messages
+
+    history = [serialise_message_with_images_for_agent(m) for m in history_messages]
 
     async def event_stream():
         timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)

@@ -20,6 +20,7 @@ export type AguiStreamOptions = {
   userId: string;
   conversationId: string;
   replyParentMessageId: string;
+  branchMessagePath: string[];
   setMessages: MessageSetter;
   setThinkingState: ThinkingSetter;
   setCurrentConversation: (updater: any) => void;
@@ -41,6 +42,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     setShowAiTransition,
     signal,
     replyParentMessageId,
+    branchMessagePath,
   } = options;
   
   let aborted = false;
@@ -56,6 +58,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     content: '' as string,
     closedThinkingOnFirstChunk: false,
     parentMessageId: replyParentMessageId,
+    messagePath: branchMessagePath,
   };
   
   const finalizeThinkingState = () => {
@@ -237,7 +240,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   };
   
   try {
-    await streamInference(userId, conversationId, onEvent, signal);
+    await streamInference(userId, conversationId, runtime.messagePath, onEvent, signal);
   } catch (err) {
     const name = (err as any)?.name;
     if (name === 'AbortError') {

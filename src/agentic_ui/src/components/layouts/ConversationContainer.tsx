@@ -12,7 +12,7 @@ import {
   BranchPage,
   BranchPrevious,
   BranchSelector,
-} from "@/components/ui/shadcn-io/ai/branch";
+} from "@/components/ui/shadcn-io/branch";
 import {
   ChainOfThought,
   ChainOfThoughtHeader,

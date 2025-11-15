@@ -361,15 +361,19 @@ export async function transcribeDictation(
 export async function streamInference(
   userId: string,
   conversationId: string,
+  messagePath: string[],
   onEvent: (e: AGUIEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  const payload = Array.isArray(messagePath) && messagePath.length > 0 ? { messagePath } : undefined;
+  const headers: Record<string, string> = { "Accept": "text/event-stream" };
+  if (payload) headers["Content-Type"] = "application/json";
+
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, withCredentials({
     method: "POST",
-    headers: {
-      "Accept": "text/event-stream",
-    },
+    headers,
     signal,
+    body: payload ? JSON.stringify(payload) : undefined,
   }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();

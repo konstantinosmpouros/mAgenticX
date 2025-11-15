@@ -112,6 +112,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     }));
     
     const lastPersistedMessageId = resolveLastPersistedMessageId();
+    const activePathIds = messages.map((msg) => msg.id);
 
     // Show user's message immediately (with AttachmentOut shape)
     const tempId = `temp-${Date.now()}`;
@@ -168,6 +169,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           userId: userId!,
           conversationId: response.detail.id,
           replyParentMessageId,
+          branchMessagePath: response.detail.messages.map((m) => m.id),
           setMessages,
           setThinkingState,
           setCurrentConversation,
@@ -210,6 +212,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           userId: userId!,
           conversationId: currentConversation!.id,
           replyParentMessageId,
+          branchMessagePath: [...activePathIds, response.message.id],
           setMessages,
           setThinkingState,
           setCurrentConversation,

@@ -81,11 +81,15 @@ class AgentPublic(BaseModel):
 
 
 
+# -------------------------------------------
+# MCP TOOLS DTO
+# -------------------------------------------
 class ToolManifest(BaseModel):
     name: str
     description: str = ""
     input_schema: Dict[str, Any]
     output_schema: Optional[Dict[str, Any]] = None
+
 
 
 #-------------------------------------------
@@ -217,6 +221,10 @@ class CreateConversationResponse(BaseModel):
     """Response when creating a conversation: summary + full detail."""
     detail: ConversationDetail
     summary: ConversationSummary
+
+class InferenceStreamPayload(BaseModel):
+    """Payload to map the messages branch from the UI and start an inference stream from the agent."""
+    messagePath: list[str] | None = None
 
 
 
