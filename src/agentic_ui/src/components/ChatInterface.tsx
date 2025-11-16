@@ -365,6 +365,10 @@ export function ChatInterface() {
     handleLoadMoreConversations,
     clearChatAndStopThinking,
     handleDeleteCurrentConversation,
+    handleRenameConversation,
+    handleArchiveConversation,
+    handleReportConversation,
+    handleRenameCurrentConversation,
     handleArchiveCurrentConversation,
     handleReportCurrentConversation,
     handleOpenSearch,
@@ -496,6 +500,9 @@ export function ChatInterface() {
         currentConversationId={currentConversation?.id || null}
         onSelectConversation={handleConversationSelect}
         onDeleteConversation={handleDeleteConversation}
+        onRenameConversation={handleRenameConversation}
+        onArchiveConversation={handleArchiveConversation}
+        onReportConversation={handleReportConversation}
         onLoadMore={handleLoadMoreConversations}
         onTitleClick={handleTitleClick}
         onNewChat={handleNewChat}
@@ -525,6 +532,7 @@ export function ChatInterface() {
               }}
               showBottomBorder={headerHasDivider}
               showConversationActions={Boolean(currentConversation?.id)}
+              onRenameConversation={handleRenameCurrentConversation}
               onArchiveConversation={handleArchiveCurrentConversation}
               onReportConversation={handleReportCurrentConversation}
               onDeleteConversation={handleDeleteCurrentConversation}

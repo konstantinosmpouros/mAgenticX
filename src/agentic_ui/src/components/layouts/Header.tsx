@@ -1,7 +1,7 @@
 // src/components/layouts/Header.tsx
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Ghost, Archive, Flag, Trash2, MoreHorizontal, HelpCircle } from "lucide-react";
+import { Ghost, Archive, Flag, Trash2, MoreHorizontal, HelpCircle, Pencil } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -17,6 +17,7 @@ type HeaderProps = {
     onTogglePrivate: () => void;
     showBottomBorder?: boolean;
     showConversationActions?: boolean;
+    onRenameConversation?: () => void;
     onArchiveConversation?: () => void;
     onReportConversation?: () => void;
     onDeleteConversation?: () => void;
@@ -32,6 +33,7 @@ export default function Header({
     onTogglePrivate,
     showBottomBorder = false,
     showConversationActions = false,
+    onRenameConversation,
     onArchiveConversation,
     onReportConversation,
     onDeleteConversation,
@@ -160,45 +162,56 @@ export default function Header({
                                 </button>
                             </DropdownMenu.Trigger>
                             <DropdownMenu.Portal>
-                                <DropdownMenu.Content
-                                    sideOffset={8}
-                                    align="end"
-                                    className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none"
-                                >
-                                    <DropdownMenu.Item
-                                        onSelect={() => {
-                                            onArchiveConversation?.();
-                                        }}
-                                        className="flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-base text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                    <DropdownMenu.Content
+                                        sideOffset={8}
+                                        align="end"
+                                        className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none"
                                     >
-                                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                            <Archive size={18} />
-                                        </div>
-                                        <span>Archive</span>
-                                    </DropdownMenu.Item>
-                                    <DropdownMenu.Item
-                                        onSelect={() => {
-                                            onReportConversation?.();
-                                        }}
-                                        className="flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-base text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
-                                    >
-                                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                            <Flag size={18} />
-                                        </div>
-                                        <span>Report</span>
-                                    </DropdownMenu.Item>
+                                        <DropdownMenu.Item
+                                            onSelect={() => {
+                                                onRenameConversation?.();
+                                            }}
+                                            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                        >
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                                <Pencil size={16} />
+                                            </div>
+                                            <span>Rename</span>
+                                        </DropdownMenu.Item>
+                                        <DropdownMenu.Item
+                                            onSelect={() => {
+                                                onArchiveConversation?.();
+                                            }}
+                                            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                        >
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                                <Archive size={16} />
+                                            </div>
+                                            <span>Archive</span>
+                                        </DropdownMenu.Item>
+                                        <DropdownMenu.Item
+                                            onSelect={() => {
+                                                onReportConversation?.();
+                                            }}
+                                            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                        >
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                                <Flag size={16} />
+                                            </div>
+                                            <span>Report</span>
+                                        </DropdownMenu.Item>
                                     <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
-                                    <DropdownMenu.Item
-                                        onSelect={() => {
-                                            onDeleteConversation?.();
-                                        }}
-                                        className="flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-base text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
-                                    >
-                                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-destructive">
-                                            <Trash2 size={18} />
-                                        </div>
-                                        <span>Delete</span>
-                                    </DropdownMenu.Item>
+                                        <DropdownMenu.Item
+                                            onSelect={() => {
+                                                onDeleteConversation?.();
+                                            }}
+                                            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                                        >
+                                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
+                                                <Trash2 size={16} />
+                                            </div>
+                                            <span>Delete</span>
+                                        </DropdownMenu.Item>
                                 </DropdownMenu.Content>
                             </DropdownMenu.Portal>
                         </DropdownMenu.Root>

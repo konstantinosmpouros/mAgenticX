@@ -174,20 +174,40 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     void handleDeleteConversation(currentConversation.id);
   };
 
-  const handleArchiveCurrentConversation = () => {
-    if (!currentConversation?.id) {
+  const handleRenameConversation = (conversationId?: string | null) => {
+    if (!conversationId) {
+      toast({ title: 'No conversation selected', description: 'Select a conversation to rename first.', duration: 2000 });
+      return;
+    }
+    toast({ title: 'Rename coming soon', description: 'Conversation renaming will be available soon.', duration: 2500 });
+  };
+
+  const handleArchiveConversation = (conversationId?: string | null) => {
+    if (!conversationId) {
       toast({ title: 'No conversation selected', description: 'Select a conversation to archive first.', duration: 2000 });
       return;
     }
     toast({ title: 'Archive coming soon', description: 'Conversation archiving is not available yet.', duration: 2500 });
   };
 
-  const handleReportCurrentConversation = () => {
-    if (!currentConversation?.id) {
+  const handleReportConversation = (conversationId?: string | null) => {
+    if (!conversationId) {
       toast({ title: 'No conversation selected', description: 'Select a conversation to report first.', duration: 2000 });
       return;
     }
     toast({ title: 'Report coming soon', description: 'Conversation reporting will be available soon.', duration: 2500 });
+  };
+
+  const handleArchiveCurrentConversation = () => {
+    handleArchiveConversation(currentConversation?.id);
+  };
+
+  const handleReportCurrentConversation = () => {
+    handleReportConversation(currentConversation?.id);
+  };
+
+  const handleRenameCurrentConversation = () => {
+    handleRenameConversation(currentConversation?.id);
   };
 
   const handleOpenSearch = () => {
@@ -210,6 +230,10 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleLoadMoreConversations,
     clearChatAndStopThinking,
     handleDeleteCurrentConversation,
+    handleRenameConversation,
+    handleArchiveConversation,
+    handleReportConversation,
+    handleRenameCurrentConversation,
     handleArchiveCurrentConversation,
     handleReportCurrentConversation,
     handleOpenSearch,

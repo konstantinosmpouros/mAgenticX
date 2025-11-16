@@ -1,5 +1,16 @@
 import * as React from "react";
-import { MessageSquare, X, Building2, PanelLeft, Search } from "lucide-react";
+import {
+  MessageSquare,
+  MoreHorizontal,
+  Building2,
+  PanelLeft,
+  Search,
+  Archive,
+  Flag,
+  Trash2,
+  Pencil,
+} from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { FiEdit } from "react-icons/fi";
 
 import type { Agent, ConversationSummary, UserProfile } from "@/lib/types";
@@ -28,6 +39,9 @@ type AppSidebarProps = {
   currentConversationId: string | null;
   onSelectConversation: (conversation: ConversationSummary) => void;
   onDeleteConversation: (id: string, e?: React.MouseEvent) => void;
+  onRenameConversation?: (id: string) => void;
+  onArchiveConversation?: (id: string) => void;
+  onReportConversation?: (id: string) => void;
   onLoadMore: () => void;
   isLoadingMore: boolean;
   isInitialLoading: boolean;
@@ -64,6 +78,9 @@ export default function AppSidebar({
   currentConversationId,
   onSelectConversation,
   onDeleteConversation,
+  onRenameConversation,
+  onArchiveConversation,
+  onReportConversation,
   onLoadMore,
   isLoadingMore,
   isInitialLoading,
@@ -229,12 +246,12 @@ export default function AppSidebar({
               size="lg"
               onClick={handleNewChatClick}
               className={cn(
-                "!h-10 gap-2 rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-1 group-data-[collapsible=icon]:self-start"
+                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Start a new chat"
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl group-data-[collapsible=icon]:ml-1 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8">
+              <div className="grid size-9 flex-shrink-0 place-items-center rounded-xl">
                 <FiEdit className="h-4 w-4" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">New chat</span>
@@ -245,12 +262,12 @@ export default function AppSidebar({
               size="lg"
               onClick={handleSearchClick}
               className={cn(
-                "!h-10 gap-2 rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-1 group-data-[collapsible=icon]:self-start"
+                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Search"
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl group-data-[collapsible=icon]:ml-1 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8">
+              <div className="grid size-9 flex-shrink-0 place-items-center rounded-xl">
                 <Search className="h-[1.125rem] w-[1.125rem]" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">Search</span>
@@ -325,17 +342,75 @@ export default function AppSidebar({
                             {resolvedTitle}
                           </span>
                         </SidebarMenuButton>
-                        <SidebarMenuAction
-                          aria-label="Delete conversation"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onDeleteConversation(conversation.id, event);
-                          }}
-                          showOnHover
-                          className="text-muted-foreground hover:bg-destructive/15 hover:text-destructive focus-visible:text-destructive"
-                        >
-                          <X size={14} />
-                        </SidebarMenuAction>
+                        <DropdownMenu.Root>
+                          <DropdownMenu.Trigger asChild>
+                            <SidebarMenuAction
+                              aria-label="Conversation actions"
+                              onClick={(event) => event.stopPropagation()}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              showOnHover
+                              className="text-muted-foreground hover:bg-muted/20 hover:text-foreground focus-visible:text-foreground"
+                            >
+                              <MoreHorizontal size={14} />
+                            </SidebarMenuAction>
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Portal>
+                            <DropdownMenu.Content
+                              side="right"
+                              sideOffset={8}
+                              align="end"
+                              className="z-50 w-48 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
+                              onCloseAutoFocus={(event) => event.preventDefault()}
+                            >
+                              <DropdownMenu.Item
+                                onSelect={() => {
+                                  onRenameConversation?.(conversation.id);
+                                }}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                              >
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                  <Pencil size={15} />
+                                </div>
+                                <span>Rename</span>
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                onSelect={() => {
+                                  onArchiveConversation?.(conversation.id);
+                                }}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                              >
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                  <Archive size={15} />
+                                </div>
+                                <span>Archive</span>
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Item
+                                onSelect={() => {
+                                  onReportConversation?.(conversation.id);
+                                }}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                              >
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                  <Flag size={15} />
+                                </div>
+                                <span>Report</span>
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                              <DropdownMenu.Item
+                                onSelect={() => {
+                                  onDeleteConversation(conversation.id);
+                                }}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                              >
+                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
+                                  <Trash2 size={15} />
+                                </div>
+                                <span>Delete</span>
+                              </DropdownMenu.Item>
+                            </DropdownMenu.Content>
+                          </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
                       </SidebarMenuItem>
                     );
                   })}
