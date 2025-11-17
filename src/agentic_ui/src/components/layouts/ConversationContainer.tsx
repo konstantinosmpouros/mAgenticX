@@ -35,6 +35,8 @@ import {
   X as CloseIcon,
 } from "lucide-react";
 import { VscEye } from "react-icons/vsc";
+import { BsArrowRepeat } from "react-icons/bs";
+import { LuFlag } from "react-icons/lu";
 import type { LucideIcon } from "lucide-react";
 import type {
   Agent,
@@ -84,6 +86,7 @@ type ConversationContainerProps = {
   onChangeEditDraft?: (value: string) => void;
   onCancelEdit?: () => void;
   onSubmitEdit?: () => void;
+  toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 };
 
 const toolPrefix = /^\s*\[tool\]\s*/i;
@@ -209,6 +212,7 @@ export default function ConversationContainer({
   onChangeEditDraft,
   onCancelEdit,
   onSubmitEdit,
+  toast,
 }: ConversationContainerProps) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const lastRunStartRef = React.useRef<number | null>(null);
@@ -522,120 +526,209 @@ export default function ConversationContainer({
                         ) : (
                           <Response>{message.content ?? ""}</Response>
                         )}
-                        <div className="text-sm opacity-70 flex items-center gap-2">
-                          <span>
-                            {message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                        <div
+                          className={`text-sm opacity-70 flex items-center gap-2 ${
+                            message.sender === 'ai' ? 'flex-wrap' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>
+                              {message.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {message.sender === 'ai' && (
+                              <>
+                                <span className="flex items-center gap-1">
+                                  <AgentIcon size={14} />
+                                  {currentAgent?.name ?? "Unknown agent"}
+                                </span>
 
-                          {message.sender === 'ai' && (
-                            <>
-                              <span className="flex items-center gap-1">
-                                <AgentIcon size={14} />
-                                {currentAgent?.name ?? "Unknown agent"}
-                              </span>
-
-                              <div className="flex justify-start gap-1">
-                                <div className="mt-1">
-                                  <Tooltip delayDuration={0}>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="
-                                          h-8 w-8 text-muted-foreground
-                                          hover:bg-muted/60 hover:!text-muted-foreground
-                                          active:!bg-muted/70 active:!text-muted-foreground
-                                          focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
-                                          focus:ring-0 focus-visible:ring-0 transition-colors
-                                        "
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => onCopy(message.content!, message.id)}
-                                        aria-label={copiedId === message.id ? 'Copied' : 'Copy'}
+                                <div className="flex items-center gap-0.5">
+                                  <div className="mt-1">
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="
+                                            h-8 w-8 text-muted-foreground
+                                            hover:bg-muted/60 hover:!text-muted-foreground
+                                            active:!bg-muted/70 active:!text-muted-foreground
+                                            focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
+                                            focus:ring-0 focus-visible:ring-0 transition-colors
+                                          "
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => onCopy(message.content!, message.id)}
+                                          aria-label={copiedId === message.id ? 'Copied' : 'Copy'}
+                                        >
+                                          <span className="relative inline-block h-4 w-4">
+                                            <Copy
+                                              className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                                ${copiedId === message.id ? 'opacity-0 scale-75' : 'opacity-100 scale-100'}`}
+                                            />
+                                            <Check
+                                              className={`absolute inset-0 h-4 w-4 transition-all duration-200
+                                                ${copiedId === message.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
+                                            />
+                                          </span>
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="bottom"
+                                        align="center"
+                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                       >
-                                        <span className="relative inline-block h-4 w-4">
-                                          <Copy
-                                            className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                              ${copiedId === message.id ? 'opacity-0 scale-75' : 'opacity-100 scale-100'}`}
-                                          />
-                                          <Check
-                                            className={`absolute inset-0 h-4 w-4 transition-all duration-200
-                                              ${copiedId === message.id ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}
-                                          />
-                                        </span>
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                      side="bottom"
-                                      align="center"
-                                      className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                    >
-                                      <p>Copy</p>
-                                    </TooltipContent>
-                                  </Tooltip>
+                                        <p>Copy</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+
+                                  {message.liked !== false && (
+                                    <div className="mt-1">
+                                      <Tooltip delayDuration={0}>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 hover:bg-muted/60 ${
+                                              message.liked === true
+                                                ? 'text-[#de8bff] hover:!text-[#de8bff]'
+                                                : 'text-muted-foreground hover:!text-muted-foreground'
+                                            }`}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={() => onLike(message)}
+                                            aria-label={message.liked === true ? 'Unlike' : 'Like'}
+                                          >
+                                            <ThumbsUp className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                          side="bottom"
+                                          align="center"
+                                          className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                        >
+                                          <p>Like</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                  )}
+
+                                  {message.liked !== true && (
+                                    <div className="mt-1">
+                                      <Tooltip delayDuration={0}>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className={`h-8 w-8 hover:bg-muted/60 ${
+                                              message.liked === false
+                                                ? 'text-[#de8bff] hover:!text-[#de8bff]'
+                                                : 'text-muted-foreground hover:!text-muted-foreground'
+                                            }`}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={() => onDislike(message)}
+                                            aria-label={message.liked === false ? 'Clear dislike' : 'Dislike'}
+                                          >
+                                            <ThumbsDown className="h-4 w-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                          side="bottom"
+                                          align="center"
+                                          className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                        >
+                                          <p>Dislike</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                  )}
+
+                                  <div className="mt-1">
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="
+                                            h-8 w-8 text-muted-foreground
+                                            hover:bg-muted/60 hover:!text-muted-foreground
+                                            active:!bg-muted/70 active:!text-muted-foreground
+                                            focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
+                                            focus:ring-0 focus-visible:ring-0 transition-colors
+                                          "
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() =>
+                                            toast?.({
+                                              title: "Coming soon",
+                                              description: "Report functionality will be available soon.",
+                                            })
+                                          }
+                                          aria-label="Report message (coming soon)"
+                                        >
+                                          <LuFlag className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="bottom"
+                                        align="center"
+                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                      >
+                                        <p>Report</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+
+                                  <div className="mt-1">
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="
+                                            h-8 w-8 text-muted-foreground
+                                            hover:bg-muted/60 hover:!text-muted-foreground
+                                            active:!bg-muted/70 active:!text-muted-foreground
+                                            focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
+                                            focus:ring-0 focus-visible:ring-0 transition-colors
+                                          "
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() =>
+                                            toast?.({
+                                              title: "Coming soon",
+                                              description: "Try again functionality will be available soon.",
+                                            })
+                                          }
+                                          aria-label="Retry (coming soon)"
+                                        >
+                                          <BsArrowRepeat className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="bottom"
+                                        align="center"
+                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                      >
+                                        <p>Try again</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                  
+                                  <div className="mt-1 flex items-center">
+                                    {renderBranchControls(
+                                      message.parentMessageId ?? null,
+                                      message.parentMessageId
+                                        ? branchChildrenMap[message.parentMessageId]
+                                        : branchChildrenMap[branchRootKey],
+                                      message.parentMessageId
+                                        ? branchSelections[message.parentMessageId] ?? 0
+                                        : branchSelections[branchRootKey] ?? 0,
+                                      "assistant"
+                                    )}
+                                  </div>
+                                  
                                 </div>
-
-                                {message.liked !== false && (
-                                  <div className="mt-1">
-                                    <Tooltip delayDuration={0}>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className={`h-8 w-8 hover:bg-muted/60 ${
-                                            message.liked === true
-                                              ? 'text-[#de8bff] hover:!text-[#de8bff]'
-                                              : 'text-muted-foreground hover:!text-muted-foreground'
-                                          }`}
-                                          onMouseDown={(e) => e.preventDefault()}
-                                          onClick={() => onLike(message)}
-                                          aria-label={message.liked === true ? 'Unlike' : 'Like'}
-                                        >
-                                          <ThumbsUp className="h-4 w-4" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent
-                                        side="bottom"
-                                        align="center"
-                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                      >
-                                        <p>Like</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </div>
-                                )}
-
-                                {message.liked !== true && (
-                                  <div className="mt-1">
-                                    <Tooltip delayDuration={0}>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className={`h-8 w-8 hover:bg-muted/60 ${
-                                            message.liked === false
-                                              ? 'text-[#de8bff] hover:!text-[#de8bff]'
-                                              : 'text-muted-foreground hover:!text-muted-foreground'
-                                          }`}
-                                          onMouseDown={(e) => e.preventDefault()}
-                                          onClick={() => onDislike(message)}
-                                          aria-label={message.liked === false ? 'Clear dislike' : 'Dislike'}
-                                        >
-                                          <ThumbsDown className="h-4 w-4" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent
-                                        side="bottom"
-                                        align="center"
-                                        className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-                                      >
-                                        <p>Dislike</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </div>
-                                )}
-                              </div>
-                            </>
-                          )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </Card>
@@ -680,7 +773,7 @@ export default function ConversationContainer({
                             )}
                           </div>
                           <div className={userActionVisibilityClass}>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-0.5">
                               <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                   <Button
@@ -718,6 +811,38 @@ export default function ConversationContainer({
                                   className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                 >
                                   <p>Copy</p>
+                                </TooltipContent>
+                              </Tooltip>
+                              <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="
+                                      h-8 w-8 text-muted-foreground
+                                      hover:bg-muted/60 hover:!text-muted-foreground
+                                      active:!bg-muted/70 active:!text-muted-foreground
+                                      focus:!bg-muted/60 focus:!text-muted-foreground focus:outline-none 
+                                      focus:ring-0 focus-visible:ring-0 transition-colors
+                                    "
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() =>
+                                      toast?.({
+                                        title: "Coming soon",
+                                        description: "Report functionality will be available soon.",
+                                      })
+                                    }
+                                    aria-label="Report message (coming soon)"
+                                  >
+                                    <LuFlag className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="bottom"
+                                  align="center"
+                                  className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                                >
+                                  <p>Report</p>
                                 </TooltipContent>
                               </Tooltip>
                               {onRequestEdit && (

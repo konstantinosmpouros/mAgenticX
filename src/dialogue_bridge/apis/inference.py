@@ -53,48 +53,42 @@ async def startInferenceStream(
     if not agent_slug:
         raise HTTPException(status_code=500, detail="Agent slug not available for this conversation")
     agent_url = build_agent_stream_url(agent_slug)
-
+    
     # Build chat history for the requested branch (fallback = whole conversation)
     message_ids = payload.messagePath if payload and payload.messagePath else None
     history_messages: list[MessageTable]
-
+    
     # Validate and order message IDs if provided to match the branch path
     if message_ids:
         cleaned_ids: list[str] = []
         for raw_id in message_ids:
-            if not isinstance(raw_id, str):
+            if not isinstance(raw_id, str) or not raw_id.strip():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="messagePath contains invalid ids.",
                 )
-            trimmed = raw_id.strip()
-            if not trimmed:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="messagePath contains invalid ids.",
-                )
-            cleaned_ids.append(trimmed)
-
+            cleaned_ids.append(raw_id.strip())
+        
         if len(set(cleaned_ids)) != len(cleaned_ids):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="messagePath contains duplicates.")
-
+        
         lookup = {message.id: message for message in current_conv.messages}
         ordered_messages = []
-        for mid in cleaned_ids:
-            match = lookup.get(mid)
+        for m_id in cleaned_ids:
+            match = lookup.get(m_id)
             if not match:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="messagePath references messages outside this conversation.",
+                    detail="messagePath references messages outside this conversation or messagePath is corrupted.",
                 )
             ordered_messages.append(match)
         history_messages = ordered_messages
     else:
         history_messages = current_conv.messages
-
+    
     # Serialise messages for agent
     history = [serialise_message_with_images_for_agent(m) for m in history_messages]
-
+    
     # Stream inference from agent service to client
     async def event_stream():
         timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
@@ -106,7 +100,7 @@ async def startInferenceStream(
                         "config": {
                             "run_config": {
                                 "configurable": {
-                                    "thread_id": str(conversation_id),
+                                    "thread_id": str(message_ids[-1]) if message_ids else str(conversation_id),
                                     "checkpoint_ns": str(agent_slug),
                                 }
                             },
@@ -144,7 +138,7 @@ async def startInferenceStream(
             err = {"type": "RUN_ERROR", "message": message}
             data = "data: " + json.dumps(err, ensure_ascii=False) + "\n\n"
             yield data.encode("utf-8")
-
+    
     headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",

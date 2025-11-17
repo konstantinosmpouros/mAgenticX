@@ -573,6 +573,7 @@ export function ChatInterface() {
               onChangeEditDraft={handleEditDraftChange}
               onCancelEdit={handleCancelEditMessage}
               onSubmitEdit={submitEditFromState}
+              toast={toastWrapper}
             />
             </div>
             

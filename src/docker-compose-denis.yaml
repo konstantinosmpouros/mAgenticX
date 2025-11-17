@@ -1,15 +1,28 @@
 services:
   agents:
     container_name: agents
-    image: konstantinosmpouros/agents:v1.8.0
+    image: konstantinosmpouros/agents:v1.9.0
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
       - RAG_PORT=8001
+      - MCP_TOOLS_HTTP_URL=http://mcp_servers:8005/mcp
     depends_on:
       - rag_service
     volumes:
       - agents_checkpoints:/app/checkpoints
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+  mcp_servers:
+    container_name: mcp_servers
+    image: konstantinosmpouros/mcp_servers:v0.1.0
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    stdin_open: true
+    tty: true
     restart: unless-stopped
     networks:
       - backend
@@ -44,7 +57,7 @@ services:
 
   dialogue_bridge:
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.3.0
+    image: konstantinosmpouros/dialogue_bridge:v2.4.0
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - VAULT_ADDR=http://vault:8004
@@ -56,7 +69,7 @@ services:
     restart: unless-stopped
     networks:
       - backend
-      - vault
+      - hashicorp_vault
 
   chat_postgres:
     image: postgres:16.3
@@ -73,7 +86,7 @@ services:
 
   agentic_ui:
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.4.0
+    image: konstantinosmpouros/agentic_ui:v0.5.0
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002
@@ -93,7 +106,7 @@ networks:
   frontend: 
   proxy:
     external: true
-  vault:
+  hashicorp_vault:
     external: true
 
 
