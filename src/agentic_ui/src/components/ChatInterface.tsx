@@ -532,7 +532,6 @@ export function ChatInterface() {
               }}
               showBottomBorder={headerHasDivider}
               showConversationActions={Boolean(currentConversation?.id)}
-              onRenameConversation={handleRenameCurrentConversation}
               onArchiveConversation={handleArchiveCurrentConversation}
               onReportConversation={handleReportCurrentConversation}
               onDeleteConversation={handleDeleteCurrentConversation}
@@ -561,20 +560,20 @@ export function ChatInterface() {
                 AgentIcon={AgentIcon}
                 currentAgent={currentAgent ?? undefined}
                 onScrolledPastTop={handleHeaderScrollState}
-              branchChildrenMap={branchChildrenMap}
-              branchSelections={branchSelections}
-              onSelectBranch={handleBranchSelectionChange}
-              branchRootKey={ROOT_BRANCH_KEY}
-              activeBranchPath={activeBranchPath}
-              editingMessageId={editingMessageId}
-              editingDraft={editingDraft}
-              editingBusy={editingBusy}
-              onRequestEdit={handleRequestEditMessage}
-              onChangeEditDraft={handleEditDraftChange}
-              onCancelEdit={handleCancelEditMessage}
-              onSubmitEdit={submitEditFromState}
-              toast={toastWrapper}
-            />
+                branchChildrenMap={branchChildrenMap}
+                branchSelections={branchSelections}
+                onSelectBranch={handleBranchSelectionChange}
+                branchRootKey={ROOT_BRANCH_KEY}
+                activeBranchPath={activeBranchPath}
+                editingMessageId={editingMessageId}
+                editingDraft={editingDraft}
+                editingBusy={editingBusy}
+                onRequestEdit={handleRequestEditMessage}
+                onChangeEditDraft={handleEditDraftChange}
+                onCancelEdit={handleCancelEditMessage}
+                onSubmitEdit={submitEditFromState}
+                toast={toastWrapper}
+              />
             </div>
             
             {/* Input Area */}

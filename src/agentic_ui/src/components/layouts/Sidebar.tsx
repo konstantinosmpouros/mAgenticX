@@ -27,7 +27,6 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -201,20 +200,17 @@ export default function AppSidebar({
               onClick={handleTitleClickInternal}
               className={cn(
                 "group items-center gap-3 rounded-xl bg-transparent px-3 py-3 text-left transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
+                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
               )}
             >
               <div
-                className={cn(
-                  "relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full transition",
-                  isCollapsed ? "bg-transparent" : "bg-sidebar-accent/40"
-                )}
+                className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl transition bg-transparent"
               >
                 <img
-                  src="/8.png"
+                  src="/logo2_white_magentaX.png"
                   alt="mAgenticX logo"
                   className={cn(
-                    "h-full w-full object-cover transition-opacity",
+                    "h-full w-full object-contain transition-opacity",
                     isCollapsed && isLogoHovered ? "opacity-0" : "opacity-100"
                   )}
                 />
@@ -247,7 +243,7 @@ export default function AppSidebar({
               onClick={handleNewChatClick}
               className={cn(
                 "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Start a new chat"
             >
@@ -263,7 +259,7 @@ export default function AppSidebar({
               onClick={handleSearchClick}
               className={cn(
                 "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
-                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Search"
             >
@@ -350,7 +346,7 @@ export default function AppSidebar({
                               onMouseDown={(event) => event.stopPropagation()}
                               onPointerDown={(event) => event.stopPropagation()}
                               showOnHover
-                              className="text-muted-foreground hover:bg-muted/20 hover:text-foreground focus-visible:text-foreground"
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/20 hover:text-foreground focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
                             >
                               <MoreHorizontal size={14} />
                             </SidebarMenuAction>
