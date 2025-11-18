@@ -26,6 +26,7 @@ import {
   createStickyUserBarHandlers,
   createFeedbackHandlers,
   createMessageEditHandlers,
+  createRetryHandlers,
   useBranchingHandlers,
   useHeaderDividerEffect,
   useCenteredComposerLayout
@@ -324,6 +325,21 @@ export function ChatInterface() {
     setIsSendingMessage,
   });
 
+  const { handleRetryAiMessage } = createRetryHandlers({
+    userId,
+    currentConversation,
+    setConversationMessages,
+    setCurrentConversation,
+    setConversations,
+    toast: toastWrapper,
+    setThinkingState,
+    setShowAiTransition,
+    streamAbortRef,
+    rootBranchKey: ROOT_BRANCH_KEY,
+    setBranchSelections,
+    setIsSendingMessage,
+  });
+
   const submitEditFromState = () =>
     handleConfirmEditMessage({
       editingMessageId,
@@ -574,11 +590,13 @@ export function ChatInterface() {
                 editingBusy={editingBusy}
                 onRequestEdit={handleRequestEditMessage}
                 onChangeEditDraft={handleEditDraftChange}
-                onCancelEdit={handleCancelEditMessage}
-                onSubmitEdit={submitEditFromState}
-                toast={toastWrapper}
-              />
-            </div>
+              onCancelEdit={handleCancelEditMessage}
+              onSubmitEdit={submitEditFromState}
+              toast={toastWrapper}
+              onRetryMessage={handleRetryAiMessage}
+              isStreaming={isSendingMessage}
+            />
+          </div>
             
             {/* Input Area */}
             <InputContainer

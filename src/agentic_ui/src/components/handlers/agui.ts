@@ -20,7 +20,8 @@ export type AguiStreamOptions = {
   userId: string;
   conversationId: string;
   replyParentMessageId: string;
-  branchMessagePath: string[];
+  uiBranchPath: string[];
+  serverBranchPath?: string[];
   setMessages: MessageSetter;
   setThinkingState: ThinkingSetter;
   setCurrentConversation: (updater: any) => void;
@@ -28,6 +29,7 @@ export type AguiStreamOptions = {
   toast: ToastFn;
   setShowAiTransition?: (v: boolean) => void;
   signal?: AbortSignal;
+  prefillMessageId?: string;
 };
 
 export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
@@ -42,7 +44,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     setShowAiTransition,
     signal,
     replyParentMessageId,
-    branchMessagePath,
+    uiBranchPath,
+    serverBranchPath,
+    prefillMessageId,
   } = options;
   
   let aborted = false;
@@ -54,11 +58,11 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     thoughts: [] as string[],
     thinkingStart: 0,
     thinkingEnd: 0,
-    stagedMessageId: '' as string,
+    stagedMessageId: (prefillMessageId ?? '') as string,
     content: '' as string,
     closedThinkingOnFirstChunk: false,
     parentMessageId: replyParentMessageId,
-    messagePath: branchMessagePath,
+    messagePath: uiBranchPath,
   };
   
   const finalizeThinkingState = () => {
@@ -136,18 +140,30 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     if (type === AGUIEventType.TEXT_MESSAGE_START) {
       if (aborted) return;
       const msgId = ev.messageId || `ai-${Date.now()}`;
-      runtime.stagedMessageId = String(msgId);
-      const staged: MessageOut = {
-        id: runtime.stagedMessageId,
-        sender: 'ai',
-        type: 'text',
-        parentMessageId: runtime.parentMessageId,
-        content: '',
-        attachments: [],
-        created_at: new Date(),
-        updated_at: new Date(),
-      } as any;
-      setMessages((prev: MessageOut[]) => [...prev, staged]);
+      const resolvedId = runtime.stagedMessageId || String(msgId);
+      runtime.stagedMessageId = resolvedId;
+
+      if (!prefillMessageId) {
+        const staged: MessageOut = {
+          id: resolvedId,
+          sender: 'ai',
+          type: 'text',
+          parentMessageId: runtime.parentMessageId,
+          content: '',
+          attachments: [],
+          created_at: new Date(),
+          updated_at: new Date(),
+        } as any;
+        setMessages((prev: MessageOut[]) => [...prev, staged]);
+      } else {
+        setMessages((prev: MessageOut[]) =>
+          prev.map((m) =>
+            m.id === resolvedId
+              ? { ...m, sender: 'ai', type: 'text', parentMessageId: runtime.parentMessageId, updated_at: new Date() }
+              : m
+          )
+        );
+      }
       return;
     }
     
@@ -241,7 +257,8 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   };
   
   try {
-    await streamInference(userId, conversationId, runtime.messagePath, onEvent, signal);
+    const outboundPath = serverBranchPath ?? runtime.messagePath;
+    await streamInference(userId, conversationId, outboundPath, onEvent, signal);
   } catch (err) {
     const name = (err as any)?.name;
     if (name === 'AbortError') {

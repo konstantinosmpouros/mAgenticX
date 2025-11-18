@@ -87,6 +87,8 @@ type ConversationContainerProps = {
   onCancelEdit?: () => void;
   onSubmitEdit?: () => void;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  onRetryMessage?: (message: MessageOut) => void;
+  isStreaming?: boolean;
 };
 
 const toolPrefix = /^\s*\[tool\]\s*/i;
@@ -213,6 +215,8 @@ export default function ConversationContainer({
   onCancelEdit,
   onSubmitEdit,
   toast,
+  onRetryMessage,
+  isStreaming,
 }: ConversationContainerProps) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const lastRunStartRef = React.useRef<number | null>(null);
@@ -691,13 +695,9 @@ export default function ConversationContainer({
                                             focus:ring-0 focus-visible:ring-0 transition-colors
                                           "
                                           onMouseDown={(e) => e.preventDefault()}
-                                          onClick={() =>
-                                            toast?.({
-                                              title: "Coming soon",
-                                              description: "Try again functionality will be available soon.",
-                                            })
-                                          }
-                                          aria-label="Retry (coming soon)"
+                                          onClick={() => onRetryMessage?.(message)}
+                                          disabled={!onRetryMessage || isStreaming}
+                                          aria-label="Retry response"
                                         >
                                           <BsArrowRepeat className="h-4 w-4" />
                                         </Button>

@@ -384,7 +384,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         userId,
         conversationId: currentConversation.id,
         replyParentMessageId: newMessage.id,
-        branchMessagePath,
+        uiBranchPath: branchMessagePath,
         setMessages: setConversationMessages,
         setThinkingState,
         setCurrentConversation,
@@ -437,4 +437,128 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
   };
 
   return { handleSubmitMessageEdit, handleConfirmEditMessage };
+}
+
+type RetryHandlersCtx = {
+  userId: string | null;
+  currentConversation: ConversationDetail | null;
+  setConversationMessages: SetConversationMessages;
+  setCurrentConversation: (updater: any) => void;
+  setConversations: (updater: (prev: any[]) => any[]) => void;
+  toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  setThinkingState: (updater: any) => void;
+  setShowAiTransition?: (v: boolean) => void;
+  streamAbortRef: MutableRefObject<AbortController | null>;
+  rootBranchKey: string;
+  setBranchSelections: Dispatch<SetStateAction<Record<string, number>>>;
+  setIsSendingMessage?: (value: boolean) => void;
+};
+
+export function createRetryHandlers(ctx: RetryHandlersCtx) {
+  const {
+    userId,
+    currentConversation,
+    setConversationMessages,
+    setCurrentConversation,
+    setConversations,
+    toast,
+    setThinkingState,
+    setShowAiTransition,
+    streamAbortRef,
+    rootBranchKey,
+    setBranchSelections,
+    setIsSendingMessage,
+  } = ctx;
+
+  const handleRetryAiMessage = async (message: MessageOut) => {
+    if (message.sender !== 'ai') return;
+    if (!userId) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please sign in again to continue.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!currentConversation) {
+      toast({
+        title: 'No conversation selected',
+        description: 'Select a conversation before retrying responses.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const parentId = message.parentMessageId ?? null;
+    if (!parentId) {
+      toast({
+        title: 'Unable to retry response',
+        description: 'This message is missing a parent prompt.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const allMessages = currentConversation.messages ?? [];
+    const siblingCount = allMessages.filter((m) => (m.parentMessageId ?? null) === parentId).length;
+    const tempId = `retry-${Date.now()}`;
+
+    const placeholder: MessageOut = {
+      id: tempId,
+      sender: 'ai',
+      type: 'text',
+      content: '',
+      parentMessageId: parentId ?? undefined,
+      created_at: new Date(),
+      updated_at: new Date(),
+      attachments: [],
+    } as MessageOut;
+
+    const parentKey = parentId ?? rootBranchKey;
+
+    try {
+      setIsSendingMessage?.(true);
+      setConversationMessages((prev) => [...prev, placeholder]);
+      setBranchSelections((prev) => ({
+        ...prev,
+        [parentKey]: siblingCount,
+      }));
+      if (setShowAiTransition) setShowAiTransition(true);
+      if (streamAbortRef.current) {
+        streamAbortRef.current.abort();
+      }
+      streamAbortRef.current = new AbortController();
+      const parentPath = buildPathToMessage(allMessages, parentId);
+      const uiBranchPath = [...parentPath, tempId];
+
+      await streamAguiRun({
+        userId,
+        conversationId: currentConversation.id,
+        replyParentMessageId: parentId,
+        uiBranchPath,
+        serverBranchPath: parentPath,
+        setMessages: setConversationMessages,
+        setThinkingState,
+        setCurrentConversation,
+        setConversations,
+        toast,
+        setShowAiTransition,
+        signal: streamAbortRef.current.signal,
+        prefillMessageId: tempId,
+      });
+    } catch (error) {
+      console.error('Failed to retry AI message', error);
+      setConversationMessages((prev) => prev.filter((m) => m.id !== tempId));
+      toast({
+        title: 'Failed to retry message',
+        description: 'Please try again in a moment.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSendingMessage?.(false);
+      if (setShowAiTransition) setShowAiTransition(false);
+    }
+  };
+
+  return { handleRetryAiMessage };
 }
