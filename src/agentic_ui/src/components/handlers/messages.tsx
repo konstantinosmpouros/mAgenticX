@@ -421,16 +421,21 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     setEditingBusy: Dispatch<SetStateAction<boolean>>;
   }) => {
     if (!editingMessageId) return;
+    const targetId = editingMessageId;
+    const draftSnapshot = editingDraft;
     setEditingBusy(true);
+    setEditingMessageId(null);
+    setEditingDraft("");
     try {
       await handleSubmitMessageEdit({
-        targetMessageId: editingMessageId,
-        newContent: editingDraft,
+        targetMessageId: targetId,
+        newContent: draftSnapshot,
       });
-      setEditingMessageId(null);
-      setEditingDraft("");
     } catch (error) {
-      // error already surfaced inside handleSubmitMessageEdit
+      // Restore editing state if submission failed so the user can try again
+      setEditingMessageId(targetId);
+      setEditingDraft(draftSnapshot);
+      throw error;
     } finally {
       setEditingBusy(false);
     }
