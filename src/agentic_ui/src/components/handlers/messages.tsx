@@ -211,13 +211,28 @@ export function createUIHandlers(ctx: UIHandlersCtx) {
 type AiTransitionHandlersCtx = {
   showAiTransition: boolean;
   thinkingState: ThinkingState | null;
+  activeBranchPath?: string[];
+};
+
+const isBranchPathVisible = (branchPath?: string[], activePath?: string[]) => {
+  if (!branchPath || branchPath.length === 0) return true;
+  if (!activePath || activePath.length < branchPath.length) return false;
+  for (let i = 0; i < branchPath.length; i += 1) {
+    if (branchPath[i] !== activePath[i]) {
+      return false;
+    }
+  }
+  return true;
 };
 
 export function createAiTransitionHandlers(ctx: AiTransitionHandlersCtx) {
-  const { showAiTransition, thinkingState } = ctx;
+  const { showAiTransition, thinkingState, activeBranchPath } = ctx;
 
   const AiTransitionIndicator: FC = () => {
-    if (!showAiTransition || thinkingState?.isActive) return null;
+    const branchVisible = isBranchPathVisible(thinkingState?.branchPath, activeBranchPath);
+    if (!showAiTransition || thinkingState?.isActive || !branchVisible) {
+      return null;
+    }
 
     return (
       <div className="flex justify-start pl-2">

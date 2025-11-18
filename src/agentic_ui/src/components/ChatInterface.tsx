@@ -300,7 +300,11 @@ export function ChatInterface() {
   }, [thinkingState?.isActive]);
   
   // Create AI transition handlers
-  const { AiTransitionIndicator } = createAiTransitionHandlers({ showAiTransition, thinkingState });
+  const { AiTransitionIndicator } = createAiTransitionHandlers({
+    showAiTransition,
+    thinkingState,
+    activeBranchPath,
+  });
 
   // Abort controller for streaming
   const streamAbortRef = useRef<AbortController | null>(null);
