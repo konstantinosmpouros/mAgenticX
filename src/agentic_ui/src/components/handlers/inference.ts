@@ -4,7 +4,7 @@ import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
 import { streamAguiRun } from './agui';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
-import type { DictationStatus } from '@/components/layouts/InputContainer';
+import type { DictationStatus } from '@/components/chat/ChatInputBar';
 
 type InferenceCtx = {
   userId: string | null;

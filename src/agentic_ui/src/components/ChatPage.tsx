@@ -34,13 +34,13 @@ import {
 import { loadSession, isSessionValid } from "@/lib/authStorage";
 
 // Chat Interface component
-import LoginPanel from "@/components/layouts/LoginPanel";
-import Header from "@/components/layouts/Header";
-import AppSidebar from "@/components/layouts/Sidebar";
+import LoginPanel from "@/components/chat/LoginPanel";
+import Header from "@/components/chat/ChatHeader";
+import AppSidebar from "@/components/chat/ChatSidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import UserProfilePanel from "@/components/layouts/UserProfilePanel";
-import ConversationContainer from "@/components/layouts/ConversationContainer";
-import { InputContainer, type DictationStatus } from "@/components/layouts/InputContainer";
+import UserProfilePanel from "@/components/chat/ProfilePanel";
+import ConversationContainer from "@/components/chat/ChatBody";
+import { InputContainer, type DictationStatus } from "@/components/chat/ChatInputBar";
 
 const ROOT_BRANCH_KEY = "__root__";
 
