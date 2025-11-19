@@ -53,7 +53,7 @@ type AttachmentLike =
   | string
   | Record<string, unknown>;
 
-type ConversationContainerProps = {
+type ChatBody = {
   messages: MessageOut[];
   loadingConversation: boolean;
   isClearing: boolean;
@@ -181,7 +181,7 @@ const isBranchPathActive = (branchPath?: string[], activePath?: string[]) => {
   return true;
 };
 
-export default function ConversationContainer({
+export default function ChatBody({
   messages,
   loadingConversation,
   isClearing,
@@ -217,7 +217,7 @@ export default function ConversationContainer({
   toast,
   onRetryMessage,
   isStreaming,
-}: ConversationContainerProps) {
+}: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
   const lastRunStartRef = React.useRef<number | null>(null);
   const [liveThinkingOpen, setLiveThinkingOpen] = React.useState(false);

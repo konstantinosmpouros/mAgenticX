@@ -35,12 +35,12 @@ import { loadSession, isSessionValid } from "@/lib/authStorage";
 
 // Chat Interface component
 import LoginPanel from "@/components/chat/LoginPanel";
-import Header from "@/components/chat/ChatHeader";
-import AppSidebar from "@/components/chat/ChatSidebar";
+import ChatHeader from "@/components/chat/ChatHeader";
+import ChatSidebar from "@/components/chat/ChatSidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import UserProfilePanel from "@/components/chat/ProfilePanel";
-import ConversationContainer from "@/components/chat/ChatBody";
-import { InputContainer, type DictationStatus } from "@/components/chat/ChatInputBar";
+import ProfilePanel from "@/components/chat/ProfilePanel";
+import ChatBody from "@/components/chat/ChatBody";
+import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 
 const ROOT_BRANCH_KEY = "__root__";
 
@@ -515,7 +515,7 @@ export function ChatInterface() {
   return (
     // Main chat interface with sidebar, header, conversation container, and input area
     <SidebarProvider>
-      <AppSidebar
+      <ChatSidebar
         conversations={conversations}
         currentConversationId={currentConversation?.id || null}
         onSelectConversation={handleConversationSelect}
@@ -538,7 +538,7 @@ export function ChatInterface() {
         <TooltipProvider>
           <div className={`animate-fade-in flex min-h-svh max-h-svh flex-col bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
             {/* Header */}
-            <Header
+            <ChatHeader
               agents={agents}
               inactiveAgent={inactiveAgentFallback}
               selectedAgent={selectedAgent}
@@ -559,7 +559,7 @@ export function ChatInterface() {
             
             {/* Chat Messages Container*/}
             <div className="flex flex-1 min-h-0 overflow-hidden">
-              <ConversationContainer
+              <ChatBody
                 messages={activeMessages}
                 loadingConversation={loadingConversation}
                 isClearing={isClearing}
@@ -599,7 +599,7 @@ export function ChatInterface() {
           </div>
             
             {/* Input Area */}
-            <InputContainer
+            <ChatInputBar
               // Centered empty state
               isMessagesEmpty={isMessagesEmpty}
               positionClass={
@@ -643,7 +643,7 @@ export function ChatInterface() {
             />
             
             {/* User Profile Modal */}
-            <UserProfilePanel
+            <ProfilePanel
               open={showUserProfile}
               onClose={() => setShowUserProfile(false)}
               activeTab={activeProfileTab}

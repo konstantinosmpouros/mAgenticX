@@ -1,4 +1,3 @@
-// src/components/layouts/Header.tsx
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Ghost, Archive, Flag, Trash2, MoreHorizontal, HelpCircle } from "lucide-react";
@@ -7,7 +6,7 @@ import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
-type HeaderProps = {
+type ChatHeaderProps = {
     agents: Agent[];
     inactiveAgent?: Agent | null;
     selectedAgent: string;
@@ -22,7 +21,7 @@ type HeaderProps = {
     onDeleteConversation?: () => void;
 };
 
-export default function Header({
+export default function ChatHeader({
     agents,
     inactiveAgent = null,
     selectedAgent,
@@ -35,7 +34,7 @@ export default function Header({
     onArchiveConversation,
     onReportConversation,
     onDeleteConversation,
-}: HeaderProps) {
+}: ChatHeaderProps) {
     const displayAgents = React.useMemo(() => {
         if (inactiveAgent && !agents.some((agent) => agent.id === inactiveAgent.id)) {
             return [...agents, inactiveAgent];

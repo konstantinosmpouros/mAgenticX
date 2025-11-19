@@ -20,7 +20,7 @@ import { ToolMetadata, UserProfile } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProfileSidebarCollapseEffect } from "@/components/handlers";
 
-type Props = {
+type ProfilePanelProps = {
     open: boolean;
     onClose: () => void;
     activeTab: string;
@@ -59,7 +59,7 @@ const McpIcon = ({
     />
 );
 
-export default function UserProfilePanel({
+export default function ProfilePanel({
     open,
     onClose,
     activeTab,
@@ -67,7 +67,7 @@ export default function UserProfilePanel({
     onLogout,
     user,
     availableTools,
-}: Props) {
+}: ProfilePanelProps) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [userCollapsed, setUserCollapsed] = useState(false);
     const [forcedCollapsed, setForcedCollapsed] = useState(false);

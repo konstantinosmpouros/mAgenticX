@@ -33,7 +33,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSidebarInteractionEffect } from "@/components/handlers";
 
-type AppSidebarProps = {
+type ChatSidebarProps = {
   conversations: ConversationSummary[];
   currentConversationId: string | null;
   onSelectConversation: (conversation: ConversationSummary) => void;
@@ -72,7 +72,7 @@ const ConversationLoadingSkeleton = ({ count = 3 }: { count?: number }) => (
   </div>
 );
 
-export default function AppSidebar({
+export default function ChatSidebar({
   conversations,
   currentConversationId,
   onSelectConversation,
@@ -90,7 +90,7 @@ export default function AppSidebar({
   onOpenUserProfile,
   agents,
   userProfile,
-}: AppSidebarProps) {
+}: ChatSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
   const isCollapsed = !isMobile && state === "collapsed";
   const contentRef = React.useRef<HTMLDivElement | null>(null);

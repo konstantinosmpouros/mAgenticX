@@ -11,7 +11,7 @@ import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
 
-type InputContainerProps = {
+type ChatInputBarProps = {
     /** Replace "top-1/2 -translate-y-1/2" with anything you want */
     positionClass?: string;
 
@@ -68,7 +68,7 @@ const WELCOME_QUOTES: string[] = [
     "Small step or big build — we can tackle it together.",
 ];
 
-export function InputContainer(props: InputContainerProps) {
+export function ChatInputBar(props: ChatInputBarProps) {
     const {
         positionClass = "top-1/2 -translate-y-1/2",
         isMessagesEmpty = false,
