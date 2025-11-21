@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import type { LucideIcon } from 'lucide-react';
 import { Plus, FileText, Check, X, Loader2 } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
@@ -519,7 +519,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                 <TooltipTrigger asChild>
                                     <button
                                         type="button"
-                                        className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                                        className="w-10 h-10 rounded-full hover:!bg-[#262626] transition-smooth cursor-pointer flex items-center justify-center active:!bg-[#262626] active:scale-110 focus-visible:!bg-[#262626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
                                         onClick={() => fileInputRef.current?.click()}
                                         aria-label="Attach files"
                                     >
@@ -541,7 +541,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                className="w-10 h-10 rounded-full hover:bg-muted transition-smooth cursor-pointer flex items-center justify-center active:bg-muted/80 active:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                className="w-10 h-10 rounded-full hover:!bg-[#262626] transition-smooth cursor-pointer flex items-center justify-center active:!bg-[#262626] active:scale-110 focus-visible:!bg-[#262626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
                                                 onClick={handleDictationRequest}
                                                 disabled={isDictationBusy || isStreaming || isInDictationMode}
                                                 aria-label="Start voice dictation"
@@ -598,7 +598,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:bg-muted active:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
                                                 onClick={handleCancelDictation}
                                                 disabled={isCancelDisabled}
                                                 aria-label="Cancel voice dictation"
@@ -618,7 +618,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                className="w-10 h-10 rounded-full border border-primary/60 bg-primary/15 text-primary flex items-center justify-center transition-smooth hover:bg-primary/25 active:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                className="w-10 h-10 rounded-full border border-primary/60 bg-primary/15 text-primary flex items-center justify-center transition-smooth hover:bg-primary/25 active:bg-primary/35 focus-visible:bg-primary/25 active:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
                                                 onClick={handleConfirmDictation}
                                                 disabled={confirmButtonDisabled}
                                                 aria-label="Use recording"

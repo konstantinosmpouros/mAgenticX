@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+﻿import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -261,9 +261,9 @@ export default function ProfilePanel({
                                                 onMouseEnter={() => setHoveredNavId(tab.id)}
                                                 onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
                                                 className={cn(
-                                                    "group relative flex w-full items-center rounded-xl py-1 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40",
+                                                    "group relative flex w-full items-center rounded-xl py-1 text-sm font-medium text-muted-foreground transition-colors hover:!bg-[#262626] focus-visible:!bg-[#262626]",
                                                     sidebarCollapsed ? "justify-start pl-1 pr-0" : "justify-start px-2 text-left",
-                                                    isActive && "text-foreground"
+                                                    isActive ? "text-foreground hover:!bg-transparent focus-visible:!bg-transparent" : ""
                                                 )}
                                                 aria-label={tab.label}
                                             >
@@ -336,7 +336,7 @@ export default function ProfilePanel({
                                             <button
                                                 onClick={onLogout}
                                                 className={cn(
-                                                "mt-auto flex w-full items-center rounded-xl border border-border/60 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground transition-colors hover:border-border/40 hover:bg-muted/30 hover:text-foreground",
+                                                "mt-auto flex w-full items-center rounded-xl border border-border/60 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground transition-colors hover:border-border/40 hover:!bg-[#262626] hover:text-foreground",
                                                 sidebarCollapsed ? "justify-start pl-3 pr-2 gap-0" : "gap-3 px-3"
                                             )}
                                             aria-label="Logout"
@@ -404,7 +404,7 @@ export default function ProfilePanel({
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
-                                                            className="flex h-11 items-center gap-2 rounded-full border-border/50 px-5 text-sm font-medium"
+                                                            className="flex h-11 items-center gap-2 rounded-full border-border/50 px-5 text-sm font-medium hover:!bg-[#262626] focus-visible:!bg-[#262626]"
                                                         >
                                                             <Edit size={16} />
                                                             Edit
@@ -478,7 +478,7 @@ export default function ProfilePanel({
                                                             return `${key}${optionalSuffix} (${typeRaw})${desc}`;
                                                         });
                                                         const argsDescription = argLines.length
-                                                            ? argLines.join(" • ")
+                                                            ? argLines.join(" β€Ά ")
                                                             : "No parameters documented.";
 
                                                         const outputSchema = tool.outputSchema ?? {};

@@ -1,4 +1,4 @@
-import * as React from "react";
+﻿import * as React from "react";
 import {
   MessageSquare,
   MoreHorizontal,
@@ -100,15 +100,17 @@ export default function ChatSidebar({
   const profileInitial = profileName.charAt(0).toUpperCase() || "P";
   const profileEmail = (userProfile?.email ?? "Open profile").trim();
   const avatarUrl = userProfile?.avatarUrl || null;
+  const [openActionMenuId, setOpenActionMenuId] = React.useState<string | null>(null);
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
+      setOpenActionMenuId(null);
       onSelectConversation(conversation);
       if (isMobile) {
         setOpenMobile(false);
       }
     },
-    [onSelectConversation, isMobile, setOpenMobile]
+    [onSelectConversation, isMobile, setOpenMobile, setOpenActionMenuId]
   );
 
   const handleTitleClickInternal = React.useCallback(() => {
@@ -192,14 +194,14 @@ export default function ChatSidebar({
       <SidebarHeader
         className={cn("gap-3 py-4 pl-2 pr-3", isCollapsed && "pr-2")}
       >
-        <SidebarMenu className="!gap-0.5">
+        <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
               tooltip="Go to workspace"
               onClick={handleTitleClickInternal}
               className={cn(
-                "group items-center gap-3 rounded-xl bg-transparent px-3 py-3 text-left transition hover:bg-muted/20",
+                "group items-center gap-3 rounded-xl bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
               )}
             >
@@ -231,18 +233,18 @@ export default function ChatSidebar({
               showOnHover={false}
               className="right-2 top-1.5 -translate-y-0.5 group-data-[collapsible=icon]:hidden"
             >
-              <SidebarTrigger className="size-9 [&_svg]:h-5 [&_svg]:w-5" />
+              <SidebarTrigger className="size-9 [&_svg]:h-5 [&_svg]:w-5 supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]" />
             </SidebarMenuAction>
           </SidebarMenuItem>
         </SidebarMenu>
 
-        <SidebarMenu className="!gap-0.5">
+        <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
               onClick={handleNewChatClick}
               className={cn(
-                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
+                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Start a new chat"
@@ -258,7 +260,7 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleSearchClick}
               className={cn(
-                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition hover:bg-muted/20",
+                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Search"
@@ -294,7 +296,7 @@ export default function ChatSidebar({
                   <p className="text-sm">No conversations yet</p>
                 </div>
               ) : (
-                <SidebarMenu>
+                <SidebarMenu className="!gap-0">
                   {conversations.map((conversation) => {
                     const agent = conversation.agent;
                     const Icon = agent?.icon ?? Building2;
@@ -329,7 +331,7 @@ export default function ChatSidebar({
                               </div>
                             ),
                           }}
-                          className="items-center gap-2.5 rounded-xl bg-transparent py-2 text-left shadow-none transition hover:bg-muted/15 focus-visible:ring-2 data-[active=true]:bg-muted/25 data-[active=true]:text-foreground !h-auto min-h-[2.85rem]"
+                          className="items-center gap-2.5 rounded-xl bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:!bg-[#262626] supports-[hover:hover]:hover:!text-primary/60 active:!bg-[#262626] focus-visible:!bg-[#262626] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
                         >
                           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                             <Icon size={14} />
@@ -338,7 +340,12 @@ export default function ChatSidebar({
                             {resolvedTitle}
                           </span>
                         </SidebarMenuButton>
-                        <DropdownMenu.Root>
+                        <DropdownMenu.Root
+                          open={openActionMenuId === conversation.id}
+                          onOpenChange={(isOpen) => {
+                            setOpenActionMenuId(isOpen ? conversation.id : null);
+                          }}
+                        >
                           <DropdownMenu.Trigger asChild>
                             <SidebarMenuAction
                               aria-label="Conversation actions"
@@ -346,7 +353,7 @@ export default function ChatSidebar({
                               onMouseDown={(event) => event.stopPropagation()}
                               onPointerDown={(event) => event.stopPropagation()}
                               showOnHover
-                              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/20 hover:text-foreground focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
                             >
                               <MoreHorizontal size={14} />
                             </SidebarMenuAction>
@@ -424,15 +431,15 @@ export default function ChatSidebar({
           isCollapsed && "pr-2"
         )}
       >
-        <SidebarMenu>
+        <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
               onClick={handleOpenProfile}
               className={cn(
-                "gap-3 rounded-xl bg-transparent px-3 py-3 transition hover:bg-muted/20",
+                "gap-3 rounded-xl bg-transparent px-3 py-3 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start",
-                "group-data-[collapsible=icon]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent"
+                "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent"
               )}
               tooltip={{
                 children: (

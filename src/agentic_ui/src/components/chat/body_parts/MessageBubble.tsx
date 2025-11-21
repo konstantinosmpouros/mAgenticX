@@ -80,10 +80,10 @@ export function MessageBubble({
           ) : (
             <Response>{message.content ?? ""}</Response>
           )}
-          <div className="text-sm opacity-70">
+          <div className="text-sm">
             {isUser ? (
               <div className="flex items-center justify-between">
-                <span>
+                <span className="opacity-70">
                   {message.created_at.toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -116,13 +116,13 @@ export function MessageBubble({
               </div>
             ) : (
               <div className="flex w-full flex-wrap items-center gap-2">
-                <span>
+                <span className="opacity-70">
                   {message.created_at.toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
                 </span>
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1 opacity-70">
                   <AgentIcon size={14} />
                   {currentAgent?.name ?? "Unknown agent"}
                 </span>

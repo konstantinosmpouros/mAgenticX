@@ -5,6 +5,10 @@
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - Make the images with memo too or use the shadcn or the ai-sdk cause if l send some images the chat lags.
 - if l abort the inference the current response should be saved as an ai message.
+- fix the light theme
+- fix the button hover coloring and when clicked in mobile they stay hovered
+- fix how the attachments seems in the input container
+- place some message suggestions below the input container and if the user write something then remove them.
 
 - Implement a tab in the sidebar to show all the images, like openai library
 - Create one more chat container similar to gemini code or cursor (agentic chat) with the copilot kit

@@ -1,0 +1,36 @@
+services:
+
+  vault: # 8004
+    container_name: vault
+    image: hashicorp/vault:1.21
+    cap_add: ["IPC_LOCK"]
+    user: "100:100"
+    environment:
+      SKIP_SETCAP: "true"
+    command: ["server"]
+    volumes:
+      - config:/vault/config
+      - data:/vault/data
+    restart: unless-stopped
+    networks:
+      - vault
+
+
+networks:
+  vault:
+
+
+volumes:
+  config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./vault/config
+  
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./vault/data

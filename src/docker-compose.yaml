@@ -1,20 +1,5 @@
 services:
 
-  vault: # 8004
-    container_name: vault
-    image: hashicorp/vault:1.21
-    cap_add: ["IPC_LOCK"]
-    user: "100:100"
-    environment:
-      SKIP_SETCAP: "true"
-    command: ["server"]
-    volumes:
-      - vault_config:/vault/config
-      - vault_data:/vault/data
-    restart: unless-stopped
-    networks: ["backend", "frontend"]
-
-
   agents: # 8003
     container_name: agents
     image: agents
@@ -107,6 +92,7 @@ services:
     networks: 
       - backend
       - frontend
+      - hashicorp_vault
 
 
   chat_postgres: # 5432
@@ -149,6 +135,8 @@ networks:
   backend:
     internal: true
   frontend: 
+  hashicorp_vault:
+    external: true
 
 
 volumes:
@@ -161,19 +149,5 @@ volumes:
   
   chat_convs:
   
-  vault_config:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./vault/config
-  
-  vault_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./vault/data
-
   agents_checkpoints:
 
