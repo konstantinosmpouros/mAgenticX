@@ -1,7 +1,7 @@
 from typing import Any, List, Literal, Dict, Mapping, Optional, Sequence, Union, cast
 
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, ValidationError
 
 

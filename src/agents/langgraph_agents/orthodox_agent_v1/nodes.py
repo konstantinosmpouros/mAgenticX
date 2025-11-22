@@ -16,7 +16,7 @@ from langgraph_agents.orthodox_agent_v1.prompt_templates import (
 from agui import AGUIEmitter
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
-from langgraph.types import StreamWriter
+from langgraph.config import get_stream_writer
 
 
 class OrthodoxV1_State(BaseModel):
@@ -58,7 +58,8 @@ class OrthodoxNodes:
 def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> OrthodoxNodes:
     """Bind Orthodox workflow nodes to the provided agents and AG-UI emitter."""
 
-    async def analysis(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def analysis(state: OrthodoxV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         user_msg = state["user_input"]
         message_id = state.message_id or str(uuid4())
         
@@ -82,7 +83,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
     def check_if_religious(state: OrthodoxV1_State) -> Literal["query_gen", "simple_generation"]:
         return "query_gen" if state["analysis_results"].is_religious == "Religious" else "simple_generation"
 
-    async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def simple_generation(state: OrthodoxV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         agui.thinking_end(writer)
         agui.response_start(writer, state["message_id"])
         
@@ -125,7 +127,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         agui.response_end(writer, state["message_id"])
         return {"response": response}
 
-    async def query_gen(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def query_gen(state: OrthodoxV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         analysis_str = state["analysis_str"]
         reflection = state["reflection"]
         
@@ -145,7 +148,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         agui.thought(writer, "\n".join(lines))
         return {"vector_queries": response.queries}
 
-    async def retrieval(state: OrthodoxV1_State, writer: StreamWriter):
+    async def retrieval(state: OrthodoxV1_State):
+        writer = get_stream_writer()
         retrieved_docs: List[Dict[str, Any]] = []
         tcid = str(uuid4())
         
@@ -168,7 +172,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         
         return {"retrieved_content": json.dumps(retrieved_docs, ensure_ascii=False, indent=2)}
 
-    async def summarization(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def summarization(state: OrthodoxV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         payload = {
             "retrieved_docs": state["retrieved_content"],
             "analysis_results": state["analysis_str"],
@@ -177,7 +182,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         agui.thought(writer, summary.content)
         return {"summarization": summary}
 
-    async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def complex_generation(state: OrthodoxV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         payload = {
             "summarization": state["summarization"],
             "analysis_results": state["analysis_str"],
@@ -212,7 +218,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         
         return {"response": response}
 
-    async def reflection(state: OrthodoxV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def reflection(state: OrthodoxV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         payload = {
             "analysis_results": state["analysis_str"],
             "generated_response": state["response"],
@@ -235,7 +242,8 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
             "cycle_numbers": state.cycle_numbers + (1 if reflection.requires_additional_retrieval else 0),
         }
 
-    def check_reflection(state: OrthodoxV1_State, writer: StreamWriter) -> Literal["query_gen", "end"]:
+    def check_reflection(state: OrthodoxV1_State) -> Literal["query_gen", "end"]:
+        writer = get_stream_writer()
         requires_more = state["reflection"].requires_additional_retrieval
         if requires_more and state["cycle_numbers"] < 1:
             return "query_gen"

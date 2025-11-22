@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from langchain.schema.runnable import RunnableLambda
+from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent as react_agent
 
 from utils import make_merge_with_template

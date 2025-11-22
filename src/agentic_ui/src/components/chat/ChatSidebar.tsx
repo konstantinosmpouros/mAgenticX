@@ -58,7 +58,7 @@ const ConversationLoadingSkeleton = ({ count = 3 }: { count?: number }) => (
     {Array.from({ length: count }).map((_, index) => (
       <div
         key={`conversation-skeleton-${index}`}
-        className="rounded-xl px-3 py-3"
+        className="rounded-lg px-3 py-3"
       >
         <div className="flex items-center gap-3">
           <Skeleton className="h-9 w-9 rounded-full" />
@@ -201,12 +201,12 @@ export default function ChatSidebar({
               tooltip="Go to workspace"
               onClick={handleTitleClickInternal}
               className={cn(
-                "group items-center gap-3 rounded-xl bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "group items-center gap-3 rounded-lg bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
               )}
             >
               <div
-                className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl transition bg-transparent"
+                className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg transition bg-transparent"
               >
                 <img
                   src="/logo2_white_magentaX.png"
@@ -244,12 +244,12 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleNewChatClick}
               className={cn(
-                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "!flex !h-10 gap-2 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Start a new chat"
             >
-              <div className="grid size-9 flex-shrink-0 place-items-center rounded-xl">
+              <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
                 <FiEdit className="h-4 w-4" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">New chat</span>
@@ -260,12 +260,12 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleSearchClick}
               className={cn(
-                "!flex !h-10 gap-2 items-center rounded-xl bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "!flex !h-10 gap-2 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Search"
             >
-              <div className="grid size-9 flex-shrink-0 place-items-center rounded-xl">
+              <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
                 <Search className="h-[1.125rem] w-[1.125rem]" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">Search</span>
@@ -291,7 +291,7 @@ export default function ChatSidebar({
               {showInitialSkeleton ? (
                 <ConversationLoadingSkeleton />
               ) : showEmptyState ? (
-                <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-muted/10 py-10 text-center text-muted-foreground">
+                <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg bg-muted/10 py-10 text-center text-muted-foreground">
                   <MessageSquare size={28} className="mb-3 text-muted-foreground/60" />
                   <p className="text-sm">No conversations yet</p>
                 </div>
@@ -331,9 +331,9 @@ export default function ChatSidebar({
                               </div>
                             ),
                           }}
-                          className="items-center gap-2.5 rounded-xl bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:!bg-[#262626] supports-[hover:hover]:hover:!text-primary/60 active:!bg-[#262626] focus-visible:!bg-[#262626] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
+                          className="items-center gap-2.5 rounded-lg bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:!bg-[#262626] supports-[hover:hover]:hover:!text-primary/60 active:!bg-[#262626] focus-visible:!bg-[#262626] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
                         >
-                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                             <Icon size={14} />
                           </div>
                           <span className="truncate text-sm font-medium text-foreground">
@@ -363,7 +363,7 @@ export default function ChatSidebar({
                               side="right"
                               sideOffset={8}
                               align="end"
-                              className="z-50 w-48 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
+                              className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
                               onCloseAutoFocus={(event) => event.preventDefault()}
                             >
                               <DropdownMenu.Item
@@ -437,8 +437,8 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleOpenProfile}
               className={cn(
-                "gap-3 rounded-xl bg-transparent px-3 py-3 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
-                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start",
+                "gap-3 rounded-lg bg-transparent px-3 py-3 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-lg group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start",
                 "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent"
               )}
               tooltip={{
@@ -450,7 +450,7 @@ export default function ChatSidebar({
                 ),
               }}
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-primary">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-primary">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
                 ) : (

@@ -16,8 +16,7 @@ from langgraph_agents.hr_policies_agent_v1.prompt_templates import (
 from agui import AGUIEmitter
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
-from langgraph.types import StreamWriter
-
+from langgraph.config import get_stream_writer
 
 class HRPoliciesV1_State(BaseModel):
     user_input: Any
@@ -60,7 +59,8 @@ class HRNodes:
 def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
     """Bind HR nodes to the configured agents and AG-UI emitter."""
 
-    async def analysis(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def analysis(state: HRPoliciesV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         message_id = state.message_id or str(uuid4())
         agui.thinking_start(writer)
         agui.thought(writer, "Analyzing the user input...")
@@ -86,7 +86,8 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
     def check_if_hr(state: HRPoliciesV1_State) -> Literal["query_gen", "simple_generation"]:
         return "query_gen" if state["analysis_results"].query_domain == "HR-Policy" else "simple_generation"
 
-    async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         agui.thinking_end(writer)
         agui.response_start(writer, state["message_id"])
 
@@ -132,7 +133,8 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         agui.response_end(writer, state["message_id"])
         return {"response": response}
 
-    async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         agui.thought(writer, "Generating queries for the HR policies database...")
         
         analysis_str = state["analysis_str"]
@@ -151,7 +153,8 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         agui.thought(writer, "\n".join(lines))
         return {"vector_queries": response.queries}
 
-    async def retrieval(state: HRPoliciesV1_State, writer: StreamWriter):
+    async def retrieval(state: HRPoliciesV1_State):
+        writer = get_stream_writer()
         agui.thought(writer, "Retrieving content from the HR policies database...")
         tcid = str(uuid4())
         queries = state["vector_queries"] or []
@@ -178,7 +181,8 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         state_docs.append(retrieved_docs)
         return {"retrieved_content": state_docs}
 
-    async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         agui.thought(writer, "Ranking the retrieved documents based on relevance...")
         
         if not state["retrieved_content"]:
@@ -203,7 +207,8 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         state_flags.append(ranking_flags.relevance_flags)
         return {"ranking_flags": state_flags}
 
-    async def reflection(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def reflection(state: HRPoliciesV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         agui.thought(writer, "Reasoning if we need more data to answer...")
         
         all_docs_cycles = state["retrieved_content"]
@@ -243,13 +248,14 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
             "cycle_numbers": state.cycle_numbers + (1 if reflection.requires_additional_retrieval else 0),
         }
 
-    def check_reflection(state: HRPoliciesV1_State, writer: StreamWriter) -> Literal["query_gen", "summarizer"]:
+    def check_reflection(state: HRPoliciesV1_State) -> Literal["query_gen", "summarizer"]:
         reflection = state["reflection"]
         if reflection and reflection.requires_additional_retrieval and state["cycle_numbers"] < 1:
             return "query_gen"
         return "summarizer"
 
-    async def summarization(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def summarization(state: HRPoliciesV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         agui.thought(writer, "Summarizing the retrieved documents...")
         
         payload = {
@@ -261,7 +267,8 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         agui.thought(writer, "Preparing the response...")
         return {"summarization": summary.content if hasattr(summary, "content") else summary}
 
-    async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig, writer: StreamWriter):
+    async def complex_generation(state: HRPoliciesV1_State, config: RunnableConfig):
+        writer = get_stream_writer()
         agui.thinking_end(writer)
         agui.response_start(writer, state["message_id"])
         

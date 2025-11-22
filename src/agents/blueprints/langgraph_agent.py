@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
@@ -18,7 +17,6 @@ from tools import (
 )
 
 ConfigSource = Mapping[str, Any]
-
 
 class LangGraphAgent:
     """Reusable template that wires LangGraph agents into the service runtime.
@@ -176,6 +174,11 @@ class LangGraphAgent:
         self.graph = graph
         return
 
+    def _ensure_built(self) -> None:
+        """Ensure the agent's graph has been built."""
+        if self.graph is None:
+            self.build()
+
 
 
     # ---------------------------------------------------------------------
@@ -192,8 +195,7 @@ class LangGraphAgent:
             cfg = run_config if run_config is not None else self.run_config
             async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
                 # Compile graph if not already done
-                if self.graph is None:
-                    self.build()
+                self._ensure_built()
                 
                 # Compile with checkpointer and stream
                 self.graph = self.graph.compile(checkpointer=checkpointer)
