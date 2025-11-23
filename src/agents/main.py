@@ -152,16 +152,40 @@ async def get_available_tools() -> List[ToolManifest]:
 
     manifests: List[ToolManifest] = []
     for tool in tools:
+        annotations_obj = getattr(tool, "annotations", None)
+        annotations = annotations_obj.model_dump() if annotations_obj else {}
+
+        schema = tool.inputSchema if isinstance(tool.inputSchema, dict) else {}
+        schema_properties = schema.get("properties")
+        annotations_properties = annotations.get("properties") if isinstance(annotations, dict) else None
+        if schema_properties and isinstance(schema_properties, dict) and schema_properties:
+            parameter_count = len(schema_properties)
+        elif annotations_properties and isinstance(annotations_properties, dict):
+            parameter_count = len(annotations_properties)
+        else:
+            parameter_count = 0
+
+        description = (tool.description or annotations.get("title") or "").strip()
+
+        qualified_name = getattr(tool, "name", "") or ""
+        if not isinstance(qualified_name, str):
+            qualified_name = str(qualified_name)
+        if isinstance(qualified_name, str) and "_" in qualified_name:
+            server_id, tool_name = qualified_name.split("_", 1)
+        else:
+            server_id = ""
+            tool_name = qualified_name
+
         manifests.append(
             ToolManifest(
-                name=tool.name,
-                description=(tool.description or "").strip(),
-                input_schema=tool.inputSchema or {"type": "object", "properties": {}},
-                output_schema=tool.outputSchema,
+                server_id=server_id,
+                tool_name=tool_name,
+                description=description,
+                parameter_count=parameter_count,
             )
         )
 
-    manifests.sort(key=lambda item: item.name.lower())
+    manifests.sort(key=lambda item: item.tool_name.lower())
     return manifests
 
 

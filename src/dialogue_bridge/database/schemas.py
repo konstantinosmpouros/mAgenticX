@@ -85,10 +85,10 @@ class AgentPublic(BaseModel):
 # MCP TOOLS DTO
 # -------------------------------------------
 class ToolManifest(BaseModel):
-    name: str
+    server_id: str = Field("", validation_alias="server_id")
+    tool_name: str = Field(..., validation_alias="tool_name")
     description: str = ""
-    input_schema: Dict[str, Any]
-    output_schema: Optional[Dict[str, Any]] = None
+    parameter_count: int = Field(0, ge=0, validation_alias="parameter_count")
 
 
 

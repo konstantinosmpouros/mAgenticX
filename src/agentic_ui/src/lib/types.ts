@@ -63,10 +63,10 @@ export type Agent = {
 
 // Tool metadata fetched from the backend
 export type ToolMetadata = {
-    name: string;
+    serverId: string;
+    toolName: string;
     description: string;
-    inputSchema: Record<string, any>;
-    outputSchema?: Record<string, any> | null;
+    parameterCount: number;
 };
 
 

@@ -12,6 +12,7 @@ import {
     ChevronLeft,
     Sparkles,
     MoonStar,
+    ChevronDown,
 } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
@@ -73,6 +74,7 @@ export default function ProfilePanel({
     const [forcedCollapsed, setForcedCollapsed] = useState(false);
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
     const [serverToggles, setServerToggles] = useState<Record<string, boolean>>({});
+    const [serverCollapsed, setServerCollapsed] = useState<Record<string, boolean>>({});
     const { theme, setTheme } = useTheme();
 
     useProfileSidebarCollapseEffect({
@@ -82,21 +84,38 @@ export default function ProfilePanel({
         userCollapsed,
     });
 
+    const toolKey = (tool: ToolMetadata) => {
+        const prefix = tool.serverId && tool.serverId.length > 0 ? tool.serverId : "default";
+        return `${prefix}::${tool.toolName}`;
+    };
+
     useEffect(() => {
         setServerToggles((prev) => {
             const next: Record<string, boolean> = {};
             availableTools.forEach((tool) => {
-                const key = tool.name;
+                const key = toolKey(tool);
                 next[key] = key in prev ? prev[key] : true;
+            });
+            return next;
+        });
+
+        setServerCollapsed((prev) => {
+            const next: Record<string, boolean> = {};
+            availableTools.forEach((tool) => {
+                const serverKey = tool.serverId || "default";
+                if (!(serverKey in next)) {
+                    next[serverKey] = serverKey in prev ? prev[serverKey] : false;
+                }
             });
             return next;
         });
     }, [availableTools]);
 
-    const handleToggleServer = (toolName: string) => {
+    const handleToggleServer = (tool: ToolMetadata) => {
+        const key = toolKey(tool);
         setServerToggles((prev) => ({
             ...prev,
-            [toolName]: !prev[toolName],
+            [key]: !prev[key],
         }));
     };
 
@@ -463,90 +482,101 @@ export default function ProfilePanel({
                                                         </p>
                                                     </div>
                                                 ) : (
-                                                    availableTools.map((tool) => {
-                                                        const enabled = serverToggles[tool.name] ?? true;
-                                                        const properties = (tool.inputSchema?.properties ?? {}) as Record<string, any>;
-                                                        const requiredKeys = Array.isArray(tool.inputSchema?.required)
-                                                            ? (tool.inputSchema?.required as string[])
-                                                            : [];
-                                                        const argLines = Object.entries(properties).map(([key, schema]) => {
-                                                            const typeRaw = Array.isArray(schema?.type)
-                                                                ? schema.type.join(" | ")
-                                                                : schema?.type || "any";
-                                                            const optionalSuffix = requiredKeys.includes(key) ? "" : " (optional)";
-                                                            const desc = typeof schema?.description === "string" ? `: ${schema.description}` : "";
-                                                            return `${key}${optionalSuffix} (${typeRaw})${desc}`;
-                                                        });
-                                                        const argsDescription = argLines.length
-                                                            ? argLines.join(" β€Ά ")
-                                                            : "No parameters documented.";
-
-                                                        const outputSchema = tool.outputSchema ?? {};
-                                                        const outputType = Array.isArray(outputSchema?.type)
-                                                            ? outputSchema.type.join(" | ")
-                                                            : outputSchema?.type;
-                                                        const outputDesc =
-                                                            typeof outputSchema?.description === "string"
-                                                                ? outputSchema.description
-                                                                : null;
-                                                        const returnsDescription =
-                                                            outputDesc ||
-                                                            (outputType ? `Returns a ${outputType} payload.` : "No return value specified.");
-
+                                                    Object.entries(
+                                                        availableTools.reduce<Record<string, ToolMetadata[]>>((acc, tool) => {
+                                                            const serverKey = tool.serverId || "default";
+                                                            if (!acc[serverKey]) acc[serverKey] = [];
+                                                            acc[serverKey].push(tool);
+                                                            return acc;
+                                                        }, {})
+                                                    ).map(([serverKey, tools]) => {
+                                                        const collapsed = serverCollapsed[serverKey] ?? false;
+                                                        const serverLabel = serverKey === "default" ? "Unassigned Server" : serverKey;
+                                                        const serverDisplayName = serverLabel.toUpperCase();
                                                         return (
-                                                            <div key={tool.name} className="px-1 py-4 first:pt-0 last:pb-0">
-                                                                <div className="grid grid-cols-[auto,1fr,auto] gap-4">
-                                                                    <div className="flex w-4 justify-center pt-2">
-                                                                        <span
-                                                                            className={cn(
-                                                                                "h-2.5 w-2.5 rounded-full transition-colors",
-                                                                                enabled ? "bg-emerald-400" : "bg-muted-foreground/40"
-                                                                            )}
-                                                                        />
-                                                                    </div>
-                                                                    <div className="flex-1 space-y-2">
-                                                                        <div className="flex flex-wrap items-center gap-2">
-                                                                            <p className="text-base font-semibold text-foreground">{tool.name}</p>
-                                                                            <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                                                                                {argLines.length === 0
-                                                                                    ? "0 parameters"
-                                                                                    : `${argLines.length} parameter${argLines.length > 1 ? "s" : ""}`}
-                                                                            </span>
-                                                                        </div>
-                                                                        <p className="text-sm text-muted-foreground">
-                                                                            {(tool.description || "").trim() || "No description provided."}
+                                                            <div key={serverKey} className="px-3 py-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setServerCollapsed((prev) => ({
+                                                                            ...prev,
+                                                                            [serverKey]: !collapsed,
+                                                                        }))
+                                                                    }
+                                                                    className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/20"
+                                                                >
+                                                                    <div className="flex flex-wrap items-baseline gap-3">
+                                                                        <p className="text-base font-semibold text-foreground">{serverDisplayName}</p>
+                                                                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                                                            {tools.length} tool{tools.length === 1 ? "" : "s"}
                                                                         </p>
-                                                                        <div className="space-y-1 text-sm leading-relaxed text-muted-foreground">
-                                                                            <p>
-                                                                                <span className="font-semibold text-foreground">Args:</span>{" "}
-                                                                                {argsDescription}
-                                                                            </p>
-                                                                            <p>
-                                                                                <span className="font-semibold text-foreground">Returns:</span>{" "}
-                                                                                {returnsDescription}
-                                                                            </p>
-                                                                        </div>
                                                                     </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        role="switch"
-                                                                        aria-checked={enabled}
-                                                                        onClick={() => handleToggleServer(tool.name)}
+                                                                    <ChevronDown
+                                                                        size={16}
                                                                         className={cn(
-                                                                            "relative inline-flex h-6 w-11 items-center self-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                                                                            enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/70"
+                                                                            "text-muted-foreground transition-transform",
+                                                                            collapsed ? "-rotate-90" : "rotate-0"
                                                                         )}
-                                                                    >
-                                                                        <span
-                                                                            className={cn(
-                                                                                "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
-                                                                                enabled ? "translate-x-[1.4rem] bg-primary" : "translate-x-1 bg-muted-foreground/60"
-                                                                            )}
-                                                                        />
-                                                                    </button>
-                                                                </div>
-
-                                                                <div className="pointer-events-none mx-auto mt-4 h-px w-[96%] rounded-full bg-gradient-to-r from-transparent via-border/60 to-transparent last:hidden" />
+                                                                    />
+                                                                </button>
+                                                                {!collapsed && (
+                                                                    <div className="mt-2 space-y-2">
+                                                                        {tools.map((tool, idx) => {
+                                                                            const uniqueKey = toolKey(tool);
+                                                                            const enabled = serverToggles[uniqueKey] ?? true;
+                                                                            const parameterCount = Math.max(0, tool.parameterCount ?? 0);
+                                                                            const parameterLabel =
+                                                                                parameterCount === 0
+                                                                                    ? "0 parameters"
+                                                                                    : `${parameterCount} parameter${parameterCount > 1 ? "s" : ""}`;
+                                                                            return (
+                                                                                <div key={uniqueKey} className="px-1 py-2">
+                                                                                    <div className="grid grid-cols-[auto,1fr,auto] gap-4">
+                                                                                        <div className="flex w-4 justify-center pt-2">
+                                                                                            <span
+                                                                                                className={cn(
+                                                                                                    "h-2.5 w-2.5 rounded-full transition-colors",
+                                                                                                    enabled ? "bg-emerald-400" : "bg-muted-foreground/40"
+                                                                                                )}
+                                                                                            />
+                                                                                        </div>
+                                                                                        <div className="flex-1 space-y-1.5">
+                                                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                                                <p className="text-base font-semibold text-foreground">{tool.toolName}</p>
+                                                                                                <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                                                                                    {parameterLabel}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <p className="text-sm text-muted-foreground">
+                                                                                                {(tool.description || "").trim() || "No description provided."}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            role="switch"
+                                                                                            aria-checked={enabled}
+                                                                                            onClick={() => handleToggleServer(tool)}
+                                                                                            className={cn(
+                                                                                                "relative inline-flex h-6 w-11 items-center self-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                                                                                enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/70"
+                                                                                            )}
+                                                                                        >
+                                                                                            <span
+                                                                                                className={cn(
+                                                                                                    "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                                                                                                    enabled ? "translate-x-[1.4rem] bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                                                                                                )}
+                                                                                            />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                    {idx < tools.length - 1 && (
+                                                                                        <div className="pointer-events-none mx-auto mt-2 h-px w-[96%] rounded-full bg-gradient-to-r from-transparent via-border/60 to-transparent" />
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })

@@ -122,32 +122,23 @@ const deserializeAgentsListFromStorage = (agents?: AgentSnapshot[] | null): Agen
   return agents.map(deserializeAgentFromStorage);
 };
 
-const cloneSchema = (schema?: Record<string, any> | null): Record<string, any> => {
-  if (!schema) return {};
-  try {
-    return JSON.parse(JSON.stringify(schema)) as Record<string, any>;
-  } catch {
-    return {};
-  }
-};
-
 const serializeToolsForStorage = (tools?: ToolMetadata[]): ToolMetadata[] | undefined => {
   if (!Array.isArray(tools) || tools.length === 0) return undefined;
   return tools.map((tool) => ({
-    name: tool.name,
+    serverId: tool.serverId ?? "",
+    toolName: tool.toolName,
     description: tool.description ?? "",
-    inputSchema: cloneSchema(tool.inputSchema as Record<string, any> | undefined),
-    outputSchema: tool.outputSchema ? cloneSchema(tool.outputSchema as Record<string, any> | undefined) : undefined,
+    parameterCount: typeof tool.parameterCount === 'number' ? tool.parameterCount : 0,
   }));
 };
 
 const deserializeToolsFromStorage = (tools?: ToolMetadata[]): ToolMetadata[] => {
   if (!Array.isArray(tools)) return [];
   return tools.map((tool) => ({
-    name: tool.name,
+    serverId: tool.serverId ?? "",
+    toolName: tool.toolName,
     description: tool.description ?? "",
-    inputSchema: cloneSchema(tool.inputSchema as Record<string, any> | undefined),
-    outputSchema: tool.outputSchema ? cloneSchema(tool.outputSchema as Record<string, any> | undefined) : undefined,
+    parameterCount: typeof tool.parameterCount === 'number' ? tool.parameterCount : 0,
   }));
 };
 

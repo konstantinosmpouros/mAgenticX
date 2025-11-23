@@ -3,7 +3,7 @@ from typing import List
 
 import mcp
 from mcp import types
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.sse import sse_client
 
 
 
@@ -12,14 +12,14 @@ class MCPToolsClientError(RuntimeError):
 
 
 async def list_mcp_tools() -> List[types.Tool]:
-    """Return the tools exposed by the MCP server via the streamable HTTP transport."""
+    """Return the tools exposed by the MCP server via the SSE transport."""
 
-    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_servers:8005/mcp")
+    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8080/sse")
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 
     try:
-        async with streamablehttp_client(url=endpoint) as (read_stream, write_stream, _):
+        async with sse_client(url=endpoint) as (read_stream, write_stream):
             async with mcp.ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.list_tools()

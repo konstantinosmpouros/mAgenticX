@@ -36,10 +36,10 @@ class AgentManifest(BaseModel):
 
 
 class ToolManifest(BaseModel):
-    name: str
+    server_id: str = ""
+    tool_name: str
     description: str = ""
-    input_schema: Dict[str, Any]
-    output_schema: Optional[Dict[str, Any]] = None
+    parameter_count: int = 0
 
 
 @dataclass(frozen=True)

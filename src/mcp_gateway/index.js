@@ -32,6 +32,16 @@ function expandPlaceholders(raw) {
   return raw.replace(/\$\{([^}]+)\}/g, (_, name) => process.env[name] ?? "");
 }
 
+function cloneObject(value) {
+  if (value == null) {
+    return value;
+  }
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
 async function loadServerConfig() {
   const file = await fs.readFile(CONFIG_PATH, "utf-8");
   return JSON.parse(expandPlaceholders(file));
@@ -56,6 +66,34 @@ function validateEnv(envConfig = {}, serverId) {
   };
 }
 
+function normaliseSchema(schema, annotations) {
+  const hasProps = schema && typeof schema === "object" && Object.keys(schema?.properties ?? {}).length > 0;
+  if (hasProps) {
+    return cloneObject(schema);
+  }
+
+  const annotationSchema =
+    annotations && typeof annotations === "object" && ("properties" in annotations || "type" in annotations)
+      ? annotations
+      : null;
+
+  if (annotationSchema) {
+    const cloned = {
+      type: annotationSchema.type ?? "object",
+      properties: cloneObject(annotationSchema.properties ?? {}),
+    };
+    if (Array.isArray(annotationSchema.required) && annotationSchema.required.length) {
+      cloned.required = [...annotationSchema.required];
+    }
+    return cloned;
+  }
+
+  return {
+    type: "object",
+    properties: {},
+  };
+}
+
 function registerTool(serverId, client, tool) {
   const qualifiedName = `${serverId}_${tool.name}`;
 
@@ -63,7 +101,8 @@ function registerTool(serverId, client, tool) {
     return;
   }
 
-  const inputSchema = tool.inputSchema ?? { type: "object", properties: {} };
+  const inputSchema = normaliseSchema(tool.inputSchema, tool.annotations);
+  const description = tool.description ?? tool.annotations?.title ?? "";
 
   aggregatorServer.tool(
     qualifiedName,
@@ -75,6 +114,10 @@ function registerTool(serverId, client, tool) {
         arguments: payload,
       });
       return result;
+    },
+    {
+      description,
+      outputSchema: tool.outputSchema,
     },
   );
 

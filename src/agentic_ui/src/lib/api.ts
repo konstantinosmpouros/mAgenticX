@@ -115,12 +115,10 @@ export async function getTools(): Promise<ToolMetadata[]> {
     return [];
   }
   return data.map((tool: any) => ({
-    name: typeof tool?.name === "string" ? tool.name : "unknown-tool",
+    serverId: typeof tool?.server_id === "string" ? tool.server_id : "",
+    toolName: typeof tool?.tool_name === "string" ? tool.tool_name : "unknown-tool",
     description: typeof tool?.description === "string" ? tool.description : "",
-    inputSchema: (tool?.input_schema && typeof tool.input_schema === "object") ? tool.input_schema : {},
-    outputSchema: tool?.output_schema && typeof tool.output_schema === "object"
-      ? tool.output_schema
-      : undefined,
+    parameterCount: Number.isFinite(tool?.parameter_count) ? Math.max(0, Number(tool.parameter_count)) : 0,
   }));
 }
 
