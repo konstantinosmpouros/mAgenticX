@@ -1,5 +1,6 @@
 import asyncio
 import json
+from uuid import uuid4
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
@@ -15,8 +16,6 @@ from tools import (
     financial_tools,
     search_tools,
 )
-
-ConfigSource = Mapping[str, Any]
 
 class LangGraphAgent:
     """Reusable template that wires LangGraph agents into the service runtime.
@@ -55,15 +54,14 @@ class LangGraphAgent:
         *computer_vision_tools,
     )
 
-    def __init__(
-        self,
-        *,
-        config: Optional[ConfigSource] = None,
-        run_config: Optional[Mapping[str, Any]] = None,
+    def __init__(self, *, config: Optional[Mapping[str, Any]] = None,
     ) -> None:
         # Configuration
         self.config: Dict[str, Any] = self._validate_config(config) if config else {}
-        self.run_config: Optional[Mapping[str, Any]] = run_config
+        
+        # Runtime configuration
+        default_run_config: Dict[str, Any] = {'configurable': {"thread_id": str(uuid4())}}
+        self.run_config: Optional[Mapping[str, Any]] = config.get("run_config", default_run_config)
         
         # Configured tool selectors
         self.config_tools: Sequence[Mapping[str, Any]] = self.config.get("tools", [])
@@ -71,7 +69,7 @@ class LangGraphAgent:
         
         # Resolved tools
         self.tools: List[Any] = self.resolve_tools()
-        self.tools_names: List[str] = [tool.name for tool in self.tools]
+        self.tools_names: List[str] = [tool.name for tool in self.tools] if self.tools else []
         
         # LangGraph checkpointer path
         self.checkpointer_path: str = self.checkpoints_db_path()
@@ -174,6 +172,7 @@ class LangGraphAgent:
         self.graph = graph
         return
 
+
     def _ensure_built(self) -> None:
         """Ensure the agent's graph has been built."""
         if self.graph is None:
@@ -184,22 +183,16 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Async inference function
     # ---------------------------------------------------------------------
-    async def astream(
-        self,
-        payload: Mapping[str, Any],
-        run_config: Optional[Mapping[str, Any]] = None,
-    ) -> Any:
+    async def astream(self, payload: Mapping[str, Any]) -> Any:
         """Stream LangGraph chunks as SSE bytes using the configured stream mode."""
         try:
-            # Use provided run_config or default to instance's run_config
-            cfg = run_config if run_config is not None else self.run_config
             async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
                 # Compile graph if not already done
                 self._ensure_built()
                 
                 # Compile with checkpointer and stream
                 self.graph = self.graph.compile(checkpointer=checkpointer)
-                async for chunk in self.graph.astream(payload, config=cfg, stream_mode=self.stream_mode):
+                async for chunk in self.graph.astream(payload, config=self.run_config, stream_mode=self.stream_mode):
                     if isinstance(chunk, (str, bytes)):
                         yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
                     else:
@@ -250,21 +243,16 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Internal helpers
     # ---------------------------------------------------------------------
-    def _validate_config(self, config: ConfigSource) -> Dict[str, Any]:
+    def _validate_config(self, config: Mapping[str, Any]) -> Dict[str, Any]:
         """Validate and normalise a config mapping coming from the UI - Backend."""
-        # Validate config type
-        if not isinstance(config, Mapping):
-            raise TypeError("Agent config must be provided as a mapping (dict).")
-        data = dict(config)
-        
         # Validate tool entries
-        tools = data.get("tools")
+        tools = config.get("tools")
         if tools is not None:
             if isinstance(tools, str) or not isinstance(tools, Sequence):
                 raise TypeError("Agent config 'tools' must be a list of tool mappings.")
-            data["tools"] = self._validate_tool_entries(tools)
+            config["tools"] = self._validate_tool_entries(tools)
         
-        return data
+        return config
 
 
     @staticmethod

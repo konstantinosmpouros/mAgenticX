@@ -188,12 +188,8 @@ async def stream_agent(agent_slug: str, req: Request):
             detail=f"Unknown agent '{agent_slug}'.",
         )
     
-    config_map = req.config or {}
-    agent_config = config_map.get("agent_config", {})
-    run_config = config_map.get("run_config")
-    
     try:
-        agent = definition.cls(config=agent_config, run_config=run_config)
+        agent = definition.cls(config=req.config)
     except Exception as exc:
         detail = f"Failed to initialise agent '{definition.slug}': {exc}"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc

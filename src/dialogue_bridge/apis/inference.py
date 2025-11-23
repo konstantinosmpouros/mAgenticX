@@ -104,11 +104,16 @@ async def startInferenceStream(
                                     "checkpoint_ns": str(agent_slug),
                                 }
                             },
-                            "agent_config": {
+                            "context": {
                                 "user_id": str(user_id),
                                 "conversation_id": str(conversation_id),
                                 # "user_summary": None,
                             },
+                            # "tools": [
+                            #     {"tool_name": "web_search"},
+                            #     {"tool_name": "search_tools"},
+                            #     {"tool_name": "code_interpreter"},
+                            # ]
                         },
                     }
                     async with client.stream(

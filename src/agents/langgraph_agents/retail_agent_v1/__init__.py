@@ -17,8 +17,8 @@ class RetailAgentV1(LangGraphAgent):
     icon = "ShoppingBag"
     stream_mode = "custom"
 
-    def __init__(self, *, config=None, run_config=None):
-        super().__init__(config=config, run_config=run_config)
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
         self.state = RetailV1_State
         self.build()
 
