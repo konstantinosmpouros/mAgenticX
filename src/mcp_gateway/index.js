@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { ZodError, z } from "zod";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,25 +29,72 @@ const activeClients = new Map();
 const registeredTools = new Set();
 let activeTransport = null;
 
-function expandPlaceholders(raw) {
-  return raw.replace(/\$\{([^}]+)\}/g, (_, name) => process.env[name] ?? "");
+
+/**
+ * Detect whether a Zod error is complaining about a missing input schema type.
+ */
+function isMissingInputSchemaTypeError(error) {
+  if (!(error instanceof ZodError)) {
+    return false;
+  }
+  return error.issues.some((issue) => {
+    const path = Array.isArray(issue.path) ? issue.path.join(".") : "";
+    return path.includes("tools") && path.includes("inputSchema") && issue.expected === "object";
+  });
 }
 
-function cloneObject(value) {
-  if (value == null) {
-    return value;
+
+/**
+ * List tools from a downstream MCP server, falling back to a permissive parse
+ * when older servers emit incomplete schemas.
+ */
+async function listToolsWithCompat(client, params) {
+  try {
+    return await client.listTools(params);
+  } catch (error) {
+    if (!isMissingInputSchemaTypeError(error)) {
+      throw error;
+    }
+
+    console.warn("[Gateway] Tool schema missing `type`; applying compatibility fallback.");
+    const fallbackResult = await client.request({ method: "tools/list", params: params ?? {} }, z.any());
+    const tools = Array.isArray(fallbackResult?.tools) ? fallbackResult.tools : [];
+    const patched = tools.map((tool) => {
+      if (!tool || typeof tool !== "object") {
+        return tool;
+      }
+      const schema = tool.inputSchema && typeof tool.inputSchema === "object" ? tool.inputSchema : {};
+      if (!schema.type) {
+        schema.type = "object";
+      }
+      tool.inputSchema = schema;
+      return tool;
+    });
+
+    if (typeof client.cacheToolOutputSchemas === "function") {
+      client.cacheToolOutputSchemas(patched);
+    }
+
+    return {
+      ...fallbackResult,
+      tools: patched,
+    };
   }
-  if (typeof structuredClone === "function") {
-    return structuredClone(value);
-  }
-  return JSON.parse(JSON.stringify(value));
 }
 
+
+/**
+ * Load and parse the gateway's servers configuration JSON file.
+ */
 async function loadServerConfig() {
   const file = await fs.readFile(CONFIG_PATH, "utf-8");
-  return JSON.parse(expandPlaceholders(file));
+  file = file.replace(/\$\{([^}]+)\}/g, (_, name) => process.env[name] ?? "");
+  return JSON.parse(file);
 }
 
+/**
+ * Merge a server's env section with the current process env, warning on gaps.
+ */
 function validateEnv(envConfig = {}, serverId) {
   const missing = Object.entries(envConfig)
     .filter(([, value]) => !value)
@@ -66,34 +114,10 @@ function validateEnv(envConfig = {}, serverId) {
   };
 }
 
-function normaliseSchema(schema, annotations) {
-  const hasProps = schema && typeof schema === "object" && Object.keys(schema?.properties ?? {}).length > 0;
-  if (hasProps) {
-    return cloneObject(schema);
-  }
 
-  const annotationSchema =
-    annotations && typeof annotations === "object" && ("properties" in annotations || "type" in annotations)
-      ? annotations
-      : null;
-
-  if (annotationSchema) {
-    const cloned = {
-      type: annotationSchema.type ?? "object",
-      properties: cloneObject(annotationSchema.properties ?? {}),
-    };
-    if (Array.isArray(annotationSchema.required) && annotationSchema.required.length) {
-      cloned.required = [...annotationSchema.required];
-    }
-    return cloned;
-  }
-
-  return {
-    type: "object",
-    properties: {},
-  };
-}
-
+/**
+ * Register a downstream tool on the aggregator, namespacing by server ID.
+ */
 function registerTool(serverId, client, tool) {
   const qualifiedName = `${serverId}_${tool.name}`;
 
@@ -101,7 +125,7 @@ function registerTool(serverId, client, tool) {
     return;
   }
 
-  const inputSchema = normaliseSchema(tool.inputSchema, tool.annotations);
+  const inputSchema = tool.inputSchema ?? { type: "object", properties: {} };
   const description = tool.description ?? tool.annotations?.title ?? "";
 
   aggregatorServer.tool(
@@ -131,6 +155,10 @@ function registerTool(serverId, client, tool) {
   console.log(`[Gateway] Registered tool '${qualifiedName}' from ${serverId}`);
 }
 
+
+/**
+ * Start a single MCP server from the config and attach all of its tools.
+ */
 async function connectServer(serverId, spec) {
   if (!spec?.command) {
     console.warn(`[Gateway] Missing command for server '${serverId}'. Skipping.`);
@@ -166,7 +194,7 @@ async function connectServer(serverId, spec) {
       tools: new Set(),
     });
 
-    const { tools } = await client.listTools();
+    const { tools } = await listToolsWithCompat(client);
     tools.forEach((tool) => registerTool(serverId, client, tool));
 
     console.log(`[Gateway] Connected to ${serverId} (${tools.length} tools).`);
@@ -175,6 +203,10 @@ async function connectServer(serverId, spec) {
   }
 }
 
+
+/**
+ * Load the config file and boot every listed MCP server.
+ */
 async function connectAllServers() {
   const config = await loadServerConfig();
   const entries = Object.entries(config);
@@ -186,6 +218,10 @@ async function connectAllServers() {
   await Promise.all(entries.map(([serverId, spec]) => connectServer(serverId, spec)));
 }
 
+
+/**
+ * Expose the gateway over HTTP with /healthz plus the SSE transport.
+ */
 function createHttpServer() {
   const app = express();
   app.disable("x-powered-by");

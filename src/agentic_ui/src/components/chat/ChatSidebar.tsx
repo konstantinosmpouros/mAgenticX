@@ -333,7 +333,7 @@ export default function ChatSidebar({
                           }}
                           className="items-center gap-2.5 rounded-lg bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:!bg-[#262626] supports-[hover:hover]:hover:!text-primary/60 active:!bg-[#262626] focus-visible:!bg-[#262626] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
                         >
-                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <div className="sidebar-icon-badge flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-primary">
                             <Icon size={14} />
                           </div>
                           <span className="truncate text-sm font-medium text-foreground">
@@ -450,7 +450,7 @@ export default function ChatSidebar({
                 ),
               }}
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-primary">
+              <div className="sidebar-icon-badge flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-primary">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
                 ) : (

@@ -78,6 +78,7 @@ All colors MUST be HSL.
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
     --sidebar-background: var(--background);
+    --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 25%, hsl(var(--background)));
   }
 
   .dark {
@@ -144,6 +145,7 @@ All colors MUST be HSL.
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
     --sidebar-background: var(--background);
+    --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 20%, hsl(var(--background)));
   }
 }
 
@@ -243,4 +245,10 @@ All colors MUST be HSL.
 .chat-markdown ol ul,
 .chat-markdown ol ol {
   margin-top: 0.25rem;
+}
+
+@layer components {
+  .sidebar-icon-badge {
+    background-color: var(--sidebar-icon-bg);
+  }
 }

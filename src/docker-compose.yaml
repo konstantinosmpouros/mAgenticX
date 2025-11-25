@@ -35,6 +35,8 @@ services:
     restart: unless-stopped
     ports:
       - "8006:8080"
+    volumes:
+      - mcp_gateway_filesystem:/app/data
     networks:
       - backend
       - frontend
@@ -150,3 +152,5 @@ volumes:
   chat_convs:
   
   agents_checkpoints:
+
+  mcp_gateway_filesystem:
