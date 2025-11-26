@@ -25,8 +25,13 @@ from schemas import (
     AgentManifest,
     ToolManifest,
 )
-from utils import AGENT_REGISTRY, generate_title
-from utils.mcp_tools import MCPToolsClientError, list_mcp_tools
+from utils import (
+    AGENT_REGISTRY,
+    generate_title,
+    list_mcp_tools,
+    MCPToolsClientError,
+    get_cached_tool_manifests,
+)
 
 
 
@@ -142,51 +147,20 @@ async def get_available_agents() -> List[AgentManifest]:
 @app.get("/tools", response_model=List[ToolManifest], status_code=status.HTTP_200_OK)
 async def get_available_tools() -> List[ToolManifest]:
     """Return the live tool catalog exposed by the MCP server."""
+    cached_manifests = get_cached_tool_manifests()
+    if cached_manifests:
+        return cached_manifests
+
     try:
-        tools = await list_mcp_tools()
+        await list_mcp_tools()
     except MCPToolsClientError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
         ) from exc
 
-    manifests: List[ToolManifest] = []
-    for tool in tools:
-        annotations_obj = getattr(tool, "annotations", None)
-        annotations = annotations_obj.model_dump() if annotations_obj else {}
-
-        schema = tool.inputSchema if isinstance(tool.inputSchema, dict) else {}
-        schema_properties = schema.get("properties")
-        annotations_properties = annotations.get("properties") if isinstance(annotations, dict) else None
-        if schema_properties and isinstance(schema_properties, dict) and schema_properties:
-            parameter_count = len(schema_properties)
-        elif annotations_properties and isinstance(annotations_properties, dict):
-            parameter_count = len(annotations_properties)
-        else:
-            parameter_count = 0
-
-        description = (tool.description or annotations.get("title") or "").strip()
-
-        qualified_name = getattr(tool, "name", "") or ""
-        if not isinstance(qualified_name, str):
-            qualified_name = str(qualified_name)
-        if isinstance(qualified_name, str) and "_" in qualified_name:
-            server_id, tool_name = qualified_name.split("_", 1)
-        else:
-            server_id = ""
-            tool_name = qualified_name
-
-        manifests.append(
-            ToolManifest(
-                server_id=server_id,
-                tool_name=tool_name,
-                description=description,
-                parameter_count=parameter_count,
-            )
-        )
-
-    manifests.sort(key=lambda item: item.tool_name.lower())
-    return manifests
+    # list_mcp_tools primes the cache; return whatever was stored.
+    return get_cached_tool_manifests()
 
 
 

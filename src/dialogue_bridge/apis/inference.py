@@ -113,9 +113,8 @@ async def startInferenceStream(
                             "context": {
                                 "user_id": str(user_id),
                                 "conversation_id": str(conversation_id),
-                                # "user_summary": None,
                             },
-                            # "tools": tools_config,
+                            "tools": tools_config,
                         },
                     }
                     async with client.stream(

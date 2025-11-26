@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional, Type
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from blueprints import LangGraphAgent
 from dataclasses import dataclass
 

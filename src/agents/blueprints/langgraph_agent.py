@@ -219,12 +219,12 @@ class LangGraphAgent:
         for key in self.config_tool_names:
             tool = tool_lookup.get(key)
             if tool is None:
-                raise KeyError(f"Unknown tool selector '{key}'.")
+                continue
             
             if key not in seen:
                 resolved.append(tool)
                 seen.add(key)
-        
+        print(f"Resolved tools for agent '{self.name}': {[tool.name for tool in resolved]}")
         return resolved
 
 
