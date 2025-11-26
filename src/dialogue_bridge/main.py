@@ -1,12 +1,15 @@
-from contextlib import asynccontextmanager
+# Path setup
+from pathlib import Path
+import os
+import sys
 
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
+sys.path.append(str(PACKAGE_ROOT))
+
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi_pagination import add_pagination
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from database import AgentTable, Base, engine
-from utils import sync_agents_with_service
+from database import Base, engine
 
 from apis import (
     auth_router,

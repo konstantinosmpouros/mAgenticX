@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react';
 import type { FC, Dispatch, SetStateAction, MutableRefObject } from 'react';
-import type { MessageOut, ConversationDetail, ThinkingState, MessageIn } from "@/lib/types";
+import type { MessageOut, ConversationDetail, ThinkingState, MessageIn, ToolPreference } from "@/lib/types";
 import { likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage, addMessageToConversation } from "@/lib/api";
 import { sortByUpdatedAtDesc } from "@/lib/utils";
 import { streamAguiRun } from "./agui";
@@ -261,6 +261,7 @@ type MessageEditHandlersCtx = {
   rootBranchKey: string;
   setBranchSelections: Dispatch<SetStateAction<Record<string, number>>>;
   setIsSendingMessage?: (value: boolean) => void;
+  enabledTools?: ToolPreference[];
 };
 
 
@@ -294,6 +295,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     rootBranchKey,
     setBranchSelections,
     setIsSendingMessage,
+    enabledTools,
   } = ctx;
 
   const handleSubmitMessageEdit = async ({
@@ -385,6 +387,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         conversationId: currentConversation.id,
         replyParentMessageId: newMessage.id,
         uiBranchPath: branchMessagePath,
+        enabledTools,
         setMessages: setConversationMessages,
         setThinkingState,
         setCurrentConversation,
@@ -457,6 +460,7 @@ type RetryHandlersCtx = {
   rootBranchKey: string;
   setBranchSelections: Dispatch<SetStateAction<Record<string, number>>>;
   setIsSendingMessage?: (value: boolean) => void;
+  enabledTools?: ToolPreference[];
 };
 
 export function createRetryHandlers(ctx: RetryHandlersCtx) {
@@ -473,6 +477,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     rootBranchKey,
     setBranchSelections,
     setIsSendingMessage,
+    enabledTools,
   } = ctx;
 
   const handleRetryAiMessage = async (message: MessageOut) => {
@@ -550,6 +555,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
         setShowAiTransition,
         signal: streamAbortRef.current.signal,
         prefillMessageId: tempId,
+        enabledTools,
       });
     } catch (error) {
       console.error('Failed to retry AI message', error);

@@ -87,7 +87,7 @@ async function listToolsWithCompat(client, params) {
  * Load and parse the gateway's servers configuration JSON file.
  */
 async function loadServerConfig() {
-  const file = await fs.readFile(CONFIG_PATH, "utf-8");
+  let file = await fs.readFile(CONFIG_PATH, "utf-8");
   file = file.replace(/\$\{([^}]+)\}/g, (_, name) => process.env[name] ?? "");
   return JSON.parse(file);
 }

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 import base64
-from typing import Any, Dict, List, Optional, Literal
+from typing import List, Optional, Literal
 from datetime import datetime
 
 Senders = Literal["user", "ai"]
@@ -89,6 +89,23 @@ class ToolManifest(BaseModel):
     tool_name: str = Field(..., validation_alias="tool_name")
     description: str = ""
     parameter_count: int = Field(0, ge=0, validation_alias="parameter_count")
+
+
+
+# -------------------------------------------
+# User preferences DTO
+# -------------------------------------------
+class ToolPreference(BaseModel):
+    server_id: str = Field("", validation_alias="server_id")
+    tool_name: str = Field(..., validation_alias="tool_name")
+
+
+class ToolsPreferences(BaseModel):
+    disabled: list[ToolPreference] = Field(default_factory=list)
+
+
+class UserPreferences(BaseModel):
+    tools: ToolsPreferences = Field(default_factory=ToolsPreferences)
 
 
 
@@ -225,6 +242,7 @@ class CreateConversationResponse(BaseModel):
 class InferenceStreamPayload(BaseModel):
     """Payload to map the messages branch from the UI and start an inference stream from the agent."""
     messagePath: list[str] | None = None
+    enabledTools: list[ToolPreference] | None = Field(default=None, validation_alias="enabledTools")
 
 
 

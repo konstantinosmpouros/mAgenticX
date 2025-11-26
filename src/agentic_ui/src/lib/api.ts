@@ -13,6 +13,7 @@ import type {
   DownloadAttachmentParams,
   AGUIEvent,
   ToolMetadata,
+  ToolPreference,
 } from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
 import { parseSSE } from "./utils";
@@ -120,6 +121,43 @@ export async function getTools(): Promise<ToolMetadata[]> {
     description: typeof tool?.description === "string" ? tool.description : "",
     parameterCount: Number.isFinite(tool?.parameter_count) ? Math.max(0, Number(tool.parameter_count)) : 0,
   }));
+}
+
+export async function getUserPreferences(userId: string) {
+  const res = await fetch(`/api/users/${userId}/preferences`, withCredentials({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch user preferences: ${res.status}`);
+  }
+  const data = await res.json();
+  return data as any;
+}
+
+export async function updateUserPreferences(userId: string, prefs: any) {
+  const normalised = (() => {
+    if (!prefs || typeof prefs !== "object") return {};
+    const disabled: any[] =
+      Array.isArray(prefs.tools?.disabled)
+        ? prefs.tools.disabled.map((item: any) => ({
+            server_id: typeof item?.serverId === "string" ? item.serverId : typeof item?.server_id === "string" ? item.server_id : "",
+            tool_name: typeof item?.toolName === "string" ? item.toolName : item?.tool_name ?? "",
+          }))
+        : [];
+    return { tools: { disabled } };
+  })();
+  const res = await fetch(`/api/users/${userId}/preferences`, withCredentials({
+    method: "PUT",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(normalised),
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to update user preferences: ${res.status}`);
+  }
+  const data = await res.json();
+  return data as any;
 }
 
 
@@ -362,16 +400,36 @@ export async function streamInference(
   messagePath: string[],
   onEvent: (e: AGUIEvent) => void,
   signal?: AbortSignal,
+  enabledTools?: ToolPreference[],
 ): Promise<void> {
-  const payload = Array.isArray(messagePath) && messagePath.length > 0 ? { messagePath } : undefined;
+  const payload: Record<string, unknown> = {};
+  if (Array.isArray(messagePath) && messagePath.length > 0) {
+    payload.messagePath = messagePath;
+  }
+  if (Array.isArray(enabledTools) && enabledTools.length > 0) {
+    payload.enabledTools = enabledTools.map((item) => ({
+      server_id:
+        typeof (item as any).server_id === "string"
+          ? (item as any).server_id
+          : typeof item.serverId === "string"
+            ? item.serverId
+            : "",
+      tool_name:
+        typeof (item as any).tool_name === "string"
+          ? (item as any).tool_name
+          : typeof item.toolName === "string"
+            ? item.toolName
+            : "",
+    }));
+  }
   const headers: Record<string, string> = { "Accept": "text/event-stream" };
-  if (payload) headers["Content-Type"] = "application/json";
+  if (Object.keys(payload).length > 0) headers["Content-Type"] = "application/json";
 
   const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, withCredentials({
     method: "POST",
     headers,
     signal,
-    body: payload ? JSON.stringify(payload) : undefined,
+    body: Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined,
   }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();

@@ -95,7 +95,13 @@ async def startInferenceStream(
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 try:
-                    payload = {
+                    enabled_tools = payload.enabledTools if payload else None
+                    tools_config = (
+                        [{"tool_name": item.tool_name, "server_id": item.server_id} for item in enabled_tools]
+                        if enabled_tools
+                        else None
+                    )
+                    req_payload = {
                         "user_input": history,
                         "config": {
                             "run_config": {
@@ -109,17 +115,13 @@ async def startInferenceStream(
                                 "conversation_id": str(conversation_id),
                                 # "user_summary": None,
                             },
-                            # "tools": [
-                            #     {"tool_name": "web_search"},
-                            #     {"tool_name": "search_tools"},
-                            #     {"tool_name": "code_interpreter"},
-                            # ]
+                            # "tools": tools_config,
                         },
                     }
                     async with client.stream(
                         "POST",
                         agent_url,
-                        json=payload,
+                        json=req_payload,
                         headers={"Accept": "text/event-stream"},
                     ) as r:
                         r.raise_for_status()
@@ -127,11 +129,9 @@ async def startInferenceStream(
                             # Forward bytes directly (pre-encoded SSE from the agents service)
                             yield chunk
                 except asyncio.CancelledError:
-                    # Client interrupted streaming; exit silently to avoid noisy logs
-                    return
+                    return # Client interrupted streaming; exit silently to avoid noisy logs
         except asyncio.CancelledError:
-            # Request context cancelled (e.g., UI aborted). Exit quietly.
-            return
+            return # Request context cancelled (e.g., UI aborted). Exit quietly.
         except httpx.HTTPError as e:
             # Emit a RUN_ERROR frame so UI can gracefully handle upstream failures
             tb = traceback.format_exc()

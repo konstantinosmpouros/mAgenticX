@@ -1,4 +1,4 @@
-from .agents import (
+from utils.agents import (
     AGENTS_SERVICE_URL,
     build_agent_stream_url,
     fetch_tools_from_agents_service,
@@ -7,10 +7,11 @@ from .agents import (
     prime_agent_cache,
     sync_agents_with_service,
 )
-from .conversations import _preview, init_conv, init_message
-from .inference import serialise_message_with_images_for_agent
-from .titles import generate_conversation_title
-from .validators import validate_convId, validate_convId_full, validate_userId
+from utils.conversations import _preview, init_conv, init_message
+from utils.inference import serialise_message_with_images_for_agent
+from utils.titles import generate_conversation_title
+from utils.validators import validate_convId, validate_convId_full, validate_userId
+from utils.preferences import dedupe_preferences
 
 __all__ = [
     "AGENTS_SERVICE_URL",
@@ -28,4 +29,5 @@ __all__ = [
     "init_conv",
     "init_message",
     "_preview",
+    "dedupe_preferences",
 ]

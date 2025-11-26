@@ -5,7 +5,6 @@ import httpx
 
 from database.schemas import MessageIn, TitleOut
 from utils.agents import AGENTS_SERVICE_URL
-from utils.inference import serialise_message_with_images_for_agent
 
 logger = logging.getLogger(__name__)
 

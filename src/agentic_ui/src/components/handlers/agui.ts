@@ -1,6 +1,6 @@
 import { addMessageToConversation, streamInference } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
-import type { MessageIn, MessageOut } from '@/lib/types';
+import type { MessageIn, MessageOut, ToolPreference } from '@/lib/types';
 import { EventSchemas, EventType as AGUIEventType } from '@ag-ui/core';
 
 const parseEvent = (raw: unknown) => {
@@ -30,6 +30,7 @@ export type AguiStreamOptions = {
   setShowAiTransition?: (v: boolean) => void;
   signal?: AbortSignal;
   prefillMessageId?: string;
+  enabledTools?: ToolPreference[];
 };
 
 export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
@@ -47,6 +48,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     uiBranchPath,
     serverBranchPath,
     prefillMessageId,
+    enabledTools,
   } = options;
   
   let aborted = false;
@@ -258,7 +260,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   
   try {
     const outboundPath = serverBranchPath ?? runtime.messagePath;
-    await streamInference(userId, conversationId, outboundPath, onEvent, signal);
+    await streamInference(userId, conversationId, outboundPath, onEvent, signal, enabledTools);
   } catch (err) {
     const name = (err as any)?.name;
     if (name === 'AbortError') {

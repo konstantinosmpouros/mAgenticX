@@ -69,6 +69,17 @@ export type ToolMetadata = {
     parameterCount: number;
 };
 
+export type ToolPreference = {
+    serverId: string;
+    toolName: string;
+};
+
+export type UserPreferences = {
+    tools?: {
+        disabled?: ToolPreference[];
+    };
+};
+
 
 
 // ------------------------------------------------------

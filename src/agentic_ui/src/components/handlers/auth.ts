@@ -1,5 +1,5 @@
-import type { ToolMetadata, UserProfile } from '@/lib/types';
-import { authenticate, getAgents, getConversations, getTools } from '@/lib/api';
+import type { ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
+import { authenticate, getAgents, getConversations, getTools, getUserPreferences } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession } from '@/lib/authStorage';
 
@@ -9,6 +9,7 @@ type AuthCtx = {
   setUserProfile: (v: UserProfile | null) => void;
   setAgents: (v: any) => void;
   setAvailableTools: (v: ToolMetadata[]) => void;
+  setUserPreferences: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
   setConversationsLoading: (v: boolean) => void;
   setLoginUsername: (v: string) => void;
@@ -28,6 +29,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setAgents,
     setConversations,
     setAvailableTools,
+    setUserPreferences,
     setConversationsLoading,
     setLoginUsername,
     setLoginPassword,
@@ -55,6 +57,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
           setConversationsLoading(true);
           const agentsPromise = getAgents();
           const toolsPromise = getTools();
+          const preferencesPromise = getUserPreferences(user.id);
           const conversationsPromise = getConversations(user.id);
 
           try {
@@ -71,6 +74,14 @@ export function createAuthHandlers(ctx: AuthCtx) {
           } catch (e) {
             console.error("Failed to fetch tools after login:", e);
             setAvailableTools([]);
+          }
+
+          try {
+            const prefs = await preferencesPromise;
+            setUserPreferences(prefs);
+          } catch (e) {
+            console.error("Failed to fetch preferences after login:", e);
+            setUserPreferences(null);
           }
 
           try {

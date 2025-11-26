@@ -8,3 +8,4 @@ export * from './effects';
 export * from './sessionEffects';
 export * from './agui';
 export * from './messages';
+export * from './preferences';

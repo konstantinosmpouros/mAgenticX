@@ -2,16 +2,18 @@ from fastapi import APIRouter, Depends, File, UploadFile, status, HTTPException
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db, UserTable
-from database.schemas import AgentPublic, DictationResponse, ToolManifest
+from database import get_db, UserTable, UserPreferencesTable
+from database.schemas import AgentPublic, DictationResponse, ToolManifest, UserPreferences
 from utils import (
     AGENTS_SERVICE_URL,
     fetch_tools_from_agents_service,
     get_cached_agents,
     sync_agents_with_service,
     validate_userId,
+    dedupe_preferences,
 )
 from vault_auth.auth import require_token_claims
+from sqlalchemy import select
 
 
 router = APIRouter(tags=["Utilities"])
@@ -113,3 +115,49 @@ async def get_available_tools(
     """Return the tools exposed by the MCP server via the agents service."""
     payload = await fetch_tools_from_agents_service()
     return [ToolManifest.model_validate(item) for item in payload]
+
+
+@router.get("/users/{user_id}/preferences", response_model=UserPreferences, status_code=status.HTTP_200_OK)
+async def get_user_preferences(
+    user_id: str,
+    _: dict = Depends(require_token_claims),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return generic user preferences (future-proof JSON) scoped to the given user.
+    Currently supports tools.disabled list.
+    """
+    result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
+    row: UserPreferencesTable | None = result.scalar_one_or_none()
+    if row is None or not isinstance(row.data, dict):
+        return UserPreferences()
+
+    try:
+        return UserPreferences.model_validate(row.data)
+    except Exception:
+        # Fallback to empty preferences if stored shape is invalid
+        return UserPreferences()
+
+
+@router.put("/users/{user_id}/preferences", response_model=UserPreferences, status_code=status.HTTP_200_OK)
+async def upsert_user_preferences(
+    user_id: str,
+    payload: UserPreferences,
+    _: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Replace the user's preferences document with the provided payload.
+    """
+    sanitized = dedupe_preferences(payload)
+
+    result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
+    existing: UserPreferencesTable | None = result.scalar_one_or_none()
+    if existing:
+        existing.data = sanitized.model_dump(mode="json")
+    else:
+        db.add(UserPreferencesTable(user_id=user_id, data=sanitized.model_dump(mode="json")))
+
+    await db.commit()
+    return sanitized
+

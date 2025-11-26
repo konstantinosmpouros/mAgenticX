@@ -14,10 +14,10 @@ import {
     MoonStar,
     ChevronDown,
 } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { ToolMetadata, UserProfile } from "@/lib/types";
+import { ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProfileSidebarCollapseEffect } from "@/components/handlers";
 
@@ -28,8 +28,13 @@ type ProfilePanelProps = {
     setActiveTab: (tabId: string) => void;
     onLogout: () => void;
     user: UserProfile | null;
-    availableTools: ToolMetadata[];
+    availableTools: (ToolMetadata & { enabled?: boolean })[];
+    userPreferences: UserPreferences;
+    onToggleToolPreference?: (tool: ToolMetadata) => void;
+    preferencesSaving?: boolean;
 };
+
+type ToolWithStatus = ToolMetadata & { enabled?: boolean };
 
 const MCP_ICON_SRCS = {
     grey: "/mcp-server-stroke-rounded (3).png",
@@ -68,12 +73,14 @@ export default function ProfilePanel({
     onLogout,
     user,
     availableTools,
+    userPreferences,
+    onToggleToolPreference,
+    preferencesSaving = false,
 }: ProfilePanelProps) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [userCollapsed, setUserCollapsed] = useState(false);
     const [forcedCollapsed, setForcedCollapsed] = useState(false);
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
-    const [serverToggles, setServerToggles] = useState<Record<string, boolean>>({});
     const [serverCollapsed, setServerCollapsed] = useState<Record<string, boolean>>({});
     const { theme, setTheme } = useTheme();
 
@@ -84,21 +91,22 @@ export default function ProfilePanel({
         userCollapsed,
     });
 
-    const toolKey = (tool: ToolMetadata) => {
+    const toolKey = (tool: ToolWithStatus) => {
         const prefix = tool.serverId && tool.serverId.length > 0 ? tool.serverId : "default";
         return `${prefix}::${tool.toolName}`;
     };
 
-    useEffect(() => {
-        setServerToggles((prev) => {
-            const next: Record<string, boolean> = {};
-            availableTools.forEach((tool) => {
-                const key = toolKey(tool);
-                next[key] = key in prev ? prev[key] : true;
-            });
-            return next;
+    const preferencesDisabledKeys = useMemo(() => {
+        const entries = userPreferences?.tools?.disabled ?? [];
+        const keys = entries.map((item) => {
+            const name = (item as any).toolName ?? (item as any).tool_name ?? "";
+            const serverPrefix = item.serverId && item.serverId.length > 0 ? item.serverId : "default";
+            return `${serverPrefix}::${name}`;
         });
+        return new Set(keys);
+    }, [userPreferences]);
 
+    useEffect(() => {
         setServerCollapsed((prev) => {
             const next: Record<string, boolean> = {};
             availableTools.forEach((tool) => {
@@ -112,11 +120,7 @@ export default function ProfilePanel({
     }, [availableTools]);
 
     const handleToggleServer = (tool: ToolMetadata) => {
-        const key = toolKey(tool);
-        setServerToggles((prev) => ({
-            ...prev,
-            [key]: !prev[key],
-        }));
+        onToggleToolPreference?.(tool);
     };
 
 
@@ -483,7 +487,7 @@ export default function ProfilePanel({
                                                     </div>
                                                 ) : (
                                                     Object.entries(
-                                                        availableTools.reduce<Record<string, ToolMetadata[]>>((acc, tool) => {
+                                                        availableTools.reduce<Record<string, ToolWithStatus[]>>((acc, tool) => {
                                                             const serverKey = tool.serverId || "default";
                                                             if (!acc[serverKey]) acc[serverKey] = [];
                                                             acc[serverKey].push(tool);
@@ -521,9 +525,9 @@ export default function ProfilePanel({
                                                                 </button>
                                                                 {!collapsed && (
                                                                     <div className="mt-2 space-y-2">
-                                                                        {tools.map((tool, idx) => {
+                                                                        {tools.map((tool: ToolWithStatus, idx) => {
                                                                             const uniqueKey = toolKey(tool);
-                                                                            const enabled = serverToggles[uniqueKey] ?? true;
+                                                                            const enabled = typeof tool.enabled === "boolean" ? tool.enabled : !preferencesDisabledKeys.has(uniqueKey);
                                                                             const parameterCount = Math.max(0, tool.parameterCount ?? 0);
                                                                             const parameterLabel =
                                                                                 parameterCount === 0
@@ -555,10 +559,12 @@ export default function ProfilePanel({
                                                                                             type="button"
                                                                                             role="switch"
                                                                                             aria-checked={enabled}
-                                                                                            onClick={() => handleToggleServer(tool)}
+                                                                                            onClick={() => !preferencesSaving && handleToggleServer(tool)}
+                                                                                            aria-disabled={preferencesSaving}
                                                                                             className={cn(
                                                                                                 "relative inline-flex h-6 w-11 items-center self-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                                                                                                enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/70"
+                                                                                                enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/70",
+                                                                                                preferencesSaving && "opacity-60 cursor-not-allowed"
                                                                                             )}
                                                                                         >
                                                                                             <span

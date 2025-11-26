@@ -5,7 +5,8 @@ import { Building2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, UserProfile, ToolMetadata } from "@/lib/types";
+import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, UserProfile, ToolMetadata, UserPreferences } from "@/lib/types";
+import { createPreferencesHandlers } from "@/components/handlers/preferences";
 
 // Handlers (modularized)
 import { 
@@ -63,6 +64,8 @@ export function ChatInterface() {
   // Main variables use for storing info from the db and present it constantly
   const [agents, setAgents] = useState<Agent[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolMetadata[]>([]);
+  const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState<boolean>(false);
@@ -117,10 +120,51 @@ export function ChatInterface() {
   const [editingDraft, setEditingDraft] = useState("");
   const [editingBusy, setEditingBusy] = useState(false);
 
+  // Create toast wrapper for handlers
+  const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
+    toast({
+      title: opts.title,
+      description: opts.description,
+      variant: (opts.variant === 'error' ? 'destructive' : opts.variant) as 'default' | 'destructive' | undefined,
+      duration: opts.duration,
+    });
+  };
+
+  // Preferences handlers
+  const {
+    toolsWithStatus,
+    enabledToolsForRequest,
+    resolvedPreferences,
+    handleToggleToolPreference,
+  } = createPreferencesHandlers({
+    userId,
+    availableTools,
+    userPreferences,
+    setUserPreferences,
+    isSavingPreferences,
+    setIsSavingPreferences,
+    toast: toastWrapper,
+  });
+
+  // Reset branch selections on conversation change
   useEffect(() => {
     setBranchSelections({});
   }, [currentConversation?.id]);
 
+  // Branching handlers
+  const {
+    activeMessages,
+    branchChildrenMap,
+    handleBranchSelectionChange,
+    activeBranchPath,
+  } = useBranchingHandlers({
+    messages: currentConversation?.messages,
+    branchSelections,
+    setBranchSelections,
+    rootKey: ROOT_BRANCH_KEY,
+  });
+
+  // Reset message editing state on conversation change
   useEffect(() => {
     setEditingMessageId(null);
     setEditingDraft("");
@@ -162,10 +206,12 @@ export function ChatInterface() {
     });
   };
 
+  // Message editing handlers
   const handleEditDraftChange = (value: string) => {
     setEditingDraft(value);
   };
 
+  // Request to edit a message
   const handleRequestEditMessage = (message: MessageOut) => {
     if (message.sender !== "user") return;
     setEditingMessageId(message.id);
@@ -174,33 +220,12 @@ export function ChatInterface() {
     setStickyUserBarId(message.id);
   };
 
+  // Cancel editing a message
   const handleCancelEditMessage = () => {
     setEditingMessageId(null);
     setEditingDraft("");
     setEditingBusy(false);
     setStickyUserBarId(null);
-  };
-
-  const {
-    activeMessages,
-    branchChildrenMap,
-    handleBranchSelectionChange,
-    activeBranchPath,
-  } = useBranchingHandlers({
-    messages: currentConversation?.messages,
-    branchSelections,
-    setBranchSelections,
-    rootKey: ROOT_BRANCH_KEY,
-  });
-
-  // Create toast wrapper for handlers
-  const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
-    toast({
-      title: opts.title,
-      description: opts.description,
-      variant: (opts.variant === 'error' ? 'destructive' : opts.variant) as 'default' | 'destructive' | undefined,
-      duration: opts.duration,
-    });
   };
 
   // Effects
@@ -213,6 +238,7 @@ export function ChatInterface() {
     allowMissingAgentId: inactiveAgentFallback?.id ?? currentConversation?.agent?.id ?? null,
   });
 
+  // Handle inactive agent fallback
   useEffect(() => {
     if (!currentConversation?.agent) {
       setInactiveAgentFallback(null);
@@ -227,16 +253,20 @@ export function ChatInterface() {
     }
   }, [currentConversation, agents]);
 
+  // Auto-scroll effect
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
 
+  // Thinking progress effect
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
 
+  // Auth rehydration effect
   useAuthRehydrateEffect({
     setIsLoggedIn,
     setUserId,
     setUserProfile,
     setAgents,
     setAvailableTools,
+    setUserPreferences,
     setConversations,
     setConversationsLoading,
     setSelectedAgent,
@@ -246,10 +276,13 @@ export function ChatInterface() {
     toast: toastWrapper,
   });
 
+  // Session auto-refresh effect
   useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
 
+  // Session state sync effect
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
 
+  // UI persistence effect
   useUIPersistEffect({
     userId,
     snapshot: {
@@ -290,7 +323,6 @@ export function ChatInterface() {
     currentConversation,
   });
   
-  
   // Create UI handlers
   const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
   
@@ -310,6 +342,7 @@ export function ChatInterface() {
   // Abort controller for streaming
   const streamAbortRef = useRef<AbortController | null>(null);
 
+  // Message edit handlers
   const { handleConfirmEditMessage } = createMessageEditHandlers({
     userId,
     currentConversation,
@@ -323,8 +356,10 @@ export function ChatInterface() {
     rootBranchKey: ROOT_BRANCH_KEY,
     setBranchSelections,
     setIsSendingMessage,
+    enabledTools: enabledToolsForRequest,
   });
 
+  // Retry handlers
   const { handleRetryAiMessage } = createRetryHandlers({
     userId,
     currentConversation,
@@ -338,8 +373,10 @@ export function ChatInterface() {
     rootBranchKey: ROOT_BRANCH_KEY,
     setBranchSelections,
     setIsSendingMessage,
+    enabledTools: enabledToolsForRequest,
   });
 
+  // Submit edit from state
   const submitEditFromState = () =>
     handleConfirmEditMessage({
       editingMessageId,
@@ -374,6 +411,7 @@ export function ChatInterface() {
     setDictationStatus,
     textareaRef,
     streamAbortRef,
+    enabledTools: enabledToolsForRequest,
   });
   
   // Conversation handlers
@@ -443,6 +481,7 @@ export function ChatInterface() {
     setAgents,
     setConversationsLoading,
     setAvailableTools,
+    setUserPreferences,
     setConversations,
     setLoginUsername,
     setLoginPassword,
@@ -453,6 +492,7 @@ export function ChatInterface() {
     loginPassword,
   });
 
+  // Unauthorized event listener
   useEffect(() => {
     const handleUnauthorized = () => {
       handleLogout();
@@ -650,7 +690,10 @@ export function ChatInterface() {
               setActiveTab={setActiveProfileTab}
               onLogout={handleLogout}
               user={userProfile}
-              availableTools={availableTools}
+              availableTools={toolsWithStatus}
+              userPreferences={resolvedPreferences}
+              onToggleToolPreference={handleToggleToolPreference}
+              preferencesSaving={isSavingPreferences}
             />
             
             {/* Image Preview Modal */}

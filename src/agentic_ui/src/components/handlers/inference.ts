@@ -1,7 +1,7 @@
 import { createConversation, addMessageToConversation, transcribeDictation } from '@/lib/api';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
-import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, ToolPreference } from '@/lib/types';
 import { streamAguiRun } from './agui';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import type { DictationStatus } from '@/components/chat/ChatInputBar';
@@ -16,6 +16,7 @@ type InferenceCtx = {
   currentConversation: ConversationDetail | null;
   currentMessage: string;
   isSendingMessage?: boolean;
+  enabledTools?: ToolPreference[];
   
   // setters
   setMessages: (updater: (prev: MessageOut[]) => MessageOut[]) => void | ((v: MessageOut[]) => void);
@@ -62,6 +63,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setDictationStatus,
     textareaRef,
     streamAbortRef,
+    enabledTools,
   } = ctx;
 
   const resolveLastPersistedMessageId = () => {
@@ -182,6 +184,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           toast,
           setShowAiTransition,
           signal: streamAbortRef.current.signal,
+          enabledTools,
         });
       }
 
@@ -224,6 +227,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setConversations,
           toast,
           setShowAiTransition,
+          enabledTools,
           signal: streamAbortRef.current.signal,
         });
       }

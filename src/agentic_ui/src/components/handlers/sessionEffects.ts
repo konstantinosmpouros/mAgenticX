@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { Agent, ToolMetadata, UserProfile } from '@/lib/types';
+import type { Agent, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
 import { loadSession, isSessionValid, clearSession, updateSession, saveSession } from '@/lib/authStorage';
 import { saveUISnapshot, loadUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
-import { getAgents, getConversations, getTools, refreshSession } from '@/lib/api';
+import { getAgents, getConversations, getTools, refreshSession, getUserPreferences } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 
 
@@ -15,6 +15,7 @@ export function useAuthRehydrateEffect(params: {
   setUserProfile: (v: UserProfile | null) => void;
   setAgents: (v: any) => void;
   setAvailableTools?: (v: ToolMetadata[]) => void;
+  setUserPreferences?: (v: UserPreferences) => void;
   setConversations: (v: any) => void;
   setConversationsLoading?: (v: boolean) => void;
   setSelectedAgent?: (v: string) => void;
@@ -29,6 +30,7 @@ export function useAuthRehydrateEffect(params: {
     setUserProfile,
     setAgents,
     setAvailableTools,
+    setUserPreferences,
     setConversations,
     setConversationsLoading,
     setSelectedAgent,
@@ -39,6 +41,7 @@ export function useAuthRehydrateEffect(params: {
   const started = useRef(false);
   const cachedToolsRef = useRef<ToolMetadata[] | null>(null);
   const cachedAgentsRef = useRef<Agent[] | null>(null);
+  const cachedPrefsRef = useRef<UserPreferences | null>(null);
 
   useEffect(() => {
     if (started.current) return;
@@ -116,17 +119,31 @@ export function useAuthRehydrateEffect(params: {
             throw error;
           });
 
+        const prefsPromise = getUserPreferences(session!.userId)
+          .then((prefs) => {
+            cachedPrefsRef.current = prefs;
+            return prefs;
+          })
+          .catch((error) => {
+            if (cachedPrefsRef.current) return cachedPrefsRef.current;
+            throw error;
+          });
+
         const conversationsPromise = getConversations(session!.userId);
 
-        const [agents, tools, conversations] = await Promise.all([
+        const [agents, tools, prefs, conversations] = await Promise.all([
           agentsPromise,
           toolsPromise,
+          prefsPromise,
           conversationsPromise,
         ]);
 
         setAgents(agents);
         if (setAvailableTools) {
           setAvailableTools(tools);
+        }
+        if (setUserPreferences) {
+          setUserPreferences(prefs);
         }
         setConversations(sortByUpdatedAtDesc(conversations));
       } catch {

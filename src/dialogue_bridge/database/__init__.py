@@ -21,6 +21,7 @@ from sqlalchemy import (
     JSON,
     Enum,
     LargeBinary,
+    UniqueConstraint,
 )
 
 
@@ -110,6 +111,13 @@ class UserTable(Base):
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    preferences = relationship(
+        "UserPreferencesTable",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     
     # one-to-many back-reference
     conversations = relationship(
@@ -118,6 +126,17 @@ class UserTable(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+class UserPreferencesTable(Base):
+    __tablename__ = "user_preferences"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_user_preferences_user_id"),)
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    data = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("UserTable", back_populates="preferences")
 
 class ConversationTable(Base):
     __tablename__ = "conversations"
