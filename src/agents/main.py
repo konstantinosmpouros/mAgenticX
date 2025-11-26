@@ -26,12 +26,12 @@ from schemas import (
     ToolManifest,
 )
 from utils import (
-    AGENT_REGISTRY,
     generate_title,
     list_mcp_tools,
     MCPToolsClientError,
     get_cached_tool_manifests,
 )
+from utils.agents import AGENT_REGISTRY
 
 
 

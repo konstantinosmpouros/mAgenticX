@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel
-from blueprints import LangGraphAgent
 from dataclasses import dataclass
 
 
@@ -45,5 +44,5 @@ class ToolManifest(BaseModel):
 @dataclass(frozen=True)
 class AgentDefinition:
     slug: str
-    cls: Type[LangGraphAgent]
+    cls: Type[Any]
     manifest: Dict[str, Any]

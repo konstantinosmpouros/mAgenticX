@@ -1,22 +1,24 @@
 from utils.prompts import normalise_user_input, make_merge_with_template
-from utils.agents import AGENT_REGISTRY
 from utils.title import generate_title
 from utils.mcp_tools import (
     MCPToolsClientError,
-    get_cached_mcp_tools,
+    build_tool_cache_key,
     get_cached_tool_manifests,
     get_cached_tool_manifests_map,
+    get_tool_cache_key,
     list_mcp_tools,
+    mcp_session_context,
 )
 
 __all__ = [
     "normalise_user_input",
     "make_merge_with_template",
-    "AGENT_REGISTRY",
     "generate_title",
     "MCPToolsClientError",
-    "get_cached_mcp_tools",
+    "build_tool_cache_key",
     "get_cached_tool_manifests",
     "get_cached_tool_manifests_map",
+    "get_tool_cache_key",
     "list_mcp_tools",
+    "mcp_session_context",
 ]

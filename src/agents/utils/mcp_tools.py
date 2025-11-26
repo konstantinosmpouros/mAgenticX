@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from typing import Dict, List, Sequence
 
 import mcp
@@ -12,19 +13,38 @@ class MCPToolsClientError(RuntimeError):
     """Raised when the MCP tools endpoint cannot be queried."""
 
 
-_MCP_TOOL_CACHE: Dict[str, types.Tool] = {}
 _MCP_TOOL_MANIFEST_CACHE: Dict[str, ToolManifest] = {}
 
 
-def _normalise_tool_name(tool: types.Tool) -> str:
-    """Return a stable, stringified tool name as delivered by the MCP gateway."""
-    value = getattr(tool, "name", "")
-    if isinstance(value, str):
-        return value
-    try:
-        return str(value)
-    except Exception:
-        return ""
+def _extract_tool_identity(tool: types.Tool) -> tuple[str, str, str]:
+    """
+    Return (server_id, tool_name, qualified_name) extracted from the MCP tool.
+    Falls back gracefully to empty strings on unexpected shapes.
+    """
+    raw_value = getattr(tool, "name", "") or ""
+    if not isinstance(raw_value, str):
+        try:
+            raw_value = str(raw_value)
+        except Exception:
+            raw_value = ""
+
+    server_id = ""
+    tool_name = raw_value
+
+    if isinstance(raw_value, str) and "_" in raw_value:
+        # server_tool convention from MCP gateway
+        server_id, tool_name = raw_value.split("_", 1)
+
+    return str(server_id), str(tool_name), str(raw_value)
+
+
+def _make_cache_key(server_id: str, tool_name: str) -> str:
+    """Return the canonical cache key using server_id/tool_name semantics."""
+    server = (server_id or "").strip()
+    name = (tool_name or "").strip()
+    if server:
+        return f"{server}/{name}"
+    return name
 
 
 def _build_manifest(tool: types.Tool) -> ToolManifest:
@@ -44,12 +64,7 @@ def _build_manifest(tool: types.Tool) -> ToolManifest:
 
     description = (tool.description or annotations.get("title") or "").strip()
 
-    qualified_name = _normalise_tool_name(tool)
-    if isinstance(qualified_name, str) and "_" in qualified_name:
-        server_id, tool_name = qualified_name.split("_", 1)
-    else:
-        server_id = ""
-        tool_name = qualified_name
+    server_id, tool_name, _ = _extract_tool_identity(tool)
 
     return ToolManifest(
         server_id=server_id,
@@ -59,34 +74,28 @@ def _build_manifest(tool: types.Tool) -> ToolManifest:
     )
 
 
-def _prime_mcp_tool_cache(tools: Sequence[types.Tool]) -> None:
-    """Populate both the raw tool cache and the UI manifest cache."""
-    global _MCP_TOOL_CACHE, _MCP_TOOL_MANIFEST_CACHE
+def _prime_manifest_cache(tools: Sequence[types.Tool]) -> None:
+    """Populate the UI manifest cache keyed by server_id/tool_name."""
+    global _MCP_TOOL_MANIFEST_CACHE
 
-    entries: list[tuple[str, types.Tool, ToolManifest]] = []
-    seen: set[str] = set()
+    entries: list[tuple[str, ToolManifest]] = []
+    seen_keys: set[str] = set()
+
     for tool in tools:
-        key = _normalise_tool_name(tool)
-        if not key or key in seen:
+        server_id, tool_name, _ = _extract_tool_identity(tool)
+        cache_key = _make_cache_key(server_id, tool_name)
+        if not cache_key or cache_key in seen_keys:
             continue
         manifest = _build_manifest(tool)
-        entries.append((key, tool, manifest))
-        seen.add(key)
+        entries.append((cache_key, manifest))
+        seen_keys.add(cache_key)
 
-    # Sort by tool display name to keep responses stable.
-    entries.sort(key=lambda item: item[2].tool_name.lower())
-
-    _MCP_TOOL_CACHE = {key: tool for key, tool, _ in entries}
-    _MCP_TOOL_MANIFEST_CACHE = {key: manifest for key, _, manifest in entries}
-
-
-def get_cached_mcp_tools() -> Dict[str, types.Tool]:
-    """Return the cached raw MCP tools keyed by their qualified name."""
-    return dict(_MCP_TOOL_CACHE)
+    entries.sort(key=lambda item: item[0].lower())
+    _MCP_TOOL_MANIFEST_CACHE = {key: manifest for key, manifest in entries}
 
 
 def get_cached_tool_manifests_map() -> Dict[str, ToolManifest]:
-    """Return the cached ToolManifest objects keyed by their qualified name."""
+    """Return the cached ToolManifest objects keyed by server_id/tool_name."""
     return dict(_MCP_TOOL_MANIFEST_CACHE)
 
 
@@ -95,8 +104,19 @@ def get_cached_tool_manifests() -> List[ToolManifest]:
     return list(_MCP_TOOL_MANIFEST_CACHE.values())
 
 
+def build_tool_cache_key(server_id: str, tool_name: str) -> str:
+    """Public helper to build a cache key from server/tool identifiers."""
+    return _make_cache_key(server_id, tool_name)
+
+
+def get_tool_cache_key(tool: types.Tool) -> str:
+    """Public helper to build a cache key directly from an MCP tool object."""
+    server_id, tool_name, _ = _extract_tool_identity(tool)
+    return _make_cache_key(server_id, tool_name)
+
+
 async def _fetch_tools_from_gateway() -> List[types.Tool]:
-    """Call the MCP gateway and return the raw tools list."""
+    """Call the MCP gateway and return the raw tools list (for manifest building)."""
     endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8080/sse")
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
@@ -112,11 +132,30 @@ async def _fetch_tools_from_gateway() -> List[types.Tool]:
 
 
 async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
-    """Return the tools exposed by the MCP server, preferring the cache."""
-    if _MCP_TOOL_CACHE and not force_refresh:
-        return list(_MCP_TOOL_CACHE.values())
+    """
+    Return MCP tools for discovery. Cache manifests for UI; return tools for
+    callers that need raw definitions (not callable LangChain tools).
+    """
+    if _MCP_TOOL_MANIFEST_CACHE and not force_refresh:
+        return []
 
     tools = await _fetch_tools_from_gateway()
-    _prime_mcp_tool_cache(tools)
+    _prime_manifest_cache(tools)
 
-    return list(_MCP_TOOL_CACHE.values())
+    # Debug print to inspect the manifest cache when refreshed.
+    print("MCP tool manifest cache:", _MCP_TOOL_MANIFEST_CACHE)
+
+    return tools
+
+
+@asynccontextmanager
+async def mcp_session_context():
+    """Yield an initialized MCP session, keeping the connection open for the caller."""
+    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8080/sse")
+    if not endpoint:
+        raise MCPToolsClientError("MCP tools endpoint is not configured.")
+
+    async with sse_client(url=endpoint) as (read_stream, write_stream):
+        async with mcp.ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            yield session

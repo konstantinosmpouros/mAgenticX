@@ -14,3 +14,4 @@ uvicorn==0.32.0
 ag-ui-protocol==0.1.10
 python-multipart==0.0.9
 mcp==1.19.0
+langchain-mcp-adapters==0.1.13

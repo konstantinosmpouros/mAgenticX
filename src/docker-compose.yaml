@@ -10,7 +10,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
       - RAG_PORT=8001
-      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8080/sse
+      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8004/sse
     depends_on:
       - rag_service
     restart: unless-stopped
@@ -22,19 +22,17 @@ services:
       - backend
       - frontend
 
-  mcp_gateway: # 8006
+  mcp_gateway: # 8004
     container_name: mcp_gateway
     image: mcp_gateway
     build:
       context: ./mcp_gateway
       dockerfile: Dockerfile
     environment:
-      - PORT=8080
+      - PORT=8004
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - SERPAPI_API_KEY=${SERPAPI_API_KEY}
     restart: unless-stopped
-    ports:
-      - "8006:8080"
     volumes:
       - mcp_gateway_filesystem:/app/data
     networks:

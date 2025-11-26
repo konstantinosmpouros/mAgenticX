@@ -8,13 +8,12 @@ from pydantic import BaseModel
 
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langchain_mcp_adapters.tools import load_mcp_tools
 
 from agui import AGUIEmitter
-from tools import (
-    articles_tools,
-    computer_vision_tools,
-    financial_tools,
-    search_tools,
+from utils import (
+    build_tool_cache_key,
+    mcp_session_context,
 )
 
 class LangGraphAgent:
@@ -47,12 +46,7 @@ class LangGraphAgent:
 
     agui: AGUIEmitter = AGUIEmitter()
 
-    tool_registry: Sequence[Any] = (
-        *financial_tools,
-        *search_tools,
-        *articles_tools,
-        *computer_vision_tools,
-    )
+    tool_registry: Sequence[Any] = ()
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None,
     ) -> None:
@@ -61,15 +55,17 @@ class LangGraphAgent:
         
         # Runtime configuration
         default_run_config: Dict[str, Any] = {'configurable': {"thread_id": str(uuid4())}}
-        self.run_config: Optional[Mapping[str, Any]] = config.get("run_config", default_run_config)
+        self.run_config: Optional[Mapping[str, Any]] = self.config.get("run_config", default_run_config)
         
         # Configured tool selectors
         self.config_tools: Sequence[Mapping[str, Any]] = self.config.get("tools", [])
-        self.config_tool_names: List[str] = [item["tool_name"] for item in self.config_tools] if self.config_tools else []
+        self.config_tool_names: List[str] = (
+            [self._build_tool_key_from_config(item) for item in self.config_tools] if self.config_tools else []
+        )
         
-        # Resolved tools
-        self.tools: List[Any] = self.resolve_tools()
-        self.tools_names: List[str] = [tool.name for tool in self.tools] if self.tools else []
+        # Resolved tools (populated per-stream after loading from MCP)
+        self.tools: List[Any] = []
+        self.tools_names: List[str] = []
         
         # LangGraph checkpointer path
         self.checkpointer_path: str = self.checkpoints_db_path()
@@ -186,17 +182,22 @@ class LangGraphAgent:
     async def astream(self, payload: Mapping[str, Any]) -> Any:
         """Stream LangGraph chunks as SSE bytes using the configured stream mode."""
         try:
-            async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
-                # Compile graph if not already done
-                self._ensure_built()
-                
-                # Compile with checkpointer and stream
-                self.graph = self.graph.compile(checkpointer=checkpointer)
-                async for chunk in self.graph.astream(payload, config=self.run_config, stream_mode=self.stream_mode):
-                    if isinstance(chunk, (str, bytes)):
-                        yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                    else:
-                        yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+            async with mcp_session_context() as session:
+                live_tools = await load_mcp_tools(session)
+                filtered_tools = self._filter_live_tools(live_tools)
+                self._apply_live_tools(filtered_tools)
+
+                async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
+                    # Compile graph if not already done
+                    self._ensure_built()
+
+                    # Compile with checkpointer and stream
+                    self.graph = self.graph.compile(checkpointer=checkpointer)
+                    async for chunk in self.graph.astream(payload, config=self.run_config, stream_mode=self.stream_mode):
+                        if isinstance(chunk, (str, bytes)):
+                            yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                        else:
+                            yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
             return
         except Exception as exc:  # noqa: BLE001
@@ -207,25 +208,60 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Tool management
     # ---------------------------------------------------------------------
-    def resolve_tools(self) -> List[Any]:
-        """Resolve validated tool names into concrete tool instances."""
+    #TODO: The problem might be in the tool naming convention. Check how the tools are named in MCP and how we build the key here.
+    @staticmethod
+    def _build_tool_key_from_config(entry: Mapping[str, Any]) -> str:
+        """Normalise a config entry into server_id/tool_name cache key form."""
+        raw_name = entry.get("tool_name", "")
+        raw_server = entry.get("server_id", "")
+        tool_name = raw_name.strip() if isinstance(raw_name, str) else str(raw_name or "")
+        server_id = raw_server.strip() if isinstance(raw_server, str) else str(raw_server or "")
+        return build_tool_cache_key(server_id, tool_name)
+
+
+    @staticmethod
+    def _build_tool_key_from_tool_name(name: str) -> str:
+        """Convert an MCP/adapter tool name into server_id/tool_name form."""
+        if "_" in name:
+            server_id, tool_name = name.split("_", 1)
+        else:
+            server_id, tool_name = "", name
+        return build_tool_cache_key(server_id, tool_name)
+
+
+    def _filter_live_tools(self, tools: Sequence[Any]) -> List[Any]:
+        """Return live LangChain tools filtered by configured server/tool keys."""
         if not self.config_tool_names:
             return []
-        
-        tool_lookup: Dict[str, Any] = {tool.name: tool for tool in self.tool_registry}
-        resolved: List[Any] = []
+
+        desired = set(self.config_tool_names)
+        resolved: list[Any] = []
         seen: set[str] = set()
-        
-        for key in self.config_tool_names:
-            tool = tool_lookup.get(key)
-            if tool is None:
-                continue
-            
-            if key not in seen:
+
+        for tool in tools:
+            name = getattr(tool, "name", "") or ""
+            key = self._build_tool_key_from_tool_name(str(name))
+            if key in desired and key not in seen:
                 resolved.append(tool)
                 seen.add(key)
-        print(f"Resolved tools for agent '{self.name}': {[tool.name for tool in resolved]}")
+
+        missing = desired - seen
+        if missing:
+            print(f"[MCP tools] Agent '{self.name}' missing tools: {sorted(missing)}")
+
+        print(f"[MCP tools] Agent '{self.name}' resolved tools: {sorted(seen)}")
         return resolved
+
+
+    def _apply_live_tools(self, tools: Sequence[Any]) -> None:
+        """Attach filtered live tools and rebuild agent components for this run."""
+        self.tools = list(tools)
+        self.tools_names = [getattr(tool, "name", "") for tool in self.tools]
+
+        # Force rebuild of agents/nodes/graph with the live tool set.
+        self.agents = None
+        self.nodes = None
+        self.graph = None
 
 
 
@@ -274,6 +310,14 @@ class LangGraphAgent:
                 raise ValueError("Each tool entry must provide a non-empty 'tool_name' string.")
             
             candidate["tool_name"] = raw_name.strip()
+
+            # Normalise optional server identifier
+            raw_server = candidate.get("server_id", "")
+            if raw_server is None:
+                raw_server = ""
+            if not isinstance(raw_server, str):
+                raw_server = str(raw_server)
+            candidate["server_id"] = raw_server.strip()
             
             # Add to normalised list after validation
             normalised.append(candidate)
