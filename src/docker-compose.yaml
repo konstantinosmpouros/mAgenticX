@@ -10,7 +10,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
       - RAG_PORT=8001
-      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8004/sse
+      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/sse
     depends_on:
       - rag_service
     restart: unless-stopped
@@ -22,12 +22,12 @@ services:
       - backend
       - frontend
 
-  mcp_gateway: # 8004
+  mcp_gateway: # 8005
     container_name: mcp_gateway
     image: docker/mcp-gateway:latest
     command:
     - --transport=sse
-    - --port=8004
+    - --port=8005
     - --catalog=./app/catalog.yaml
     - --servers=tavily
     - --secrets=/run/secrets/mcp_secret
@@ -133,12 +133,14 @@ services:
       - frontend
 
 
+
 networks:
   backend:
     internal: true
   frontend: 
   hashicorp_vault:
     external: true
+
 
 
 volumes:

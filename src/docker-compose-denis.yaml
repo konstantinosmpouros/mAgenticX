@@ -1,12 +1,12 @@
 services:
-  agents:
+  agents: # 8003
     container_name: agents
-    image: konstantinosmpouros/agents:v1.9.0
+    image: konstantinosmpouros/agents:v1.10.0
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
       - RAG_PORT=8001
-      - MCP_TOOLS_HTTP_URL=http://mcp_servers:8005/mcp
+      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/mcp
     depends_on:
       - rag_service
     volumes:
@@ -15,20 +15,9 @@ services:
     networks:
       - backend
       - frontend
+      - mcp_gateway
 
-  mcp_servers:
-    container_name: mcp_servers
-    image: konstantinosmpouros/mcp_servers:v0.1.0
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-    networks:
-      - backend
-      - frontend
-
-  rag_service:
+  rag_service: # 8001
     container_name: rag_service
     image: konstantinosmpouros/rag_service:v1.1.3
     environment:
@@ -42,7 +31,7 @@ services:
       - backend
       - frontend
 
-  vectordb:
+  vectordb: # 8000
     image: chromadb/chroma:0.6.3
     container_name: vectordb
     environment:
@@ -55,9 +44,9 @@ services:
     networks:
       - backend
 
-  dialogue_bridge:
+  dialogue_bridge: # 8002
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.4.0
+    image: konstantinosmpouros/dialogue_bridge:v2.4.2
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - VAULT_ADDR=http://vault:8004
@@ -71,7 +60,7 @@ services:
       - backend
       - hashicorp_vault
 
-  chat_postgres:
+  chat_postgres: # 5432
     image: postgres:16.3
     container_name: chat_postgres
     environment:
@@ -84,9 +73,9 @@ services:
     networks:
       - backend
 
-  agentic_ui:
+  agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.5.0
+    image: konstantinosmpouros/agentic_ui:v0.5.2
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002
@@ -100,10 +89,13 @@ services:
 
 
 
+
 networks:
   backend:
     internal: true
-  frontend: 
+  frontend:
+  mcp_gateway:
+    external: true
   proxy:
     external: true
   hashicorp_vault:

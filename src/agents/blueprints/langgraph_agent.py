@@ -167,12 +167,6 @@ class LangGraphAgent:
         return
 
 
-    def _ensure_built(self) -> None:
-        """Ensure the agent's graph has been built."""
-        if self.graph is None:
-            self.build()
-
-
 
     # ---------------------------------------------------------------------
     # Async inference function
@@ -186,7 +180,7 @@ class LangGraphAgent:
                 
                 async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
                     # Compile graph build and compile
-                    self._ensure_built()
+                    self.build()
                     self.graph = self.graph.compile(checkpointer=checkpointer)
                     
                     async for chunk in self.graph.astream(payload, config=self.run_config, stream_mode=self.stream_mode):

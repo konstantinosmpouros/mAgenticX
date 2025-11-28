@@ -1,0 +1,37 @@
+services:
+  vault: # 8004
+    image: hashicorp/vault:1.21
+    container_name: vault
+    cap_add: ["IPC_LOCK"]
+    user: "100:100"
+    environment:
+      SKIP_SETCAP: "true"
+      VAULT_LOCAL_CONFIG: |
+        {
+          "ui": true,
+          "log_level": "info",
+          "disable_mlock": true,
+          "storage": { "raft": { "path": "/vault/data", "node_id": "vault-node-1" } },
+          "listener": [
+            { "tcp": { "address": "0.0.0.0:8004", "cluster_address": "0.0.0.0:8005", "tls_disable": true } }
+          ],
+          "api_addr": "http://vault:8004",
+          "cluster_addr": "http://vault:8005"
+        }
+    command: ["server"]
+    volumes:
+      - data:/vault/data
+    restart: unless-stopped
+    networks: 
+      - vault
+
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vault/data
+
+networks:
+  vault:

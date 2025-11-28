@@ -22,7 +22,6 @@ class HRPoliciesAgentV1(LangGraphAgent):
     def __init__(self, *, config=None):
         super().__init__(config=config)
         self.state = HRPoliciesV1_State
-        self.build()
 
 
     def register_agents(self) -> None:

@@ -22,7 +22,6 @@ class OrthodoxAgentV1(LangGraphAgent):
     def __init__(self, *, config=None):
         super().__init__(config=config)
         self.state = OrthodoxV1_State
-        self.build()
 
     def register_agents(self) -> None:
         self.agents = build_orthodox_agents(tools=self.tools)

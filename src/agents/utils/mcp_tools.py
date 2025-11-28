@@ -15,7 +15,6 @@ class MCPToolsClientError(RuntimeError):
 
 _MCP_TOOL_MANIFEST_CACHE: Dict[str, ToolManifest] = {}
 _TOOL_SERVER_OVERRIDES: dict[str, str] = {
-    # Manual mappings: tool_name -> server_id
     "tavily-crawl": "tavily",
     "tavily-extract": "tavily",
     "tavily-map": "tavily",

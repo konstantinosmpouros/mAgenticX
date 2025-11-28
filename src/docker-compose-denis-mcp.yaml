@@ -1,0 +1,25 @@
+services:
+
+  gateway: # 8005
+    container_name: mcp_gateway
+    image: docker/mcp-gateway:latest
+    command:
+    - --transport=sse
+    - --port=8005
+    - --catalog=./app/catalog.yaml
+    - --servers=tavily
+    - --secrets=/run/secrets/mcp_secret
+    volumes:
+      - /home/kostas/catalog.yaml:/app/catalog.yaml:ro
+      - /home/kostas/mcp_secret.env:/run/secrets/mcp_secret:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - gateway
+
+
+networks:
+  gateway:
+    driver: overlay
+    attachable: true
+
