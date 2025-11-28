@@ -13,5 +13,6 @@ notebooks/knowledge_base/*
 
 src/vectorstores/*
 src/vault/*
+src/mcp_gateway/mcp_secret.env
 
 data/*

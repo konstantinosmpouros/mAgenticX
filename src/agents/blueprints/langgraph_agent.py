@@ -13,6 +13,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from agui import AGUIEmitter
 from utils import (
     build_tool_cache_key,
+    get_tool_cache_key,
     mcp_session_context,
 )
 
@@ -46,10 +47,7 @@ class LangGraphAgent:
 
     agui: AGUIEmitter = AGUIEmitter()
 
-    tool_registry: Sequence[Any] = ()
-
-    def __init__(self, *, config: Optional[Mapping[str, Any]] = None,
-    ) -> None:
+    def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         # Configuration
         self.config: Dict[str, Any] = self._validate_config(config) if config else {}
         
@@ -184,15 +182,13 @@ class LangGraphAgent:
         try:
             async with mcp_session_context() as session:
                 live_tools = await load_mcp_tools(session)
-                filtered_tools = self._filter_live_tools(live_tools)
-                self._apply_live_tools(filtered_tools)
-
+                self._apply_live_tools(self._filter_live_tools(live_tools))
+                
                 async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
-                    # Compile graph if not already done
+                    # Compile graph build and compile
                     self._ensure_built()
-
-                    # Compile with checkpointer and stream
                     self.graph = self.graph.compile(checkpointer=checkpointer)
+                    
                     async for chunk in self.graph.astream(payload, config=self.run_config, stream_mode=self.stream_mode):
                         if isinstance(chunk, (str, bytes)):
                             yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
@@ -208,7 +204,6 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Tool management
     # ---------------------------------------------------------------------
-    #TODO: The problem might be in the tool naming convention. Check how the tools are named in MCP and how we build the key here.
     @staticmethod
     def _build_tool_key_from_config(entry: Mapping[str, Any]) -> str:
         """Normalise a config entry into server_id/tool_name cache key form."""
@@ -216,16 +211,6 @@ class LangGraphAgent:
         raw_server = entry.get("server_id", "")
         tool_name = raw_name.strip() if isinstance(raw_name, str) else str(raw_name or "")
         server_id = raw_server.strip() if isinstance(raw_server, str) else str(raw_server or "")
-        return build_tool_cache_key(server_id, tool_name)
-
-
-    @staticmethod
-    def _build_tool_key_from_tool_name(name: str) -> str:
-        """Convert an MCP/adapter tool name into server_id/tool_name form."""
-        if "_" in name:
-            server_id, tool_name = name.split("_", 1)
-        else:
-            server_id, tool_name = "", name
         return build_tool_cache_key(server_id, tool_name)
 
 
@@ -239,8 +224,7 @@ class LangGraphAgent:
         seen: set[str] = set()
 
         for tool in tools:
-            name = getattr(tool, "name", "") or ""
-            key = self._build_tool_key_from_tool_name(str(name))
+            key = get_tool_cache_key(tool)
             if key in desired and key not in seen:
                 resolved.append(tool)
                 seen.add(key)
@@ -286,13 +270,13 @@ class LangGraphAgent:
         if tools is not None:
             if isinstance(tools, str) or not isinstance(tools, Sequence):
                 raise TypeError("Agent config 'tools' must be a list of tool mappings.")
-            config["tools"] = self._validate_tool_entries(tools)
+            config["tools"] = self._validate_tool_config(tools)
         
         return config
 
 
     @staticmethod
-    def _validate_tool_entries(tools: Sequence[Any]) -> List[Mapping[str, Any]]:
+    def _validate_tool_config(tools: Sequence[Any]) -> List[Mapping[str, Any]]:
         """Return validated tool definitions while preserving extra parameters."""
         if isinstance(tools, str) or not isinstance(tools, Sequence):
             raise TypeError("Tool entries must be provided as a list of mappings.")

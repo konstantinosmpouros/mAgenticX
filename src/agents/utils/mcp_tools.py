@@ -14,28 +14,54 @@ class MCPToolsClientError(RuntimeError):
 
 
 _MCP_TOOL_MANIFEST_CACHE: Dict[str, ToolManifest] = {}
+_TOOL_SERVER_OVERRIDES: dict[str, str] = {
+    # Manual mappings: tool_name -> server_id
+    "tavily-crawl": "tavily",
+    "tavily-extract": "tavily",
+    "tavily-map": "tavily",
+    "tavily-search": "tavily",
+}
 
 
 def _extract_tool_identity(tool: types.Tool) -> tuple[str, str, str]:
     """
     Return (server_id, tool_name, qualified_name) extracted from the MCP tool.
     Falls back gracefully to empty strings on unexpected shapes.
+    Tool names remain exactly as provided; only server_id is inferred.
     """
-    raw_value = getattr(tool, "name", "") or ""
-    if not isinstance(raw_value, str):
+    tool_name = getattr(tool, "name", "") or ""
+    if not isinstance(tool_name, str):
         try:
-            raw_value = str(raw_value)
+            tool_name = str(tool_name)
         except Exception:
-            raw_value = ""
+            tool_name = ""
+    
+    # Always preserve the tool name as-is.
+    server_id = _map_server_id("", tool_name)
+    
+    return str(server_id), str(tool_name)
 
-    server_id = ""
-    tool_name = raw_value
 
-    if isinstance(raw_value, str) and "_" in raw_value:
-        # server_tool convention from MCP gateway
-        server_id, tool_name = raw_value.split("_", 1)
+def _map_server_id(server_id: str, tool_name: str) -> str:
+    """
+    Enforce server_id mappings when the gateway does not prefix tool names.
+    Tool names remain unchanged; only the server_id is inferred.
+    """
+    if server_id:
+        return server_id
 
-    return str(server_id), str(tool_name), str(raw_value)
+    normalized = (tool_name or "").lower()
+    if normalized in _TOOL_SERVER_OVERRIDES:
+        return _TOOL_SERVER_OVERRIDES[normalized]
+
+    return server_id
+
+
+def build_cache_key_from_tool_name(tool_name: str) -> str:
+    """Public helper to build a cache key from a bare tool name string."""
+    raw_value = tool_name or ""
+    server_id = _map_server_id("", raw_value)
+    return _make_cache_key(server_id, raw_value)
 
 
 def _make_cache_key(server_id: str, tool_name: str) -> str:
@@ -64,7 +90,7 @@ def _build_manifest(tool: types.Tool) -> ToolManifest:
 
     description = (tool.description or annotations.get("title") or "").strip()
 
-    server_id, tool_name, _ = _extract_tool_identity(tool)
+    server_id, tool_name = _extract_tool_identity(tool)
 
     return ToolManifest(
         server_id=server_id,
@@ -82,7 +108,7 @@ def _prime_manifest_cache(tools: Sequence[types.Tool]) -> None:
     seen_keys: set[str] = set()
 
     for tool in tools:
-        server_id, tool_name, _ = _extract_tool_identity(tool)
+        server_id, tool_name = _extract_tool_identity(tool)
         cache_key = _make_cache_key(server_id, tool_name)
         if not cache_key or cache_key in seen_keys:
             continue
@@ -111,13 +137,13 @@ def build_tool_cache_key(server_id: str, tool_name: str) -> str:
 
 def get_tool_cache_key(tool: types.Tool) -> str:
     """Public helper to build a cache key directly from an MCP tool object."""
-    server_id, tool_name, _ = _extract_tool_identity(tool)
+    server_id, tool_name = _extract_tool_identity(tool)
     return _make_cache_key(server_id, tool_name)
 
 
 async def _fetch_tools_from_gateway() -> List[types.Tool]:
     """Call the MCP gateway and return the raw tools list (for manifest building)."""
-    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8080/sse")
+    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8004/sse")
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 
@@ -138,20 +164,17 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
     """
     if _MCP_TOOL_MANIFEST_CACHE and not force_refresh:
         return []
-
+    
     tools = await _fetch_tools_from_gateway()
     _prime_manifest_cache(tools)
-
-    # Debug print to inspect the manifest cache when refreshed.
-    print("MCP tool manifest cache:", _MCP_TOOL_MANIFEST_CACHE)
-
+    
     return tools
 
 
 @asynccontextmanager
 async def mcp_session_context():
     """Yield an initialized MCP session, keeping the connection open for the caller."""
-    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8080/sse")
+    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8004/sse")
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 

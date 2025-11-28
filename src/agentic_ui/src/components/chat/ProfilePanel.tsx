@@ -112,7 +112,7 @@ export default function ProfilePanel({
             availableTools.forEach((tool) => {
                 const serverKey = tool.serverId || "default";
                 if (!(serverKey in next)) {
-                    next[serverKey] = serverKey in prev ? prev[serverKey] : false;
+                    next[serverKey] = serverKey in prev ? prev[serverKey] : true;
                 }
             });
             return next;
