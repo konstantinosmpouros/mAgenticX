@@ -11,7 +11,7 @@ import {
   Pencil,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { FiEdit } from "react-icons/fi";
+import { useTheme } from "next-themes";
 
 import type { Agent, ConversationSummary, UserProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -92,6 +92,7 @@ export default function ChatSidebar({
   userProfile,
 }: ChatSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
+  const { resolvedTheme, theme } = useTheme();
   const isCollapsed = !isMobile && state === "collapsed";
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   const rawProfileName =
@@ -101,6 +102,8 @@ export default function ChatSidebar({
   const profileEmail = (userProfile?.email ?? "Open profile").trim();
   const avatarUrl = userProfile?.avatarUrl || null;
   const [openActionMenuId, setOpenActionMenuId] = React.useState<string | null>(null);
+  const isDarkTheme = (resolvedTheme ?? theme) === "dark";
+  const newChatIconSrc = isDarkTheme ? "/edit.png" : "/edit2.png";
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -244,13 +247,18 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleNewChatClick}
               className={cn(
-                "!flex !h-10 gap-2 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Start a new chat"
             >
               <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <FiEdit className="h-4 w-4" />
+                <img
+                  src={newChatIconSrc}
+                  alt="New chat"
+                  className="h-7 w-7 object-contain"
+                  draggable={false}
+                />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">New chat</span>
             </SidebarMenuButton>
@@ -260,7 +268,7 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleSearchClick}
               className={cn(
-                "!flex !h-10 gap-2 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Search"

@@ -2,6 +2,7 @@
 
 ## Agents
 
+- To have a streaming effect like openai and CoT in the reasoning maybe the streaming structured output is the solution.
 - Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 - Give in the agents the personal info of the user in the prompt like name and role. Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
 - Create a deep research agent with deep agents and make it available.

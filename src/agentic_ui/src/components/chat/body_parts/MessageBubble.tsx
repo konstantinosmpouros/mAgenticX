@@ -7,6 +7,7 @@ import type { Agent, MessageOut } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
 import { Check, X as CloseIcon } from "lucide-react";
 import { AIActionBar, UserActionBar } from "./ActionBars";
+import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 
 type MessageBubbleProps = {
   message: MessageOut;
@@ -59,6 +60,7 @@ export function MessageBubble({
   branchData,
 }: MessageBubbleProps) {
   const isUser = message.sender === "user";
+  const isTempUserMessage = isUser && String(message.id ?? "").startsWith("temp-");
   const bubbleClass = isUser
     ? `p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border ${
         isEditing ? "w-full max-w-full" : "max-w-[85%] md:max-w-[75%]"
@@ -143,7 +145,19 @@ export function MessageBubble({
         </div>
       </Card>
 
-      {isUser && !isEditing && (
+      {isTempUserMessage && !isEditing ? (
+        <div className="mt-2 text-right">
+          <ShimmeringText
+            text="sending"
+            className="text-xs font-medium uppercase tracking-wide"
+            color="hsl(var(--muted-foreground))"
+            shimmeringColor="#2b2d36"
+            duration={1.1}
+            pause={1.4}
+          />
+        </div>
+      ) : (
+        isUser && !isEditing && (
         <UserActionBar
           message={message}
           copiedId={copiedId}
@@ -154,6 +168,7 @@ export function MessageBubble({
           branchControls={branchData}
           className={`mt-2 ${userActionVisibilityClass}`}
         />
+        )
       )}
     </>
   );
