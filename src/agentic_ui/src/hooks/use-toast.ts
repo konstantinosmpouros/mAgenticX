@@ -6,7 +6,8 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_REMOVE_DELAY = 1000
+const TOAST_AUTO_DISMISS = 4000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -54,6 +55,7 @@ interface State {
 }
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const autoDismissTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
 const addToRemoveQueue = (toastId: string) => {
   if (toastTimeouts.has(toastId)) {
@@ -69,6 +71,21 @@ const addToRemoveQueue = (toastId: string) => {
   }, TOAST_REMOVE_DELAY)
 
   toastTimeouts.set(toastId, timeout)
+}
+
+const clearAutoDismiss = (toastId?: string) => {
+  if (toastId) {
+    const t = autoDismissTimeouts.get(toastId)
+    if (t) {
+      clearTimeout(t)
+      autoDismissTimeouts.delete(toastId)
+    }
+    return
+  }
+  autoDismissTimeouts.forEach((timeout, id) => {
+    clearTimeout(timeout)
+    autoDismissTimeouts.delete(id)
+  })
 }
 
 export const reducer = (state: State, action: Action): State => {
@@ -92,6 +109,7 @@ export const reducer = (state: State, action: Action): State => {
 
       // ! Side effects ! - This could be extracted into a dismissToast() action,
       // but I'll keep it here for simplicity
+      clearAutoDismiss(toastId)
       if (toastId) {
         addToRemoveQueue(toastId)
       } else {
@@ -114,11 +132,13 @@ export const reducer = (state: State, action: Action): State => {
     }
     case "REMOVE_TOAST":
       if (action.toastId === undefined) {
+        clearAutoDismiss()
         return {
           ...state,
           toasts: [],
         }
       }
+      clearAutoDismiss(action.toastId)
       return {
         ...state,
         toasts: state.toasts.filter((t) => t.id !== action.toastId),
@@ -160,6 +180,13 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  const autoDuration =
+    typeof props.duration === "number" ? props.duration : TOAST_AUTO_DISMISS
+  const autoTimer = setTimeout(() => {
+    dismiss()
+  }, autoDuration)
+  autoDismissTimeouts.set(id, autoTimer)
 
   return {
     id: id,

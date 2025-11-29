@@ -13,6 +13,7 @@ import {
     Sparkles,
     MoonStar,
     ChevronDown,
+    X,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
@@ -212,6 +213,15 @@ export default function ProfilePanel({
             />
             <div className="relative z-10 w-full max-w-5xl">
                 <Card className="relative flex h-[min(46rem,85vh)] w-full overflow-hidden rounded-[28px] border border-border/60 bg-card text-foreground shadow-2xl animate-scale-in">
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Close profile panel"
+                        onClick={onClose}
+                        className="absolute right-4 top-4 z-20 h-10 w-10 rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0 focus-visible:outline-none"
+                    >
+                        <X size={18} />
+                    </Button>
                     <div className="relative z-10 flex h-full w-full">
                         <aside
                             className={cn(

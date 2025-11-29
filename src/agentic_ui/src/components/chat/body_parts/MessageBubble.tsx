@@ -63,7 +63,7 @@ export function MessageBubble({
     ? `p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border ${
         isEditing ? "w-full max-w-full" : "max-w-[85%] md:max-w-[75%]"
       }`
-    : "bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent max-w-[85%] md:max-w-[85%]";
+    : "bg-gradient-card text-card-foreground bg-transparent shadow-none border-transparent w-full max-w-full";
 
   return (
     <>
