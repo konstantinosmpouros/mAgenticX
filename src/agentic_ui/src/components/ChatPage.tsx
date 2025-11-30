@@ -555,174 +555,176 @@ export function ChatInterface() {
   }
   return (
     // Main chat interface with sidebar, header, conversation container, and input area
-    <SidebarProvider>
-      <ChatSidebar
-        conversations={conversations}
-        currentConversationId={currentConversation?.id || null}
-        onSelectConversation={handleConversationSelect}
-        onDeleteConversation={handleDeleteConversation}
-        onRenameConversation={handleRenameConversation}
-        onArchiveConversation={handleArchiveConversation}
-        onReportConversation={handleReportConversation}
-        onLoadMore={handleLoadMoreConversations}
-        onTitleClick={handleTitleClick}
-        onNewChat={handleNewChat}
-        onOpenSearch={handleOpenSearch}
-        onOpenUserProfile={() => setShowUserProfile(true)}
-        agents={agents}
-        userProfile={userProfile}
-        isLoadingMore={convIsLoadingMore}
-        isInitialLoading={conversationsLoading}
-        hasMore={convHasMore}
-        sidebarInteractionHook={useSidebarInteractionEffect}
-      />
-      <SidebarInset>
-        <TooltipProvider>
-          <div className={`animate-fade-in flex min-h-svh max-h-svh flex-col bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20 relative overflow-hidden transition-slow ${isClearing || isAgentSwitching ? 'opacity-60' : 'opacity-100'}`}>
-            {/* Header */}
-            <ChatHeader
-              agents={agents}
-              inactiveAgent={inactiveAgentFallback}
-              selectedAgent={selectedAgent}
-              onAgentChange={handleAgentChange}
-              showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
-              isPrivateMode={isPrivateMode}
-              onTogglePrivate={() => {
-                if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
-                  setIsPrivateMode(!isPrivateMode);
-                }
-              }}
-              showBottomBorder={headerHasDivider}
-              showConversationActions={Boolean(currentConversation?.id)}
-              onArchiveConversation={handleArchiveCurrentConversation}
-              onReportConversation={handleReportCurrentConversation}
-              onDeleteConversation={handleDeleteCurrentConversation}
-            />
+    <div className="min-h-svh max-h-svh bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20">
+      <SidebarProvider className="min-h-svh">
+        <ChatSidebar
+          conversations={conversations}
+          currentConversationId={currentConversation?.id || null}
+          onSelectConversation={handleConversationSelect}
+          onDeleteConversation={handleDeleteConversation}
+          onRenameConversation={handleRenameConversation}
+          onArchiveConversation={handleArchiveConversation}
+          onReportConversation={handleReportConversation}
+          onLoadMore={handleLoadMoreConversations}
+          onTitleClick={handleTitleClick}
+          onNewChat={handleNewChat}
+          onOpenSearch={handleOpenSearch}
+          onOpenUserProfile={() => setShowUserProfile(true)}
+          agents={agents}
+          userProfile={userProfile}
+          isLoadingMore={convIsLoadingMore}
+          isInitialLoading={conversationsLoading}
+          hasMore={convHasMore}
+          sidebarInteractionHook={useSidebarInteractionEffect}
+        />
+        <SidebarInset className="bg-transparent">
+          <TooltipProvider>
+            <div className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow">
+              {/* Header */}
+              <ChatHeader
+                agents={agents}
+                inactiveAgent={inactiveAgentFallback}
+                selectedAgent={selectedAgent}
+                onAgentChange={handleAgentChange}
+                showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
+                isPrivateMode={isPrivateMode}
+                onTogglePrivate={() => {
+                  if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
+                    setIsPrivateMode(!isPrivateMode);
+                  }
+                }}
+                showBottomBorder={headerHasDivider}
+                showConversationActions={Boolean(currentConversation?.id)}
+                onArchiveConversation={handleArchiveCurrentConversation}
+                onReportConversation={handleReportCurrentConversation}
+                onDeleteConversation={handleDeleteCurrentConversation}
+              />
             
-            {/* Chat Messages Container*/}
-            <div className="flex flex-1 min-h-0 overflow-hidden">
-              <ChatBody
-                messages={activeMessages}
-                loadingConversation={loadingConversation}
-                isClearing={isClearing}
-                expandedThinking={expandedThinking}
-                isImageFile={isImageFile}
-                onDownloadAttachment={handleFileDownload}
-                onImageClick={handleImageClick}
-                onToggleThinking={toggleThinking}
-                copiedId={copiedId}
-                onCopy={handleCopy}
-                onLike={handleLike}
-                onDislike={handleDislike}
-                stickyUserBarId={stickyUserBarId}
-                onFlashUserActionBar={flashUserActionBar}
-                AiTransitionIndicator={AiTransitionIndicator}
-                thinkingState={thinkingState}
-                messagesEndRef={messagesEndRef}
-                AgentIcon={AgentIcon}
-                currentAgent={currentAgent ?? undefined}
-                onScrolledPastTop={handleHeaderScrollState}
-                branchChildrenMap={branchChildrenMap}
-                branchSelections={branchSelections}
-                onSelectBranch={handleBranchSelectionChange}
-                branchRootKey={ROOT_BRANCH_KEY}
-                activeBranchPath={activeBranchPath}
-                editingMessageId={editingMessageId}
-                editingDraft={editingDraft}
-                editingBusy={editingBusy}
-                onRequestEdit={handleRequestEditMessage}
-                onChangeEditDraft={handleEditDraftChange}
-              onCancelEdit={handleCancelEditMessage}
-              onSubmitEdit={submitEditFromState}
-              toast={toastWrapper}
-              onRetryMessage={handleRetryAiMessage}
-              isStreaming={isSendingMessage}
-            />
-          </div>
-            
-            {/* Input Area */}
-            <ChatInputBar
-              // Centered empty state
-              isMessagesEmpty={isMessagesEmpty}
-              positionClass={
-                isMessagesEmpty
-                  ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
-                  : "sticky bottom-0 left-0 right-0 z-30 p-6"
-              }
-              
-              // pass through your existing state/handlers/refs
-              attachments={attachments}
-              isPrivateMode={isPrivateMode}
-              thinkingActive={thinkingState?.isActive}
-              isStreaming={isSendingMessage}
-              currentMessage={currentMessage}
-              setCurrentMessage={setCurrentMessage}
-              handlePaste={handlePaste}
-              handleSendMessage={handleSendMessage}
-              handleStopStreaming={handleStopStreaming}
-              isImageFile={isImageFile}
-              getImageUrl={getImageUrl}
-              handleImageClick={handleImageClick}
-              removeAttachment={removeAttachment}
-              handleFileUpload={handleFileUpload}
-              fileInputRef={fileInputRef}
-              textareaRef={textareaRef}
-              containerRef={composerContainerRef}
-              emptyWrapperStyle={emptyWrapperStyle}
-              textareaMaxHeight={textareaMaxHeight}
-              onDictationSubmit={handleDictationSubmit}
-              onDictationStatusChange={handleDictationStatusChange}
-              dictationStatus={dictationStatus}
-              
-              // UI deps
-              AgentIcon={AgentIcon}
-              Tooltip={Tooltip}
-              TooltipTrigger={TooltipTrigger}
-              TooltipContent={TooltipContent}
-              toast={toast}
-              currentAgent={currentAgent ?? undefined}
-              Textarea={Textarea}
-            />
-            
-            {/* User Profile Modal */}
-            <ProfilePanel
-              open={showUserProfile}
-              onClose={() => setShowUserProfile(false)}
-              activeTab={activeProfileTab}
-              setActiveTab={setActiveProfileTab}
-              onLogout={handleLogout}
-              user={userProfile}
-              availableTools={toolsWithStatus}
-              userPreferences={resolvedPreferences}
-              onToggleToolPreference={handleToggleToolPreference}
-              preferencesSaving={isSavingPreferences}
-            />
-            
-            {/* Image Preview Modal */}
-            {selectedImage && (
-              <div
-                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                onClick={handleCloseImagePreview}
-              >
-                <div className="relative w-full h-full flex items-center justify-center">
-                  <button
-                    onClick={handleCloseImagePreview}
-                    className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
-                  >
-                    <X size={24} />
-                  </button>
-                  <img
-                    src={selectedImage}
-                    alt="Full preview"
-                    className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
+              {/* Chat Messages Container*/}
+              <div className="flex flex-1 min-h-0 overflow-hidden">
+                <ChatBody
+                  messages={activeMessages}
+                  loadingConversation={loadingConversation}
+                  isClearing={isClearing}
+                  expandedThinking={expandedThinking}
+                  isImageFile={isImageFile}
+                  onDownloadAttachment={handleFileDownload}
+                  onImageClick={handleImageClick}
+                  onToggleThinking={toggleThinking}
+                  copiedId={copiedId}
+                  onCopy={handleCopy}
+                  onLike={handleLike}
+                  onDislike={handleDislike}
+                  stickyUserBarId={stickyUserBarId}
+                  onFlashUserActionBar={flashUserActionBar}
+                  AiTransitionIndicator={AiTransitionIndicator}
+                  thinkingState={thinkingState}
+                  messagesEndRef={messagesEndRef}
+                  AgentIcon={AgentIcon}
+                  currentAgent={currentAgent ?? undefined}
+                  onScrolledPastTop={handleHeaderScrollState}
+                  branchChildrenMap={branchChildrenMap}
+                  branchSelections={branchSelections}
+                  onSelectBranch={handleBranchSelectionChange}
+                  branchRootKey={ROOT_BRANCH_KEY}
+                  activeBranchPath={activeBranchPath}
+                  editingMessageId={editingMessageId}
+                  editingDraft={editingDraft}
+                  editingBusy={editingBusy}
+                  onRequestEdit={handleRequestEditMessage}
+                  onChangeEditDraft={handleEditDraftChange}
+                  onCancelEdit={handleCancelEditMessage}
+                  onSubmitEdit={submitEditFromState}
+                  toast={toastWrapper}
+                  onRetryMessage={handleRetryAiMessage}
+                  isStreaming={isSendingMessage}
+                />
               </div>
-            )}
-          </div>
-        </TooltipProvider>
-      </SidebarInset>
-    </SidebarProvider>
+            
+              {/* Input Area */}
+              <ChatInputBar
+                // Centered empty state
+                isMessagesEmpty={isMessagesEmpty}
+                positionClass={
+                  isMessagesEmpty
+                    ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
+                    : "sticky bottom-0 left-0 right-0 z-30 p-6"
+                }
+                
+                // pass through your existing state/handlers/refs
+                attachments={attachments}
+                isPrivateMode={isPrivateMode}
+                thinkingActive={thinkingState?.isActive}
+                isStreaming={isSendingMessage}
+                currentMessage={currentMessage}
+                setCurrentMessage={setCurrentMessage}
+                handlePaste={handlePaste}
+                handleSendMessage={handleSendMessage}
+                handleStopStreaming={handleStopStreaming}
+                isImageFile={isImageFile}
+                getImageUrl={getImageUrl}
+                handleImageClick={handleImageClick}
+                removeAttachment={removeAttachment}
+                handleFileUpload={handleFileUpload}
+                fileInputRef={fileInputRef}
+                textareaRef={textareaRef}
+                containerRef={composerContainerRef}
+                emptyWrapperStyle={emptyWrapperStyle}
+                textareaMaxHeight={textareaMaxHeight}
+                onDictationSubmit={handleDictationSubmit}
+                onDictationStatusChange={handleDictationStatusChange}
+                dictationStatus={dictationStatus}
+                
+                // UI deps
+                AgentIcon={AgentIcon}
+                Tooltip={Tooltip}
+                TooltipTrigger={TooltipTrigger}
+                TooltipContent={TooltipContent}
+                toast={toast}
+                currentAgent={currentAgent ?? undefined}
+                Textarea={Textarea}
+              />
+            
+              {/* User Profile Modal */}
+              <ProfilePanel
+                open={showUserProfile}
+                onClose={() => setShowUserProfile(false)}
+                activeTab={activeProfileTab}
+                setActiveTab={setActiveProfileTab}
+                onLogout={handleLogout}
+                user={userProfile}
+                availableTools={toolsWithStatus}
+                userPreferences={resolvedPreferences}
+                onToggleToolPreference={handleToggleToolPreference}
+                preferencesSaving={isSavingPreferences}
+              />
+            
+              {/* Image Preview Modal */}
+              {selectedImage && (
+                <div
+                  className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                  onClick={handleCloseImagePreview}
+                >
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <button
+                      onClick={handleCloseImagePreview}
+                      className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
+                    >
+                      <X size={24} />
+                    </button>
+                    <img
+                      src={selectedImage}
+                      alt="Full preview"
+                      className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </TooltipProvider>
+        </SidebarInset>
+      </SidebarProvider>
+    </div>
   );
 }

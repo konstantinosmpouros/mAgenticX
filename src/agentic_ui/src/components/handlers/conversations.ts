@@ -92,9 +92,10 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   const handleConversationSelect = async (conversation: ConversationSummary) => {
     handleStopStreaming?.();
     if (!userId || (ctx as any).loadingConversation) return;
-    setLoadingConversation(true);
+    const CLEAR_DELAY_MS = 200;
     setIsClearing(true);
     setInactiveAgentFallback(null);
+    setTimeout(() => setLoadingConversation(true), CLEAR_DELAY_MS);
 
     setTimeout(async () => {
       try {
@@ -104,7 +105,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
           setCurrentConversation(conversationDetail);
           setIsPrivateMode(conversationDetail.isPrivate || false);
           setIsClearing(false);
-        }, 100);
+          setLoadingConversation(false);
+        }, CLEAR_DELAY_MS);
       } catch (error) {
         console.error('Failed to load conversation:', error);
         toast({ title: 'Failed to load conversation', description: 'There was an error loading the conversation. Please try again.', variant: 'destructive', duration: 3000 });
@@ -118,10 +120,9 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
         setCurrentConversation(fallbackDetail);
         setIsPrivateMode(conversation.isPrivate || false);
         setIsClearing(false);
-      } finally {
         setLoadingConversation(false);
       }
-    }, 300);
+    }, CLEAR_DELAY_MS);
   };
 
   const handleLoadMoreConversations = async () => {

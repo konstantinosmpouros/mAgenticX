@@ -199,7 +199,11 @@ export default function ChatSidebar({
   return (
     <SidebarRoot
       collapsible="icon"
-      className="bg-sidebar"
+      className={
+        isCollapsed
+          ? "bg-transparent [&_[data-sidebar=sidebar]]:bg-transparent [&_[data-sidebar=sidebar]]:text-foreground"
+          : "bg-sidebar"
+      }
       onMouseEnter={handleSidebarMouseEnter}
       onMouseLeave={handleSidebarMouseLeave}
     >
