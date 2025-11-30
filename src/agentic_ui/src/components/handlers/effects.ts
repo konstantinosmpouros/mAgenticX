@@ -118,42 +118,6 @@ export function useSidebarInteractionEffect(params: {
 
 
 // ---------------------------------------------------------------------------
-// User Profile sidebar collapse effect
-// ---------------------------------------------------------------------------
-export function useProfileSidebarCollapseEffect(params: {
-  forcedCollapsed: boolean;
-  setForcedCollapsed: (v: boolean) => void;
-  setSidebarCollapsed: (v: boolean) => void;
-  userCollapsed: boolean;
-}) {
-  const { forcedCollapsed, setForcedCollapsed, setSidebarCollapsed, userCollapsed } = params;
-
-  useEffect(() => {
-    const COLLAPSE_BREAKPOINT = 1100;
-    const EXPAND_BREAKPOINT = 1280;
-
-    const handleResize = () => {
-      const width = window.innerWidth;
-      if (width < COLLAPSE_BREAKPOINT && !forcedCollapsed) {
-        setForcedCollapsed(true);
-        setSidebarCollapsed(true);
-        return;
-      }
-
-      if (width >= EXPAND_BREAKPOINT && forcedCollapsed) {
-        setForcedCollapsed(false);
-        setSidebarCollapsed(userCollapsed);
-      }
-    };
-
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [forcedCollapsed, setForcedCollapsed, setSidebarCollapsed, userCollapsed]);
-}
-
-
-// ---------------------------------------------------------------------------
 // Centered composer layout effect
 // ---------------------------------------------------------------------------
 type CenteredComposerLayoutArgs = {

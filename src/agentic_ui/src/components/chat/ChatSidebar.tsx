@@ -31,7 +31,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSidebarInteractionEffect } from "@/components/handlers";
 
 type ChatSidebarProps = {
   conversations: ConversationSummary[];
@@ -51,6 +50,15 @@ type ChatSidebarProps = {
   onOpenUserProfile: () => void;
   agents: Agent[];
   userProfile: UserProfile | null;
+  sidebarInteractionHook: (args: {
+    isCollapsed: boolean;
+    toggleSidebar: () => void;
+  }) => {
+    isLogoHovered: boolean;
+    handleSidebarMouseEnter: () => void;
+    handleSidebarMouseLeave: () => void;
+    toggleCollapsedOnBlankArea: (event: React.MouseEvent) => void;
+  };
 };
 
 const ConversationLoadingSkeleton = ({ count = 3 }: { count?: number }) => (
@@ -90,6 +98,7 @@ export default function ChatSidebar({
   onOpenUserProfile,
   agents,
   userProfile,
+  sidebarInteractionHook,
 }: ChatSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
   const { resolvedTheme, theme } = useTheme();
@@ -104,6 +113,7 @@ export default function ChatSidebar({
   const [openActionMenuId, setOpenActionMenuId] = React.useState<string | null>(null);
   const isDarkTheme = (resolvedTheme ?? theme) === "dark";
   const newChatIconSrc = isDarkTheme ? "/edit.png" : "/edit2.png";
+  const logoSrc = isDarkTheme ? "/logo2_white_magentaX.png" : "/logo2.png";
 
   const handleConversationSelect = React.useCallback(
     (conversation: ConversationSummary) => {
@@ -178,7 +188,7 @@ export default function ChatSidebar({
     handleSidebarMouseEnter,
     handleSidebarMouseLeave,
     toggleCollapsedOnBlankArea,
-  } = useSidebarInteractionEffect({
+  } = sidebarInteractionHook({
     isCollapsed,
     toggleSidebar,
   });
@@ -212,7 +222,7 @@ export default function ChatSidebar({
                 className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg transition bg-transparent"
               >
                 <img
-                  src="/logo2_white_magentaX.png"
+                  src={logoSrc}
                   alt="mAgenticX logo"
                   className={cn(
                     "h-full w-full object-contain transition-opacity",

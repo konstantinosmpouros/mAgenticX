@@ -8,19 +8,16 @@ import {
     Palette,
     HelpCircle,
     LogOut,
-    ChevronRight,
-    ChevronLeft,
     Sparkles,
     MoonStar,
     ChevronDown,
     X,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useProfileSidebarCollapseEffect } from "@/components/handlers";
 
 type ProfilePanelProps = {
     open: boolean;
@@ -78,19 +75,9 @@ export default function ProfilePanel({
     onToggleToolPreference,
     preferencesSaving = false,
 }: ProfilePanelProps) {
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [userCollapsed, setUserCollapsed] = useState(false);
-    const [forcedCollapsed, setForcedCollapsed] = useState(false);
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
     const [serverCollapsed, setServerCollapsed] = useState<Record<string, boolean>>({});
     const { theme, setTheme } = useTheme();
-
-    useProfileSidebarCollapseEffect({
-        forcedCollapsed,
-        setForcedCollapsed,
-        setSidebarCollapsed,
-        userCollapsed,
-    });
 
     const toolKey = (tool: ToolWithStatus) => {
         const prefix = tool.serverId && tool.serverId.length > 0 ? tool.serverId : "default";
@@ -124,15 +111,6 @@ export default function ProfilePanel({
         onToggleToolPreference?.(tool);
     };
 
-
-    const handleToggleSidebar = () => {
-        if (forcedCollapsed) return;
-        setSidebarCollapsed((prev) => {
-            const next = !prev;
-            setUserCollapsed(next);
-            return next;
-        });
-    };
 
     if (!open) return null;
 
@@ -206,109 +184,84 @@ export default function ProfilePanel({
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-10">
+        <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-8">
             <div
                 className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm transition-opacity"
                 onClick={onClose}
             />
-            <div className="relative z-10 w-full max-w-5xl">
-                <Card className="relative flex h-[min(46rem,85vh)] w-full overflow-hidden rounded-[28px] border border-border/60 bg-card text-foreground shadow-2xl animate-scale-in">
+            <div className="relative z-10 w-full max-w-4xl">
+                <Card className="relative flex h-[min(40rem,80vh)] w-full overflow-hidden rounded-[24px] border border-border/60 bg-card text-foreground shadow-2xl animate-scale-in">
                     <Button
                         size="icon"
                         variant="ghost"
                         aria-label="Close profile panel"
                         onClick={onClose}
-                        className="absolute right-4 top-4 z-20 h-10 w-10 rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0 focus-visible:outline-none"
+                        className="absolute right-4 top-4 z-20 h-9 w-9 rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0 focus-visible:outline-none"
                     >
                         <X size={18} />
                     </Button>
                     <div className="relative z-10 flex h-full w-full">
                         <aside
-                            className={cn(
-                                "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-3 py-6 transition-[width] duration-300 ease-in-out",
-                                sidebarCollapsed ? "w-[4.5rem]" : "w-64"
-                            )}
+                            className="relative flex h-full w-56 flex-col border-r border-border/50 bg-muted/30 px-3 py-5"
                         >
-                            <Button
-                                onClick={handleToggleSidebar}
-                                size="icon"
-                                variant="ghost"
-                                disabled={forcedCollapsed}
-                                className={cn(
-                                    "absolute top-4 right-2 z-10 h-8 w-8 rounded-full border border-border/60 bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground",
-                                    forcedCollapsed && "cursor-not-allowed opacity-70"
-                                )}
-                            >
-                                {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-                            </Button>
-
                             <ScrollArea className="h-full">
                                 <div className="flex h-full flex-col pt-6">
-                                <div className="relative h-28 pb-2">
-                                    <div
-                                        className={cn(
-                                            "flex flex-col items-center gap-3 text-center transition-all duration-300",
-                                            sidebarCollapsed ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
-                                        )}
+                                <div className="relative h-24 pb-1.5 mb-6">
+                                        <div
+                                        className="flex flex-col items-center gap-3 text-center"
                                     >
-                                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-white/10 via-transparent to-transparent shadow-[0_10px_30px_-18px_rgba(0,0,0,0.8)]">
-                                            <img
-                                                src="/logo2_white_magentaX.png"
-                                                alt="mAgenticX mark"
-                                                className="h-10 w-10 object-contain drop-shadow-[0_4px_12px_rgba(255,0,123,0.45)]"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <h2 className="text-sm font-semibold tracking-tight">mAgenticX Profile</h2>
-                                            <p className="text-[0.65rem] uppercase tracking-[0.25em] text-muted-foreground">
-                                                Manage your space
-                                            </p>
+                                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-white/10 via-transparent to-transparent shadow-[0_10px_30px_-18px_rgba(0,0,0,0.8)]">
+                                                <img
+                                                    src={theme === "light" ? "/logo2.png" : "/logo2_white_magentaX.png"}
+                                                    alt="mAgenticX mark"
+                                                    className="h-9 w-9 object-contain drop-shadow-[0_4px_12px_rgba(255,0,123,0.45)]"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <h2 className="text-sm font-semibold tracking-tight">mAgenticX Profile</h2>
+                                                <p className="text-[0.6rem] uppercase tracking-[0.22em] text-muted-foreground">
+                                                    Manage your space
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <nav className="flex flex-1 flex-col justify-start gap-1 pt-2.5">
-                                    {navItems.map((tab) => {
-                                        const Icon = tab.icon;
-                                        const isActive = activeTab === tab.id;
-                                        const iconSize = 20;
-                                        const isLightTheme = theme === "light";
-                                        const isHovered = hoveredNavId === tab.id;
+                                <nav className="flex flex-1 flex-col justify-start gap-0.5 pt-0">
+                                        {navItems.map((tab) => {
+                                            const Icon = tab.icon;
+                                            const isActive = activeTab === tab.id;
+                                            const iconSize = 18;
+                                            const isLightTheme = theme === "light";
+                                            const isHovered = hoveredNavId === tab.id;
 
-                                        const mcpVariant: McpIconVariant =
-                                            tab.id === "mcp"
-                                                ? isActive
-                                                    ? "magenta"
-                                                    : isHovered
-                                                        ? isLightTheme
-                                                            ? "black"
-                                                            : "white"
-                                                        : isLightTheme
-                                                            ? "grey"
-                                                            : "darkGrey"
-                                                : "grey";
+                                            const mcpVariant: McpIconVariant =
+                                                tab.id === "mcp"
+                                                    ? isActive
+                                                        ? "magenta"
+                                                        : isHovered
+                                                            ? isLightTheme
+                                                                ? "black"
+                                                                : "white"
+                                                            : isLightTheme
+                                                                ? "grey"
+                                                                : "darkGrey"
+                                                    : "grey";
 
-                                        const navButton = (
-                                            <button
-                                                onClick={() => setActiveTab(tab.id)}
-                                                onMouseEnter={() => setHoveredNavId(tab.id)}
-                                                onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
-                                                className={cn(
-                                                    "group relative flex w-full items-center rounded-xl py-1 text-sm font-medium text-muted-foreground transition-colors hover:!bg-[#262626] focus-visible:!bg-[#262626]",
-                                                    sidebarCollapsed ? "justify-start pl-1 pr-0" : "justify-start px-2 text-left",
-                                                    isActive ? "text-foreground hover:!bg-transparent focus-visible:!bg-transparent" : ""
-                                                )}
-                                                aria-label={tab.label}
-                                            >
-                                                <div
+                                            return (
+                                                <button
+                                                    key={tab.id}
+                                                    onClick={() => setActiveTab(tab.id)}
+                                                    onMouseEnter={() => setHoveredNavId(tab.id)}
+                                                    onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
                                                     className={cn(
-                                                        "flex w-full items-center transition-all duration-300",
-                                                        sidebarCollapsed ? "gap-0" : "gap-3"
+                                                        "group relative flex w-full items-center justify-start gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:!bg-[#262626] hover:text-foreground focus-visible:!bg-[#262626]",
+                                                        isActive ? "text-primary hover:!bg-transparent hover:text-primary focus-visible:!bg-transparent" : ""
                                                     )}
+                                                    aria-label={tab.label}
                                                 >
                                                     <div
                                                         className={cn(
-                                                            "flex h-10 w-10 items-center justify-center rounded-lg border border-transparent transition-colors",
+                                                            "flex h-9 w-9 items-center justify-center rounded-lg border border-transparent transition-colors",
                                                             isActive
                                                                 ? "border-primary/50 bg-primary/10 text-primary"
                                                                 : "text-muted-foreground group-hover:text-foreground"
@@ -320,128 +273,55 @@ export default function ProfilePanel({
                                                             <Icon size={iconSize} />
                                                         )}
                                                     </div>
-                                                    <div
-                                                        className={cn(
-                                                            "overflow-hidden transition-all duration-200",
-                                                            sidebarCollapsed
-                                                                ? "max-w-0 opacity-0 delay-0"
-                                                                : "max-w-[220px] opacity-100 delay-200"
-                                                        )}
-                                                    >
-                                                        <span
-                                                            className={cn(
-                                                                "inline-block text-xs font-semibold uppercase tracking-[0.26em] whitespace-nowrap",
-                                                                sidebarCollapsed ? "ml-0" : "ml-3"
-                                                            )}
-                                                        >
-                                                            {tab.label}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </button>
-                                        );
+                                                    <span className="inline-block whitespace-nowrap text-[0.7rem] font-semibold uppercase tracking-[0.22em]">
+                                                        {tab.label}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </nav>
 
-                                        return (
-                                            <Fragment key={tab.id}>
-                                                {sidebarCollapsed ? (
-                                                    <Tooltip delayDuration={0}>
-                                                        <TooltipTrigger asChild>{navButton}</TooltipTrigger>
-                                                        <TooltipContent
-                                                            side="right"
-                                                            align="center"
-                                                            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-card"
-                                                        >
-                                                            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.32em]">
-                                                                {tab.label}
-                                                            </p>
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                ) : (
-                                                    navButton
-                                                )}
-                                            </Fragment>
-                                        );
-                                    })}
-                                </nav>
-
-                                <Tooltip delayDuration={0}>
-                                    <TooltipTrigger asChild>
+                                    <Tooltip delayDuration={0}>
+                                        <TooltipTrigger asChild>
                                             <button
                                                 onClick={onLogout}
-                                                className={cn(
-                                                "mt-auto flex w-full items-center rounded-xl border border-border/60 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground transition-colors hover:border-border/40 hover:!bg-[#262626] hover:text-foreground",
-                                                sidebarCollapsed ? "justify-start pl-3 pr-2 gap-0" : "gap-3 px-3"
-                                            )}
-                                            aria-label="Logout"
-                                        >
-                                            <LogOut className="h-5 w-5" />
-                                            <div
-                                                className={cn(
-                                                    "overflow-hidden transition-all duration-200",
-                                                    sidebarCollapsed
-                                                        ? "max-w-0 opacity-0 delay-0"
-                                                        : "max-w-[120px] opacity-100 delay-200"
-                                                )}
+                                                className="mt-auto flex w-full items-center gap-3 rounded-xl border border-border/60 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground transition-colors hover:border-border/40 hover:!bg-[#262626] hover:text-foreground"
+                                                aria-label="Logout"
                                             >
-                                                <span
-                                                    className={cn(
-                                                        "inline-block whitespace-nowrap text-xs font-semibold uppercase tracking-[0.26em]",
-                                                        sidebarCollapsed ? "ml-0" : "ml-3"
-                                                    )}
-                                                >
+                                                <LogOut className="h-5 w-5" />
+                                                <span className="inline-block whitespace-nowrap text-xs font-semibold uppercase tracking-[0.26em]">
                                                     Logout
                                                 </span>
-                                            </div>
-                                        </button>
-                                    </TooltipTrigger>
-                                    {sidebarCollapsed && (
-                                        <TooltipContent
-                                            side="right"
-                                            align="center"
-                                            className="rounded-md border border-border bg-background px-3 py-1.5 text-foreground shadow-card"
-                                        >
-                                            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.32em]">
-                                                Logout
-                                            </p>
-                                        </TooltipContent>
-                                    )}
-                                </Tooltip>
-                            </div>
+                                            </button>
+                                        </TooltipTrigger>
+                                    </Tooltip>
+                                </div>
                             </ScrollArea>
                         </aside>
 
                         <div className="relative flex-1 overflow-hidden">
                             <ScrollArea className="h-full w-full">
-                                <div className="space-y-8 px-8 py-10 text-foreground sm:px-12">
+                                <div className="space-y-7 px-6 py-8 text-foreground sm:px-10">
                                     {activeTab === "profile" && (
                                         <div className="space-y-8 animate-fade-in">
-                                            <div className="space-y-3">
+                                                <div className="space-y-3">
                                                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                     Overview
                                                 </p>
-                                                <div className="rounded-2xl border border-border/60 bg-card/70 p-6 shadow-sm">
-                                                    <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                                                <div className="rounded-2xl border border-border/60 bg-card/70 p-5 shadow-sm">
+                                                    <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                                                         <div className="flex items-center gap-5">
-                                                            <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-border/50 bg-gradient-to-br from-white/5 via-transparent to-transparent text-muted-foreground">
-                                                                <User size={36} />
+                                                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border/50 bg-gradient-to-br from-white/5 via-transparent to-transparent text-muted-foreground">
+                                                                <User size={30} />
                                                             </div>
                                                             <div className="flex flex-col gap-1 text-left">
-                                                                <h3 className="text-2xl font-semibold">{displayName}</h3>
+                                                                <h3 className="text-xl font-semibold">{displayName}</h3>
                                                                 <p className="text-sm text-muted-foreground">{displayEmail}</p>
-                                                                <span className="inline-flex items-center rounded-full bg-muted/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                                                                <span className="inline-flex items-center rounded-full bg-muted/60 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-muted-foreground">
                                                                     {displayRole}
                                                                 </span>
                                                             </div>
                                                         </div>
-
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="flex h-11 items-center gap-2 rounded-full border-border/50 px-5 text-sm font-medium hover:!bg-[#262626] focus-visible:!bg-[#262626]"
-                                                        >
-                                                            <Edit size={16} />
-                                                            Edit
-                                                        </Button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -450,19 +330,19 @@ export default function ProfilePanel({
                                                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                     Profile Details
                                                 </p>
-                                                <div className="rounded-2xl border border-border/60 bg-card/60 p-6 shadow-sm">
-                                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                <div className="rounded-2xl border border-border/60 bg-card/60 p-5 shadow-sm">
+                                                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                                                         {profileFields.map((field) => (
                                                             <div
                                                                 key={field.label}
-                                                                className="rounded-xl border border-border/40 bg-background/40 p-4"
+                                                                className="rounded-xl border border-border/40 bg-background/40 p-3.5"
                                                             >
                                                                 <span className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                                                                     {field.label}
                                                                 </span>
                                                                 <p
                                                                     className={cn(
-                                                                        "mt-1 text-base font-semibold",
+                                                                        "mt-1 text-[0.95rem] font-semibold",
                                                                         field.value === NA ? "text-muted-foreground" : "text-foreground"
                                                                     )}
                                                                 >
@@ -477,16 +357,16 @@ export default function ProfilePanel({
                                     )}
 
                                     {activeTab === "mcp" && (
-                                        <div className="space-y-6 animate-fade-in">
-                                            <div className="space-y-2 border-b border-border/60 pb-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    Integration
-                                                </p>
-                                                <h3 className="text-2xl font-semibold">MCP Tools</h3>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Review the live tool catalog exposed by the MCP server and decide which ones stay active.
-                                                </p>
-                                            </div>
+                                            <div className="space-y-6 animate-fade-in">
+                                                <div className="space-y-2 border-b border-border/60 pb-4">
+                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                        Integration
+                                                    </p>
+                                                <h3 className="text-xl font-semibold">MCP Tools</h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Review the live tool catalog exposed by the MCP server and decide which ones stay active.
+                                                    </p>
+                                                </div>
 
                                             <div className="space-y-3">
                                                 {availableTools.length === 0 ? (
@@ -520,8 +400,8 @@ export default function ProfilePanel({
                                                                     className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/20"
                                                                 >
                                                                     <div className="flex flex-wrap items-baseline gap-3">
-                                                                        <p className="text-base font-semibold text-foreground">{serverDisplayName}</p>
-                                                                        <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                                                        <p className="text-[0.95rem] font-semibold text-foreground">{serverDisplayName}</p>
+                                                                        <p className="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                                                                             {tools.length} tool{tools.length === 1 ? "" : "s"}
                                                                         </p>
                                                                     </div>
@@ -556,8 +436,8 @@ export default function ProfilePanel({
                                                                                         </div>
                                                                                         <div className="flex-1 space-y-1.5">
                                                                                             <div className="flex flex-wrap items-center gap-2">
-                                                                                                <p className="text-base font-semibold text-foreground">{tool.toolName}</p>
-                                                                                                <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                                                                                <p className="text-[0.98rem] font-semibold text-foreground">{tool.toolName}</p>
+                                                                                                <span className="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                                                                                                     {parameterLabel}
                                                                                                 </span>
                                                                                             </div>
@@ -602,16 +482,16 @@ export default function ProfilePanel({
                                     )}
 
                                     {activeTab === "appearance" && (
-                                        <div className="space-y-6 animate-fade-in">
-                                            <div className="space-y-2 border-b border-border/60 pb-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    Personalization
-                                                </p>
-                                                <h3 className="text-2xl font-semibold">Appearance Settings</h3>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Choose a theme that matches your workspace.
-                                                </p>
-                                            </div>
+                                            <div className="space-y-6 animate-fade-in">
+                                                <div className="space-y-2 border-b border-border/60 pb-4">
+                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                        Personalization
+                                                    </p>
+                                                <h3 className="text-xl font-semibold">Appearance Settings</h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Choose a theme that matches your workspace.
+                                                    </p>
+                                                </div>
 
                                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                 {themeOptions.map((themeOption) => {
@@ -637,7 +517,7 @@ export default function ProfilePanel({
                                                             >
                                                                 <Icon size={22} />
                                                             </div>
-                                                            <span className="text-sm font-semibold uppercase tracking-[0.24em]">
+                                                            <span className="text-[0.9rem] font-semibold uppercase tracking-[0.22em]">
                                                                 {themeOption.name}
                                                             </span>
                                                             <span className="text-xs text-muted-foreground">
@@ -651,24 +531,24 @@ export default function ProfilePanel({
                                     )}
 
                                     {activeTab === "settings" && (
-                                        <div className="space-y-6 animate-fade-in">
-                                            <div className="space-y-2 border-b border-border/60 pb-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    Configuration
-                                                </p>
-                                                <h3 className="text-2xl font-semibold">General Settings</h3>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Configure your application preferences.
-                                                </p>
-                                            </div>
+                                            <div className="space-y-6 animate-fade-in">
+                                                <div className="space-y-2 border-b border-border/60 pb-4">
+                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                        Configuration
+                                                    </p>
+                                                <h3 className="text-xl font-semibold">General Settings</h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Configure your application preferences.
+                                                    </p>
+                                                </div>
 
                                             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                                                 {settingsCards.map((setting) => (
                                                     <div
                                                         key={setting.title}
-                                                        className="rounded-2xl border border-border/60 bg-card p-6 text-left shadow-sm"
+                                                        className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
                                                     >
-                                                        <h4 className="text-lg font-semibold">{setting.title}</h4>
+                                                        <h4 className="text-base font-semibold">{setting.title}</h4>
                                                         <p className="mt-2 text-sm text-muted-foreground">{setting.desc}</p>
                                                     </div>
                                                 ))}
@@ -678,23 +558,23 @@ export default function ProfilePanel({
 
                                     {activeTab === "help" && (
                                         <div className="space-y-6 animate-fade-in">
-                                            <div className="space-y-2 border-b border-border/60 pb-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    Guidance
-                                                </p>
-                                                <h3 className="text-2xl font-semibold">Help & Support</h3>
-                                                <p className="text-sm text-muted-foreground">
-                                                    Get assistance and learn more.
-                                                </p>
-                                            </div>
+                                                <div className="space-y-2 border-b border-border/60 pb-4">
+                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                        Guidance
+                                                    </p>
+                                                <h3 className="text-xl font-semibold">Help & Support</h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Get assistance and learn more.
+                                                    </p>
+                                                </div>
 
                                             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                                                 {helpCards.map((help) => (
                                                     <div
                                                         key={help.title}
-                                                        className="rounded-2xl border border-border/60 bg-card p-6 text-left shadow-sm"
+                                                        className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
                                                     >
-                                                        <h4 className="text-lg font-semibold">{help.title}</h4>
+                                                        <h4 className="text-base font-semibold">{help.title}</h4>
                                                         <p className="mt-2 text-sm text-muted-foreground">{help.desc}</p>
                                                     </div>
                                                 ))}

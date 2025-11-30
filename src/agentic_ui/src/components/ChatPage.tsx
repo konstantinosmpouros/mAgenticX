@@ -30,7 +30,8 @@ import {
   createRetryHandlers,
   useBranchingHandlers,
   useHeaderDividerEffect,
-  useCenteredComposerLayout
+  useCenteredComposerLayout,
+  useSidebarInteractionEffect
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
 
@@ -573,6 +574,7 @@ export function ChatInterface() {
         isLoadingMore={convIsLoadingMore}
         isInitialLoading={conversationsLoading}
         hasMore={convHasMore}
+        sidebarInteractionHook={useSidebarInteractionEffect}
       />
       <SidebarInset>
         <TooltipProvider>

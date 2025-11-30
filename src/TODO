@@ -7,7 +7,7 @@
 - Give in the agents the personal info of the user in the prompt like name and role. Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
 - Create a deep research agent with deep agents and make it available.
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
-- Check if instead of a whole dynamic rag system per conversation we can be replaced with the virtual file system of the deep agents.
+- Check if instead of a whole dynamic rag system per conversation it can be replaced with the virtual file system of the deep agents.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic).
 
 - The checkpointer is essential in the human in the loop and also we must use the update_state(as_node='') function in order to let the user define or give instructions to the agent why the tool call should not be executed. Also what if we used the messageID as the thread id in the configs of the checkpointer? Cause we don't invoke with the new message but with the whole conversation so we might adding n * n-1 new data in the checkpointer database.
@@ -15,10 +15,12 @@
 
 ## Agentic UI
 
+- The thinking timer is buggy and all the times are wrong
+- if l send a lot of attachments and almost 0.5GB it crashes with no error and we have a black screen.
+- Create a new page for the documentation to open in a new tab. The trigger will be in the profile -> help -> documentation.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - Make the images with memo too or use the shadcn or the ai-sdk cause if l send some images the chat lags.
-- Aggregate the mcp tools into collapsible groups in the profile panel per serverId
-- if l abort the inference the current response should be saved as an ai message.
+- if l abort the inference the current response should be saved as an ai message or an empty ai message.
 - fix the light theme
 - fix how the attachments seems in the input container
 - place some message suggestions below the input container and if the user write something then remove them.

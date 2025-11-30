@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Response } from "@/components/ui/ai-elements/response";
@@ -61,6 +61,19 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = message.sender === "user";
   const isTempUserMessage = isUser && String(message.id ?? "").startsWith("temp-");
+  const normalizedContent = useMemo(() => {
+    const raw = message.content ?? "";
+    return raw
+      .split("\n")
+      .map((line) => {
+        const bulletMatch = line.match(/^(\s*)•\s*/);
+        if (!bulletMatch) return line;
+        const [, indent] = bulletMatch;
+        const rest = line.slice(bulletMatch[0].length);
+        return `${indent}- ${rest}`;
+      })
+      .join("\n");
+  }, [message.content]);
   const bubbleClass = isUser
     ? `p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border ${
         isEditing ? "w-full max-w-full" : "max-w-[85%] md:max-w-[75%]"
@@ -80,7 +93,7 @@ export function MessageBubble({
               className="w-full min-h-[6rem] resize-none bg-transparent text-inherit border-none p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-none focus-visible:outline-none"
             />
           ) : (
-            <Response>{message.content ?? ""}</Response>
+            <Response>{normalizedContent}</Response>
           )}
           <div className="text-sm">
             {isUser ? (
@@ -107,7 +120,7 @@ export function MessageBubble({
                       type="button"
                       size="sm"
                       className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90"
-                      disabled={editingBusy}
+                      disabled={editingBusy || isStreaming}
                       onClick={() => onSubmitEdit?.()}
                     >
                       <Check className="h-4 w-4" />
