@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices, field_validator
 import base64
 from typing import List, Optional, Literal
 from datetime import datetime
@@ -28,7 +28,6 @@ class UserProfile(BaseModel):
     avatarUrl: Optional[str] = Field(None, validation_alias="avatar_url")
     department: Optional[str] = None
     roleTitle: Optional[str] = Field(None, validation_alias="role_title")
-    prefersAgenticChat: bool = Field(False, validation_alias="prefers_agentic_chat")
     lastLoginAt: Optional[datetime] = Field(None, validation_alias="last_login_at")
     isActive: bool = Field(..., validation_alias="is_active")
     createdAt: datetime = Field(..., validation_alias="created_at")
@@ -96,16 +95,69 @@ class ToolManifest(BaseModel):
 # User preferences DTO
 # -------------------------------------------
 class ToolPreference(BaseModel):
-    server_id: str = Field("", validation_alias="server_id")
-    tool_name: str = Field(..., validation_alias="tool_name")
+    model_config = ConfigDict(populate_by_name=True)
+
+    server_id: str = Field(
+        "",
+        validation_alias=AliasChoices("server_id", "serverId"),
+        serialization_alias="serverId",
+    )
+    tool_name: str = Field(
+        ...,
+        validation_alias=AliasChoices("tool_name", "toolName"),
+        serialization_alias="toolName",
+    )
+
+    @field_validator("server_id", "tool_name", mode="before")
+    @classmethod
+    def _coerce_and_strip(cls, v: str) -> str:
+        if v is None:
+            return ""
+        if not isinstance(v, str):
+            v = str(v)
+        return v.strip()
 
 
 class ToolsPreferences(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     disabled: list[ToolPreference] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _dedupe_disabled(self) -> "ToolsPreferences":
+        """Normalize and deduplicate the disabled list by server/tool key."""
+        cleaned: list[ToolPreference] = []
+        seen: set[str] = set()
+
+        for entry in self.disabled or []:
+            tool_name = (entry.tool_name or "").strip()
+            server_id = (entry.server_id or "").strip()
+            if not tool_name:
+                continue
+            key = f"{server_id}::{tool_name}"
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(
+                ToolPreference(
+                    server_id=server_id,
+                    tool_name=tool_name,
+                )
+            )
+
+        self.disabled = cleaned
+        return self
 
 
 class UserPreferences(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tools: ToolsPreferences = Field(default_factory=ToolsPreferences)
+    prefersAgenticChat: bool = Field(
+        default_factory=False,
+        validation_alias=AliasChoices("prefers_agentic_chat", "prefersAgenticChat"),
+        serialization_alias="prefersAgenticChat",
+    )
 
 
 

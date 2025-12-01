@@ -19,7 +19,6 @@ export type UserProfile = {
     avatarUrl?: string;
     department?: string;
     roleTitle?: string;
-    prefersAgenticChat: boolean;
     lastLoginAt?: Date;
     isActive: boolean;
     createdAt: Date;
@@ -88,6 +87,7 @@ export type UserPreferences = {
     tools?: {
         disabled?: ToolPreference[];
     };
+    prefersAgenticChat?: boolean;
 };
 
 

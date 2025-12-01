@@ -142,8 +142,9 @@ export default function ProfilePanel({
     const displayCreatedAt = fmtDateTime(user?.createdAt);
     const displayUpdatedAt = fmtDateTime(user?.updatedAt);
 
+    const prefersAgentic = typeof userPreferences?.prefersAgenticChat === "boolean" ? userPreferences.prefersAgenticChat : undefined;
     const displayIsActive = fmtBoolean(user?.isActive);
-    const displayPrefersAgentic = fmtBoolean(user?.prefersAgenticChat);
+    const displayPrefersAgentic = fmtBoolean(prefersAgentic);
 
     const navItems = [
         { id: "profile", label: "User Profile", icon: User },

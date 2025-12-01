@@ -32,7 +32,10 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
     toast,
   } = ctx;
 
-  const defaultPreferences: UserPreferences = useMemo(() => ({ tools: { disabled: [] } }), []);
+  const defaultPreferences: UserPreferences = useMemo(
+    () => ({ tools: { disabled: [] }, prefersAgenticChat: false }),
+    []
+  );
   const resolvedPreferences = userPreferences ?? defaultPreferences;
 
   const toolKey = (serverId: string | undefined, toolName: string) => `${serverId || 'default'}::${toolName}`;
@@ -89,6 +92,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
           return { serverId, toolName };
         }),
       },
+      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
     };
     setUserPreferences(nextPrefs);
     setIsSavingPreferences(true);

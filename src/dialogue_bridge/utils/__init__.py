@@ -11,7 +11,6 @@ from utils.conversations import _preview, init_conv, init_message
 from utils.inference import serialise_message_with_images_for_agent
 from utils.titles import generate_conversation_title
 from utils.validators import validate_convId, validate_convId_full, validate_userId
-from utils.preferences import dedupe_preferences
 
 __all__ = [
     "AGENTS_SERVICE_URL",
@@ -29,5 +28,4 @@ __all__ = [
     "init_conv",
     "init_message",
     "_preview",
-    "dedupe_preferences",
 ]

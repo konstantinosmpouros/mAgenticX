@@ -10,7 +10,6 @@ from utils import (
     get_cached_agents,
     sync_agents_with_service,
     validate_userId,
-    dedupe_preferences,
 )
 from vault_auth.auth import require_token_claims
 from sqlalchemy import select
@@ -124,14 +123,14 @@ async def get_user_preferences(
     """
     result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
     row: UserPreferencesTable | None = result.scalar_one_or_none()
-    if row is None or not isinstance(row.data, dict):
+    if row is None:
         return UserPreferences()
 
-    try:
-        return UserPreferences.model_validate(row.data)
-    except Exception:
-        # Fallback to empty preferences if stored shape is invalid
-        return UserPreferences()
+    payload: dict = {
+        "tools": row.tools if isinstance(row.tools, dict) else {},
+        "prefers_agentic_chat": bool(row.prefers_agentic_chat),
+    }
+    return UserPreferences.model_validate(payload)
 
 
 @router.put("/users/{user_id}/preferences", response_model=UserPreferences, status_code=status.HTTP_200_OK)
@@ -144,15 +143,20 @@ async def upsert_user_preferences(
     """
     Replace the user's preferences document with the provided payload.
     """
-    sanitized = dedupe_preferences(payload)
-
     result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
     existing: UserPreferencesTable | None = result.scalar_one_or_none()
     if existing:
-        existing.data = sanitized.model_dump(mode="json")
+        existing.tools = payload.tools.model_dump(mode="json", by_alias=True)
+        existing.prefers_agentic_chat = bool(payload.prefersAgenticChat)
     else:
-        db.add(UserPreferencesTable(user_id=user_id, data=sanitized.model_dump(mode="json")))
+        db.add(
+            UserPreferencesTable(
+                user_id=user_id,
+                tools=payload.tools.model_dump(mode="json", by_alias=True),
+                prefers_agentic_chat=bool(payload.prefersAgenticChat),
+            )
+        )
 
     await db.commit()
-    return sanitized
+    return payload
 

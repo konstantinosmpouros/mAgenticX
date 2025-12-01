@@ -42,13 +42,12 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
   }
   const data = await res.json();
   if (data && typeof data === "object" && data.user) {
-    const user = data.user as any;
+    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = data.user as any;
     data.user = {
-      ...user,
-      prefersAgenticChat: Boolean(user.prefersAgenticChat),
-      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
-      updatedAt: user.updatedAt ? new Date(user.updatedAt) : new Date(),
-      lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : undefined,
+      ...rest,
+      createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
+      updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
+      lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
     };
   }
   return data as AuthResponse;
@@ -69,13 +68,12 @@ export async function refreshSession(): Promise<AuthResponse> {
   }
   const data = await res.json();
   if (data && typeof data === "object" && data.user) {
-    const user = data.user as any;
+    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = data.user as any;
     data.user = {
-      ...user,
-      prefersAgenticChat: Boolean(user.prefersAgenticChat),
-      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
-      updatedAt: user.updatedAt ? new Date(user.updatedAt) : new Date(),
-      lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : undefined,
+      ...rest,
+      createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
+      updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
+      lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
     };
   }
   return data as AuthResponse;
@@ -135,34 +133,34 @@ export async function getUserPreferences(userId: string) {
     throw new Error(`Failed to fetch user preferences: ${res.status}`);
   }
   const data = await res.json();
-  return data as any;
+  const tools = Array.isArray(data?.tools?.disabled) ? (data.tools.disabled as any[]) : [];
+  const prefersAgenticChat =
+    typeof data?.prefersAgenticChat === "boolean"
+      ? data.prefersAgenticChat
+      : false;
+
+  return { tools: { disabled: tools }, prefersAgenticChat };
 }
 
 
 // Update user preferences
 export async function updateUserPreferences(userId: string, prefs: any) {
-  const normalised = (() => {
-    if (!prefs || typeof prefs !== "object") return {};
-    const disabled: any[] =
-      Array.isArray(prefs.tools?.disabled)
-        ? prefs.tools.disabled.map((item: any) => ({
-            server_id: typeof item?.serverId === "string" ? item.serverId : typeof item?.server_id === "string" ? item.server_id : "",
-            tool_name: typeof item?.toolName === "string" ? item.toolName : item?.tool_name ?? "",
-          }))
-        : [];
-    return { tools: { disabled } };
-  })();
   const res = await fetch(`/api/users/${userId}/preferences`, withCredentials({
     method: "PUT",
     headers: { "Accept": "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(normalised),
+    body: JSON.stringify(prefs),
   }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to update user preferences: ${res.status}`);
   }
   const data = await res.json();
-  return data as any;
+  const tools = Array.isArray(data?.tools?.disabled) ? (data.tools.disabled as any[]) : [];
+  const prefersAgenticChat =
+    typeof data?.prefersAgenticChat === "boolean"
+      ? data.prefersAgenticChat
+      : false;
+  return { tools: { disabled: tools }, prefersAgenticChat };
 }
 
 

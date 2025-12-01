@@ -31,7 +31,6 @@ function serializeUser(user?: UserProfile): PersistedUserProfile | undefined {
   if (!user) return undefined;
   return {
     ...user,
-    prefersAgenticChat: Boolean(user.prefersAgenticChat),
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
     lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : undefined,
@@ -43,7 +42,6 @@ function deserializeUser(data?: PersistedUserProfile): UserProfile | undefined {
   const { createdAt, updatedAt, lastLoginAt, ...rest } = data;
   return {
     ...rest,
-    prefersAgenticChat: Boolean(rest.prefersAgenticChat),
     createdAt: new Date(createdAt),
     updatedAt: new Date(updatedAt),
     lastLoginAt: lastLoginAt ? new Date(lastLoginAt) : undefined,
