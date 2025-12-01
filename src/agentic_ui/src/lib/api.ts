@@ -103,6 +103,7 @@ export async function getAgents(): Promise<Agent[]> {
 }
 
 
+// Fetch available tools from backend
 export async function getTools(): Promise<ToolMetadata[]> {
   const res = await fetch("/api/tools", withCredentials({
     headers: { "Accept": "application/json" },
@@ -123,6 +124,8 @@ export async function getTools(): Promise<ToolMetadata[]> {
   }));
 }
 
+
+// Fetch user preferences
 export async function getUserPreferences(userId: string) {
   const res = await fetch(`/api/users/${userId}/preferences`, withCredentials({
     headers: { "Accept": "application/json" },
@@ -135,6 +138,8 @@ export async function getUserPreferences(userId: string) {
   return data as any;
 }
 
+
+// Update user preferences
 export async function updateUserPreferences(userId: string, prefs: any) {
   const normalised = (() => {
     if (!prefs || typeof prefs !== "object") return {};

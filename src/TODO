@@ -1,5 +1,10 @@
 # TODO
 
+## General
+
+- Clean the preferences schemas, handling and flows
+- Clean the mcp tool mapping process and create one more variable in the schemas called key in order to map easier and faster. In the preferences store the keys only.
+
 ## Agents
 
 - To have a streaming effect like openai and CoT in the reasoning maybe the streaming structured output is the solution.
@@ -9,9 +14,7 @@
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
 - Check if instead of a whole dynamic rag system per conversation it can be replaced with the virtual file system of the deep agents.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic).
-
 - The checkpointer is essential in the human in the loop and also we must use the update_state(as_node='') function in order to let the user define or give instructions to the agent why the tool call should not be executed. Also what if we used the messageID as the thread id in the configs of the checkpointer? Cause we don't invoke with the new message but with the whole conversation so we might adding n * n-1 new data in the checkpointer database.
-- Simplify the mcp_tools.py file
 
 ## Agentic UI
 

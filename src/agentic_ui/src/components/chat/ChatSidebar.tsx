@@ -449,7 +449,8 @@ export default function ChatSidebar({
 
       <SidebarFooter
         className={cn(
-          "border-t border-sidebar-border/40 py-3 pl-2 pr-3",
+          "py-3 pl-2 pr-3",
+          !isCollapsed && "border-t border-sidebar-border/40",
           isCollapsed && "pr-2"
         )}
       >

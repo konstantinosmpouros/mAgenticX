@@ -92,10 +92,7 @@ async def transcribe_dictation(
 
 
 @router.get("/agents", response_model=list[AgentPublic], status_code=status.HTTP_200_OK)
-async def get_available_agents(
-    _: dict = Depends(require_token_claims),
-    db: AsyncSession = Depends(get_db),
-):
+async def get_available_agents(_: dict = Depends(require_token_claims), db: AsyncSession = Depends(get_db)):
     """
     Return the active agents, preferring the in-memory cache and refreshing
     from the agents service only when the cache is empty.
@@ -109,9 +106,7 @@ async def get_available_agents(
 
 
 @router.get("/tools", response_model=list[ToolManifest], status_code=status.HTTP_200_OK)
-async def get_available_tools(
-    _: dict = Depends(require_token_claims),
-):
+async def get_available_tools(_: dict = Depends(require_token_claims),):
     """Return the tools exposed by the MCP server via the agents service."""
     payload = await fetch_tools_from_agents_service()
     return [ToolManifest.model_validate(item) for item in payload]

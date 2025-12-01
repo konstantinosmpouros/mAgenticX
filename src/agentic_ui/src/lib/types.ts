@@ -61,6 +61,10 @@ export type Agent = {
 };
 
 
+
+// ------------------------------------------------------
+// Tool Schemas
+// ------------------------------------------------------
 // Tool metadata fetched from the backend
 export type ToolMetadata = {
     serverId: string;
@@ -69,6 +73,12 @@ export type ToolMetadata = {
     parameterCount: number;
 };
 
+
+
+// ------------------------------------------------------
+// User Preferences Schemas
+// ------------------------------------------------------
+// User preferences related types
 export type ToolPreference = {
     serverId: string;
     toolName: string;
