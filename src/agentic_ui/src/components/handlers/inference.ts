@@ -143,7 +143,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       // Create new conversation if needed
       if (messages.length === 0) {
         const conversationPayload: ConversationIn = {
-          agentId: selectedAgent,
+          agentId: currentAgent.id,
           isPrivate: isPrivateMode,
           title: undefined,
           firstMessage: {

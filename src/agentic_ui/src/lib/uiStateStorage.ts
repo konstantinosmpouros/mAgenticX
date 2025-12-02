@@ -32,6 +32,7 @@ export type UISnapshotSerializable = {
   agents?: Agent[];
   conversations?: ConversationSummary[];
   userPreferences?: UserPreferences | null;
+  selectedImage?: string | null;
 };
 
 type PersistedSnapshot = Omit<
@@ -171,8 +172,9 @@ async function idbPut(store: string, key: IDBValidKey, value: any): Promise<void
 }
 
 export async function saveUISnapshot(userId: string, data: UISnapshotSerializable): Promise<void> {
+  const { selectedImage: _ignoredImage, ...rest } = data;
   const payload: PersistedSnapshot = {
-    ...data,
+    ...rest,
     availableTools: serializeToolsForStorage(data.availableTools),
     agents: serializeAgentsListForStorage(data.agents),
     conversations: serializeConversationSummaries(data.conversations),
@@ -185,7 +187,7 @@ export async function saveUISnapshot(userId: string, data: UISnapshotSerializabl
 export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializable | null> {
   const saved: PersistedSnapshot | undefined = await idbGet(STATE_STORE, userId);
   if (!saved) return null;
-  const { availableTools, agents, conversations, userPreferences, ...rest } = saved;
+  const { availableTools, agents, conversations, userPreferences, selectedImage: _ignoredImage, ...rest } = saved as PersistedSnapshot & { selectedImage?: string | null };
   return {
     ...(rest as Omit<UISnapshotSerializable, 'availableTools' | 'agents' | 'conversations' | 'userPreferences'>),
     availableTools: deserializeToolsFromStorage(availableTools),

@@ -13,7 +13,6 @@
 
 ## Agentic UI
 
-- Fix the ui state persistence to now hit the apis if the info is in the indexedDB
 - The thinking timer is buggy and all the times are wrong
 - Create a new page for the documentation to open in a new tab. The trigger will be in the profile -> help -> documentation.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)

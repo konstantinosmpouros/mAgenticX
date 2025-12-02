@@ -51,6 +51,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ChatBody from "@/components/chat/ChatBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
+import { Loader } from "@/components/ui/shadcn-io/loader";
 
 const ROOT_BRANCH_KEY = "__root__";
 
@@ -772,10 +773,16 @@ export function ChatInterface() {
                 currentAgent={currentAgent ?? undefined}
                 Textarea={Textarea}
               />
-            
+
+            {loadingConversation && (
+              <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-slate-950/35 backdrop-blur-md transition-opacity duration-200 animate-fade-in">
+                <Loader size={36} className="text-white/90" />
+              </div>
+            )}
+
               {/* User Profile Modal */}
               <ProfilePanel
-                open={showUserProfile}
+              open={showUserProfile}
                 onClose={() => setShowUserProfile(false)}
                 activeTab={activeProfileTab}
                 setActiveTab={handleSetActiveProfileTab}
