@@ -142,7 +142,7 @@ def get_tool_cache_key(tool: types.Tool) -> str:
 
 async def _fetch_tools_from_gateway() -> List[types.Tool]:
     """Call the MCP gateway and return the raw tools list (for manifest building)."""
-    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8004/sse")
+    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8005/sse")
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 
@@ -173,7 +173,7 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
 @asynccontextmanager
 async def mcp_session_context():
     """Yield an initialized MCP session, keeping the connection open for the caller."""
-    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8004/sse")
+    endpoint = os.getenv("MCP_TOOLS_HTTP_URL", "http://mcp_gateway:8005/sse")
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 

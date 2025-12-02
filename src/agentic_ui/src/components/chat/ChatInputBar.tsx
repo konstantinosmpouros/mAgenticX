@@ -1,6 +1,6 @@
 ﻿import React from "react";
 import type { LucideIcon } from 'lucide-react';
-import { Plus, FileText, Check, X, Loader2 } from "lucide-react";
+import { Plus, FileText, Check, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
@@ -8,6 +8,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
+import { Loader } from "@/components/ui/shadcn-io/loader";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
 
@@ -624,7 +625,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                                 aria-label="Use recording"
                                             >
                                                 {isDictationSubmitting ? (
-                                                    <Loader2 size={18} className="animate-spin" />
+                                                    <Loader size={18} className="text-primary" />
                                                 ) : (
                                                     <Check size={18} />
                                                 )}
