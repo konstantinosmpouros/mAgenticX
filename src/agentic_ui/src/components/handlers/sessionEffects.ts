@@ -30,7 +30,6 @@ export function useAuthRehydrateEffect(params: {
   setSelectedAgent?: (v: string) => void;
   setIsPrivateMode?: (v: boolean) => void;
   setActiveProfileTab?: (v: string) => void;
-  setSelectedImage?: (v: string | null) => void;
   setSidebarOpen?: (v: boolean) => void;
   persistUIState?: () => void;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
@@ -49,7 +48,6 @@ export function useAuthRehydrateEffect(params: {
     setSelectedAgent,
     setIsPrivateMode,
     setActiveProfileTab,
-    setSelectedImage,
     setSidebarOpen,
     persistUIState,
   } = params;
@@ -97,9 +95,6 @@ export function useAuthRehydrateEffect(params: {
             setSidebarOpen(snapshot.sidebarOpen);
           }
           if (snapshot.activeProfileTab && setActiveProfileTab) setActiveProfileTab(snapshot.activeProfileTab);
-          if (typeof snapshot.selectedImage !== 'undefined' && setSelectedImage) {
-            setSelectedImage(snapshot.selectedImage);
-          }
 
           // Always set snapshot values to state; decide API fallbacks via needs* flags below.
           setAgents(snapshot.agents ?? []);

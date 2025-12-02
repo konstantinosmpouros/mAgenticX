@@ -27,7 +27,6 @@ export type UISnapshotSerializable = {
   isPrivateMode: boolean;
   activeProfileTab: string;
   sidebarOpen: boolean;
-  selectedImage: string | null;
   lastConversationId: string | null;
   availableTools?: ToolMetadata[];
   agents?: Agent[];

@@ -149,7 +149,6 @@ export function ChatInterface() {
       isPrivateMode,
       sidebarOpen,
       activeProfileTab,
-      selectedImage,
       lastConversationId: currentConversation?.id ?? null,
       availableTools,
       agents,
@@ -162,7 +161,6 @@ export function ChatInterface() {
     isPrivateMode,
     sidebarOpen,
     activeProfileTab,
-    selectedImage,
     currentConversation?.id,
     availableTools,
     agents,
@@ -179,6 +177,7 @@ export function ChatInterface() {
 
   const [persistSignal, setPersistSignal] = useState(0);
   useEffect(() => {
+    if (persistSignal === 0) return;
     if (!userId || !snapshotRef.current) return;
     saveUISnapshot(userId, snapshotRef.current).catch(() => {});
   }, [userId, persistSignal]);
@@ -396,7 +395,6 @@ export function ChatInterface() {
     setSelectedAgent,
     setIsPrivateMode,
     setActiveProfileTab,
-    setSelectedImage,
     setSidebarOpen,
     persistUIState: requestPersist,
     toast: toastWrapper,
