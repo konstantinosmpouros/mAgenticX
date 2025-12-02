@@ -30,6 +30,7 @@ type ConversationsCtx = {
   setThinkingState?: (v: any) => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onSearch?: () => void;
+  persistUIState: () => void;
 };
 
 const LOAD_MORE_DELAY_MS = 1200;
@@ -59,6 +60,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setAttachments,
     setCurrentMessage,
     toast,
+    persistUIState,
   } = ctx;
 
   const clearChatAndStopThinking = (options?: { preserveAgent?: boolean }) => {
@@ -78,6 +80,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
         setSelectedAgent(defaultAgentId);
       }
       setTimeout(() => setIsClearing(false), 150);
+      persistUIState();
     }, 200);
   };
 
@@ -106,6 +109,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
           setIsPrivateMode(conversationDetail.isPrivate || false);
           setIsClearing(false);
           setLoadingConversation(false);
+          persistUIState();
         }, CLEAR_DELAY_MS);
       } catch (error) {
         console.error('Failed to load conversation:', error);
@@ -121,6 +125,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
         setIsPrivateMode(conversation.isPrivate || false);
         setIsClearing(false);
         setLoadingConversation(false);
+        persistUIState();
       }
     }, CLEAR_DELAY_MS);
   };
@@ -140,6 +145,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
           const dedup = items.filter(item => !ids.has(item.id));
           return [...prev, ...dedup];
         });
+        persistUIState();
         setConvPage(nextPage);
         if (items.length < pageSize) {
           setConvHasMore(false);
@@ -161,6 +167,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setConversations(conversations.filter(c => c.id !== conversationId) as any);
       if (conversationId === currentConversation?.id) clearChatAndStopThinking();
       toast({ title: 'Conversation deleted', description: 'The conversation has been removed from your history', duration: 2000 });
+      persistUIState();
     } catch (error) {
       console.error('Failed to delete conversation:', error);
       toast({ title: 'Failed to delete conversation', description: 'There was an error deleting the conversation. Please try again.', variant: 'destructive', duration: 3000 });

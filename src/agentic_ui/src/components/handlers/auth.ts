@@ -16,6 +16,7 @@ type AuthCtx = {
   setLoginPassword: (v: string) => void;
   setShowUserProfile: (v: boolean) => void;
   clearChatAndStopThinking: () => void;
+  persistUIState: () => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   loginUsername: string;
   loginPassword: string;
@@ -35,6 +36,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setLoginPassword,
     setShowUserProfile,
     clearChatAndStopThinking,
+    persistUIState,
     toast,
     loginUsername,
     loginPassword,
@@ -87,6 +89,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
           try {
             const conversationsList = await conversationsPromise;
             setConversations(sortByUpdatedAtDesc(conversationsList));
+            persistUIState();
           } catch (e) {
             console.error("Failed to fetch conversations after login:", e);
             setConversations([]);
@@ -130,6 +133,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
       setConversations([]);
       setConversationsLoading(false);
       clearChatAndStopThinking();
+      persistUIState();
     }, 300);
   };
 

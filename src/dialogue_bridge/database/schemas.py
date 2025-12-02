@@ -154,7 +154,7 @@ class UserPreferences(BaseModel):
 
     tools: ToolsPreferences = Field(default_factory=ToolsPreferences)
     prefersAgenticChat: bool = Field(
-        default_factory=False,
+        default=False,
         validation_alias=AliasChoices("prefers_agentic_chat", "prefersAgenticChat"),
         serialization_alias="prefersAgenticChat",
     )

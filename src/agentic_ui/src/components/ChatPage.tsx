@@ -1,11 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Building2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
-import type { ThinkingState, Agent, MessageOut, ConversationDetail, ConversationSummary, UserProfile, ToolMetadata, UserPreferences } from "@/lib/types";
+import type { 
+  ThinkingState, Agent,
+  MessageOut,
+  ConversationDetail,
+  ConversationSummary,
+  UserProfile,
+  ToolMetadata,
+  UserPreferences } from "@/lib/types";
 import { createPreferencesHandlers } from "@/components/handlers/preferences";
 
 // Handlers (modularized)
@@ -21,7 +28,6 @@ import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
   useSessionStateSyncEffect,
-  useUIPersistEffect,
   createUIHandlers,
   createAiTransitionHandlers,
   createStickyUserBarHandlers,
@@ -34,6 +40,8 @@ import {
   useSidebarInteractionEffect
 } from "@/components/handlers";
 import { loadSession, isSessionValid } from "@/lib/authStorage";
+import { getConversationDetail } from "@/lib/api";
+import { saveUISnapshot, UISnapshotSerializable } from "@/lib/uiStateStorage";
 
 // Chat Interface component
 import LoginPanel from "@/components/chat/LoginPanel";
@@ -98,6 +106,7 @@ export function ChatInterface() {
   
   // UI components
   const [activeProfileTab, setActiveProfileTab] = useState('profile');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -131,6 +140,76 @@ export function ChatInterface() {
     });
   };
 
+  // UI persistence snapshot + trigger (manual)
+  const uiSnapshot = useMemo<UISnapshotSerializable | null>(() => {
+    if (!userId) return null;
+    return {
+      version: 2,
+      selectedAgent,
+      isPrivateMode,
+      sidebarOpen,
+      activeProfileTab,
+      selectedImage,
+      lastConversationId: currentConversation?.id ?? null,
+      availableTools,
+      agents,
+      conversations,
+      userPreferences,
+    };
+  }, [
+    userId,
+    selectedAgent,
+    isPrivateMode,
+    sidebarOpen,
+    activeProfileTab,
+    selectedImage,
+    currentConversation?.id,
+    availableTools,
+    agents,
+    conversations,
+    userPreferences,
+  ]);
+
+  const snapshotRef = useRef<UISnapshotSerializable | null>(null);
+  useEffect(() => {
+    if (uiSnapshot) {
+      snapshotRef.current = uiSnapshot;
+    }
+  }, [uiSnapshot]);
+
+  const [persistSignal, setPersistSignal] = useState(0);
+  useEffect(() => {
+    if (!userId || !snapshotRef.current) return;
+    saveUISnapshot(userId, snapshotRef.current).catch(() => {});
+  }, [userId, persistSignal]);
+
+  const requestPersist = useCallback(() => {
+    setPersistSignal((tick) => tick + 1);
+  }, []);
+
+  const handleSetActiveProfileTab = useCallback(
+    (tab: string) => {
+      setActiveProfileTab(tab);
+      requestPersist();
+    },
+    [requestPersist],
+  );
+
+  const handleTogglePrivateMode = useCallback(() => {
+    if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
+      setIsPrivateMode(!isPrivateMode);
+      requestPersist();
+    }
+  }, [currentConversation?.messages?.length, isPrivateMode, requestPersist]);
+
+  const handleSidebarOpenChange = useCallback(
+    (open: boolean) => {
+      setSidebarOpen(open);
+      requestPersist();
+    },
+    [requestPersist],
+  );
+
   // Preferences handlers
   const {
     toolsWithStatus,
@@ -145,6 +224,7 @@ export function ChatInterface() {
     isSavingPreferences,
     setIsSavingPreferences,
     toast: toastWrapper,
+    persistUIState: requestPersist,
   });
 
   // Reset branch selections on conversation change
@@ -260,6 +340,47 @@ export function ChatInterface() {
   // Thinking progress effect
   useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
 
+  // Session auto-refresh effect
+  useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
+
+  // Session state sync effect
+  useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
+
+  const hydratedConversationRef = useRef(false);
+  useEffect(() => {
+    if (!isLoggedIn || !userId) {
+      hydratedConversationRef.current = false;
+      return;
+    }
+    if (hydratedConversationRef.current || currentConversation) return;
+    const sessionData = loadSession();
+    const lastConversationId = sessionData?.lastConversationId;
+    if (!lastConversationId) {
+      hydratedConversationRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    hydratedConversationRef.current = true;
+    setLoadingConversation(true);
+    (async () => {
+      try {
+        const detail = await getConversationDetail(userId, lastConversationId);
+        if (cancelled) return;
+        setSelectedAgent(detail.agent?.id || "");
+        setCurrentConversation(detail);
+        setIsPrivateMode(detail.isPrivate || false);
+        requestPersist();
+      } catch (error) {
+        console.error('Failed to hydrate conversation', error);
+      } finally {
+        if (!cancelled) setLoadingConversation(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, userId, currentConversation, setSelectedAgent, setCurrentConversation, setIsPrivateMode, requestPersist]);
+
   // Auth rehydration effect
   useAuthRehydrateEffect({
     setIsLoggedIn,
@@ -270,49 +391,15 @@ export function ChatInterface() {
     setUserPreferences,
     setConversations,
     setConversationsLoading,
-    setSelectedAgent,
     setCurrentConversation,
-    setMessages: setConversationMessages,
+    setLoadingConversation,
+    setSelectedAgent,
     setIsPrivateMode,
+    setActiveProfileTab,
+    setSelectedImage,
+    setSidebarOpen,
+    persistUIState: requestPersist,
     toast: toastWrapper,
-  });
-
-  // Session auto-refresh effect
-  useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
-
-  // Session state sync effect
-  useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
-
-  // UI persistence effect
-  useUIPersistEffect({
-    userId,
-    snapshot: {
-      version: 1,
-      selectedAgent,
-      isPrivateMode,
-      sidebarOpen: false,
-      currentMessage,
-      expandedThinking,
-      thinkingState,
-      activeProfileTab,
-      selectedImage,
-      availableTools,
-      agents,
-      currentConversation: currentConversation
-        ? {
-            ...currentConversation,
-            created_at: currentConversation.created_at ? currentConversation.created_at.toISOString() : null,
-            updated_at: currentConversation.updated_at ? currentConversation.updated_at.toISOString() : null,
-          }
-        : null,
-      messages: (currentConversation?.messages ?? []).map(m => ({
-        ...m,
-        created_at: m.created_at.toISOString(),
-        updated_at: m.updated_at.toISOString(),
-      })),
-      attachmentsRefs: [], // will be filled by storage layer
-    },
-    attachments,
   });
   
   // Create attachment handlers
@@ -456,6 +543,7 @@ export function ChatInterface() {
     convIsLoadingMore,
     setConvIsLoadingMore,
     pageSize: CONV_PAGE_SIZE,
+    persistUIState: requestPersist,
   });
   
   // Agent change handler
@@ -464,6 +552,7 @@ export function ChatInterface() {
     setIsAgentSwitching,
     setSelectedAgent,
     clearChatAndStopThinking,
+    persistUIState: requestPersist,
   });
   
   // Handle thinking toggle
@@ -488,6 +577,7 @@ export function ChatInterface() {
     setLoginPassword,
     setShowUserProfile,
     clearChatAndStopThinking,
+    persistUIState: requestPersist,
     toast: toastWrapper,
     loginUsername,
     loginPassword,
@@ -556,7 +646,11 @@ export function ChatInterface() {
   return (
     // Main chat interface with sidebar, header, conversation container, and input area
     <div className="min-h-svh max-h-svh bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20">
-      <SidebarProvider className="min-h-svh">
+      <SidebarProvider
+        className="min-h-svh"
+        open={sidebarOpen}
+        onOpenChange={handleSidebarOpenChange}
+      >
         <ChatSidebar
           conversations={conversations}
           currentConversationId={currentConversation?.id || null}
@@ -588,11 +682,7 @@ export function ChatInterface() {
                 onAgentChange={handleAgentChange}
                 showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
                 isPrivateMode={isPrivateMode}
-                onTogglePrivate={() => {
-                  if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
-                    setIsPrivateMode(!isPrivateMode);
-                  }
-                }}
+                onTogglePrivate={handleTogglePrivateMode}
                 showBottomBorder={headerHasDivider}
                 showConversationActions={Boolean(currentConversation?.id)}
                 onArchiveConversation={handleArchiveCurrentConversation}
@@ -690,7 +780,7 @@ export function ChatInterface() {
                 open={showUserProfile}
                 onClose={() => setShowUserProfile(false)}
                 activeTab={activeProfileTab}
-                setActiveTab={setActiveProfileTab}
+                setActiveTab={handleSetActiveProfileTab}
                 onLogout={handleLogout}
                 user={userProfile}
                 availableTools={toolsWithStatus}

@@ -3,10 +3,11 @@ type AgentsCtx = {
   setIsAgentSwitching: (v: boolean) => void;
   setSelectedAgent: (v: string) => void;
   clearChatAndStopThinking: (options?: { preserveAgent?: boolean }) => void;
+  persistUIState: () => void;
 };
 
 export function createAgentHandlers(ctx: AgentsCtx) {
-  const { isAgentSwitching, setIsAgentSwitching, setSelectedAgent, clearChatAndStopThinking } = ctx;
+  const { isAgentSwitching, setIsAgentSwitching, setSelectedAgent, clearChatAndStopThinking, persistUIState } = ctx;
 
   const handleAgentChange = (value: string) => {
     if (isAgentSwitching) return;
@@ -14,6 +15,7 @@ export function createAgentHandlers(ctx: AgentsCtx) {
     clearChatAndStopThinking({ preserveAgent: true });
     setTimeout(() => {
       setSelectedAgent(value);
+      persistUIState();
       setTimeout(() => setIsAgentSwitching(false), 200);
     }, 300);
   };

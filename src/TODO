@@ -1,10 +1,5 @@
 # TODO
 
-## General
-
-- Clean the preferences schemas, handling and flows
-- Clean the mcp tool mapping process and create one more variable in the schemas called key in order to map easier and faster. In the preferences store the keys only.
-
 ## Agents
 
 - To have a streaming effect like openai and CoT in the reasoning maybe the streaming structured output is the solution.
@@ -18,11 +13,10 @@
 
 ## Agentic UI
 
+- Fix the ui state persistence to now hit the apis if the info is in the indexedDB
 - The thinking timer is buggy and all the times are wrong
-- if l send a lot of attachments and almost 0.5GB it crashes with no error and we have a black screen.
 - Create a new page for the documentation to open in a new tab. The trigger will be in the profile -> help -> documentation.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
-- Make the images with memo too or use the shadcn or the ai-sdk cause if l send some images the chat lags.
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
 - fix the light theme
 - fix how the attachments seems in the input container

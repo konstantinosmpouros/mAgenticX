@@ -19,6 +19,7 @@ type PreferencesCtx = {
   isSavingPreferences: boolean;
   setIsSavingPreferences: (v: boolean) => void;
   toast: ToastFn;
+  persistUIState: () => void;
 };
 
 export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers {
@@ -30,6 +31,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
     isSavingPreferences,
     setIsSavingPreferences,
     toast,
+    persistUIState,
   } = ctx;
 
   const defaultPreferences: UserPreferences = useMemo(
@@ -99,6 +101,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
     try {
       const saved = await updateUserPreferences(userId, nextPrefs);
       setUserPreferences(saved);
+      persistUIState();
     } catch (error) {
       setUserPreferences(prevPrefs);
       toast({
