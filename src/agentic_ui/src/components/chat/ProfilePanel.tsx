@@ -12,6 +12,7 @@ import {
     MoonStar,
     ChevronDown,
     X,
+    ExternalLink,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
@@ -33,6 +34,12 @@ type ProfilePanelProps = {
 };
 
 type ToolWithStatus = ToolMetadata & { enabled?: boolean };
+type HelpCard = {
+    title: string;
+    desc: string;
+    href?: string;
+    external?: boolean;
+};
 
 const MCP_ICON_SRCS = {
     grey: "/mcp-server-stroke-rounded (3).png",
@@ -179,10 +186,25 @@ export default function ProfilePanel({
         { title: "Privacy", desc: "Control your privacy settings" },
     ];
 
-    const helpCards = [
-        { title: "Documentation", desc: "Access user guides and tutorials" },
-        { title: "Contact Support", desc: "Get help from our support team" },
+    const helpCards: HelpCard[] = [
+        {
+            title: "Architecture Docs",
+            desc: "Open the system architecture reference (services, flows, ports).",
+            href: "/architecture",
+            external: true,
+        },
+        {
+            title: "Contact Support",
+            desc: "Get help from our support team.",
+        },
     ];
+
+    const handleHelpCardClick = (card: HelpCard) => {
+        if (!card.href) return;
+        const target = card.external ? "_blank" : "_self";
+        const features = card.external ? "noopener,noreferrer" : undefined;
+        window.open(card.href, target, features ?? undefined);
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-8">
@@ -570,15 +592,38 @@ export default function ProfilePanel({
                                                 </div>
 
                                             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                                {helpCards.map((help) => (
-                                                    <div
-                                                        key={help.title}
-                                                        className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
-                                                    >
-                                                        <h4 className="text-base font-semibold">{help.title}</h4>
-                                                        <p className="mt-2 text-sm text-muted-foreground">{help.desc}</p>
-                                                    </div>
-                                                ))}
+                                                {helpCards.map((help) => {
+                                                    if (help.href) {
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                key={help.title}
+                                                                onClick={() => handleHelpCardClick(help)}
+                                                                className="relative flex h-full flex-col gap-2 rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm transition hover:border-border hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                                aria-label={`${help.title} (opens in new tab)`}
+                                                            >
+                                                                <h4 className="text-base font-semibold">{help.title}</h4>
+                                                                <p className="text-sm text-muted-foreground">{help.desc}</p>
+                                                                {help.external && (
+                                                                    <span className="pointer-events-none absolute bottom-4 right-4 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                                                                        <ExternalLink size={14} aria-hidden="true" />
+                                                                        <span className="sr-only">Opens in new tab</span>
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            key={help.title}
+                                                            className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
+                                                        >
+                                                            <h4 className="text-base font-semibold">{help.title}</h4>
+                                                            <p className="mt-2 text-sm text-muted-foreground">{help.desc}</p>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}

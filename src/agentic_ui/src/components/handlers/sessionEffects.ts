@@ -1,7 +1,7 @@
-import { useEffect, useRef, useCallback } from 'react';
-import type { ConversationDetail, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import type { Agent, ConversationDetail, ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
 import { loadSession, isSessionValid, clearSession, updateSession, saveSession } from '@/lib/authStorage';
-import { loadUISnapshot } from '@/lib/uiStateStorage';
+import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
 import {
   getAgents,
   getConversationDetail,
@@ -11,6 +11,18 @@ import {
   getUserPreferences,
 } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
+
+// ---------------------------------------------------------------------------
+// Initial session state helper
+// ---------------------------------------------------------------------------
+export function useInitialSessionState() {
+  const initialSession = typeof window !== 'undefined' ? loadSession() : null;
+  const hasValidSession = isSessionValid(initialSession);
+  const initialUserId = hasValidSession ? initialSession!.userId : null;
+  const initialUserProfile = hasValidSession ? initialSession!.user ?? null : null;
+  const initialLoggedIn = Boolean(initialUserId);
+  return { initialUserId, initialUserProfile, initialLoggedIn };
+}
 
 
 // ---------------------------------------------------------------------------
@@ -189,6 +201,83 @@ export function useAuthRehydrateEffect(params: {
 
     void run();
   }, []);
+}
+
+
+// ---------------------------------------------------------------------------
+// UI snapshot persistence helper
+// ---------------------------------------------------------------------------
+export function useUISnapshotPersistence(params: {
+  userId: string | null;
+  selectedAgent: string;
+  isPrivateMode: boolean;
+  sidebarOpen: boolean;
+  activeProfileTab: string;
+  currentConversationId: string | null;
+  availableTools: ToolMetadata[];
+  agents: Agent[];
+  conversations: ConversationSummary[];
+  userPreferences: UserPreferences | null;
+}) {
+  const {
+    userId,
+    selectedAgent,
+    isPrivateMode,
+    sidebarOpen,
+    activeProfileTab,
+    currentConversationId,
+    availableTools,
+    agents,
+    conversations,
+    userPreferences,
+  } = params;
+
+  const uiSnapshot = useMemo<UISnapshotSerializable | null>(() => {
+    if (!userId) return null;
+    return {
+      version: 2,
+      selectedAgent,
+      isPrivateMode,
+      sidebarOpen,
+      activeProfileTab,
+      lastConversationId: currentConversationId,
+      availableTools,
+      agents,
+      conversations,
+      userPreferences,
+    };
+  }, [
+    userId,
+    selectedAgent,
+    isPrivateMode,
+    sidebarOpen,
+    activeProfileTab,
+    currentConversationId,
+    availableTools,
+    agents,
+    conversations,
+    userPreferences,
+  ]);
+
+  const snapshotRef = useRef<UISnapshotSerializable | null>(null);
+  useEffect(() => {
+    if (uiSnapshot) {
+      snapshotRef.current = uiSnapshot;
+    }
+  }, [uiSnapshot]);
+
+  const [persistSignal, setPersistSignal] = useState(0);
+  useEffect(() => {
+    if (persistSignal === 0) return;
+    if (!userId || !snapshotRef.current) return;
+    saveUISnapshot(userId, snapshotRef.current).catch(() => {});
+  }, [userId, persistSignal]);
+
+  const requestPersist = useCallback(() => {
+    setPersistSignal((tick) => tick + 1);
+  }, []);
+
+  return { uiSnapshot, requestPersist };
 }
 
 

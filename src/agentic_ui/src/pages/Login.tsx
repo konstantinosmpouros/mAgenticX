@@ -1,17 +1,13 @@
-import { FormEvent, memo, useState } from "react";
+import { FormEvent, memo, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { VscEye, VscEyeClosed } from "react-icons/vsc";
 import Galaxy from "@/components/ui/react_bits/bg_galaxy";
-
-type LoginPanelProps = {
-    username: string;
-    password: string;
-    onUsernameChange: (v: string) => void;
-    onPasswordChange: (v: string) => void;
-    onSubmit: () => void;
-};
+import { authenticate } from "@/lib/api";
+import { isSessionValid, loadSession, saveSession } from "@/lib/authStorage";
+import { useToast } from "@/hooks/use-toast";
 
 const GalaxyBg = memo(
     () => (
@@ -34,18 +30,54 @@ const GalaxyBg = memo(
     () => true
 );
 
-export default function LoginPanel({
-    username,
-    password,
-    onUsernameChange,
-    onPasswordChange,
-    onSubmit,
-}: LoginPanelProps) {
+export default function Login() {
+    const navigate = useNavigate();
+    const { toast } = useToast();
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        const session = loadSession();
+        if (isSessionValid(session) && session?.userId) {
+            navigate("/", { replace: true });
+        }
+    }, [navigate]);
+
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        onSubmit();
+        if (submitting) return;
+        setSubmitting(true);
+        try {
+            const response = await authenticate({ username: username.trim(), password: password.trim() });
+            if (response.authenticated && response.user && response.user.id) {
+                const ttlSeconds =
+                    typeof response.tokenTtl === "number" && response.tokenTtl > 0 ? response.tokenTtl : 3600;
+                saveSession(response.user, ttlSeconds * 1000);
+                setUsername("");
+                setPassword("");
+                navigate("/", { replace: true });
+            } else {
+                toast({
+                    title: "Authentication failed",
+                    description: "Please check your credentials and try again.",
+                    variant: "destructive",
+                    duration: 2200,
+                });
+            }
+        } catch (error) {
+            console.error("Authentication error:", error);
+            toast({
+                title: "Login failed",
+                description: "Unable to connect to authentication service",
+                variant: "destructive",
+            });
+        } finally {
+            setSubmitting(false);
+        }
     };
+
     return (
         // Force dark styling for the login scene even when global theme is light
         <div className="dark flex min-h-[100dvh] items-center justify-center">
@@ -81,8 +113,9 @@ export default function LoginPanel({
                                     id="login-username"
                                     type="text"
                                     value={username}
-                                    onChange={(e) => onUsernameChange(e.target.value)}
+                                    onChange={(e) => setUsername(e.target.value)}
                                     placeholder="Your username"
+                                    autoComplete="username"
                                     className="h-12 rounded-xl !border-white/18 !bg-[#3b3b3b] text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
                                 />
                             </div>
@@ -96,8 +129,9 @@ export default function LoginPanel({
                                         id="login-password"
                                         type={showPassword ? "text" : "password"}
                                         value={password}
-                                        onChange={(e) => onPasswordChange(e.target.value)}
+                                        onChange={(e) => setPassword(e.target.value)}
                                         placeholder="Your password"
+                                        autoComplete="current-password"
                                         className="h-12 rounded-xl !border-white/18 !bg-[#3b3b3b] pr-12 text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
                                     />
                                     {password.trim() && (
@@ -115,9 +149,10 @@ export default function LoginPanel({
 
                             <Button
                                 type="submit"
-                                className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-white via-white/94 to-white/88 text-slate-900 shadow-[0_18px_40px_-28px_rgba(187, 31, 102,0.9)] transition hover:from-white/95 hover:via-white/92 hover:to-white/85 focus-visible:ring-[#dfb7ff]/35"
+                                disabled={submitting}
+                                className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-white via-white/94 to-white/88 text-slate-900 shadow-[0_18px_40px_-28px_rgba(187, 31, 102,0.9)] transition hover:from-white/95 hover:via-white/92 hover:to-white/85 focus-visible:ring-[#dfb7ff]/35 disabled:cursor-not-allowed disabled:opacity-80"
                             >
-                                <span className="text-sm font-semibold tracking-wide">Sign In</span>
+                                <span className="text-sm font-semibold tracking-wide">{submitting ? "Signing In..." : "Sign In"}</span>
                             </Button>
                         </form>
 

@@ -1,4 +1,4 @@
-import { ChatInterface } from "@/components/ChatPage";
+import { ChatInterface } from "@/pages/ChatPage";
 
 const Index = () => {
   return <ChatInterface />;

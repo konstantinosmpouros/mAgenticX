@@ -196,3 +196,14 @@ export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializ
     userPreferences: userPreferences ?? null,
   };
 }
+
+export async function clearUISnapshot(userId: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STATE_STORE, 'readwrite');
+    const store = tx.objectStore(STATE_STORE);
+    const req = store.delete(userId);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}

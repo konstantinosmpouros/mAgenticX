@@ -1,7 +1,8 @@
 import type { ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
 import { authenticate, getAgents, getConversations, getTools, getUserPreferences } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
-import { saveSession, clearSession } from '@/lib/authStorage';
+import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
+import { clearUISnapshot } from '@/lib/uiStateStorage';
 
 type AuthCtx = {
   setIsLoggedIn: (v: boolean) => void;
@@ -12,14 +13,16 @@ type AuthCtx = {
   setUserPreferences: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
   setConversationsLoading: (v: boolean) => void;
-  setLoginUsername: (v: string) => void;
-  setLoginPassword: (v: string) => void;
+  setLoginUsername?: (v: string) => void;
+  setLoginPassword?: (v: string) => void;
   setShowUserProfile: (v: boolean) => void;
   clearChatAndStopThinking: () => void;
   persistUIState: () => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
-  loginUsername: string;
-  loginPassword: string;
+  loginUsername?: string;
+  loginPassword?: string;
+  onLoggedOut?: () => void;
+  onClearUISnapshot?: (userId: string) => void;
 };
 
 export function createAuthHandlers(ctx: AuthCtx) {
@@ -40,11 +43,13 @@ export function createAuthHandlers(ctx: AuthCtx) {
     toast,
     loginUsername,
     loginPassword,
+    onLoggedOut,
+    onClearUISnapshot,
   } = ctx;
 
   const handleLogin = async () => {
     try {
-      const response = await authenticate({ username: loginUsername.trim(), password: loginPassword.trim() });
+      const response = await authenticate({ username: (loginUsername || "").trim(), password: (loginPassword || "").trim() });
 
       if (response.authenticated && response.user && response.user.id) {
         const user = response.user;
@@ -98,8 +103,8 @@ export function createAuthHandlers(ctx: AuthCtx) {
           }
         }, 600);
 
-        setLoginUsername('');
-        setLoginPassword('');
+        setLoginUsername?.('');
+        setLoginPassword?.('');
       } else {
         toast({ title: 'Authentication failed', description: 'Please check your credentials and try again.', variant: 'destructive', duration: 2000 });
       }
@@ -110,8 +115,13 @@ export function createAuthHandlers(ctx: AuthCtx) {
   };
 
   const handleLogoutLocal = () => {
+    // Capture current session before clearing so we can wipe persisted UI state.
+    const existing = loadSession();
     clearSession();
     setUserProfile(null);
+    if (existing?.userId) {
+      onClearUISnapshot?.(existing.userId);
+    }
     void fetch("/api/logout", {
       method: "POST",
       credentials: "include",
@@ -126,14 +136,15 @@ export function createAuthHandlers(ctx: AuthCtx) {
       handleLogoutLocal();
       setIsLoggedIn(false);
       setUserId(null);
-      setLoginUsername("");
-      setLoginPassword("");
+      setLoginUsername?.("");
+      setLoginPassword?.("");
       setAgents([]);
       setAvailableTools([]);
       setConversations([]);
       setConversationsLoading(false);
       clearChatAndStopThinking();
       persistUIState();
+      onLoggedOut?.();
     }, 300);
   };
 

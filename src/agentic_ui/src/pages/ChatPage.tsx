@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Building2, X } from "lucide-react";
@@ -28,6 +29,8 @@ import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
   useSessionStateSyncEffect,
+  useInitialSessionState,
+  useUISnapshotPersistence,
   createUIHandlers,
   createAiTransitionHandlers,
   createStickyUserBarHandlers,
@@ -39,12 +42,10 @@ import {
   useCenteredComposerLayout,
   useSidebarInteractionEffect
 } from "@/components/handlers";
-import { loadSession, isSessionValid } from "@/lib/authStorage";
+import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail } from "@/lib/api";
-import { saveUISnapshot, UISnapshotSerializable } from "@/lib/uiStateStorage";
 
 // Chat Interface component
-import LoginPanel from "@/components/chat/LoginPanel";
 import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
@@ -52,17 +53,14 @@ import ProfilePanel from "@/components/chat/ProfilePanel";
 import ChatBody from "@/components/chat/ChatBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 import { Loader } from "@/components/ui/shadcn-io/loader";
+import { clearUISnapshot } from "@/lib/uiStateStorage";
 
 const ROOT_BRANCH_KEY = "__root__";
 
 
 export function ChatInterface() {
   // Initial session check
-  const initialSession = typeof window !== 'undefined' ? loadSession() : null;
-  const hasValidSession = isSessionValid(initialSession);
-  const initialUserId = hasValidSession ? initialSession!.userId : null;
-  const initialUserProfile = hasValidSession ? initialSession!.user ?? null : null;
-  const initialLoggedIn = Boolean(initialUserId);
+  const { initialUserId, initialUserProfile, initialLoggedIn } = useInitialSessionState();
   
   // Main state variables
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
@@ -94,8 +92,6 @@ export function ChatInterface() {
   // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
   const [userId, setUserId] = useState<string | null>(initialUserId);
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
   
   // Boolean variables for navigation
   const [isClearing, setIsClearing] = useState(false);
@@ -130,6 +126,7 @@ export function ChatInterface() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingDraft, setEditingDraft] = useState("");
   const [editingBusy, setEditingBusy] = useState(false);
+  const navigate = useNavigate();
 
   // Create toast wrapper for handlers
   const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
@@ -141,52 +138,20 @@ export function ChatInterface() {
     });
   };
 
-  // UI persistence snapshot + trigger (manual)
-  const uiSnapshot = useMemo<UISnapshotSerializable | null>(() => {
-    if (!userId) return null;
-    return {
-      version: 2,
-      selectedAgent,
-      isPrivateMode,
-      sidebarOpen,
-      activeProfileTab,
-      lastConversationId: currentConversation?.id ?? null,
-      availableTools,
-      agents,
-      conversations,
-      userPreferences,
-    };
-  }, [
+  const { requestPersist } = useUISnapshotPersistence({
     userId,
     selectedAgent,
     isPrivateMode,
     sidebarOpen,
     activeProfileTab,
-    currentConversation?.id,
+    currentConversationId: currentConversation?.id ?? null,
     availableTools,
     agents,
     conversations,
     userPreferences,
-  ]);
+  });
 
-  const snapshotRef = useRef<UISnapshotSerializable | null>(null);
-  useEffect(() => {
-    if (uiSnapshot) {
-      snapshotRef.current = uiSnapshot;
-    }
-  }, [uiSnapshot]);
-
-  const [persistSignal, setPersistSignal] = useState(0);
-  useEffect(() => {
-    if (persistSignal === 0) return;
-    if (!userId || !snapshotRef.current) return;
-    saveUISnapshot(userId, snapshotRef.current).catch(() => {});
-  }, [userId, persistSignal]);
-
-  const requestPersist = useCallback(() => {
-    setPersistSignal((tick) => tick + 1);
-  }, []);
-
+  // Active profile tab handler
   const handleSetActiveProfileTab = useCallback(
     (tab: string) => {
       setActiveProfileTab(tab);
@@ -195,6 +160,7 @@ export function ChatInterface() {
     [requestPersist],
   );
 
+  // Private mode toggle handler
   const handleTogglePrivateMode = useCallback(() => {
     if ((currentConversation?.messages?.length ?? 0) === 0 || !isPrivateMode) {
       setIsPrivateMode(!isPrivateMode);
@@ -202,6 +168,7 @@ export function ChatInterface() {
     }
   }, [currentConversation?.messages?.length, isPrivateMode, requestPersist]);
 
+  // Sidebar open state handler
   const handleSidebarOpenChange = useCallback(
     (open: boolean) => {
       setSidebarOpen(open);
@@ -346,6 +313,7 @@ export function ChatInterface() {
   // Session state sync effect
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
 
+  // Hydrate last conversation effect
   const hydratedConversationRef = useRef(false);
   useEffect(() => {
     if (!isLoggedIn || !userId) {
@@ -563,7 +531,7 @@ export function ChatInterface() {
   };
   
   // Auth handler
-  const { handleLogin, handleLogout } = createAuthHandlers({
+  const { handleLogout } = createAuthHandlers({
     setIsLoggedIn,
     setUserId,
     setUserProfile,
@@ -572,14 +540,14 @@ export function ChatInterface() {
     setAvailableTools,
     setUserPreferences,
     setConversations,
-    setLoginUsername,
-    setLoginPassword,
     setShowUserProfile,
     clearChatAndStopThinking,
     persistUIState: requestPersist,
     toast: toastWrapper,
-    loginUsername,
-    loginPassword,
+    loginUsername: "",
+    loginPassword: "",
+    onLoggedOut: () => navigate("/login", { replace: true }),
+    onClearUISnapshot: (uid) => clearUISnapshot(uid).catch(() => {}),
   });
 
   // Unauthorized event listener
@@ -598,6 +566,13 @@ export function ChatInterface() {
       window.removeEventListener('mx:unauthorized', handleUnauthorized);
     };
   }, [handleLogout, toast]);
+
+  // Redirect to login when session is missing/cleared
+  useEffect(() => {
+    if (!isLoggedIn || !userId) {
+      navigate("/login", { replace: true });
+    }
+  }, [isLoggedIn, userId, navigate]);
   
   // Feedback handlers
   const { handleLike, handleDislike } = createFeedbackHandlers({
@@ -631,16 +606,7 @@ export function ChatInterface() {
   
   // Main Chat Interface
   if (!isLoggedIn || !userId) {
-    // Show login panel if not logged in
-    return (
-      <LoginPanel
-        username={loginUsername}
-        password={loginPassword}
-        onUsernameChange={setLoginUsername}
-        onPasswordChange={setLoginPassword}
-        onSubmit={handleLogin}
-      />
-    );
+    return null;
   }
   return (
     // Main chat interface with sidebar, header, conversation container, and input area
