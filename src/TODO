@@ -2,6 +2,7 @@
 
 ## Agents
 
+- Generalize the collection names for the agents by giving them through environment variables the names.
 - To have a streaming effect like openai and CoT in the reasoning maybe the streaming structured output is the solution.
 - Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 - Give in the agents the personal info of the user in the prompt like name and role. Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
@@ -13,7 +14,7 @@
 
 ## Agentic UI
 
-- The thinking timer is buggy and all the times are wrong. Also the Completed that is appended at the end of the thinking appears in the wrong time and tools might come after.
+- The thinking timer is buggy and all the times are wrong.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
 - fix the light theme

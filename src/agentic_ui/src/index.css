@@ -247,6 +247,31 @@ All colors MUST be HSL.
   margin-top: 0.25rem;
 }
 
+/* Muted scrollbars for content blocks inside responses */
+.chat-markdown {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+}
+
+.chat-markdown *::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.chat-markdown *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-markdown *::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+}
+
+.chat-markdown *::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+}
+
 @layer components {
   .sidebar-icon-badge {
     background-color: var(--sidebar-icon-bg);

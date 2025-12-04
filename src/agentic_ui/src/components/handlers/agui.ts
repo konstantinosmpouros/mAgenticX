@@ -96,6 +96,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     if (type === AGUIEventType.THINKING_START) {
       if (aborted) return;
       runtime.thinkingStart = Date.now();
+      runtime.thinkingEnd = 0;
       setThinkingState({
         messageId: '',
         thoughts: [],
@@ -129,13 +130,10 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     if (type === AGUIEventType.TOOL_CALL_ARGS || type === AGUIEventType.TOOL_CALL_RESULT) {
       return;
     }
-
+    
     if (type === AGUIEventType.THINKING_END) {
       if (aborted) return;
       runtime.thinkingEnd = Date.now();
-      setThinkingState((prev: any) =>
-        prev ? { ...prev, isDone: true, endTime: runtime.thinkingEnd, currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1) } : prev,
-      );
       return;
     }
     
@@ -177,7 +175,15 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       if (!runtime.closedThinkingOnFirstChunk) {
         runtime.closedThinkingOnFirstChunk = true;
         setThinkingState((prev: any) =>
-          prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev,
+          prev
+            ? {
+                ...prev,
+                isActive: false,
+                isDone: true,
+                endTime: Date.now(),
+                currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1),
+              }
+            : prev,
         );
       }
       

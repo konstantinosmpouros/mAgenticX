@@ -32,12 +32,12 @@ services:
     - --servers=tavily,arxiv-mcp-server
     # Point to the catalog, secrets and config files
     - --catalog=./app/mcp_catalog.yaml
-    - --secrets=/app/secrets/mcp_secret
+    - --secrets=/app/secrets/mcp_secret.env
     - --config=./app/mcp_config.yaml
     volumes:
       - ./mcp_gateway/mcp_catalog.yaml:/app/mcp_catalog.yaml:rw
       - ./mcp_gateway/mcp_config.yaml:/app/mcp_config.yaml:ro
-      - ./mcp_gateway/mcp_secret.env:/app/mcp_secret:ro
+      - ./mcp_gateway/mcp_secret.env:/app/secrets/mcp_secret.env:ro
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     networks:
