@@ -13,8 +13,7 @@
 
 ## Agentic UI
 
-- The thinking timer is buggy and all the times are wrong
-- Create a new page for the documentation to open in a new tab. The trigger will be in the profile -> help -> documentation.
+- The thinking timer is buggy and all the times are wrong. Also the Completed that is appended at the end of the thinking appears in the wrong time and tools might come after.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
 - fix the light theme
@@ -22,7 +21,7 @@
 - place some message suggestions below the input container and if the user write something then remove them.
 
 - Implement a tab in the sidebar to show all the images, like openai library
-- Create one more chat container similar to gemini code or cursor (agentic chat) with the copilot kit
+- Create one more chat container similar to gemini code or cursor (agentic chat)
 - Reactive theme change buttons, [integrate it!](https://www.shadcn.io/button/theme-toggle)
 
 ## Dialogue Bridge

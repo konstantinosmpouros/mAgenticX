@@ -4,14 +4,18 @@ services:
     container_name: mcp_gateway
     image: docker/mcp-gateway:latest
     command:
+    # Configure the MCP Gateway servers and transport
     - --transport=sse
     - --port=8005
-    - --catalog=./app/catalog.yaml
-    - --servers=tavily
-    - --secrets=/run/secrets/mcp_secret
+    - --servers=tavily,arxiv-mcp-server
+    # Point to the catalog, secrets and config files
+    - --catalog=./app/mcp_catalog.yaml
+    - --config=./app/mcp_config.yaml
+    - --secrets=/app/mcp_secret
     volumes:
-      - /home/kostas/catalog.yaml:/app/catalog.yaml:ro
-      - /home/kostas/mcp_secret.env:/run/secrets/mcp_secret:ro
+      - /home/kostas/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
+      - /home/kostas/mcp_secret.env:/app/mcp_secret:ro
+      - /home/kostas/mcp_config.yaml:/app/mcp_config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     networks:

@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain_mcp_adapters.tools import load_mcp_tools
 
-from agui import AGUIEmitter
+from blueprints.agui import AGUIEmitter
 from utils import (
     build_tool_cache_key,
     get_tool_cache_key,
@@ -22,6 +22,8 @@ class LangGraphAgent:
 
     Responsibilities shared by every subclass:
         • normalised tool resolution driven by UI/back-end config
+        • dynamically rebuilt agents/nodes per-inference with live tools
+        • mcp session management for tool loading
         • a consistent AG-UI emitter for streaming thoughts/events
         • a build lifecycle that registers nodes/edges then compiles the graph
         • optional SQLite checkpointing via ``configure_sqlite_checkpointer()``

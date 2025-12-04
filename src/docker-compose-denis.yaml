@@ -1,12 +1,12 @@
 services:
   agents: # 8003
     container_name: agents
-    image: konstantinosmpouros/agents:v1.10.0
+    image: konstantinosmpouros/agents:v1.10.1
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=rag_service
       - RAG_PORT=8001
-      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/mcp
+      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/sse
     depends_on:
       - rag_service
     volumes:
@@ -46,7 +46,7 @@ services:
 
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.4.2
+    image: konstantinosmpouros/dialogue_bridge:v2.4.3
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - VAULT_ADDR=http://vault:8004
@@ -75,7 +75,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.5.2
+    image: konstantinosmpouros/agentic_ui:v0.6.0
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002

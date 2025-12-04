@@ -1,0 +1,2 @@
+arxiv-mcp-server:
+  storage_path: /app/arxiv_papers

@@ -15,10 +15,16 @@ class MCPToolsClientError(RuntimeError):
 
 _MCP_TOOL_MANIFEST_CACHE: Dict[str, ToolManifest] = {}
 _TOOL_SERVER_OVERRIDES: dict[str, str] = {
+    # Tavily MCP Server tools
     "tavily-crawl": "tavily",
     "tavily-extract": "tavily",
     "tavily-map": "tavily",
     "tavily-search": "tavily",
+    # Arxiv MCP Server tools
+    "download_paper": "arxiv",
+    "search_papers": "arxiv",
+    "read_paper": "arxiv",
+    "list_papers": "arxiv",
 }
 
 
