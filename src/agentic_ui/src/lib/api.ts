@@ -214,6 +214,29 @@ export async function deleteConversation(userId: string, conversationId: string)
 }
 
 
+// Rename a conversation and return the updated summary
+export async function renameConversation(
+  userId: string,
+  conversationId: string,
+  title: string,
+): Promise<ConversationSummary> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/title`, withCredentials({
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({ title }),
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to rename conversation: ${res.status}`);
+  }
+  const data = await res.json();
+  return transformConversationSummary(data);
+}
+
+
 // Create a new conversation with the first message
 export async function createConversation(
   userId: string,

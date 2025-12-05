@@ -1,4 +1,4 @@
-import { getConversationDetail, deleteConversation, getConversations } from '@/lib/api';
+import { getConversationDetail, deleteConversation, getConversations, renameConversation } from '@/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Agent, ConversationDetail, ConversationSummary } from '@/lib/types';
 
@@ -182,12 +182,54 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     void handleDeleteConversation(currentConversation.id);
   };
 
-  const handleRenameConversation = (conversationId?: string | null) => {
+  const handleRenameConversation = async (conversationId: string, newTitle: string) => {
+    const trimmed = (newTitle || "").trim();
     if (!conversationId) {
       toast({ title: 'No conversation selected', description: 'Select a conversation to rename first.', duration: 2000 });
       return;
     }
-    toast({ title: 'Rename coming soon', description: 'Conversation renaming will be available soon.', duration: 2500 });
+    if (!trimmed) {
+      toast({ title: 'Title required', description: 'Please enter a new title to rename this conversation.', duration: 2000 });
+      return;
+    }
+    if (!userId) {
+      toast({ title: 'Not signed in', description: 'You need to be signed in to rename conversations.', duration: 2000 });
+      return;
+    }
+    try {
+      const summary = await renameConversation(userId, conversationId, trimmed);
+      setConversations(prev => {
+        const toTime = (value: string) => {
+          const ts = new Date(value).getTime();
+          return Number.isFinite(ts) ? ts : 0;
+        };
+        const updated = prev.map((c) =>
+          c.id === summary.id ? { ...c, ...summary } : c
+        );
+        // Keep the list sorted by recent updates so the renamed chat stays current.
+        return [...updated].sort(
+          (a, b) => toTime(b.updated_at) - toTime(a.updated_at)
+        );
+      });
+      setCurrentConversation(prev => {
+        if (!prev || prev.id !== summary.id) return prev;
+        return {
+          ...prev,
+          title: summary.title ?? prev.title,
+          updated_at: new Date(summary.updated_at),
+          agent: summary.agent ?? prev.agent,
+        };
+      });
+      persistUIState();
+    } catch (error) {
+      console.error('Failed to rename conversation:', error);
+      toast({
+        title: 'Failed to rename conversation',
+        description: 'There was an error renaming the conversation. Please try again.',
+        variant: 'destructive',
+        duration: 3000,
+      });
+    }
   };
 
   const handleArchiveConversation = (conversationId?: string | null) => {
@@ -214,8 +256,12 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleReportConversation(currentConversation?.id);
   };
 
-  const handleRenameCurrentConversation = () => {
-    handleRenameConversation(currentConversation?.id);
+  const handleRenameCurrentConversation = (newTitle: string) => {
+    if (!currentConversation?.id) {
+      toast({ title: 'No conversation selected', description: 'Select a conversation to rename first.', duration: 2000 });
+      return;
+    }
+    void handleRenameConversation(currentConversation.id, newTitle);
   };
 
   const handleOpenSearch = () => {

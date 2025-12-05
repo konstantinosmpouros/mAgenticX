@@ -17,7 +17,6 @@
 - The thinking timer is buggy and all the times are wrong.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
-- fix the light theme
 - fix how the attachments seems in the input container
 - place some message suggestions below the input container and if the user write something then remove them.
 

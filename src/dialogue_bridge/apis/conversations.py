@@ -11,6 +11,7 @@ from database.schemas import (
     ConversationIn,
     ConversationSummary,
     CreateConversationResponse,
+    ConversationTitleUpdate,
 )
 from utils import (
     _preview,
@@ -140,3 +141,24 @@ async def deleteConversation(
     await db.delete(current_conv)
     await db.commit()
     return
+
+
+@router.patch(
+    "/conversations/{conversation_id}/title",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_200_OK,
+    summary="Update a conversation title",
+)
+async def renameConversation(
+    user_id: str,
+    conversation_id: str,
+    payload: ConversationTitleUpdate,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename an existing conversation and return the refreshed summary."""
+    current_conv.title = payload.title
+    await db.commit()
+    await db.refresh(current_conv, attribute_names=["title", "updated_at", "last_message_preview", "agent"])
+    return ConversationSummary.model_validate(current_conv)

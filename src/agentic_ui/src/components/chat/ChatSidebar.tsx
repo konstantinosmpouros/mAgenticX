@@ -9,9 +9,11 @@ import {
   Flag,
   Trash2,
   Pencil,
+  ArrowRight,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTheme } from "next-themes";
+import { Loader } from "@/components/ui/shadcn-io/loader";
 
 import type { Agent, ConversationSummary, UserProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -37,7 +39,7 @@ type ChatSidebarProps = {
   currentConversationId: string | null;
   onSelectConversation: (conversation: ConversationSummary) => void;
   onDeleteConversation: (id: string, e?: React.MouseEvent) => void;
-  onRenameConversation?: (id: string) => void;
+  onRenameConversation?: (id: string, newTitle: string) => Promise<void> | void;
   onArchiveConversation?: (id: string) => void;
   onReportConversation?: (id: string) => void;
   onLoadMore: () => void;
@@ -111,6 +113,11 @@ export default function ChatSidebar({
   const profileEmail = (userProfile?.email ?? "Open profile").trim();
   const avatarUrl = userProfile?.avatarUrl || null;
   const [openActionMenuId, setOpenActionMenuId] = React.useState<string | null>(null);
+  const [renamingConversationId, setRenamingConversationId] = React.useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = React.useState("");
+  const [isSubmittingRename, setIsSubmittingRename] = React.useState(false);
+  const renameInputRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const renameContainerRef = React.useRef<HTMLDivElement | null>(null);
   const isDarkTheme = (resolvedTheme ?? theme) === "dark";
   const newChatIconSrc = isDarkTheme ? "/edit.png" : "/edit2.png";
   const logoSrc = isDarkTheme ? "/logo2_white_magentaX.png" : "/logo2.png";
@@ -193,21 +200,87 @@ export default function ChatSidebar({
     toggleSidebar,
   });
 
+  const handleStartRename = React.useCallback(
+    (conversationId: string, currentTitle: string) => {
+      if (!onRenameConversation) return;
+      setOpenActionMenuId(null);
+      setRenamingConversationId(conversationId);
+      setRenameDraft(currentTitle);
+      setIsSubmittingRename(false);
+    },
+    [onRenameConversation]
+  );
+
+  const handleCancelRename = React.useCallback(() => {
+    setRenamingConversationId(null);
+    setRenameDraft("");
+    setIsSubmittingRename(false);
+  }, []);
+
+  const handleSubmitRename = React.useCallback(async () => {
+    if (!renamingConversationId || !onRenameConversation) return;
+    const trimmed = renameDraft.trim();
+    if (isSubmittingRename) return;
+    if (!trimmed) return;
+    setIsSubmittingRename(true);
+    try {
+      await onRenameConversation(renamingConversationId, trimmed);
+      setRenamingConversationId(null);
+      setRenameDraft("");
+    } catch (error) {
+      console.error("Failed to rename conversation:", error);
+    } finally {
+      setIsSubmittingRename(false);
+    }
+  }, [isSubmittingRename, onRenameConversation, renameDraft, renamingConversationId]);
+
+  React.useEffect(() => {
+    if (!renamingConversationId) return;
+    const raf = requestAnimationFrame(() => {
+      if (renameInputRef.current) {
+        renameInputRef.current.focus();
+        renameInputRef.current.select();
+      }
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleCancelRename();
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (renameContainerRef.current && target && renameContainerRef.current.contains(target)) {
+        return;
+      }
+      handleCancelRename();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [handleCancelRename, renamingConversationId]);
+
+  const canSubmitRename = renameDraft.trim().length > 0;
+
   const showEmptyState = !isInitialLoading && !isLoadingMore && conversations.length === 0;
   const showInitialSkeleton = isInitialLoading || (isLoadingMore && conversations.length === 0);
 
   return (
     <SidebarRoot
       collapsible="icon"
-      className={
+      className={cn(
+        "relative overflow-hidden",
         isCollapsed
           ? "bg-transparent [&_[data-sidebar=sidebar]]:bg-transparent [&_[data-sidebar=sidebar]]:text-foreground"
           : "bg-sidebar"
-      }
+      )}
       onMouseEnter={handleSidebarMouseEnter}
       onMouseLeave={handleSidebarMouseLeave}
     >
-
       <SidebarHeader
         className={cn("gap-3 py-4 pl-2 pr-3", isCollapsed && "pr-2")}
       >
@@ -326,13 +399,20 @@ export default function ChatSidebar({
                     const lastMessage = (conversation.lastMessage ?? "").trim();
                     const fallbackTitle = lastMessage || agent?.name || "Untitled chat";
                     const resolvedTitle = rawTitle || fallbackTitle;
+                    const isRenaming = renamingConversationId === conversation.id;
 
                     return (
                       <SidebarMenuItem key={conversation.id}>
                         <SidebarMenuButton
                           size="lg"
                           isActive={conversation.id === currentConversationId}
-                          onClick={() => handleConversationSelect(conversation)}
+                          onClick={(event) => {
+                            if (isRenaming) {
+                              event.stopPropagation();
+                              return;
+                            }
+                            handleConversationSelect(conversation);
+                          }}
                           tooltip={{
                             children: (
                               <div className="flex max-w-xs flex-col gap-0.5">
@@ -358,84 +438,131 @@ export default function ChatSidebar({
                           <div className="sidebar-icon-badge flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-primary">
                             <Icon size={14} />
                           </div>
-                          <span className="truncate text-sm font-medium text-foreground">
-                            {resolvedTitle}
-                          </span>
-                        </SidebarMenuButton>
-                        <DropdownMenu.Root
-                          open={openActionMenuId === conversation.id}
-                          onOpenChange={(isOpen) => {
-                            setOpenActionMenuId(isOpen ? conversation.id : null);
-                          }}
-                        >
-                          <DropdownMenu.Trigger asChild>
-                            <SidebarMenuAction
-                              aria-label="Conversation actions"
+                          {isRenaming ? (
+                            <div
+                              ref={renameContainerRef}
+                              className="flex w-full items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1"
                               onClick={(event) => event.stopPropagation()}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              showOnHover
-                              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
                             >
-                              <MoreHorizontal size={14} />
-                            </SidebarMenuAction>
-                          </DropdownMenu.Trigger>
-                          <DropdownMenu.Portal>
-                            <DropdownMenu.Content
-                              side="right"
-                              sideOffset={8}
-                              align="end"
-                              className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
-                              onCloseAutoFocus={(event) => event.preventDefault()}
-                            >
-                              <DropdownMenu.Item
-                                onSelect={() => {
-                                  onRenameConversation?.(conversation.id);
+                              <textarea
+                                ref={renameInputRef}
+                                rows={1}
+                                value={renameDraft}
+                                onChange={(event) => setRenameDraft(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" && !event.shiftKey) {
+                                    event.preventDefault();
+                                    void handleSubmitRename();
+                                  }
+                                  if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    handleCancelRename();
+                                  }
                                 }}
-                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
-                              >
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                  <Pencil size={15} />
-                                </div>
-                                <span>Rename</span>
-                              </DropdownMenu.Item>
-                              <DropdownMenu.Item
-                                onSelect={() => {
-                                  onArchiveConversation?.(conversation.id);
+                                className="h-5 min-h-[1.25rem] w-full resize-none overflow-hidden border-none bg-transparent px-1 py-0 text-sm font-medium leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+                                placeholder="Rename conversation"
+                                spellCheck={false}
+                              />
+                              <button
+                                type="button"
+                                aria-label="Confirm rename"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void handleSubmitRename();
                                 }}
-                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                disabled={!canSubmitRename || isSubmittingRename}
+                                className="grid size-7 flex-shrink-0 place-items-center rounded-full bg-[#f093f9] text-[#1b0f2a] shadow-md transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                  <Archive size={15} />
-                                </div>
-                                <span>Archive</span>
-                              </DropdownMenu.Item>
-                              <DropdownMenu.Item
-                                onSelect={() => {
-                                  onReportConversation?.(conversation.id);
-                                }}
-                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                {isSubmittingRename ? (
+                                  <Loader size={14} className="text-[#1b0f2a]" />
+                                ) : (
+                                  <ArrowRight className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="truncate text-sm font-medium text-foreground">
+                              {resolvedTitle}
+                            </span>
+                          )}
+                        </SidebarMenuButton>
+                        {!isRenaming && (
+                          <DropdownMenu.Root
+                            open={openActionMenuId === conversation.id}
+                            onOpenChange={(isOpen) => {
+                              setOpenActionMenuId(isOpen ? conversation.id : null);
+                            }}
+                          >
+                            <DropdownMenu.Trigger asChild>
+                              <SidebarMenuAction
+                                aria-label="Conversation actions"
+                                onClick={(event) => event.stopPropagation()}
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                showOnHover
+                                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
                               >
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                  <Flag size={15} />
-                                </div>
-                                <span>Report</span>
-                              </DropdownMenu.Item>
-                              <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
-                              <DropdownMenu.Item
-                                onSelect={() => {
-                                  onDeleteConversation(conversation.id);
-                                }}
-                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                                <MoreHorizontal size={14} />
+                              </SidebarMenuAction>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                              <DropdownMenu.Content
+                                side="right"
+                                sideOffset={8}
+                                align="end"
+                                className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
+                                onCloseAutoFocus={(event) => event.preventDefault()}
                               >
-                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
-                                  <Trash2 size={15} />
-                                </div>
-                                <span>Delete</span>
-                              </DropdownMenu.Item>
-                            </DropdownMenu.Content>
-                          </DropdownMenu.Portal>
-                        </DropdownMenu.Root>
+                                <DropdownMenu.Item
+                                  onSelect={() => {
+                                    handleStartRename(conversation.id, resolvedTitle);
+                                  }}
+                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                >
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                    <Pencil size={15} />
+                                  </div>
+                                  <span>Rename</span>
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                  onSelect={() => {
+                                    onArchiveConversation?.(conversation.id);
+                                  }}
+                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                >
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                    <Archive size={15} />
+                                  </div>
+                                  <span>Archive</span>
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                  onSelect={() => {
+                                    onReportConversation?.(conversation.id);
+                                  }}
+                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                >
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                    <Flag size={15} />
+                                  </div>
+                                  <span>Report</span>
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                                <DropdownMenu.Item
+                                  onSelect={() => {
+                                    onDeleteConversation(conversation.id);
+                                  }}
+                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                                >
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
+                                    <Trash2 size={15} />
+                                  </div>
+                                  <span>Delete</span>
+                                </DropdownMenu.Item>
+                              </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                          </DropdownMenu.Root>
+                        )}
                       </SidebarMenuItem>
                     );
                   })}

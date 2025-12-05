@@ -322,9 +322,24 @@ class ImageOut(BaseModel):
 
 
 #-------------------------------------------
-# TITLE CREATION DTO
+# TITLE DTO
 #-------------------------------------------
 class TitleOut(BaseModel):
     title: str
+
+class ConversationTitleUpdate(BaseModel):
+    """Payload to update the title of an existing conversation."""
+    title: str
+
+    @model_validator(mode="after")
+    def _normalize_and_validate(self):
+        resolved = (self.title or "").strip()
+        if not resolved:
+            raise ValueError("Title cannot be empty.")
+        # Keep titles reasonably short for sidebar rendering.
+        if len(resolved) > 200:
+            resolved = resolved[:200].rstrip()
+        self.title = resolved
+        return self
 
 
