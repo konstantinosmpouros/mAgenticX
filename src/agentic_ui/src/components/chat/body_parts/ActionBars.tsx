@@ -66,9 +66,9 @@ const CopyButton = ({
           size="icon"
           className="
             h-8 w-8 text-muted-foreground
-            hover:!bg-[#2f2f2f] hover:!text-muted-foreground
-            active:!bg-[#2f2f2f] active:!text-muted-foreground
-            focus:!bg-[#2f2f2f] focus:!text-muted-foreground focus:outline-none 
+            hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+            active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+            focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
             focus:ring-0 focus-visible:ring-0 transition-colors
           "
           onMouseDown={(event) => event.preventDefault()}
@@ -128,7 +128,7 @@ export const AIActionBar = ({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`h-8 w-8 hover:!bg-[#2f2f2f] active:!bg-[#2f2f2f] focus:!bg-[#2f2f2f] ${
+                className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
                   message.liked === true
                     ? "text-[#de8bff] hover:!text-[#de8bff]"
                     : "text-muted-foreground hover:!text-muted-foreground"
@@ -158,7 +158,7 @@ export const AIActionBar = ({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`h-8 w-8 hover:!bg-[#2f2f2f] active:!bg-[#2f2f2f] focus:!bg-[#2f2f2f] ${
+                className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
                   message.liked === false
                     ? "text-[#de8bff] hover:!text-[#de8bff]"
                     : "text-muted-foreground hover:!text-muted-foreground"
@@ -189,9 +189,9 @@ export const AIActionBar = ({
               size="icon"
               className="
                 h-8 w-8 text-muted-foreground
-                hover:!bg-[#2f2f2f] hover:!text-muted-foreground
-                active:!bg-[#2f2f2f] active:!text-muted-foreground
-                focus:!bg-[#2f2f2f] focus:!text-muted-foreground focus:outline-none 
+                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
                 focus:ring-0 focus-visible:ring-0 transition-colors
               "
               onMouseDown={(event) => event.preventDefault()}
@@ -224,9 +224,9 @@ export const AIActionBar = ({
               size="icon"
               className="
                 h-8 w-8 text-muted-foreground
-                hover:!bg-[#2f2f2f] hover:!text-muted-foreground
-                active:!bg-[#2f2f2f] active:!text-muted-foreground
-                focus:!bg-[#2f2f2f] focus:!text-muted-foreground focus:outline-none 
+                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
                 focus:ring-0 focus-visible:ring-0 transition-colors
               "
               onMouseDown={(event) => event.preventDefault()}
@@ -293,9 +293,9 @@ export const UserActionBar = ({
               size="icon"
               className="
                 h-8 w-8 text-muted-foreground
-                hover:!bg-[#2f2f2f] hover:!text-muted-foreground
-                active:!bg-[#2f2f2f] active:!text-muted-foreground
-                focus:!bg-[#2f2f2f] focus:!text-muted-foreground focus:outline-none 
+                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
                 focus:ring-0 focus-visible:ring-0 transition-colors
               "
               onMouseDown={(event) => event.preventDefault()}
@@ -327,9 +327,9 @@ export const UserActionBar = ({
                 size="icon"
                 className="
                   h-8 w-8 text-muted-foreground
-                  hover:!bg-[#2f2f2f] hover:!text-muted-foreground
-                  active:!bg-[#2f2f2f] active:!text-muted-foreground
-                  focus:!bg-[#2f2f2f] focus:!text-muted-foreground focus:outline-none 
+                  hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                  active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                 onMouseDown={(event) => event.preventDefault()}

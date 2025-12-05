@@ -218,7 +218,7 @@ export default function ChatSidebar({
               tooltip="Go to workspace"
               onClick={handleTitleClickInternal}
               className={cn(
-                "group items-center gap-3 rounded-lg bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "group items-center gap-3 rounded-lg bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
               )}
             >
@@ -250,7 +250,7 @@ export default function ChatSidebar({
               showOnHover={false}
               className="right-2 top-1.5 -translate-y-0.5 group-data-[collapsible=icon]:hidden"
             >
-              <SidebarTrigger className="size-9 [&_svg]:h-5 [&_svg]:w-5 supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]" />
+              <SidebarTrigger className="size-9 [&_svg]:h-5 [&_svg]:w-5 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]" />
             </SidebarMenuAction>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -261,7 +261,7 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleNewChatClick}
               className={cn(
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Start a new chat"
@@ -282,7 +282,7 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleSearchClick}
               className={cn(
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
               )}
               tooltip="Search"
@@ -353,7 +353,7 @@ export default function ChatSidebar({
                               </div>
                             ),
                           }}
-                          className="items-center gap-2.5 rounded-lg bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:!bg-[#262626] supports-[hover:hover]:hover:!text-primary/60 active:!bg-[#262626] focus-visible:!bg-[#262626] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
+                          className="items-center gap-2.5 rounded-lg bg-transparent py-1.5 text-left shadow-none transition-all duration-200 supports-[hover:hover]:hover:scale-[1.01] supports-[hover:hover]:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] supports-[hover:hover]:hover:!text-primary/60 active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:!text-primary focus-visible:ring-2 focus-visible:scale-[1.01] data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:supports-[hover:hover]:hover:!bg-primary/10 data-[active=true]:supports-[hover:hover]:hover:!text-primary data-[active=true]:focus-visible:!bg-primary/10 !h-auto min-h-[2.5rem]"
                         >
                           <div className="sidebar-icon-badge flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl text-primary">
                             <Icon size={14} />
@@ -460,7 +460,7 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleOpenProfile}
               className={cn(
-                "gap-3 rounded-lg bg-transparent px-3 py-3 transition supports-[hover:hover]:hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626]",
+                "gap-3 rounded-lg bg-transparent px-3 py-3 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-lg group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start",
                 "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent"
               )}

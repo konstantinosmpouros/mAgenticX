@@ -61,7 +61,7 @@ export default function ChatHeader({
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
                         <SelectTrigger
                             onMouseDown={(e) => e.preventDefault()}
-                            className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:!bg-[#262626] active:!bg-[#262626] dark:bg-transparent dark:text-foreground dark:hover:!bg-[#262626] justify-start gap-2 px-3 h-11"
+                            className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] justify-start gap-2 px-3 h-11"
                         >
                             <SelectValue placeholder="Select an agent">
                                 <div className="flex items-center">
@@ -131,7 +131,7 @@ export default function ChatHeader({
                                     className={`p-3 rounded-full transition-smooth duration-300 ${
                                         isPrivateMode
                                             ? 'text-fuchsia-600 bg-gradient-to-r from-fuchsia-500/20 via-fuchsia-400/25 to-fuchsia-500/20 shadow-[0_0_20px_rgba(217,70,239,0.4)] border border-fuchsia-500/40 hover:shadow-[0_0_25px_rgba(217,70,239,0.5)]'
-                                            : 'text-muted-foreground hover:text-white hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626] active:scale-110'
+                                            : 'text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] active:scale-110'
                                     }`}
                                 >
                                     <Ghost size={20} />
@@ -152,7 +152,7 @@ export default function ChatHeader({
                                 <button
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
-                                    className="rounded-xl p-2 text-muted-foreground transition-smooth hover:!bg-[#262626] active:!bg-[#262626] hover:text-white focus-visible:!bg-[#262626] focus-visible:outline-none"
+                                    className="rounded-xl p-2 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
                                     aria-label="Conversation actions"
                                 >
                                     <MoreHorizontal size={18} />

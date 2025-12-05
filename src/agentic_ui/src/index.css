@@ -38,6 +38,10 @@ All colors MUST be HSL.
     --input: 240 5.9% 90%;
     --ring: transparent;
 
+    /* Neutral hover surfaces for light theme */
+    --hover-surface: 240 5% 90%;
+    --hover-surface-strong: 240 5% 86%;
+
     /* Professional chat colors - light theme */
     /* Match user bubble to dark mode for consistency in light theme */
     --chat-user: 240 6% 12%;
@@ -111,6 +115,10 @@ All colors MUST be HSL.
     --border: 240 4% 16%;
     --input: 240 4% 16%;
     --ring: transparent;
+
+    /* Neutral hover surfaces for dark theme */
+    --hover-surface: 240 4% 16%;
+    --hover-surface-strong: 240 4% 12%;
 
     /* Professional chat colors - dark theme */
     --chat-user: 240 6% 12%;

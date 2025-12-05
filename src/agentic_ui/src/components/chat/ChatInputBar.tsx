@@ -520,7 +520,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                 <TooltipTrigger asChild>
                                     <button
                                         type="button"
-                                        className="w-10 h-10 rounded-full hover:!bg-[#262626] transition-smooth cursor-pointer flex items-center justify-center active:!bg-[#262626] active:scale-110 focus-visible:!bg-[#262626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                                        className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
                                         onClick={() => fileInputRef.current?.click()}
                                         aria-label="Attach files"
                                     >
@@ -542,7 +542,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                className="w-10 h-10 rounded-full hover:!bg-[#262626] transition-smooth cursor-pointer flex items-center justify-center active:!bg-[#262626] active:scale-110 focus-visible:!bg-[#262626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
                                                 onClick={handleDictationRequest}
                                                 disabled={isDictationBusy || isStreaming || isInDictationMode}
                                                 aria-label="Start voice dictation"
@@ -599,7 +599,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:!bg-[#262626] active:!bg-[#262626] focus-visible:!bg-[#262626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
                                                 onClick={handleCancelDictation}
                                                 disabled={isCancelDisabled}
                                                 aria-label="Cancel voice dictation"

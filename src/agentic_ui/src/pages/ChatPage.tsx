@@ -610,7 +610,7 @@ export function ChatInterface() {
   }
   return (
     // Main chat interface with sidebar, header, conversation container, and input area
-    <div className="min-h-svh max-h-svh bg-gradient-to-br from-slate-950/20 via-slate-700/30 to-slate-950/20">
+    <div className="min-h-svh max-h-svh bg-background dark:bg-gradient-to-br dark:from-slate-950/20 dark:via-slate-700/30 dark:to-slate-950/20">
       <SidebarProvider
         className="min-h-svh"
         open={sidebarOpen}

@@ -277,8 +277,8 @@ export default function ProfilePanel({
                                                     onMouseEnter={() => setHoveredNavId(tab.id)}
                                                     onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
                                                     className={cn(
-                                                        "group relative flex w-full items-center justify-start gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:!bg-[#262626] hover:text-foreground focus-visible:!bg-[#262626]",
-                                                        isActive ? "text-primary hover:!bg-transparent hover:text-primary focus-visible:!bg-transparent" : ""
+                                                        "group relative flex w-full items-center justify-start gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                        isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
                                                     )}
                                                     aria-label={tab.label}
                                                 >
@@ -308,7 +308,7 @@ export default function ProfilePanel({
                                         <TooltipTrigger asChild>
                                             <button
                                                 onClick={onLogout}
-                                                className="mt-auto flex w-full items-center gap-3 rounded-xl border border-border/60 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground transition-colors hover:border-border/40 hover:!bg-[#262626] hover:text-foreground"
+                                                className="mt-auto flex w-full items-center gap-3 rounded-xl border border-border/60 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground transition-colors hover:border-border/40 hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]"
                                                 aria-label="Logout"
                                             >
                                                 <LogOut className="h-5 w-5" />

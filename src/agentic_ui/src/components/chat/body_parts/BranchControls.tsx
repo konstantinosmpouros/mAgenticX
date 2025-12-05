@@ -47,9 +47,9 @@ export function BranchControls({
         from={role}
         className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground/80 px-0"
       >
-        <BranchPrevious className="h-6 w-6 text-muted-foreground hover:text-foreground hover:!bg-[#2f2f2f] active:!bg-[#2f2f2f] focus:!bg-[#2f2f2f]" />
+        <BranchPrevious className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))]" />
         <BranchPage className="mx-0" />
-        <BranchNext className="h-6 w-6 text-muted-foreground hover:text-foreground hover:!bg-[#2f2f2f] active:!bg-[#2f2f2f] focus:!bg-[#2f2f2f]" />
+        <BranchNext className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))]" />
       </BranchSelector>
     </Branch>
   );

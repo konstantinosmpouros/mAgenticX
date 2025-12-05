@@ -60,6 +60,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     thoughts: [] as string[],
     thinkingStart: 0,
     thinkingEnd: 0,
+    firstEventTs: 0,
     stagedMessageId: (prefillMessageId ?? '') as string,
     content: '' as string,
     closedThinkingOnFirstChunk: false,
@@ -71,11 +72,12 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     setThinkingState((prev: any) => {
       if (!prev) return prev;
       if (prev.isDone && !prev.isActive) return prev;
+      const endTs = runtime.thinkingEnd || Date.now();
       return {
         ...prev,
         isActive: false,
         isDone: true,
-        endTime: prev.endTime ?? Date.now(),
+        endTime: prev.endTime ?? endTs,
         currentThoughtIndex: Math.max(0, runtime.thoughts.length - 1),
       };
     });
@@ -85,6 +87,10 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     if (aborted) return;
     const ev = parseEvent(raw);
     if (!ev) return;
+    
+    if (!runtime.firstEventTs) {
+      runtime.firstEventTs = Date.now();
+    }
     
     const type = ev.type;
     
@@ -174,6 +180,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       
       if (!runtime.closedThinkingOnFirstChunk) {
         runtime.closedThinkingOnFirstChunk = true;
+        runtime.thinkingEnd = Date.now();
         setThinkingState((prev: any) =>
           prev
             ? {
@@ -198,9 +205,12 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     
     if (type === AGUIEventType.TEXT_MESSAGE_END) {
       if (aborted) return;
-      const thinkingTime = runtime.thinkingStart
-        ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000)
-        : undefined;
+      const endRef = runtime.thinkingEnd || Date.now();
+      const startRef = runtime.firstEventTs || runtime.thinkingStart;
+      const thinkingTime =
+        startRef && endRef
+          ? Math.max(0, Math.round((endRef - startRef) / 1000))
+          : undefined;
       
       const payload: MessageIn = {
         sender: 'ai',
@@ -227,7 +237,8 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     
     if (type === AGUIEventType.RUN_ERROR) {
       if (aborted) return;
-      setThinkingState((prev: any) => (prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev));
+      const errEndTs = runtime.thinkingEnd || Date.now();
+      setThinkingState((prev: any) => (prev ? { ...prev, isActive: false, isDone: true, endTime: errEndTs } : prev));
       if (setShowAiTransition) setShowAiTransition(false);
       
       const errorMsg = ev.message || 'Agent stream failed.';
