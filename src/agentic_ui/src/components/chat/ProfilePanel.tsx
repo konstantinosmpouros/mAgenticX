@@ -225,8 +225,8 @@ export default function ProfilePanel({
                 className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm transition-opacity"
                 onClick={onClose}
             />
-            <div className="relative z-10 w-full max-w-4xl">
-                <Card className="relative flex h-[min(40rem,80vh)] w-full overflow-hidden rounded-[24px] border border-border/60 bg-card text-foreground shadow-2xl animate-scale-in">
+            <div className="relative z-10 w-full max-w-3xl">
+                <Card className="relative flex h-[min(38rem,82vh)] w-full overflow-hidden rounded-[20px] border border-border/60 bg-card text-foreground shadow-2xl animate-scale-in">
                     <Button
                         size="icon"
                         variant="ghost"
@@ -239,8 +239,8 @@ export default function ProfilePanel({
                     <div className="relative z-10 flex h-full w-full">
                         <aside
                             className={cn(
-                                "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-3 py-5 transition-[width,padding] duration-300 ease-in-out",
-                                navCollapsed ? "w-16 px-2" : "w-56"
+                                "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-2.5 py-4 transition-[width,padding] duration-300 ease-in-out",
+                                navCollapsed ? "w-16 px-2" : "w-48"
                             )}
                         >
                             <ScrollArea className="h-full">
@@ -274,7 +274,7 @@ export default function ProfilePanel({
                                         {navItems.map((tab) => {
                                             const Icon = tab.icon;
                                             const isActive = activeTab === tab.id;
-                                            const iconSize = 18;
+                                            const iconSize = 20;
                                             const isLightTheme = theme === "light";
                                             const isHovered = hoveredNavId === tab.id;
 
@@ -298,15 +298,16 @@ export default function ProfilePanel({
                                                     onMouseEnter={() => setHoveredNavId(tab.id)}
                                                     onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
                                                     className={cn(
-                                                        "group relative grid w-full grid-cols-[auto,1fr] items-center gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
-                                                        navCollapsed && "grid-cols-[auto,0fr]",
+                                                        "group relative grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                        navCollapsed && "grid-cols-[auto,0fr] justify-items-center",
                                                         isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
                                                     )}
                                                     aria-label={tab.label}
+                                                    style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
                                                 >
                                                     <div
                                                         className={cn(
-                                                            "flex h-9 w-9 items-center justify-center rounded-lg border border-transparent transition-colors",
+                                                            "flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors",
                                                             isActive
                                                                 ? "border-primary/50 bg-primary/10 text-primary"
                                                                 : "text-muted-foreground group-hover:text-foreground"
@@ -315,7 +316,7 @@ export default function ProfilePanel({
                                                         {tab.id === "mcp" ? (
                                                             <McpIcon size={20} variant={mcpVariant} />
                                                         ) : (
-                                                            <Icon size={iconSize} />
+                                                            <Icon size={18} />
                                                         )}
                                                     </div>
                                                     <span
@@ -336,14 +337,15 @@ export default function ProfilePanel({
                                             <button
                                                 onClick={onLogout}
                                                 className={cn(
-                                                    "mt-auto grid w-full grid-cols-[auto,1fr] items-center gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
-                                                    navCollapsed && "grid-cols-[auto,0fr]"
+                                                    "mt-auto grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                    navCollapsed && "grid-cols-[auto,0fr] justify-items-center"
                                                 )}
                                                 aria-label="Logout"
+                                                style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
                                             >
                                                 <div
                                                     className={cn(
-                                                        "flex h-9 w-9 items-center justify-center rounded-lg border border-transparent transition-colors",
+                                                        "flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors",
                                                         "text-muted-foreground group-hover:text-foreground"
                                                     )}
                                                 >
@@ -366,23 +368,23 @@ export default function ProfilePanel({
 
                         <div className="relative flex-1 overflow-hidden">
                             <ScrollArea className="h-full w-full">
-                                <div className="space-y-7 px-6 py-8 text-foreground sm:px-10">
+                                <div className="space-y-6 px-5 py-6 text-foreground sm:px-8">
                                     {activeTab === "profile" && (
                                         <div className="space-y-8 animate-fade-in">
                                                 <div className="space-y-3">
                                                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                     Overview
                                                 </p>
-                                                <div className="rounded-2xl border border-border/60 bg-card/70 p-5 shadow-sm">
+                                                <div className="rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm">
                                                     <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                                                         <div className="flex items-center gap-5">
-                                                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border/50 bg-gradient-to-br from-white/5 via-transparent to-transparent text-muted-foreground">
-                                                                <User size={30} />
+                                                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/50 bg-gradient-to-br from-white/5 via-transparent to-transparent text-muted-foreground">
+                                                                <User size={24} />
                                                             </div>
                                                             <div className="flex flex-col gap-1 text-left">
-                                                                <h3 className="text-xl font-semibold">{displayName}</h3>
-                                                                <p className="text-sm text-muted-foreground">{displayEmail}</p>
-                                                                <span className="inline-flex items-center rounded-full bg-muted/60 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.26em] text-muted-foreground">
+                                                                <h3 className="text-base font-semibold leading-snug break-words whitespace-normal">{displayName}</h3>
+                                                                <p className="text-[0.7rem] text-muted-foreground break-words whitespace-normal">{displayEmail}</p>
+                                                                <span className="inline-flex items-center rounded-full bg-muted/60 px-2.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                                                                     {displayRole}
                                                                 </span>
                                                             </div>
@@ -395,19 +397,19 @@ export default function ProfilePanel({
                                                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                     Profile Details
                                                 </p>
-                                                <div className="rounded-2xl border border-border/60 bg-card/60 p-5 shadow-sm">
-                                                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                                                <div className="rounded-2xl border border-border/60 bg-card/60 p-4 shadow-sm">
+                                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                                         {profileFields.map((field) => (
                                                             <div
                                                                 key={field.label}
-                                                                className="rounded-xl border border-border/40 bg-background/40 p-3.5"
+                                                                className="rounded-xl border border-border/40 bg-background/40 p-3"
                                                             >
                                                                 <span className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                                                                     {field.label}
                                                                 </span>
                                                                 <p
                                                                     className={cn(
-                                                                        "mt-1 text-[0.95rem] font-semibold",
+                                                                        "mt-1 text-[0.78rem] font-semibold break-words whitespace-normal",
                                                                         field.value === NA ? "text-muted-foreground" : "text-foreground"
                                                                     )}
                                                                 >
@@ -427,8 +429,8 @@ export default function ProfilePanel({
                                                     <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                         Integration
                                                     </p>
-                                                <h3 className="text-xl font-semibold">MCP Tools</h3>
-                                                    <p className="text-sm text-muted-foreground">
+                                                <h3 className="text-lg font-semibold">MCP Tools</h3>
+                                                    <p className="text-[0.7rem] text-muted-foreground">
                                                         Review the live tool catalog exposed by the MCP server and decide which ones stay active.
                                                     </p>
                                                 </div>
@@ -465,7 +467,7 @@ export default function ProfilePanel({
                                                                     className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/20"
                                                                 >
                                                                     <div className="flex flex-wrap items-baseline gap-3">
-                                                                        <p className="text-[0.95rem] font-semibold text-foreground">{serverDisplayName}</p>
+                                                                        <p className="text-sm font-semibold text-foreground">{serverDisplayName}</p>
                                                                         <p className="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                                                                             {tools.length} tool{tools.length === 1 ? "" : "s"}
                                                                         </p>
@@ -488,6 +490,7 @@ export default function ProfilePanel({
                                                                                 parameterCount === 0
                                                                                     ? "0 parameters"
                                                                                     : `${parameterCount} parameter${parameterCount > 1 ? "s" : ""}`;
+                                                                            const description = (tool.description || "").trim() || "No description provided.";
                                                                             return (
                                                                                 <div key={uniqueKey} className="px-1 py-2">
                                                                                     <div className="grid grid-cols-[auto,1fr,auto] gap-4">
@@ -501,13 +504,13 @@ export default function ProfilePanel({
                                                                                         </div>
                                                                                         <div className="flex-1 space-y-1.5">
                                                                                             <div className="flex flex-wrap items-center gap-2">
-                                                                                                <p className="text-[0.98rem] font-semibold text-foreground">{tool.toolName}</p>
+                                                                                                <p className="text-sm font-semibold text-foreground">{tool.toolName}</p>
                                                                                                 <span className="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                                                                                                     {parameterLabel}
                                                                                                 </span>
                                                                                             </div>
-                                                                                            <p className="text-sm text-muted-foreground">
-                                                                                                {(tool.description || "").trim() || "No description provided."}
+                                                                                            <p className="text-sm text-muted-foreground break-words whitespace-normal">
+                                                                                                {description}
                                                                                             </p>
                                                                                         </div>
                                                                                         <button
@@ -552,13 +555,13 @@ export default function ProfilePanel({
                                                     <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                         Personalization
                                                     </p>
-                                                <h3 className="text-xl font-semibold">Appearance Settings</h3>
-                                                    <p className="text-sm text-muted-foreground">
+                                                <h3 className="text-lg font-semibold">Appearance Settings</h3>
+                                                    <p className="text-[0.7rem] text-muted-foreground">
                                                         Choose a theme that matches your workspace.
                                                     </p>
                                                 </div>
 
-                                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                                 {themeOptions.map((themeOption) => {
                                                     const Icon = themeOption.icon;
                                                     const isActive = theme === themeOption.value;
@@ -568,7 +571,7 @@ export default function ProfilePanel({
                                                             key={themeOption.value}
                                                             onClick={() => setTheme(themeOption.value)}
                                                             className={cn(
-                                                                "flex flex-col items-center gap-3 rounded-xl border px-6 py-6 text-center transition-colors",
+                                                                "flex flex-col items-center gap-2 rounded-xl border px-5 py-5 text-center transition-colors",
                                                                 isActive
                                                                     ? "border-primary/60 bg-primary/10 text-foreground"
                                                                     : "border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40"
@@ -582,7 +585,7 @@ export default function ProfilePanel({
                                                             >
                                                                 <Icon size={22} />
                                                             </div>
-                                                            <span className="text-[0.9rem] font-semibold uppercase tracking-[0.22em]">
+                                                            <span className="text-[0.78rem] font-semibold uppercase tracking-[0.22em]">
                                                                 {themeOption.name}
                                                             </span>
                                                             <span className="text-xs text-muted-foreground">
@@ -601,8 +604,8 @@ export default function ProfilePanel({
                                                     <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                         Configuration
                                                     </p>
-                                                <h3 className="text-xl font-semibold">General Settings</h3>
-                                                    <p className="text-sm text-muted-foreground">
+                                                <h3 className="text-lg font-semibold">General Settings</h3>
+                                                    <p className="text-[0.7rem] text-muted-foreground">
                                                         Configure your application preferences.
                                                     </p>
                                                 </div>
@@ -613,8 +616,8 @@ export default function ProfilePanel({
                                                         key={setting.title}
                                                         className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
                                                     >
-                                                        <h4 className="text-base font-semibold">{setting.title}</h4>
-                                                        <p className="mt-2 text-sm text-muted-foreground">{setting.desc}</p>
+                                                        <h4 className="text-[0.95rem] font-semibold">{setting.title}</h4>
+                                                        <p className="mt-2 text-[0.7rem] text-muted-foreground">{setting.desc}</p>
                                                     </div>
                                                 ))}
                                             </div>
@@ -627,8 +630,8 @@ export default function ProfilePanel({
                                                     <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                                                         Guidance
                                                     </p>
-                                                <h3 className="text-xl font-semibold">Help & Support</h3>
-                                                    <p className="text-sm text-muted-foreground">
+                                                <h3 className="text-lg font-semibold">Help & Support</h3>
+                                                    <p className="text-[0.7rem] text-muted-foreground">
                                                         Get assistance and learn more.
                                                     </p>
                                                 </div>
@@ -645,7 +648,7 @@ export default function ProfilePanel({
                                                                 aria-label={`${help.title} (opens in new tab)`}
                                                             >
                                                                 <h4 className="text-base font-semibold">{help.title}</h4>
-                                                                <p className="text-sm text-muted-foreground">{help.desc}</p>
+                                                                <p className="text-[0.7rem] text-muted-foreground">{help.desc}</p>
                                                                 {help.external && (
                                                                     <span className="pointer-events-none absolute bottom-4 right-4 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
                                                                         <ExternalLink size={14} aria-hidden="true" />
@@ -661,8 +664,8 @@ export default function ProfilePanel({
                                                             key={help.title}
                                                             className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
                                                         >
-                                                            <h4 className="text-base font-semibold">{help.title}</h4>
-                                                            <p className="mt-2 text-sm text-muted-foreground">{help.desc}</p>
+                                                            <h4 className="text-[0.95rem] font-semibold">{help.title}</h4>
+                                                            <p className="mt-2 text-[0.7rem] text-muted-foreground">{help.desc}</p>
                                                         </div>
                                                     );
                                                 })}
