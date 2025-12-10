@@ -18,15 +18,19 @@ from utils import (
 )
 
 class LangGraphAgent:
-    """Reusable template that wires LangGraph agents into the service runtime.
+    """
+    Reusable template that wires LangGraph agents into the service runtime.
 
     Responsibilities shared by every subclass:
-        • normalised tool resolution driven by UI/back-end config
-        • dynamically rebuilt agents/nodes per-inference with live tools
-        • mcp session management for tool loading
-        • a consistent AG-UI emitter for streaming thoughts/events
-        • a build lifecycle that registers nodes/edges then compiles the graph
-        • optional SQLite checkpointing via ``configure_sqlite_checkpointer()``
+        • Normalised tool resolution driven by UI/back-end config
+        • Dynamically rebuilt agents/nodes per-inference with live tools
+        • MCP session management for tool loading and execution
+        • A consistent AG-UI emitter for streaming thoughts/events
+        • A build in lifecycle that registers nodes/edges then compiles the graph
+        • An SQLite checkpointing via ``configure_sqlite_checkpointer()``
+        • An generic async ``astream()`` method for FastAPI and AGUI integration
+        • Standardised metadata manifest for registry and discovery
+        • Error handling and SSE encoding for run-time exceptions
 
     Concrete agents implement the three hooks ``register_agents()``,
     ``register_nodes()`` and ``register_graph_edges()`` to describe their
@@ -235,7 +239,7 @@ class LangGraphAgent:
 
     def _apply_live_tools(self, tools: Sequence[Any]) -> None:
         """Attach filtered live tools and rebuild agent components for this run."""
-        self.tools = list(tools)
+        self.tools.extend(list(tools))
         self.tools_names = [getattr(tool, "name", "") for tool in self.tools]
 
         # Force rebuild of agents/nodes/graph with the live tool set.

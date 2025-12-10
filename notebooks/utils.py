@@ -8,9 +8,14 @@ from pydub import AudioSegment
 from io import BytesIO
 from mutagen import File as MutagenFile
 
+
 pd.set_option('display.max_rows', None)
 AUDIO_EXTS: set[str] = {".mp3", ".wav", ".m4a"}
 
+
+# -------------------------------------------------------------------------------------
+# Audio file utilities
+# -------------------------------------------------------------------------------------
 def search_for_audio_files(root: str | os.PathLike) -> pd.DataFrame:
     """
     Recursively walk *root* and return a DataFrame with columns
@@ -21,6 +26,7 @@ def search_for_audio_files(root: str | os.PathLike) -> pd.DataFrame:
     )
     records = [{"file_name": p.name, "file_path": str(p)} for p in paths]
     return pd.DataFrame(records)
+
 
 def extract_theme(file_name: str) -> str:
     """
@@ -34,6 +40,7 @@ def extract_theme(file_name: str) -> str:
     """
     match = re.search(r'\d+_(?:\d{2}-\d{2}-\d{2}_)?(.*?)_π_ΑΘ_ΜΥΤΙΛΗΝΑΙΟΥ', file_name)
     return match.group(1) if match else ""
+
 
 def get_audio_file(path: str):
     """
@@ -56,6 +63,7 @@ def get_audio_file(path: str):
         return AudioSegment.from_wav(path)
     else:
         raise ValueError(f"Unsupported file format: {file_extension}")
+
 
 def sum_audio_duration(directory):
     """
@@ -85,3 +93,4 @@ def sum_audio_duration(directory):
                     print(f"Error processing {file_path}: {e}")
     
     return total_duration
+

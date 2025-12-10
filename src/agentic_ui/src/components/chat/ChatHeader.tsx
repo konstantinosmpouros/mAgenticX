@@ -55,7 +55,7 @@ export default function ChatHeader({
             <div className="flex w-full items-center gap-1.5 md:gap-3">
                 <SidebarTrigger
                     aria-label="Toggle sidebar"
-                    className="inline-flex h-10 w-10 rounded-xl border border-transparent bg-transparent text-foreground transition-colors hover:border-border/60 hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+                    className="inline-flex h-10 w-10 rounded-lg bg-transparent text-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:ring-2 focus-visible:ring-ring md:hidden"
                 />
                 <div className="flex items-center gap-2">
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
