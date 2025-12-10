@@ -3,7 +3,6 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     User,
-    Edit,
     Settings,
     Palette,
     HelpCircle,
@@ -84,6 +83,9 @@ export default function ProfilePanel({
 }: ProfilePanelProps) {
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
     const [serverCollapsed, setServerCollapsed] = useState<Record<string, boolean>>({});
+    const [navCollapsed, setNavCollapsed] = useState<boolean>(() =>
+        typeof window !== "undefined" ? window.innerWidth < 960 : false
+    );
     const { theme, setTheme } = useTheme();
 
     const toolKey = (tool: ToolWithStatus) => {
@@ -117,6 +119,17 @@ export default function ProfilePanel({
     const handleToggleServer = (tool: ToolMetadata) => {
         onToggleToolPreference?.(tool);
     };
+
+    useEffect(() => {
+        const handleResize = () => {
+            if (typeof window === "undefined") return;
+            setNavCollapsed(window.innerWidth < 960);
+        };
+        handleResize();
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
 
 
     if (!open) return null;
@@ -225,11 +238,19 @@ export default function ProfilePanel({
                     </Button>
                     <div className="relative z-10 flex h-full w-full">
                         <aside
-                            className="relative flex h-full w-56 flex-col border-r border-border/50 bg-muted/30 px-3 py-5"
+                            className={cn(
+                                "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-3 py-5 transition-[width,padding] duration-300 ease-in-out",
+                                navCollapsed ? "w-16 px-2" : "w-56"
+                            )}
                         >
                             <ScrollArea className="h-full">
                                 <div className="flex h-full flex-col pt-6">
-                                <div className="relative h-24 pb-1.5 mb-6">
+                                <div
+                                    className={cn(
+                                        "relative mb-6 h-24 pb-1.5 transition-opacity duration-200",
+                                        navCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"
+                                    )}
+                                >
                                         <div
                                         className="flex flex-col items-center gap-3 text-center"
                                     >
@@ -249,7 +270,7 @@ export default function ProfilePanel({
                                         </div>
                                     </div>
 
-                                <nav className="flex flex-1 flex-col justify-start gap-0.5 pt-0">
+                                <nav className="flex flex-1 flex-col items-start justify-start gap-0 pt-0">
                                         {navItems.map((tab) => {
                                             const Icon = tab.icon;
                                             const isActive = activeTab === tab.id;
@@ -277,7 +298,8 @@ export default function ProfilePanel({
                                                     onMouseEnter={() => setHoveredNavId(tab.id)}
                                                     onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
                                                     className={cn(
-                                                        "group relative flex w-full items-center justify-start gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                        "group relative grid w-full grid-cols-[auto,1fr] items-center gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                        navCollapsed && "grid-cols-[auto,0fr]",
                                                         isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
                                                     )}
                                                     aria-label={tab.label}
@@ -296,7 +318,12 @@ export default function ProfilePanel({
                                                             <Icon size={iconSize} />
                                                         )}
                                                     </div>
-                                                    <span className="inline-block whitespace-nowrap text-[0.7rem] font-semibold uppercase tracking-[0.22em]">
+                                                    <span
+                                                        className={cn(
+                                                            "overflow-hidden text-[0.7rem] font-semibold uppercase tracking-[0.22em] transition-opacity duration-200 ease-in-out",
+                                                            navCollapsed ? "opacity-0" : "opacity-100"
+                                                        )}
+                                                    >
                                                         {tab.label}
                                                     </span>
                                                 </button>
@@ -308,11 +335,26 @@ export default function ProfilePanel({
                                         <TooltipTrigger asChild>
                                             <button
                                                 onClick={onLogout}
-                                                className="mt-auto flex w-full items-center gap-3 rounded-xl border border-border/60 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground transition-colors hover:border-border/40 hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]"
+                                                className={cn(
+                                                    "mt-auto grid w-full grid-cols-[auto,1fr] items-center gap-3 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                    navCollapsed && "grid-cols-[auto,0fr]"
+                                                )}
                                                 aria-label="Logout"
                                             >
-                                                <LogOut className="h-5 w-5" />
-                                                <span className="inline-block whitespace-nowrap text-xs font-semibold uppercase tracking-[0.26em]">
+                                                <div
+                                                    className={cn(
+                                                        "flex h-9 w-9 items-center justify-center rounded-lg border border-transparent transition-colors",
+                                                        "text-muted-foreground group-hover:text-foreground"
+                                                    )}
+                                                >
+                                                    <LogOut className="h-[18px] w-[18px]" />
+                                                </div>
+                                                <span
+                                                    className={cn(
+                                                        "overflow-hidden text-[0.7rem] font-semibold uppercase tracking-[0.22em] transition-all duration-200 ease-in-out",
+                                                        navCollapsed ? "w-0 max-w-0 overflow-hidden opacity-0" : "opacity-100"
+                                                    )}
+                                                >
                                                     Logout
                                                 </span>
                                             </button>

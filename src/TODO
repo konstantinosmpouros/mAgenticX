@@ -14,6 +14,7 @@
 
 ## Agentic UI
 
+- Place a see more and see less in the mcp tool description in profile panel.
 - The thinking timer is buggy and all the times are wrong.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
