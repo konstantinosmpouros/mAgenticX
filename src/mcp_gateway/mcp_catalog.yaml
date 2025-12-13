@@ -19,9 +19,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 44773
+      pulls: 46969
       stars: 1
-      githubStars: 7460
+      githubStars: 7605
       category: devops
       tags:
         - aws-core-mcp-server
@@ -33,11 +33,11 @@ registry:
     title: Brave Search
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/brave-search@sha256:f45d701a860cade995bbb9c456eb67c0a71cb8232cab82f187f6dffdbf5d150c
+    image: mcp/brave-search@sha256:d8abae59f7ab3daad6b1c31db8797d694a9171b7895d5313bd03535cc59dcb00
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/brave.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/brave.json
-    source: https://github.com/brave/brave-search-mcp-server/tree/d9cc7cee4f7f885b6417568c7dba99ca0096e38b
+    source: https://github.com/brave/brave-search-mcp-server/tree/42138c5f768c1a2e2ca5801e52d45ba0868d6c49
     upstream: https://github.com/brave/brave-search-mcp-server
     icon: https://avatars.githubusercontent.com/u/12301619?s=200&v=4
     tools:
@@ -58,9 +58,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 68061
-      stars: 21
-      githubStars: 363
+      pulls: 75806
+      stars: 23
+      githubStars: 396
       category: search
       tags:
         - brave
@@ -88,9 +88,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 172334
-      stars: 16
-      githubStars: 37918
+      pulls: 197150
+      stars: 18
+      githubStars: 39004
       category: devops
       tags:
         - context7
@@ -102,11 +102,11 @@ registry:
     title: Couchbase
     type: server
     dateAdded: "2025-07-29T14:05:27Z"
-    image: mcp/couchbase@sha256:bd4d2e10164f881c65b32287f12404461c82222ed5b5e80123966002112ad6f4
+    image: mcp/couchbase@sha256:f29231742f5c717b03d182c1c133dd84b27507794f991fbaf7ffcd9e1e66faff
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/couchbase.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/couchbase.json
-    source: https://github.com/Couchbase-Ecosystem/mcp-server-couchbase/tree/4a54048f412a9f4d420921115518bc85198f5a2c
+    source: https://github.com/Couchbase-Ecosystem/mcp-server-couchbase/tree/5aa2c1ab63977bf967c309e5d3ee7eca0a69baf8
     upstream: https://github.com/Couchbase-Ecosystem/mcp-server-couchbase
     icon: https://avatars.githubusercontent.com/u/605755?s=200&v=4
     tools:
@@ -158,7 +158,7 @@ registry:
             type: string
             description: Setting to "true" (default) enables read-only query mode while running SQL++ queries.
     metadata:
-      pulls: 2634
+      pulls: 2908
       stars: 3
       githubStars: 25
       category: database
@@ -173,13 +173,13 @@ registry:
     type: server
     longLived: true
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/desktop-commander@sha256:cffdb2e0cd4e78bcf4fd01583f3ee2ffe8f87011f6826dc35293950796b1d918
+    image: mcp/desktop-commander@sha256:b5ec7e35cc557ccb8b99b339dcb8a74be0d3ae960e2973c852d25f81f8daa13d
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/desktop-commander.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/desktop-commander.json
-    source: https://github.com/wonderwhy-er/DesktopCommanderMCP/tree/727dfd407c03677f5732e2d652ea2ecb634a9dd6
+    source: https://github.com/wonderwhy-er/DesktopCommanderMCP/tree/6b3b7e58b0110d26718229cf4211c80eafb31d5e
     upstream: https://github.com/wonderwhy-er/DesktopCommanderMCP
-    icon: https://avatars.githubusercontent.com/u/182288589?s=200&v=4
+    icon: https://raw.githubusercontent.com/wonderwhy-er/DesktopCommanderMCP/main/icon.png
     tools:
       - name: create_directory
       - name: edit_block
@@ -206,12 +206,13 @@ registry:
       - name: start_search
       - name: stop_search
       - name: write_file
-    command:
-      - npm
-      - run
-      - start
+      - name: write_pdf
     volumes:
       - '{{desktop-commander.paths|volume|into}}'
+      - dc-system:/usr
+      - dc-home:/root
+      - dc-workspace:/workspace
+      - dc-packages:/var
     prompts: 0
     resources: {}
     config:
@@ -227,9 +228,9 @@ registry:
         required:
           - paths
     metadata:
-      pulls: 99365
+      pulls: 104929
       stars: 21
-      githubStars: 4958
+      githubStars: 5048
       category: devops
       tags:
         - desktop-commander
@@ -288,9 +289,9 @@ registry:
           username:
             type: string
     metadata:
-      pulls: 38092
+      pulls: 42168
       stars: 6
-      githubStars: 84
+      githubStars: 93
       category: devops
       tags:
         - docker
@@ -336,9 +337,9 @@ registry:
         required:
           - url
     metadata:
-      pulls: 10252
-      stars: 12
-      githubStars: 554
+      pulls: 11065
+      stars: 14
+      githubStars: 561
       category: search
       tags:
         - elasticsearch
@@ -350,7 +351,7 @@ registry:
     title: GitHub Official
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: ghcr.io/github/github-mcp-server@sha256:0ec492d752a22642c4c1151914c8f3b47a620c0d7ea1249a50f2769af47c02d4
+    image: ghcr.io/github/github-mcp-server@sha256:83a3454d93f98112e929763ff597f7833f3fe660f481fe0e29797c59dff14298
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/github-official.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/github-official.json
@@ -410,7 +411,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      githubStars: 24713
+      githubStars: 25061
       category: devops
       tags:
         - github
@@ -427,11 +428,11 @@ registry:
     title: Grafana
     type: server
     dateAdded: "2025-05-05T20:04:34Z"
-    image: mcp/grafana@sha256:0315350f447ddc6e98d308fc2924907cd601fed9041ba248e2d35218b6131fc0
+    image: mcp/grafana@sha256:bd85b2644ea409ce8222088a20fd01b132047f3dcb85240bbce2b2030872a4f7
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/grafana.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/grafana.json
-    source: https://github.com/grafana/mcp-grafana/tree/48a597950ca1ad10244126fa8249a58c56344e34
+    source: https://github.com/grafana/mcp-grafana/tree/5ff432c30928e5cf93d419f194be73058e3a83c3
     upstream: https://github.com/grafana/mcp-grafana
     icon: https://avatars.githubusercontent.com/u/7195757?s=200&v=4
     tools:
@@ -510,9 +511,9 @@ registry:
           url:
             type: string
     metadata:
-      pulls: 162203
+      pulls: 181312
       stars: 19
-      githubStars: 1901
+      githubStars: 1964
       category: monitoring
       tags:
         - grafana
@@ -573,9 +574,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3595
+      pulls: 3800
       stars: 2
-      githubStars: 72
+      githubStars: 73
       category: devops
       tags:
         - heroku
@@ -587,11 +588,11 @@ registry:
     title: MongoDB
     type: server
     dateAdded: "2025-05-15T20:04:34Z"
-    image: mcp/mongodb@sha256:05924925bbf45be266c29a4ed8691eedcc23d1919df4198f1cd0594357ee2789
+    image: mcp/mongodb@sha256:0f421a390d3171303ff6035b8339a15853b983e6bfeab75121351f80da8e37b9
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/mongodb.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/mongodb.json
-    source: https://github.com/mongodb-js/mongodb-mcp-server/tree/2a499f4f3823f3c0ddfefdcaee5bc5d7d5c697ee
+    source: https://github.com/mongodb-js/mongodb-mcp-server/tree/717a6519580db44a7bdc33302945b6dccb52905b
     upstream: https://github.com/mongodb-js/mongodb-mcp-server
     icon: https://avatars.githubusercontent.com/u/11214950?v=4
     tools:
@@ -624,9 +625,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 83823
+      pulls: 85638
       stars: 8
-      githubStars: 831
+      githubStars: 848
       category: database
       tags:
         - mongodb
@@ -672,9 +673,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 5187
+      pulls: 5563
       stars: 4
-      githubStars: 521
+      githubStars: 524
       category: database
       tags:
         - neon
@@ -723,9 +724,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 64102
-      stars: 32
-      githubStars: 3525
+      pulls: 72363
+      stars: 34
+      githubStars: 3566
       category: productivity
       tags:
         - notion
@@ -756,9 +757,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 31870
+      pulls: 34000
       stars: 14
-      githubStars: 1789
+      githubStars: 1816
       category: devops
       tags:
         - perplexity-ask
@@ -771,11 +772,11 @@ registry:
     type: server
     longLived: true
     dateAdded: "2025-05-05T20:04:34Z"
-    image: mcp/playwright@sha256:fd43bc74a3ad644c4dc935a45a3f311a3a93fb4d0ef9a752427601dee01bc217
+    image: mcp/playwright@sha256:53da89d1da3dfbb61c10f707c1713cfee1f870f7fba5334e126c6c765e37db56
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/playwright.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/playwright.json
-    source: https://github.com/microsoft/playwright-mcp/tree/8cc557d677f4a1196d12e1c479857dd39796226c
+    source: https://github.com/microsoft/playwright-mcp/tree/64f65ccd105842204e3e1b1e1a7b28825492b089
     upstream: https://github.com/microsoft/playwright-mcp
     icon: https://avatars.githubusercontent.com/u/6154722?v=4
     tools:
@@ -794,6 +795,7 @@ registry:
       - name: browser_network_requests
       - name: browser_press_key
       - name: browser_resize
+      - name: browser_run_code
       - name: browser_select_option
       - name: browser_snapshot
       - name: browser_tabs
@@ -803,9 +805,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 276185
-      stars: 23
-      githubStars: 23624
+      pulls: 346124
+      stars: 24
+      githubStars: 24193
       category: devops
       tags:
         - playwright
@@ -817,11 +819,11 @@ registry:
     title: Stripe
     type: server
     dateAdded: "2025-05-05T20:04:34Z"
-    image: mcp/stripe@sha256:434bc761687fc3b3fd71c59133ef9412ce1d1ae4e3b8e95df82702f0de82dbfe
+    image: mcp/stripe@sha256:9a1f04a249df24d38c6fc48aeecd66cdd9e3941dc6d5a45bcfb742954ab744ba
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/stripe.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/stripe.json
-    source: https://github.com/stripe/agent-toolkit/tree/28573dfbc3c5e4c32d37146d9afc6806e1b5f4a1/tools/modelcontextprotocol
+    source: https://github.com/stripe/agent-toolkit/tree/849ed6f8a87ee3d1cf30f435ae28665a555bc11b/tools/modelcontextprotocol
     upstream: https://github.com/stripe/agent-toolkit
     icon: https://avatars.githubusercontent.com/u/856813?s=200&v=4
     tools:
@@ -856,9 +858,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 11024
+      pulls: 12435
       stars: 9
-      githubStars: 1124
+      githubStars: 1149
       category: finance
       tags:
         - stripe
@@ -870,11 +872,11 @@ registry:
     title: Airtable
     type: server
     dateAdded: "2025-09-17T06:19:29Z"
-    image: mcp/airtable-mcp-server@sha256:cd9219e08158069ad0153aedb091b285b5eb7553a7a9251977f2dabb6fe8e283
+    image: mcp/airtable-mcp-server@sha256:06c52605b8a2166f9f86d1a80bb5c7600f139b880ce030a4887a1ee0456f0fba
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/airtable-mcp-server.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/airtable-mcp-server.json
-    source: https://github.com/domdomegg/airtable-mcp-server/tree/3b8770cae3a1ba18bf6aeac2f40095c12749bd92
+    source: https://github.com/domdomegg/airtable-mcp-server/tree/e6ab2431b144865e403976d50549dfafd7be7283
     upstream: https://github.com/domdomegg/airtable-mcp-server
     icon: https://www.google.com/s2/favicons?domain=airtable.com&sz=64
     tools:
@@ -910,9 +912,9 @@ registry:
           nodeenv:
             type: string
     metadata:
-      pulls: 2343
+      pulls: 2930
       stars: 1
-      githubStars: 355
+      githubStars: 362
       category: productivity
       tags:
         - productivity
@@ -1009,7 +1011,7 @@ registry:
           - kubeconfig
           - access_level
     metadata:
-      pulls: 3126
+      pulls: 3457
       stars: 1
       githubStars: 101
       category: devops
@@ -1025,21 +1027,24 @@ registry:
     title: AWS Bedrock AgentCore
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/amazon-bedrock-agentcore-mcp-server@sha256:7d286002aa43ab7f6f612beca6597014ed49cc4c39e603b586b500851b260550
+    image: mcp/amazon-bedrock-agentcore-mcp-server@sha256:b3fb49386c1e26ac7e2c17413cf5112dd06b0f264ed9ad25c4f17d1fd6fffdfc
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/amazon-bedrock-agentcore.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/amazon-bedrock-agentcore.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/amazon-bedrock-agentcore-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/amazon-bedrock-agentcore-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
       - name: fetch_agentcore_doc
+      - name: manage_agentcore_gateway
+      - name: manage_agentcore_memory
+      - name: manage_agentcore_runtime
       - name: search_agentcore_docs
     prompts: 0
     resources: {}
     metadata:
-      pulls: 308
-      githubStars: 7460
+      pulls: 633
+      githubStars: 7605
       category: ai-ml
       tags:
         - aws
@@ -1050,11 +1055,11 @@ registry:
     title: Amazon Kendra Index
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/amazon-kendra-index-mcp-server@sha256:7a7b28e57fd0e873c2e6e311aa2e4694f47cdf380f22b215c7478c73622806a8
+    image: mcp/amazon-kendra-index-mcp-server@sha256:72e280910ad7f8771d1e2cd24cd635005f33f6d81cc541157ba33027bf603106
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/amazon-kendra-index.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/amazon-kendra-index.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/amazon-kendra-index-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/amazon-kendra-index-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -1083,8 +1088,8 @@ registry:
         required:
           - kendra_index_id
     metadata:
-      pulls: 247
-      githubStars: 7460
+      pulls: 476
+      githubStars: 7605
       category: ai-ml
       tags:
         - aws
@@ -1095,11 +1100,11 @@ registry:
     title: Amazon Neptune
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/amazon-neptune-mcp-server@sha256:e67b3383ff2c2a85b4522411ef1a606599ed8d6c18b588f786598a47b3049848
+    image: mcp/amazon-neptune-mcp-server@sha256:3604c12f1615a4d79fa7e2576835834cd7cefa009de64ac21ae15a2d1eff2f7a
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/amazon-neptune.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/amazon-neptune.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/amazon-neptune-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/amazon-neptune-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -1130,8 +1135,8 @@ registry:
         required:
           - neptune_endpoint
     metadata:
-      pulls: 245
-      githubStars: 7460
+      pulls: 457
+      githubStars: 7605
       category: database
       tags:
         - aws
@@ -1142,11 +1147,11 @@ registry:
     title: Amazon Q Business
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/amazon-qbusiness-anonymous-mcp-server@sha256:71a7ef308e05d252045865cebbb56997d6b472fd57541d4704ca2e9092600c93
+    image: mcp/amazon-qbusiness-anonymous-mcp-server@sha256:211ef5b69d40dd09ee7aefc86af0cfd9e2a04e19b57b942947ac164f8d84ca56
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/amazon-qbusiness-anonymous.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/amazon-qbusiness-anonymous.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/amazon-qbusiness-anonymous-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/amazon-qbusiness-anonymous-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -1185,8 +1190,8 @@ registry:
         required:
           - qbusiness_application_id
     metadata:
-      pulls: 265
-      githubStars: 7460
+      pulls: 469
+      githubStars: 7605
       category: ai-ml
       tags:
         - aws
@@ -1229,11 +1234,11 @@ registry:
     type: server
     longLived: true
     dateAdded: "2025-08-22T06:21:38Z"
-    image: mcp/apify-mcp-server@sha256:6397922c9c3ce4e2735b5c1be8fd69c5e9645e0a301da81d4f5d0ef1177ba24e
+    image: mcp/apify-mcp-server@sha256:911dcbc426a5a4a51ecf8d7fa7a4aa4d1a92334e30e9f4a16b7515391653d5ab
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/apify-mcp-server.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/apify-mcp-server.json
-    source: https://github.com/apify/actors-mcp-server/tree/80aed105d12c78e2363bcade72a006c4a76e398e
+    source: https://github.com/apify/actors-mcp-server/tree/02343edab4a368af0ec60a1d0d5a6b90feeaf2a1
     upstream: https://github.com/apify/actors-mcp-server
     icon: https://avatars.githubusercontent.com/u/24586296?s=200&v=4
     tools:
@@ -1262,8 +1267,8 @@ registry:
             type: string
             description: 'Comma-separated list of tools to enable. Can be either a tool category, a specific tool, or an Apify Actor. For example: "actors,docs,apify/rag-web-browser". For more details visit https://mcp.apify.com.'
     metadata:
-      pulls: 4425
-      githubStars: 585
+      pulls: 5134
+      githubStars: 625
       category: productivity
       tags:
         - productivity
@@ -1310,9 +1315,9 @@ registry:
         required:
           - storage_path
     metadata:
-      pulls: 13086
+      pulls: 16136
       stars: 2
-      githubStars: 23
+      githubStars: 24
       category: search
       tags:
         - arxiv
@@ -1386,7 +1391,7 @@ registry:
         required:
           - path
     metadata:
-      pulls: 8989
+      pulls: 11527
       stars: 2
       category: code
       tags:
@@ -1441,8 +1446,8 @@ registry:
           endpoint:
             type: string
     metadata:
-      pulls: 2841
-      githubStars: 37
+      pulls: 2996
+      githubStars: 38
       category: database
       tags:
         - astra-db
@@ -1481,11 +1486,11 @@ registry:
     title: Atlan
     type: server
     dateAdded: "2025-07-18T06:21:15Z"
-    image: mcp/atlan@sha256:b7a3400454cd1156987052372567fdecb5b98dc4f336a7fce05cba919b886dd9
+    image: mcp/atlan@sha256:5272a2e90496eebe87c4c5e78fe49df30237da40c939d502eb7648a2edae79ac
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/atlan.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/atlan.json
-    source: https://github.com/atlanhq/agent-toolkit/tree/b78a61ff5a6fd24acf8950b49cf043f33333d271/modelcontextprotocol
+    source: https://github.com/atlanhq/agent-toolkit/tree/99eba4b250bef3fca892f2a2de95b974ebdd5791/modelcontextprotocol
     upstream: https://github.com/atlanhq/agent-toolkit
     icon: https://avatars.githubusercontent.com/u/47002402?s=200&v=4
     tools:
@@ -1493,6 +1498,7 @@ registry:
       - name: create_glossary_categories
       - name: create_glossary_terms
       - name: get_assets_by_dsl_tool
+      - name: query_asset_tool
       - name: search_assets_tool
       - name: traverse_lineage_tool
       - name: update_assets_tool
@@ -1506,8 +1512,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1555
-      githubStars: 22
+      pulls: 1788
+      githubStars: 25
       category: database
       tags:
         - atlan
@@ -1545,9 +1551,9 @@ registry:
           api_url:
             type: string
     metadata:
-      pulls: 4652
+      pulls: 4950
       stars: 2
-      githubStars: 32
+      githubStars: 33
       category: devops
       tags:
         - atlas-docs
@@ -1662,9 +1668,9 @@ registry:
           - required:
               - jira
     metadata:
-      pulls: 41251
+      pulls: 45562
       stars: 22
-      githubStars: 3651
+      githubStars: 3760
       category: productivity
       tags:
         - atlassian
@@ -1715,7 +1721,7 @@ registry:
         required:
           - client_id
     metadata:
-      pulls: 2759
+      pulls: 2915
       githubStars: 17
       category: devops
       tags:
@@ -1759,11 +1765,11 @@ registry:
     title: AWS API
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/aws-api-mcp-server@sha256:3bb1fbfe7ddb31bf20b60d55a19fa559dc4752446cc221834c9a6d41d0a0e18d
+    image: mcp/aws-api-mcp-server@sha256:38ab5435db7bb2e38562ee94e89e0eab7ffb4e72d3b6d497f795dfffc542f3e1
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-api.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-api.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/aws-api-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-api-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -1797,8 +1803,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 439
-      githubStars: 7460
+      pulls: 861
+      githubStars: 7605
       category: devops
       tags:
         - aws
@@ -1809,11 +1815,11 @@ registry:
     title: AWS AppSync
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/aws-appsync-mcp-server@sha256:c630ea5a73f9112198f2a3308603a9bb7b9e767f33cf6071d8b9938ba67b8355
+    image: mcp/aws-appsync-mcp-server@sha256:cf519bdfa589772fc61fc972853f39e4f288d21e21c281e56ce998da8ef6f51f
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-appsync.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-appsync.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/aws-appsync-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-appsync-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -1855,8 +1861,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 240
-      githubStars: 7460
+      pulls: 427
+      githubStars: 7605
       category: devops
       tags:
         - aws
@@ -1913,8 +1919,8 @@ registry:
           bedrock_model_import_s3_bucket:
             type: string
     metadata:
-      pulls: 246
-      githubStars: 7460
+      pulls: 468
+      githubStars: 7605
       category: ai-ml
       tags:
         - aws
@@ -1959,8 +1965,8 @@ registry:
         required:
           - aws_bucket_name
     metadata:
-      pulls: 277
-      githubStars: 7460
+      pulls: 517
+      githubStars: 7605
       category: ai-ml
       tags:
         - aws
@@ -1971,11 +1977,11 @@ registry:
     title: AWS CDK
     type: server
     dateAdded: "2025-05-05T20:04:34Z"
-    image: mcp/aws-cdk-mcp-server@sha256:6ab7b0413db929619514bdb85dae9d64e7fa2feac2f6722e1ae8947c996a1a40
+    image: mcp/aws-cdk-mcp-server@sha256:1a4398a0803f8732e1cecc754a7964782fd30e053e377aaaabe96c880fab2fab
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-cdk-mcp-server.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-cdk-mcp-server.json
-    source: https://github.com/awslabs/mcp/tree/1f4cd9db2bd25128249f4028a44ee731beda5055/src/cdk-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/cdk-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -1989,8 +1995,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 13181
-      githubStars: 7460
+      pulls: 14027
+      githubStars: 7605
       category: devops
       tags:
         - aws-cdk-mcp-server
@@ -2059,8 +2065,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 288
-      githubStars: 7460
+      pulls: 540
+      githubStars: 7605
       category: data-analytics
       tags:
         - aws
@@ -2071,11 +2077,11 @@ registry:
     title: AWS Diagram
     type: server
     dateAdded: "2025-05-05T20:04:34Z"
-    image: mcp/aws-diagram@sha256:4b90488e0253d73685f002ac384d5528627187c5d9acfbd90db562cbf6940cad
+    image: mcp/aws-diagram@sha256:fddef9d058597049c3a047612c3e777812146b110227dca5d514d495a77cb4c0
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-diagram.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-diagram.json
-    source: https://github.com/awslabs/mcp/tree/1f4cd9db2bd25128249f4028a44ee731beda5055/src/aws-diagram-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-diagram-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2096,9 +2102,9 @@ registry:
         required:
           - output_dir
     metadata:
-      pulls: 18030
+      pulls: 19219
       stars: 1
-      githubStars: 7460
+      githubStars: 7605
       category: devops
       tags:
         - aws-diagram
@@ -2110,11 +2116,11 @@ registry:
     title: AWS Documentation
     type: server
     dateAdded: "2025-05-05T20:04:34Z"
-    image: mcp/aws-documentation@sha256:3db7ce9aab85af93e255cd2c5761d3f3dc4803f69050139d3e30db43a111d963
+    image: mcp/aws-documentation@sha256:c0f746f04f1686073ce6cdd5e548dc33bfc2a39430d758fcf35837dec440c699
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-documentation.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-documentation.json
-    source: https://github.com/awslabs/mcp/tree/1f4cd9db2bd25128249f4028a44ee731beda5055/src/aws-documentation-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-documentation-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2124,9 +2130,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 36928
+      pulls: 39325
       stars: 2
-      githubStars: 7460
+      githubStars: 7605
       category: devops
       tags:
         - aws-documentation
@@ -2138,11 +2144,11 @@ registry:
     title: AWS HealthOmics
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/aws-healthomics-mcp-server@sha256:f885331738ba7a842260a10605080d3e653a008eefd5228591e7160f4b1543b8
+    image: mcp/aws-healthomics-mcp-server@sha256:5fb319b62d565a73253a889d188c1f14a85fc140abce80d130932b6edc3007bc
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-healthomics.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-healthomics.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/aws-healthomics-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-healthomics-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2158,6 +2164,7 @@ registry:
       - name: GetAHOSupportedRegions
       - name: GetAHOTaskLogs
       - name: GetAHOWorkflow
+      - name: GetSupportedFileTypes
       - name: LintAHOWorkflowBundle
       - name: LintAHOWorkflowDefinition
       - name: ListAHORunTasks
@@ -2165,6 +2172,7 @@ registry:
       - name: ListAHOWorkflowVersions
       - name: ListAHOWorkflows
       - name: PackageAHOWorkflow
+      - name: SearchGenomicsFiles
       - name: StartAHORun
     env:
       - name: AWS_REGION
@@ -2183,8 +2191,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 249
-      githubStars: 7460
+      pulls: 457
+      githubStars: 7605
       category: healthcare
       tags:
         - aws
@@ -2195,22 +2203,29 @@ registry:
     title: AWS IoT SiteWise
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/aws-iot-sitewise-mcp-server@sha256:a5f27a9820753e3738d563996c39da691264e0d5fca4e489737eb00103d39500
+    image: mcp/aws-iot-sitewise-mcp-server@sha256:a71ff1cb15e61e041fed301c341b8fd775a4f8d3abf1ab52994adb4921b01096
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-iot-sitewise.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-iot-sitewise.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/aws-iot-sitewise-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-iot-sitewise-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
       - name: batch_get_asset_property_aggregates
       - name: batch_get_asset_property_value
       - name: batch_get_asset_property_value_hist
+      - name: convert_multiple_timestamps
+      - name: convert_unix_timestamp
       - name: create_bulk_import_schema
+      - name: create_timestamp_range
+      - name: describe_action
       - name: describe_asset
       - name: describe_asset_model
       - name: describe_bulk_import_job
+      - name: describe_computation_model
+      - name: describe_computation_model_execution_summary
       - name: describe_default_encryption_config
+      - name: describe_execution
       - name: describe_gateway
       - name: describe_gateway_capability_config
       - name: describe_logging_options
@@ -2220,14 +2235,20 @@ registry:
       - name: get_asset_property_aggregates
       - name: get_asset_property_value
       - name: get_asset_property_value_history
+      - name: get_current_timestamp
       - name: get_interpl_asset_property_values
       - name: get_metadata_transfer_job
       - name: get_sitewise_server_mode
+      - name: list_actions
       - name: list_asset_model_properties
       - name: list_asset_models
       - name: list_assets
       - name: list_associated_assets
       - name: list_bulk_import_jobs
+      - name: list_computation_model_data_binding_usages
+      - name: list_computation_model_resolve_to_resources
+      - name: list_computation_models
+      - name: list_executions
       - name: list_gateways
       - name: list_metadata_transfer_jobs
       - name: list_time_series
@@ -2248,8 +2269,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 227
-      githubStars: 7460
+      pulls: 437
+      githubStars: 7605
       category: iot
       tags:
         - aws
@@ -2288,9 +2309,9 @@ registry:
         required:
           - access_key_id
     metadata:
-      pulls: 4199
+      pulls: 4413
       stars: 6
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - aws
@@ -2302,15 +2323,16 @@ registry:
     title: Amazon Location Service
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/aws-location-mcp-server@sha256:78254c614722c8fc7eb779d6b6c4587f654fd0bd8e15a96531726c325723e384
+    image: mcp/aws-location-mcp-server@sha256:2d135eca488ea3ab0b422f043b4652db50e567f47479498f3e1eedfbc717119d
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-location.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-location.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/aws-location-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-location-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
       - name: calculate_route
+      - name: geocode
       - name: get_place
       - name: optimize_waypoints
       - name: reverse_geocode
@@ -2345,8 +2367,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 215
-      githubStars: 7460
+      pulls: 433
+      githubStars: 7605
       category: geospatial
       tags:
         - aws
@@ -2357,11 +2379,11 @@ registry:
     title: Amazon MSK
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/aws-msk-mcp-server@sha256:7251e4095664d6fe631462e8edc3a9104706662f4d2a534775b6654f64712a79
+    image: mcp/aws-msk-mcp-server@sha256:b68c138496fd203ee623c4b20d91df51daa9775bc1c9a9807b13c8ec8f1b5c48
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-msk.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-msk.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/aws-msk-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/aws-msk-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2402,8 +2424,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 235
-      githubStars: 7460
+      pulls: 426
+      githubStars: 7605
       category: messaging
       tags:
         - aws
@@ -2459,8 +2481,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 384
-      githubStars: 7460
+      pulls: 666
+      githubStars: 7605
       category: cost-management
       tags:
         - aws
@@ -2471,11 +2493,11 @@ registry:
     title: AWS Terraform
     type: server
     dateAdded: "2025-05-22T20:04:34Z"
-    image: mcp/aws-terraform@sha256:2da3affc550acbd5526e34bd04ffbc69a9dee00168d0bac82e5708a843ac1dfa
+    image: mcp/aws-terraform@sha256:bebe28be76089a380c088ac3d41e4d5eed931ed7722293f9df296df47ab86c62
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/aws-terraform.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/aws-terraform.json
-    source: https://github.com/awslabs/mcp/tree/1f4cd9db2bd25128249f4028a44ee731beda5055/src/terraform-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/terraform-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2489,8 +2511,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 16491
-      githubStars: 7460
+      pulls: 17807
+      githubStars: 7605
       category: devops
       tags:
         - aws
@@ -2502,11 +2524,11 @@ registry:
     title: AWS Billing and Cost Management
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/billing-cost-management-mcp-server@sha256:6f100d7e3d752db822ac0ec2ba79eb4d470a6f29deb5b2e562972a3a966073cd
+    image: mcp/billing-cost-management-mcp-server@sha256:3f9bfc74109275a3f513dd6e8c3ad3f2762b667df20539ee39288e39c0301859
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-billing-cost-management.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-billing-cost-management.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/billing-cost-management-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/billing-cost-management-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2545,8 +2567,8 @@ registry:
           storage_lens_manifest_location:
             type: string
     metadata:
-      pulls: 348
-      githubStars: 7460
+      pulls: 685
+      githubStars: 7605
       category: cost-management
       tags:
         - aws
@@ -2604,8 +2626,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 237
-      githubStars: 7460
+      pulls: 402
+      githubStars: 7605
       category: devops
       tags:
         - aws
@@ -2660,8 +2682,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 260
-      githubStars: 7460
+      pulls: 422
+      githubStars: 7605
       category: devops
       tags:
         - aws
@@ -2672,11 +2694,11 @@ registry:
     title: AWS CloudTrail
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/cloudtrail-mcp-server@sha256:78b2091eb5f764ced43402419f56e362a8d04beda99f43fcfe8b46f27fa311da
+    image: mcp/cloudtrail-mcp-server@sha256:e5095e8becd344b55f486261f6e56b9223328ad038c09dc5b18df8d3f85093ef
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-cloudtrail.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-cloudtrail.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/cloudtrail-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/cloudtrail-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2698,8 +2720,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 375
-      githubStars: 7460
+      pulls: 736
+      githubStars: 7605
       category: security
       tags:
         - aws
@@ -2710,11 +2732,11 @@ registry:
     title: Amazon CloudWatch
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/cloudwatch-mcp-server@sha256:a90589cd60afee2e1772205b37b516b4b2455761a2ec80a9cfe93723a8adac91
+    image: mcp/cloudwatch-mcp-server@sha256:2bcb50c55f235239d55caecaa9cb307bc0b78fa589e8d497c4fd1bbf0087bc18
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-cloudwatch.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-cloudwatch.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/cloudwatch-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/cloudwatch-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2746,9 +2768,9 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 591
+      pulls: 1077
       stars: 1
-      githubStars: 7460
+      githubStars: 7605
       category: monitoring
       tags:
         - aws
@@ -2797,9 +2819,9 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 477
+      pulls: 791
       stars: 1
-      githubStars: 7460
+      githubStars: 7605
       category: monitoring
       tags:
         - aws
@@ -2810,11 +2832,11 @@ registry:
     title: AWS Cost Explorer
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/cost-explorer-mcp-server@sha256:c92a11a8cb9cfd1ef8adc8164d1c188a0c83a4073ec1893c43f6f5dc1dbdd565
+    image: mcp/cost-explorer-mcp-server@sha256:f67f32fc3afd7c5e8b2076c6d391ddfd0b6c2930d126ed65a16b1f71eac35e4e
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-cost-explorer.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-cost-explorer.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/cost-explorer-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/cost-explorer-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2853,8 +2875,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 362
-      githubStars: 7460
+      pulls: 644
+      githubStars: 7605
       category: cost-management
       tags:
         - aws
@@ -2865,15 +2887,17 @@ registry:
     title: Amazon DynamoDB
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/dynamodb-mcp-server@sha256:f895c46e212330779ec53931ae2bfb553dbb9dac6537f692ae1cab433b6aea1a
+    image: mcp/dynamodb-mcp-server@sha256:6882175507548e066d7c07c657a82249240b5ceb10cf344223530b970a0921c7
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-dynamodb.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-dynamodb.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/dynamodb-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/dynamodb-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
+      - name: dynamodb_data_model_validation
       - name: dynamodb_data_modeling
+      - name: execute_dynamodb_command
       - name: source_db_analyzer
     env:
       - name: AWS_REGION
@@ -2892,8 +2916,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 255
-      githubStars: 7460
+      pulls: 476
+      githubStars: 7605
       category: database
       tags:
         - aws
@@ -2904,11 +2928,11 @@ registry:
     title: Amazon ElastiCache
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/elasticache-mcp-server@sha256:dd22c1185672af13f0d43645735ef9b8cf5024f95e72192aad41e6eca06ba78f
+    image: mcp/elasticache-mcp-server@sha256:b940eb83efe91cd74f282f5ba51b713225da3c9b61d2d485b1ef22ed00c3ceef
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-elasticache.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-elasticache.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/elasticache-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/elasticache-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -2968,8 +2992,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 213
-      githubStars: 7460
+      pulls: 416
+      githubStars: 7605
       category: database
       tags:
         - aws
@@ -2980,11 +3004,11 @@ registry:
     title: AWS IAM
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/iam-mcp-server@sha256:7dc9a6fa39c3c4b631b2601befc78d4460666084df538ddcbf0535f34758e3d8
+    image: mcp/iam-mcp-server@sha256:9a47df22d9480bcd202d6aa3c525e69c59169984fc1e09e5d1ae9257eaaab77b
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-iam.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-iam.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/iam-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/iam-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -3042,8 +3066,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 268
-      githubStars: 7460
+      pulls: 506
+      githubStars: 7605
       category: security
       tags:
         - aws
@@ -3054,11 +3078,11 @@ registry:
     title: Amazon ElastiCache for Memcached
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/memcached-mcp-server@sha256:38e20089497611ce55b6dc882f7bca49239b44c8c9f25251dc18e43d2bb400ac
+    image: mcp/memcached-mcp-server@sha256:c8bc7af9153843d2bc30c8018cfcb81d82234cfe85dcceca61a4c3052b0d7165
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-memcached.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-memcached.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/memcached-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/memcached-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -3103,8 +3127,8 @@ registry:
         required:
           - memcached_host
     metadata:
-      pulls: 190
-      githubStars: 7460
+      pulls: 379
+      githubStars: 7605
       category: database
       tags:
         - aws
@@ -3153,8 +3177,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 193
-      githubStars: 7460
+      pulls: 331
+      githubStars: 7605
       category: ai-ml
       tags:
         - aws
@@ -3165,11 +3189,11 @@ registry:
     title: Amazon Redshift
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/redshift-mcp-server@sha256:9d4796ec0ea64d58610d338746ea04114acdd4d1c54e63ba660ae86049c47666
+    image: mcp/redshift-mcp-server@sha256:f53f81f41570ac63d5c4da8a2b15a23914bbb06906f8e9dbfa0abae7f89b847f
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-redshift.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-redshift.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/redshift-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/redshift-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -3196,8 +3220,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 192
-      githubStars: 7460
+      pulls: 357
+      githubStars: 7605
       category: data-analytics
       tags:
         - aws
@@ -3208,11 +3232,11 @@ registry:
     title: AWS S3 Tables
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/s3-tables-mcp-server@sha256:5653e08deeec986273e6c91ee70057dc840bfba89a0ef21105aed53ab9b094fe
+    image: mcp/s3-tables-mcp-server@sha256:ab7699a58058a9f4dc4d617012f16f0320cfcd37eef3fd5657330aaad22c258b
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-s3-tables.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-s3-tables.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/s3-tables-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/s3-tables-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -3260,8 +3284,8 @@ registry:
           aws_access_key_id:
             type: string
     metadata:
-      pulls: 203
-      githubStars: 7460
+      pulls: 406
+      githubStars: 7605
       category: data-analytics
       tags:
         - aws
@@ -3272,11 +3296,11 @@ registry:
     title: Amazon Timestream for InfluxDB
     type: server
     dateAdded: "2025-11-06T18:02:41Z"
-    image: mcp/timestream-for-influxdb-mcp-server@sha256:822a8df2005de2b81c66f4cad3f420df9422b2bb9bcb9c1d8d43217c8e7e3714
+    image: mcp/timestream-for-influxdb-mcp-server@sha256:c1e729deac80a70ad1ebff08c7835d274558f2db62d360eef84df651759117c4
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/awslabs-timestream-for-influxdb.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/awslabs-timestream-for-influxdb.json
-    source: https://github.com/awslabs/mcp/tree/76ec6993aec4c6281e5250cbeba8db6a5863f2ff/src/timestream-for-influxdb-mcp-server
+    source: https://github.com/awslabs/mcp/tree/7bace1f81455088b6690a44e99cabb602259ddf7/src/timestream-for-influxdb-mcp-server
     upstream: https://github.com/awslabs/mcp
     icon: https://avatars.githubusercontent.com/u/3299148?v=4
     tools:
@@ -3319,8 +3343,8 @@ registry:
           aws_profile:
             type: string
     metadata:
-      pulls: 185
-      githubStars: 7460
+      pulls: 396
+      githubStars: 7605
       category: database
       tags:
         - aws
@@ -3461,8 +3485,8 @@ registry:
           valkey_port:
             type: string
     metadata:
-      pulls: 175
-      githubStars: 7460
+      pulls: 295
+      githubStars: 7605
       category: database
       tags:
         - aws
@@ -3473,7 +3497,7 @@ registry:
     title: Azure
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcr.microsoft.com/azure-sdk/azure-mcp@sha256:8519a28f6445c8d8795fd278efec0bb2468597cf77d017749bbc0e824886dbce
+    image: mcr.microsoft.com/azure-sdk/azure-mcp@sha256:828034f7f4d26808a3a93812b7859e71b155b40e3a3710dc01716d0f0e35738d
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/azure.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/azure.json
@@ -3511,7 +3535,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      githubStars: 1185
+      githubStars: 1188
       category: devops
       tags:
         - azure
@@ -3555,7 +3579,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1372
+      pulls: 1570
       stars: 1
       category: devops
       tags:
@@ -3606,7 +3630,7 @@ registry:
         required:
           - api_id
     metadata:
-      pulls: 2617
+      pulls: 2754
       githubStars: 6
       category: devops
       tags:
@@ -3658,7 +3682,7 @@ registry:
         required:
           - client_id
     metadata:
-      pulls: 3199
+      pulls: 3347
       stars: 3
       category: devops
       tags:
@@ -3670,11 +3694,11 @@ registry:
     title: Browserbase
     type: server
     dateAdded: "2025-10-16T16:09:40Z"
-    image: mcp/browserbase@sha256:f407211aa1b2f22cb504045468a7657af7eb174f7294ad3826e15383ee356599
+    image: mcp/browserbase@sha256:80382abeaec306b89bbcb262856fb5296f42cfda23b7dc4a6d780123c7775917
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/browserbase.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/browserbase.json
-    source: https://github.com/browserbase/mcp-server-browserbase/tree/b4d1d1683cd567b9df315ae90284ff778737023e
+    source: https://github.com/browserbase/mcp-server-browserbase/tree/460a9c205bea701d80fc74fce9e4e8979cf1bddf
     upstream: https://github.com/browserbase/mcp-server-browserbase
     icon: https://avatars.githubusercontent.com/u/158221360?s=200&v=4
     tools:
@@ -3700,8 +3724,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 942
-      githubStars: 2850
+      pulls: 1383
+      githubStars: 2907
       category: devops
       tags:
         - browserbase
@@ -3754,8 +3778,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1858
-      githubStars: 40
+      pulls: 2001
+      githubStars: 41
       category: devops
       tags:
         - devops
@@ -3799,7 +3823,7 @@ registry:
           camundahost:
             type: string
     metadata:
-      pulls: 895
+      pulls: 1051
       stars: 1
       githubStars: 6
       category: productivity
@@ -3882,7 +3906,7 @@ registry:
         required:
           - username
     metadata:
-      pulls: 2112
+      pulls: 2434
       stars: 3
       githubStars: 2
       category: devops
@@ -3953,7 +3977,7 @@ registry:
           charmhealth_token_url:
             type: string
     metadata:
-      pulls: 1006
+      pulls: 1170
       githubStars: 3
       category: productivity
       tags:
@@ -3996,9 +4020,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 6443
+      pulls: 6911
       stars: 5
-      githubStars: 425
+      githubStars: 439
       category: devops
       tags:
         - chroma
@@ -4049,8 +4073,8 @@ registry:
           url:
             type: string
     metadata:
-      pulls: 3805
-      githubStars: 69
+      pulls: 3987
+      githubStars: 73
       category: devops
       tags:
         - circleci
@@ -4114,9 +4138,9 @@ registry:
           send_receive_timeout:
             type: string
     metadata:
-      pulls: 17608
+      pulls: 19166
       stars: 3
-      githubStars: 599
+      githubStars: 611
       category: database
       tags:
         - database
@@ -4159,11 +4183,11 @@ registry:
     title: Cloud Run
     type: server
     dateAdded: "2025-08-08T16:55:52Z"
-    image: mcp/cloud-run-mcp@sha256:f92414bec9c84cc0b45f87672ac9400b9e0fa59b5d4025209ce124e2376f8166
+    image: mcp/cloud-run-mcp@sha256:bf9dd7aef7e918d8382ad6b5ba0d134d6f4557cec01292786554d84354c1d507
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/cloud-run-mcp.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/cloud-run-mcp.json
-    source: https://github.com/GoogleCloudPlatform/cloud-run-mcp/tree/4935d6846506b84161fd70396e06f2d69280cc9d
+    source: https://github.com/GoogleCloudPlatform/cloud-run-mcp/tree/8ce1a28e4a414ae42d943c51d3369702b68fc4dc
     upstream: https://github.com/GoogleCloudPlatform/cloud-run-mcp
     icon: https://avatars.githubusercontent.com/u/2810941?v=4
     tools:
@@ -4191,8 +4215,8 @@ registry:
             type: string
             description: path to application-default credentials (eg $HOME/.config/gcloud/application_default_credentials.json )
     metadata:
-      pulls: 6205
-      githubStars: 469
+      pulls: 7170
+      githubStars: 483
       category: devops
       tags:
         - devops
@@ -4758,8 +4782,8 @@ registry:
           ssl_certfile:
             type: string
     metadata:
-      pulls: 1389
-      githubStars: 7
+      pulls: 1533
+      githubStars: 8
       category: database
       tags:
         - cockroachdb
@@ -4790,7 +4814,7 @@ registry:
           required:
             - args
         container:
-          image: alpine/curl@sha256:45a2d03baf73ee0815bfcefbb7b6e762ad566ceed05918b6c715d832ebaae575
+          image: alpine/curl@sha256:bd3d6bf85a478818cb858cce42c87fcecbac141249f10814be96309e4abeb807
           command:
             - '{{args|into}}'
     prompts: 0
@@ -4806,11 +4830,11 @@ registry:
     title: Cylera
     type: server
     dateAdded: "2025-10-16T16:09:40Z"
-    image: mcp/cylera-mcp-server@sha256:ac5b8fcc00b62df66d1082c8a54fe0040a471c60bfef4b5d7afac45965c63f17
+    image: mcp/cylera-mcp-server@sha256:75969cc5c5b1949cf830ff5777b7eb47ca740c815fba267df82717c82a4245c6
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/cylera-mcp-server.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/cylera-mcp-server.json
-    source: https://github.com/Cylera/cylera-mcp-server/tree/d1967140306775661cc4eafc4897d8de78c5b958
+    source: https://github.com/Cylera/cylera-mcp-server/tree/fe6b915b4f3fbe6dd23f4a65c0817b234ff773bf
     upstream: https://github.com/Cylera/cylera-mcp-server
     icon: https://github.com/Cylera/cylera-mcp-server/blob/main/assets/cylera_logo.png?raw=true
     tools:
@@ -4834,7 +4858,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 452
+      pulls: 633
+      githubStars: 1
       category: productivity
       tags:
         - productivity
@@ -4865,9 +4890,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 4664
+      pulls: 4960
       stars: 7
-      githubStars: 32
+      githubStars: 34
       category: devops
       tags:
         - cyreslab-ai-shodan
@@ -4896,9 +4921,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2903
+      pulls: 3039
       stars: 2
-      githubStars: 34
+      githubStars: 37
       category: devops
       tags:
         - dappier
@@ -4982,9 +5007,9 @@ registry:
           host:
             type: string
     metadata:
-      pulls: 4013
+      pulls: 4156
       stars: 3
-      githubStars: 121
+      githubStars: 122
       category: devops
       tags:
         - dart
@@ -5027,7 +5052,7 @@ registry:
         required:
           - database_url
     metadata:
-      githubStars: 8
+      githubStars: 10
       category: database
       tags:
         - database
@@ -5056,7 +5081,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 4849
+      pulls: 5156
       stars: 1
       githubStars: 27
       category: devops
@@ -5129,7 +5154,7 @@ registry:
         required:
           - project_id
     metadata:
-      pulls: 2452
+      pulls: 2562
       githubStars: 25
       category: devops
       tags:
@@ -5182,7 +5207,7 @@ registry:
         required:
           - url
     metadata:
-      pulls: 2640
+      pulls: 2749
       githubStars: 6
       category: devops
       tags:
@@ -5244,7 +5269,7 @@ registry:
           required:
             - args
         container:
-          image: docker:cli@sha256:858bb1e05af16840f5a55143c3e5e14073891fbc92f2c1f6f38dd9c5f2cca03c
+          image: docker:cli@sha256:d525718bb067b852a3a33c49485e5f5ac412be1e6e76f7551bdc202d5a889f85
           command:
             - '{{args|into}}'
           volumes:
@@ -5309,7 +5334,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      githubStars: 12
+      githubStars: 14
       category: development
       tags:
         - dotnet
@@ -5358,7 +5383,7 @@ registry:
           dreamfactoryapikey:
             type: string
     metadata:
-      pulls: 682
+      pulls: 825
       githubStars: 4
       category: database
       tags:
@@ -5385,9 +5410,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 168628
-      stars: 7
-      githubStars: 650
+      pulls: 186402
+      stars: 8
+      githubStars: 676
       category: devops
       tags:
         - duckduckgo
@@ -5443,8 +5468,8 @@ registry:
           url:
             type: string
     metadata:
-      pulls: 41043
-      githubStars: 175
+      pulls: 82093
+      githubStars: 181
       category: monitoring
       tags:
         - Dynatrace
@@ -5473,9 +5498,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 4127
+      pulls: 4383
       stars: 2
-      githubStars: 349
+      githubStars: 354
       category: devops
       tags:
         - e2b
@@ -5676,9 +5701,9 @@ registry:
           - app
           - url
     metadata:
-      pulls: 2996
+      pulls: 3153
       stars: 1
-      githubStars: 22
+      githubStars: 23
       category: devops
       tags:
         - edubase
@@ -5703,8 +5728,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1786
-      githubStars: 206
+      pulls: 2006
+      githubStars: 210
       category: productivity
       tags:
         - productivity
@@ -5715,11 +5740,11 @@ registry:
     title: ElevenLabs
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/elevenlabs@sha256:6260bd94d2687d2ac52e155b46afa1c22d8216a1a8c635fa99469b7e272e307b
+    image: mcp/elevenlabs@sha256:1e4499d560622e89ef127f5ff22c01587f5c8d4f2a60150a7597f6e6a140089b
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/elevenlabs.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/elevenlabs.json
-    source: https://github.com/elevenlabs/elevenlabs-mcp/tree/f6a24520492e4922fde66f68f64eaa5f9e1d3a4f
+    source: https://github.com/elevenlabs/elevenlabs-mcp/tree/280e4eae9bdb977d1a8c5d6f569edd2ad7af3c5e
     upstream: https://github.com/elevenlabs/elevenlabs-mcp
     icon: https://avatars.githubusercontent.com/u/94471909?v=4
     tools:
@@ -5765,9 +5790,9 @@ registry:
         required:
           - data
     metadata:
-      pulls: 11664
+      pulls: 12715
       stars: 7
-      githubStars: 1071
+      githubStars: 1089
       category: ai
       tags:
         - elevenlabs
@@ -5795,9 +5820,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3203
+      pulls: 3332
       stars: 3
-      githubStars: 73304
+      githubStars: 74187
       category: search
       tags:
         - everart
@@ -5825,9 +5850,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 6762
+      pulls: 7453
       stars: 5
-      githubStars: 3285
+      githubStars: 3365
       category: search
       tags:
         - exa
@@ -5867,8 +5892,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 534
-      githubStars: 17
+      pulls: 660
+      githubStars: 18
       category: search
       tags:
         - search
@@ -5898,9 +5923,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 793632
-      stars: 44
-      githubStars: 73304
+      pulls: 827200
+      stars: 48
+      githubStars: 74187
       category: devops
       tags:
         - fetch
@@ -5943,7 +5968,7 @@ registry:
           required:
             - path
         container:
-          image: busybox@sha256:e3652a00a2fabd16ce889f0aa32c38eec347b997e73bd09e69c962ec7f8732ee
+          image: busybox@sha256:d80cd694d3e9467884fcb94b8ca1e20437d8a501096cdf367a5a1918a34fc2fd
           command:
             - test
             - -f
@@ -6018,7 +6043,7 @@ registry:
           host:
             type: string
     metadata:
-      pulls: 2219
+      pulls: 2309
       githubStars: 27
       category: devops
       tags:
@@ -6069,9 +6094,9 @@ registry:
         required:
           - paths
     metadata:
-      pulls: 97022
+      pulls: 102108
       stars: 27
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - filesystem
@@ -6110,11 +6135,11 @@ registry:
     title: Firecrawl
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/firecrawl@sha256:79cc4c7e25fa86287468ad30f281ad551baa07f5bb8d9e8c99ce70873e7bbb04
+    image: mcp/firecrawl@sha256:1f991526c5943e15e8f4cde17e072a5028698611bcbaa6750499094057f60725
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/firecrawl.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/firecrawl.json
-    source: https://github.com/mendableai/firecrawl-mcp-server/tree/186c4571c8a23e202a0b8dd5713f9ff84191b876
+    source: https://github.com/mendableai/firecrawl-mcp-server/tree/d757025e2e4758eb073a8b26a171131c64221755
     upstream: https://github.com/mendableai/firecrawl-mcp-server
     icon: https://avatars.githubusercontent.com/u/135057108?s=200&v=4
     tools:
@@ -6166,9 +6191,9 @@ registry:
           url:
             type: string
     metadata:
-      pulls: 48441
+      pulls: 50965
       stars: 17
-      githubStars: 4978
+      githubStars: 5045
       category: search
       tags:
         - firecrawl
@@ -6289,7 +6314,7 @@ registry:
             type: string
             description: Your Firewalla Box Global ID
     metadata:
-      pulls: 1469
+      pulls: 1682
       githubStars: 8
       category: security
       tags:
@@ -6355,7 +6380,7 @@ registry:
           base_url:
             type: string
     metadata:
-      pulls: 2102
+      pulls: 2216
       stars: 1
       githubStars: 4
       category: devops
@@ -6383,7 +6408,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 831
+      pulls: 1744
       category: ai
       tags:
         - ai
@@ -6430,9 +6455,9 @@ registry:
         required:
           - paths
     metadata:
-      pulls: 55263
+      pulls: 58614
       stars: 28
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - gitl
@@ -6485,9 +6510,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 61571
+      pulls: 66697
       stars: 20
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - github
@@ -6516,9 +6541,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 4681
+      pulls: 5050
       stars: 4
-      githubStars: 70
+      githubStars: 74
       category: devops
       tags:
         - github-chat
@@ -6565,9 +6590,9 @@ registry:
             type: string
             description: api url - optional for self-hosted instances
     metadata:
-      pulls: 23127
+      pulls: 24854
       stars: 21
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - gitlab
@@ -6648,9 +6673,9 @@ registry:
           ignored_saved:
             type: boolean
     metadata:
-      pulls: 3912
+      pulls: 4051
       stars: 2
-      githubStars: 27
+      githubStars: 28
       category: devops
       tags:
         - glif
@@ -6732,7 +6757,7 @@ registry:
         required:
           - email_address
     metadata:
-      githubStars: 6
+      githubStars: 8
       category: communication
       tags:
         - email
@@ -6760,7 +6785,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 227
+      pulls: 974
+      githubStars: 1
       category: travel
       tags:
         - travel
@@ -6796,9 +6822,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 59203
+      pulls: 59658
       stars: 15
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - google-maps
@@ -6834,8 +6860,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2076
-      githubStars: 1
+      pulls: 2430
+      githubStars: 3
       category: devops
       tags:
         - google-maps
@@ -6902,7 +6928,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2687
+      pulls: 2784
       githubStars: 25
       category: devops
       tags:
@@ -6949,7 +6975,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2116
+      pulls: 2220
       githubStars: 2
       category: devops
       tags:
@@ -6980,7 +7006,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3066
+      pulls: 3243
       stars: 2
       githubStars: 13
       category: devops
@@ -7037,8 +7063,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 756
-      githubStars: 3
+      pulls: 857
+      githubStars: 4
       category: search
       tags:
         - search
@@ -7177,9 +7203,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3382
+      pulls: 3928
       stars: 1
-      githubStars: 43
+      githubStars: 45
       category: devops
       tags:
         - devops
@@ -7224,7 +7250,7 @@ registry:
         required:
           - data
     metadata:
-      githubStars: 7
+      githubStars: 8
       category: productivity
       tags:
         - ai
@@ -7286,7 +7312,7 @@ registry:
       - name: hub_repo_details
       - name: hf_doc_search
       - name: hf_doc_fetch
-      - name: gr1_qwen_image_fast_generate_image
+      - name: gr1_z_image_turbo_generate
     prompts: 0
     resources: {}
     metadata:
@@ -7351,7 +7377,7 @@ registry:
         required:
           - api_url
     metadata:
-      githubStars: 38
+      githubStars: 40
       category: finance
       tags:
         - finance
@@ -7388,7 +7414,7 @@ registry:
           client_id:
             type: string
     metadata:
-      pulls: 1835
+      pulls: 1933
       githubStars: 1
       category: devops
       tags:
@@ -7425,9 +7451,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3865
+      pulls: 4032
       stars: 3
-      githubStars: 639
+      githubStars: 650
       category: devops
       tags:
         - hyperbrowser
@@ -7471,7 +7497,7 @@ registry:
           use_resources:
             type: boolean
     metadata:
-      pulls: 2460
+      pulls: 2543
       githubStars: 1
       category: devops
       tags:
@@ -7526,7 +7552,7 @@ registry:
         required:
           - app_name
     metadata:
-      pulls: 2245
+      pulls: 2337
       githubStars: 5
       category: devops
       tags:
@@ -7540,11 +7566,11 @@ registry:
     type: server
     longLived: true
     dateAdded: "2025-07-29T14:05:27Z"
-    image: mcp/inspektor-gadget@sha256:023c71b0cc85224d5e9f8ba6358abbd9434bb04fbd3cb0c2987779e20fb5e379
+    image: mcp/inspektor-gadget@sha256:c1a9b39e7313eab9f862438755374213c26dfccd828c4d6ebe583064c716aeef
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/inspektor-gadget.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/inspektor-gadget.json
-    source: https://github.com/inspektor-gadget/ig-mcp-server/tree/5fc1eb530e937167165d709191f45a89e26e9eeb
+    source: https://github.com/inspektor-gadget/ig-mcp-server/tree/76a830050948e790ac27a511dd7f2abaf6b24d20
     upstream: https://github.com/inspektor-gadget/ig-mcp-server
     icon: https://avatars.githubusercontent.com/u/111520143?s=200&v=4
     tools:
@@ -7607,7 +7633,7 @@ registry:
         required:
           - kubeconfig
     metadata:
-      pulls: 1722
+      pulls: 1891
       stars: 2
       githubStars: 16
       category: monitoring
@@ -7687,7 +7713,7 @@ registry:
     remote:
       transport_type: streamable-http
       url: https://www.javadocs.dev/mcp
-    icon: https://www.google.com/s2/favicons?domain=javadocs.dev&sz=64
+    icon: https://www.google.com/s2/favicons?domain=docs.oracle.com&sz=64
     tools:
       - name: get_latest_version
       - name: get_javadoc_content_list
@@ -7759,9 +7785,9 @@ registry:
           port:
             type: integer
     metadata:
-      pulls: 9303
+      pulls: 9970
       stars: 2
-      githubStars: 4
+      githubStars: 6
       category: devops
       tags:
         - jetbrains
@@ -7863,11 +7889,11 @@ registry:
     title: Kagi Search
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/kagisearch@sha256:a04696f75f842225462060a8b5f4207e6ca086e59dc38c3fb52ae02d36d41403
+    image: mcp/kagisearch@sha256:332ae6f657e74aa8e08d3a8efac927948fb5ac34d4879deb3800fc736182200f
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/kagisearch.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/kagisearch.json
-    source: https://github.com/kagisearch/kagimcp/tree/f2c2157cd520f37c2a926c6434bc03a29a9f5ceb
+    source: https://github.com/kagisearch/kagimcp/tree/ccda73ef9344a85d4ea3476fd3802539ba5fe832
     upstream: https://github.com/kagisearch/kagimcp
     icon: https://avatars.githubusercontent.com/u/92134518?s=200&v=4
     tools:
@@ -7890,9 +7916,9 @@ registry:
           engine:
             type: string
     metadata:
-      pulls: 2864
+      pulls: 3121
       stars: 1
-      githubStars: 224
+      githubStars: 237
       category: devops
       tags:
         - kagisearch
@@ -7904,11 +7930,11 @@ registry:
     title: Keboola
     type: server
     dateAdded: "2025-06-16T10:10:08Z"
-    image: mcp/keboola-mcp@sha256:7d82c05522786b8867a6be8ab73a1642dc59b37681f332d819d97e277942aaad
+    image: mcp/keboola-mcp@sha256:ddd31fe53cca1e3abe75072e14c75f4f693d2fb55ce9d1afa0d87e1ea525fc23
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/keboola-mcp.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/keboola-mcp.json
-    source: https://github.com/keboola/mcp-server/tree/b18eb62cdce8b26042cac3dee5b29a6e66a1d6f6
+    source: https://github.com/keboola/mcp-server/tree/f99a891da16716d522f9a863ec1344f7985ab815
     upstream: https://github.com/keboola/mcp-server
     icon: https://avatars.githubusercontent.com/u/1424387?v=4
     tools:
@@ -7962,8 +7988,8 @@ registry:
           kbc_workspace_schema:
             type: string
     metadata:
-      pulls: 2203
-      githubStars: 80
+      pulls: 2358
+      githubStars: 81
       category: devops
       tags:
         - data-platform
@@ -8011,7 +8037,7 @@ registry:
           region:
             type: string
     metadata:
-      pulls: 2701
+      pulls: 2831
       githubStars: 38
       category: devops
       tags:
@@ -8073,8 +8099,8 @@ registry:
         required:
           - kubeconfig
     metadata:
-      pulls: 2034
-      githubStars: 736
+      pulls: 2464
+      githubStars: 742
       category: devops
       tags:
         - kubectl-mcp-server
@@ -8088,11 +8114,11 @@ registry:
     title: Kubernetes
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/kubernetes@sha256:95afa62a3dedd009b6eff6a378aeab0972751527f700aa93b9dac2c2cec29f2e
+    image: mcp/kubernetes@sha256:c1c4bf6503b9f92d5930197f4c00e31cef0105346443d970ca9449272f5e4c30
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/kubernetes.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/kubernetes.json
-    source: https://github.com/Flux159/mcp-server-kubernetes/tree/b1bbbc4385aef0ccd0af0204ad93c0565fe4d235
+    source: https://github.com/Flux159/mcp-server-kubernetes/tree/25c01dd171ecc07126cb95ccadca2e0ccf56bafb
     upstream: https://github.com/Flux159/mcp-server-kubernetes
     icon: https://avatars.githubusercontent.com/u/13629408?s=200&v=4
     tools:
@@ -8133,9 +8159,9 @@ registry:
         required:
           - config_path
     metadata:
-      pulls: 35455
+      pulls: 39225
       stars: 16
-      githubStars: 1190
+      githubStars: 1206
       category: devops
       tags:
         - kubernetes
@@ -8184,7 +8210,7 @@ registry:
         required:
           - key_id
     metadata:
-      pulls: 3045
+      pulls: 3158
       stars: 3
       githubStars: 75
       category: devops
@@ -8235,8 +8261,8 @@ registry:
         required:
           - user_id
     metadata:
-      pulls: 6340
-      githubStars: 496
+      pulls: 6488
+      githubStars: 502
       category: devops
       tags:
         - line
@@ -8312,7 +8338,7 @@ registry:
             type: string
             description: Custom user agent string (optional, helps avoid detection and cookie login issues)
     metadata:
-      githubStars: 590
+      githubStars: 629
       category: business
       tags:
         - linkedin
@@ -8405,9 +8431,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 526
+      pulls: 697
       stars: 1
-      githubStars: 18
+      githubStars: 19
       category: monitoring
       tags:
         - monitoring
@@ -8451,11 +8477,11 @@ registry:
     title: Mapbox
     type: server
     dateAdded: "2025-09-02T20:44:02Z"
-    image: mcp/mapbox@sha256:3719a28bd9d3e08afd04e7da9e3b3810b39e72ef3fb6a9f4f9fb1448aefeac94
+    image: mcp/mapbox@sha256:685f75b7bdc751c324a79fb413c1764c2b9e616d2425049fc92ac88785c6d3aa
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/mapbox.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/mapbox.json
-    source: https://github.com/mapbox/mcp-server/tree/235879474ff9cec5524732b775b2cea562861b09
+    source: https://github.com/mapbox/mcp-server/tree/eed8230a2e478e10c65522437e4b9ebef925020c
     upstream: https://github.com/mapbox/mcp-server
     icon: https://avatars.githubusercontent.com/u/600935?s=200&v=4
     tools:
@@ -8464,6 +8490,7 @@ registry:
       - name: directions_tool
       - name: isochrone_tool
       - name: matrix_tool
+      - name: resource_reader_tool
       - name: reverse_geocode_tool
       - name: search_and_geocode_tool
       - name: static_map_image_tool
@@ -8475,9 +8502,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1850
+      pulls: 2126
       stars: 2
-      githubStars: 285
+      githubStars: 291
       category: maps
       tags:
         - mapbox
@@ -8492,11 +8519,11 @@ registry:
     title: Mapbox Developer
     type: server
     dateAdded: "2025-09-02T20:44:02Z"
-    image: mcp/mapbox-devkit@sha256:4e3033df345d7e1da04f31f8f7c7b8859ee6bc9270eecb4136f2e5404d5b7e3e
+    image: mcp/mapbox-devkit@sha256:d59c7cb2573033d9dd90ef11e1076df5eec75b412b969d12e561c8c3fbdfc656
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/mapbox-devkit.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/mapbox-devkit.json
-    source: https://github.com/mapbox/mcp-devkit-server/tree/7201837f57a4560e7077722d5323ec3124377112
+    source: https://github.com/mapbox/mcp-devkit-server/tree/67099df8d0805e0371afd76174a314a52bc73842
     upstream: https://github.com/mapbox/mcp-devkit-server
     icon: https://avatars.githubusercontent.com/u/600935?s=200&v=4
     tools:
@@ -8526,9 +8553,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1478
+      pulls: 1686
       stars: 1
-      githubStars: 26
+      githubStars: 33
       category: devops
       tags:
         - mapbox
@@ -8577,9 +8604,9 @@ registry:
         required:
           - paths
     metadata:
-      pulls: 6099
+      pulls: 7356
       stars: 1
-      githubStars: 2274
+      githubStars: 2295
       category: productivity
       tags:
         - productivity
@@ -8624,9 +8651,9 @@ registry:
         required:
           - paths
     metadata:
-      pulls: 9671
-      stars: 1
-      githubStars: 83286
+      pulls: 11696
+      stars: 2
+      githubStars: 84105
       category: productivity
       tags:
         - productivity
@@ -8641,46 +8668,6 @@ registry:
         - youtube
       license: MIT License
       owner: microsoft
-  maven-tools-mcp:
-    description: JVM dependency intelligence for any build tool using Maven Central Repository. Includes Context7 integration for upgrade documentation and guidance.
-    title: Maven Tools
-    type: server
-    dateAdded: "2025-10-16T16:09:40Z"
-    image: arvindand/maven-tools-mcp:latest@sha256:d608f71ef0a284338ad9ea95b58a3af1ba8d8788b8bfd6e75734ea6bec42621e
-    ref: ""
-    readme: http://desktop.docker.com/mcp/catalog/v3/readme/maven-tools-mcp.md
-    toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/maven-tools-mcp.json
-    source: https://github.com/arvindand/maven-tools-mcp/tree/d419a7bfeb19f3515838a64f9a695fe38291e0ec
-    upstream: https://github.com/arvindand/maven-tools-mcp
-    icon: https://avatars.githubusercontent.com/u/18013523?s=200&v=4
-    tools:
-      - name: analyze_dependency_age
-      - name: analyze_project_health
-      - name: analyze_release_patterns
-      - name: check_multiple_dependencies
-      - name: check_version_exists
-      - name: compare_dependency_versions
-      - name: get_latest_version
-      - name: get_library_docs
-      - name: get_version_timeline
-      - name: resolve_library_id
-    prompts: 0
-    resources: {}
-    metadata:
-      githubStars: 17
-      category: development
-      tags:
-        - maven
-        - dependencies
-        - java
-        - gradle
-        - sbt
-        - mill
-        - jvm
-        - development-tools
-        - context7
-      license: MIT License
-      owner: arvindand
   mcp-api-gateway:
     description: A universal MCP (Model Context Protocol) server to integrate any API with Claude Desktop using only Docker configurations.
     title: API Gateway
@@ -8717,9 +8704,9 @@ registry:
           api_1_header_authorization:
             type: string
     metadata:
-      pulls: 7013
+      pulls: 7732
       stars: 6
-      githubStars: 30
+      githubStars: 31
       category: devops
       tags:
         - api-gateway
@@ -8744,9 +8731,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 4208
+      pulls: 4904
       stars: 2
-      githubStars: 11
+      githubStars: 12
       category: productivity
       tags:
         - productivity
@@ -8793,9 +8780,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 9670
+      pulls: 10765
       stars: 15
-      githubStars: 13
+      githubStars: 16
       category: devops
       tags:
         - discord
@@ -8822,7 +8809,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 27650
+      pulls: 28259
       stars: 1
       category: news
       tags:
@@ -8830,7 +8817,7 @@ registry:
         - blog
       owner: AayushBahukhandi
   mcp-python-refactoring:
-    description: 'Educational Python refactoring assistant that provides guided suggestions for AI assistants.  Features: • Step-by-step refactoring instructions without modifying code • Comprehensive code analysis using professional tools (Rope, Radon, Vulture, Jedi, LibCST, Pyrefly) • Educational approach teaching refactoring patterns through guided practice • Support for both guide-only and apply-changes modes • Identifies long functions, high complexity, dead code, and type issues • Provides precise line numbers and specific refactoring instructions • Compatible with all AI assistants (Claude, GPT, Cursor, Continue, etc.)  Perfect for developers learning refactoring patterns while maintaining full control over code changes. Acts as a refactoring mentor rather than an automated code modifier.'
+    description: Educational Python refactoring assistant that provides guided suggestions for AI assistants.
     title: Python Refactoring Assistant
     type: server
     dateAdded: "2025-09-04T19:31:40Z"
@@ -8840,7 +8827,7 @@ registry:
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/mcp-python-refactoring.json
     source: https://github.com/slamer59/mcp-python-refactoring/tree/b66781d58674cd066e4ed8786215ab44ecc0b14b
     upstream: https://github.com/slamer59/mcp-python-refactoring
-    icon: https://avatars.githubusercontent.com/u/2664231?s=200&v=4
+    icon: https://www.google.com/s2/favicons?domain=python.org&sz=64
     tools:
       - name: analyze_python_file
       - name: analyze_python_package
@@ -8854,9 +8841,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3249
+      pulls: 4111
       stars: 1
-      githubStars: 9
+      githubStars: 11
       category: development
       tags:
         - python
@@ -8867,9 +8854,10 @@ registry:
         - code-quality
         - static-analysis
         - mentoring
+      license: MIT License
       owner: slamer59
   mcp-reddit:
-    description: A comprehensive Model Context Protocol (MCP) server for Reddit integration. This server enables AI agents to interact with Reddit programmatically through a standardized interface.
+    description: This server provides AI agents with tools to fetch, post and search on Reddit.
     title: Reddit
     type: server
     dateAdded: "2025-09-19T18:59:08Z"
@@ -8879,7 +8867,7 @@ registry:
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/mcp-reddit.json
     source: https://github.com/KrishnaRandad2023/mcp-reddit/tree/127870e8c6616ea15c9f40eaa6891918c8401906
     upstream: https://github.com/KrishnaRandad2023/mcp-reddit
-    icon: https://avatars.githubusercontent.com/u/135265106?v=4
+    icon: https://www.google.com/s2/favicons?domain=reddit.com&sz=64
     tools:
       - name: fetchPosts
       - name: getComments
@@ -8910,7 +8898,7 @@ registry:
           username:
             type: string
     metadata:
-      pulls: 2823
+      pulls: 3104
       stars: 1
       githubStars: 7
       category: communication
@@ -8945,9 +8933,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 128518
+      pulls: 145024
       stars: 26
-      githubStars: 73304
+      githubStars: 74187
       category: ai
       tags:
         - mcp
@@ -9081,9 +9069,9 @@ registry:
           metabaseusername:
             type: string
     metadata:
-      pulls: 2083
+      pulls: 2435
       stars: 2
-      githubStars: 22
+      githubStars: 27
       category: data-visualization
       tags:
         - data-visualization
@@ -9140,9 +9128,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2822
+      pulls: 3034
       stars: 2
-      githubStars: 6
+      githubStars: 7
       category: games
       tags:
         - games
@@ -9180,6 +9168,35 @@ registry:
         - provider: monday
           secret: monday.personal_access_token
           env: MONDAY_PERSONAL_ACCESS_TOKEN
+  morningstar-mcp-server:
+    description: The Morningstar MCP Server makes it simple to power your AI apps and tools with Morningstars trusted content. It provides access to a growing library of AI-ready capabilities, including global analyst research, market analysis, and key investment data.
+    title: Morningstar
+    type: remote
+    dynamic:
+      tools: true
+    dateAdded: "2025-12-06T06:13:18Z"
+    ref: ""
+    readme: http://desktop.docker.com/mcp/catalog/v3/readme/morningstar-mcp-server.md
+    source: ""
+    remote:
+      transport_type: streamable-http
+      url: https://mcp.morningstar.com/mcp
+    icon: https://developer.morningstar.com/logo-brand.svg
+    tools: []
+    prompts: 0
+    resources: {}
+    metadata:
+      category: Fintech
+      tags:
+        - Fintech
+        - remote
+      license: Apache License 2.0
+      owner: docker
+    oauth:
+      providers:
+        - provider: morningstar-mcp-server
+          secret: morningstar-mcp-server.personal_access_token
+          env: MORNINGSTAR_MCP_SERVER_PERSONAL_ACCESS_TOKEN
   multiversx-mx:
     description: MCP Server for MultiversX.
     title: MultiversX
@@ -9227,13 +9244,97 @@ registry:
           - network
           - wallet
     metadata:
-      pulls: 2459
+      pulls: 2575
       category: devops
       tags:
         - multiversx-mx
         - devops
       license: Other
       owner: multiversx
+  n8n:
+    description: Bridges n8n's workflow automation platform with AI models, providing access to 543 n8n nodes, workflow templates, and AI-capable automation tools.
+    title: n8n
+    type: server
+    dateAdded: "2025-12-03T16:57:57Z"
+    image: mcp/n8n@sha256:061cdb8fbaa78f5a09787338715b180a0759057759f402c473b5f6ee13a8709e
+    ref: ""
+    readme: http://desktop.docker.com/mcp/catalog/v3/readme/n8n.md
+    toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/n8n.json
+    source: https://github.com/czlonkowski/n8n-mcp/tree/1bbfaabbc20f4989d81bc8a2cfc9f16795134ed8
+    upstream: https://github.com/czlonkowski/n8n-mcp
+    icon: https://www.google.com/s2/favicons?domain=n8n.io&sz=64
+    tools:
+      - name: get_database_statistics
+      - name: get_node_as_tool_info
+      - name: get_node_documentation
+      - name: get_node_essentials
+      - name: get_node_info
+      - name: get_property_dependencies
+      - name: get_template
+      - name: get_templates_for_task
+      - name: list_ai_tools
+      - name: list_node_templates
+      - name: list_nodes
+      - name: list_tasks
+      - name: list_templates
+      - name: n8n_autofix_workflow
+      - name: n8n_create_workflow
+      - name: n8n_delete_execution
+      - name: n8n_delete_workflow
+      - name: n8n_diagnostic
+      - name: n8n_get_execution
+      - name: n8n_get_workflow
+      - name: n8n_get_workflow_details
+      - name: n8n_get_workflow_minimal
+      - name: n8n_get_workflow_structure
+      - name: n8n_health_check
+      - name: n8n_list_available_tools
+      - name: n8n_list_executions
+      - name: n8n_list_workflows
+      - name: n8n_trigger_webhook_workflow
+      - name: n8n_update_full_workflow
+      - name: n8n_update_partial_workflow
+      - name: n8n_validate_workflow
+      - name: n8n_workflow_versions
+      - name: search_node_properties
+      - name: search_nodes
+      - name: search_templates
+      - name: search_templates_by_metadata
+      - name: tools_documentation
+      - name: validate_node_minimal
+      - name: validate_node_operation
+      - name: validate_workflow
+      - name: validate_workflow_connections
+      - name: validate_workflow_expressions
+    secrets:
+      - name: n8n.api_key
+        env: N8N_API_KEY
+        example: n8n_api_****
+    env:
+      - name: N8N_API_URL
+        value: '{{n8n.api_url}}'
+      - name: MCP_MODE
+        value: stdio
+    prompts: 0
+    resources: {}
+    config:
+      - name: n8n
+        description: Optional n8n API credentials for accessing live n8n instances. Use host.docker.internal to connect to n8n running locally on your host machine.
+        type: object
+        properties:
+          api_url:
+            type: string
+            description: The URL of your n8n instance (use http://host.docker.internal:5678 for local instances)
+    metadata:
+      pulls: 5465
+      githubStars: 10659
+      category: productivity
+      tags:
+        - n8n
+        - workflow-automation
+        - automation
+      license: MIT License
+      owner: czlonkowski
   nasdaq-data-link:
     description: MCP server to interact with the data feeds provided by the Nasdaq Data Link. Developed by the community and maintained by Stefano Amorelli.
     title: Nasdaq Data Link
@@ -9259,7 +9360,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2554
+      pulls: 2796
       stars: 2
       githubStars: 51
       category: finance
@@ -9328,9 +9429,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1594
+      pulls: 1760
       stars: 1
-      githubStars: 85
+      githubStars: 86
       category: search
       tags:
         - needle
@@ -9346,11 +9447,11 @@ registry:
     title: Neo4j Cloud Aura Api
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/neo4j-cloud-aura-api@sha256:47dafbe3dfb71e2936aae75b553fe91824a501e5ac89718adf63581db3a7a63e
+    image: mcp/neo4j-cloud-aura-api@sha256:7b474360c7c12f225a7547b519ace6f94d8489ead83c0b4f6f5906c384ac54b1
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/neo4j-cloud-aura-api.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/neo4j-cloud-aura-api.json
-    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/fbf47061c5498d9c9af7f5530a87841cfb64d294/servers/mcp-neo4j-cloud-aura-api
+    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/f74a4f2213af4cce80b2edfe6463b5ca03681dce/servers/mcp-neo4j-cloud-aura-api
     upstream: https://github.com/neo4j-contrib/mcp-neo4j
     icon: https://avatars.githubusercontent.com/u/916372?s=200&v=4
     tools:
@@ -9409,9 +9510,9 @@ registry:
         required:
           - client_id
     metadata:
-      pulls: 3049
+      pulls: 3385
       stars: 2
-      githubStars: 819
+      githubStars: 842
       category: devops
       tags:
         - neo4j-cloud-aura-api
@@ -9423,11 +9524,11 @@ registry:
     title: Neo4j Cypher
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/neo4j-cypher@sha256:e48235fb00b6b3c5c2e67d4c958786ad4ae8bc0c38cec090979cc3bc4e87f7cb
+    image: mcp/neo4j-cypher@sha256:9815579d840262433140dd922158b49ad6d622aabbf7a52bc81f43b9279cdd6c
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/neo4j-cypher.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/neo4j-cypher.json
-    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/fbf47061c5498d9c9af7f5530a87841cfb64d294/servers/mcp-neo4j-cypher
+    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/f74a4f2213af4cce80b2edfe6463b5ca03681dce/servers/mcp-neo4j-cypher
     upstream: https://github.com/neo4j-contrib/mcp-neo4j
     icon: https://avatars.githubusercontent.com/u/916372?s=200&v=4
     tools:
@@ -9506,9 +9607,9 @@ registry:
           - url
           - username
     metadata:
-      pulls: 13581
+      pulls: 14905
       stars: 2
-      githubStars: 819
+      githubStars: 842
       category: devops
       tags:
         - neo4j-cypher
@@ -9520,11 +9621,11 @@ registry:
     title: Neo4j Data Modeling
     type: server
     dateAdded: "2025-09-09T15:35:27Z"
-    image: mcp/neo4j-data-modeling@sha256:c90c52924e7c33e1484dc7b698546c4e56e61b5260dca90476cf3c933f9109f0
+    image: mcp/neo4j-data-modeling@sha256:fe5d6ec931e64f30059f2695f50645f1fa40075cc4ef979118a030b2dc276fe1
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/neo4j-data-modeling.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/neo4j-data-modeling.json
-    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/fbf47061c5498d9c9af7f5530a87841cfb64d294/servers/mcp-neo4j-data-modeling
+    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/f74a4f2213af4cce80b2edfe6463b5ca03681dce/servers/mcp-neo4j-data-modeling
     upstream: https://github.com/neo4j-contrib/mcp-neo4j
     icon: https://avatars.githubusercontent.com/u/916372?s=200&v=4
     tools:
@@ -9574,8 +9675,8 @@ registry:
           server_allowed_hosts:
             type: string
     metadata:
-      pulls: 1721
-      githubStars: 819
+      pulls: 2191
+      githubStars: 842
       category: devops
       tags:
         - neo4j-data-modeling
@@ -9587,11 +9688,11 @@ registry:
     title: Neo4j Memory
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/neo4j-memory@sha256:bc47b1789b6aebdc7b9f26858c3509b67d9e595dbf2a8be23e0e74852133c2cc
+    image: mcp/neo4j-memory@sha256:b699d4530f33f53f595559e136cd4cbf3835b44cc49b0b72e4f7ad42803927f9
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/neo4j-memory.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/neo4j-memory.json
-    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/fbf47061c5498d9c9af7f5530a87841cfb64d294/servers/mcp-neo4j-memory
+    source: https://github.com/neo4j-contrib/mcp-neo4j/tree/f74a4f2213af4cce80b2edfe6463b5ca03681dce/servers/mcp-neo4j-memory
     upstream: https://github.com/neo4j-contrib/mcp-neo4j
     icon: https://avatars.githubusercontent.com/u/916372?s=200&v=4
     tools:
@@ -9656,9 +9757,9 @@ registry:
           - url
           - username
     metadata:
-      pulls: 7547
+      pulls: 8281
       stars: 9
-      githubStars: 819
+      githubStars: 842
       category: devops
       tags:
         - neo4j-memory
@@ -9686,8 +9787,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1181
-      githubStars: 1
+      pulls: 2034
+      githubStars: 2
       category: devtools
       tags:
         - devtools
@@ -9698,11 +9799,11 @@ registry:
     title: Node.js Sandbox
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/node-code-sandbox@sha256:6b7180ab719dab2028dfc689002295ed6d55f7cc6217122d5025d849d5269666
+    image: mcp/node-code-sandbox@sha256:e8cbb5c3ae86d2aeb3974065ff9120d97d52e61e13b89fc03a704f4ebba7f98c
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/node-code-sandbox.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/node-code-sandbox.json
-    source: https://github.com/alfonsograziano/node-code-sandbox-mcp/tree/f6727b3be251fbd24826ca961a16cd98bbfe6125
+    source: https://github.com/alfonsograziano/node-code-sandbox-mcp/tree/60f3e52c239f27e1528dbdf508875da574479ba5
     upstream: https://github.com/alfonsograziano/node-code-sandbox-mcp
     icon: https://cdn.jsdelivr.net/npm/simple-icons@v7/icons/nodedotjs.svg
     tools:
@@ -9716,9 +9817,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 79229
+      pulls: 90464
       stars: 6
-      githubStars: 136
+      githubStars: 140
       category: devops
       tags:
         - node-code-sandbox
@@ -9794,7 +9895,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1525
+      pulls: 1611
       githubStars: 12
       category: ai
       tags:
@@ -9837,9 +9938,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 11843
+      pulls: 12248
       stars: 1
-      githubStars: 9
+      githubStars: 10
       category: devops
       tags:
         - npm
@@ -9882,9 +9983,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 35532
-      stars: 17
-      githubStars: 2455
+      pulls: 39623
+      stars: 18
+      githubStars: 2518
       category: productivity
       tags:
         - obsidian
@@ -9986,7 +10087,7 @@ registry:
         required:
           - client_orgurl
     metadata:
-      pulls: 1180
+      pulls: 1299
       githubStars: 36
       category: ai
       tags:
@@ -10006,11 +10107,11 @@ registry:
     title: Omi
     type: server
     dateAdded: "2025-07-21T12:46:15Z"
-    image: mcp/omi@sha256:e37ba70344baad6bb269f6f7aed353bf2594c5e6e4c417e79769fdde6e1a88a4
+    image: mcp/omi@sha256:674097f43757e1f560c20e1d6427a3dca3a5024d95d4b1183174a37dcd97323c
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/omi.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/omi.json
-    source: https://github.com/BasedHardware/omi/tree/2e90dfb528ab2eb23db667af2d1d83bdf4d74336/mcp
+    source: https://github.com/BasedHardware/omi/tree/144a166dda34f8acd505b54f1674b46afc596b8c/mcp
     upstream: https://github.com/BasedHardware/omi
     icon: https://avatars.githubusercontent.com/u/162546372?v=4
     tools:
@@ -10027,9 +10128,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2368
+      pulls: 2536
       stars: 1
-      githubStars: 7252
+      githubStars: 7328
       category: ai
       tags:
         - ai
@@ -10088,7 +10189,7 @@ registry:
           base_url:
             type: string
     metadata:
-      pulls: 1626
+      pulls: 1834
       githubStars: 8
       category: productivity
       tags:
@@ -10128,8 +10229,8 @@ registry:
           mode:
             type: string
     metadata:
-      pulls: 1596
-      githubStars: 13
+      pulls: 1983
+      githubStars: 15
       category: productivity
       tags:
         - productivity
@@ -10170,7 +10271,7 @@ registry:
           SchemaPath:
             type: string
     metadata:
-      pulls: 7344
+      pulls: 7770
       stars: 7
       githubStars: 46
       category: devops
@@ -10196,9 +10297,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 5872
+      pulls: 6413
       stars: 1
-      githubStars: 337
+      githubStars: 347
       category: search
       tags:
         - airbnb
@@ -10255,9 +10356,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 6172
+      pulls: 6603
       stars: 4
-      githubStars: 13
+      githubStars: 15
       category: search
       tags:
         - weather-api
@@ -10390,11 +10491,11 @@ registry:
     title: Opik
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/opik@sha256:1ff61d0c6618e9b4add47b12b3b01b8c18d00df49cbf3c95ede58e87ee9886ad
+    image: mcp/opik@sha256:0e0d7d33d5eb91c3551e868cbdf6cbfe6692bd1d1b79db9d1abb3c335488b8f2
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/opik.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/opik.json
-    source: https://github.com/comet-ml/opik-mcp/tree/40b8e53d73f363ebcd25085a5ff9274c3ce79718
+    source: https://github.com/comet-ml/opik-mcp/tree/ea3b4862c5d904fd51cacf61a28abf4791864d1e
     upstream: https://github.com/comet-ml/opik-mcp
     icon: https://avatars.githubusercontent.com/u/31487821?s=200&v=4
     tools:
@@ -10432,9 +10533,9 @@ registry:
           workspace_name:
             type: string
     metadata:
-      pulls: 2608
+      pulls: 2743
       stars: 1
-      githubStars: 186
+      githubStars: 191
       category: devops
       tags:
         - opik
@@ -10446,15 +10547,16 @@ registry:
     title: Opine
     type: server
     dateAdded: "2025-09-06T06:18:47Z"
-    image: codygreen719/opine-mcp-server@sha256:82c7a0c4941cbf6a903e445b1b4f12474978191d016ae23433984931e4a39c9e
+    image: codygreen719/opine-mcp-server@sha256:f3a640a90a20fa93367a876b69bc08c26a2aaaff2b68b6f42e901c80a70c6dac
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/opine-mcp-server.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/opine-mcp-server.json
-    source: https://github.com/cody-docker/opine-mcp-server/tree/63e0c626850dad818491a04c84f28e575e530322
+    source: https://github.com/cody-docker/opine-mcp-server/tree/d530ea40ff343ecf4d532317f274ba5dfe06bdbe
     upstream: https://github.com/cody-docker/opine-mcp-server
     icon: https://app.tryopine.com/_next/image?url=%2Flogomark.png&w=32&q=75
     tools:
       - name: get_deal
+      - name: get_salesforce_deal
       - name: list_deals
       - name: list_evaluations
       - name: list_tickets
@@ -10511,8 +10613,8 @@ registry:
           oracle_user:
             type: string
     metadata:
-      pulls: 1356
-      githubStars: 2
+      pulls: 1639
+      githubStars: 3
       category: database
       tags:
         - oracle
@@ -10543,9 +10645,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 4112
+      pulls: 4357
       stars: 2
-      githubStars: 255
+      githubStars: 256
       category: devops
       tags:
         - osp_marketing_tools
@@ -10588,9 +10690,9 @@ registry:
         required:
           - username
     metadata:
-      pulls: 3066
+      pulls: 3186
       stars: 3
-      githubStars: 71
+      githubStars: 75
       category: devops
       tags:
         - oxylabs
@@ -10636,9 +10738,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 8148
+      pulls: 9014
       stars: 3
-      githubStars: 455
+      githubStars: 479
       category: search
       tags:
         - academic
@@ -10708,9 +10810,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1177
+      pulls: 1303
       stars: 1
-      githubStars: 3
+      githubStars: 4
       category: ai
       tags:
         - ai
@@ -10751,7 +10853,7 @@ registry:
             type: string
             description: The Pica API base URL
     metadata:
-      pulls: 157
+      pulls: 289
       githubStars: 8
       category: integration
       tags:
@@ -10792,9 +10894,9 @@ registry:
           assistant_host:
             type: string
     metadata:
-      pulls: 2461
+      pulls: 2623
       stars: 3
-      githubStars: 39
+      githubStars: 40
       category: database
       tags:
         - database
@@ -10858,8 +10960,8 @@ registry:
           data:
             type: string
     metadata:
-      pulls: 3906
-      githubStars: 5011
+      pulls: 4388
+      githubStars: 5048
       category: ai
       tags:
         - ai
@@ -10902,9 +11004,9 @@ registry:
             type: string
             description: Base URL for the Plugged.in API (optional, defaults to https://plugged.in for cloud or http://localhost:12005 for self-hosted)
     metadata:
-      pulls: 2529
+      pulls: 2723
       stars: 3
-      githubStars: 108
+      githubStars: 112
       category: productivity
       tags:
         - productivity
@@ -10982,7 +11084,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 527
+      pulls: 648
       githubStars: 1
       category: productivity
       tags:
@@ -11017,9 +11119,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 167321
+      pulls: 178420
       stars: 31
-      githubStars: 73304
+      githubStars: 74187
       category: database
       tags:
         - postgres
@@ -11085,9 +11187,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 5621
+      pulls: 7473
       stars: 3
-      githubStars: 106
+      githubStars: 117
       category: devops
       tags:
         - devops
@@ -11116,7 +11218,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1575
+      pulls: 1700
       githubStars: 2
       category: devops
       tags:
@@ -11192,7 +11294,7 @@ registry:
         required:
           - prometheus_url
     metadata:
-      githubStars: 291
+      githubStars: 306
       category: monitoring
       tags:
         - ai
@@ -11260,9 +11362,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 129307
+      pulls: 133537
       stars: 31
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - puppeteer
@@ -11367,9 +11469,9 @@ registry:
           agentname:
             type: string
     metadata:
-      pulls: 786
+      pulls: 972
       stars: 1
-      githubStars: 54
+      githubStars: 58
       category: finance
       tags:
         - finance
@@ -11396,8 +11498,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1303
-      githubStars: 76
+      pulls: 1426
+      githubStars: 78
       category: security
       tags:
         - security
@@ -11480,9 +11582,9 @@ registry:
         required:
           - key_id
     metadata:
-      pulls: 2683
+      pulls: 2779
       stars: 1
-      githubStars: 208
+      githubStars: 209
       category: devops
       tags:
         - razorpay
@@ -11494,11 +11596,11 @@ registry:
     title: Redis
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/redis@sha256:de1a38620d30c33213cfa08a6d2a79e29246d0953e8ebf4b8f580a9fdcdeee9a
+    image: mcp/redis@sha256:c9162917b62dda5495feb9a2ca277564269cf2bfbe6d468b851a9dcb6c88d686
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/redis.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/redis.json
-    source: https://github.com/redis/mcp-redis/tree/e6b17ce78fd19a7c021935c027db15c29e7be1a6
+    source: https://github.com/redis/mcp-redis/tree/1f35871886f39736a2924cfd5f346eef5adc387b
     upstream: https://github.com/redis/mcp-redis
     icon: https://avatars.githubusercontent.com/u/1529926?v=4
     tools:
@@ -11532,6 +11634,7 @@ registry:
       - name: sadd
       - name: scan_all_keys
       - name: scan_keys
+      - name: search_redis_documents
       - name: set
       - name: set_vector_in_hash
       - name: smembers
@@ -11599,9 +11702,9 @@ registry:
           cluster_mode:
             type: boolean
     metadata:
-      pulls: 20446
+      pulls: 22650
       stars: 13
-      githubStars: 344
+      githubStars: 357
       category: database
       tags:
         - redis
@@ -11658,9 +11761,9 @@ registry:
         required:
           - api_key
     metadata:
-      pulls: 3051
+      pulls: 3383
       stars: 1
-      githubStars: 37
+      githubStars: 38
       category: database
       tags:
         - redis-cloud
@@ -11689,9 +11792,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2963
+      pulls: 3413
       stars: 2
-      githubStars: 790
+      githubStars: 845
       category: devops
       tags:
         - devops
@@ -11766,9 +11869,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2850
+      pulls: 3094
       stars: 1
-      githubStars: 72
+      githubStars: 74
       category: devops
       tags:
         - render
@@ -11815,9 +11918,9 @@ registry:
           - reply_to
           - sender
     metadata:
-      pulls: 4165
+      pulls: 4428
       stars: 5
-      githubStars: 412
+      githubStars: 418
       category: communication
       tags:
         - resend
@@ -11859,7 +11962,7 @@ registry:
           url:
             type: string
     metadata:
-      pulls: 2220
+      pulls: 2303
       githubStars: 6
       category: devops
       tags:
@@ -11898,7 +12001,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1169
+      pulls: 1313
       stars: 5
       githubStars: 2
       category: security
@@ -11914,17 +12017,23 @@ registry:
     title: WiseVision ROS2
     type: server
     dateAdded: "2025-09-15T16:12:49Z"
-    image: mcp/ros2@sha256:fa8ce8546cdaec20b69b45d6a8d3227c1d29313ba03faa104f7110dd3a9710a6
+    image: mcp/ros2@sha256:4f83a010c79d5c3fffa6846783ff002eed687204fb1a5028db7c65c4266c6cd1
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/ros2.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/ros2.json
-    source: https://github.com/wise-vision/mcp_server_ros_2/tree/22c7184713840e3c233734c6477893a603fd480c
+    source: https://github.com/wise-vision/mcp_server_ros_2/tree/95ee6d8832c787ef1e10a7b9dfef8b06cac05e74
     upstream: https://github.com/wise-vision/mcp_server_ros_2
     icon: https://avatars.githubusercontent.com/u/85994630?v=4
     tools:
+      - name: ros2_action_request_result
+      - name: ros2_action_subscribe_feedback
+      - name: ros2_action_subscribe_status
+      - name: ros2_cancel_action_goal
       - name: ros2_get_message_fields
-      - name: ros2_get_messages
+      - name: ros2_get_messages_stored_in_influx_data_base
       - name: ros2_interface_list
+      - name: ros2_list_actions
+      - name: ros2_send_action_goal
       - name: ros2_service_call
       - name: ros2_service_list
       - name: ros2_topic_list
@@ -11933,7 +12042,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 771
+      pulls: 1437
       githubStars: 59
       category: devops
       tags:
@@ -12036,8 +12145,8 @@ registry:
             items:
               type: string
     metadata:
-      pulls: 1674
-      githubStars: 100
+      pulls: 2096
+      githubStars: 103
       category: productivity
       tags:
         - productivity
@@ -12049,20 +12158,21 @@ registry:
     type: server
     longLived: true
     dateAdded: "2025-09-02T20:44:02Z"
-    image: mcp/schemacrawler-ai@sha256:f61d2184d602e1f9349c1ede225babc574b1d6f94ae923259a788646051b8834
+    image: mcp/schemacrawler-ai@sha256:b340151054ead99efe9a7cdf2e53a156a45318b541f6175fc253117a89b285de
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/schemacrawler-ai.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/schemacrawler-ai.json
-    source: https://github.com/schemacrawler/SchemaCrawler-AI/tree/2fadcfcb3c7eb141dcfa323494b7cde148b090d9
+    source: https://github.com/schemacrawler/SchemaCrawler-AI/tree/e0dcd56d0e51327e4ebad666d40ee3ff8704d1d8
     upstream: https://github.com/schemacrawler/SchemaCrawler-AI
     icon: https://avatars.githubusercontent.com/u/58572?v=4
     tools:
       - name: describe-routines
       - name: describe-tables
-      - name: get-schemacrawler-version
+      - name: diagram
       - name: lint
       - name: list
       - name: list-across-tables
+      - name: mcp-server-health
       - name: server-information
       - name: table-sample
     secrets:
@@ -12148,7 +12258,7 @@ registry:
           - required:
               - server_connection
     metadata:
-      pulls: 1098
+      pulls: 1263
       stars: 2
       githubStars: 7
       category: database
@@ -12176,7 +12286,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1253
+      pulls: 1392
       category: productivity
       tags:
         - productivity
@@ -12217,16 +12327,19 @@ registry:
     title: ScrapeGraph
     type: server
     dateAdded: "2025-05-05T20:08:35Z"
-    image: mcp/scrapegraph@sha256:9005c47bdd7917294777ebeefe448da7e127b608e2006450f901452645a4fb1c
+    image: mcp/scrapegraph@sha256:43e315d80397aa4f524ae2721fb9a0aa14e7dd219770dea5bf506a46efb8fd51
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/scrapegraph.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/scrapegraph.json
-    source: https://github.com/ScrapeGraphAI/scrapegraph-mcp/tree/aebeebd2748311e3ff68d5c10d37b0a903e6206a
+    source: https://github.com/ScrapeGraphAI/scrapegraph-mcp/tree/3579efb4afc8b23a7a968021995a321142118bfc
     upstream: https://github.com/ScrapeGraphAI/scrapegraph-mcp
     icon: https://avatars.githubusercontent.com/u/171017415?s=200&v=4
     tools:
+      - name: agentic_scrapper
       - name: markdownify
+      - name: scrape
       - name: searchscraper
+      - name: sitemap
       - name: smartcrawler_fetch_results
       - name: smartcrawler_initiate
       - name: smartscraper
@@ -12237,9 +12350,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3884
+      pulls: 4125
       stars: 4
-      githubStars: 45
+      githubStars: 47
       category: devops
       tags:
         - scrapegraph
@@ -12267,9 +12380,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3002
+      pulls: 3162
       stars: 3
-      githubStars: 10
+      githubStars: 12
       category: devops
       tags:
         - scrapezy
@@ -12297,7 +12410,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1621
+      pulls: 1767
       stars: 2
       category: communication
       tags:
@@ -12360,9 +12473,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 5002
+      pulls: 5229
       stars: 7
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - sentry
@@ -12431,7 +12544,7 @@ registry:
           mcp_server_url:
             type: string
     metadata:
-      pulls: 1182
+      pulls: 1295
       stars: 1
       githubStars: 16
       category: devops
@@ -12458,9 +12571,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 159673
+      pulls: 176329
       stars: 28
-      githubStars: 73304
+      githubStars: 74187
       category: ai
       tags:
         - mcp
@@ -12536,7 +12649,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      githubStars: 4
+      githubStars: 5
       category: productivity
       tags:
         - productivity
@@ -12581,7 +12694,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1421
+      pulls: 1548
       githubStars: 26
       category: database
       tags:
@@ -12633,9 +12746,9 @@ registry:
         required:
           - team_id
     metadata:
-      pulls: 278726
+      pulls: 280744
       stars: 22
-      githubStars: 73304
+      githubStars: 74187
       category: communication
       tags:
         - slack
@@ -12647,39 +12760,16 @@ registry:
     title: SmartBear
     type: server
     dateAdded: "2025-08-05T16:31:03Z"
-    image: mcp/smartbear@sha256:828b802154c8cdd534c87626b3e3d83d197e09b96b92acde23424f1ff44e3875
+    image: mcp/smartbear@sha256:1b0b55cb597dde6c973fa54a9d8073afb6739319da94fad46e123157bb3f6839
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/smartbear.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/smartbear.json
-    source: https://github.com/SmartBear/smartbear-mcp/tree/9e8cbf02832dbce06eb58d15b32eea7ec5949e8d
+    source: https://github.com/SmartBear/smartbear-mcp/tree/d4189dbb98d69db5c7bda60b25ee1e0423cf0972
     upstream: https://github.com/SmartBear/smartbear-mcp
     icon: https://avatars.githubusercontent.com/u/1644671?s=200&v=4
     tools:
-      - name: api_hub_create_api_from_template
-      - name: api_hub_create_or_update_api
-      - name: api_hub_create_portal
-      - name: api_hub_create_portal_product
-      - name: api_hub_create_table_of_contents
-      - name: api_hub_delete_document
-      - name: api_hub_delete_portal
-      - name: api_hub_delete_portal_product
-      - name: api_hub_delete_table_of_contents
-      - name: api_hub_get_api_definition
-      - name: api_hub_get_document
-      - name: api_hub_get_portal
-      - name: api_hub_get_portal_product
-      - name: api_hub_list_organizations
-      - name: api_hub_list_portal_product_sections
-      - name: api_hub_list_portal_products
-      - name: api_hub_list_portals
-      - name: api_hub_list_table_of_contents
-      - name: api_hub_publish_portal_product
-      - name: api_hub_scan_api_standardization
-      - name: api_hub_search_apis_and_domains
-      - name: api_hub_update_document
-      - name: api_hub_update_portal
-      - name: api_hub_update_portal_product
       - name: bugsnag_get_build
+      - name: bugsnag_get_current_project
       - name: bugsnag_get_error
       - name: bugsnag_get_event_details
       - name: bugsnag_get_release
@@ -12702,6 +12792,30 @@ registry:
       - name: reflect_list_suites
       - name: reflect_list_tests
       - name: reflect_run_test
+      - name: swagger_create_api_from_template
+      - name: swagger_create_or_update_api
+      - name: swagger_create_portal
+      - name: swagger_create_portal_product
+      - name: swagger_create_table_of_contents
+      - name: swagger_delete_document
+      - name: swagger_delete_portal
+      - name: swagger_delete_portal_product
+      - name: swagger_delete_table_of_contents
+      - name: swagger_get_api_definition
+      - name: swagger_get_document
+      - name: swagger_get_portal
+      - name: swagger_get_portal_product
+      - name: swagger_list_organizations
+      - name: swagger_list_portal_product_sections
+      - name: swagger_list_portal_products
+      - name: swagger_list_portals
+      - name: swagger_list_table_of_contents
+      - name: swagger_publish_portal_product
+      - name: swagger_scan_api_standardization
+      - name: swagger_search_apis_and_domains
+      - name: swagger_update_document
+      - name: swagger_update_portal
+      - name: swagger_update_portal_product
     secrets:
       - name: smartbear.bugsnag_auth_token
         env: BUGSNAG_AUTH_TOKEN
@@ -12743,8 +12857,8 @@ registry:
           pact_broker_username:
             type: string
     metadata:
-      pulls: 1364
-      githubStars: 17
+      pulls: 1516
+      githubStars: 18
       category: devops
       tags:
         - smartbear
@@ -12758,11 +12872,11 @@ registry:
     title: SonarQube
     type: server
     dateAdded: "2025-07-01T12:14:18Z"
-    image: mcp/sonarqube@sha256:0c8674f34b70474bd6f5b6e212651f720c047ee75d39244e1f599add27d19805
+    image: mcp/sonarqube@sha256:f7d3c6f75981d055b57b2e4a3e6b4e714c5ddc6d6ee2163daa972af9896d60e4
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/sonarqube.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/sonarqube.json
-    source: https://github.com/SonarSource/sonarqube-mcp-server/tree/48fd7a7b59ea255a1255a0ee5c54579bfad0e722
+    source: https://github.com/SonarSource/sonarqube-mcp-server/tree/71c79caa020532b935551eee7bc66e792fd3c8f9
     upstream: https://github.com/SonarSource/sonarqube-mcp-server
     icon: https://avatars.githubusercontent.com/u/545988?s=200&v=4
     tools:
@@ -12814,9 +12928,9 @@ registry:
             type: string
             description: Organization key for SonarQube Cloud, not required for SonarQube Server or Community Build
     metadata:
-      pulls: 32348
-      stars: 17
-      githubStars: 181
+      pulls: 39953
+      stars: 18
+      githubStars: 266
       category: productivity
       tags:
         - sonarqube
@@ -12849,9 +12963,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 17591
+      pulls: 18399
       stars: 17
-      githubStars: 73304
+      githubStars: 74187
       category: database
       tags:
         - sqlite
@@ -12899,9 +13013,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 730
+      pulls: 1281
       stars: 1
-      githubStars: 4
+      githubStars: 6
       category: database
       tags:
         - database
@@ -12912,7 +13026,7 @@ registry:
     title: StackGen
     type: server
     dateAdded: "2025-09-13T06:25:03Z"
-    image: ghcr.io/stackgenhq/stackgen@sha256:b7cd306d0284a813db0e6b41a5678711af2c08f78c54f3e89ef5dd364c2910ed
+    image: ghcr.io/stackgenhq/stackgen@sha256:3bc1ba081f6cd3ece965a56e0abec81ef343ca5cd63ec964f461d68f28195c83
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/stackgen.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/stackgen.json
@@ -12957,11 +13071,11 @@ registry:
     title: StackHawk
     type: server
     dateAdded: "2025-09-19T06:18:27Z"
-    image: mcp/stackhawk@sha256:18a9cee31c2cd568da3fd2885a1d01ca53be7fe14cd3d6975cc35667ce124436
+    image: mcp/stackhawk@sha256:80de6b9e34d9c2f72338cc516f6556ab7d2e35ad1989e2cbcb256d75ac4b6460
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/stackhawk.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/stackhawk.json
-    source: https://github.com/stackhawk/stackhawk-mcp/tree/b2bcc7959e748832aa68df384ec7b5baf2431f93
+    source: https://github.com/stackhawk/stackhawk-mcp/tree/442c92bd9809b304e2bed4e73b64c094efb78e69
     upstream: https://github.com/stackhawk/stackhawk-mcp
     icon: https://avatars.githubusercontent.com/u/53230463?v=4
     tools:
@@ -12988,8 +13102,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 490
-      githubStars: 3
+      pulls: 678
+      githubStars: 4
       category: devops
       tags:
         - devops
@@ -13054,7 +13168,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      githubStars: 20
+      githubStars: 23
       category: search
       tags:
         - supadata
@@ -13098,7 +13212,7 @@ registry:
           api_endpoint:
             type: string
     metadata:
-      pulls: 1312
+      pulls: 1431
       stars: 1
       githubStars: 3
       category: monitoring
@@ -13166,7 +13280,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      githubStars: 115
+      githubStars: 124
       category: ai
       tags:
         - tasks
@@ -13197,9 +13311,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 16598
+      pulls: 17265
       stars: 8
-      githubStars: 953
+      githubStars: 986
       category: search
       tags:
         - tavily
@@ -13211,11 +13325,11 @@ registry:
     title: Teamwork
     type: server
     dateAdded: "2025-09-02T20:44:02Z"
-    image: mcp/teamwork@sha256:bdc0c76a6cff9dfad9062dfcb494326673b146e55e11d0564ce7bce1fd9a25bf
+    image: mcp/teamwork@sha256:3af8ec86a1ee3aaf123e84d26733738c04e0995db3be27ad9ba6875e0d2a3e79
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/teamwork.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/teamwork.json
-    source: https://github.com/teamwork/mcp/tree/e4fe93a91bd75b170eb239100c95d91d6999b4fd
+    source: https://github.com/teamwork/mcp/tree/734ce981869b9c0a2c9bcfb5f75ef2efcd1b45a2
     upstream: https://github.com/teamwork/mcp
     icon: https://avatars.githubusercontent.com/u/4037476?v=4
     tools:
@@ -13260,6 +13374,7 @@ registry:
       - name: twprojects-create_milestone
       - name: twprojects-create_notebook
       - name: twprojects-create_project
+      - name: twprojects-create_project_category
       - name: twprojects-create_tag
       - name: twprojects-create_task
       - name: twprojects-create_tasklist
@@ -13272,6 +13387,7 @@ registry:
       - name: twprojects-get_milestone
       - name: twprojects-get_notebook
       - name: twprojects-get_project
+      - name: twprojects-get_project_category
       - name: twprojects-get_tag
       - name: twprojects-get_task
       - name: twprojects-get_tasklist
@@ -13292,6 +13408,7 @@ registry:
       - name: twprojects-list_milestones
       - name: twprojects-list_milestones_by_project
       - name: twprojects-list_notebooks
+      - name: twprojects-list_project_categories
       - name: twprojects-list_projects
       - name: twprojects-list_tags
       - name: twprojects-list_tasklists
@@ -13315,6 +13432,7 @@ registry:
       - name: twprojects-update_milestone
       - name: twprojects-update_notebook
       - name: twprojects-update_project
+      - name: twprojects-update_project_category
       - name: twprojects-update_tag
       - name: twprojects-update_task
       - name: twprojects-update_tasklist
@@ -13331,7 +13449,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 1374
+      pulls: 1544
       githubStars: 11
       category: productivity
       tags:
@@ -13401,7 +13519,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2116
+      pulls: 2206
       githubStars: 7
       category: devops
       tags:
@@ -13414,11 +13532,11 @@ registry:
     title: Temporal
     type: server
     dateAdded: "2025-11-19T23:01:35Z"
-    image: mcp/temporal@sha256:7b69ce26678bbabfefa939ccf42c89d4b001d62242eb550c71d52cd8105b9e7b
+    image: mcp/temporal@sha256:09d2e656f3810f9cc2564fca1f1e0e15292617aaca12e34e34ab4d5a9083b2b0
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/temporal.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/temporal.json
-    source: https://github.com/GethosTheWalrus/temporal-mcp/tree/45f4ec5cb9198e773b1380956425c3bd8ae71435
+    source: https://github.com/GethosTheWalrus/temporal-mcp/tree/5891ba01db0e327aeecff23193beabca321eb1bc
     upstream: https://github.com/GethosTheWalrus/temporal-mcp
     icon: https://media.licdn.com/dms/image/v2/D560BAQG2k4od1BnFYw/company-logo_200_200/company-logo_200_200/0/1719946312124/temporal_technologies_logo?e=2147483647&v=beta&t=MFaqPo93l6qp8Dj0NrAdWyIk3izLBhN1i0WCBf-yVFs
     tools:
@@ -13462,8 +13580,8 @@ registry:
           temporal_tls_enabled:
             type: string
     metadata:
-      pulls: 54
-      githubStars: 1
+      pulls: 257
+      githubStars: 2
       category: devops
       tags:
         - temporal
@@ -13496,7 +13614,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      githubStars: 1070
+      githubStars: 1091
       category: devops
       tags:
         - hashicorp
@@ -13508,11 +13626,11 @@ registry:
     title: Testkube
     type: server
     dateAdded: "2025-11-19T22:19:17Z"
-    image: mcp/testkube@sha256:42ab3880b1380af9de4a8468f32ba1e08c2774229e62e667022569c834ab5c42
+    image: mcp/testkube@sha256:7af456ff506746982bcf239291c4ae01144e63bec5363a682dd56e5b215c1443
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/testkube.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/testkube.json
-    source: https://github.com/kubeshop/testkube/tree/6da58c790ecffdec93de52f6bcd671317a7e2f5c
+    source: https://github.com/kubeshop/testkube/tree/d45ec6b9c430f8446c7cbc5b2c65cc3d61a86d2c
     upstream: https://github.com/kubeshop/testkube
     icon: https://avatars.githubusercontent.com/u/82541796?v=4
     tools:
@@ -13560,8 +13678,8 @@ registry:
             type: string
             description: The URL of the Testkube Control Plane
     metadata:
-      pulls: 47
-      githubStars: 1533
+      pulls: 194
+      githubStars: 1539
       category: devops
       tags:
         - devops
@@ -13626,8 +13744,8 @@ registry:
             type: number
             description: Model temperature for responses
     metadata:
-      pulls: 1482
-      githubStars: 20
+      pulls: 1660
+      githubStars: 21
       category: devops
       tags:
         - graphql
@@ -13735,7 +13853,7 @@ registry:
         required:
           - url
     metadata:
-      pulls: 256
+      pulls: 404
       githubStars: 78
       category: monitoring
       tags:
@@ -13751,11 +13869,11 @@ registry:
     title: Tigris Data
     type: server
     dateAdded: "2025-05-20T20:08:35Z"
-    image: mcp/tigris@sha256:f183ed3aebced05aaeca109d20135c9972eefb77e2c1e822ee3a9e5a2cffcb7a
+    image: mcp/tigris@sha256:8d17f6d61ec9a0683939c1b18bb8a44faa69f1831804da20c5fed5edf9e8714a
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/tigris.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/tigris.json
-    source: https://github.com/tigrisdata/tigris-mcp-server/tree/7d61d54f7a890aaafd8c9795b2e771d8cdcd87f7
+    source: https://github.com/tigrisdata/tigris-mcp-server/tree/9fbdc7955d58e4b9f4b3725286829d4bbed5a42f
     upstream: https://github.com/tigrisdata/tigris-mcp-server
     icon: https://avatars.githubusercontent.com/u/95787860?v=4
     tools:
@@ -13793,7 +13911,7 @@ registry:
           - aws_access_key_id
           - aws_endpoint_url_s3
     metadata:
-      pulls: 1207
+      pulls: 1363
       githubStars: 3
       category: devops
       tags:
@@ -13821,9 +13939,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 291168
+      pulls: 315188
       stars: 8
-      githubStars: 73304
+      githubStars: 74187
       category: devops
       tags:
         - time
@@ -13851,7 +13969,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2225
+      pulls: 2317
       githubStars: 3
       category: devops
       tags:
@@ -13864,11 +13982,11 @@ registry:
     title: Unreal Engine
     type: server
     dateAdded: "2025-09-15T16:12:49Z"
-    image: mcp/unreal-engine-mcp-server@sha256:de84dd81c0dbee7a71f75c95126c4f3a466c247d804d962444b8fcdfff40dced
+    image: mcp/unreal-engine-mcp-server@sha256:0b58ce1f6fa29bab8e6f80ddbb8d8c705ba815404568bc47243eec0a0af674da
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/unreal-engine-mcp-server.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/unreal-engine-mcp-server.json
-    source: https://github.com/ChiR24/Unreal_mcp/tree/a24dafda619d7b0fb9bef37d9c715c22d1b1e899
+    source: https://github.com/ChiR24/Unreal_mcp/tree/16f9feac2a1feb8bab9b8826fb965f2badffdb6d
     upstream: https://github.com/ChiR24/Unreal_mcp
     icon: https://raw.githubusercontent.com/ChiR24/Unreal_mcp/main/Public/icon.png
     tools:
@@ -13918,9 +14036,9 @@ registry:
           - ue_rc_http_port
           - ue_rc_ws_port
     metadata:
-      pulls: 1908
+      pulls: 2320
       stars: 2
-      githubStars: 25
+      githubStars: 33
       category: games
       tags:
         - games
@@ -13994,7 +14112,7 @@ registry:
           - VECTRA_BASE_URL
           - VECTRA_CLIENT_ID
     metadata:
-      pulls: 118
+      pulls: 245
       githubStars: 3
       category: ai
       tags:
@@ -14025,7 +14143,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2502
+      pulls: 2615
       stars: 4
       githubStars: 47
       category: devops
@@ -14038,7 +14156,7 @@ registry:
     title: VictoriaLogs
     type: server
     dateAdded: "2025-11-03T22:03:45Z"
-    image: ghcr.io/victoriametrics-community/mcp-victorialogs@sha256:e00a2d3cc6e4c198e0763416bb4c724147089ee5d68282ce9f591ffd39a273fe
+    image: ghcr.io/victoriametrics-community/mcp-victorialogs@sha256:43cd1492eb620b24e7bd5bf09992625704ed33ad31760a8707729eb38d193cbf
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/victorialogs.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/victorialogs.json
@@ -14102,7 +14220,7 @@ registry:
         required:
           - vl_instance_entrypoint
     metadata:
-      githubStars: 34
+      githubStars: 37
       category: monitoring
       tags:
         - monitoring
@@ -14119,7 +14237,7 @@ registry:
     title: VictoriaMetrics
     type: server
     dateAdded: "2025-10-31T23:09:49Z"
-    image: ghcr.io/victoriametrics-community/mcp-victoriametrics@sha256:837fe73dfe1be8dae97c838924280eaf9dbbdfcc1bfa923af44bc6cf9f5af500
+    image: ghcr.io/victoriametrics-community/mcp-victoriametrics@sha256:a4642b85b01253f8f8b1da99ee843654c2dc673f5c9900f83d941ec3500d0e5f
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/victoriametrics.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/victoriametrics.json
@@ -14202,7 +14320,7 @@ registry:
           - vm_instance_entrypoint
           - vm_instance_type
     metadata:
-      githubStars: 91
+      githubStars: 96
       category: monitoring
       tags:
         - monitoring
@@ -14220,7 +14338,7 @@ registry:
     title: VictoriaTraces
     type: server
     dateAdded: "2025-11-04T06:12:12Z"
-    image: ghcr.io/victoriametrics-community/mcp-victoriatraces@sha256:22a96053329794d547d2502ad5df6b5f346db1000ab3b34e5d439365acafdb60
+    image: ghcr.io/victoriametrics-community/mcp-victoriatraces@sha256:73afd210e0905821ffdeabeba7fdddc020cbaa2f092900c937f4edd5ca8a598f
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/victoriatraces.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/victoriatraces.json
@@ -14297,11 +14415,11 @@ registry:
     title: Vizro
     type: server
     dateAdded: "2025-05-29T20:04:34Z"
-    image: mcp/vizro@sha256:d1bc829de96f4e3d58a2b0b8c91a6b102c52834139e3f43c6f7eb994ef7a07aa
+    image: mcp/vizro@sha256:ddec90039ea179c359b9025b70bee3468e0ad503e7298ba7a653f23687a656af
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/vizro.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/vizro.json
-    source: https://github.com/mckinsey/vizro/tree/7bddab69399e486c2d789e3a3fdf64a29c390f90/vizro-mcp
+    source: https://github.com/mckinsey/vizro/tree/c88f5e62478de3762402a759cec33e4e1f8d0ee0/vizro-mcp
     upstream: https://github.com/mckinsey/vizro
     icon: https://avatars.githubusercontent.com/u/4265350?v=4
     tools:
@@ -14314,9 +14432,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 3806
+      pulls: 4019
       stars: 1
-      githubStars: 3481
+      githubStars: 3493
       category: data-visualization
       tags:
         - dashboard
@@ -14350,7 +14468,7 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 965
+      pulls: 1220
       stars: 1
       githubStars: 7
       category: search
@@ -14465,8 +14583,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 2761
-      githubStars: 88
+      pulls: 2914
+      githubStars: 90
       category: devops
       tags:
         - webflow
@@ -14531,9 +14649,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 84616
-      stars: 8
-      githubStars: 141
+      pulls: 95631
+      stars: 9
+      githubStars: 154
       category: devops
       tags:
         - wikipedia-mcp
@@ -14592,9 +14710,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 29687
+      pulls: 29980
       stars: 6
-      githubStars: 64
+      githubStars: 68
       category: devops
       tags:
         - wolfram-alpha
@@ -14620,9 +14738,9 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 125985
-      stars: 16
-      githubStars: 128
+      pulls: 140352
+      stars: 17
+      githubStars: 141
       category: search
       tags:
         - youtube
@@ -14630,17 +14748,17 @@ registry:
       license: MIT License
       owner: jkawamoto
   zen:
-    description: Model Context Protocol server that bridges multiple AI models and CLIs, enabling orchestrated workflows across Claude Code, Gemini CLI, Codex CLI, and other AI development tools.
+    description: Bridges multiple AI models and CLIs, enabling orchestrated workflows across Claude Code, Gemini CLI, Codex CLI, and other AI development tools.
     title: Zen
     type: server
     dateAdded: "2025-11-20T19:45:15Z"
-    image: mcp/zen@sha256:e0a57b68fc23a44bf641e280a6eea71e28f4c60f7f85222592e8c4e0fd17bde7
+    image: mcp/zen@sha256:a11fdaaa89ecf26ad1bdd9b53e2a066f3b1afdaabf40ae65623e2cab29b158c8
     ref: ""
     readme: http://desktop.docker.com/mcp/catalog/v3/readme/zen.md
     toolsUrl: http://desktop.docker.com/mcp/catalog/v3/tools/zen.json
-    source: https://github.com/beehiveinnovations/zen-mcp-server/tree/4d3d177d91370097ca7ac4f922fa3a8b69ce3250
+    source: https://github.com/beehiveinnovations/zen-mcp-server/tree/bcfaccecd490859fe189f45df4cf5b8e102d7874
     upstream: https://github.com/beehiveinnovations/zen-mcp-server
-    icon: https://avatars.githubusercontent.com/u/92374028?s=200&v=4
+    icon: https://avatars.githubusercontent.com/u/26299964?s=200&v=4
     tools:
       - name: analyze
       - name: apilookup
@@ -14676,8 +14794,8 @@ registry:
     prompts: 0
     resources: {}
     metadata:
-      pulls: 114
-      githubStars: 9764
+      pulls: 415
+      githubStars: 10391
       category: devops
       tags:
         - ai-orchestration
@@ -14744,7 +14862,7 @@ registry:
         required:
           - kite_api_key
     metadata:
-      pulls: 541
+      pulls: 678
       category: finance
       tags:
         - finance

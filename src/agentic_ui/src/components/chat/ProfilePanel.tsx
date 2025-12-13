@@ -86,6 +86,7 @@ export default function ProfilePanel({
     const [navCollapsed, setNavCollapsed] = useState<boolean>(() =>
         typeof window !== "undefined" ? window.innerWidth < 960 : false
     );
+    const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
     const { theme, setTheme } = useTheme();
 
     const toolKey = (tool: ToolWithStatus) => {
@@ -491,6 +492,23 @@ export default function ProfilePanel({
                                                                                     ? "0 parameters"
                                                                                     : `${parameterCount} parameter${parameterCount > 1 ? "s" : ""}`;
                                                                             const description = (tool.description || "").trim() || "No description provided.";
+                                                                            const maxDescriptionLength = 150;
+                                                                            const isTruncated = description.length > maxDescriptionLength;
+                                                                            const showFull = expandedDescriptions[uniqueKey] ?? false;
+                                                                            const displayText = showFull || !isTruncated ? description : description.slice(0, maxDescriptionLength);
+                                                                            const fadeTailCount = 20;
+                                                                            const headText = !showFull && isTruncated
+                                                                                ? displayText.slice(0, Math.max(0, displayText.length - fadeTailCount))
+                                                                                : displayText;
+                                                                            const tailText = !showFull && isTruncated
+                                                                                ? displayText.slice(Math.max(0, displayText.length - fadeTailCount))
+                                                                                : "";
+                                                                            const tailFadeStyle = {
+                                                                                WebkitMaskImage:
+                                                                                    "linear-gradient(90deg, #000 0%, #000 30%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.25) 80%, rgba(0,0,0,0) 90%, transparent 100%)",
+                                                                                maskImage:
+                                                                                    "linear-gradient(90deg, #000 0%, #000 30%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.25) 80%, rgba(0,0,0,0) 90%, transparent 100%)",
+                                                                            } as React.CSSProperties;
                                                                             return (
                                                                                 <div key={uniqueKey} className="px-1 py-2">
                                                                                     <div className="grid grid-cols-[auto,1fr,auto] gap-4">
@@ -509,9 +527,28 @@ export default function ProfilePanel({
                                                                                                     {parameterLabel}
                                                                                                 </span>
                                                                                             </div>
-                                                                                            <p className="text-sm text-muted-foreground break-words whitespace-normal">
-                                                                                                {description}
-                                                                                            </p>
+                                                                                            <div className="relative text-sm text-muted-foreground break-words whitespace-normal">
+                                                                                                <span>{headText}</span>
+                                                                                                {!showFull && isTruncated ? (
+                                                                                                    <span className="inline-flex items-center align-middle">
+                                                                                                        <span className="inline-block" style={tailFadeStyle}>
+                                                                                                            {tailText}
+                                                                                                        </span>
+                                                                                                        <button
+                                                                                                            type="button"
+                                                                                                            onClick={() =>
+                                                                                                                setExpandedDescriptions((prev) => ({
+                                                                                                                    ...prev,
+                                                                                                                    [uniqueKey]: true,
+                                                                                                                }))
+                                                                                                            }
+                                                                                                            className="ml-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-0"
+                                                                                                        >
+                                                                                                            See more
+                                                                                                        </button>
+                                                                                                    </span>
+                                                                                                ) : null}
+                                                                                            </div>
                                                                                         </div>
                                                                                         <button
                                                                                             type="button"
