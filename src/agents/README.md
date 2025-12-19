@@ -39,6 +39,7 @@ LangGraph-backed FastAPI service that streams AG-UI events for each persona, lis
 - `OPENAI_API_KEY` (required) – used for LLM calls, embeddings, and dictation.
 - `RAG_HOST` / `RAG_PORT` – point retrieval tools at the RAG service (defaults align with Compose).
 - `MCP_TOOLS_HTTP_URL` – MCP gateway SSE endpoint (default `http://mcp_gateway:8005/sse`; Compose sets `http://mcp_gateway:8005/sse`).
+- `DISABLED_AGENT_SLUGS` (optional) – comma-separated agent slugs to skip at startup (e.g., `hr-policies-agent-v1, Retail Agent`). Whitespace around commas is ignored; whitespace inside a slug is preserved. Compose defaults to disabling `orthodox-agent-v1` and `hr-policies-agent-v1`.
 
 ## Local development
 
