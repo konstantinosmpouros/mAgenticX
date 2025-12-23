@@ -275,8 +275,29 @@ class MessageIn(BaseModel):
 
     @model_validator(mode="after")
     def _require_content_or_attachment(self):
+        # Allow empty AI placeholders so the UI can allocate an id before streaming.
+        if self.sender == "ai" and not self.content and not self.attachments:
+            return self
         if not self.content and not self.attachments:
             raise ValueError("Either 'content' or at least one attachment is required.")
+        return self
+
+
+class MessageUpdate(BaseModel):
+    """
+    Update an existing message (used for streaming AI placeholders).
+    Content is required because this call finalises a previously empty message.
+    """
+    content: Optional[str] = None
+    thinking: Optional[List[str]] = None
+    thinkingTime: Optional[int] = None
+    error: Optional[bool] = None
+    errorMessage: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _require_content(self):
+        if self.content is None:
+            raise ValueError("Message content is required to update the message.")
         return self
 
 class ConversationIn(BaseModel):

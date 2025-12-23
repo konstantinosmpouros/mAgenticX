@@ -170,13 +170,31 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           throw new Error('Conversation missing first message id.');
         }
 
+        // Create an empty AI placeholder in DB to obtain the streaming id
+        const placeholderPayload: MessageIn = {
+          sender: 'ai',
+          type: 'text',
+          parentMessageId: replyParentMessageId,
+          content: '',
+        };
+        const placeholderResp = await addMessageToConversation(userId!, response.detail.id, placeholderPayload);
+        setMessages(prev => [...prev, placeholderResp.message]);
+        setCurrentConversation(prev =>
+          prev ? { ...prev, updated_at: new Date(placeholderResp.summary.updated_at) } : prev
+        );
+        setConversations(prev =>
+          sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
+        );
+        const branchPath = [...detailMessages.map((m) => m.id), placeholderResp.message.id];
+
         if (streamAbortRef.current) streamAbortRef.current.abort();
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: response.detail.id,
           replyParentMessageId,
-          uiBranchPath: response.detail.messages.map((m) => m.id),
+          uiBranchPath: branchPath,
+          prefillMessageId: placeholderResp.message.id,
           setMessages,
           setThinkingState,
           setCurrentConversation,
@@ -214,13 +232,31 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         if (setShowAiTransition) setShowAiTransition(true);
         const replyParentMessageId = response.message.id;
 
+        // Create an empty AI placeholder to get its id for streaming/retry
+        const placeholderPayload: MessageIn = {
+          sender: 'ai',
+          type: 'text',
+          parentMessageId: replyParentMessageId,
+          content: '',
+        };
+        const placeholderResp = await addMessageToConversation(userId!, currentConversation!.id, placeholderPayload);
+        setMessages(prev => [...prev, placeholderResp.message]);
+        setCurrentConversation(prev =>
+          prev ? { ...prev, updated_at: new Date(placeholderResp.summary.updated_at) } : prev
+        );
+        setConversations(prev =>
+          sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
+        );
+        const branchPath = [...activePathIds, response.message.id, placeholderResp.message.id];
+
         if (streamAbortRef.current) streamAbortRef.current.abort();
         streamAbortRef.current = new AbortController();
         await streamAguiRun({
           userId: userId!,
           conversationId: currentConversation!.id,
           replyParentMessageId,
-          uiBranchPath: [...activePathIds, response.message.id],
+          uiBranchPath: branchPath,
+          prefillMessageId: placeholderResp.message.id,
           setMessages,
           setThinkingState,
           setCurrentConversation,

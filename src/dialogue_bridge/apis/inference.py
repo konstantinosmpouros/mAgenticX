@@ -85,6 +85,18 @@ async def startInferenceStream(
         history_messages = ordered_messages
     else:
         history_messages = current_conv.messages
+
+    # If the last message is an empty AI placeholder, exclude it from agent history
+    # while keeping its id in the thread_id (messagePath) to isolate the checkpointer.
+    if history_messages:
+        last_msg = history_messages[-1]
+        is_placeholder = (
+            last_msg.sender == "ai"
+            and not last_msg.content
+            and (not getattr(last_msg, "attachments", None))
+        )
+        if is_placeholder:
+            history_messages = history_messages[:-1]
     
     # Serialise messages for agent
     history = [serialise_message_with_images_for_agent(m) for m in history_messages]

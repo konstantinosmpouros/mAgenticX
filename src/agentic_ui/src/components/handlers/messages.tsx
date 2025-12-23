@@ -379,14 +379,30 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         streamAbortRef.current.abort();
       }
       streamAbortRef.current = new AbortController();
-      const parentPath = buildPathToMessage(allMessages, parentId);
-      const branchMessagePath = [...parentPath, newMessage.id];
+      const baseMessages = [...allMessages, newMessage];
+      const parentPath = buildPathToMessage(baseMessages, parentId);
+      const aiPlaceholderPayload: MessageIn = {
+        sender: 'ai',
+        type: 'text',
+        parentMessageId: newMessage.id,
+        content: '',
+      };
+      const aiPlaceholderResp = await addMessageToConversation(userId, currentConversation.id, aiPlaceholderPayload);
+      setConversationMessages((prev) => [...prev, aiPlaceholderResp.message]);
+      setCurrentConversation((prev: ConversationDetail | null) =>
+        prev ? { ...prev, updated_at: new Date(aiPlaceholderResp.summary.updated_at) } : prev,
+      );
+      setConversations((prev) =>
+        sortByUpdatedAtDesc(prev.map((conv) => (conv.id === aiPlaceholderResp.summary.id ? aiPlaceholderResp.summary : conv))),
+      );
+      const branchMessagePath = [...parentPath, newMessage.id, aiPlaceholderResp.message.id];
 
       await streamAguiRun({
         userId,
         conversationId: currentConversation.id,
         replyParentMessageId: newMessage.id,
         uiBranchPath: branchMessagePath,
+        prefillMessageId: aiPlaceholderResp.message.id,
         enabledTools,
         setMessages: setConversationMessages,
         setThinkingState,
@@ -511,24 +527,25 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
 
     const allMessages = currentConversation.messages ?? [];
     const siblingCount = allMessages.filter((m) => (m.parentMessageId ?? null) === parentId).length;
-    const tempId = `retry-${Date.now()}`;
-
-    const placeholder: MessageOut = {
-      id: tempId,
-      sender: 'ai',
-      type: 'text',
-      content: '',
-      parentMessageId: parentId ?? undefined,
-      created_at: new Date(),
-      updated_at: new Date(),
-      attachments: [],
-    } as MessageOut;
 
     const parentKey = parentId ?? rootBranchKey;
 
     try {
       setIsSendingMessage?.(true);
-      setConversationMessages((prev) => [...prev, placeholder]);
+      const aiPlaceholderPayload: MessageIn = {
+        sender: 'ai',
+        type: 'text',
+        parentMessageId: parentId,
+        content: '',
+      };
+      const aiPlaceholderResp = await addMessageToConversation(userId, currentConversation.id, aiPlaceholderPayload);
+      setConversationMessages((prev) => [...prev, aiPlaceholderResp.message]);
+      setCurrentConversation((prev: ConversationDetail | null) =>
+        prev ? { ...prev, updated_at: new Date(aiPlaceholderResp.summary.updated_at) } : prev,
+      );
+      setConversations((prev) =>
+        sortByUpdatedAtDesc(prev.map((conv) => (conv.id === aiPlaceholderResp.summary.id ? aiPlaceholderResp.summary : conv))),
+      );
       setBranchSelections((prev) => ({
         ...prev,
         [parentKey]: siblingCount,
@@ -539,14 +556,14 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
       }
       streamAbortRef.current = new AbortController();
       const parentPath = buildPathToMessage(allMessages, parentId);
-      const uiBranchPath = [...parentPath, tempId];
+      const uiBranchPath = [...parentPath, aiPlaceholderResp.message.id];
 
       await streamAguiRun({
         userId,
         conversationId: currentConversation.id,
         replyParentMessageId: parentId,
         uiBranchPath,
-        serverBranchPath: parentPath,
+        serverBranchPath: uiBranchPath,
         setMessages: setConversationMessages,
         setThinkingState,
         setCurrentConversation,
@@ -554,12 +571,11 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
         toast,
         setShowAiTransition,
         signal: streamAbortRef.current.signal,
-        prefillMessageId: tempId,
+        prefillMessageId: aiPlaceholderResp.message.id,
         enabledTools,
       });
     } catch (error) {
       console.error('Failed to retry AI message', error);
-      setConversationMessages((prev) => prev.filter((m) => m.id !== tempId));
       toast({
         title: 'Failed to retry message',
         description: 'Please try again in a moment.',

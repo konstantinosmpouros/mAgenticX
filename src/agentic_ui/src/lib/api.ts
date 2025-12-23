@@ -9,6 +9,7 @@ import type {
   ConversationIn,
   CreateConversationResponse,
   MessageIn,
+  MessageUpdate,
   UpdateConversationResponse,
   DownloadAttachmentParams,
   AGUIEvent,
@@ -318,6 +319,38 @@ export async function addMessageToConversation(
   const m = data.message;
   return {
     message: transformMessage(m),
+    summary: transformConversationSummary(data.summary),
+  } as UpdateConversationResponse;
+}
+
+
+// Update an existing message in a conversation (used for AI placeholders)
+export async function updateMessageInConversation(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  payload: MessageUpdate,
+): Promise<UpdateConversationResponse> {
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}`, withCredentials({
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  }));
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      emitUnauthorized();
+      throw new Error(`Failed to update message: ${res.status}`);
+    }
+    throw new Error(`Failed to update message: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    message: transformMessage(data.message),
     summary: transformConversationSummary(data.summary),
   } as UpdateConversationResponse;
 }

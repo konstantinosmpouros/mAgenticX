@@ -170,6 +170,15 @@ export type MessageIn = {
     errorMessage?: string;
 };
 
+// Message update payload (used to finalise AI placeholders)
+export type MessageUpdate = {
+    content: string;
+    thinking?: string[];
+    thinkingTime?: number;
+    error?: boolean;
+    errorMessage?: string;
+};
+
 // Conversation creation payload
 export type ConversationIn = {
     agentId: string;

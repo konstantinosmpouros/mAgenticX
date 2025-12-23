@@ -1,4 +1,4 @@
-import { addMessageToConversation, streamInference } from '@/lib/api';
+import { addMessageToConversation, streamInference, updateMessageInConversation } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import type { MessageIn, MessageOut, ToolPreference } from '@/lib/types';
 import { EventSchemas, EventType as AGUIEventType } from '@ag-ui/core';
@@ -222,13 +222,23 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       } as any;
       
       try {
-        const resp = await addMessageToConversation(userId, conversationId, payload);
-        const id = runtime.stagedMessageId;
-        setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
-        setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
-        setConversations((prev: any[]) =>
-          sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
-        );
+        if (prefillMessageId || runtime.stagedMessageId) {
+          const targetId = runtime.stagedMessageId || prefillMessageId!;
+          const resp = await updateMessageInConversation(userId, conversationId, targetId, payload as any);
+          setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === targetId ? resp.message : m)));
+          setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
+          setConversations((prev: any[]) =>
+            sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
+          );
+        } else {
+          const resp = await addMessageToConversation(userId, conversationId, payload);
+          const id = runtime.stagedMessageId;
+          setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
+          setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
+          setConversations((prev: any[]) =>
+            sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
+          );
+        }
       } catch (err) {
         console.error('Failed to persist AI message', err);
       }
@@ -256,17 +266,27 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       } as any;
       
       try {
-        const resp = await addMessageToConversation(userId, conversationId, payload);
-        const id = runtime.stagedMessageId;
-        if (id) {
-          setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
+        if (prefillMessageId || runtime.stagedMessageId) {
+          const targetId = runtime.stagedMessageId || prefillMessageId!;
+          const resp = await updateMessageInConversation(userId, conversationId, targetId, payload as any);
+          setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === targetId ? resp.message : m)));
+          setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
+          setConversations((prev: any[]) =>
+            sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
+          );
         } else {
-          setMessages((prev: MessageOut[]) => [...prev, resp.message]);
+          const resp = await addMessageToConversation(userId, conversationId, payload);
+          const id = runtime.stagedMessageId;
+          if (id) {
+            setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
+          } else {
+            setMessages((prev: MessageOut[]) => [...prev, resp.message]);
+          }
+          setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
+          setConversations((prev: any[]) =>
+            sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
+          );
         }
-        setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
-        setConversations((prev: any[]) =>
-          sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
-        );
       } catch (err) {
         console.error('Failed to persist error message', err);
       }
@@ -281,17 +301,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   } catch (err) {
     const name = (err as any)?.name;
     if (name === 'AbortError') {
-      const stagedId = runtime.stagedMessageId;
-      if (stagedId) {
-        setMessages((prev: MessageOut[]) => prev.filter((m) => m.id !== stagedId));
-      }
       return;
     }
     console.error('Stream error', err);
-    const stagedId = runtime.stagedMessageId;
-    if (stagedId) {
-      setMessages((prev: MessageOut[]) => prev.filter((m) => m.id !== stagedId));
-    }
     const status = (err as any)?.status;
     const detail = (err as any)?.detail;
     const description =

@@ -1,8 +1,12 @@
 # TODO
 
-## Agents
+## In Progress
 
 - The try again functionality reuse the checkpointer from the previous state that contains the previous ai answer. To fix that we need to fix the flow of the inference in the UI. Create the message objects, upload to conv, send to db with the uuid and update the ui objects so we will have the effect of empty ai messages if inference stops and the ai action bar will exist to try again.
+- if l abort the inference the current response should be saved as an ai message or an empty ai message.
+
+## Agents
+
 - To have a streaming effect like openai and CoT in the reasoning maybe the streaming structured output is the solution.
 - Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 - Give in the agents the personal info of the user in the prompt like name and role. Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
@@ -16,7 +20,6 @@
 - Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
 - The thinking timer is buggy and all the times are wrong.
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
-- if l abort the inference the current response should be saved as an ai message or an empty ai message.
 - fix how the attachments seems in the input container. Make it like a horizontal container with a horizontal scroll bar and first the images, then the files.
 - place some message suggestions below the input container and if the user write something then remove them.
 
