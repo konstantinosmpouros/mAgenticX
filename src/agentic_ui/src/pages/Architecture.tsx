@@ -201,7 +201,7 @@ const Architecture = () => {
 
   return (
     <div
-      className="min-h-screen overflow-y-auto bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50"
+      className="min-h-screen overflow-y-auto overflow-x-hidden bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-50"
       style={{ scrollbarGutter: "stable both-edges" }}
     >
       <header className="border-b border-slate-800/70 bg-slate-950/80 backdrop-blur">
@@ -227,7 +227,7 @@ const Architecture = () => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10 space-y-10">
+      <main className="mx-auto w-full max-w-6xl px-4 py-10 space-y-10 sm:px-6">
         <section className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-6 shadow-lg shadow-fuchsia-900/25">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-2">
@@ -441,20 +441,25 @@ const Architecture = () => {
         )}
 
         {activeTab === "setup" && (
-          <section className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-6 shadow-lg shadow-fuchsia-900/25">
+          <section className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-6 shadow-lg shadow-fuchsia-900/25 w-full max-w-full overflow-hidden">
             <div className="flex items-center gap-2">
               <Wrench className="h-5 w-5 text-amber-200" />
               <h3 className="text-xl font-semibold">Setup checklist</h3>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-4 grid gap-4 md:grid-cols-2 w-full max-w-full">
               {setupSections.map((section) => (
-                <div key={section.title} className="rounded-xl border border-slate-800/70 bg-slate-950/70 p-4 shadow-sm shadow-fuchsia-900/25">
+                <div
+                  key={section.title}
+                  className="rounded-xl border border-slate-800/70 bg-slate-950/70 p-4 shadow-sm shadow-fuchsia-900/25 w-full max-w-full overflow-hidden"
+                >
                   <p className="text-sm font-semibold text-slate-100">{section.title}</p>
-                  <ul className="mt-2 space-y-2 text-sm text-slate-200/90">
+                  <ul className="mt-2 space-y-2 text-sm text-slate-200/90 w-full max-w-full">
                     {section.bullets.map((item) => (
-                      <li key={item} className="flex gap-2">
+                      <li key={item} className="flex items-start gap-2 w-full max-w-full">
                         <span className="text-slate-500">•</span>
-                        <span>{item}</span>
+                        <span className="flex-1 min-w-0 max-w-full whitespace-normal break-words leading-relaxed">
+                          {item}
+                        </span>
                       </li>
                     ))}
                   </ul>

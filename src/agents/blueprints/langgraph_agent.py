@@ -73,6 +73,7 @@ class LangGraphAgent:
         
         # LangGraph checkpointer path
         self.checkpointer_path: str = self.checkpoints_db_path()
+        self.use_checkpointer: bool = self.config.get("use_checkpointer", True)
         
         # Agent components
         self.state: Type[BaseModel] | None = None
@@ -177,17 +178,29 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Async inference function
     # ---------------------------------------------------------------------
-    async def astream(self, payload: Mapping[str, Any]) -> Any:
+    async def astream(self, payload: Mapping[str, Any], use_checkpoint: bool = True) -> Any:
         """Stream LangGraph chunks as SSE bytes using the configured stream mode."""
         try:
             async with mcp_session_context() as session:
                 live_tools = await load_mcp_tools(session)
                 self._apply_live_tools(self._filter_live_tools(live_tools))
+                self.build()
                 
-                async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
-                    # Compile graph build and compile
-                    self.build()
-                    self.graph = self.graph.compile(checkpointer=checkpointer)
+                if self.use_checkpointer and self.checkpointer_path:
+                    async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
+                        self.graph = self.graph.compile(checkpointer=checkpointer)
+                        
+                        async for chunk in self.graph.astream(
+                            payload,
+                            config=self.run_config,
+                            stream_mode=self.stream_mode
+                        ):
+                            if isinstance(chunk, (str, bytes)):
+                                yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                            else:
+                                yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+                else:
+                    self.graph = self.graph.compile()
                     
                     async for chunk in self.graph.astream(payload, config=self.run_config, stream_mode=self.stream_mode):
                         if isinstance(chunk, (str, bytes)):

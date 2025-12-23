@@ -180,6 +180,7 @@ async def generate_conversation_title(req: TitleRequest) -> ConversationTitle:
 @app.post("/agents/{agent_slug}/stream", status_code=status.HTTP_200_OK)
 async def stream_agent(agent_slug: str, req: Request):
     """Stream responses from the requested agent template."""
+    # Check if the agent is disabled
     definition = AGENT_REGISTRY.get(agent_slug)
     if definition is None:
         raise HTTPException(
@@ -187,14 +188,16 @@ async def stream_agent(agent_slug: str, req: Request):
             detail=f"Unknown agent '{agent_slug}'.",
         )
     
+    # Initialise the agent
     try:
         agent = definition.cls(config=req.config)
     except Exception as exc:
         detail = f"Failed to initialise agent '{definition.slug}': {exc}"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
     
+    # Stream agent responses
     async def event_stream():
-        async for msg in agent.astream({"user_input": req.user_input}):
+        async for msg in agent.astream(payload={"user_input": req.user_input}):
             yield msg
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")

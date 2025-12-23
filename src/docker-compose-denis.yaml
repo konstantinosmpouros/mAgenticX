@@ -7,7 +7,7 @@ services:
       - RAG_HOST=rag_service
       - RAG_PORT=8001
       - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/sse
-      - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-orthodox-agent-v1,hr-policies-agent-v1}
+      - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-}
     depends_on:
       - rag_service
     volumes:

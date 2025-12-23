@@ -107,7 +107,6 @@ async def startInferenceStream(
                             "run_config": {
                                 "configurable": {
                                     "thread_id": str(message_ids[-1]) if message_ids else str(conversation_id),
-                                    "checkpoint_ns": str(agent_slug),
                                 }
                             },
                             "context": {
@@ -115,6 +114,7 @@ async def startInferenceStream(
                                 "conversation_id": str(conversation_id),
                             },
                             "tools": tools_config,
+                            "use_checkpointer": True
                         },
                     }
                     async with client.stream(

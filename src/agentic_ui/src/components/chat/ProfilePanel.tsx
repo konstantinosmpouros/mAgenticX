@@ -275,7 +275,7 @@ export default function ProfilePanel({
                                         {navItems.map((tab) => {
                                             const Icon = tab.icon;
                                             const isActive = activeTab === tab.id;
-                                            const iconSize = 20;
+                                            const iconSize = 18;
                                             const isLightTheme = theme === "light";
                                             const isHovered = hoveredNavId === tab.id;
 
@@ -293,42 +293,53 @@ export default function ProfilePanel({
                                                     : "grey";
 
                                             return (
-                                                <button
-                                                    key={tab.id}
-                                                    onClick={() => setActiveTab(tab.id)}
-                                                    onMouseEnter={() => setHoveredNavId(tab.id)}
-                                                    onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
-                                                    className={cn(
-                                                        "group relative grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
-                                                        navCollapsed && "grid-cols-[auto,0fr] justify-items-center",
-                                                        isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
+                                                <Tooltip key={tab.id} delayDuration={0}>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            onClick={() => setActiveTab(tab.id)}
+                                                            onMouseEnter={() => setHoveredNavId(tab.id)}
+                                                            onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
+                                                            className={cn(
+                                                                "group relative grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                                navCollapsed && "grid-cols-[auto,0fr] justify-items-center",
+                                                                isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
+                                                            )}
+                                                            aria-label={tab.label}
+                                                            style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
+                                                        >
+                                                            <div
+                                                                className={cn(
+                                                                    "flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors",
+                                                                    isActive
+                                                                        ? "text-primary"
+                                                                        : "text-muted-foreground group-hover:text-foreground"
+                                                                )}
+                                                            >
+                                                                {tab.id === "mcp" ? (
+                                                                    <McpIcon size={20} variant={mcpVariant} />
+                                                                ) : (
+                                                                    <Icon size={iconSize} />
+                                                                )}
+                                                            </div>
+                                                            <span
+                                                                className={cn(
+                                                                    "overflow-hidden text-[0.7rem] font-semibold uppercase tracking-[0.22em] transition-opacity duration-200 ease-in-out",
+                                                                    navCollapsed ? "opacity-0" : "opacity-100"
+                                                                )}
+                                                            >
+                                                                {tab.label}
+                                                            </span>
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    {navCollapsed && (
+                                                        <TooltipContent
+                                                            side="right"
+                                                            className="px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em]"
+                                                        >
+                                                            {tab.label}
+                                                        </TooltipContent>
                                                     )}
-                                                    aria-label={tab.label}
-                                                    style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
-                                                >
-                                                    <div
-                                                        className={cn(
-                                                            "flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors",
-                                                            isActive
-                                                                ? "border-primary/50 bg-primary/10 text-primary"
-                                                                : "text-muted-foreground group-hover:text-foreground"
-                                                        )}
-                                                    >
-                                                        {tab.id === "mcp" ? (
-                                                            <McpIcon size={20} variant={mcpVariant} />
-                                                        ) : (
-                                                            <Icon size={18} />
-                                                        )}
-                                                    </div>
-                                                    <span
-                                                        className={cn(
-                                                            "overflow-hidden text-[0.7rem] font-semibold uppercase tracking-[0.22em] transition-opacity duration-200 ease-in-out",
-                                                            navCollapsed ? "opacity-0" : "opacity-100"
-                                                        )}
-                                                    >
-                                                        {tab.label}
-                                                    </span>
-                                                </button>
+                                                </Tooltip>
                                             );
                                         })}
                                     </nav>
@@ -362,6 +373,14 @@ export default function ProfilePanel({
                                                 </span>
                                             </button>
                                         </TooltipTrigger>
+                                        {navCollapsed && (
+                                            <TooltipContent
+                                                side="right"
+                                                className="px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em]"
+                                            >
+                                                Logout
+                                            </TooltipContent>
+                                        )}
                                     </Tooltip>
                                 </div>
                             </ScrollArea>

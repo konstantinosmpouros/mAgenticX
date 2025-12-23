@@ -2,15 +2,14 @@
 
 ## Agents
 
-- Generalize the collection names for the agents by giving them through environment variables the names.
+- The try again functionality reuse the checkpointer from the previous state that contains the previous ai answer. To fix that we need to fix the flow of the inference in the UI. Create the message objects, upload to conv, send to db with the uuid and update the ui objects so we will have the effect of empty ai messages if inference stops and the ai action bar will exist to try again.
 - To have a streaming effect like openai and CoT in the reasoning maybe the streaming structured output is the solution.
 - Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 - Give in the agents the personal info of the user in the prompt like name and role. Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
-- Create a deep research agent with deep agents and make it available.
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
 - Check if instead of a whole dynamic rag system per conversation it can be replaced with the virtual file system of the deep agents.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic).
-- The checkpointer is essential in the human in the loop and also we must use the update_state(as_node='') function in order to let the user define or give instructions to the agent why the tool call should not be executed. Also what if we used the messageID as the thread id in the configs of the checkpointer? Cause we don't invoke with the new message but with the whole conversation so we might adding n * n-1 new data in the checkpointer database.
+- The checkpointer is essential in the human in the loop and also we must use the update_state(as_node='') function in order to let the user define or give instructions to the agent why the tool call should not be executed. Also what if we used the messageID as the thread id in the configs of the checkpointer? Cause we don't invoke with the new message but with the whole conversation so we might adding n * n-1 new data in the checkpointer database.-
 
 ## Agentic UI
 
