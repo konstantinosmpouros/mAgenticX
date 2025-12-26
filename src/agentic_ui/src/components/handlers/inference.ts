@@ -38,6 +38,7 @@ type InferenceCtx = {
   setDictationStatus: Dispatch<SetStateAction<DictationStatus>>;
   textareaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   streamAbortRef: MutableRefObject<AbortController | null>;
+  persistUIState?: () => void;
 };
 
 export function createInferenceHandlers(ctx: InferenceCtx) {
@@ -64,6 +65,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     textareaRef,
     streamAbortRef,
     enabledTools,
+    persistUIState,
   } = ctx;
 
   const resolveLastPersistedMessageId = () => {
@@ -161,6 +163,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         // Replace temp  message with authoritative messages from server
         setMessages(() => response.detail.messages);
         setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
+        persistUIState?.();
         if (setShowAiTransition) setShowAiTransition(true);
         
         // Start streaming inference
@@ -185,6 +188,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setConversations(prev =>
           sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
         );
+        persistUIState?.();
         const branchPath = [...detailMessages.map((m) => m.id), placeholderResp.message.id];
 
         if (streamAbortRef.current) streamAbortRef.current.abort();
@@ -203,6 +207,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setShowAiTransition,
           signal: streamAbortRef.current.signal,
           enabledTools,
+          persistUIState,
         });
       }
 
@@ -229,6 +234,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         );
         // Update sidebar summary and keep ordering
         setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
+        persistUIState?.();
         if (setShowAiTransition) setShowAiTransition(true);
         const replyParentMessageId = response.message.id;
 
@@ -247,6 +253,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         setConversations(prev =>
           sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
         );
+        persistUIState?.();
         const branchPath = [...activePathIds, response.message.id, placeholderResp.message.id];
 
         if (streamAbortRef.current) streamAbortRef.current.abort();
@@ -265,6 +272,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setShowAiTransition,
           enabledTools,
           signal: streamAbortRef.current.signal,
+          persistUIState,
         });
       }
     } catch (error) {

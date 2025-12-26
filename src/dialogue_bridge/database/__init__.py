@@ -92,6 +92,7 @@ class AgentTable(Base):
         passive_deletes=True,
     )
 
+
 class UserTable(Base):
     __tablename__ = "users"
     
@@ -126,6 +127,7 @@ class UserTable(Base):
         passive_deletes=True,
     )
 
+
 class UserPreferencesTable(Base):
     __tablename__ = "user_preferences"
     __table_args__ = (UniqueConstraint("user_id", name="uq_user_preferences_user_id"),)
@@ -137,6 +139,7 @@ class UserPreferencesTable(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("UserTable", back_populates="preferences")
+
 
 class ConversationTable(Base):
     __tablename__ = "conversations"
@@ -166,8 +169,10 @@ class ConversationTable(Base):
         order_by="MessageTable.created_at.asc()",
     )
 
+
 MessageSenderEnum = Enum("user", "ai", name="message_sender_enum")
 MessageTypeEnum = Enum("text", "file", "image", "audio", "tool", name="message_type_enum")
+
 
 class MessageTable(Base):
     __tablename__ = "messages"
@@ -203,6 +208,7 @@ class MessageTable(Base):
         order_by="AttachmentTable.created_at.asc()",
     )
 
+
 class AttachmentTable(Base):
     __tablename__ = "attachments"
     
@@ -222,6 +228,7 @@ class AttachmentTable(Base):
     
     message = relationship("MessageTable", back_populates="attachments")
     blob = relationship("BlobTable", back_populates="attachment", cascade="all, delete-orphan", uselist=False, single_parent=True)
+
 
 class BlobTable(Base):
     __tablename__ = "blobs"

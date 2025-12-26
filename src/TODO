@@ -2,7 +2,7 @@
 
 ## In Progress
 
-- The try again functionality reuse the checkpointer from the previous state that contains the previous ai answer. To fix that we need to fix the flow of the inference in the UI. Create the message objects, upload to conv, send to db with the uuid and update the ui objects so we will have the effect of empty ai messages if inference stops and the ai action bar will exist to try again.
+- Fix the order of how the chat body renders the conversation (CoT -> Content -> Action bar + Constrains like if streaming, no ai action bars).
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
 
 ## Agents
@@ -23,9 +23,9 @@
 - fix how the attachments seems in the input container. Make it like a horizontal container with a horizontal scroll bar and first the images, then the files.
 - place some message suggestions below the input container and if the user write something then remove them.
 
-- Implement a tab in the sidebar to show all the images, like openai library
-- Create one more chat container similar to gemini code or cursor (agentic chat)
-- Reactive theme change buttons, [integrate it!](https://www.shadcn.io/button/theme-toggle)
+- Implement a tab in the sidebar to move in a new page that shows all the images, like openai library/images
+- Create one more chat body container similar to gemini code or cursor (agentic chat)
+- Reactive buttons for theme change , [integrate it!](https://www.shadcn.io/button/theme-toggle)
 
 ## Dialogue Bridge
 

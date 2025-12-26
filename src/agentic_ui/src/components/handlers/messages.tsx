@@ -262,6 +262,7 @@ type MessageEditHandlersCtx = {
   setBranchSelections: Dispatch<SetStateAction<Record<string, number>>>;
   setIsSendingMessage?: (value: boolean) => void;
   enabledTools?: ToolPreference[];
+  persistUIState?: () => void;
 };
 
 
@@ -296,6 +297,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     setBranchSelections,
     setIsSendingMessage,
     enabledTools,
+    persistUIState,
   } = ctx;
 
   const handleSubmitMessageEdit = async ({
@@ -367,6 +369,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
       setConversations((prev) =>
         sortByUpdatedAtDesc(prev.map((conv) => (conv.id === response.summary.id ? response.summary : conv))),
       );
+      persistUIState?.();
 
       setBranchSelections((prev) => ({
         ...prev,
@@ -395,6 +398,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
       setConversations((prev) =>
         sortByUpdatedAtDesc(prev.map((conv) => (conv.id === aiPlaceholderResp.summary.id ? aiPlaceholderResp.summary : conv))),
       );
+      persistUIState?.();
       const branchMessagePath = [...parentPath, newMessage.id, aiPlaceholderResp.message.id];
 
       await streamAguiRun({
@@ -411,6 +415,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         toast,
         setShowAiTransition,
         signal: streamAbortRef.current.signal,
+        persistUIState,
       });
     } catch (error) {
       console.error('Failed to submit edited message', error);
@@ -477,6 +482,7 @@ type RetryHandlersCtx = {
   setBranchSelections: Dispatch<SetStateAction<Record<string, number>>>;
   setIsSendingMessage?: (value: boolean) => void;
   enabledTools?: ToolPreference[];
+  persistUIState?: () => void;
 };
 
 export function createRetryHandlers(ctx: RetryHandlersCtx) {
@@ -494,6 +500,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     setBranchSelections,
     setIsSendingMessage,
     enabledTools,
+    persistUIState,
   } = ctx;
 
   const handleRetryAiMessage = async (message: MessageOut) => {
@@ -546,6 +553,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
       setConversations((prev) =>
         sortByUpdatedAtDesc(prev.map((conv) => (conv.id === aiPlaceholderResp.summary.id ? aiPlaceholderResp.summary : conv))),
       );
+      persistUIState?.();
       setBranchSelections((prev) => ({
         ...prev,
         [parentKey]: siblingCount,
@@ -573,6 +581,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
         signal: streamAbortRef.current.signal,
         prefillMessageId: aiPlaceholderResp.message.id,
         enabledTools,
+        persistUIState,
       });
     } catch (error) {
       console.error('Failed to retry AI message', error);

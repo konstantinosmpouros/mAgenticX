@@ -3,18 +3,18 @@ import { sortByUpdatedAtDesc } from '@/lib/utils';
 import type { MessageIn, MessageOut, ToolPreference } from '@/lib/types';
 import { EventSchemas, EventType as AGUIEventType } from '@ag-ui/core';
 
+
 const parseEvent = (raw: unknown) => {
   const result = EventSchemas.safeParse(raw);
   return result.success ? result.data : null;
 };
 
+
 type MessageSetter = (updater: (prev: MessageOut[]) => MessageOut[]) => void | ((v: MessageOut[]) => void);
-
 type ConversationSetter = (updater: (prev: any[]) => any[]) => void;
-
 type ThinkingSetter = (updater: any) => void;
-
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+
 
 export type AguiStreamOptions = {
   userId: string;
@@ -31,7 +31,9 @@ export type AguiStreamOptions = {
   signal?: AbortSignal;
   prefillMessageId?: string;
   enabledTools?: ToolPreference[];
+  persistUIState?: () => void;
 };
+
 
 export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   const {
@@ -49,6 +51,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     serverBranchPath,
     prefillMessageId,
     enabledTools,
+    persistUIState,
   } = options;
   
   let aborted = false;
@@ -230,6 +233,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
           setConversations((prev: any[]) =>
             sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
           );
+          persistUIState?.();
         } else {
           const resp = await addMessageToConversation(userId, conversationId, payload);
           const id = runtime.stagedMessageId;
@@ -238,6 +242,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
           setConversations((prev: any[]) =>
             sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
           );
+          persistUIState?.();
         }
       } catch (err) {
         console.error('Failed to persist AI message', err);
@@ -274,6 +279,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
           setConversations((prev: any[]) =>
             sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
           );
+          persistUIState?.();
         } else {
           const resp = await addMessageToConversation(userId, conversationId, payload);
           const id = runtime.stagedMessageId;
@@ -286,6 +292,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
           setConversations((prev: any[]) =>
             sortByUpdatedAtDesc(prev.map((c) => (c.id === resp.summary.id ? resp.summary : c))),
           );
+          persistUIState?.();
         }
       } catch (err) {
         console.error('Failed to persist error message', err);

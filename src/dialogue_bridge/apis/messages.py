@@ -76,41 +76,6 @@ async def addMessageToConversation(
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
-@router.post(
-    "/conversations/{conversation_id}/messages/{message_id}/like",
-    response_model=MessageOut,
-    status_code=status.HTTP_200_OK,
-    summary="Like a message in a conversation",
-)
-async def likeMessage(
-    user_id: str,
-    conversation_id: str,
-    message_id: str,
-    current_user: UserTable = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId),
-    db: AsyncSession = Depends(get_db),
-):
-    # Load message within the validated conversation, including attachments for UI consistency
-    stmt = (
-        select(MessageTable)
-        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
-        .where(
-            MessageTable.id == message_id,
-            MessageTable.conversation_id == conversation_id,
-        )
-    )
-    res = await db.execute(stmt)
-    msg = res.scalar_one_or_none()
-    if not msg:
-        raise HTTPException(status_code=404, detail="Message not found.")
-    
-    # Toggle semantics: clicking like again clears the reaction
-    msg.liked = None if msg.liked is True else True
-    await db.commit()
-    await db.refresh(msg)
-    return MessageOut.model_validate(msg)
-
-
 @router.patch(
     "/conversations/{conversation_id}/messages/{message_id}",
     response_model=UpdateConversationResponse,
@@ -170,6 +135,41 @@ async def updateMessageInConversation(
 
 
 @router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/like",
+    response_model=MessageOut,
+    status_code=status.HTTP_200_OK,
+    summary="Like a message in a conversation",
+)
+async def likeMessage(
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    db: AsyncSession = Depends(get_db),
+):
+    # Load message within the validated conversation, including attachments for UI consistency
+    stmt = (
+        select(MessageTable)
+        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
+        .where(
+            MessageTable.id == message_id,
+            MessageTable.conversation_id == conversation_id,
+        )
+    )
+    res = await db.execute(stmt)
+    msg = res.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found.")
+    
+    # Toggle semantics: clicking like again clears the reaction
+    msg.liked = None if msg.liked is True else True
+    await db.commit()
+    await db.refresh(msg)
+    return MessageOut.model_validate(msg)
+
+
+@router.post(
     "/conversations/{conversation_id}/messages/{message_id}/dislike",
     response_model=MessageOut,
     status_code=status.HTTP_200_OK,
@@ -201,10 +201,5 @@ async def dislikeMessage(
     await db.commit()
     await db.refresh(msg)
     return MessageOut.model_validate(msg)
-
-
-
-
-
 
 

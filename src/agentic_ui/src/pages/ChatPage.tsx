@@ -412,6 +412,7 @@ export function ChatInterface() {
     setBranchSelections,
     setIsSendingMessage,
     enabledTools: enabledToolsForRequest,
+    persistUIState: requestPersist,
   });
 
   // Retry handlers
@@ -429,6 +430,7 @@ export function ChatInterface() {
     setBranchSelections,
     setIsSendingMessage,
     enabledTools: enabledToolsForRequest,
+    persistUIState: requestPersist,
   });
 
   // Submit edit from state
@@ -467,6 +469,7 @@ export function ChatInterface() {
     textareaRef,
     streamAbortRef,
     enabledTools: enabledToolsForRequest,
+    persistUIState: requestPersist,
   });
   
   // Conversation handlers
