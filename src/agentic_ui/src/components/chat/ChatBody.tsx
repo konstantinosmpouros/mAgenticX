@@ -1,21 +1,14 @@
 import React from "react";
 import type { ComponentType } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  ChainOfThought,
-  ChainOfThoughtHeader,
-  ChainOfThoughtContent,
-} from "@/components/ui/ai-elements/chain-of-thought";
-import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import type { LucideIcon } from "lucide-react";
 import type {
   Agent,
   MessageOut,
   ThinkingState,
 } from "@/lib/types";
-import { MessageAttachments, type AttachmentLike } from "./body_parts/MessageAttachments";
-import { CoT, buildCoTSteps } from "./body_parts/ChainOfThought";
-import { MessageBubble } from "./body_parts/MessageBubble";
+import type { AttachmentLike } from "./body_parts/MessageAttachments";
+import { ChatMessage } from "./ChatMessage";
 
 type ChatBody = {
   messages: MessageOut[];
@@ -53,21 +46,6 @@ type ChatBody = {
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
-};
-
-const isBranchPathActive = (branchPath?: string[], activePath?: string[]) => {
-  if (!branchPath || branchPath.length === 0) {
-    return true;
-  }
-  if (!activePath || activePath.length < branchPath.length) {
-    return false;
-  }
-  for (let i = 0; i < branchPath.length; i += 1) {
-    if (branchPath[i] !== activePath[i]) {
-      return false;
-    }
-  }
-  return true;
 };
 
 export default function ChatBody({
@@ -108,8 +86,12 @@ export default function ChatBody({
   isStreaming,
 }: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
-  const lastRunStartRef = React.useRef<number | null>(null);
-  const [liveThinkingOpen, setLiveThinkingOpen] = React.useState(false);
+  const streamingMessageId = React.useMemo(() => {
+    if (thinkingState?.branchPath && thinkingState.branchPath.length > 0) {
+      return thinkingState.branchPath[thinkingState.branchPath.length - 1];
+    }
+    return null;
+  }, [thinkingState?.branchPath]);
 
   const handleScroll = React.useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
@@ -125,58 +107,6 @@ export default function ChatBody({
     if (!viewport) return;
     onScrolledPastTop(viewport.scrollTop > 4);
   }, [messages.length, onScrolledPastTop]);
-
-  React.useEffect(() => {
-    if (!thinkingState) {
-      lastRunStartRef.current = null;
-      setLiveThinkingOpen(false);
-      return;
-    }
-
-    const runKey = thinkingState.startTime ?? null;
-    if (runKey !== null && runKey !== lastRunStartRef.current) {
-      lastRunStartRef.current = runKey;
-      if (thinkingState.isActive) {
-        setLiveThinkingOpen(true);
-      }
-      return;
-    }
-
-    if (!thinkingState.isActive && thinkingState.isDone) {
-      setLiveThinkingOpen(false);
-    }
-  }, [thinkingState]);
-
-  const liveThoughts =
-    thinkingState && thinkingState.thoughts.length
-      ? thinkingState.thoughts.slice(
-          0,
-          Math.max(
-            0,
-            Math.min(
-              (thinkingState.currentThoughtIndex ?? -1) + 1,
-              thinkingState.thoughts.length
-            )
-          )
-        )
-      : [];
-
-  const liveActiveIndex = thinkingState
-    ? Math.min(
-        Math.max(thinkingState.currentThoughtIndex ?? -1, -1),
-        liveThoughts.length - 1
-      )
-    : -1;
-
-  const isViewingThinkingBranch = isBranchPathActive(
-    thinkingState?.branchPath,
-    activeBranchPath
-  );
-
-  const shouldShowLiveChain =
-    Boolean(thinkingState) &&
-    isViewingThinkingBranch &&
-    (thinkingState.isActive || liveThinkingOpen);
 
   return (
     <div className="flex-1 overflow-hidden relative">
@@ -228,95 +158,47 @@ export default function ChatBody({
 
               return (
                 <div key={message.id} className="animate-fade-in-fast space-y-2">
-                  
-                  {message.attachments && message.attachments.length > 0 && (
-                    <MessageAttachments
-                      message={message}
-                      isImageFile={isImageFile}
-                      onDownloadAttachment={onDownloadAttachment}
-                      onImageClick={onImageClick}
-                    />
-                  )}
-                  
-                  {(message.content || isEditingMessage) && (
-                    <div
-                      className={`space-y-2 md:space-y-2 ${
-                        message.sender === 'user' ? 'flex flex-col items-end' : ''
-                      } group/message`}
-                    >
-                      {message.thinking && message.sender === "ai" && (
-                        <CoT
-                          message={message}
-                          isOpen={Boolean(expandedThinking[message.id])}
-                          onToggle={() => onToggleThinking(message.id)}
-                        />
-                      )}
-                      
-                    <MessageBubble
-                      message={message}
-                      isEditing={isEditingMessage}
-                      editingDraft={editingDraft}
-                      editingBusy={editingBusy}
-                      onChangeEditDraft={onChangeEditDraft}
-                      onCancelEdit={onCancelEdit}
-                      onSubmitEdit={onSubmitEdit}
-                      AgentIcon={AgentIcon}
-                      currentAgent={currentAgent}
-                      copiedId={copiedId}
-                      onCopy={onCopy}
-                      onLike={onLike}
-                      onDislike={onDislike}
-                      toast={toast}
-                      onRetryMessage={onRetryMessage}
-                      isStreaming={isStreaming}
-                      onFlashUserActionBar={onFlashUserActionBar}
-                      onRequestEdit={onRequestEdit}
-                      userActionVisibilityClass={userActionVisibilityClass}
-                      branchData={{
-                        parentId,
-                        options: branchOptions,
-                        selectionIndex: branchSelection,
-                        onSelectBranch,
-                      }}
-                    />
-                    </div>
-                  )}
+                  <ChatMessage
+                    message={message}
+                    isEditing={isEditingMessage}
+                    editingDraft={editingDraft}
+                    editingBusy={editingBusy}
+                    onChangeEditDraft={onChangeEditDraft}
+                    onCancelEdit={onCancelEdit}
+                    onSubmitEdit={onSubmitEdit}
+                    AgentIcon={AgentIcon}
+                    currentAgent={currentAgent}
+                    copiedId={copiedId}
+                    onCopy={onCopy}
+                    onLike={onLike}
+                    onDislike={onDislike}
+                    toast={toast}
+                    onRetryMessage={onRetryMessage}
+                    isStreaming={isStreaming}
+                    onFlashUserActionBar={onFlashUserActionBar}
+                    onRequestEdit={onRequestEdit}
+                    userActionVisibilityClass={userActionVisibilityClass}
+                    thinkingState={thinkingState}
+                    expandedThinking={expandedThinking}
+                    onToggleThinking={onToggleThinking}
+                    activeBranchPath={activeBranchPath}
+                    streamingMessageId={streamingMessageId}
+                    isImageFile={isImageFile}
+                    onDownloadAttachment={onDownloadAttachment}
+                    onImageClick={onImageClick}
+                    branchData={{
+                      parentId,
+                      options: branchOptions,
+                      selectionIndex: branchSelection,
+                      onSelectBranch,
+                    }}
+                  />
                 </div>
               );
-            })}
+            })
+          }
 
           {AiTransitionIndicator ? <AiTransitionIndicator /> : null}
-
-
-          {shouldShowLiveChain && thinkingState && (
-            <ChainOfThought
-              key={`live-thinking-${thinkingState.startTime ?? "active"}`}
-              className="max-w-[85%] md:max-w-[85%] w-full space-y-2"
-              open={liveThinkingOpen}
-              onOpenChange={setLiveThinkingOpen}
-            >
-              <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground">
-                {thinkingState.isActive ? (
-                  <ShimmeringText
-                    text="Reasoning..."
-                    duration={1.1}
-                    pause={1.4}
-                    color="hsl(var(--muted-foreground))"
-                    shimmeringColor="#2b2d36"
-                    className="text-sm md:text-[0.95rem] font-medium"
-                  />
-                ) : (
-                  "Reasoning complete"
-                )}
-              </ChainOfThoughtHeader>
-              <ChainOfThoughtContent className="[&>div:last-child>div:first-child>div:last-child]:hidden">
-                {buildCoTSteps(liveThoughts, {
-                  activeIndex: liveActiveIndex,
-                  isComplete: Boolean(thinkingState.isDone),
-                })}
-              </ChainOfThoughtContent>
-            </ChainOfThought>
-          )}
 
           <div ref={messagesEndRef} />
         </div>

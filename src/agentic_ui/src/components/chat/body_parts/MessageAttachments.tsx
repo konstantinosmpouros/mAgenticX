@@ -1,4 +1,3 @@
-import React from "react";
 import { Download, FileText } from "lucide-react";
 import { VscEye } from "react-icons/vsc";
 import type { AttachmentIn, FileAttachment, MessageOut } from "@/lib/types";

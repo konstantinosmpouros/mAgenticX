@@ -1,5 +1,4 @@
-﻿import React from "react";
-import { Button } from "@/components/ui/button";
+﻿import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Copy, Check, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
 import { LuFlag } from "react-icons/lu";
