@@ -2,7 +2,6 @@
 
 ## In Progress
 
-- Fix the order of how the chat body renders the conversation (CoT -> Content -> Action bar + Constrains like if streaming, no ai action bars).
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
 
 ## Agents

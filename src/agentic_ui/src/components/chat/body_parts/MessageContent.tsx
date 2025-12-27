@@ -45,9 +45,8 @@ export function MessageContent({
   }
 
   const trimmed = normalizedContent.trim();
-  const isPlaceholder = /^preparing (the )?response\.{0,3}$/i.test(trimmed);
 
-  if (!trimmed || isPlaceholder) {
+  if (!trimmed) {
     return null;
   }
 

@@ -116,8 +116,20 @@ export function ChatMessage({
   const showLiveCoT = isStreamingTarget && Boolean(liveThoughts?.length);
   const showStoredCoT = isAi && Array.isArray(message.thinking) && message.thinking.length > 0;
   const showAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
-  const showActionBar = isAi ? !isStreamingTarget : !isTempUserMessage && !isEditing;
+  const isStreamingThisMessage = Boolean(
+    isAi && isStreaming && streamingMessageId && streamingMessageId === message.id
+  );
+  const showActionBar = isAi ? !(isStreamingTarget || isStreamingThisMessage) : !isTempUserMessage && !isEditing;
   const showUserSending = isTempUserMessage && !isEditing;
+
+  const timestampLabel = useMemo(
+    () =>
+      message.created_at.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    [message.created_at]
+  );
 
   return (
     <div className={`space-y-2 md:space-y-2 ${isUser ? "flex flex-col items-end" : ""} group/message`}>
@@ -209,18 +221,9 @@ export function ChatMessage({
                 )}
               </div>
             ) : (
-              <div className="flex w-full flex-wrap items-center gap-2">
-                <span className="opacity-70">
-                  {message.created_at.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-                <span className="flex items-center gap-1 opacity-70">
-                  <AgentIcon size={14} />
-                  {currentAgent?.name ?? "Unknown agent"}
-                </span>
-                {showActionBar && (
+              !isStreamingThisMessage &&
+              showActionBar && (
+                <div className="flex w-full flex-wrap items-center gap-2">
                   <AIActionBar
                     message={message}
                     copiedId={copiedId}
@@ -231,9 +234,12 @@ export function ChatMessage({
                     onRetryMessage={onRetryMessage}
                     isStreaming={isStreaming}
                     branchControls={branchData}
+                    agentName={currentAgent?.name ?? "Unknown agent"}
+                    AgentIcon={AgentIcon}
+                    timestampLabel={timestampLabel}
                   />
-                )}
-              </div>
+                </div>
+              )
             )}
           </div>
         </div>

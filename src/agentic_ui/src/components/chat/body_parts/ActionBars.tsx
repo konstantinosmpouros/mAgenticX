@@ -3,6 +3,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Copy, Check, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
 import { LuFlag } from "react-icons/lu";
 import { BsArrowRepeat } from "react-icons/bs";
+import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/lib/types";
 import { BranchControls } from "./BranchControls";
 
@@ -33,6 +34,9 @@ type AIActionBarProps = BaseActionBarProps & {
   onDislike: (message: MessageOut) => void;
   onRetryMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
+  agentName?: string;
+  AgentIcon?: LucideIcon;
+  timestampLabel?: string;
 };
 
 type UserActionBarProps = BaseActionBarProps & {
@@ -109,8 +113,22 @@ export const AIActionBar = ({
   onRetryMessage,
   isStreaming,
   branchControls,
+  agentName,
+  AgentIcon,
+  timestampLabel,
 }: AIActionBarProps) => (
   <div className="flex flex-wrap items-center justify-end gap-2">
+    {(timestampLabel || agentName) && (
+      <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
+        {timestampLabel ? <span className="opacity-70">{timestampLabel}</span> : null}
+        {agentName ? (
+          <span className="flex items-center gap-1 opacity-70">
+            {AgentIcon ? <AgentIcon size={14} /> : null}
+            {agentName}
+          </span>
+        ) : null}
+      </div>
+    )}
     <div className="flex items-center gap-0.5">
       <div className="mt-1">
         <CopyButton
