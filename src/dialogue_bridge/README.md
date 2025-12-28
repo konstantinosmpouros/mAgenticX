@@ -9,6 +9,7 @@ FastAPI backend that fronts the agents service for the Agentic UI. It authentica
 - Persists conversations, messages, reactions, and file blobs; rebuilds chat history (including inline images) before proxying inference streams.
 - Proxies MCP tool discovery (`/tools`) and speech-to-text uploads (`/users/{id}/dictation/transcribe`) to the agents service.
 - Stores per-user tool preferences (`/users/{id}/preferences`) so the UI can disable MCP tools; exposes paginated images and attachments for download.
+- Streams inference as SSE by forwarding AG-UI frames from the agents service and layering `thread_id`/context metadata derived from the conversation + message branch (`messagePath`).
 
 ## API highlights
 
@@ -19,6 +20,7 @@ FastAPI backend that fronts the agents service for the Agentic UI. It authentica
 - `GET/PUT /users/{id}/preferences` – persist tool disablement and agentic chat preference.
 - Conversation surface: create/list/get/delete conversations; create/like/dislike messages; stream inference at `/users/{id}/conversations/{conv_id}/inference/stream`.
 - Attachments: upload alongside messages, fetch paginated `/users/{id}/images`, download blobs with byte ranges at `/users/{id}/conversations/{conv_id}/messages/{msg_id}/blobs/{blob_id}`.
+- Routers live under `apis/` folder (auth, utils, conversations, messages, attachments, inference); shared validation lives in `utils/`.
 
 Response models live in `database/schemas.py`; routers are under `apis/`.
 
@@ -33,7 +35,7 @@ Schema creation runs in the lifespan hook on startup.
 
 - `DATABASE_URL` – async SQLAlchemy URL.
 - `AGENTS_SERVICE_URL` – base URL for the agents service (default `http://agents:8003`).
-- Vault: `VAULT_ADDR`, `VAULT_USERPASS_MOUNT`, `VAULT_OIDC_ROLE`, `VAULT_OIDC_PATH`, `VAULT_NAMESPACE`, `VAULT_HTTP_TIMEOUT`.
+- Vault: `VAULT_ADDR`, `VAULT_USERPASS_MOUNT`, `VAULT_OIDC_ROLE`, `VAULT_OIDC_PATH`, `VAULT_NAMESPACE`, `VAULT_HTTP_TIMEOUT`, `VAULT_OIDC_DISCOVERY_URL`, `VAULT_JWT_AUDIENCE`.
 - Cookies: `SESSION_COOKIE_NAME`, `SESSION_REFRESH_COOKIE_NAME`, `SESSION_COOKIE_DOMAIN`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE`, `SESSION_COOKIE_DEFAULT_TTL`.
 
 ## Local development

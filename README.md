@@ -23,6 +23,7 @@ The repository is organised as a suite of services that can run together through
 | Experience | `agentic_ui` renders the chat experience, handles auth/session lifecycle, and visualises AG-UI events. | React 18, Vite, Tailwind, Radix |
 | Orchestration | `dialogue_bridge` authenticates via HashiCorp Vault, persists conversations, and proxies LangGraph streams. | FastAPI, SQLAlchemy, asyncpg |
 | Intelligence | `agents` hosts persona-specific LangGraph workflows for OrthodoxAI, HR Policies, and Retail assistants. | LangGraph, LangChain, OpenAI |
+| Tool Catalog | `mcp_gateway` publishes a curated MCP tool catalog over SSE for the agents service. | Docker MCP Gateway |
 | Retrieval & Analytics | `rag_service` provides document retrieval and Excel/DuckDB analytics. `vectordb` stores persistent embeddings. | FastAPI, DuckDB, Chroma |
 | Storage & Security | `chat_postgres` and the Vault service give durable storage plus token issuance for the stack. | PostgreSQL, HashiCorp Vault |
 
@@ -37,6 +38,7 @@ The repository is organised as a suite of services that can run together through
 | `vectordb` | Internal Chroma server storing embeddings. | internal:8000 |
 | `chat_postgres` | Conversation and attachment persistence. | localhost:5432 |
 | `vault` | HashiCorp Vault for login + JWT issuance (internal network). | internal service |
+| `mcp_gateway` | MCP catalog over SSE consumed by the agents service. | internal:8005 |
 
 ## Request Flow
 
@@ -95,11 +97,40 @@ Run services independently when iterating. Each README in the corresponding dire
 | `src/dialogue_bridge/` | FastAPI bridge, SQLAlchemy models, Vault auth helpers. |
 | `src/agents/` | LangGraph agent templates, FastAPI entrypoint, shared tools. |
 | `src/rag_service/` | Retrieval + analytics microservice and data directory. |
+| `src/mcp_gateway/` | MCP gateway catalog, secrets, and server config for tool discovery. |
 | `src/vectorstores/` | Chroma persistence folder referenced by compose. |
 | `src/vault/` | Vault config, data storage, and bootstrap script. |
 | `notebooks/` | Exploratory notebooks and utilities that informed production code. |
 | `docs/` | Design notes and diagrams (when present). |
 | `src/docker-compose.yaml` | Compose orchestration for the full stack. |
+
+## Visual Walkthroughs
+
+### Network & Service Topology
+
+The first diagram shows how browser traffic hits the host at `localhost:8050`, passes through the agentic_ui Nginx container, and is proxied to the dialogue_bridge. From there SSE streams reach the agents, tool catalog is fetched from the mcp_gateway, retrieval calls go to rag_service, vectors live in Chroma, and chat state persists to Postgres with Vault handling JWTs. The second diagram groups the same services by frontend, backend, and infrastructure layers so you can see the split between UI, BFF + agents + MCP/RAG, and the auth/storage tier.
+
+![Network flow and container ports](docs/Screenshot%202025-10-31%20014810.png)
+![Frontend/Backend/Infra topology](docs/Screenshot%202025-10-31%20014854.png)
+
+### Chat & Data Flows
+
+This sequence captures a full chat turn: the UI posts the user message and attachments to the bridge, which stores them in Postgres, then streams inference via the agents. Agents pull tool manifests from the MCP gateway, optionally execute MCP tools or issue retrieval/analytics requests to rag_service and Chroma, and stream AG-UI frames back. The UI finally saves the AI reply through the bridge into Postgres.
+
+![Chat request lifecycle and RAG interactions](docs/Screenshot%202025-10-31%20014930.png)
+
+### Authentication Flow
+
+Here you can see credentials flowing from the UI to the bridge, then to Vault for userpass login and OIDC token exchange. The bridge receives JWT + client token, upserts the user locally, sets session/refresh cookies, and confirms the signed-in state.
+
+![Vault login, OIDC exchange, and session cookies](docs/Screenshot%202025-10-31%20014954.png)
+
+### Architecture & Platform Overview
+
+The component tree shows the core data plane: agentic_ui consuming REST/SSE from the bridge; the bridge authenticating via Vault, persisting conversations to Postgres, proxying SSE to agents; agents hitting MCP for tool catalogs and RAG for retrieval; RAG talking to Chroma and OpenAI for vectors/embeddings. The platform overview widens the lens to include users/admins, the platform services, and managed stores (Postgres, Vault, Chroma, OpenAI) with the extra admin path into the UI for configuration.
+
+![Component architecture tree](docs/Screenshot%202025-10-31%20015018.png)
+![End-to-end platform view (users, platform, stores/services)](docs/Screenshot%202025-10-31%20015842.png)
 
 ## Tooling & Workflow Tips
 

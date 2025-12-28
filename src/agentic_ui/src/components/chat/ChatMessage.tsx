@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Agent, MessageOut, ThinkingState } from "@/lib/types";
@@ -9,10 +9,10 @@ import {
   ChainOfThoughtContent,
   ChainOfThoughtHeader,
 } from "@/components/ui/ai-elements/chain-of-thought";
-import { AIActionBar, UserActionBar } from "./body_parts/ActionBars";
-import { MessageAttachments } from "./body_parts/MessageAttachments";
-import { CoT, buildCoTSteps } from "./body_parts/ChainOfThought";
-import { MessageContent } from "./body_parts/MessageContent";
+import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
+import { MessageAttachments } from "./message_parts/MessageAttachments";
+import { CoT, buildCoTSteps } from "./message_parts/ChainOfThought";
+import { MessageContent } from "./message_parts/MessageContent";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 
 type ChatMessageProps = {

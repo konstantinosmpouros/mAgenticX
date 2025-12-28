@@ -484,7 +484,6 @@ export function ChatInterface() {
     handleRenameConversation,
     handleArchiveConversation,
     handleReportConversation,
-    handleRenameCurrentConversation,
     handleArchiveCurrentConversation,
     handleReportCurrentConversation,
     handleOpenSearch,

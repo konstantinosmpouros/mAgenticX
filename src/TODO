@@ -3,16 +3,15 @@
 ## In Progress
 
 - if l abort the inference the current response should be saved as an ai message or an empty ai message.
+- Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 
 ## Agents
 
-- To have a streaming effect like openai and CoT in the reasoning maybe the streaming structured output is the solution.
-- Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
 - Give in the agents the personal info of the user in the prompt like name and role. Maybe the [Runtime Context](https://docs.langchain.com/oss/python/langgraph/graph-api) is the answer to personalization, long term memory and many more.
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
 - Check if instead of a whole dynamic rag system per conversation it can be replaced with the virtual file system of the deep agents.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic).
-- The checkpointer is essential in the human in the loop and also we must use the update_state(as_node='') function in order to let the user define or give instructions to the agent why the tool call should not be executed. Also what if we used the messageID as the thread id in the configs of the checkpointer? Cause we don't invoke with the new message but with the whole conversation so we might adding n * n-1 new data in the checkpointer database.-
+- The checkpointer is essential in the human in the loop and also we must use the update_state(as_node='') function in order to let the user define or give instructions to the agent why the tool call should not be executed. Also what if we used the messageID as the thread id in the configs of the checkpointer? Cause we don't invoke with the new message but with the whole conversation so we might adding n * n-1 new data in the checkpointer database.
 
 ## Agentic UI
 
@@ -21,9 +20,6 @@
 - Give in the agents the personal info of the user in the prompt like name and role (langchain context)
 - fix how the attachments seems in the input container. Make it like a horizontal container with a horizontal scroll bar and first the images, then the files.
 - place some message suggestions below the input container and if the user write something then remove them.
-
-- Implement a tab in the sidebar to move in a new page that shows all the images, like openai library/images
-- Create one more chat body container similar to gemini code or cursor (agentic chat)
 - Reactive buttons for theme change , [integrate it!](https://www.shadcn.io/button/theme-toggle)
 
 ## Dialogue Bridge

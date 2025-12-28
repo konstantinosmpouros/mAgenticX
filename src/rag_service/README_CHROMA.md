@@ -23,7 +23,7 @@ This document explains how the container is configured, how to run it standalone
 - `IS_PERSISTENT=TRUE`
 - `PERSIST_DIRECTORY=/chroma/chroma`
 - `ANONYMIZED_TELEMETRY=FALSE`
-- Volume: `vectorstore:/chroma/chroma` (binds to `./src/vectorstores/chroma_db_openai` on the host)
+- Volume: `vectorstore:/chroma/chroma` (binds to `src/vectorstores/chroma_db_openai` relative to the compose file)
 
 ## Local Usage
 

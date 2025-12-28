@@ -63,6 +63,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     persistUIState,
   } = ctx;
 
+
   const clearChatAndStopThinking = (options?: { preserveAgent?: boolean }) => {
     handleStopStreaming?.();
     setIsClearing(true);
@@ -84,13 +85,16 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }, 200);
   };
 
+
   const handleTitleClick = () => {
     clearChatAndStopThinking();
   };
 
+
   const handleNewChat = () => {
     clearChatAndStopThinking();
   };
+
 
   const handleConversationSelect = async (conversation: ConversationSummary) => {
     handleStopStreaming?.();
@@ -130,6 +134,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }, CLEAR_DELAY_MS);
   };
 
+
   const handleLoadMoreConversations = async () => {
     if (!userId || convIsLoadingMore || !convHasMore) return;
     setConvIsLoadingMore(true);
@@ -159,6 +164,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
+
   const handleDeleteConversation = async (conversationId: string, event?: React.MouseEvent) => {
     event?.stopPropagation();
     if (!userId) return;
@@ -174,6 +180,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
+
   const handleDeleteCurrentConversation = () => {
     if (!currentConversation?.id) {
       toast({ title: 'No conversation selected', description: 'Select a conversation to delete first.', duration: 2000 });
@@ -181,6 +188,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
     void handleDeleteConversation(currentConversation.id);
   };
+
 
   const handleRenameConversation = async (conversationId: string, newTitle: string) => {
     const trimmed = (newTitle || "").trim();
@@ -232,6 +240,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
+
   const handleArchiveConversation = (conversationId?: string | null) => {
     if (!conversationId) {
       toast({ title: 'No conversation selected', description: 'Select a conversation to archive first.', duration: 2000 });
@@ -239,6 +248,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
     toast({ title: 'Archive coming soon', description: 'Conversation archiving is not available yet.', duration: 2500 });
   };
+
 
   const handleReportConversation = (conversationId?: string | null) => {
     if (!conversationId) {
@@ -248,21 +258,16 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     toast({ title: 'Report coming soon', description: 'Conversation reporting will be available soon.', duration: 2500 });
   };
 
+
   const handleArchiveCurrentConversation = () => {
     handleArchiveConversation(currentConversation?.id);
   };
+
 
   const handleReportCurrentConversation = () => {
     handleReportConversation(currentConversation?.id);
   };
 
-  const handleRenameCurrentConversation = (newTitle: string) => {
-    if (!currentConversation?.id) {
-      toast({ title: 'No conversation selected', description: 'Select a conversation to rename first.', duration: 2000 });
-      return;
-    }
-    void handleRenameConversation(currentConversation.id, newTitle);
-  };
 
   const handleOpenSearch = () => {
     if (ctx.onSearch) {
@@ -276,6 +281,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     });
   };
 
+
   return {
     handleConversationSelect,
     handleDeleteConversation,
@@ -287,7 +293,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleRenameConversation,
     handleArchiveConversation,
     handleReportConversation,
-    handleRenameCurrentConversation,
     handleArchiveCurrentConversation,
     handleReportCurrentConversation,
     handleOpenSearch,

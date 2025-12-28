@@ -8,6 +8,7 @@ LangGraph-backed FastAPI service that streams AG-UI events for each persona, lis
 - Normalises chat history (text + images) before invoking graphs, resolving tool selections from the MCP gateway and surfacing thinking/tool frames over SSE.
 - Exposes `GET /agents` for manifests and `GET /tools` for the live MCP tool catalog (server id, name, description, parameter count) cached for the UI.
 - Provides `POST /dictate/transcribe` speech-to-text using `gpt-4o-transcribe` and `POST /titles/generate` to name new conversations.
+- Maps tool ids like `tavily-search` back to the correct MCP server when the gateway omits server prefixes, keeping server/tool separation intact for the UI.
 
 ## API surface
 
@@ -38,8 +39,8 @@ LangGraph-backed FastAPI service that streams AG-UI events for each persona, lis
 
 - `OPENAI_API_KEY` (required) – used for LLM calls, embeddings, and dictation.
 - `RAG_HOST` / `RAG_PORT` – point retrieval tools at the RAG service (defaults align with Compose).
-- `MCP_TOOLS_HTTP_URL` – MCP gateway SSE endpoint (default `http://mcp_gateway:8005/sse`; Compose sets `http://mcp_gateway:8005/sse`).
-- `DISABLED_AGENT_SLUGS` (optional) – comma-separated agent slugs to skip at startup (e.g., `hr-policies-agent-v1, Retail Agent`). Whitespace around commas is ignored; whitespace inside a slug is preserved. Compose defaults to disabling `orthodox-agent-v1` and `hr-policies-agent-v1`.
+- `MCP_TOOLS_HTTP_URL` – MCP gateway SSE endpoint (default `http://mcp_gateway:8005/sse`).
+- `DISABLED_AGENT_SLUGS` (optional) – comma-separated agent slugs to skip at startup (e.g., `hr-policies-agent-v1, Retail Agent`). Whitespace around commas is ignored; whitespace inside a slug is preserved. Leaving it empty registers all agents.
 
 ## Local development
 

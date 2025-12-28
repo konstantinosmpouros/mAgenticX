@@ -7,7 +7,7 @@ import type {
   MessageOut,
   ThinkingState,
 } from "@/lib/types";
-import type { AttachmentLike } from "./body_parts/MessageAttachments";
+import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
 
 type ChatBody = {

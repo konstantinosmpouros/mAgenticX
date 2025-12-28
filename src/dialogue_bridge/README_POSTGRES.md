@@ -2,7 +2,7 @@
 
 ## Overview
 
-`chat_postgres` packages the official `postgres:16.3` image and provides durable storage for the dialogue bridge. All conversations, messages, attachments, and blob payloads defined in `src/dialogue_bridge/database.py` are persisted here so they survive container restarts.
+`chat_postgres` packages the official `postgres:16.3` image and provides durable storage for the dialogue bridge. All conversations, messages, attachments, and blob payloads defined in `src/dialogue_bridge/database/` are persisted here so they survive container restarts.
 
 ## Service Context
 
