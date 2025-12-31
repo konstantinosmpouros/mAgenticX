@@ -120,11 +120,11 @@ export const AIActionBar = ({
   <div className="flex flex-wrap items-center justify-end gap-2">
     {(timestampLabel || agentName) && (
       <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
-        {timestampLabel ? <span className="opacity-70">{timestampLabel}</span> : null}
+        {timestampLabel ? <span>{timestampLabel}</span> : null}
         {agentName ? (
-          <span className="flex items-center gap-1 opacity-70">
-            {AgentIcon ? <AgentIcon size={14} /> : null}
-            {agentName}
+          <span className="flex items-center gap-1">
+            {AgentIcon ? <AgentIcon className="h-4 w-4" /> : null}
+            <span>{agentName}</span>
           </span>
         ) : null}
       </div>
@@ -264,6 +264,7 @@ export const AIActionBar = ({
         </Tooltip>
       </div>
     </div>
+
     <div className="flex items-center">
       <BranchControls
         parentId={branchControls?.parentId ?? null}
