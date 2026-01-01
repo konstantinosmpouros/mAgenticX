@@ -201,32 +201,17 @@ class LangGraphAgent:
                     stream_mode=self.stream_mode
                 ):
                     if isinstance(chunk, dict) and INTERRUPT in chunk:
-                        yield self._encode_interrupt_frame(chunk)
+                        thread_id = str(self.run_config.get("configurable", {}).get("thread_id", ""))
+                        yield self.agui._emit_interrupt(chunk, thread_id=thread_id, writer=None)
                         return
                     elif isinstance(chunk, (str, bytes)):
                         yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
                     else:
                         yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
-
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
             return
         except Exception as exc:
             yield self._encode_run_error(exc)
-
-
-
-    # ---------------------------------------------------------------------
-    # Interrupt handling
-    # ---------------------------------------------------------------------
-    @staticmethod
-    def _encode_interrupt_frame(chunk: Any) -> bytes:
-        """Wrap an interrupt payload into an SSE frame the UI/bridge can consume."""
-        payload = {
-            "type": "INTERRUPT",
-            "payload": chunk,
-            "message": "Agent paused for human approval.",
-        }
-        return ("data: " + json.dumps(payload) + "\n\n").encode("utf-8")
 
 
 

@@ -180,16 +180,15 @@ async def generate_conversation_title(req: TitleRequest) -> ConversationTitle:
 @app.post("/agents/{agent_slug}/stream", status_code=status.HTTP_200_OK)
 async def stream_agent(agent_slug: str, req: Request):
     """Stream responses from the requested agent template."""
-    # Check if the agent is disabled
-    definition = AGENT_REGISTRY.get(agent_slug)
-    if definition is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Unknown agent '{agent_slug}'.",
-        )
-    
-    # Initialise the agent
     try:
+        # Check if the agent is disabled
+        definition = AGENT_REGISTRY.get(agent_slug)
+        if definition is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Unknown agent '{agent_slug}'.",
+            )
+        # Initialise the agent
         agent = definition.cls(config=req.config)
     except Exception as exc:
         detail = f"Failed to initialise agent '{definition.slug}': {exc}"
