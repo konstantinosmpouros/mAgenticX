@@ -2,12 +2,12 @@ import asyncio
 import json
 from uuid import uuid4
 import traceback
-from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
 from pydantic import BaseModel
 
 from langgraph.graph import StateGraph
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.types import INTERRUPT
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from blueprints.agui import AGUIEmitter
@@ -27,7 +27,7 @@ class LangGraphAgent:
         • MCP session management for tool loading and execution
         • A consistent AG-UI emitter for streaming thoughts/events
         • A build in lifecycle that registers nodes/edges then compiles the graph
-        • An SQLite checkpointing via ``configure_sqlite_checkpointer()``
+        • In-memory checkpointing when ``use_checkpointer`` is enabled (HITL-ready)
         • An generic async ``astream()`` method for FastAPI and AGUI integration
         • Standardised metadata manifest for registry and discovery
         • Error handling and SSE encoding for run-time exceptions
@@ -49,9 +49,17 @@ class LangGraphAgent:
     type: str = "langgraph agent"
     description: Optional[str] = None
     icon: Optional[str] = None
+
+    # Default streaming mode for LangGraph inference
     stream_mode: str = "custom"
 
+    # Shared AG-UI emitter instance
     agui: AGUIEmitter = AGUIEmitter()
+
+    # Runtime options
+    has_hitl: bool = False
+    memory_saver: MemorySaver = MemorySaver() if has_hitl else None
+
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         # Configuration
@@ -70,10 +78,6 @@ class LangGraphAgent:
         # Resolved tools (populated per-stream after loading from MCP)
         self.tools: List[Any] = []
         self.tools_names: List[str] = []
-        
-        # LangGraph checkpointer path
-        self.checkpointer_path: str = self.checkpoints_db_path()
-        self.use_checkpointer: bool = self.config.get("use_checkpointer", True)
         
         # Agent components
         self.state: Type[BaseModel] | None = None
@@ -178,39 +182,51 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Async inference function
     # ---------------------------------------------------------------------
-    async def astream(self, payload: Mapping[str, Any], use_checkpoint: bool = True) -> Any:
+    async def astream(self, payload: Mapping[str, Any]) -> Any:
         """Stream LangGraph chunks as SSE bytes using the configured stream mode."""
         try:
             async with mcp_session_context() as session:
+                # Load live tools from MCP and apply to this run
                 live_tools = await load_mcp_tools(session)
                 self._apply_live_tools(self._filter_live_tools(live_tools))
-                self.build()
                 
-                if self.use_checkpointer and self.checkpointer_path:
-                    async with AsyncSqliteSaver.from_conn_string(self.checkpointer_path) as checkpointer:
-                        self.graph = self.graph.compile(checkpointer=checkpointer)
-                        
-                        async for chunk in self.graph.astream(
-                            payload,
-                            config=self.run_config,
-                            stream_mode=self.stream_mode
-                        ):
-                            if isinstance(chunk, (str, bytes)):
-                                yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                            else:
-                                yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
-                else:
-                    self.graph = self.graph.compile()
-                    
-                    async for chunk in self.graph.astream(payload, config=self.run_config, stream_mode=self.stream_mode):
-                        if isinstance(chunk, (str, bytes)):
-                            yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                        else:
-                            yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+                # Build graph if not already done
+                self.build()
+                self.graph = self.graph.compile(checkpointer=self.memory_saver)
+
+                # Stream graph execution results
+                async for chunk in self.graph.astream(
+                    payload,
+                    config=self.run_config,
+                    stream_mode=self.stream_mode
+                ):
+                    if isinstance(chunk, dict) and INTERRUPT in chunk:
+                        yield self._encode_interrupt_frame(chunk)
+                        return
+                    elif isinstance(chunk, (str, bytes)):
+                        yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                    else:
+                        yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             yield self._encode_run_error(exc)
+
+
+
+    # ---------------------------------------------------------------------
+    # Interrupt handling
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def _encode_interrupt_frame(chunk: Any) -> bytes:
+        """Wrap an interrupt payload into an SSE frame the UI/bridge can consume."""
+        payload = {
+            "type": "INTERRUPT",
+            "payload": chunk,
+            "message": "Agent paused for human approval.",
+        }
+        return ("data: " + json.dumps(payload) + "\n\n").encode("utf-8")
 
 
 
@@ -259,17 +275,6 @@ class LangGraphAgent:
         self.agents = None
         self.nodes = None
         self.graph = None
-
-
-
-    # ---------------------------------------------------------------------
-    # Checkpoint helpers
-    # ---------------------------------------------------------------------
-    def checkpoints_db_path(self) -> str:
-        """Return the filesystem path where checkpoints will be stored."""
-        agent_dir = Path("/app/checkpoints") / "langgraph" / self.name.strip()
-        agent_dir.mkdir(parents=True, exist_ok=True)
-        return str(agent_dir / "checkpoints.db")
 
 
 

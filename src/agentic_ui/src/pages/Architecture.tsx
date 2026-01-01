@@ -54,7 +54,7 @@ const services = [
       "Runtime: POST /agents/:slug/stream (SSE) consumes chat history/config/tool prefs and emits AG-UI events.",
       "Utilities: POST /dictate/transcribe (OpenAI STT) and /titles/generate for conversation names.",
     ],
-    data: "Stateless aside from LangGraph checkpoints on the agents_checkpoints volume. Depends on rag_service, MCP gateway, and OpenAI APIs.",
+    data: "Stateless; LangGraph checkpointing now uses in-memory saver per run. Depends on rag_service, MCP gateway, and OpenAI APIs.",
   },
   {
     name: "RAG Service",
@@ -130,7 +130,7 @@ const deployment = [
   },
   {
     title: "Docker Compose",
-    detail: "See src/docker-compose.yaml. Networks: backend (internal) + frontend; volumes: vectorstore, chat_convs, agents_checkpoints.",
+    detail: "See src/docker-compose.yaml. Networks: backend (internal) + frontend; volumes: vectorstore, chat_convs.",
   },
   {
     title: "Secrets",
@@ -368,7 +368,7 @@ const Architecture = () => {
                     Chroma volume at <code className="rounded bg-white/10 px-1 py-0.5">src/vectorstores/chroma_db_openai</code>.
                   </li>
                   <li>
-                    Agents checkpoints mount to <code className="rounded bg-white/10 px-1 py-0.5">agents_checkpoints</code> volume.
+                  Agents keep LangGraph checkpoints in-memory per run (no volume mount).
                   </li>
                 </ul>
               </div>
@@ -418,7 +418,7 @@ const Architecture = () => {
                 <ul className="mt-3 space-y-2 text-sm text-slate-200/90">
                   <li>Primary file: <code className="rounded bg-white/10 px-1 py-0.5">src/docker-compose.yaml</code>.</li>
                   <li>Networks: <code className="rounded bg-white/10 px-1 py-0.5">backend</code> (internal) and <code className="rounded bg-white/10 px-1 py-0.5">frontend</code>.</li>
-                  <li>Volumes: vectorstore (Chroma), chat_convs (Postgres), agents_checkpoints (LangGraph state).</li>
+                  <li>Volumes: vectorstore (Chroma), chat_convs (Postgres); agent checkpoints are in-memory.</li>
                   <li>
                     Optional Vault: <code className="rounded bg-white/10 px-1 py-0.5">src/docker-compose-hashicorp.yaml</code> (exposes 8004).
                   </li>

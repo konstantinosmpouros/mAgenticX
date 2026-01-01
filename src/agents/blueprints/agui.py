@@ -4,6 +4,7 @@ from typing import Any
 
 from ag_ui.core import (
     EventType,
+    BaseEvent,
     
     # General run events
     RunStartedEvent,
@@ -127,5 +128,3 @@ class AGUIEmitter:
         self.response_chunk(writer, message_id, f"Error: {message}")
         self.response_end(writer, message_id)
 
-# Reusable emitter instance
-agui_emitter = AGUIEmitter()

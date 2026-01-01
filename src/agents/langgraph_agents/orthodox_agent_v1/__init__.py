@@ -17,7 +17,6 @@ class OrthodoxAgentV1(LangGraphAgent):
     version = "1.0.0"
     description = "Orthodox biblical and theological insights"
     icon = "BookOpen"
-    stream_mode = "custom"
 
     def __init__(self, *, config=None):
         super().__init__(config=config)

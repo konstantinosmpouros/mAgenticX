@@ -10,8 +10,6 @@ services:
       - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-}
     depends_on:
       - rag_service
-    volumes:
-      - agents_checkpoints:/app/checkpoints
     restart: unless-stopped
     networks:
       - backend
@@ -113,4 +111,3 @@ volumes:
       device: /home/kostas/vectorstores/chroma_db_openai
 
   chat_convs:
-  agents_checkpoints:

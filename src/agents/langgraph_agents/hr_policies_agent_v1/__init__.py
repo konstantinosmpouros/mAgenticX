@@ -17,7 +17,6 @@ class HRPoliciesAgentV1(LangGraphAgent):
     version = "1.0.0"
     description = "HR policies, leave, benefits, and procedures"
     icon = "Building2"
-    stream_mode = "custom"
 
     def __init__(self, *, config=None):
         super().__init__(config=config)

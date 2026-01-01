@@ -126,7 +126,6 @@ async def startInferenceStream(
                                 "conversation_id": str(conversation_id),
                             },
                             "tools": tools_config,
-                            "use_checkpointer": True
                         },
                     }
                     async with client.stream(

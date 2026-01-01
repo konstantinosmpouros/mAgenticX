@@ -15,7 +15,6 @@ class RetailAgentV1(LangGraphAgent):
     version = "1.0.0"
     description = "Product discovery, pricing, inventory and promotions"
     icon = "ShoppingBag"
-    stream_mode = "custom"
 
     def __init__(self, *, config=None):
         super().__init__(config=config)

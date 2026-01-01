@@ -17,8 +17,6 @@ services:
     restart: unless-stopped
     ports:
       - "8003:8003"
-    volumes:
-      - agents_checkpoints:/app/checkpoints
     networks:
       - backend
       - frontend
@@ -157,4 +155,3 @@ volumes:
       device: ./vectorstores/chroma_db_openai
   
   chat_convs:
-  agents_checkpoints:

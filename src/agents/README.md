@@ -61,4 +61,4 @@ Ensure the RAG service and MCP gateway are reachable before exercising retrieval
 
 ## Docker notes
 
-The Dockerfile targets `python:3.11-slim`, installs dependencies, and starts Uvicorn. Docker Compose binds port 8003, depends on `rag_service`, sets `MCP_TOOLS_HTTP_URL`, and mounts `agents_checkpoints` for LangGraph state when needed.
+The Dockerfile targets `python:3.11-slim`, installs dependencies, and starts Uvicorn. Docker Compose binds port 8003, depends on `rag_service`, sets `MCP_TOOLS_HTTP_URL`, and relies on in-memory LangGraph checkpointing (no checkpoints volume).
