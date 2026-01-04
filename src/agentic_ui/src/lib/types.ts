@@ -239,3 +239,20 @@ export type AGUIEvent = {
     type: string;
     [key: string]: any;
 };
+
+// Plan related types
+export type PlanItemStatus = 'pending' | 'in_progress' | 'completed';
+
+// Individual plan item type
+export type PlanItem = {
+    content: string;
+    status: PlanItemStatus;
+    metadata?: Record<string, any>;
+};
+
+// Snapshot of a plan at a given time
+export type PlanSnapshot = {
+    items: PlanItem[];
+    updated_at?: number;
+    metadata?: Record<string, any>;
+};

@@ -17,6 +17,8 @@ from fastapi.responses import StreamingResponse
 
 from openai import OpenAI
 
+from langchain_mcp_adapters.tools import load_mcp_tools
+
 from schemas import (
     Request,
     TitleRequest,
@@ -30,6 +32,7 @@ from utils import (
     list_mcp_tools,
     MCPToolsClientError,
     get_cached_tool_manifests,
+    mcp_session_context,
 )
 from utils.agents import AGENT_REGISTRY
 
@@ -196,7 +199,10 @@ async def stream_agent(agent_slug: str, req: Request):
     
     # Stream agent responses
     async def event_stream():
-        async for msg in agent.astream(payload={"user_input": req.user_input}):
-            yield msg
+        async with mcp_session_context() as session:
+            live_tools = await load_mcp_tools(session)
+            agent.attach_tools(live_tools)
+            async for chunk in agent.astream(payload={"user_input": req.user_input}):
+                yield chunk
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")

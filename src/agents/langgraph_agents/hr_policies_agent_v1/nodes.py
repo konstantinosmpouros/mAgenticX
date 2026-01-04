@@ -63,7 +63,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         writer = get_stream_writer()
         message_id = state.message_id or str(uuid4())
         agui.thinking_start(writer)
-        agui.thought(writer, "Analyzing the user input...")
+        agui.thought("Analyzing the user input...", writer)
 
         user_msg = state["user_input"]
         analysis_results = await agents.analysis_agent.ainvoke(user_msg, config)
@@ -76,7 +76,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
             f"***Language***: {analysis_results.user_language}"
         )
 
-        agui.thought(writer, analysis_str)
+        agui.thought(analysis_str, writer)
         return {
             "analysis_results": analysis_results,
             "analysis_str": analysis_str,
@@ -89,7 +89,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
     async def simple_generation(state: HRPoliciesV1_State, config: RunnableConfig):
         writer = get_stream_writer()
         agui.thinking_end(writer)
-        agui.response_start(writer, state["message_id"])
+        agui.response_start(state["message_id"], writer)
 
         payload = {
             "analysis_results": state["analysis_str"],
@@ -104,7 +104,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
             if mode == "messages":
                 message_chunk, _ = chunk
                 if getattr(message_chunk, "content", None) and isinstance(message_chunk, AIMessageChunk):
-                    agui.response_chunk(writer, state["message_id"], message_chunk.content)
+                    agui.response_chunk(state["message_id"], message_chunk.content, writer)
                     response += message_chunk.content
             elif mode == "updates":
                 if "agent" in chunk:
@@ -113,24 +113,23 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                         for tool_call in agent_msg.tool_calls:
                             last_tool_call_id = tool_call["id"]
                             agui.tool_call_start(
-                                writer,
                                 tool_call["id"],
                                 state["message_id"],
                                 tool_call.get("name"),
-                                tool_call.get("args"),
+                                writer,
                             )
                 elif "tools" in chunk:
                     tool_msg = chunk["tools"]["messages"][0]
                     call_id = getattr(tool_msg, "tool_call_id", None) or last_tool_call_id
                     if call_id:
                         agui.tool_call_result(
-                            writer,
                             call_id,
                             state["message_id"],
                             tool_msg.content,
+                            writer,
                         )
                         
-        agui.response_end(writer, state["message_id"])
+        agui.response_end(state["message_id"], writer)
         return {"response": response}
 
     async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig):
@@ -150,12 +149,12 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         lines = ["I perform research in the database for the following fields:"]
         for idx, q in enumerate(response.queries, start=1):
             lines.append(f"{idx}. {q}")
-        agui.thought(writer, "\n".join(lines))
+        agui.thought("\n".join(lines), writer)
         return {"vector_queries": response.queries}
 
     async def retrieval(state: HRPoliciesV1_State):
         writer = get_stream_writer()
-        agui.thought(writer, "Retrieving content from the HR policies database...")
+        agui.thought("Retrieving content from the HR policies database...", writer)
         tcid = str(uuid4())
         queries = state["vector_queries"] or []
         retrieved_docs: List[Dict[str, Any]] = []
@@ -166,16 +165,16 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                 resp.raise_for_status()
                 retrieved_docs.extend(resp.json()["documents"])
         
-        agui.tool_call_start(writer, tcid, state["message_id"], "vector_db.search", {"queries": queries, "k": 2})
+        agui.tool_call_start(tcid, state["message_id"], "vector_db.search", writer)
         if queries:
             await asyncio.gather(*(fetch_single(q) for q in queries))
         agui.tool_call_result(
-            writer,
             tcid,
             state["message_id"],
             f"Gathered in total {len(retrieved_docs)} relevant documents.",
+            writer,
         )
-        agui.thought(writer, f"Retrieved {len(retrieved_docs)} documents from the database.")
+        agui.thought(f"Retrieved {len(retrieved_docs)} documents from the database.", writer)
         
         state_docs = list(state.retrieved_content)
         state_docs.append(retrieved_docs)
@@ -183,7 +182,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
 
     async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig):
         writer = get_stream_writer()
-        agui.thought(writer, "Ranking the retrieved documents based on relevance...")
+        agui.thought("Ranking the retrieved documents based on relevance...", writer)
         
         if not state["retrieved_content"]:
             return {}
@@ -209,7 +208,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
 
     async def reflection(state: HRPoliciesV1_State, config: RunnableConfig):
         writer = get_stream_writer()
-        agui.thought(writer, "Reasoning if we need more data to answer...")
+        agui.thought("Reasoning if we need more data to answer...", writer)
         
         all_docs_cycles = state["retrieved_content"]
         all_flags_cycles = state["ranking_flags"]
@@ -298,7 +297,6 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                                 tool_call["id"],
                                 state["message_id"],
                                 tool_call.get("name"),
-                                tool_call.get("args"),
                             )
                 elif "tools" in chunk:
                     tool_msg = chunk["tools"]["messages"][0]

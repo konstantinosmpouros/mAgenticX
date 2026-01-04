@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from uuid import uuid4
 import traceback
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
@@ -8,13 +9,11 @@ from pydantic import BaseModel
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.types import INTERRUPT
-from langchain_mcp_adapters.tools import load_mcp_tools
 
 from blueprints.agui import AGUIEmitter
 from utils import (
     build_tool_cache_key,
     get_tool_cache_key,
-    mcp_session_context,
 )
 
 class LangGraphAgent:
@@ -58,7 +57,6 @@ class LangGraphAgent:
 
     # Runtime options
     has_hitl: bool = False
-    memory_saver: MemorySaver = MemorySaver() if has_hitl else None
 
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
@@ -80,6 +78,7 @@ class LangGraphAgent:
         self.tools_names: List[str] = []
         
         # Agent components
+        self.memory_saver: MemorySaver = MemorySaver() if self.has_hitl else None
         self.state: Type[BaseModel] | None = None
         self.agents: Any = None
         self.nodes: Any = None
@@ -116,12 +115,12 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     def register_agents(self) -> None:
         """Instantiate LLM chains / helpers and store them on ``self.agents``."""
-        raise NotImplementedError("Subclasses must implement register_agents().")
+        return
 
 
     def register_nodes(self) -> None:
         """Create node callables (usually closing over ``self.agents``/``self.agui``)."""
-        raise NotImplementedError("Subclasses must implement register_nodes().")
+        return
 
 
     def register_agents_and_nodes(self) -> None:
@@ -138,43 +137,33 @@ class LangGraphAgent:
 
     def register_graph_nodes(self, graph: StateGraph) -> None:
         """Attach node handlers to the provided graph instance."""
-        raise NotImplementedError("Subclasses must implement register_graph_nodes().")
+        return
 
 
     def register_graph_edges(self, graph: StateGraph) -> None:
         """Connect graph nodes with edges or conditional routes."""
-        raise NotImplementedError("Subclasses must implement register_graph_edges().")
-
-
-    def workflow(self) -> StateGraph:
-        """
-        Assemble and return a LangGraph ``StateGraph`` for the agent.
-        
-        Subclasses may override this method directly, but most implementations will
-        benefit from customizing the three hook methods invoked here instead.
-        """
-        if self.state is None:
-            raise ValueError("Subclasses must assign a state model before build().")
-        
-        if self.agents is None or self.nodes is None:
-            self.register_agents_and_nodes()
-        
-        graph = StateGraph(self.state)
-        self.register_graph_nodes(graph)
-        self.register_graph_edges(graph)
-        return graph
+        return
 
 
     def build(self) -> None:
-        """Compile the workflow into an executable graph."""
-        if self.graph is not None:
-            return
+        """
+        Build or rebuild the LangGraph ``StateGraph`` for this agent instance.
+        Invokes the three registration hooks in order to assemble the graph.
+        Returns the compiled ``StateGraph`` instance.
         
-        graph = self.workflow()
-        if not isinstance(graph, StateGraph):
-            raise TypeError("workflow() must return a LangGraph StateGraph instance.")
+        Invoked automatically by ``astream()`` if the graph is not already built.
+        If no state model is defined, the raw agents are returned instead.
+        """
+        if self.graph is None:
+            self.register_agents_and_nodes()
         
-        self.graph = graph
+            if self.state is None:
+                self.graph = self.agents
+            else:
+                graph = StateGraph(self.state)
+                self.register_graph_nodes(graph)
+                self.register_graph_edges(graph)
+                self.graph = graph.compile(checkpointer=self.memory_saver)
         return
 
 
@@ -185,29 +174,44 @@ class LangGraphAgent:
     async def astream(self, payload: Mapping[str, Any]) -> Any:
         """Stream LangGraph chunks as SSE bytes using the configured stream mode."""
         try:
-            async with mcp_session_context() as session:
-                # Load live tools from MCP and apply to this run
-                live_tools = await load_mcp_tools(session)
-                self._apply_live_tools(self._filter_live_tools(live_tools))
-                
-                # Build graph if not already done
-                self.build()
-                self.graph = self.graph.compile(checkpointer=self.memory_saver)
+            # Build graph if not already done
+            self.build()
 
-                # Stream graph execution results
-                async for chunk in self.graph.astream(
-                    payload,
-                    config=self.run_config,
-                    stream_mode=self.stream_mode
-                ):
-                    if isinstance(chunk, dict) and INTERRUPT in chunk:
-                        thread_id = str(self.run_config.get("configurable", {}).get("thread_id", ""))
-                        yield self.agui._emit_interrupt(chunk, thread_id=thread_id, writer=None)
-                        return
-                    elif isinstance(chunk, (str, bytes)):
-                        yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                    else:
-                        yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+            # Stream graph execution results
+            async for chunk in self.graph.astream(
+                payload,
+                config=self.run_config,
+                stream_mode=self.stream_mode
+            ):
+                if isinstance(chunk, dict) and INTERRUPT in chunk:
+                    # thread_id = str(self.run_config.get("configurable", {}).get("thread_id", ""))
+                    # interrupt_payload = chunk.get(INTERRUPT)
+                    # if isinstance(interrupt_payload, (list, tuple)) and interrupt_payload:
+                    #     interrupt_obj = interrupt_payload[0]
+                    # else:
+                    #     interrupt_obj = interrupt_payload
+
+                    # interrupt_id = (
+                    #     getattr(interrupt_obj, "id", None)
+                    #     or getattr(interrupt_obj, "interrupt_id", None)
+                    #     or "unknown"
+                    # )
+                    # interrupt_value = getattr(interrupt_obj, "value", interrupt_obj)
+
+                    # meta = {"raw_interrupt": _json_safe(interrupt_payload)}
+                    # custom_event = self.agui.hitl_interrupt(
+                    #     writer=None,
+                    #     thread_id=thread_id,
+                    #     interrupt_id=str(interrupt_id),
+                    #     value=_json_safe(interrupt_value),
+                    #     metadata=meta,
+                    # )
+                    # yield self.agui._encoder.encode(custom_event)
+                    return
+                elif isinstance(chunk, (str, bytes)):
+                    yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                else:
+                    yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
             return
         except Exception as exc:
@@ -218,6 +222,11 @@ class LangGraphAgent:
     # ---------------------------------------------------------------------
     # Tool management
     # ---------------------------------------------------------------------
+    def attach_tools(self, live_tools: Sequence[Any]) -> None:
+        """Filter and apply externally provided MCP tools."""
+        self._apply_live_tools(self._filter_live_tools(live_tools))
+
+
     @staticmethod
     def _build_tool_key_from_config(entry: Mapping[str, Any]) -> str:
         """Normalise a config entry into server_id/tool_name cache key form."""
@@ -274,6 +283,11 @@ class LangGraphAgent:
             if isinstance(tools, str) or not isinstance(tools, Sequence):
                 raise TypeError("Agent config 'tools' must be a list of tool mappings.")
             config["tools"] = self._validate_tool_config(tools)
+
+        # Validate run config
+        run_config = config.get("run_config")
+        if run_config is not None:
+            config["run_config"] = self._validate_run_config(run_config)
         
         return config
 
@@ -309,6 +323,18 @@ class LangGraphAgent:
             # Add to normalised list after validation
             normalised.append(candidate)
             
+        return normalised
+
+
+    @staticmethod
+    def _validate_run_config(run_config: Mapping[str, Any]) -> Dict[str, Any]:
+        """Ensure run_config is a mapping and normalise nested configurable map."""
+        if not isinstance(run_config, Mapping):
+            raise TypeError("Agent config 'run_config' must be a mapping.")
+        normalised = dict(run_config)
+        configurable = normalised.get("configurable")
+        if configurable is not None and not isinstance(configurable, Mapping):
+            raise TypeError("Agent run_config 'configurable' must be a mapping.")
         return normalised
 
 

@@ -1,6 +1,6 @@
 import { addMessageToConversation, streamInference, updateMessageInConversation } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
-import type { MessageIn, MessageOut, ToolPreference } from '@/lib/types';
+import type { MessageIn, MessageOut, PlanSnapshot, ToolPreference } from '@/lib/types';
 import { EventSchemas, EventType as AGUIEventType } from '@ag-ui/core';
 
 
@@ -32,6 +32,7 @@ export type AguiStreamOptions = {
   prefillMessageId?: string;
   enabledTools?: ToolPreference[];
   persistUIState?: () => void;
+  onPlanSnapshot?: (plan: PlanSnapshot) => void;
 };
 
 
@@ -48,11 +49,12 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     signal,
     replyParentMessageId,
     uiBranchPath,
-    serverBranchPath,
-    prefillMessageId,
-    enabledTools,
-    persistUIState,
-  } = options;
+  serverBranchPath,
+  prefillMessageId,
+  enabledTools,
+  persistUIState,
+  onPlanSnapshot,
+} = options;
   
   let aborted = false;
   options.signal?.addEventListener('abort', () => {
@@ -96,6 +98,17 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     }
     
     const type = ev.type;
+    
+    if (type === AGUIEventType.CUSTOM) {
+      const name = (ev as any).name;
+      if (name === 'plan_snapshot' || name === 'PLAN_SNAPSHOT') {
+        const snapshot = (ev as any).value as PlanSnapshot | undefined;
+        if (snapshot && onPlanSnapshot) {
+          onPlanSnapshot(snapshot);
+        }
+      }
+      return;
+    }
     
     if (type === AGUIEventType.RUN_STARTED) {
       if (setShowAiTransition) setShowAiTransition(false);
