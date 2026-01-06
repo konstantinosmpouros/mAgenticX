@@ -84,7 +84,11 @@ export default function ChatHeader({
                                     <div className="flex items-center gap-2">
                                         {(() => {
                                             const Icon = agent.icon;
-                                            return <Icon size={18} className="text-muted-foreground" />;
+                                            return (
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground">
+                                                    <Icon className="h-4 w-4" aria-hidden="true" />
+                                                </div>
+                                            );
                                         })()}
                                         <div className="flex flex-col">
                                             <span className="font-medium text-sm text-foreground">

@@ -12,7 +12,7 @@ from langgraph_agents.retail_agent_v1.prompt_templates import (
     schema_help_template,
     answer_gen_template,
 )
-from blueprints.agui import AGUIEmitter
+from agui import AGUIEmitter
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer

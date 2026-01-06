@@ -27,7 +27,7 @@ class OrthodoxAgentV1(LangGraphAgent):
 
 
     def register_nodes(self) -> None:
-        self.nodes = build_orthodox_nodes(agents=self.agents, agui=self.agui)
+        self.nodes = build_orthodox_nodes(agents=self.agents, agui=self.agui_emitter)
 
 
     def register_graph_nodes(self, graph: StateGraph) -> None:

@@ -3,18 +3,20 @@ import json
 import time
 from uuid import uuid4
 import traceback
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Type, Literal
 from pydantic import BaseModel
 
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.types import INTERRUPT
 
-from blueprints.agui import AGUIEmitter
+from agui import AGUIEmitter, AGUIStreamNormalizer
 from utils import (
     build_tool_cache_key,
     get_tool_cache_key,
 )
+
+STREAMING_MODES = Literal["custom", "updates", "messages"]
 
 class LangGraphAgent:
     """
@@ -50,10 +52,11 @@ class LangGraphAgent:
     icon: Optional[str] = None
 
     # Default streaming mode for LangGraph inference
-    stream_mode: str = "custom"
+    stream_mode: STREAMING_MODES = "custom"
 
     # Shared AG-UI emitter instance
-    agui: AGUIEmitter = AGUIEmitter()
+    agui_emitter: AGUIEmitter = AGUIEmitter()
+    agui_normalizer: AGUIStreamNormalizer = AGUIStreamNormalizer(emitter=agui_emitter, stream_mode=stream_mode)
 
     # Runtime options
     has_hitl: bool = False
@@ -157,7 +160,7 @@ class LangGraphAgent:
         if self.graph is None:
             self.register_agents_and_nodes()
         
-            if self.state is None:
+            if self.state is None and self.nodes is None:
                 self.graph = self.agents
             else:
                 graph = StateGraph(self.state)
@@ -184,34 +187,16 @@ class LangGraphAgent:
                 stream_mode=self.stream_mode
             ):
                 if isinstance(chunk, dict) and INTERRUPT in chunk:
-                    # thread_id = str(self.run_config.get("configurable", {}).get("thread_id", ""))
-                    # interrupt_payload = chunk.get(INTERRUPT)
-                    # if isinstance(interrupt_payload, (list, tuple)) and interrupt_payload:
-                    #     interrupt_obj = interrupt_payload[0]
-                    # else:
-                    #     interrupt_obj = interrupt_payload
-
-                    # interrupt_id = (
-                    #     getattr(interrupt_obj, "id", None)
-                    #     or getattr(interrupt_obj, "interrupt_id", None)
-                    #     or "unknown"
-                    # )
-                    # interrupt_value = getattr(interrupt_obj, "value", interrupt_obj)
-
-                    # meta = {"raw_interrupt": _json_safe(interrupt_payload)}
-                    # custom_event = self.agui.hitl_interrupt(
-                    #     writer=None,
-                    #     thread_id=thread_id,
-                    #     interrupt_id=str(interrupt_id),
-                    #     value=_json_safe(interrupt_value),
-                    #     metadata=meta,
-                    # )
-                    # yield self.agui._encoder.encode(custom_event)
-                    return
+                    thread_id = self.run_config.get("configurable", {}).get("thread_id", "")
+                    yield self.agui.hitl_interrupt(
+                        thread_id=thread_id,
+                        interrupt=chunk[INTERRUPT],
+                    )
                 elif isinstance(chunk, (str, bytes)):
                     yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
                 else:
-                    yield ("data: " + json.dumps(chunk) + "\n\n").encode("utf-8")
+                    for norm_chunk in self.agui_normalizer.handle_chunk(chunk):
+                        yield norm_chunk
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
             return
         except Exception as exc:

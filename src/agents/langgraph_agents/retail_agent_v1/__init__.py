@@ -28,7 +28,7 @@ class RetailAgentV1(LangGraphAgent):
 
     def register_nodes(self) -> None:
         """Create node callables that close over the configured agents."""
-        self.nodes = build_retail_nodes(agents=self.agents, agui=self.agui)
+        self.nodes = build_retail_nodes(agents=self.agents, agui=self.agui_emitter)
 
 
     def register_graph_nodes(self, graph: StateGraph) -> None:

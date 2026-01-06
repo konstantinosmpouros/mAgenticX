@@ -2,7 +2,7 @@ import json
 import time
 from typing import Any, Dict, Optional, Sequence
 
-from blueprints.agui_events import (
+from agui.events import (
     # Human-in-the-loop interrupt event
     HITL_INTERRUPT_EVENT_TYPE,
     HITLInterruptEvent,
@@ -55,7 +55,7 @@ class AGUIEmitter:
         sse = self._encoder.encode(event_obj)
         if writer:
             writer(sse)
-            return None
+            return
         return sse
 
 
@@ -134,7 +134,7 @@ class AGUIEmitter:
     # ---------- Planning snapshots (custom event) ----------
     def plan_snapshot(
         self,
-        items: Sequence[PlanItem | Dict[str, Any]] = (),
+        items: Sequence[PlanItem | Dict[str, Any]],
         *,
         metadata: Optional[Dict[str, Any]] = None,
         writer: Any = None,
@@ -158,8 +158,8 @@ class AGUIEmitter:
     # ---------- Human-in-the-loop interrupt ----------
     def hitl_interrupt(
         self,
-        thread_id: str = "",
-        interrupt: Any = None,
+        thread_id: str,
+        interrupt: Any,
         metadata: Optional[Dict[str, Any]] = None,
         writer: Any = None,
     ) -> CustomEvent:
