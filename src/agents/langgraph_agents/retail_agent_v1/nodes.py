@@ -74,7 +74,6 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         tcid = str(uuid4())
         agui.tool_call_start(
             tcid,
-            message_id,
             name="schema_backend.fetch",
             writer=writer,
         )
@@ -83,9 +82,9 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                 response = await client.get(SCHEMA_ENDPOINT)
                 response.raise_for_status()
                 db_schema_json = response.json()
-                agui.tool_call_result(tcid, message_id, "Retrieved database schema.", writer)
+                agui.tool_call_result(tcid, "Retrieved database schema.", writer)
         except Exception:
-            agui.tool_call_result(tcid, message_id, "Failed to retrieve db schema.", writer)
+            agui.tool_call_result(tcid, "Failed to retrieve db schema.", writer)
             raise
         finally:
             agui.tool_call_end(tcid, writer)
@@ -131,7 +130,6 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                             last_tool_call_id = tool_call["id"]
                             agui.tool_call_start(
                                 tool_call["id"],
-                                state["message_id"],
                                 tool_call.get("name"),
                                 writer,
                             )
@@ -141,7 +139,6 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                     if call_id:
                         agui.tool_call_result(
                             call_id,
-                            state["message_id"],
                             tool_msg.content,
                             writer,
                         )
@@ -189,7 +186,6 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         tcid = str(uuid4())
         agui.tool_call_start(
             tcid,
-            state["message_id"],
             name="sql_backend.query",
             writer=writer,
         )
@@ -264,7 +260,6 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                             last_tool_call_id = tool_call["id"]
                             agui.tool_call_start(
                                 tool_call["id"],
-                                state["message_id"],
                                 tool_call.get("name"),
                                 writer,
                             )
@@ -274,7 +269,6 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
                     if call_id:
                         agui.tool_call_result(
                             call_id,
-                            state["message_id"],
                             tool_msg.content,
                             writer,
                         )

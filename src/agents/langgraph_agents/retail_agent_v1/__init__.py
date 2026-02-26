@@ -23,12 +23,12 @@ class RetailAgentV1(LangGraphAgent):
 
     def register_agents(self) -> None:
         """Build runtime-specific agent chains using selected tools."""
-        self.agents = build_retail_agents(tools=self.tools)
+        return build_retail_agents(tools=self.tools)
 
 
     def register_nodes(self) -> None:
         """Create node callables that close over the configured agents."""
-        self.nodes = build_retail_nodes(agents=self.agents, agui=self.agui_emitter)
+        return build_retail_nodes(agents=self.agents, agui=self.agui_emitter)
 
 
     def register_graph_nodes(self, graph: StateGraph) -> None:
@@ -37,6 +37,7 @@ class RetailAgentV1(LangGraphAgent):
         graph.add_node("query_gen", self.nodes.query_gen)
         graph.add_node("query_execution", self.nodes.query_execution)
         graph.add_node("complex_generation", self.nodes.complex_generation)
+        return graph
 
 
     def register_graph_edges(self, graph: StateGraph) -> None:
@@ -60,3 +61,4 @@ class RetailAgentV1(LangGraphAgent):
             },
         )
         graph.add_edge("complex_generation", END)
+        return graph

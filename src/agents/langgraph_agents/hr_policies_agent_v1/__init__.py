@@ -24,12 +24,11 @@ class HRPoliciesAgentV1(LangGraphAgent):
 
 
     def register_agents(self) -> None:
-        self.agents = build_hr_agents(tools=self.tools)
+        return build_hr_agents(tools=self.tools)
 
 
     def register_nodes(self) -> None:
-        self.nodes = build_hr_nodes(agents=self.agents, agui=self.agui_emitter)
-
+        return build_hr_nodes(agents=self.agents, agui=self.agui_emitter)
 
     def register_graph_nodes(self, graph: StateGraph) -> None:
         graph.add_node("analysis", self.nodes.analysis)
@@ -40,6 +39,7 @@ class HRPoliciesAgentV1(LangGraphAgent):
         graph.add_node("reflectioner", self.nodes.reflection)
         graph.add_node("summarizer", self.nodes.summarization)
         graph.add_node("complex_generation", self.nodes.complex_generation)
+        return graph
 
 
     def register_graph_edges(self, graph: StateGraph) -> None:
@@ -67,3 +67,4 @@ class HRPoliciesAgentV1(LangGraphAgent):
         )
         graph.add_edge("summarizer", "complex_generation")
         graph.add_edge("complex_generation", END)
+        return graph

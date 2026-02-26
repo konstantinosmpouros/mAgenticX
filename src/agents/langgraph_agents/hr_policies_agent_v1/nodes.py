@@ -114,7 +114,6 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                             last_tool_call_id = tool_call["id"]
                             agui.tool_call_start(
                                 tool_call["id"],
-                                state["message_id"],
                                 tool_call.get("name"),
                                 writer,
                             )
@@ -124,7 +123,6 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                     if call_id:
                         agui.tool_call_result(
                             call_id,
-                            state["message_id"],
                             tool_msg.content,
                             writer,
                         )
@@ -165,12 +163,11 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                 resp.raise_for_status()
                 retrieved_docs.extend(resp.json()["documents"])
         
-        agui.tool_call_start(tcid, state["message_id"], "vector_db.search", writer)
+        agui.tool_call_start(tcid, "vector_db.search", writer)
         if queries:
             await asyncio.gather(*(fetch_single(q) for q in queries))
         agui.tool_call_result(
             tcid,
-            state["message_id"],
             f"Gathered in total {len(retrieved_docs)} relevant documents.",
             writer,
         )
@@ -293,20 +290,18 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                         for tool_call in agent_msg.tool_calls:
                             last_tool_call_id = tool_call["id"]
                             agui.tool_call_start(
-                                writer,
                                 tool_call["id"],
-                                state["message_id"],
                                 tool_call.get("name"),
+                                writer,
                             )
                 elif "tools" in chunk:
                     tool_msg = chunk["tools"]["messages"][0]
                     call_id = getattr(tool_msg, "tool_call_id", None) or last_tool_call_id
                     if call_id:
                         agui.tool_call_result(
-                            writer,
                             call_id,
-                            state["message_id"],
                             tool_msg.content,
+                            writer,
                         )
         
         agui.response_end(writer, state["message_id"])

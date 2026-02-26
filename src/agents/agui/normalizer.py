@@ -1,488 +1,675 @@
-# agui_stream_normalizer.py
-from __future__ import annotations
-
 import json
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
-from uuid import uuid4
+from typing import Any, List, Optional, Tuple, Dict
+from agui.emitter import AGUIEmitter
 
 
-@dataclass
-class _ToolCallState:
-    name: str = ""
-    args_buffer: str = ""
-    started: bool = False
-    ended: bool = False
-
+_ALLOWED_MODES = {"messages", "updates"}
 
 class AGUIStreamNormalizer:
     """
-    Normalizes LangGraph agent streamed chunks (ONLY stream_mode: "messages" or "updates")
-    into AG-UI SSE bytes using the provided AGUIEmitter.
+    Combined streaming normalizer for LangGraph:
+        - stream_mode MUST be ["messages", "updates"] on the agent.
+        - "messages" => ONLY assistant text content (chunks)
+        - "updates"  => tools/subagents/plan/interrupt (NO content)
 
-    - "custom" is assumed handled upstream (already SSE bytes/str).
-    - HITL interrupt is assumed handled upstream.
+    Policies:
+        - __interrupt__ => only HITL event (priority)
+        - write_todos   => only plan_snapshot (dedupe)
+        - task tool     => only subagent event (dedupe)
+        - other tools   => full lifecycle start/args/result/end
     """
 
-    def __init__(self, *, emitter: Any, stream_mode: str) -> None:
-        if stream_mode not in ("messages", "updates"):
-            raise ValueError(f"AGUIStreamNormalizer supports only 'messages' or 'updates' (got: {stream_mode})")
+    def __init__(self, thread_id: str) -> None:
+        self.emitter = AGUIEmitter()
+        self.thread_id = thread_id  # message_id == thread_id (your requirement)
 
-        self.emitter = emitter
-        self.stream_mode = stream_mode
+        # --- streaming state (per actor: orchestrator/sub-agent) ---
+        self._stream_state: Dict[str, Dict[str, bool]] = {}
 
-        # One assistant message per run (good enough for agent runs with tools + final answer).
-        self.parent_message_id: str = str(uuid4())
-        self._response_started: bool = False
-        self._response_ended: bool = False
+        # --- tool correlation ---
+        self._pending_tool_call_ids: set[str] = set()     # start/args emitted; waiting ToolMessage result
+        self._started_tool_call_ids: set[str] = set()     # to dedupe start/args
+        self._finished_tool_call_ids: set[str] = set()    # to dedupe result/end
+        self._ignored_tool_call_ids: set[str] = set()     # write_todos + task: ignore ToolMessage
 
-        # tool_call_id -> state
-        self._tool_calls: Dict[str, _ToolCallState] = {}
+        # --- custom event dedupe ---
+        self._emitted_subagent_task_ids: set[str] = set()
+        self._last_plan_fingerprint: Optional[str] = None
+
+        # --- sub-agent namespace mapping ---
+        self._pending_tasks: Dict[str, Dict[str, str]] = {}
+        self._namespace_task_labels: Dict[tuple, str] = {}
+
+
+
 
     # --------------------------- public API ---------------------------
-
     def handle_chunk(self, chunk: Any) -> List[bytes]:
-        """
-        Convert a raw chunk to 0..N AG-UI SSE events (bytes).
-        """
-        out: List[bytes] = []
+        """Convert a raw chunk to 0..N AG-UI SSE events (bytes)."""
+        namespace, mode, payload, metadata = self._unwrap_envelope(chunk)
 
-        # Defensive: sometimes you may see wrappers even in single-mode (e.g., subgraphs=True)
-        ns, mode, payload = self._unwrap_envelope(chunk)
-        active_mode = mode or self.stream_mode
-
-        if active_mode == "messages":
-            out.extend(self._handle_messages_payload(payload))
-        elif active_mode == "updates":
-            out.extend(self._handle_updates_payload(payload))
+        # Handle payload based on mode
+        if mode == "messages":
+            events = self._handle_messages_payload(payload, metadata, namespace)
+            return self._wrap_subagent_events_if_needed(events, namespace)
+        elif mode == "updates":
+            events = self._handle_updates_payload(payload, metadata, namespace)
+            return self._wrap_subagent_events_if_needed(events, namespace)
         else:
-            # Should not happen given constructor + upstream constraints; keep safe fallback.
-            out.extend(self._emit_custom_raw({"unhandled_mode": active_mode, "payload": self._safe_json(payload)}))
+            return []
 
-        return out
 
-    def finalize(self) -> List[bytes]:
-        """
-        Close any open tool calls and assistant message at end-of-stream.
-        Call once after the async-for finishes normally.
-        """
-        out: List[bytes] = []
-
-        # Close any tool calls that never got an explicit "end" (best-effort)
-        for tool_call_id, st in list(self._tool_calls.items()):
-            if st.started and not st.ended:
-                out.append(self.emitter.tool_call_end(tool_call_id))
-
-        if self._response_started and not self._response_ended:
-            out.append(self.emitter.response_end(self.parent_message_id))
-            self._response_ended = True
-
-        return out
 
     # ------------------------ envelope unwrapping ------------------------
-
-    def _unwrap_envelope(self, chunk: Any) -> Tuple[Optional[tuple], Optional[str], Any]:
+    def _unwrap_envelope(
+        self, chunk: Any
+    ) -> Tuple[Optional[tuple], Optional[str], Any, Optional[Dict[str, Any]]]:
         """
-        Supports two wrappers:
-          - (namespace_tuple, data) for subgraphs=True
-          - (mode_str, data) for multi-mode streaming
-        Returns: (namespace, mode, payload)
+        For stream_mode=["messages","updates"] with subgraphs=True possible.
+
+        General rule:
+        - Find the first string in the chunk that matches an allowed mode.
+        - The item just before it (if any) is namespace.
+        - The item just after it is payload.
+        - The next item (if any) is metadata.
+        Legacy: if messages payload is a 2-tuple (msg, meta) and meta is a dict,
+        treat meta as metadata when none was provided.
+        Fallback: dict chunks => updates; everything else => unknown.
         """
         namespace: Optional[tuple] = None
         mode: Optional[str] = None
         payload: Any = chunk
+        metadata: Optional[Dict[str, Any]] = None
 
-        # subgraphs wrapper: (namespace, data)
-        if isinstance(payload, tuple) and len(payload) == 2 and isinstance(payload[0], tuple):
-            namespace, payload = payload
+        # --- Sequence parsing: scan for mode string and derive neighbors ---
+        if isinstance(chunk, (tuple, list)):
+            seq = list(chunk)
+            for idx, item in enumerate(seq):
+                if isinstance(item, str) and item in _ALLOWED_MODES:
+                    mode = item
 
-        # multi-mode wrapper: (mode, data)
-        if isinstance(payload, tuple) and len(payload) == 2 and isinstance(payload[0], str):
-            if payload[0] in ("messages", "updates", "custom", "values", "debug"):
-                mode, payload = payload
+                    # Namespace: immediately before the mode (if present)
+                    if idx - 1 >= 0:
+                        ns_candidate = seq[idx - 1]
+                        if isinstance(ns_candidate, tuple) and len(ns_candidate) > 0:
+                            namespace = ns_candidate
+                        elif isinstance(ns_candidate, list) and len(ns_candidate) > 0:
+                            namespace = tuple(ns_candidate)
 
-        return namespace, mode, payload
+                    # Payload: immediately after the mode (if present)
+                    if idx + 1 < len(seq):
+                        payload = seq[idx + 1]
+
+                    # Metadata: the element after payload (if present)
+                    if idx + 2 < len(seq):
+                        meta_candidate = seq[idx + 2]
+                        if isinstance(meta_candidate, dict):
+                            metadata = meta_candidate
+
+                    # Legacy: messages payload can be (msg, meta)
+                    if (
+                        mode == "messages"
+                        and isinstance(payload, tuple)
+                        and len(payload) == 2
+                        and metadata is None
+                    ):
+                        msg, meta = payload
+                        payload = msg
+                        metadata = meta if isinstance(meta, dict) else None
+
+                    return namespace, mode, payload, metadata
+
+        # --- Fallbacks ---
+        if isinstance(chunk, dict):
+            return None, "updates", chunk, None
+
+        return None, None, chunk, None
+
+
 
     # --------------------------- messages mode ---------------------------
-
-    def _handle_messages_payload(self, payload: Any) -> List[bytes]:
+    def _handle_messages_payload(
+        self,
+        payload: Any,
+        metadata: Optional[Dict[str, Any]] = None,
+        namespace: Optional[tuple] = None,
+    ) -> List[bytes]:
         """
-        LangGraph "messages" mode yields: (message_chunk, metadata)
-        Docs: (message_chunk, metadata) 2-tuple. We treat metadata as optional.
+        messages:
+            - AI message => assistant text stream (start/chunk)
+            - ToolMessage => tool results (result/end) ONLY if tool_call_id is pending and not ignored
         """
         out: List[bytes] = []
+        ns_label = self._resolve_namespace_label(namespace)
 
-        msg_obj = payload
-        metadata: Dict[str, Any] = {}
+        kind = self._msg_kind(payload)
 
-        # payload is typically (message_chunk, metadata)
-        if isinstance(payload, tuple) and len(payload) == 2 and isinstance(payload[1], dict):
-            msg_obj, metadata = payload[0], payload[1]
+        # 1) ToolMessage in messages => treat as result/end (but gate via ignored/pending)
+        if kind == "tool":
+            self._emit_tool_message_result(out, payload, ns_label)
+            return out
 
-        # 1) Tool call deltas / tool calls in the message chunk
-        tool_calls = self._extract_tool_calls(msg_obj)
-        if tool_calls:
-            self._ensure_response_started(out)
-            out.extend(self._emit_tool_calls_from_ai(tool_calls))
+        # 2) AI message => assistant text chunks only
+        if kind == "ai":
+            delta = self._extract_text_delta(payload)
+            if not delta:
+                return out
 
-        # 2) Text delta (token streaming)
-        delta = self._extract_text_delta(msg_obj)
-        if delta:
-            self._ensure_response_started(out)
-            out.append(self.emitter.response_chunk(self.parent_message_id, delta))
+            # First content => thinking_end + response_start + first chunk
+            self._end_thinking_if_needed(out, ns_label)
+            state = self._get_state(ns_label)
 
-        # 3) Tool results may also appear as tool messages in messages-mode streams (best-effort)
-        if self._infer_role(msg_obj) == "tool":
-            self._ensure_response_started(out)
-            out.extend(self._emit_tool_result_from_tool_message(msg_obj))
+            if not state["response_started"]:
+                self._push(out, self.emitter.response_start(message_id=self.thread_id, namespace=ns_label))
+                state["response_started"] = True
+                state["response_ended"] = False
 
+            self._push(out, self.emitter.response_chunk(message_id=self.thread_id, delta=delta, namespace=ns_label))
+            state["saw_messages_chunk"] = True
+            return out
+
+        # 3) Other message kinds ignored
         return out
 
-    # --------------------------- updates mode ----------------------------
 
-    def _handle_updates_payload(self, payload: Any) -> List[bytes]:
+
+    # --------------------------- updates mode ----------------------------
+    def _handle_updates_payload(
+        self,
+        payload: Any,
+        metadata: Optional[Dict[str, Any]] = None,
+        namespace: Optional[tuple] = None,
+    ) -> List[bytes]:
         """
-        LangGraph "updates" mode yields: dict mapping node -> update.
-        Each update commonly contains "messages": [AIMessage/ToolMessage/...]
+        updates:
+            - __interrupt__ => HITL event only (and return)
+            - write_todos => plan_snapshot only (and mark tool_call_id ignored)
+            - task => subagent event only (and mark tool_call_id ignored)
+            - other tools => tool_start + tool_args (and mark tool_call_id pending)
+            - If AI message contains content => DO NOT emit content; emit TEXT_MESSAGE_END (once)
         """
         out: List[bytes] = []
         if not isinstance(payload, dict):
-            # Unexpected; fall back to raw custom event
-            return self._emit_custom_raw({"unexpected_updates_payload": self._safe_json(payload)})
+            return out
 
-        for _node, update in payload.items():
-            # Most common: update is dict that may include "messages"
-            if isinstance(update, dict) and "messages" in update:
-                msgs = update.get("messages") or []
-                if isinstance(msgs, list):
-                    for m in msgs:
-                        out.extend(self._handle_update_message_obj(m))
-                else:
-                    # Sometimes a single message-like object
-                    out.extend(self._handle_update_message_obj(msgs))
-            else:
-                # Some graphs put message-like objects directly in update
-                # Try to parse as message/tool; otherwise ignore or emit custom (your choice).
-                if self._looks_message_like(update):
-                    out.extend(self._handle_update_message_obj(update))
-                # else: ignore (keeps UI clean). If you want observability, emit custom:
-                # else:
-                #     out.extend(self._emit_custom_raw({"update": self._safe_json(update)}))
+        ns_label = self._resolve_namespace_label(namespace, payload)
+
+        # HITL priority: HITL only contract
+        if "__interrupt__" in payload:
+            raw = payload.get("__interrupt__")
+            interrupt_obj = raw[0] if isinstance(raw, (tuple, list)) and raw else raw
+
+            interrupt_payload: Any = interrupt_obj
+            if interrupt_obj is not None:
+                interrupt_payload = {
+                    "id": getattr(interrupt_obj, "id", None),
+                    "value": getattr(interrupt_obj, "value", interrupt_obj),
+                }
+
+            hitl_meta: Dict[str, Any] = {}
+            if isinstance(metadata, dict):
+                hitl_meta.update(metadata)
+            hitl_meta["namespace"] = ns_label
+
+            self._push(
+                out,
+                self.emitter.hitl_interrupt(
+                    thread_id=self.thread_id,
+                    interrupt=interrupt_payload,
+                    metadata=hitl_meta,
+                    namespace=ns_label,
+                ),
+            )
+            return out
+
+        # Optional metadata forwarding (future-proof)
+        meta: Dict[str, Any] = {}
+        if isinstance(metadata, dict):
+            meta.update(metadata)
+        meta["namespace"] = ns_label
+
+        # Walk node updates
+        for node_name, node_update in payload.items():
+            if node_update is None or not isinstance(node_update, dict):
+                continue
+
+            # Emit a dedicated marker for sub-agent before_agent instructions.
+            if (
+                namespace is not None
+                and node_name == "PatchToolCallsMiddleware.before_agent"
+            ):
+                for msg in self._unwrap_messages_list(node_update.get("messages")):
+                    delegated_message = getattr(msg, "content", None)
+                    if isinstance(delegated_message, str) and delegated_message:
+                        self._push(
+                            out,
+                            self.emitter.before_agent_event(
+                                message=delegated_message,
+                                metadata=meta,
+                                namespace=ns_label,
+                            ),
+                        )
+                        break
+
+            # Authoritative todos snapshot may be present as node_update["todos"]
+            if "todos" in node_update and isinstance(node_update.get("todos"), list):
+                fp = self._fingerprint(node_update["todos"])
+                if fp != self._last_plan_fingerprint:
+                    self._end_thinking_if_needed(out, ns_label)
+                    self._push(out, self.emitter.plan_snapshot(node_update["todos"], metadata=meta, namespace=ns_label))
+                    self._last_plan_fingerprint = fp
+
+            # Process messages inside this update
+            for msg in self._unwrap_messages_list(node_update.get("messages")):
+                msg_kind = self._msg_kind(msg)
+
+                # ToolMessage results may also arrive through updates-only streams.
+                if msg_kind == "tool":
+                    self._emit_tool_message_result(out, msg, ns_label)
+                    continue
+
+                if msg_kind != "ai":
+                    continue
+
+                # If updates stream contains final AI content:
+                # - With messages-mode chunks already seen: only close response.
+                # - With updates-only mode: synthesize start/content/end once.
+                ai_content = self._extract_text_delta(msg)
+                if ai_content:
+                    self._end_thinking_if_needed(out, ns_label)
+                    state = self._get_state(ns_label)
+
+                    if not state["response_started"]:
+                        self._push(out, self.emitter.response_start(message_id=self.thread_id, namespace=ns_label))
+                        state["response_started"] = True
+                        state["response_ended"] = False
+
+                    if not state["saw_messages_chunk"]:
+                        self._push(out, self.emitter.response_content(message_id=self.thread_id, delta=ai_content, namespace=ns_label))
+
+                    if not state["response_ended"]:
+                        self._push(out, self.emitter.response_end(message_id=self.thread_id, namespace=ns_label))
+                        state["response_ended"] = True
+
+                # Tool intents: emit start/args OR plan/subagent events
+                for tc in self._iter_tool_calls(msg):
+                    tc_id = tc["id"]
+                    tc_name = tc["name"]
+                    tc_args = tc.get("args")
+
+                    if tc_name == "write_todos":
+                        # plan snapshot only
+                        todos = tc_args.get("todos") if isinstance(tc_args, dict) else None
+                        if isinstance(todos, list):
+                            fp = self._fingerprint(todos)
+                            if fp != self._last_plan_fingerprint:
+                                self._end_thinking_if_needed(out, ns_label)
+                                self._push(out, self.emitter.plan_snapshot(todos, metadata=meta, namespace=ns_label))
+                                self._last_plan_fingerprint = fp
+                        self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
+                        continue
+
+                    if tc_name == "task":
+                        # subagent event only
+                        if tc_id not in self._emitted_subagent_task_ids and isinstance(tc_args, dict):
+                            subagent_type = str(tc_args.get("subagent_type", ""))
+                            description = str(tc_args.get("description", ""))
+                            self._end_thinking_if_needed(out, ns_label)
+                            self._push(
+                                out,
+                                self.emitter.task_subagent(
+                                    task_id=tc_id,
+                                    subagent_type=subagent_type,
+                                    description=description,
+                                    namespace=ns_label,
+                                ),
+                            )
+                            self._emitted_subagent_task_ids.add(tc_id)
+                            self._pending_tasks[tc_id] = {
+                                "description": description,
+                                "subagent_type": subagent_type,
+                            }
+                        self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
+                        continue
+
+                    # Normal tool => start + args, and wait for ToolMessage on messages stream
+                    if tc_id in self._started_tool_call_ids:
+                        continue
+
+                    self._end_thinking_if_needed(out, ns_label)
+                    self._push(out, self.emitter.tool_call_start(tool_call_id=tc_id, name=tc_name, namespace=ns_label))
+                    self._push(out, self.emitter.tool_call_args(tool_call_id=tc_id, name=tc_name, args=tc_args, namespace=ns_label))
+
+                    self._started_tool_call_ids.add(tc_id)
+                    self._pending_tool_call_ids.add(tc_id)
 
         return out
 
-    def _handle_update_message_obj(self, msg_obj: Any) -> List[bytes]:
-        out: List[bytes] = []
-        role = self._infer_role(msg_obj)
 
-        # AI message: may contain tool_calls and/or final content
-        if role == "ai":
-            tool_calls = self._extract_tool_calls(msg_obj)
-            if tool_calls:
-                self._ensure_response_started(out)
-                out.extend(self._emit_tool_calls_from_ai(tool_calls))
+    def _emit_tool_message_result(self, out: List[bytes], msg: Any, ns_label: Optional[str]) -> None:
+        """Emit tool result/end for tool messages we previously opened."""
+        tool_call_id = getattr(msg, "tool_call_id", None)
+        tool_output = getattr(msg, "content", "")
 
-            text = self._extract_full_text(msg_obj)
-            if text:
-                self._ensure_response_started(out)
-                # updates mode is not token streaming; send as content delta(s)
-                out.append(self.emitter.response_content(self.parent_message_id, text))
-
-        # Tool message: result for a tool_call_id
-        elif role == "tool":
-            self._ensure_response_started(out)
-            out.extend(self._emit_tool_result_from_tool_message(msg_obj))
-
-        # Other roles (human/system) are usually not streamed back to UI
-        return out
-
-    # -------------------------- tool emissions ---------------------------
-
-    def _emit_tool_calls_from_ai(self, tool_calls: List[Dict[str, Any]]) -> List[bytes]:
-        out: List[bytes] = []
-        for idx, tc in enumerate(tool_calls):
-            tc_id = (tc.get("id") or tc.get("tool_call_id") or f"toolcall_{idx}")
-            name = tc.get("name") or tc.get("tool") or tc.get("tool_call_name") or ""
-            args = tc.get("args")
-            # OpenAI-style: {"function": {"name": ..., "arguments": ...}}
-            if not name and isinstance(tc.get("function"), dict):
-                name = tc["function"].get("name", "") or name
-                args = tc["function"].get("arguments", args)
-
-            st = self._tool_calls.setdefault(tc_id, _ToolCallState())
-            if name:
-                st.name = name
-
-            if not st.started:
-                out.append(self.emitter.tool_call_start(tc_id, self.parent_message_id, st.name or name or "tool"))
-                st.started = True
-
-            if args is not None:
-                emitted_args: Union[dict, str]
-                if isinstance(args, dict):
-                    emitted_args = args
-                    st.args_buffer = json.dumps(args, ensure_ascii=False)
-                elif isinstance(args, str):
-                    # streamed fragments (messages mode) or full json string
-                    st.args_buffer += args
-                    emitted_args = st.args_buffer
-                else:
-                    emitted_args = self._safe_json(args)
-
-                out.append(self.emitter.tool_call_args(tc_id, st.name or name or "tool", emitted_args))
-
-        return out
-
-    def _emit_tool_result_from_tool_message(self, msg_obj: Any) -> List[bytes]:
-        out: List[bytes] = []
-        tool_call_id = self._extract_tool_call_id(msg_obj)
         if not tool_call_id:
-            # best-effort fallback: if exactly one open tool call exists, attach to it
-            open_ids = [k for k, v in self._tool_calls.items() if v.started and not v.ended]
-            tool_call_id = open_ids[-1] if open_ids else "toolcall_unknown"
+            return
 
-        content = self._extract_full_text(msg_obj) or self._extract_text_delta(msg_obj) or ""
-        out.append(self.emitter.tool_call_result(tool_call_id, self.parent_message_id, content))
+        # Ignore results for write_todos/task tool calls (because we never emitted start/args)
+        if tool_call_id in self._ignored_tool_call_ids:
+            self._ignored_tool_call_ids.discard(tool_call_id)
+            return
 
-        st = self._tool_calls.setdefault(tool_call_id, _ToolCallState())
-        if st.started and not st.ended:
-            out.append(self.emitter.tool_call_end(tool_call_id))
-            st.ended = True
-        elif not st.started:
-            # If result arrives without start (rare), emit a synthetic start/end
-            out.insert(0, self.emitter.tool_call_start(tool_call_id, self.parent_message_id, st.name or "tool"))
-            out.append(self.emitter.tool_call_end(tool_call_id))
-            st.started = True
-            st.ended = True
+        # Only close tools we actually started from updates
+        if tool_call_id in self._pending_tool_call_ids and tool_call_id not in self._finished_tool_call_ids:
+            self._end_thinking_if_needed(out, ns_label)
+            self._push(
+                out,
+                self.emitter.tool_call_result(
+                    tool_call_id=tool_call_id,
+                    thread_id=self.thread_id,
+                    output=tool_output,
+                    namespace=ns_label,
+                ),
+            )
+            self._push(
+                out,
+                self.emitter.tool_call_end(tool_call_id=tool_call_id, namespace=ns_label),
+            )
 
-        return out
+            self._pending_tool_call_ids.discard(tool_call_id)
+            self._finished_tool_call_ids.add(tool_call_id)
 
-    # -------------------------- response lifecycle -----------------------
 
-    def _ensure_response_started(self, out: List[bytes]) -> None:
-        if not self._response_started:
-            out.append(self.emitter.response_start(self.parent_message_id))
-            self._response_started = True
 
-    # ------------------------------ extraction ---------------------------
+    # ------------------------- utilities & helpers -------------------------
+    def _push(self, events: List[bytes], maybe_event: Optional[bytes]) -> None:
+        # Emitter methods return Optional[bytes]
+        if maybe_event is not None:
+            events.append(maybe_event)
 
-    def _looks_message_like(self, obj: Any) -> bool:
-        if obj is None:
-            return False
-        if isinstance(obj, dict):
-            return any(k in obj for k in ("content", "tool_calls", "additional_kwargs", "role", "type"))
-        return any(hasattr(obj, a) for a in ("content", "tool_calls", "additional_kwargs", "type", "role"))
 
-    def _infer_role(self, msg_obj: Any) -> str:
-        # LangChain messages often have .type == "ai"|"human"|"tool"|...
-        t = getattr(msg_obj, "type", None)
-        if isinstance(t, str):
-            if t in ("ai", "assistant"):
-                return "ai"
-            if t in ("tool",):
-                return "tool"
-            if t in ("human", "user"):
-                return "human"
+    def _extract_text_delta(self, msg: Any) -> str:
+        """
+        Extract assistant text delta from a LangChain message chunk.
+        Handles common shapes:
+            - msg.content: str
+            - msg.content: list[dict] with 'text' fields (e.g., rich content parts)
+        """
+        content = getattr(msg, "content", "")
+        if isinstance(content, str):
+            return content
 
-        # Some have .role
-        r = getattr(msg_obj, "role", None)
-        if isinstance(r, str):
-            if r in ("assistant", "ai"):
-                return "ai"
-            if r == "tool":
-                return "tool"
-            if r in ("user", "human"):
-                return "human"
+        # Sometimes content can be a list of parts; we only keep textual pieces
+        if isinstance(content, list):
+            parts: List[str] = []
+            for p in content:
+                if isinstance(p, dict):
+                    # common keys: {"type":"text","text":"..."} or {"text":"..."}
+                    text = p.get("text")
+                    if isinstance(text, str) and text:
+                        parts.append(text)
+            return "".join(parts)
 
-        # Dict fallback
-        if isinstance(msg_obj, dict):
-            r2 = msg_obj.get("role") or msg_obj.get("type")
-            if r2 in ("assistant", "ai"):
-                return "ai"
-            if r2 == "tool":
-                return "tool"
-            if r2 in ("user", "human"):
-                return "human"
+        return ""
 
-        # Heuristic by class name
-        name = msg_obj.__class__.__name__.lower()
-        if "toolmessage" in name:
-            return "tool"
-        if "aimessage" in name:
-            return "ai"
-        if "humanmessage" in name:
-            return "human"
 
-        return "unknown"
+    def _end_thinking_if_needed(self, out: List[bytes], namespace: Optional[str]) -> None:
+        # We do NOT call this for HITL (because you want HITL only).
+        state = self._get_state(namespace)
+        if state["thinking_started"]:
+            self._push(out, self.emitter.thinking_end(namespace=namespace))
+            state["thinking_started"] = False
 
-    def _extract_tool_call_id(self, msg_obj: Any) -> Optional[str]:
-        # ToolMessage often has .tool_call_id
-        v = getattr(msg_obj, "tool_call_id", None)
-        if isinstance(v, str) and v:
-            return v
 
-        # Sometimes in additional_kwargs
-        ak = getattr(msg_obj, "additional_kwargs", None)
-        if isinstance(ak, dict):
-            v2 = ak.get("tool_call_id") or ak.get("tool_call_ids")
-            if isinstance(v2, str) and v2:
-                return v2
-            if isinstance(v2, list) and v2:
-                return v2[0]
+    def _actor_key(self, namespace: Optional[str]) -> str:
+        """Build a stable stream-state key per orchestrator/sub-agent."""
+        return namespace if isinstance(namespace, str) and namespace else "__orchestrator__"
 
-        if isinstance(msg_obj, dict):
-            v3 = msg_obj.get("tool_call_id") or msg_obj.get("tool_call_ids")
-            if isinstance(v3, str) and v3:
-                return v3
-            if isinstance(v3, list) and v3:
-                return v3[0]
+
+    def _get_state(self, namespace: Optional[str]) -> Dict[str, bool]:
+        """Return mutable stream state for the given actor key."""
+        key = self._actor_key(namespace)
+        if key not in self._stream_state:
+            self._stream_state[key] = {
+                "response_started": False,
+                "response_ended": False,
+                "thinking_started": False,
+                "saw_messages_chunk": False,
+            }
+        return self._stream_state[key]
+
+
+    def _unwrap_messages_list(self, messages_obj: Any) -> List[Any]:
+        """
+        updates often store messages as:
+            - list[Message]
+            - Overwrite(value=[Message, ...])
+            - single Message
+        """
+        if messages_obj is None:
+            return []
+
+        # Overwrite(value=[...]) case
+        value = getattr(messages_obj, "value", None)
+        if isinstance(value, list):
+            return value
+
+        if isinstance(messages_obj, list):
+            return messages_obj
+
+        # Single message object fallback
+        return [messages_obj]
+
+
+    def _iter_tool_calls(self, ai_msg: Any) -> List[Dict[str, Any]]:
+        """
+        Returns tool_calls as a list of dicts: {id,name,args}
+        """
+        tool_calls = getattr(ai_msg, "tool_calls", None)
+
+        # Some wrappers put tool calls in additional_kwargs
+        if not tool_calls:
+            ak = getattr(ai_msg, "additional_kwargs", None)
+            if isinstance(ak, dict):
+                tool_calls = ak.get("tool_calls")
+
+        if not tool_calls:
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        for tc in tool_calls:
+            if isinstance(tc, dict):
+                normalized.append(
+                    {"id": tc.get("id"), "name": tc.get("name"), "args": tc.get("args")}
+                )
+            else:
+                normalized.append(
+                    {
+                        "id": getattr(tc, "id", None),
+                        "name": getattr(tc, "name", None),
+                        "args": getattr(tc, "args", None),
+                    }
+                )
+        return [t for t in normalized if t.get("id") and t.get("name")]
+
+
+    def _maybe_bind_namespace(self, namespace: Optional[tuple], payload: Any) -> Optional[str]:
+        """
+        Map a LangGraph subgraph namespace (tuple) to a task_id by matching the
+        first HumanMessage content of PatchToolCallsMiddleware.before_agent to a
+        pending task description.
+        """
+        if namespace is None or not isinstance(payload, dict):
+            return None
+
+        if namespace in self._namespace_task_labels:
+            return self._namespace_task_labels[namespace]
+
+        node = payload.get("PatchToolCallsMiddleware.before_agent")
+        if not isinstance(node, dict):
+            return None
+
+        for msg in self._unwrap_messages_list(node.get("messages")):
+            content = getattr(msg, "content", None)
+            if not isinstance(content, str) or not content:
+                continue
+
+            for task_id, info in list(self._pending_tasks.items()):
+                if content == info.get("description"):
+                    task_str = str(task_id)
+                    self._namespace_task_labels[namespace] = task_str
+                    self._pending_tasks.pop(task_id, None)
+                    return task_str
 
         return None
 
-    def _extract_tool_calls(self, msg_obj: Any) -> List[Dict[str, Any]]:
+
+    def _resolve_namespace_label(self, namespace: Optional[tuple], payload: Any = None) -> Optional[str]:
         """
-        Returns a normalized list of tool call dicts with keys: id, name, args (dict|str|None)
-        Supports:
-          - .tool_calls (AIMessage)
-          - .tool_call_chunks (AIMessageChunk)
-          - additional_kwargs["tool_calls"] (OpenAI-style)
+        Return the mapped task_id for a namespace (if any). When payload is provided,
+        attempt to bind first (for sub-agent startup chunks).
         """
-        # 1) tool_call_chunks (streaming deltas)
-        tcc = getattr(msg_obj, "tool_call_chunks", None)
-        if isinstance(tcc, list) and tcc:
-            out: List[Dict[str, Any]] = []
-            for x in tcc:
-                if isinstance(x, dict):
-                    out.append({
-                        "id": x.get("id") or x.get("tool_call_id"),
-                        "name": x.get("name") or (x.get("function") or {}).get("name"),
-                        "args": x.get("args") or (x.get("function") or {}).get("arguments"),
-                    })
-                else:
-                    # object-like chunk
-                    out.append({
-                        "id": getattr(x, "id", None) or getattr(x, "tool_call_id", None),
-                        "name": getattr(x, "name", None),
-                        "args": getattr(x, "args", None),
-                    })
-            return out
+        if namespace is None:
+            return None
 
-        # 2) tool_calls (final tool call objects/dicts)
-        tc = getattr(msg_obj, "tool_calls", None)
-        if isinstance(tc, list) and tc:
-            out: List[Dict[str, Any]] = []
-            for x in tc:
-                if isinstance(x, dict):
-                    out.append({
-                        "id": x.get("id") or x.get("tool_call_id"),
-                        "name": x.get("name") or (x.get("function") or {}).get("name"),
-                        "args": x.get("args") or (x.get("function") or {}).get("arguments"),
-                        "function": x.get("function"),
-                    })
-                else:
-                    # object-like
-                    out.append({
-                        "id": getattr(x, "id", None) or getattr(x, "tool_call_id", None),
-                        "name": getattr(x, "name", None),
-                        "args": getattr(x, "args", None),
-                    })
-            return out
+        if payload is not None:
+            self._maybe_bind_namespace(namespace, payload)
 
-        # 3) additional_kwargs["tool_calls"] (OpenAI-style)
-        ak = getattr(msg_obj, "additional_kwargs", None)
-        if isinstance(ak, dict) and isinstance(ak.get("tool_calls"), list) and ak["tool_calls"]:
-            out: List[Dict[str, Any]] = []
-            for x in ak["tool_calls"]:
-                if isinstance(x, dict):
-                    out.append(x)
-            return out
+        # Prefer explicit mapping (task tool-call id), then deterministic namespace-derived id.
+        return self._namespace_task_labels.get(namespace) or self._namespace_task_id(namespace)
 
-        # 4) dict fallback
-        if isinstance(msg_obj, dict):
-            if isinstance(msg_obj.get("tool_calls"), list) and msg_obj["tool_calls"]:
-                return [x for x in msg_obj["tool_calls"] if isinstance(x, dict)]
-            if isinstance((msg_obj.get("additional_kwargs") or {}).get("tool_calls"), list):
-                return [x for x in msg_obj["additional_kwargs"]["tool_calls"] if isinstance(x, dict)]
 
-        return []
-
-    def _extract_text_delta(self, msg_obj: Any) -> str:
+    def _wrap_subagent_events_if_needed(self, events: List[bytes], namespace: Optional[tuple]) -> List[bytes]:
         """
-        For messages-mode token streaming: AIMessageChunk.content is usually the delta.
+        For sub-agent namespaces, wrap every normalized AG-UI event inside SUBAGENT_EVENT.
+        Orchestrator events (namespace None/empty) pass through unchanged.
         """
-        c = getattr(msg_obj, "content", None)
-        if isinstance(c, str):
-            return c
-        if isinstance(c, list):
-            return self._join_text_parts(c)
+        task_id = self._namespace_task_id(namespace)
+        if task_id is None:
+            return events
 
-        if isinstance(msg_obj, dict):
-            c2 = msg_obj.get("content")
-            if isinstance(c2, str):
-                return c2
-            if isinstance(c2, list):
-                return self._join_text_parts(c2)
+        namespace_path = self._namespace_path(namespace)
+        namespace_token = self._namespace_token(namespace)
+        wrapped: List[bytes] = []
 
-        return ""
+        for event_bytes in events:
+            inner_event = self._sse_to_payload(event_bytes)
+            if inner_event is None:
+                inner_event = self._raw_event_payload(event_bytes)
 
-    def _extract_full_text(self, msg_obj: Any) -> str:
+            wrapped_event = self.emitter.subagent_event(
+                task_id=task_id,
+                subagent_namespace=namespace_path or [task_id],
+                event=inner_event,
+                namespace=namespace_token,
+            )
+            if wrapped_event is not None:
+                wrapped.append(wrapped_event)
+
+        return wrapped
+
+
+    def _namespace_task_id(self, namespace: Optional[tuple]) -> Optional[str]:
         """
-        For updates-mode full messages or tool results: try to get full text representation.
+        Deterministically derive task_id from namespace.
+        Example: ('tools:abc-123',) -> 'abc-123'
         """
-        # Prefer .content
-        c = getattr(msg_obj, "content", None)
-        if isinstance(c, str):
-            return c
-        if isinstance(c, list):
-            return self._join_text_parts(c)
+        if namespace is None:
+            return None
 
-        # Some messages carry payload in .artifact / .additional_kwargs
-        ak = getattr(msg_obj, "additional_kwargs", None)
-        if isinstance(ak, dict):
-            maybe = ak.get("content")
-            if isinstance(maybe, str):
-                return maybe
+        if isinstance(namespace, (list, tuple)) and len(namespace) == 0:
+            return None
 
-        if isinstance(msg_obj, dict):
-            c2 = msg_obj.get("content")
-            if isinstance(c2, str):
-                return c2
-            if isinstance(c2, list):
-                return self._join_text_parts(c2)
+        parts = namespace if isinstance(namespace, (list, tuple)) else [namespace]
+        for part in parts:
+            if not isinstance(part, str) or not part:
+                continue
+            if ":" in part:
+                _, _, tail = part.partition(":")
+                return tail or part
+            return part
+        return None
 
-        return ""
 
-    def _join_text_parts(self, parts: List[Any]) -> str:
+    def _namespace_path(self, namespace: Optional[tuple]) -> Optional[List[str]]:
+        """Return a serialized namespace path for diagnostics/UI correlation."""
+        if namespace is None:
+            return None
+
+        if isinstance(namespace, (list, tuple)):
+            path = [str(item) for item in namespace if str(item)]
+            return path or None
+
+        text = str(namespace)
+        return [text] if text else None
+
+
+    def _namespace_token(self, namespace: Optional[tuple]) -> Optional[str]:
         """
-        OpenAI-style content parts: [{"type":"text","text":"..."}], or raw strings.
+        Return the first namespace token for transport-level namespace field.
+        Example: ('tools:abc', 'model:def') -> 'tools:abc'
         """
-        out: List[str] = []
-        for p in parts:
-            if isinstance(p, str):
-                out.append(p)
-            elif isinstance(p, dict):
-                if p.get("type") == "text" and isinstance(p.get("text"), str):
-                    out.append(p["text"])
-                elif isinstance(p.get("text"), str):
-                    out.append(p["text"])
-                elif isinstance(p.get("content"), str):
-                    out.append(p["content"])
-        return "".join(out)
+        path = self._namespace_path(namespace)
+        if not path:
+            return None
+        return path[0]
 
-    # ------------------------------ fallback -----------------------------
 
-    def _emit_custom_raw(self, value: Any) -> List[bytes]:
-        # If you prefer to drop raw payloads instead of emitting, return [] here.
-        return [self.emitter._emit(  # uses your emitter's encoder path
-            # Minimal CustomEvent-like dict fallback (works if your encoder can handle it).
-            # If your encoder REQUIRES CustomEvent class, replace this with emitter.plan_snapshot / emitter.hitl_interrupt
-            # or introduce a dedicated emitter.custom(name, value).
-            type("Tmp", (), {"type": "custom", "name": "raw_chunk", "value": value, "timestamp": None})()
-        )]
-
-    def _safe_json(self, obj: Any) -> Any:
+    def _sse_to_payload(self, sse_event: bytes) -> Optional[Dict[str, Any]]:
+        """Decode the JSON payload from an SSE frame."""
         try:
-            json.dumps(obj, ensure_ascii=False)
-            return obj
+            text = sse_event.decode("utf-8")
         except Exception:
-            return repr(obj)
+            return None
+
+        for line in text.splitlines():
+            if line.startswith("data:"):
+                raw = line[len("data:"):].lstrip()
+                try:
+                    payload = json.loads(raw)
+                except Exception:
+                    return None
+                if isinstance(payload, dict):
+                    return payload
+                return None
+
+        return None
+
+
+    def _raw_event_payload(self, sse_event: bytes) -> Dict[str, Any]:
+        """
+        Fallback payload when an SSE frame cannot be decoded into JSON.
+        Ensures sub-agent events are still wrapped deterministically.
+        """
+        try:
+            text = sse_event.decode("utf-8")
+        except Exception:
+            text = repr(sse_event)
+
+        return {
+            "type": "RAW_SSE_EVENT",
+            "raw_sse": text,
+        }
+
+
+    def _fingerprint(self, obj: Any) -> str:
+        # Stable JSON fingerprint for dedupe (todos lists, etc.)
+        return json.dumps(obj, ensure_ascii=False, sort_keys=True)
+
+
+    def _msg_kind(self, msg: Any) -> str:
+        """
+        Duck-typing classifier for LangChain messages/chunks.
+        """
+        cls = msg.__class__.__name__
+        role = getattr(msg, "role", None)
+        mtype = getattr(msg, "type", None)
+
+        # ToolMessage is reliably detectable via tool_call_id
+        if getattr(msg, "tool_call_id", None) is not None or role == "tool" or mtype == "tool" or cls == "ToolMessage":
+            return "tool"
+
+        if role == "assistant" or mtype in ("ai", "assistant") or "AIMessage" in cls:
+            return "ai"
+
+        return "other"

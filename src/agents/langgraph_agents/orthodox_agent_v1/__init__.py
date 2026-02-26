@@ -23,12 +23,11 @@ class OrthodoxAgentV1(LangGraphAgent):
         self.state = OrthodoxV1_State
 
     def register_agents(self) -> None:
-        self.agents = build_orthodox_agents(tools=self.tools)
+        return build_orthodox_agents(tools=self.tools)
 
 
     def register_nodes(self) -> None:
-        self.nodes = build_orthodox_nodes(agents=self.agents, agui=self.agui_emitter)
-
+        return build_orthodox_nodes(agents=self.agents, agui=self.agui_emitter)
 
     def register_graph_nodes(self, graph: StateGraph) -> None:
         graph.add_node("analysis", self.nodes.analysis)
@@ -38,6 +37,7 @@ class OrthodoxAgentV1(LangGraphAgent):
         graph.add_node("summarizer", self.nodes.summarization)
         graph.add_node("complex_generation", self.nodes.complex_generation)
         graph.add_node("reflectioner", self.nodes.reflection)
+        return graph
 
 
     def register_graph_edges(self, graph: StateGraph) -> None:
@@ -65,3 +65,4 @@ class OrthodoxAgentV1(LangGraphAgent):
                 "end": END,
             },
         )
+        return graph

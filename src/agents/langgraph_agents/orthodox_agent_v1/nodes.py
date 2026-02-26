@@ -108,7 +108,6 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                             last_tool_call_id = tool_call["id"]
                             agui.tool_call_start(
                                 tool_call["id"],
-                                state["message_id"],
                                 tool_call.get("name"),
                                 writer,
                             )
@@ -118,7 +117,6 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                     if call_id:
                         agui.tool_call_result(
                             call_id,
-                            state["message_id"],
                             tool_msg.content,
                             writer,
                         )
@@ -159,12 +157,11 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                 retrieved_docs.extend(resp.json()["documents"])
                 
         queries = state["vector_queries"] or []
-        agui.tool_call_start(tcid, state["message_id"], "vector_db.search", writer)
+        agui.tool_call_start(tcid, "vector_db.search", writer)
         if queries:
             await asyncio.gather(*(fetch_single(q) for q in queries))
         agui.tool_call_result(
             tcid,
-            state["message_id"],
             f"Gathered in total {len(retrieved_docs)} relevant documents.",
             writer,
         )
@@ -199,7 +196,6 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                     for tool in message.tool_calls:
                         agui.tool_call_start(
                             tool.get("id"),
-                            state["message_id"],
                             tool.get("name"),
                             writer,
                         )
@@ -209,7 +205,6 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
                 tool_msg = payload["tools"]["messages"][0]
                 agui.tool_call_result(
                     tool_msg.get("id"),
-                    state["message_id"],
                     tool_msg.get("content"),
                     writer,
                 )
