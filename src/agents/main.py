@@ -185,7 +185,7 @@ async def stream_agent(agent_slug: str, req: Request):
     """Stream responses from the requested agent template."""
     try:
         # Check if the agent is disabled
-        definition = AGENT_REGISTRY.get(agent_slug)
+        definition = AGENT_REGISTRY.get(agent_slug, None)
         if definition is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -193,6 +193,8 @@ async def stream_agent(agent_slug: str, req: Request):
             )
         # Initialise the agent
         agent = definition.cls(config=req.config)
+    except HTTPException:
+        raise
     except Exception as exc:
         detail = f"Failed to initialise agent '{definition.slug}': {exc}"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc

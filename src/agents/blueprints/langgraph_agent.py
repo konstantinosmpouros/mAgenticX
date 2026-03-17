@@ -42,7 +42,6 @@ class LangGraphAgent(BaseAgent, ABC):
         # AGUI components
         self.agui_emitter: AGUIEmitter = AGUIEmitter()
         self.agui_normalizer: AGUIStreamNormalizer = AGUIStreamNormalizer(
-            stream_mode=self.stream_mode,
             thread_id=self.run_config.get("configurable", {}).get("thread_id", "")
         )
 

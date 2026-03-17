@@ -13,7 +13,7 @@ class BaseAgent:
     """
     Base plumbing for agent templates shared by LangGraph/OpenAI variants.
 
-    Centralises config validation, tool selection, and metadata so subclasses can
+    Centralizes config validation, tool selection, and metadata so subclasses can
     focus on execution logic or graph wiring.
 
     Provides:
@@ -56,6 +56,9 @@ class BaseAgent:
         # Resolved tools (populated per-stream after loading from MCP)
         self.tools: List[Any] = []
         self.tools_names: List[str] = []
+        
+        # Resolve context parameters from config
+        self.context: Dict[str, Any] = self.config.get("context", {})
 
 
 
@@ -128,11 +131,6 @@ class BaseAgent:
         """Attach filtered live tools and invalidate any cached agent state."""
         self.tools.extend(list(tools))
         self.tools_names = [getattr(tool, "name", "") for tool in self.tools]
-
-        # Force rebuild of agents/nodes/graph with the live tool set.
-        self.agents = None
-        self.nodes = None
-        self.graph = None
 
 
 
