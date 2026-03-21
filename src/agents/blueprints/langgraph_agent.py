@@ -4,8 +4,7 @@ from abc import abstractmethod, ABC
 from pydantic import BaseModel
 
 from langgraph.graph import StateGraph
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.serde.types import INTERRUPT
+from langgraph.checkpoint.memory import InMemorySaver
 
 from agui import AGUIEmitter, AGUIStreamNormalizer
 from blueprints.base_agent import BaseAgent
@@ -33,11 +32,11 @@ class LangGraphAgent(BaseAgent, ABC):
         super().__init__(config=config)
         
         # Agent components
-        self.memory_saver: MemorySaver = MemorySaver()
         self.state: Type[BaseModel] | None = None
         self.agents: Any = None
         self.nodes: Any = None
         self.graph = None
+        self.memory_saver: InMemorySaver | None = None  # created lazily at build time
         
         # AGUI components
         self.agui_emitter: AGUIEmitter = AGUIEmitter()
@@ -97,8 +96,9 @@ class LangGraphAgent(BaseAgent, ABC):
         when no ``state`` is defined, ``self.agents`` is returned directly.
         """
         if self.graph is None:
+            self.memory_saver = InMemorySaver()  # ephemeral: lives only for this inference
             self.register_agents_and_nodes()
-        
+
             if self.state is None and self.nodes is None:
                 self.graph = self.agents
             else:

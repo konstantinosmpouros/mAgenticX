@@ -19,7 +19,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 
 class HRPoliciesV1_State(BaseModel):
-    user_input: Any
+    messages: Any
     
     message_id: str | None = None
     
@@ -65,7 +65,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         agui.thinking_start(writer)
         agui.thought("Analyzing the user input...", writer)
 
-        user_msg = state["user_input"]
+        user_msg = state["messages"]
         analysis_results = await agents.analysis_agent.ainvoke(user_msg, config)
 
         analysis_str = (
@@ -93,7 +93,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
 
         payload = {
             "analysis_results": state["analysis_str"],
-            "user_input_json": json.dumps(state["user_input"], ensure_ascii=False),
+            "user_input_json": json.dumps(state["messages"], ensure_ascii=False),
         }
         prompt = non_hr_gen_template.invoke(payload)
 
@@ -271,7 +271,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         payload = {
             "summarization": state["summarization"],
             "analysis_results": state["analysis_str"],
-            "user_input_json": json.dumps(state["user_input"], ensure_ascii=False),
+            "user_input_json": json.dumps(state["messages"], ensure_ascii=False),
         }
         prompt = hr_gen_template.invoke(payload)
         

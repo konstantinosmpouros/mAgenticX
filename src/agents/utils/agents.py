@@ -3,7 +3,8 @@ import os
 from typing import Dict, Set
 
 import langgraph_agents
-from blueprints import LangGraphAgent
+import deep_agents
+from blueprints import LangGraphAgent, DeepAgent
 from schemas import AgentDefinition
 
 
@@ -22,25 +23,32 @@ def _disabled_slugs_from_env() -> Set[str]:
 
 
 def _discover_agents() -> Dict[str, AgentDefinition]:
-    """Inspect langgraph_agents exports and register available agent templates."""
+    """Inspect langgraph_agents and deep_agents exports and register available agent templates."""
     registry: Dict[str, AgentDefinition] = {}
     disabled_slugs = _disabled_slugs_from_env()
 
-    for attr_name in dir(langgraph_agents):
-        candidate = getattr(langgraph_agents, attr_name, None)
-        if not inspect.isclass(candidate):
-            continue
-        if not issubclass(candidate, LangGraphAgent) or candidate is LangGraphAgent:
-            continue
-        slug = getattr(candidate, "name", None)
-        if not isinstance(slug, str) or not slug:
-            continue
-        normalized_slug = _normalize_slug(slug)
-        if normalized_slug in disabled_slugs:
-            print(f"Agent '{slug}' disabled via DISABLED_AGENT_SLUGS; skipping registration.")
-            continue
-        manifest = candidate.manifest()
-        registry[slug] = AgentDefinition(slug=slug, cls=candidate, manifest=manifest)
+    sources = [
+        (langgraph_agents, LangGraphAgent),
+        (deep_agents, DeepAgent),
+    ]
+
+    for module, base_cls in sources:
+        for attr_name in dir(module):
+            candidate = getattr(module, attr_name, None)
+            if not inspect.isclass(candidate):
+                continue
+            if not issubclass(candidate, base_cls) or candidate is base_cls:
+                continue
+            slug = getattr(candidate, "name", None)
+            if not isinstance(slug, str) or not slug:
+                continue
+            normalized_slug = _normalize_slug(slug)
+            if normalized_slug in disabled_slugs:
+                print(f"Agent '{slug}' disabled via DISABLED_AGENT_SLUGS; skipping registration.")
+                continue
+            manifest = candidate.manifest()
+            registry[slug] = AgentDefinition(slug=slug, cls=candidate, manifest=manifest)
+
     return registry
 
 

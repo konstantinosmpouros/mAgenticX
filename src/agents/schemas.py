@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
-    user_input: List[Dict[str, Any]]
+    messages: List[Dict[str, Any]]
     config: Dict[str, Any]
 
 

@@ -34,7 +34,7 @@ class BaseAgent:
     agent_id: str = "base-agent"
     label: str = "Base Agent"
     version: str = "0.0.1"
-    type: Literal["langgraph agent", "openai agent"] = "langgraph agent"
+    type: Literal["langgraph agent", "openai agent", "deep agent"] = "langgraph agent"
     description: Optional[str] = None
     icon: Optional[str] = None
 
@@ -150,7 +150,12 @@ class BaseAgent:
         run_config = config.get("run_config")
         if run_config is not None:
             config["run_config"] = self._validate_run_config(run_config)
-        
+
+        # Validate context
+        context = config.get("context")
+        if context is not None:
+            config["context"] = self._validate_context_config(context)
+
         return config
 
 
@@ -200,21 +205,33 @@ class BaseAgent:
         return normalised
 
 
+    @staticmethod
+    def _validate_context_config(context: Mapping[str, Any]) -> Dict[str, Any]:
+        """Validate and normalise the context mapping coming from the UI/backend."""
+        if not isinstance(context, Mapping):
+            raise TypeError("Agent config 'context' must be a mapping.")
+        normalised = dict(context)
+        for key in ("user_id", "conversation_id"):
+            val = normalised.get(key)
+            if val is None or not isinstance(val, str) or not val.strip():
+                raise ValueError(f"Agent config 'context' must include a non-empty '{key}' string.")
+            normalised[key] = val.strip()
+        return normalised
+
+
 
     # ---------------------------------------------------------------------
     # Error handling & SSE encoding
     # ---------------------------------------------------------------------
-    @staticmethod
-    def _format_run_error_message(exc: BaseException) -> str:
-        """Create a verbose error description suitable for RUN_ERROR frames."""
-        tb = traceback.format_exc()
-        if tb and tb.strip() and tb.strip() != "NoneType: None":
-            return tb.strip()
-        return f"{type(exc).__name__}: {exc}"
-
-
     @classmethod
     def _encode_run_error(cls, exc: BaseException) -> bytes:
-        """Return an SSE-formatted RUN_ERROR frame."""
-        err = {"type": "RUN_ERROR", "message": cls._format_run_error_message(exc)}
+        """Log the full traceback to stdout and return a clean SSE RUN_ERROR frame."""
+        tb = traceback.format_exc()
+        if tb and tb.strip() and tb.strip() != "NoneType: None":
+            print(f"[{cls.name}] RUN_ERROR\n{tb.strip()}")
+        else:
+            print(f"[{cls.name}] RUN_ERROR — {type(exc).__name__}: {exc}")
+
+        user_message = f"{type(exc).__name__}: {exc}"
+        err = {"type": "RUN_ERROR", "message": user_message}
         return ("data: " + json.dumps(err) + "\n\n").encode("utf-8")

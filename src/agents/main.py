@@ -204,7 +204,7 @@ async def stream_agent(agent_slug: str, req: Request):
         async with mcp_session_context() as session:
             live_tools = await load_mcp_tools(session)
             agent.attach_tools(live_tools)
-            async for chunk in agent.astream(payload={"user_input": req.user_input}):
+            async for chunk in agent.astream(payload={"messages": req.messages}):
                 yield chunk
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")

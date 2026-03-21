@@ -114,11 +114,11 @@ async def startInferenceStream(
                         else None
                     )
                     req_payload = {
-                        "user_input": history,
+                        "messages": history,
                         "config": {
                             "run_config": {
                                 "configurable": {
-                                    "thread_id": str(message_ids[-1]) if message_ids else str(conversation_id),
+                                    "thread_id": str(conversation_id),
                                 }
                             },
                             "context": {

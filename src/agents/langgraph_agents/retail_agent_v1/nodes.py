@@ -21,7 +21,7 @@ class RetailV1_State(BaseModel):
     """Data model representing the state of a retail agent process in version 1."""
     
     message_id: str | None = None
-    user_input: Any
+    messages: Any
     db_schema_json: Any = None
     table_name: str = TABLE
     
@@ -61,7 +61,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         agui.thinking_start(writer)
         agui.thought("Analyzing user input to determine intent and reasoning…", writer)
 
-        user_msg = state["user_input"]
+        user_msg = state["messages"]
         analysis_results = await agents.analysis_agent.ainvoke(user_msg, config)
 
         analysis_str = (
@@ -107,7 +107,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         payload = {
             "analysis_str": state["analysis_str"],
             "db_schema_json": state["db_schema_json"],
-            "user_input_json": json.dumps(state["user_input"], ensure_ascii=False),
+            "user_input_json": json.dumps(state["messages"], ensure_ascii=False),
         }
         prompt = await schema_help_template.ainvoke(payload)
         response = ""
@@ -239,7 +239,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
 
         payload = {
             "analysis_str": state["analysis_str"],
-            "user_input_json": json.dumps(state["user_input"], ensure_ascii=False),
+            "user_input_json": json.dumps(state["messages"], ensure_ascii=False),
             "sql_results": state["sql_results"],
         }
         prompt = await answer_gen_template.ainvoke(payload)
