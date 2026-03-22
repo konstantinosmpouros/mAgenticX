@@ -1,0 +1,26 @@
+services:
+
+  mcp_gateway: # 8005
+    container_name: mcp_gateway
+    image: docker/mcp-gateway:latest
+    command:
+    - --transport=sse
+    - --port=8005
+    - --servers=tavily,arxiv-mcp-server
+    - --catalog=./app/mcp_catalog.yaml
+    - --secrets=/app/secrets/mcp_secret.env
+    - --config=./app/mcp_config.yaml
+    volumes:
+      - ./mcp_gateway/mcp_catalog.yaml:/app/mcp_catalog.yaml:rw
+      - ./mcp_gateway/mcp_config.yaml:/app/mcp_config.yaml:ro
+      - ./mcp_gateway/mcp_secret.env:/app/secrets/mcp_secret.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    networks:
+      - mcp_net
+
+networks:
+  mcp_net:
+    name: mcp_net

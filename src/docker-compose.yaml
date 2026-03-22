@@ -20,29 +20,7 @@ services:
     networks:
       - backend
       - frontend
-
-
-  mcp_gateway: # 8005
-    container_name: mcp_gateway
-    image: docker/mcp-gateway:latest
-    command:
-    # Configure the MCP Gateway servers and transport
-    - --transport=sse
-    - --port=8005
-    - --servers=tavily,arxiv-mcp-server
-    # Point to the catalog, secrets and config files
-    - --catalog=./app/mcp_catalog.yaml
-    - --secrets=/app/secrets/mcp_secret.env
-    - --config=./app/mcp_config.yaml
-    volumes:
-      - ./mcp_gateway/mcp_catalog.yaml:/app/mcp_catalog.yaml:rw
-      - ./mcp_gateway/mcp_config.yaml:/app/mcp_config.yaml:ro
-      - ./mcp_gateway/mcp_secret.env:/app/secrets/mcp_secret.env:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
-    networks:
-      - backend
-      - frontend
+      - mcp_net
 
 
   rag_service: # 8001
@@ -140,8 +118,10 @@ services:
 networks:
   backend:
     internal: true
-  frontend: 
+  frontend:
   hashicorp_vault:
+    external: true
+  mcp_net:
     external: true
 
 
