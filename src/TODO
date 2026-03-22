@@ -16,11 +16,9 @@
 
 ## Agentic UI
 
-- If l refresh the session the available agents in the dropdown are losing there icons.
 - Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - Create a custom Planing Container for the deep agent's planing tool and make it similar to the codex
-- Fix how the attachments seems in the input container. Make it like a horizontal container with a horizontal scroll bar and first the images, then the files.
 
 ## Dialogue Bridge
 

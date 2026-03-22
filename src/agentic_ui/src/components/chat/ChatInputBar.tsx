@@ -138,6 +138,46 @@ export function ChatInputBar(props: ChatInputBarProps) {
         "{agent}",
         currentAgent?.name ?? "the agent"
     );
+
+    const attachmentStripRef = React.useRef<HTMLDivElement | null>(null);
+    const [attachmentFade, setAttachmentFade] = React.useState({ left: false, right: false });
+
+    const orderedAttachments = React.useMemo(() => {
+        const indexed = attachments.map((file, index) => ({
+            file,
+            index,
+            isImage: isImageFile(file),
+        }));
+        return [
+            ...indexed.filter((item) => item.isImage),
+            ...indexed.filter((item) => !item.isImage),
+        ];
+    }, [attachments, isImageFile]);
+
+    const updateAttachmentFade = React.useCallback(() => {
+        const node = attachmentStripRef.current;
+        if (!node) {
+            setAttachmentFade({ left: false, right: false });
+            return;
+        }
+
+        const { scrollLeft, clientWidth, scrollWidth } = node;
+        const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
+        setAttachmentFade({
+            left: scrollLeft > 2,
+            right: maxScrollLeft - scrollLeft > 2,
+        });
+    }, []);
+
+    React.useEffect(() => {
+        updateAttachmentFade();
+    }, [attachments.length, orderedAttachments, updateAttachmentFade]);
+
+    React.useEffect(() => {
+        const handleResize = () => updateAttachmentFade();
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, [updateAttachmentFade]);
     
     const prefersReducedMotion = useReducedMotion();
 
@@ -428,40 +468,60 @@ export function ChatInputBar(props: ChatInputBarProps) {
                             className={`transition-all duration-200 overflow-hidden ${attachments.length ? "mb-4 opacity-100" : "mb-0 opacity-0"}`}
                         >
                             {attachments.length > 0 && (
-                                <div className="flex flex-wrap gap-2 justify-center">
-                                    {attachments.map((file, index) => {
-                                        const isImg = isImageFile(file);
-                                        return (
-                                            <div
-                                                key={index}
-                                                className={`flex items-center gap-2 bg-secondary/70 px-4 py-2 rounded-xl text-sm shadow-card border border-border ${isImg ? "pr-2" : "w-64 md:w-80 "}`}
-                                            >
-                                                {isImg ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <img
-                                                            src={getImageUrl(file)}
-                                                            alt="Preview"
-                                                            className="w-8 h-8 object-cover rounded cursor-pointer"
-                                                            onClick={() => handleImageClick(getImageUrl(file))}
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <FileText size={18} className="text-primary" />
-                                                        <div className="flex-1 min-w-0">
-                                                            <span className="font-medium truncate block">{file.name}</span>
-                                                        </div>
-                                                    </>
-                                                )}
-                                                <button
-                                                    onClick={() => removeAttachment(index)}
-                                                    className="text-destructive hover:text-destructive/80 transition-smooth ml-2 w-5 h-5 rounded-full bg-destructive/20 flex items-center justify-center"
+                                <div className="relative overflow-hidden rounded-2xl">
+                                    <div
+                                        ref={attachmentStripRef}
+                                        onScroll={updateAttachmentFade}
+                                        className="attachment-strip-scroll overflow-x-auto px-2 pr-7 pb-1"
+                                    >
+                                        <div className="flex min-w-max flex-nowrap items-center gap-2">
+                                        {orderedAttachments.map(({ file, index, isImage }) => {
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    className={`relative shrink-0 overflow-hidden rounded-2xl border border-border bg-secondary/70 shadow-card ${
+                                                        isImage
+                                                            ? "flex items-center p-1.5"
+                                                            : "flex items-center gap-2.5 px-3 py-2.5 max-w-[14rem] md:max-w-[16rem]"
+                                                    }`}
                                                 >
-                                                    ×
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
+                                                    {isImage ? (
+                                                        <div className="flex items-center">
+                                                            <img
+                                                                src={getImageUrl(file)}
+                                                                alt="Preview"
+                                                                className="h-14 w-14 rounded-xl object-cover cursor-pointer"
+                                                                onClick={() => handleImageClick(getImageUrl(file))}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                                                <FileText size={16} className="text-primary" />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1 pr-5">
+                                                                <span className="block truncate text-sm font-medium">{file.name}</span>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                    <button
+                                                        onClick={() => removeAttachment(index)}
+                                                        className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/90 text-destructive shadow-sm ring-1 ring-border/70 backdrop-blur transition-smooth hover:text-destructive/80"
+                                                        aria-label="Remove attachment"
+                                                    >
+                                                        <X size={12} strokeWidth={2.5} className="pointer-events-none" />
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                        </div>
+                                    </div>
+                                    {attachmentFade.left && (
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 w-5 rounded-l-2xl bg-gradient-to-r from-background via-background/88 to-transparent" />
+                                    )}
+                                    {attachmentFade.right && (
+                                        <div className="pointer-events-none absolute inset-y-0 right-0 w-5 rounded-r-2xl bg-gradient-to-l from-background via-background/88 to-transparent" />
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -530,7 +590,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                 <TooltipContent
                                     side="top"
                                     align="center"
-                                    className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                 >
                                     <p>Attach files & photos</p>
                                 </TooltipContent>
@@ -553,7 +612,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipContent
                                             side="top"
                                             align="center"
-                                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
                                             <p>
                                                 {isDictationSubmitting
@@ -610,7 +668,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipContent
                                             side="top"
                                             align="center"
-                                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
                                             <p>Discard recording</p>
                                         </TooltipContent>
@@ -634,7 +691,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipContent
                                             side="top"
                                             align="center"
-                                            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                                         >
                                             <p>Use recording</p>
                                         </TooltipContent>

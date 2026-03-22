@@ -87,7 +87,7 @@ export function useAuthRehydrateEffect(params: {
     const run = async () => {
       setConversationsLoading?.(true);
 
-      let needsAgents = true;
+      let hasSnapshotAgents = false;
       let needsTools = Boolean(setAvailableTools);
       let needsPreferences = Boolean(setUserPreferences);
       let needsConversations = true;
@@ -110,11 +110,11 @@ export function useAuthRehydrateEffect(params: {
 
           // Always set snapshot values to state; decide API fallbacks via needs* flags below.
           setAgents(snapshot.agents ?? []);
+          hasSnapshotAgents = Boolean(snapshot.agents && snapshot.agents.length > 0);
           if (setAvailableTools) setAvailableTools(snapshot.availableTools ?? []);
           if (setUserPreferences) setUserPreferences(snapshot.userPreferences ?? null);
           setConversations(snapshot.conversations ?? []);
 
-          needsAgents = !(snapshot.agents && snapshot.agents.length > 0);
           needsTools =
             Boolean(setAvailableTools) && !(snapshot.availableTools && snapshot.availableTools.length > 0);
           needsPreferences = Boolean(setUserPreferences) && !snapshot.userPreferences;
@@ -131,16 +131,16 @@ export function useAuthRehydrateEffect(params: {
 
       const requests: Promise<unknown>[] = [];
 
-      if (needsAgents) {
-        requests.push(
-          getAgents()
-            .then((agents) => setAgents(agents))
-            .catch((error) => {
-              console.error('Failed to fetch agents on rehydrate', error);
+      requests.push(
+        getAgents()
+          .then((agents) => setAgents(agents))
+          .catch((error) => {
+            console.error('Failed to fetch agents on rehydrate', error);
+            if (!hasSnapshotAgents) {
               setAgents([]);
-            }),
-        );
-      }
+            }
+          }),
+      );
 
       if (needsTools) {
         requests.push(

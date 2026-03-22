@@ -55,7 +55,7 @@ export default function ChatHeader({
             <div className="flex w-full items-center gap-1.5 md:gap-3">
                 <SidebarTrigger
                     aria-label="Toggle sidebar"
-                    className="inline-flex h-10 w-10 rounded-lg bg-transparent text-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+                    className="inline-flex h-10 w-10 rounded-lg bg-transparent text-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:ring-2 focus-visible:ring-ring md:hidden"
                 />
                 <div className="flex items-center gap-2">
                     <Select value={selectedAgent} onValueChange={onAgentChange}>
@@ -117,7 +117,6 @@ export default function ChatHeader({
                             <TooltipContent
                                 side="bottom"
                                 align="start"
-                                className="text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                             >
                                 <p>This agent might be inactive.</p>
                             </TooltipContent>
@@ -144,7 +143,6 @@ export default function ChatHeader({
                             <TooltipContent
                                 side="bottom"
                                 align="center"
-                                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
                             >
                                 <p>Private Chat</p>
                             </TooltipContent>
