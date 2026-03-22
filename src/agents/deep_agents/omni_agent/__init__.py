@@ -19,10 +19,10 @@ class OmniAgent(DeepAgent):
 
     Storage strategy:
     - Uses ``FilesystemBackend`` rooted at the implementation directory so that
-      ``AGENT.md`` and ``skills/`` are resolved from disk.
+        ``AGENT.md`` and ``skills/`` are resolved from disk.
     - Override ``load_memory()`` in a subclass and swap in a ``StoreBackend``
-      (or ``CompositeBackend``) inside ``register_agent()`` to enable
-      cross-session persistence.
+        (or ``CompositeBackend``) inside ``register_agent()`` to enable
+        cross-session persistence.
     """
 
     name = "omni-agent-v1"

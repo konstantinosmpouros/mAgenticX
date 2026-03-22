@@ -14,7 +14,7 @@ from database import Base, engine
 from apis import (
     auth_router,
     inference_router,
-    utils_router,
+    meta_router,
     conversations_router,
     messages_router,
     attachments_router
@@ -35,7 +35,7 @@ add_pagination(app)
 
 app.include_router(auth_router)
 app.include_router(inference_router)
-app.include_router(utils_router)
+app.include_router(meta_router)
 app.include_router(conversations_router)
 app.include_router(messages_router)
 app.include_router(attachments_router)

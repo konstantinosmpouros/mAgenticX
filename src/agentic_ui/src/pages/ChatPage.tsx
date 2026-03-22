@@ -15,6 +15,21 @@ import type {
   ToolMetadata,
   UserPreferences } from "@/lib/types";
 import { createPreferencesHandlers } from "@/components/handlers/preferences";
+import { useThinkingProgressEffect } from "@/hooks/useThinking";
+import { 
+  useAutoScrollEffect,
+  useEnsureDefaultAgentEffect,
+  useHeaderDividerEffect,
+  useCenteredComposerLayout,
+  useSidebarInteractionEffect,
+} from "@/hooks/useChatEffects";
+import {
+  useAuthRehydrateEffect,
+  useSessionAutoRefreshEffect,
+  useSessionStateSyncEffect,
+  useInitialSessionState,
+  useUISnapshotPersistence,
+} from "@/hooks/useSessionEffects";
 
 // Handlers (modularized)
 import { 
@@ -23,24 +38,13 @@ import {
   createConversationHandlers,
   createAgentHandlers,
   createAuthHandlers,
-  useThinkingProgressEffect,
-  useAutoScrollEffect,
-  useEnsureDefaultAgentEffect,
-  useAuthRehydrateEffect,
-  useSessionAutoRefreshEffect,
-  useSessionStateSyncEffect,
-  useInitialSessionState,
-  useUISnapshotPersistence,
   createUIHandlers,
   createAiTransitionHandlers,
   createStickyUserBarHandlers,
   createFeedbackHandlers,
   createMessageEditHandlers,
   createRetryHandlers,
-  useBranchingHandlers,
-  useHeaderDividerEffect,
-  useCenteredComposerLayout,
-  useSidebarInteractionEffect
+  useBranchingHandlers
 } from "@/components/handlers";
 import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail } from "@/lib/api";

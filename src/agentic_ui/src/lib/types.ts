@@ -132,6 +132,9 @@ export type MessageOut = {
     thinkingTime?: number;
     error?: boolean;
     errorMessage?: string;
+    rawEvents?: Record<string, any>[];  // defaults to [] on the backend
+    plan?: PlanSnapshot;
+    subagents?: Record<string, any>;
 };
 
 // Backend attachment type from API response
@@ -168,6 +171,9 @@ export type MessageIn = {
     thinkingTime?: number;
     error?: boolean;
     errorMessage?: string;
+    rawEvents?: Record<string, any>[];  // defaults to [] on the backend
+    plan?: PlanSnapshot;
+    subagents?: Record<string, any>;
 };
 
 // Message update payload (used to finalise AI placeholders)
@@ -177,6 +183,9 @@ export type MessageUpdate = {
     thinkingTime?: number;
     error?: boolean;
     errorMessage?: string;
+    rawEvents?: Record<string, any>[];  // defaults to [] on the backend
+    plan?: PlanSnapshot;
+    subagents?: Record<string, any>;
 };
 
 // Conversation creation payload

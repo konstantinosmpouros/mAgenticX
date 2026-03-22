@@ -104,6 +104,9 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   thinkingTime: message.thinkingTime ?? undefined,
   error: message.error ?? undefined,
   errorMessage: message.errorMessage ?? undefined,
+  rawEvents: message.rawEvents ?? message.raw_events ?? [],
+  plan: message.plan ?? undefined,
+  subagents: message.subagents ?? undefined,
 });
 
 

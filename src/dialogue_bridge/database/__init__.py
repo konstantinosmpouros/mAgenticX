@@ -195,6 +195,13 @@ class MessageTable(Base):
     # error info
     is_error = Column(Boolean, nullable=False, server_default="false")
     error_message = Column(Text, nullable=True)
+
+    # Raw AGUI events sequence for replay/debugging
+    raw_events = Column(JSON, nullable=True)           # array of raw AGUI event dicts in order
+
+    # Agent plan and subagent state snapshots
+    plan = Column(JSON, nullable=True)                 # last PlanSnapshot state
+    subagents = Column(JSON, nullable=True)            # subagent events keyed by task_id
     
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

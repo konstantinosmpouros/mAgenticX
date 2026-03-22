@@ -58,6 +58,9 @@ async def init_message(
         reasoning_time_seconds=payload.thinkingTime,
         is_error=bool(payload.error) if payload.error is not None else False,
         error_message=payload.errorMessage,
+        raw_events=payload.rawEvents,
+        plan=payload.plan,
+        subagents=payload.subagents,
     )
     db.add(msg)
     await db.flush()  # Assign msg.id for attachment inserts.

@@ -135,6 +135,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       created_at: new Date(),
       updated_at: new Date(),
       attachments: tempAttachmentsOut as any,
+      rawEvents: [],
+      plan: undefined,
+      subagents: undefined,
     };
     setMessages(prev => [...prev, tempMessage]);
     setCurrentMessage('');

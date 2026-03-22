@@ -116,6 +116,9 @@ async def updateMessageInConversation(
         if payload.error is not None:
             msg.is_error = bool(payload.error)
         msg.error_message = payload.errorMessage
+        msg.raw_events = payload.rawEvents
+        msg.plan = payload.plan
+        msg.subagents = payload.subagents
 
         preview = _preview(payload.content)
         if preview is not None:

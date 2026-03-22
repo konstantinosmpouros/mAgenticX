@@ -71,6 +71,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     closedThinkingOnFirstChunk: false,
     parentMessageId: replyParentMessageId,
     messagePath: uiBranchPath,
+    rawEvents: [] as Record<string, any>[],
+    plan: undefined as PlanSnapshot | undefined,
+    subagents: undefined as Record<string, any> | undefined,
   };
   
   const finalizeThinkingState = () => {
@@ -175,6 +178,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
           attachments: [],
           created_at: new Date(),
           updated_at: new Date(),
+          rawEvents: [],
+          plan: undefined,
+          subagents: undefined,
         } as any;
         setMessages((prev: MessageOut[]) => [...prev, staged]);
       } else {
@@ -235,6 +241,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
         parentMessageId: runtime.parentMessageId,
         thinking: runtime.thoughts.length ? runtime.thoughts : undefined,
         thinkingTime,
+        rawEvents: runtime.rawEvents,
+        plan: runtime.plan,
+        subagents: runtime.subagents,
       } as any;
       
       try {
@@ -281,6 +290,9 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
         thinkingTime: runtime.thinkingStart
           ? Math.round(((runtime.thinkingEnd || Date.now()) - runtime.thinkingStart) / 1000)
           : undefined,
+        rawEvents: runtime.rawEvents,
+        plan: runtime.plan,
+        subagents: runtime.subagents,
       } as any;
       
       try {

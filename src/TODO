@@ -3,7 +3,6 @@
 ## In Progress
 
 - Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
-- Add in the message schema of a conversation the raw_event in a sequence way to be able to reconstruct the conversation easy and for debugging. Add also more cols for the plan and subagents.
 
 ## New Features
 

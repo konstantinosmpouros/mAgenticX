@@ -225,6 +225,14 @@ class MessageOut(BaseModel):
     thinkingTime: Optional[int] = Field(None, validation_alias="reasoning_time_seconds")
     error: Optional[bool] = Field(None, validation_alias="is_error")
     errorMessage: Optional[str] = Field(None, validation_alias="error_message")
+    rawEvents: List[dict] = Field(default_factory=list, validation_alias="raw_events")
+
+    @field_validator("rawEvents", mode="before")
+    @classmethod
+    def _coerce_raw_events(cls, v):
+        return v if v is not None else []
+    plan: Optional[dict] = Field(None, validation_alias="plan")
+    subagents: Optional[dict] = Field(None, validation_alias="subagents")
 
 class ConversationDetail(BaseModel):
     """
@@ -272,6 +280,9 @@ class MessageIn(BaseModel):
     thinkingTime: Optional[int] = None
     error: Optional[bool] = None
     errorMessage: Optional[str] = None
+    rawEvents: List[dict] = Field(default_factory=list)
+    plan: Optional[dict] = None
+    subagents: Optional[dict] = None
 
     @model_validator(mode="after")
     def _require_content_or_attachment(self):
@@ -293,6 +304,9 @@ class MessageUpdate(BaseModel):
     thinkingTime: Optional[int] = None
     error: Optional[bool] = None
     errorMessage: Optional[str] = None
+    rawEvents: List[dict] = Field(default_factory=list)
+    plan: Optional[dict] = None
+    subagents: Optional[dict] = None
 
     @model_validator(mode="after")
     def _require_content(self):
