@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react';
 import type { FC, Dispatch, SetStateAction, MutableRefObject } from 'react';
-import type { MessageOut, ConversationDetail, ThinkingState, MessageIn, ToolPreference } from "@/lib/types";
+import type { MessageOut, ConversationDetail, ThinkingState, MessageIn, PlanSnapshot, ToolPreference } from "@/lib/types";
 import { likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage, addMessageToConversation } from "@/lib/api";
 import { sortByUpdatedAtDesc } from "@/lib/utils";
 import { streamAguiRun } from "./agui";
@@ -263,6 +263,8 @@ type MessageEditHandlersCtx = {
   setIsSendingMessage?: (value: boolean) => void;
   enabledTools?: ToolPreference[];
   persistUIState?: () => void;
+  onPlanSnapshot?: (plan: PlanSnapshot) => void;
+  resetActivePlan?: () => void;
 };
 
 
@@ -298,6 +300,8 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     setIsSendingMessage,
     enabledTools,
     persistUIState,
+    onPlanSnapshot,
+    resetActivePlan,
   } = ctx;
 
   const handleSubmitMessageEdit = async ({
@@ -350,6 +354,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     const siblingCount = allMessages.filter((m) => (m.parentMessageId ?? null) === parentId).length;
 
     try {
+      resetActivePlan?.();
       setIsSendingMessage?.(true);
       const payload: MessageIn = {
         sender: 'user',
@@ -416,6 +421,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         setShowAiTransition,
         signal: streamAbortRef.current.signal,
         persistUIState,
+        onPlanSnapshot,
       });
     } catch (error) {
       console.error('Failed to submit edited message', error);
@@ -428,6 +434,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     } finally {
       setIsSendingMessage?.(false);
       if (setShowAiTransition) setShowAiTransition(false);
+      resetActivePlan?.();
     }
   };
 
@@ -483,6 +490,8 @@ type RetryHandlersCtx = {
   setIsSendingMessage?: (value: boolean) => void;
   enabledTools?: ToolPreference[];
   persistUIState?: () => void;
+  onPlanSnapshot?: (plan: PlanSnapshot) => void;
+  resetActivePlan?: () => void;
 };
 
 export function createRetryHandlers(ctx: RetryHandlersCtx) {
@@ -501,6 +510,8 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     setIsSendingMessage,
     enabledTools,
     persistUIState,
+    onPlanSnapshot,
+    resetActivePlan,
   } = ctx;
 
   const handleRetryAiMessage = async (message: MessageOut) => {
@@ -538,6 +549,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     const parentKey = parentId ?? rootBranchKey;
 
     try {
+      resetActivePlan?.();
       setIsSendingMessage?.(true);
       const aiPlaceholderPayload: MessageIn = {
         sender: 'ai',
@@ -582,6 +594,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
         prefillMessageId: aiPlaceholderResp.message.id,
         enabledTools,
         persistUIState,
+        onPlanSnapshot,
       });
     } catch (error) {
       console.error('Failed to retry AI message', error);
@@ -593,6 +606,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     } finally {
       setIsSendingMessage?.(false);
       if (setShowAiTransition) setShowAiTransition(false);
+      resetActivePlan?.();
     }
   };
 

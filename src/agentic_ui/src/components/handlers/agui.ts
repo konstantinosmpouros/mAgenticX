@@ -106,8 +106,11 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       const name = (ev as any).name;
       if (name === 'plan_snapshot' || name === 'PLAN_SNAPSHOT') {
         const snapshot = (ev as any).value as PlanSnapshot | undefined;
-        if (snapshot && onPlanSnapshot) {
-          onPlanSnapshot(snapshot);
+        if (snapshot) {
+          runtime.plan = snapshot;
+          if (onPlanSnapshot) {
+            onPlanSnapshot(snapshot);
+          }
         }
       }
       return;

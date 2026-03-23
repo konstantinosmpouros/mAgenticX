@@ -27,7 +27,7 @@ class OmniAgent(DeepAgent):
 
     name = "omni-agent-v1"
     agent_id = "Omni-Agent v1"
-    label = "Omni Agent"
+    label = "Omni"
     version = "1.0.0"
     description = "General-purpose agent for research, writing, and file management"
     icon = "BrainCircuit"

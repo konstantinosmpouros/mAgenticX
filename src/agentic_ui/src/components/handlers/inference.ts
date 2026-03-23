@@ -1,7 +1,7 @@
 import { createConversation, addMessageToConversation, transcribeDictation } from '@/lib/api';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
-import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, ToolPreference } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, PlanSnapshot, ToolPreference } from '@/lib/types';
 import { streamAguiRun } from './agui';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import type { DictationStatus } from '@/components/chat/ChatInputBar';
@@ -39,6 +39,8 @@ type InferenceCtx = {
   textareaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   streamAbortRef: MutableRefObject<AbortController | null>;
   persistUIState?: () => void;
+  onPlanSnapshot?: (plan: PlanSnapshot) => void;
+  resetActivePlan?: () => void;
 };
 
 export function createInferenceHandlers(ctx: InferenceCtx) {
@@ -66,6 +68,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     streamAbortRef,
     enabledTools,
     persistUIState,
+    onPlanSnapshot,
+    resetActivePlan,
   } = ctx;
 
   const resolveLastPersistedMessageId = () => {
@@ -100,6 +104,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     }
 
     // Mark sending state
+    resetActivePlan?.();
     setIsSendingMessage(true);
     const currentAgent = agents.find(a => a.id === selectedAgent);
     
@@ -211,6 +216,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           signal: streamAbortRef.current.signal,
           enabledTools,
           persistUIState,
+          onPlanSnapshot,
         });
       }
 
@@ -276,6 +282,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           enabledTools,
           signal: streamAbortRef.current.signal,
           persistUIState,
+          onPlanSnapshot,
         });
       }
     } catch (error) {
@@ -288,6 +295,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       streamAbortRef.current = null;
       setIsSendingMessage(false);
       if (setShowAiTransition) setShowAiTransition(false);
+      resetActivePlan?.();
     }
   };
   // Handler to abort ongoing streaming
@@ -299,6 +307,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       setIsSendingMessage(false);
       setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
       if (setShowAiTransition) setShowAiTransition(false);
+      resetActivePlan?.();
     }
   };
 

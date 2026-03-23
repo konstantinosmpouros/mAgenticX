@@ -8,6 +8,7 @@ import { ChatInterface } from "./pages/ChatPage";
 import NotFound from "./pages/NotFound";
 import Architecture from "./pages/Architecture";
 import Login from "./pages/Login";
+import Test from "./pages/Test";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
           <Route path="/" element={<ChatInterface />} />
           <Route path="/login" element={<Login />} />
           <Route path="/architecture" element={<Architecture />} />
+          <Route path="/test" element={<Test />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

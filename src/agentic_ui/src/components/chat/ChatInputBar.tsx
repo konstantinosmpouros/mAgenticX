@@ -53,6 +53,7 @@ type ChatInputBarProps = {
     onDictationSubmit?: (audioBlob: Blob) => void;
     onDictationStatusChange?: (status: DictationStatus) => void;
     dictationStatus?: DictationStatus;
+    topAccessory?: React.ReactNode;
 };
 
 // Random welcome quotes (use {agent} to inject the agent's name)
@@ -102,6 +103,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
         onDictationSubmit,
         onDictationStatusChange,
         dictationStatus = "idle",
+        topAccessory,
     } = props;
 
     
@@ -138,6 +140,12 @@ export function ChatInputBar(props: ChatInputBarProps) {
         "{agent}",
         currentAgent?.name ?? "the agent"
     );
+
+    const agentDisplayName = React.useMemo(() => {
+        const rawName = currentAgent?.name?.trim();
+        if (!rawName) return "the Agent";
+        return /agent$/i.test(rawName) ? rawName : `${rawName} Agent`;
+    }, [currentAgent?.name]);
 
     const attachmentStripRef = React.useRef<HTMLDivElement | null>(null);
     const [attachmentFade, setAttachmentFade] = React.useState({ left: false, right: false });
@@ -456,10 +464,11 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 </div>
             )}
             
-            <div className="mx-auto max-w-3xl pointer-events-auto">
+            <div className="relative mx-auto max-w-3xl pointer-events-auto">
+                {topAccessory}
                 {/* Floating Input Container */}
                 <div
-                    className={`bg-background rounded-[2rem] shadow-lg px-3 pt-3 pb-1 ${
+                    className={`relative z-20 bg-background rounded-[2rem] shadow-lg px-3 pt-3 pb-1 ${
                         isPrivateMode ? "border-2 border-primary/50" : "border"
                     }`}
                 >
@@ -536,7 +545,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                     value={currentMessage}
                                     onChange={(e: any) => setCurrentMessage(e.target.value)}
                                     onPaste={handlePaste}
-                                    placeholder={`Message ${currentAgent?.name}...`}
+                                    placeholder={`Message ${agentDisplayName}...`}
                                     onKeyDown={(e: any) => {
                                         if (
                                             e.key === "Enter" &&

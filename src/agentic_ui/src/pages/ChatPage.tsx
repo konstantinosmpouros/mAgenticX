@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { 
   ThinkingState, Agent,
   MessageOut,
+  PlanSnapshot,
   ConversationDetail,
   ConversationSummary,
   UserProfile,
@@ -52,6 +53,7 @@ import { getConversationDetail } from "@/lib/api";
 // Chat Interface component
 import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
+import { PlanningContainer } from "@/components/chat/agentic_parts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ChatBody from "@/components/chat/ChatBody";
@@ -223,8 +225,15 @@ export function ChatInterface() {
     setEditingBusy(false);
   }, [currentConversation?.id]);
 
+  useEffect(() => {
+    setActivePlanSnapshots([]);
+    setIsPlanExpanded(true);
+  }, [currentConversation?.id]);
+
   // Dictation state machine
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>("idle");
+  const [activePlanSnapshots, setActivePlanSnapshots] = useState<PlanSnapshot[]>([]);
+  const [isPlanExpanded, setIsPlanExpanded] = useState(true);
 
   // Function to set conversation messages
   const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
@@ -279,6 +288,15 @@ export function ChatInterface() {
     setEditingBusy(false);
     setStickyUserBarId(null);
   };
+
+  const resetActivePlan = useCallback(() => {
+    setActivePlanSnapshots([]);
+    setIsPlanExpanded(true);
+  }, []);
+
+  const handlePlanSnapshot = useCallback((snapshot: PlanSnapshot) => {
+    setActivePlanSnapshots((prev) => [...prev, snapshot]);
+  }, []);
 
   // Effects
   useEnsureDefaultAgentEffect({
@@ -417,6 +435,8 @@ export function ChatInterface() {
     setIsSendingMessage,
     enabledTools: enabledToolsForRequest,
     persistUIState: requestPersist,
+    onPlanSnapshot: handlePlanSnapshot,
+    resetActivePlan,
   });
 
   // Retry handlers
@@ -435,6 +455,8 @@ export function ChatInterface() {
     setIsSendingMessage,
     enabledTools: enabledToolsForRequest,
     persistUIState: requestPersist,
+    onPlanSnapshot: handlePlanSnapshot,
+    resetActivePlan,
   });
 
   // Submit edit from state
@@ -474,6 +496,8 @@ export function ChatInterface() {
     streamAbortRef,
     enabledTools: enabledToolsForRequest,
     persistUIState: requestPersist,
+    onPlanSnapshot: handlePlanSnapshot,
+    resetActivePlan,
   });
   
   // Conversation handlers
@@ -609,6 +633,8 @@ export function ChatInterface() {
   const effectiveSelectedAgent = selectedAgentFromList ?? fallbackSelectedAgent ?? null;
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   const AgentIcon = currentAgent?.icon || Building2;
+  const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
+  const showPlanningContainer = isSendingMessage && Boolean(activePlan);
   
   // Main Chat Interface
   if (!isLoggedIn || !userId) {
@@ -744,6 +770,17 @@ export function ChatInterface() {
                 toast={toast}
                 currentAgent={currentAgent ?? undefined}
                 Textarea={Textarea}
+                topAccessory={
+                  showPlanningContainer && activePlan ? (
+                    <PlanningContainer
+                      plan={activePlan}
+                      expanded={isPlanExpanded}
+                      onToggle={() => setIsPlanExpanded((prev) => !prev)}
+                      title="Deep agent execution plan"
+                      className="absolute bottom-[calc(100%-1px)] left-1/2 z-10 w-[min(100%,39rem)] -translate-x-1/2"
+                    />
+                  ) : null
+                }
               />
 
             {loadingConversation && (

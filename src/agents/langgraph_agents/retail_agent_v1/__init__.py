@@ -11,7 +11,7 @@ class RetailAgentV1(LangGraphAgent):
 
     name = "retail-agent-v1"
     agent_id = "Retail Agent v1"
-    label = "Retail Agent"
+    label = "Retail"
     version = "1.0.0"
     description = "Product discovery, pricing, inventory and promotions"
     icon = "ShoppingBag"
