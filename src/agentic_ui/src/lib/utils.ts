@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { AttachmentIn, FileAttachment, AGUIEvent} from "./types";
+import type { AGUIEvent } from "@/lib/agui";
+import type { AttachmentIn, FileAttachment } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

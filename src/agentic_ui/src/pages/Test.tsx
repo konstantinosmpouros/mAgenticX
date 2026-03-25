@@ -1,85 +1,59 @@
-import { useEffect, useRef, useState } from "react";
-import { Bot } from "lucide-react";
+import { useState } from "react";
 
-import { PlanningContainer } from "@/components/chat/agentic_parts";
-import { ChatInputBar } from "@/components/chat/ChatInputBar";
-import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { PlanSnapshot } from "@/lib/types";
+import { SubagentContainer } from "@/components/chat/agentic_parts";
+import type { SubagentItem } from "@/components/chat/agentic_parts/SubagentContainer";
 
-const DEMO_PLAN_SNAPSHOTS: PlanSnapshot[] = [
+const DEMO_SUBAGENTS: SubagentItem[] = [
   {
-    updated_at: Date.now() - 180_000,
-    items: [
+    id: "task-research-001",
+    label: "Researcher",
+    type: "researcher",
+    description: "Audit pricing documentation and return the latest seat and rate limits.",
+    namespace: "tools:task-research-001 / researcher",
+    prompt:
+      "Audit pricing documentation and return the latest seat and rate limits. Include exact product names and surface any ambiguity explicitly.",
+    text:
+      "The current pricing page shows a 50-seat cap on the Team plan and notes annual billing discounts in the FAQ. I also found a release note mentioning the Enterprise cap was removed, so the response should distinguish between Team and Enterprise.",
+    eventCount: 7,
+    tools: [
       {
-        content: "Clarify the user goal and isolate the exact policy or product decision to answer.",
-        status: "in_progress",
-      },
-      {
-        content: "Inspect the available context, identify missing details, and choose the smallest reliable path forward.",
-        status: "pending",
-      },
-      {
-        content: "Assemble a response structure with the answer first, then concise supporting evidence.",
-        status: "pending",
-      },
-      {
-        content: "Prepare edge-case follow-ups for ambiguity, exceptions, or missing internal data.",
-        status: "pending",
-      },
-      {
-        content: "Finalize the response tone and trim anything that does not directly help the user.",
-        status: "pending",
+        id: "tool-search-001",
+        name: "web.search",
+        status: "completed",
+        args: "{\"query\":\"latest seat limits pricing page\"}",
+        result:
+          "{\"hits\":[{\"title\":\"Pricing\",\"url\":\"/pricing\"},{\"title\":\"Billing FAQ\",\"url\":\"/faq/billing\"}]}",
       },
     ],
   },
   {
-    updated_at: Date.now() - 90_000,
-    items: [
+    id: "task-validator-002",
+    label: "Validator",
+    type: "validator",
+    description: "Cross-check the extracted limits against FAQs and release notes before finalizing.",
+    namespace: "tools:task-validator-002 / validator",
+    prompt:
+      "Cross-check the extracted limits against FAQs and release notes before finalizing. Escalate for approval if any source requires authenticated access.",
+    text:
+      "The FAQ confirms the Team seat cap, but the release note reference needs authenticated verification before we can present it as final.",
+    eventCount: 6,
+    tools: [
       {
-        content: "Clarify the user goal and isolate the exact policy or product decision to answer.",
+        id: "tool-faq-002",
+        name: "faq.lookup",
         status: "completed",
-      },
-      {
-        content: "Inspect the available context, identify missing details, and choose the smallest reliable path forward.",
-        status: "in_progress",
-      },
-      {
-        content: "Assemble a response structure with the answer first, then concise supporting evidence.",
-        status: "pending",
-      },
-      {
-        content: "Prepare edge-case follow-ups for ambiguity, exceptions, or missing internal data.",
-        status: "pending",
-      },
-      {
-        content: "Finalize the response tone and trim anything that does not directly help the user.",
-        status: "pending",
+        args: "{\"topics\":[\"seat caps\",\"billing limits\",\"enterprise\"]}",
+        result:
+          "{\"team_cap\":50,\"enterprise_cap\":\"unbounded\",\"confidence\":\"partial\"}",
       },
     ],
-  },
-  {
-    updated_at: Date.now(),
-    items: [
+    interrupts: [
       {
-        content: "Clarify the user goal and isolate the exact policy or product decision to answer.",
-        status: "completed",
-      },
-      {
-        content: "Inspect the available context, identify missing details, and choose the smallest reliable path forward.",
-        status: "completed",
-      },
-      {
-        content: "Assemble a response structure with the answer first, then concise supporting evidence.",
-        status: "in_progress",
-      },
-      {
-        content: "Prepare edge-case follow-ups for ambiguity, exceptions, or missing internal data.",
-        status: "pending",
-      },
-      {
-        content: "Finalize the response tone and trim anything that does not directly help the user.",
-        status: "pending",
+        threadId: "thread-test-center",
+        content: {
+          kind: "approval_required",
+          reason: "Authenticated portal needed to verify the enterprise release note.",
+        },
       },
     ],
   },
@@ -87,74 +61,20 @@ const DEMO_PLAN_SNAPSHOTS: PlanSnapshot[] = [
 
 export default function Test() {
   const [expanded, setExpanded] = useState(true);
-  const [currentMessage, setCurrentMessage] = useState("");
-  const [planHistory, setPlanHistory] = useState<PlanSnapshot[]>([DEMO_PLAN_SNAPSHOTS[0]]);
-  const composerContainerRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const currentAgent = {
-    name: "Deep agent",
-    description: "Previewing the real composer with the planning container attached above it.",
-  };
-  const activePlan = planHistory[planHistory.length - 1];
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setPlanHistory((current) => {
-        if (current.length >= DEMO_PLAN_SNAPSHOTS.length) {
-          return [DEMO_PLAN_SNAPSHOTS[0]];
-        }
-        return [...current, DEMO_PLAN_SNAPSHOTS[current.length]];
-      });
-    }, 5000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.14),_transparent_28%)]" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background via-background to-black/20" />
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl items-end justify-center px-6 pb-8 pt-24">
-        <div className="w-full max-w-3xl">
-          <div className="relative">
-            <PlanningContainer
-              plan={activePlan}
-              expanded={expanded}
-              onToggle={() => setExpanded((current) => !current)}
-              className="absolute bottom-[calc(100%-1px)] left-1/2 z-10 w-[min(100%,39rem)] -translate-x-1/2"
-              title="Deep agent execution plan"
-            />
-
-            <ChatInputBar
-              positionClass="relative z-20 w-full"
-              attachments={[]}
-              isMessagesEmpty={false}
-              isPrivateMode={false}
-              thinkingActive={false}
-              isStreaming={false}
-              currentMessage={currentMessage}
-              setCurrentMessage={setCurrentMessage}
-              handlePaste={() => {}}
-              handleSendMessage={() => {}}
-              isImageFile={() => false}
-              getImageUrl={() => ""}
-              handleImageClick={() => {}}
-              removeAttachment={() => {}}
-              handleFileUpload={() => {}}
-              fileInputRef={fileInputRef}
-              textareaRef={textareaRef}
-              containerRef={composerContainerRef}
-              textareaMaxHeight={220}
-              AgentIcon={Bot}
-              Tooltip={Tooltip}
-              TooltipTrigger={TooltipTrigger}
-              TooltipContent={TooltipContent}
-              currentAgent={currentAgent}
-              Textarea={Textarea}
-            />
-          </div>
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-6 py-16">
+        <div className="w-full max-w-5xl">
+          <SubagentContainer
+            subagents={DEMO_SUBAGENTS}
+            expanded={expanded}
+            onToggle={() => setExpanded((current) => !current)}
+            subtitle="AG-UI stream preview"
+            title="Delegated subagent containers"
+          />
         </div>
       </div>
     </div>

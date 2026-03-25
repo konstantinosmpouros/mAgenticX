@@ -234,22 +234,21 @@ class AGUIStreamNormalizer:
                 continue
 
             # Emit a dedicated marker for sub-agent before_agent instructions.
-            if (
-                namespace is not None
-                and node_name == "PatchToolCallsMiddleware.before_agent"
-            ):
-                for msg in self._unwrap_messages_list(node_update.get("messages")):
-                    delegated_message = getattr(msg, "content", None)
-                    if isinstance(delegated_message, str) and delegated_message:
-                        self._push(
-                            out,
-                            self.emitter.before_agent_event(
-                                message=delegated_message,
-                                metadata=meta,
-                                namespace=ns_label,
-                            ),
-                        )
-                        break
+            if node_name == "PatchToolCallsMiddleware.before_agent":
+                if namespace is not None:
+                    for msg in self._unwrap_messages_list(node_update.get("messages")):
+                        delegated_message = getattr(msg, "content", None)
+                        if isinstance(delegated_message, str) and delegated_message:
+                            self._push(
+                                out,
+                                self.emitter.before_agent_event(
+                                    message=delegated_message,
+                                    metadata=meta,
+                                    namespace=ns_label,
+                                ),
+                            )
+                            break
+                continue
 
             # Authoritative todos snapshot may be present as node_update["todos"]
             if "todos" in node_update and isinstance(node_update.get("todos"), list):

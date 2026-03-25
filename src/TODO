@@ -19,8 +19,6 @@
 - Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - Create a custom Planing Container for the deep agent's planing tool and make it similar to the codex
-- Add in the ui all the schemas of the custom agui events we created.
-- Add the word Agent in the input container text area default label and the title of the planning container make it agent name aware.
 
 ## Dialogue Bridge
 

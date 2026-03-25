@@ -4,9 +4,11 @@
 import { mapIcon } from '@/lib/consts';
 import type { Agent, ConversationSummary, ToolMetadata, UserPreferences } from '@/lib/types';
 
+
 const DB_NAME = 'mx_ui_state';
 const STATE_STORE = 'state';
 const DB_VERSION = 2;
+
 
 type AgentSnapshot = {
   id: string;
@@ -17,9 +19,11 @@ type AgentSnapshot = {
   isActive: boolean;
 };
 
+
 type ConversationSummarySnapshot = Omit<ConversationSummary, 'agent'> & {
   agent: AgentSnapshot;
 };
+
 
 export type UISnapshotSerializable = {
   version: 2;
@@ -35,6 +39,7 @@ export type UISnapshotSerializable = {
   selectedImage?: string | null;
 };
 
+
 type PersistedSnapshot = Omit<
   UISnapshotSerializable,
   'agents' | 'conversations' | 'userPreferences'
@@ -44,6 +49,7 @@ type PersistedSnapshot = Omit<
   userPreferences?: UserPreferences | null;
 };
 
+
 const createFallbackAgent = (): Agent => ({
   id: "",
   name: "Unknown Agent",
@@ -52,6 +58,7 @@ const createFallbackAgent = (): Agent => ({
   iconName: null,
   isActive: true,
 });
+
 
 const serializeAgentForStorage = (agent?: Agent | null): AgentSnapshot | null => {
   if (!agent) return null;
@@ -66,6 +73,7 @@ const serializeAgentForStorage = (agent?: Agent | null): AgentSnapshot | null =>
   };
 };
 
+
 const deserializeAgentFromStorage = (agent?: AgentSnapshot | null): Agent => {
   if (!agent) {
     return createFallbackAgent();
@@ -77,6 +85,7 @@ const deserializeAgentFromStorage = (agent?: AgentSnapshot | null): Agent => {
   };
 };
 
+
 const serializeAgentsListForStorage = (agents?: Agent[] | null): AgentSnapshot[] | undefined => {
   if (!Array.isArray(agents) || agents.length === 0) return undefined;
   const serialized = agents
@@ -85,10 +94,12 @@ const serializeAgentsListForStorage = (agents?: Agent[] | null): AgentSnapshot[]
   return serialized.length > 0 ? serialized : undefined;
 };
 
+
 const deserializeAgentsListFromStorage = (agents?: AgentSnapshot[] | null): Agent[] | undefined => {
   if (!Array.isArray(agents) || agents.length === 0) return undefined;
   return agents.map(deserializeAgentFromStorage);
 };
+
 
 const serializeConversationSummaries = (
   conversations?: ConversationSummary[],
@@ -107,6 +118,7 @@ const serializeConversationSummaries = (
   }));
 };
 
+
 const deserializeConversationSummaries = (
   conversations?: ConversationSummarySnapshot[] | null,
 ): ConversationSummary[] | undefined => {
@@ -116,6 +128,7 @@ const deserializeConversationSummaries = (
     agent: deserializeAgentFromStorage(conversation.agent),
   }));
 };
+
 
 const serializeToolsForStorage = (tools?: ToolMetadata[]): ToolMetadata[] | undefined => {
   if (!Array.isArray(tools) || tools.length === 0) return undefined;
@@ -127,6 +140,7 @@ const serializeToolsForStorage = (tools?: ToolMetadata[]): ToolMetadata[] | unde
   }));
 };
 
+
 const deserializeToolsFromStorage = (tools?: ToolMetadata[]): ToolMetadata[] => {
   if (!Array.isArray(tools)) return [];
   return tools.map((tool) => ({
@@ -136,6 +150,7 @@ const deserializeToolsFromStorage = (tools?: ToolMetadata[]): ToolMetadata[] => 
     parameterCount: typeof tool.parameterCount === 'number' ? tool.parameterCount : 0,
   }));
 };
+
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -149,6 +164,7 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
+
 async function idbGet<T>(store: string, key: IDBValidKey): Promise<T | undefined> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -160,6 +176,7 @@ async function idbGet<T>(store: string, key: IDBValidKey): Promise<T | undefined
   });
 }
 
+
 async function idbPut(store: string, key: IDBValidKey, value: any): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -170,6 +187,7 @@ async function idbPut(store: string, key: IDBValidKey, value: any): Promise<void
     req.onerror = () => reject(req.error);
   });
 }
+
 
 export async function saveUISnapshot(userId: string, data: UISnapshotSerializable): Promise<void> {
   const { selectedImage: _ignoredImage, ...rest } = data;
@@ -184,6 +202,7 @@ export async function saveUISnapshot(userId: string, data: UISnapshotSerializabl
   await idbPut(STATE_STORE, userId, payload);
 }
 
+
 export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializable | null> {
   const saved: PersistedSnapshot | undefined = await idbGet(STATE_STORE, userId);
   if (!saved) return null;
@@ -196,6 +215,7 @@ export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializ
     userPreferences: userPreferences ?? null,
   };
 }
+
 
 export async function clearUISnapshot(userId: string): Promise<void> {
   const db = await openDB();

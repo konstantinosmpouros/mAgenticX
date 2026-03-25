@@ -1,7 +1,8 @@
 import { createConversation, addMessageToConversation, transcribeDictation } from '@/lib/api';
+import type { PlanSnapshot } from '@/lib/agui';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
-import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, PlanSnapshot, ToolPreference } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, ToolPreference } from '@/lib/types';
 import { streamAguiRun } from './agui';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import type { DictationStatus } from '@/components/chat/ChatInputBar';

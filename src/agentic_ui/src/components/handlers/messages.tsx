@@ -1,9 +1,11 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react';
 import type { FC, Dispatch, SetStateAction, MutableRefObject } from 'react';
-import type { MessageOut, ConversationDetail, ThinkingState, MessageIn, PlanSnapshot, ToolPreference } from "@/lib/types";
+import type { PlanSnapshot } from "@/lib/agui";
+import type { MessageOut, ConversationDetail, ThinkingState, MessageIn, ToolPreference } from "@/lib/types";
 import { likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage, addMessageToConversation } from "@/lib/api";
 import { sortByUpdatedAtDesc } from "@/lib/utils";
 import { streamAguiRun } from "./agui";
+
 
 
 // ------------------------------------------------------------------------------
@@ -58,6 +60,7 @@ export const createFeedbackHandlers = ({
 };
 
 
+
 // ------------------------------------------------------------------------------
 // Sticky user action bar that stays visible for a short period
 // ------------------------------------------------------------------------------
@@ -77,6 +80,7 @@ export function createStickyUserBarHandlers(ctx: { setStickyUserBarId: (id: stri
 
   return { flashUserActionBar };
 }
+
 
 
 // ------------------------------------------------------------------------------
@@ -171,6 +175,7 @@ export function useBranchingHandlers({
 }
 
 
+
 // ------------------------------------------------------------------------------
 // UI Handlers (copy + image preview)
 // ------------------------------------------------------------------------------
@@ -203,6 +208,7 @@ export function createUIHandlers(ctx: UIHandlersCtx) {
 
   return { handleCopy, handleImageClick, handleCloseImagePreview };
 }
+
 
 
 // ------------------------------------------------------------------------------
@@ -243,6 +249,7 @@ export function createAiTransitionHandlers(ctx: AiTransitionHandlersCtx) {
 
   return { AiTransitionIndicator };
 }
+
 
 
 // ------------------------------------------------------------------------------
@@ -475,6 +482,11 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
   return { handleSubmitMessageEdit, handleConfirmEditMessage };
 }
 
+
+
+// ------------------------------------------------------------------------------
+// AI Message Retry Handlers
+// ------------------------------------------------------------------------------
 type RetryHandlersCtx = {
   userId: string | null;
   currentConversation: ConversationDetail | null;

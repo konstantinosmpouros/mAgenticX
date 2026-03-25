@@ -12,10 +12,10 @@ import type {
   MessageUpdate,
   UpdateConversationResponse,
   DownloadAttachmentParams,
-  AGUIEvent,
   ToolMetadata,
   ToolPreference,
 } from "./types";
+import type { AGUIEvent } from "@/lib/agui";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
 import { parseSSE } from "./utils";
 import {

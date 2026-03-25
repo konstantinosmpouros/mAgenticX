@@ -4,6 +4,7 @@ export const PROXY_LIMIT_MB = 600;  // must match nginx client_max_body_size
 const B = 1024 * 1024;
 const inflateBase64 = (bytes: number) => Math.ceil(bytes * 4 / 3);
 
+
 export function validateAttachmentsForUpload(files: File[]): string | null {
     // Per-file cap
     const tooBig = files.find(f => f.size > MAX_SINGLE_FILE_MB * B);
@@ -25,6 +26,7 @@ export function validateAttachmentsForUpload(files: File[]): string | null {
     
     return null;
 }
+
 
 export function validateAdd(existing: File[], adding: File[]): string | null {
     const combined: File[] = [...existing, ...adding];

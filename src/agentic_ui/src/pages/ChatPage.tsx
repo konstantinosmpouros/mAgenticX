@@ -9,12 +9,12 @@ import { useToast } from "@/hooks/use-toast";
 import type { 
   ThinkingState, Agent,
   MessageOut,
-  PlanSnapshot,
   ConversationDetail,
   ConversationSummary,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
+import type { PlanSnapshot } from "@/lib/agui";
 import { createPreferencesHandlers } from "@/components/handlers/preferences";
 import { useThinkingProgressEffect } from "@/hooks/useThinking";
 import { 
