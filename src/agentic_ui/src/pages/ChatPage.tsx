@@ -53,7 +53,7 @@ import { getConversationDetail } from "@/lib/api";
 // Chat Interface component
 import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-import { PlanningContainer } from "@/components/chat/agentic_parts";
+import { PlanCard } from "@/components/chat/agentic_parts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ChatBody from "@/components/chat/ChatBody";
@@ -634,7 +634,7 @@ export function ChatInterface() {
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   const AgentIcon = currentAgent?.icon || Building2;
   const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
-  const showPlanningContainer = isSendingMessage && Boolean(activePlan);
+  const showPlanningCard = isSendingMessage && Boolean(activePlan);
   
   // Main Chat Interface
   if (!isLoggedIn || !userId) {
@@ -771,8 +771,8 @@ export function ChatInterface() {
                 currentAgent={currentAgent ?? undefined}
                 Textarea={Textarea}
                 topAccessory={
-                  showPlanningContainer && activePlan ? (
-                    <PlanningContainer
+                  showPlanningCard && activePlan ? (
+                    <PlanCard
                       plan={activePlan}
                       expanded={isPlanExpanded}
                       onToggle={() => setIsPlanExpanded((prev) => !prev)}
