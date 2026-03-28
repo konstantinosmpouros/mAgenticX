@@ -355,10 +355,10 @@ export function PlanningContainer({
               <button
                 type="button"
                 onClick={onToggle}
-                className="absolute right-5 top-14 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary/45 text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground"
+                className="absolute right-4 top-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
                 aria-label="Close plan"
               >
-                <X className="h-4 w-4" />
+                <X size={18} />
               </button>
 
               <div className="relative flex flex-col border-b border-border/70 px-4 py-4 pr-16 sm:px-5 sm:pr-20">

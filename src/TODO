@@ -18,7 +18,8 @@
 
 - Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
-- Create a custom Planing Container for the deep agent's planing tool and make it similar to the codex
+- This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
+- Voice mode [react element](https://elements.ai-sdk.dev/components/persona).
 
 ## Dialogue Bridge
 

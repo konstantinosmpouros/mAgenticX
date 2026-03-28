@@ -16,12 +16,15 @@ RUN npm run build -- --debug
 # 2) Runtime stage
 FROM nginx:1.25-alpine
 
+ENV BFF_HOST=dialogue_bridge
+ENV BFF_PORT=8002
+
 # Copy the compiled static files from previous stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Remove default Nginx config & add a tiny one that supports react-router
+# Remove default Nginx config; the base nginx entrypoint renders templates from env vars.
 RUN rm /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

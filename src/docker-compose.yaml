@@ -1,5 +1,37 @@
 services:
 
+  vectordb: # 8000
+    image: chromadb/chroma:0.6.3
+    container_name: vectordb
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - vectorstore:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - backend
+
+
+  rag_service: # 8001
+    container_name: rag_service
+    image: rag_service
+    build: 
+      context: ./rag_service
+      dockerfile: Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RAG_HOST=vectordb
+      - RAG_PORT=8000
+    depends_on:
+      - vectordb
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+
+
   agents: # 8003
     container_name: agents
     image: agents
@@ -23,36 +55,21 @@ services:
       - mcp_net
 
 
-  rag_service: # 8001
-    container_name: rag_service
-    image: rag_service
-    build: 
-      context: ./rag_service
-      dockerfile: Dockerfile
+  chat_postgres: # 5432
+    image: postgres:16.3
+    container_name: chat_postgres
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - RAG_HOST=vectordb
-      - RAG_PORT=8000
-    depends_on:
-      - vectordb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: chat_db
+    volumes:
+      - chat_convs:/var/lib/postgresql/data
     restart: unless-stopped
+    ports:
+      - "5432:5432"
     networks:
       - backend
       - frontend
-
-
-  vectordb: # 8000
-    image: chromadb/chroma:0.6.3
-    container_name: vectordb
-    environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-      - ANONYMIZED_TELEMETRY=FALSE
-    volumes:
-      - vectorstore:/chroma/chroma
-    restart: unless-stopped
-    networks:
-      - backend
 
 
   dialogue_bridge: # 8002
@@ -76,23 +93,6 @@ services:
       - backend
       - frontend
       - hashicorp_vault
-
-
-  chat_postgres: # 5432
-    image: postgres:16.3
-    container_name: chat_postgres
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: chat_db
-    volumes:
-      - chat_convs:/var/lib/postgresql/data
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    networks:
-      - backend
-      - frontend
 
 
   agentic_ui: # 8050

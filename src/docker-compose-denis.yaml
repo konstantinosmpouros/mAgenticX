@@ -1,20 +1,16 @@
 services:
-  agents: # 8003
-    container_name: agents
-    image: konstantinosmpouros/agents:v1.10.1
+  vectordb: # 8000
+    image: chromadb/chroma:0.6.3
+    container_name: vectordb
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - RAG_HOST=rag_service
-      - RAG_PORT=8001
-      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/sse
-      - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-}
-    depends_on:
-      - rag_service
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - vectorstore:/chroma/chroma
     restart: unless-stopped
     networks:
       - backend
-      - frontend
-      - mcp_gateway
 
   rag_service: # 8001
     container_name: rag_service
@@ -30,34 +26,22 @@ services:
       - backend
       - frontend
 
-  vectordb: # 8000
-    image: chromadb/chroma:0.6.3
-    container_name: vectordb
+  agents: # 8003
+    container_name: agents
+    image: konstantinosmpouros/agents:v1.11.0
     environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-      - ANONYMIZED_TELEMETRY=FALSE
-    volumes:
-      - vectorstore:/chroma/chroma
-    restart: unless-stopped
-    networks:
-      - backend
-
-  dialogue_bridge: # 8002
-    container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.4.3
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
-      - VAULT_ADDR=http://vault:8004
-      - VAULT_USERPASS_MOUNT=userpass
-      - VAULT_OIDC_ROLE=agenticx
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RAG_HOST=rag_service
+      - RAG_PORT=8001
+      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/sse
+      - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-}
     depends_on:
-      - agents
-      - chat_postgres
+      - rag_service
     restart: unless-stopped
     networks:
       - backend
-      - hashicorp_vault
+      - frontend
+      - mcp_gateway
 
   chat_postgres: # 5432
     image: postgres:16.3
@@ -72,9 +56,25 @@ services:
     networks:
       - backend
 
+  dialogue_bridge: # 8002
+    container_name: dialogue_bridge
+    image: konstantinosmpouros/dialogue_bridge:v2.4.4
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
+      - VAULT_ADDR=http://vault:8004
+      - VAULT_USERPASS_MOUNT=userpass
+      - VAULT_OIDC_ROLE=agenticx
+    depends_on:
+      - agents
+      - chat_postgres
+    restart: unless-stopped
+    networks:
+      - backend
+      - hashicorp_vault
+
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.6.0
+    image: konstantinosmpouros/agentic_ui:v0.6.1
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002

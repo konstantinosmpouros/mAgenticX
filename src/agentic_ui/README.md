@@ -19,7 +19,7 @@ React + Vite 18 single-page app for the mAgenticX chat experience. It talks only
 - `src/components/handlers/` are domain-specific state machines for auth/session refresh, roster + tools fetch, conversations + pagination, inference streaming (SSE parsing and retries), attachments, preferences, branching, and UI affordances like sticky bars.
 - `src/lib/api.ts` wraps every bridge endpoint (auth/session, agents, tools, preferences, dictation, conversations, attachments, inference) with credentialed fetch helpers and SSE parsing.
 - `src/lib/uploadGuards.ts`, `src/lib/utils.ts`, `src/lib/authStorage.ts`, and `src/lib/uiStateStorage.ts` cover client-side validation (size limits aligned with Nginx), persistence, and utility helpers.
-- `nginx.conf`, Tailwind config, and the Dockerfile live here for production builds; the Nginx config bumps `client_max_body_size` and keeps SSE unbuffered.
+- `nginx.conf.template`, Tailwind config, and the Dockerfile live here for production builds; the Nginx config bumps `client_max_body_size`, keeps SSE unbuffered, and is rendered from `BFF_HOST/BFF_PORT` at container start.
 
 ## API expectations
 
@@ -43,7 +43,7 @@ npm run build
 npm run preview   # static preview of the built assets
 ```
 
-The Dockerfile produces an nginx image; environment hints `BFF_HOST/BFF_PORT` are informational because the proxy target is baked into `nginx.conf`.
+The Dockerfile produces an nginx image and uses the base image's built-in template rendering for `/api/*`. Compose can override `BFF_HOST` and `BFF_PORT`; otherwise the image defaults to `dialogue_bridge:8002`.
 
 ## Tooling
 

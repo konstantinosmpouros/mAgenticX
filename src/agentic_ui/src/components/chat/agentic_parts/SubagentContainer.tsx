@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bot, Check, Copy, Hand, MessageSquareText, Wrench, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -196,7 +195,7 @@ function CopyableContentBox({
 
       <div
         className={cn(
-          "overflow-y-auto pr-22 [scrollbar-color:rgb(58,58,62)_transparent] [&::-webkit-scrollbar]:w-4 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[rgb(58,58,62)] [&::-webkit-scrollbar-thumb:hover]:bg-[rgb(80,80,86)]",
+          "overflow-y-auto pr-[4.75rem] pt-1 [scrollbar-width:thin] [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-3.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-button]:h-0 [&::-webkit-scrollbar-button]:w-0 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]",
           size === "sm" && "max-h-[3.25rem]",
           size === "md" && "max-h-[6.5rem]",
           size === "lg" && "max-h-[8.75rem]",
@@ -204,7 +203,9 @@ function CopyableContentBox({
           "text-zinc-100",
         )}
       >
-        {children}
+        <div className="max-w-[calc(100%-1rem)]">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -361,7 +362,7 @@ export function SubagentCard({
     <div
       className={cn(
         "relative overflow-hidden rounded-[30px] border border-border/70 bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--secondary)/0.42)_100%)] shadow-card transition-[padding,colors] duration-300",
-        cardExpanded ? "px-5 py-5" : "px-3.5 py-3",
+        cardExpanded ? "px-5 py-5" : "px-3 py-2.5",
       )}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-primary/[0.05] via-primary/[0.02] to-transparent" />
@@ -373,33 +374,38 @@ export function SubagentCard({
         title={`Toggle ${title}`}
         expanded={cardExpanded}
         onClick={() => setCardExpanded((current) => !current)}
-        className={cn("relative -ml-1", cardExpanded ? "mb-5" : "mb-0.5")}
+        className={cn("relative -ml-1", cardExpanded ? "mb-5" : "mb-0")}
       >
         <div className="min-w-0 flex-1 pr-4">
           <div
             className={cn(
               "flex min-w-0 flex-wrap items-center gap-2",
-              cardExpanded ? "mb-1" : "mb-0.5",
+              cardExpanded ? "mb-1" : "mb-0",
             )}
           >
             <div
               className={cn(
                 "flex items-center justify-center rounded-full bg-primary/[0.1] text-primary transition-[height,width] duration-300",
-                cardExpanded ? "h-10 w-10" : "h-8 w-8",
+                cardExpanded ? "h-10 w-10" : "h-7 w-7",
               )}
             >
-              <Bot className="h-4 w-4" />
+              <Bot className={cn("transition-[height,width] duration-300", cardExpanded ? "h-4 w-4" : "h-3.5 w-3.5")} />
             </div>
             <h4
               className={cn(
                 "min-w-0 break-words font-semibold text-foreground transition-[font-size] duration-300",
-                cardExpanded ? "text-base" : "text-sm",
+                cardExpanded ? "text-base" : "text-[13px]",
               )}
             >
               {title}
             </h4>
             {subagent.type ? (
-              <span className="rounded-full bg-primary/[0.08] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-primary">
+              <span
+                className={cn(
+                  "rounded-full bg-primary/[0.08] font-medium uppercase tracking-[0.16em] text-primary transition-[padding,font-size] duration-300",
+                  cardExpanded ? "px-2.5 py-1 text-[10px]" : "px-2 py-0.5 text-[9px]",
+                )}
+              >
                 {subagent.type}
               </span>
             ) : null}
@@ -407,8 +413,10 @@ export function SubagentCard({
 
           <p
             className={cn(
-              "max-w-3xl text-muted-foreground transition-[padding,font-size,line-height] duration-300",
-              cardExpanded ? "pl-8 text-sm leading-6" : "pl-6 text-[12.5px] leading-5",
+              "max-w-3xl text-muted-foreground transition-[max-height,padding,font-size,line-height] duration-300",
+              cardExpanded
+                ? "pl-8 text-sm leading-6"
+                : "max-h-[2.3rem] overflow-hidden pl-5 text-[12px] leading-[1.15rem]",
             )}
           >
             {subagent.prompt || subagent.description || "Delegated subagent task in progress."}
@@ -435,7 +443,7 @@ export function SubagentCard({
             >
               <SectionLabel
                 icon={<MessageSquareText className="h-3.5 w-3.5" />}
-                title="Streamed Text"
+                title="Response"
               />
             </DisclosureButton>
             {textExpanded ? (
@@ -610,7 +618,7 @@ export function SubagentContainer({
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
         <motion.div
-          className="relative flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
+          className="relative flex w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
           onClick={(event) => event.stopPropagation()}
           initial={{ opacity: 0, scale: 0.975, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -621,10 +629,10 @@ export function SubagentContainer({
           <button
             type="button"
             onClick={onToggle}
-            className="absolute right-5 top-14 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary/45 text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground"
+            className="absolute right-4 top-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
             aria-label="Close subagent activity"
           >
-            <X className="h-4 w-4" />
+            <X size={18} />
           </button>
 
           <div className="relative flex flex-col border-b border-border/70 px-4 py-4 pr-16 sm:px-5 sm:pr-20">
@@ -668,7 +676,9 @@ export function SubagentContainer({
             </div>
           </div>
 
-          <ScrollArea className="min-h-0 flex-1 px-3 sm:px-4">
+          <div
+            className="max-h-[calc(88vh-8.5rem)] overflow-y-auto px-3 sm:px-4 [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]"
+          >
             <div className="space-y-3 px-1 py-4">
               {subagents.length ? (
                 subagents.map((subagent, index) => (
@@ -686,7 +696,7 @@ export function SubagentContainer({
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </motion.div>
       </motion.div>
     ) : null}

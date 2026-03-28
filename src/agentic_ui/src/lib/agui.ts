@@ -18,6 +18,9 @@ const MetadataSchema = z.record(z.string(), z.any());
 
 export type AGUIEvent = z.infer<typeof EventSchemas>;
 
+// ------------------------------------------------------
+// HITL Interrupt Types
+// ------------------------------------------------------
 export const HITLInterruptPayloadSchema = z.object({
   thread_id: z.string(),
   interrupt: z.any(),
@@ -25,6 +28,15 @@ export const HITLInterruptPayloadSchema = z.object({
 });
 export type HITLInterruptEvent = z.infer<typeof HITLInterruptPayloadSchema>;
 
+export const HITLInterruptCustomEventSchema = CustomEventSchema.extend({
+  name: z.literal(HITL_INTERRUPT_EVENT_TYPE),
+  value: HITLInterruptPayloadSchema,
+});
+
+
+// ------------------------------------------------------
+// Plan Snapshot Types
+// ------------------------------------------------------
 export const PlanItemStatusSchema = z.enum(["pending", "in_progress", "completed"]);
 export type PlanItemStatus = z.infer<typeof PlanItemStatusSchema>;
 
@@ -42,6 +54,15 @@ export const PlanSnapshotSchema = z.object({
 });
 export type PlanSnapshot = z.infer<typeof PlanSnapshotSchema>;
 
+export const PlanSnapshotCustomEventSchema = CustomEventSchema.extend({
+  name: z.enum(PLAN_SNAPSHOT_EVENT_NAMES),
+  value: PlanSnapshotSchema,
+});
+
+
+// ------------------------------------------------------
+// SubAgent Types
+// ------------------------------------------------------
 export const TaskSubAgentPayloadSchema = z.object({
   task_id: z.string(),
   subagent_type: z.string(),
@@ -56,22 +77,6 @@ export const SubAgentPayloadSchema = z.object({
 });
 export type SubAgentEvent = z.infer<typeof SubAgentPayloadSchema>;
 
-export const BeforeAgentPayloadSchema = z.object({
-  message: z.string(),
-  metadata: MetadataSchema.optional(),
-});
-export type BeforeAgentEvent = z.infer<typeof BeforeAgentPayloadSchema>;
-
-export const PlanSnapshotCustomEventSchema = CustomEventSchema.extend({
-  name: z.enum(PLAN_SNAPSHOT_EVENT_NAMES),
-  value: PlanSnapshotSchema,
-});
-
-export const HITLInterruptCustomEventSchema = CustomEventSchema.extend({
-  name: z.literal(HITL_INTERRUPT_EVENT_TYPE),
-  value: HITLInterruptPayloadSchema,
-});
-
 export const TaskSubAgentCustomEventSchema = CustomEventSchema.extend({
   name: z.literal(TASK_SUBAGENT_EVENT_TYPE),
   value: TaskSubAgentPayloadSchema,
@@ -82,11 +87,26 @@ export const SubAgentCustomEventSchema = CustomEventSchema.extend({
   value: SubAgentPayloadSchema,
 });
 
+
+// ------------------------------------------------------
+// Before Agent Types
+// ------------------------------------------------------
+export const BeforeAgentPayloadSchema = z.object({
+  message: z.string(),
+  metadata: MetadataSchema.optional(),
+});
+export type BeforeAgentEvent = z.infer<typeof BeforeAgentPayloadSchema>;
+
 export const BeforeAgentCustomEventSchema = CustomEventSchema.extend({
   name: z.literal(BEFORE_AGENT_EVENT_TYPE),
   value: BeforeAgentPayloadSchema,
 });
 
+
+
+// ------------------------------------------------------
+// Union of all custom events for AGUI
+// ------------------------------------------------------
 export const CustomAguiEventSchema = z.union([
   PlanSnapshotCustomEventSchema,
   HITLInterruptCustomEventSchema,
