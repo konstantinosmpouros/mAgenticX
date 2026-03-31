@@ -34,6 +34,12 @@ export type AuthResponse = {
     vaultUserId?: string;
 };
 
+export type AuthApiError = Error & {
+    status?: number;
+    retryAfterSeconds?: number;
+    detail?: string;
+};
+
 
 
 // ------------------------------------------------------

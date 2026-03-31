@@ -1,5 +1,5 @@
 import type { ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
-import { authenticate, getAgents, getConversations, getTools, getUserPreferences } from '@/lib/api';
+import { authenticate, getAgents, getConversations, getTools, getUserPreferences, logoutSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
 import { clearUISnapshot } from '@/lib/uiStateStorage';
@@ -49,7 +49,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
 
   const handleLogin = async () => {
     try {
-      const response = await authenticate({ username: (loginUsername || "").trim(), password: (loginPassword || "").trim() });
+      const response = await authenticate({ username: (loginUsername || "").trim(), password: loginPassword || "" });
 
       if (response.authenticated && response.user && response.user.id) {
         const user = response.user;
@@ -122,10 +122,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
     if (existing?.userId) {
       onClearUISnapshot?.(existing.userId);
     }
-    void fetch("/api/logout", {
-      method: "POST",
-      credentials: "include",
-    }).catch((error) => {
+    void logoutSession().catch((error) => {
       console.warn("Failed to notify server about logout:", error);
     });
   };

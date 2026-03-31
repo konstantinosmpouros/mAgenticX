@@ -13,6 +13,7 @@ from database.schemas import (
     MessageUpdate,
     UpdateConversationResponse,
 )
+from vault_auth.session_auth import require_csrf_protection
 from utils import (
     _preview,
     init_message,
@@ -36,6 +37,7 @@ async def addMessageToConversation(
     payload: MessageIn,
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateConversationResponse:
     """
@@ -89,6 +91,7 @@ async def updateMessageInConversation(
     payload: MessageUpdate,
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateConversationResponse:
     """
@@ -149,6 +152,7 @@ async def likeMessage(
     message_id: str,
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ):
     # Load message within the validated conversation, including attachments for UI consistency
@@ -184,6 +188,7 @@ async def dislikeMessage(
     message_id: str,
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = (

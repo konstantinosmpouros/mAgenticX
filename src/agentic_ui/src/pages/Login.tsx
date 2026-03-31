@@ -1,13 +1,15 @@
-import { FormEvent, memo, useEffect, useState } from "react";
+import { FormEvent, memo, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { VscEye, VscEyeClosed } from "react-icons/vsc";
 import Galaxy from "@/components/ui/react_bits/bg_galaxy";
-import { authenticate } from "@/lib/api";
-import { isSessionValid, loadSession, saveSession } from "@/lib/authStorage";
+import { authenticate, restoreSession } from "@/lib/api";
+import { loadSession, saveSession, updateSession } from "@/lib/authStorage";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import type { AuthApiError } from "@/lib/types";
 
 const GalaxyBg = memo(
     () => (
@@ -37,20 +39,98 @@ export default function Login() {
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [authStatus, setAuthStatus] = useState<"idle" | "rate_limited">("idle");
+    const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
+    const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+    const isRateLimited = rateLimitedUntil !== null && cooldownSeconds > 0;
 
     useEffect(() => {
-        const session = loadSession();
-        if (isSessionValid(session) && session?.userId) {
-            navigate("/", { replace: true });
+        if (rateLimitedUntil === null) {
+            setCooldownSeconds(0);
+            return;
         }
+
+        const tick = () => {
+            const remainingMs = rateLimitedUntil - Date.now();
+            if (remainingMs <= 0) {
+                setRateLimitedUntil(null);
+                setCooldownSeconds(0);
+                setAuthStatus((current) => (current === "rate_limited" ? "idle" : current));
+                return;
+            }
+            setCooldownSeconds(Math.max(1, Math.ceil(remainingMs / 1000)));
+        };
+
+        tick();
+        const timer = window.setInterval(tick, 1000);
+        return () => {
+            window.clearInterval(timer);
+        };
+    }, [rateLimitedUntil]);
+
+    const statusConfig = useMemo(() => {
+        if (authStatus === "rate_limited" && isRateLimited) {
+            return {
+                text: "Sign-in paused",
+                tooltip: "Too many sign-in attempts. Please wait for the timer to end.",
+                tone: "warning" as const,
+                chip: `${cooldownSeconds}s`,
+            };
+        }
+
+        return null;
+    }, [authStatus, cooldownSeconds, isRateLimited]);
+
+    const statusToneClasses =
+        statusConfig?.tone === "warning" ? "text-amber-100/85" : "text-white/72";
+
+    const dotToneClasses =
+        statusConfig?.tone === "warning"
+            ? "bg-amber-300/85 shadow-[0_0_18px_rgba(252,211,77,0.45)]"
+            : "bg-white/70";
+
+    const chipToneClasses =
+        statusConfig?.tone === "warning"
+            ? "border-amber-200/30 bg-amber-200/10 text-amber-50/90"
+            : "border-rose-200/25 bg-rose-200/10 text-rose-50/85";
+
+    useEffect(() => {
+        let cancelled = false;
+        const run = async () => {
+            try {
+                const existing = loadSession();
+                const restored = await restoreSession();
+                if (!cancelled && restored?.authenticated && restored.user && restored.user.id) {
+                    const ttlSeconds =
+                        typeof restored.tokenTtl === "number" && restored.tokenTtl > 0 ? restored.tokenTtl : 3600;
+                    saveSession(restored.user, ttlSeconds * 1000);
+                    if (existing) {
+                        updateSession({
+                            lastConversationId: existing.lastConversationId,
+                            selectedAgent: existing.selectedAgent,
+                            isPrivateMode: existing.isPrivateMode,
+                        });
+                    }
+                    navigate("/", { replace: true });
+                }
+            } catch (error) {
+                console.error("Session restore failed:", error);
+            }
+        };
+        void run();
+        return () => {
+            cancelled = true;
+        };
     }, [navigate]);
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (submitting) return;
+        if (submitting || isRateLimited) return;
         setSubmitting(true);
         try {
-            const response = await authenticate({ username: username.trim(), password: password.trim() });
+            setAuthStatus("idle");
+            const response = await authenticate({ username: username.trim(), password });
             if (response.authenticated && response.user && response.user.id) {
                 const ttlSeconds =
                     typeof response.tokenTtl === "number" && response.tokenTtl > 0 ? response.tokenTtl : 3600;
@@ -68,6 +148,32 @@ export default function Login() {
             }
         } catch (error) {
             console.error("Authentication error:", error);
+            const authError = error as AuthApiError;
+            if (authError?.status === 429) {
+                const retryAfterSeconds =
+                    typeof authError.retryAfterSeconds === "number" && authError.retryAfterSeconds > 0
+                        ? authError.retryAfterSeconds
+                        : 60;
+                setRateLimitedUntil(Date.now() + retryAfterSeconds * 1000);
+                setCooldownSeconds(retryAfterSeconds);
+                setAuthStatus("rate_limited");
+                toast({
+                    title: "Too many requests",
+                    description: "Too many sign-in attempts. Please wait a moment and try again.",
+                    variant: "destructive",
+                    duration: 2600,
+                });
+                return;
+            }
+            if (authError?.status === 401) {
+                toast({
+                    title: "Authentication failed",
+                    description: "Please check your credentials and try again.",
+                    variant: "destructive",
+                    duration: 2200,
+                });
+                return;
+            }
             toast({
                 title: "Login failed",
                 description: "Unable to connect to authentication service",
@@ -99,6 +205,41 @@ export default function Login() {
                             <p className="text-sm text-white/72">
                                 Enter your workspace credentials to continue.
                             </p>
+                            {statusConfig && (
+                                <div className="relative mx-auto w-fit">
+                                    <button
+                                        type="button"
+                                        aria-label={statusConfig.tooltip}
+                                        className="group/status relative block"
+                                    >
+                                        <span
+                                            className={cn(
+                                                "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-medium tracking-[0.16em] uppercase transition-colors",
+                                                statusToneClasses,
+                                            )}
+                                        >
+                                            <span className={cn("h-1.5 w-1.5 rounded-full", dotToneClasses)} aria-hidden="true" />
+                                            <span>{statusConfig.text}</span>
+                                            {statusConfig.chip ? (
+                                                <span
+                                                    className={cn(
+                                                        "rounded-full border px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal",
+                                                        chipToneClasses,
+                                                    )}
+                                                >
+                                                    {statusConfig.chip}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                    </button>
+                                    <div
+                                        className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-60 -translate-x-1/2 rounded-xl border border-white/10 bg-[#111827]/88 px-3 py-2 text-xs leading-relaxed text-white/82 opacity-0 shadow-[0_14px_34px_-18px_rgba(5,8,18,0.85)] backdrop-blur-xl transition-all duration-200 group-hover/status:translate-y-0 group-hover/status:opacity-100 group-focus-visible/status:translate-y-0 group-focus-visible/status:opacity-100"
+                                        role="tooltip"
+                                    >
+                                        {statusConfig.tooltip}
+                                    </div>
+                                </div>
+                            )}
                             <div className="mx-auto h-px w-14 rounded-full bg-gradient-to-r from-transparent via-[#dba9ff]/70 to-transparent" />
                         </div>
                     </header>
@@ -149,10 +290,12 @@ export default function Login() {
 
                             <Button
                                 type="submit"
-                                disabled={submitting}
+                                disabled={submitting || isRateLimited}
                                 className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-white via-white/94 to-white/88 text-slate-900 shadow-[0_18px_40px_-28px_rgba(187, 31, 102,0.9)] transition hover:from-white/95 hover:via-white/92 hover:to-white/85 focus-visible:ring-[#dfb7ff]/35 disabled:cursor-not-allowed disabled:opacity-80"
                             >
-                                <span className="text-sm font-semibold tracking-wide">{submitting ? "Signing In..." : "Sign In"}</span>
+                                <span className="text-sm font-semibold tracking-wide">
+                                    {submitting ? "Signing In..." : isRateLimited ? `Try again in ${cooldownSeconds}s` : "Sign In"}
+                                </span>
                             </Button>
                         </form>
 

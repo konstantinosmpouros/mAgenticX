@@ -98,6 +98,7 @@ export function ChatInterface() {
   // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
   const [userId, setUserId] = useState<string | null>(initialUserId);
+  const [authResolved, setAuthResolved] = useState(false);
   
   // Boolean variables for navigation
   const [isClearing, setIsClearing] = useState(false);
@@ -338,7 +339,7 @@ export function ChatInterface() {
   // Hydrate last conversation effect
   const hydratedConversationRef = useRef(false);
   useEffect(() => {
-    if (!isLoggedIn || !userId) {
+    if (!authResolved || !isLoggedIn || !userId) {
       hydratedConversationRef.current = false;
       return;
     }
@@ -376,6 +377,7 @@ export function ChatInterface() {
     setIsLoggedIn,
     setUserId,
     setUserProfile,
+    setAuthResolved,
     setAgents,
     setAvailableTools,
     setUserPreferences,
@@ -599,10 +601,10 @@ export function ChatInterface() {
 
   // Redirect to login when session is missing/cleared
   useEffect(() => {
-    if (!isLoggedIn || !userId) {
+    if (authResolved && (!isLoggedIn || !userId)) {
       navigate("/login", { replace: true });
     }
-  }, [isLoggedIn, userId, navigate]);
+  }, [authResolved, isLoggedIn, userId, navigate]);
   
   // Feedback handlers
   const { handleLike, handleDislike } = createFeedbackHandlers({
@@ -637,6 +639,13 @@ export function ChatInterface() {
   const showPlanningCard = isSendingMessage && Boolean(activePlan);
   
   // Main Chat Interface
+  if (!authResolved) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-background">
+        <Loader />
+      </div>
+    );
+  }
   if (!isLoggedIn || !userId) {
     return null;
   }

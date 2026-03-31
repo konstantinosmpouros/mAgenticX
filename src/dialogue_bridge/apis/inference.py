@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import traceback
 
 import httpx
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import ConversationTable, UserTable, MessageTable, get_db
 from database.schemas import InferenceStreamPayload
+from vault_auth.session_auth import require_csrf_protection
 from utils import (
     build_agent_stream_url,
     get_agent_by_id,
@@ -24,6 +26,8 @@ router = APIRouter(
     tags=["Inference"],
 )
 
+logger = logging.getLogger(__name__)
+
 
 @router.post("/inference/stream")
 async def startInferenceStream(
@@ -31,6 +35,7 @@ async def startInferenceStream(
     conversation_id: str,
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId_full),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
     payload: InferenceStreamPayload | None = None,
 ):
@@ -143,14 +148,19 @@ async def startInferenceStream(
         except asyncio.CancelledError:
             return # Request context cancelled (e.g., UI aborted). Exit quietly.
         except httpx.HTTPError as e:
-            # Emit a RUN_ERROR frame so UI can gracefully handle upstream failures
-            tb = traceback.format_exc()
-            message = (
-                tb.strip()
-                if tb and tb.strip() and tb.strip() != "NoneType: None"
-                else f"{type(e).__name__}: {e}"
+            # Keep the detailed traceback in server logs, but return a generic
+            # upstream error to the authenticated UI client.
+            logger.error(
+                "Inference upstream error for user_id=%s conversation_id=%s agent_url=%s\n%s",
+                user_id,
+                conversation_id,
+                agent_url,
+                traceback.format_exc(),
             )
-            err = {"type": "RUN_ERROR", "message": message}
+            err = {
+                "type": "RUN_ERROR",
+                "message": "The inference service failed while processing the request.",
+            }
             data = "data: " + json.dumps(err, ensure_ascii=False) + "\n\n"
             yield data.encode("utf-8")
     

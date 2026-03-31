@@ -13,6 +13,7 @@ from database.schemas import (
     CreateConversationResponse,
     ConversationTitleUpdate,
 )
+from vault_auth.session_auth import require_csrf_protection
 from utils import (
     _preview,
     generate_conversation_title,
@@ -37,6 +38,7 @@ async def createConversation(
     user_id: str,
     payload: ConversationIn,
     current_user: UserTable = Depends(validate_userId),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db)
 ) -> ConversationDetail:
     """
@@ -135,6 +137,7 @@ async def deleteConversation(
     conversation_id: str,
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a conversation entirely (cascades to messages & attachments rows)."""
@@ -155,6 +158,7 @@ async def renameConversation(
     payload: ConversationTitleUpdate,
     current_user: UserTable = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ):
     """Rename an existing conversation and return the refreshed summary."""

@@ -17,18 +17,8 @@ class VaultAuthError(Exception):
 class VaultAuthResult:
     vault_user_id: str
     username: str
-    jwt: str
-    ttl: Optional[int]
-    client_token: str
     client_token_ttl: Optional[int]
     client_token_renewable: bool
-
-
-@dataclass(slots=True)
-class VaultRefreshResult:
-    jwt: str
-    ttl: Optional[int]
-    client_token_ttl: Optional[int]
 
 
 @dataclass(slots=True)
@@ -56,7 +46,7 @@ class VaultSettings:
 
 
 class VaultAuthenticator:
-    """Small client that logs into Vault and exchanges the login token for an OIDC JWT."""
+    """Small client that authenticates users against Vault userpass."""
 
     def __init__(self, settings: VaultSettings | None = None):
         self._settings = settings or VaultSettings.from_env()
@@ -87,26 +77,11 @@ class VaultAuthenticator:
             if not client_token or not vault_user_id:
                 raise VaultAuthError("Vault login response missing client_token or entity_id.")
 
-            jwt_token, ttl_value = await self._exchange_oidc_token(client, client_token)
-
             return VaultAuthResult(
                 vault_user_id=vault_user_id,
                 username=username,
-                jwt=jwt_token,
-                ttl=ttl_value,
-                client_token=client_token,
                 client_token_ttl=self._normalize_ttl(lease_duration),
                 client_token_renewable=renewable_flag,
-            )
-
-    async def refresh_session(self, client_token: str) -> VaultRefreshResult:
-        async with httpx.AsyncClient(timeout=self._settings.timeout) as client:
-            client_token_ttl = await self._renew_client_token(client, client_token)
-            jwt_token, ttl_value = await self._exchange_oidc_token(client, client_token)
-            return VaultRefreshResult(
-                jwt=jwt_token,
-                ttl=ttl_value,
-                client_token_ttl=client_token_ttl,
             )
 
     def _build_headers(self, token: Optional[str] = None) -> dict[str, str]:
@@ -129,51 +104,6 @@ class VaultAuthenticator:
             return response.json()
         except ValueError as exc:
             raise VaultAuthError(f"{context} returned non-JSON response: {response.text}") from exc
-
-    async def _renew_client_token(self, client: httpx.AsyncClient, client_token: str) -> Optional[int]:
-        renew_url = f"{self._settings.addr}/v1/auth/token/renew-self"
-        try:
-            renew_resp = await client.post(renew_url, headers=self._build_headers(token=client_token))
-        except httpx.HTTPError as exc:
-            raise VaultAuthError(f"Failed to renew Vault client token: {exc}") from exc
-
-        if renew_resp.status_code >= 400:
-            # Treat non-renewable tokens as still usable for OIDC exchange; surface fatal errors only.
-            if renew_resp.status_code in (400, 403):
-                return None
-            message = (self._parse_json(renew_resp, "Vault token renew").get("errors") or [renew_resp.text])[0]
-            raise VaultAuthError(f"Vault token renew failed: {message}", status_code=renew_resp.status_code)
-
-        renew_data = self._parse_json(renew_resp, "Vault token renew")
-        auth_block = renew_data.get("auth") or {}
-        return self._normalize_ttl(auth_block.get("lease_duration"))
-
-    async def _exchange_oidc_token(
-        self,
-        client: httpx.AsyncClient,
-        client_token: str,
-    ) -> tuple[str, Optional[int]]:
-        oidc_headers = self._build_headers(token=client_token)
-        oidc_url = self._build_oidc_url()
-
-        try:
-            oidc_resp = await client.get(oidc_url, headers=oidc_headers)
-        except httpx.HTTPError as exc:
-            raise VaultAuthError(f"Failed to retrieve Vault OIDC token: {exc}") from exc
-
-        oidc_data = self._parse_json(oidc_resp, "Vault OIDC token request")
-        if oidc_resp.status_code >= 400:
-            message = (oidc_data.get("errors") or [oidc_resp.text])[0]
-            raise VaultAuthError(f"Vault token exchange failed: {message}", status_code=oidc_resp.status_code)
-
-        data = oidc_data.get("data") or {}
-        jwt_token = data.get("token")
-        ttl = data.get("ttl")
-
-        if not jwt_token:
-            raise VaultAuthError("Vault OIDC response missing token.")
-
-        return jwt_token, self._normalize_ttl(ttl)
 
     @staticmethod
     def _normalize_ttl(raw_value: Optional[object]) -> Optional[int]:

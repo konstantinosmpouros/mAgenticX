@@ -1,66 +1,71 @@
-import os
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db, upsert_user_from_vault, UserTable
+from database import UserTable, get_db, upsert_user_from_vault
 from database.schemas import AuthRequest, AuthResponse
-from vault_auth.auth import (
-    SESSION_COOKIE_DOMAIN,
-    SESSION_COOKIE_NAME,
-    SESSION_COOKIE_SAMESITE,
-    SESSION_COOKIE_SECURE,
-    SESSION_REFRESH_COOKIE_NAME,
-    TokenVerificationError,
-    get_jwt_verifier,
-    require_refresh_token,
+from utils.rate_limit import AUTHENTICATE_LIMIT, limiter
+from vault_auth.session_auth import (
+    build_auth_response,
+    clear_session_cookies,
+    create_user_session,
+    issue_session_cookies,
+    require_csrf_protection,
+    require_current_user,
+    require_refresh_session,
+    require_session,
+    rotate_user_session,
+    revoke_session,
+    get_access_session,
+    get_refresh_session,
+    SessionAuthenticationError,
+    access_ttl_for_session,
 )
 from vault_auth.client import VaultAuthError, VaultAuthenticator
 
 
 router = APIRouter(tags=["Auth"])
 
-_vault_authenticator: VaultAuthenticator | None = None
-_DEFAULT_TOKEN_TTL = int(os.getenv("SESSION_COOKIE_DEFAULT_TTL", "3600"))
-
-
-def get_vault_authenticator() -> VaultAuthenticator:
-    global _vault_authenticator
-    if _vault_authenticator is None:
-        _vault_authenticator = VaultAuthenticator()
-    return _vault_authenticator
+try:
+    _vault_authenticator = VaultAuthenticator()
+except RuntimeError:
+    _vault_authenticator = None
 
 
 @router.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+@limiter.limit(AUTHENTICATE_LIMIT)
 async def authenticate(
     creds: AuthRequest,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     """
-    Authenticate the user against Vault, ensure they exist locally, and return a JWT.
+    Authenticate the user against Vault and issue bridge-managed session cookies.
     """
-    try:
-        authenticator = get_vault_authenticator()
-    except RuntimeError as exc:
+    if _vault_authenticator is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+            detail="Authentication service is not configured.",
+        )
 
     try:
-        auth_result = await authenticator.authenticate(creds.username, creds.password)
+        auth_result = await _vault_authenticator.authenticate(creds.username, creds.password)
     except VaultAuthError as exc:
-        status_code = exc.status_code or status.HTTP_500_INTERNAL_SERVER_ERROR
-        if status_code < 400 or status_code >= 500:
-            status_code = status.HTTP_502_BAD_GATEWAY
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        if exc.status_code in (400, 401, 403):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Authentication service is unavailable.",
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
+            detail="Authentication failed.",
         ) from exc
 
     login_time = datetime.utcnow()
@@ -72,171 +77,61 @@ async def authenticate(
         metadata={"last_login_at": login_time},
     )
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User access has been disabled.",
+        )
+
     user.last_login_at = login_time
     await db.commit()
     await db.refresh(user)
 
-    max_age = auth_result.ttl if auth_result.ttl and auth_result.ttl > 0 else _DEFAULT_TOKEN_TTL
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=auth_result.jwt,
-        max_age=max_age,
-        expires=max_age,
-        httponly=True,
-        secure=SESSION_COOKIE_SECURE,
-        samesite=SESSION_COOKIE_SAMESITE,
-        domain=SESSION_COOKIE_DOMAIN,
-        path="/",
-    )
-
-    refresh_max_age = (
-        auth_result.client_token_ttl
-        if auth_result.client_token_ttl and auth_result.client_token_ttl > 0
-        else max_age
-    )
-    response.set_cookie(
-        key=SESSION_REFRESH_COOKIE_NAME,
-        value=auth_result.client_token,
-        max_age=refresh_max_age,
-        expires=refresh_max_age,
-        httponly=True,
-        secure=SESSION_COOKIE_SECURE,
-        samesite=SESSION_COOKIE_SAMESITE,
-        domain=SESSION_COOKIE_DOMAIN,
-        path="/",
-    )
-
-    return AuthResponse(
-        authenticated=True,
-        user_id=user.id,
-        user=user,
-        tokenTtl=auth_result.ttl,
-        vaultUserId=auth_result.vault_user_id,
-    )
+    issued = await create_user_session(db, user, request)
+    issue_session_cookies(response, issued)
+    return AuthResponse(**build_auth_response(user, issued.access_ttl))
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response) -> Response:
-    response.delete_cookie(
-        key=SESSION_COOKIE_NAME,
-        path="/",
-        domain=SESSION_COOKIE_DOMAIN,
-    )
-    response.delete_cookie(
-        key=SESSION_REFRESH_COOKIE_NAME,
-        path="/",
-        domain=SESSION_COOKIE_DOMAIN,
-    )
-    response.status_code = status.HTTP_204_NO_CONTENT
-    return response
+@router.get("/session/me", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+async def session_me(
+    current_user: UserTable = Depends(require_current_user),
+    session=Depends(require_session),
+) -> AuthResponse:
+    return AuthResponse(**build_auth_response(current_user, access_ttl_for_session(session)))
 
 
 @router.post("/session/refresh", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 async def refresh_session(
+    request: Request,
     response: Response,
-    refresh_token: str = Depends(require_refresh_token),
+    _: None = Depends(require_csrf_protection),
+    session=Depends(require_refresh_session),
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
+    issued = await rotate_user_session(db, session, request)
+    issue_session_cookies(response, issued)
+    return AuthResponse(**build_auth_response(session.user, issued.access_ttl))
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    request: Request,
+    response: Response,
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    session = None
     try:
-        authenticator = get_vault_authenticator()
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+        session = await get_access_session(request, db)
+    except SessionAuthenticationError:
+        try:
+            session = await get_refresh_session(request, db)
+        except SessionAuthenticationError:
+            session = None
 
-    try:
-        refresh_result = await authenticator.refresh_session(refresh_token)
-    except VaultAuthError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+    if session is not None:
+        await revoke_session(session, db)
 
-    try:
-        verifier = get_jwt_verifier()
-        claims = await verifier.verify(refresh_result.jwt)
-    except (RuntimeError, TokenVerificationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(exc),
-        ) from exc
-
-    identifiers: set[str] = set()
-    for key in ("sub", "entity_id", "user_id", "id"):
-        value = claims.get(key)
-        if value is not None:
-            identifiers.add(str(value))
-    metadata = claims.get("metadata")
-    if isinstance(metadata, dict):
-        for key in ("vault_user_id", "user_id", "id"):
-            value = metadata.get(key)
-            if value is not None:
-                identifiers.add(str(value))
-
-    if not identifiers:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token missing subject identifiers.",
-        )
-
-    stmt = select(UserTable).where(
-        or_(
-            UserTable.id.in_(identifiers),
-            UserTable.vault_user_id.in_(identifiers),
-        )
-    )
-    result = await db.execute(stmt)
-    user: UserTable | None = result.scalars().first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not recognized for refreshed token.",
-        )
-
-    max_age = (
-        refresh_result.ttl
-        if refresh_result.ttl and refresh_result.ttl > 0
-        else _DEFAULT_TOKEN_TTL
-    )
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=refresh_result.jwt,
-        max_age=max_age,
-        expires=max_age,
-        httponly=True,
-        secure=SESSION_COOKIE_SECURE,
-        samesite=SESSION_COOKIE_SAMESITE,
-        domain=SESSION_COOKIE_DOMAIN,
-        path="/",
-    )
-
-    refresh_max_age = (
-        refresh_result.client_token_ttl
-        if refresh_result.client_token_ttl and refresh_result.client_token_ttl > 0
-        else max_age
-    )
-    response.set_cookie(
-        key=SESSION_REFRESH_COOKIE_NAME,
-        value=refresh_token,
-        max_age=refresh_max_age,
-        expires=refresh_max_age,
-        httponly=True,
-        secure=SESSION_COOKIE_SECURE,
-        samesite=SESSION_COOKIE_SAMESITE,
-        domain=SESSION_COOKIE_DOMAIN,
-        path="/",
-    )
-
-    return AuthResponse(
-        authenticated=True,
-        user_id=user.id,
-        user=user,
-        tokenTtl=refresh_result.ttl,
-        vaultUserId=user.vault_user_id,
-    )
+    clear_session_cookies(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response

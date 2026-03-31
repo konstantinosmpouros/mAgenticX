@@ -67,10 +67,6 @@ export function loadSession(): StoredSession | null {
     if (!raw) return null;
     const data = JSON.parse(raw) as PersistedSession;
     if (!data?.userId || !data?.expiresAt) return null;
-    if (Date.now() > data.expiresAt) {
-      clearSession();
-      return null;
-    }
     return {
       userId: data.userId,
       expiresAt: data.expiresAt,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import type { Agent, ConversationDetail, ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
-import { loadSession, isSessionValid, clearSession, updateSession, saveSession } from '@/lib/authStorage';
+import { loadSession, clearSession, updateSession, saveSession } from '@/lib/authStorage';
 import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
 import {
   getAgents,
@@ -9,6 +9,7 @@ import {
   getTools,
   refreshSession,
   getUserPreferences,
+  restoreSession,
 } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 
@@ -17,10 +18,9 @@ import { sortByUpdatedAtDesc } from '@/lib/utils';
 // ---------------------------------------------------------------------------
 export function useInitialSessionState() {
   const initialSession = typeof window !== 'undefined' ? loadSession() : null;
-  const hasValidSession = isSessionValid(initialSession);
-  const initialUserId = hasValidSession ? initialSession!.userId : null;
-  const initialUserProfile = hasValidSession ? initialSession!.user ?? null : null;
-  const initialLoggedIn = Boolean(initialUserId);
+  const initialUserId = initialSession?.userId ?? null;
+  const initialUserProfile = initialSession?.user ?? null;
+  const initialLoggedIn = false;
   return { initialUserId, initialUserProfile, initialLoggedIn };
 }
 
@@ -32,6 +32,7 @@ export function useAuthRehydrateEffect(params: {
   setIsLoggedIn: (v: boolean) => void;
   setUserId: (v: string | null) => void;
   setUserProfile: (v: UserProfile | null) => void;
+  setAuthResolved?: (v: boolean) => void;
   setAgents: (v: any) => void;
   setAvailableTools?: (v: ToolMetadata[]) => void;
   setUserPreferences?: (v: UserPreferences | null) => void;
@@ -50,6 +51,7 @@ export function useAuthRehydrateEffect(params: {
     setIsLoggedIn,
     setUserId,
     setUserProfile,
+    setAuthResolved,
     setAgents,
     setAvailableTools,
     setUserPreferences,
@@ -68,135 +70,169 @@ export function useAuthRehydrateEffect(params: {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    const session = loadSession();
-    if (!isSessionValid(session) || !session?.userId || !session.user) {
-      clearSession();
-      setIsLoggedIn(false);
-      setUserId(null);
-      setUserProfile(null);
-      setConversationsLoading?.(false);
-      setLoadingConversation?.(false);
-      return;
-    }
-
-    setIsLoggedIn(true);
-    setUserId(session.userId);
-    const sessionUser = session.user ?? null;
-    setUserProfile(sessionUser);
 
     const run = async () => {
-      setConversationsLoading?.(true);
-
-      let hasSnapshotAgents = false;
-      let needsTools = Boolean(setAvailableTools);
-      let needsPreferences = Boolean(setUserPreferences);
-      let needsConversations = true;
-      let conversationId: string | null =
-        typeof session.lastConversationId === 'string' ? session.lastConversationId : null;
-
       try {
-        const snapshot = await loadUISnapshot(session.userId);
-        if (snapshot) {
-          if (typeof snapshot.selectedAgent === 'string' && setSelectedAgent) {
-            setSelectedAgent(snapshot.selectedAgent);
-          }
-          if (typeof snapshot.isPrivateMode === 'boolean' && setIsPrivateMode) {
-            setIsPrivateMode(snapshot.isPrivateMode);
-          }
-          if (typeof snapshot.sidebarOpen === 'boolean' && setSidebarOpen) {
-            setSidebarOpen(snapshot.sidebarOpen);
-          }
-          if (snapshot.activeProfileTab && setActiveProfileTab) setActiveProfileTab(snapshot.activeProfileTab);
+        const existing = loadSession();
+        const restored = await restoreSession();
 
-          // Always set snapshot values to state; decide API fallbacks via needs* flags below.
-          setAgents(snapshot.agents ?? []);
-          hasSnapshotAgents = Boolean(snapshot.agents && snapshot.agents.length > 0);
-          if (setAvailableTools) setAvailableTools(snapshot.availableTools ?? []);
-          if (setUserPreferences) setUserPreferences(snapshot.userPreferences ?? null);
-          setConversations(snapshot.conversations ?? []);
-
-          needsTools =
-            Boolean(setAvailableTools) && !(snapshot.availableTools && snapshot.availableTools.length > 0);
-          needsPreferences = Boolean(setUserPreferences) && !snapshot.userPreferences;
-          needsConversations = !(snapshot.conversations && snapshot.conversations.length > 0);
-
-          if (typeof snapshot.lastConversationId === 'string') {
-            conversationId = snapshot.lastConversationId;
-            updateSession({ lastConversationId: snapshot.lastConversationId });
-          }
+        if (!restored?.authenticated || !restored.user || !restored.user.id) {
+          clearSession();
+          setIsLoggedIn(false);
+          setUserId(null);
+          setUserProfile(null);
+          setAgents([]);
+          setAvailableTools?.([]);
+          setUserPreferences?.(null);
+          setConversations([]);
+          setConversationsLoading?.(false);
+          setLoadingConversation?.(false);
+          setAuthResolved?.(true);
+          return;
         }
-      } catch (error) {
-        console.error('Failed to hydrate from snapshot', error);
-      }
 
-      const requests: Promise<unknown>[] = [];
+        const ttlMs =
+          typeof restored.tokenTtl === 'number' && restored.tokenTtl > 0
+            ? restored.tokenTtl * 1000
+            : 60 * 60 * 1000;
+        saveSession(restored.user, ttlMs);
+        if (existing) {
+          updateSession({
+            lastConversationId: existing.lastConversationId,
+            selectedAgent: existing.selectedAgent,
+            isPrivateMode: existing.isPrivateMode,
+          });
+        }
 
-      requests.push(
-        getAgents()
-          .then((agents) => setAgents(agents))
-          .catch((error) => {
-            console.error('Failed to fetch agents on rehydrate', error);
-            if (!hasSnapshotAgents) {
-              setAgents([]);
-            }
-          }),
-      );
+        setIsLoggedIn(true);
+        setUserId(restored.user.id);
+        setUserProfile(restored.user);
+        setConversationsLoading?.(true);
 
-      if (needsTools) {
-        requests.push(
-          getTools()
-            .then((tools) => setAvailableTools?.(tools))
-            .catch((error) => {
-              console.error('Failed to fetch tools on rehydrate', error);
-              setAvailableTools?.([]);
-            }),
-        );
-      }
+        let hasSnapshotAgents = false;
+        let needsTools = Boolean(setAvailableTools);
+        let needsPreferences = Boolean(setUserPreferences);
+        let needsConversations = true;
+        let conversationId: string | null =
+          typeof existing?.lastConversationId === 'string' ? existing.lastConversationId : null;
 
-      if (needsPreferences) {
-        requests.push(
-          getUserPreferences(session.userId)
-            .then((prefs) => setUserPreferences?.(prefs))
-            .catch((error) => {
-              console.error('Failed to fetch preferences on rehydrate', error);
-              setUserPreferences?.(null);
-            }),
-        );
-      }
-
-      if (needsConversations) {
-        requests.push(
-          getConversations(session.userId)
-            .then((conversationList) => setConversations(sortByUpdatedAtDesc(conversationList)))
-            .catch((error) => {
-              console.error('Failed to fetch conversations on rehydrate', error);
-              setConversations([]);
-            }),
-        );
-      }
-
-      if (requests.length > 0) {
-        await Promise.all(requests);
-      }
-
-      if (conversationId && setCurrentConversation) {
-        setLoadingConversation?.(true);
         try {
-          const detail = await getConversationDetail(session.userId, conversationId);
-          setSelectedAgent?.(detail.agent?.id || '');
-          setIsPrivateMode?.(Boolean(detail.isPrivate));
-          setCurrentConversation(detail);
+          const snapshot = await loadUISnapshot(restored.user.id);
+          if (snapshot) {
+            if (typeof snapshot.selectedAgent === 'string' && setSelectedAgent) {
+              setSelectedAgent(snapshot.selectedAgent);
+            }
+            if (typeof snapshot.isPrivateMode === 'boolean' && setIsPrivateMode) {
+              setIsPrivateMode(snapshot.isPrivateMode);
+            }
+            if (typeof snapshot.sidebarOpen === 'boolean' && setSidebarOpen) {
+              setSidebarOpen(snapshot.sidebarOpen);
+            }
+            if (snapshot.activeProfileTab && setActiveProfileTab) setActiveProfileTab(snapshot.activeProfileTab);
+
+            setAgents(snapshot.agents ?? []);
+            hasSnapshotAgents = Boolean(snapshot.agents && snapshot.agents.length > 0);
+            if (setAvailableTools) setAvailableTools(snapshot.availableTools ?? []);
+            if (setUserPreferences) setUserPreferences(snapshot.userPreferences ?? null);
+            setConversations(snapshot.conversations ?? []);
+
+            needsTools =
+              Boolean(setAvailableTools) && !(snapshot.availableTools && snapshot.availableTools.length > 0);
+            needsPreferences = Boolean(setUserPreferences) && !snapshot.userPreferences;
+            needsConversations = !(snapshot.conversations && snapshot.conversations.length > 0);
+
+            if (typeof snapshot.lastConversationId === 'string') {
+              conversationId = snapshot.lastConversationId;
+              updateSession({ lastConversationId: snapshot.lastConversationId });
+            }
+          }
         } catch (error) {
-          console.error('Failed to hydrate conversation detail', error);
-        } finally {
+          console.error('Failed to hydrate from snapshot', error);
+        }
+
+        const requests: Promise<unknown>[] = [];
+
+        requests.push(
+          getAgents()
+            .then((agents) => setAgents(agents))
+            .catch((error) => {
+              console.error('Failed to fetch agents on rehydrate', error);
+              if (!hasSnapshotAgents) {
+                setAgents([]);
+              }
+            }),
+        );
+
+        if (needsTools) {
+          requests.push(
+            getTools()
+              .then((tools) => setAvailableTools?.(tools))
+              .catch((error) => {
+                console.error('Failed to fetch tools on rehydrate', error);
+                setAvailableTools?.([]);
+              }),
+          );
+        }
+
+        if (needsPreferences) {
+          requests.push(
+            getUserPreferences(restored.user.id)
+              .then((prefs) => setUserPreferences?.(prefs))
+              .catch((error) => {
+                console.error('Failed to fetch preferences on rehydrate', error);
+                setUserPreferences?.(null);
+              }),
+          );
+        }
+
+        if (needsConversations) {
+          requests.push(
+            getConversations(restored.user.id)
+              .then((conversationList) => setConversations(sortByUpdatedAtDesc(conversationList)))
+              .catch((error) => {
+                console.error('Failed to fetch conversations on rehydrate', error);
+                setConversations([]);
+              }),
+          );
+        }
+
+        if (requests.length > 0) {
+          await Promise.all(requests);
+        }
+
+        if (conversationId && setCurrentConversation) {
+          setLoadingConversation?.(true);
+          try {
+            const detail = await getConversationDetail(restored.user.id, conversationId);
+            setSelectedAgent?.(detail.agent?.id || '');
+            setIsPrivateMode?.(Boolean(detail.isPrivate));
+            setCurrentConversation(detail);
+          } catch (error) {
+            console.error('Failed to hydrate conversation detail', error);
+          } finally {
+            setLoadingConversation?.(false);
+          }
+        } else {
           setLoadingConversation?.(false);
         }
-      } else {
-        setLoadingConversation?.(false);
-      }
 
-      persistUIState?.();
-      setConversationsLoading?.(false);
+        persistUIState?.();
+        setConversationsLoading?.(false);
+        setAuthResolved?.(true);
+      } catch (error) {
+        console.error('Failed to restore session', error);
+        clearSession();
+        setIsLoggedIn(false);
+        setUserId(null);
+        setUserProfile(null);
+        setAgents([]);
+        setAvailableTools?.([]);
+        setUserPreferences?.(null);
+        setConversations([]);
+        setConversationsLoading?.(false);
+        setLoadingConversation?.(false);
+        setAuthResolved?.(true);
+      }
     };
 
     void run();

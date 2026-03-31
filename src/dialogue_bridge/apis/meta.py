@@ -11,7 +11,7 @@ from utils import (
     sync_agents_with_service,
     validate_userId,
 )
-from vault_auth.auth import require_token_claims
+from vault_auth.session_auth import require_csrf_protection, require_current_user
 from sqlalchemy import select
 
 
@@ -27,6 +27,7 @@ async def transcribe_dictation(
     user_id: str,
     audio: UploadFile = File(...),
     _: UserTable = Depends(validate_userId),
+    __: None = Depends(require_csrf_protection),
 ) -> DictationResponse:
     """
     Accept an audio upload from the UI, proxy it to the agents STT endpoint,
@@ -91,7 +92,7 @@ async def transcribe_dictation(
 
 
 @router.get("/agents", response_model=list[AgentPublic], status_code=status.HTTP_200_OK)
-async def get_available_agents(_: dict = Depends(require_token_claims), db: AsyncSession = Depends(get_db)):
+async def get_available_agents(_: UserTable = Depends(require_current_user), db: AsyncSession = Depends(get_db)):
     """
     Return the active agents, preferring the in-memory cache and refreshing
     from the agents service only when the cache is empty.
@@ -105,7 +106,7 @@ async def get_available_agents(_: dict = Depends(require_token_claims), db: Asyn
 
 
 @router.get("/tools", response_model=list[ToolManifest], status_code=status.HTTP_200_OK)
-async def get_available_tools(_: dict = Depends(require_token_claims),):
+async def get_available_tools(_: UserTable = Depends(require_current_user),):
     """Return the tools exposed by the MCP server via the agents service."""
     payload = await fetch_tools_from_agents_service()
     return [ToolManifest.model_validate(item) for item in payload]
@@ -114,7 +115,7 @@ async def get_available_tools(_: dict = Depends(require_token_claims),):
 @router.get("/users/{user_id}/preferences", response_model=UserPreferences, status_code=status.HTTP_200_OK)
 async def get_user_preferences(
     user_id: str,
-    _: dict = Depends(require_token_claims),
+    _: UserTable = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -138,6 +139,7 @@ async def upsert_user_preferences(
     user_id: str,
     payload: UserPreferences,
     _: UserTable = Depends(validate_userId),
+    __: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ):
     """

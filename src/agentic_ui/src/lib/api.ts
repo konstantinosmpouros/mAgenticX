@@ -1,6 +1,7 @@
 import type {
   Agent,
   AgentPublic,
+  AuthApiError,
   AuthRequest,
   AuthResponse,
   ConversationDetail,
@@ -17,10 +18,9 @@ import type {
 } from "./types";
 import type { AGUIEvent } from "@/lib/agui";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
-import { parseSSE } from "./utils";
+import { normalizeAuthResponse, parseSSE, withSessionRequest } from "./utils";
 import {
   mapIcon,
-  withCredentials,
   emitUnauthorized,
   transformConversationDetail,
   transformConversationSummary,
@@ -28,9 +28,10 @@ import {
 } from "./consts";
 
 
+
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
-  const res = await fetch("/api/authenticate", withCredentials({
+  const res = await fetch("/api/authenticate", withSessionRequest({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -39,51 +40,96 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
     body: JSON.stringify(credentials),
   }));
   if (!res.ok) {
-    throw new Error(`Failed to authenticate: ${res.status}`);
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+
+    const retryAfterHeader = res.headers.get("Retry-After");
+    const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : undefined;
+
+    const error = new Error(detail || `Failed to authenticate: ${res.status}`) as AuthApiError;
+    error.status = res.status;
+    error.detail = detail;
+    if (Number.isFinite(retryAfterSeconds)) {
+      error.retryAfterSeconds = retryAfterSeconds;
+    }
+    throw error;
   }
   const data = await res.json();
-  if (data && typeof data === "object" && data.user) {
-    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = data.user as any;
-    data.user = {
-      ...rest,
-      createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
-      updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
-      lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
-    };
-  }
-  return data as AuthResponse;
+  return normalizeAuthResponse(data);
 }
 
 
-// Refresh user session
-export async function refreshSession(): Promise<AuthResponse> {
-  const res = await fetch("/api/session/refresh", withCredentials({
-    method: "POST",
+// Get current session info (used for session restoration and auth checks)
+export async function getSessionMe(): Promise<AuthResponse> {
+  const res = await fetch("/api/session/me", withSessionRequest({
     headers: {
       "Accept": "application/json",
     },
   }));
   if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
+    const error = new Error(`Failed to fetch current session: ${res.status}`);
+    (error as any).status = res.status;
+    throw error;
+  }
+  const data = await res.json();
+  return normalizeAuthResponse(data);
+}
+
+
+// Attempt to restore user session, first by checking current session, then by trying to refresh if unauthorized
+export async function restoreSession(): Promise<AuthResponse | null> {
+  try {
+    return await getSessionMe();
+  } catch (error) {
+    if ((error as any)?.status !== 401) {
+      throw error;
+    }
+  }
+
+  try {
+    return await refreshSession(false);
+  } catch {
+    return null;
+  }
+}
+
+
+// Refresh user session
+export async function refreshSession(emitOnUnauthorized: boolean = true): Promise<AuthResponse> {
+  const res = await fetch("/api/session/refresh", withSessionRequest({
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+    },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401 && emitOnUnauthorized) emitUnauthorized();
     throw new Error(`Failed to refresh session: ${res.status}`);
   }
   const data = await res.json();
-  if (data && typeof data === "object" && data.user) {
-    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = data.user as any;
-    data.user = {
-      ...rest,
-      createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
-      updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
-      lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
-    };
+  return normalizeAuthResponse(data);
+}
+
+
+// Logout user session
+export async function logoutSession(): Promise<void> {
+  const res = await fetch("/api/logout", withSessionRequest({
+    method: "POST",
+  }, { csrf: true }));
+  if (!res.ok && res.status !== 401) {
+    throw new Error(`Failed to logout: ${res.status}`);
   }
-  return data as AuthResponse;
 }
 
 
 // Fetch agents from backend via nginx proxy
 export async function getAgents(): Promise<Agent[]> {
-  const res = await fetch("/api/agents", withCredentials({
+  const res = await fetch("/api/agents", withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -104,7 +150,7 @@ export async function getAgents(): Promise<Agent[]> {
 
 // Fetch available tools from backend
 export async function getTools(): Promise<ToolMetadata[]> {
-  const res = await fetch("/api/tools", withCredentials({
+  const res = await fetch("/api/tools", withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -126,7 +172,7 @@ export async function getTools(): Promise<ToolMetadata[]> {
 
 // Fetch user preferences
 export async function getUserPreferences(userId: string) {
-  const res = await fetch(`/api/users/${userId}/preferences`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/preferences`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -146,11 +192,11 @@ export async function getUserPreferences(userId: string) {
 
 // Update user preferences
 export async function updateUserPreferences(userId: string, prefs: any) {
-  const res = await fetch(`/api/users/${userId}/preferences`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/preferences`, withSessionRequest({
     method: "PUT",
     headers: { "Accept": "application/json", "Content-Type": "application/json" },
     body: JSON.stringify(prefs),
-  }));
+  }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to update user preferences: ${res.status}`);
@@ -171,7 +217,7 @@ export async function getConversations(
   page: number = 1,
   size: number = 10,
 ): Promise<ConversationSummary[]> {
-  const res = await fetch(`/api/users/${userId}/conversations?page=${page}&size=${size}`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations?page=${page}&size=${size}`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -190,7 +236,7 @@ export async function getConversationDetail(
   userId: string,
   conversationId: string,
 ): Promise<ConversationDetail> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -204,10 +250,10 @@ export async function getConversationDetail(
 
 // Delete a conversation
 export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withSessionRequest({
     method: "DELETE",
     headers: { "Accept": "application/json" },
-  }));
+  }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to delete conversation: ${res.status}`);
@@ -221,14 +267,14 @@ export async function renameConversation(
   conversationId: string,
   title: string,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/title`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/title`, withSessionRequest({
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
     body: JSON.stringify({ title }),
-  }));
+  }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to rename conversation: ${res.status}`);
@@ -243,14 +289,14 @@ export async function createConversation(
   userId: string,
   payload: ConversationIn,
 ): Promise<CreateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations`, withSessionRequest({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
     body: JSON.stringify(payload),
-  }));
+  }, { csrf: true }));
 
   if (!res.ok) {
     if (res.status === 401) {
@@ -282,14 +328,14 @@ export async function addMessageToConversation(
   conversationId: string,
   payload: MessageIn,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages`, withSessionRequest({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
     body: JSON.stringify(payload),
-  }));
+  }, { csrf: true }));
 
   if (!res.ok) {
     if (res.status === 401) {
@@ -331,14 +377,14 @@ export async function updateMessageInConversation(
   messageId: string,
   payload: MessageUpdate,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}`, withSessionRequest({
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
     body: JSON.stringify(payload),
-  }));
+  }, { csrf: true }));
 
   if (!res.ok) {
     if (res.status === 401) {
@@ -362,10 +408,10 @@ export async function likeMessage(
   conversationId: string,
   messageId: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/like`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/like`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "application/json" },
-  }));
+  }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to like message: ${res.status}`);
@@ -381,10 +427,10 @@ export async function dislikeMessage(
   conversationId: string,
   messageId: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/dislike`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/dislike`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "application/json" },
-  }));
+  }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to dislike message: ${res.status}`);
@@ -403,7 +449,7 @@ export async function downloadAttachment({
   filename,
 }: DownloadAttachmentParams): Promise<void> {
   const url = `/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/${blobId}`;
-  const res = await fetch(url, withCredentials());
+  const res = await fetch(url, withSessionRequest());
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to download attachment: ${res.status}`);
@@ -432,11 +478,11 @@ export async function transcribeDictation(
   const safeName = filename || "dictation.webm";
   formData.append("audio", audio, safeName);
 
-  const res = await fetch(`/api/users/${userId}/dictation/transcribe`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/dictation/transcribe`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "application/json" },
     body: formData,
-  }));
+  }, { csrf: true }));
 
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
@@ -484,12 +530,12 @@ export async function streamInference(
   const headers: Record<string, string> = { "Accept": "text/event-stream" };
   if (Object.keys(payload).length > 0) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, withCredentials({
+  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, withSessionRequest({
     method: "POST",
     headers,
     signal,
     body: Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined,
-  }));
+  }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     let detail: string | undefined;

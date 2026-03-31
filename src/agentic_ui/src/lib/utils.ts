@@ -1,10 +1,53 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { AGUIEvent } from "@/lib/agui";
-import type { AttachmentIn, FileAttachment } from "./types";
+import type { AttachmentIn, AuthResponse, FileAttachment } from "./types";
+import { withCredentials } from "./consts";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+const CSRF_COOKIE_CANDIDATES = ["__Host-mx_csrf", "mx_csrf"];
+
+export function getCookieValue(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const escaped = name.replace(/[-[\]/{}()*+?.\\^$|]/g, "\\$&");
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+export function getCsrfToken(): string | null {
+  for (const name of CSRF_COOKIE_CANDIDATES) {
+    const value = getCookieValue(name);
+    if (value) return value;
+  }
+  return null;
+}
+
+export function withSessionRequest(init: RequestInit = {}, opts: { csrf?: boolean } = {}): RequestInit {
+  const headers = new Headers(init.headers ?? {});
+  if (opts.csrf) {
+    const csrf = getCsrfToken();
+    if (csrf) headers.set("X-CSRF-Token", csrf);
+  }
+  return withCredentials({
+    ...init,
+    headers,
+  });
+}
+
+export function normalizeAuthResponse(data: any): AuthResponse {
+  if (data && typeof data === "object" && data.user) {
+    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = data.user as any;
+    data.user = {
+      ...rest,
+      createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
+      updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
+      lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
+    };
+  }
+  return data as AuthResponse;
 }
 
 // Convert File to base64 AttachmentIn format
