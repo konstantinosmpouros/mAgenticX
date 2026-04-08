@@ -13,7 +13,6 @@ export type AuthRequest = {
 export type UserProfile = {
     id: string;
     username: string;
-    vaultUserId: string;
     email?: string;
     displayName?: string;
     fullName?: string;
@@ -31,7 +30,6 @@ export type AuthResponse = {
     user_id?: string;
     user?: UserProfile;
     tokenTtl?: number;
-    vaultUserId?: string;
 };
 
 export type AuthApiError = Error & {

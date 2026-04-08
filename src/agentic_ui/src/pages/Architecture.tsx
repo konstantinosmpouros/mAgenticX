@@ -176,7 +176,7 @@ const dataModel = [
   },
   {
     name: "users & preferences",
-    fields: "users: username, vault_user_id, profile fields, last_login_at. preferences: tools JSON, prefers_agentic_chat.",
+    fields: "users: username, local user id, profile fields, last_login_at. preferences: tools JSON, prefers_agentic_chat.",
     notes: "User row is created/updated on Vault login; preferences is 1:1 via user_id.",
   },
   {

@@ -99,7 +99,6 @@ def build_auth_response(user: UserTable, ttl_seconds: int) -> dict:
         "user_id": user.id,
         "user": user,
         "tokenTtl": ttl_seconds,
-        "vaultUserId": user.vault_user_id,
     }
 
 
