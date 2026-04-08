@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database import SessionTable, UserTable, get_db
+from utils.proxy import resolve_client_ip
 
 
 def _as_bool(value: str | None, default: bool) -> bool:
@@ -79,12 +80,7 @@ def _hash_optional_metadata(value: str | None) -> str | None:
 def _extract_client_ip(request: Request | None) -> str | None:
     if request is None:
         return None
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip() or None
-    if request.client is not None and request.client.host:
-        return request.client.host.strip() or None
-    return None
+    return resolve_client_ip(request)
 
 
 def _cookie_domain() -> str | None:

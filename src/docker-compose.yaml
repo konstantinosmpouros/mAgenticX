@@ -84,6 +84,7 @@ services:
       - VAULT_USERPASS_MOUNT=userpass
       - VAULT_OIDC_ROLE=agenticx
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
+      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on:
       - agents
       - chat_postgres
@@ -105,6 +106,7 @@ services:
     environment:
       - BFF_HOST=dialogue_bridge
       - BFF_PORT=8002
+      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on: 
       - dialogue_bridge
     ports:

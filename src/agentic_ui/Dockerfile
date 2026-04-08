@@ -18,6 +18,7 @@ FROM nginx:1.25-alpine
 
 ENV BFF_HOST=dialogue_bridge
 ENV BFF_PORT=8002
+ENV TRUSTED_PROXY_SECRET=
 
 # Copy the compiled static files from previous stage
 COPY --from=builder /app/dist /usr/share/nginx/html

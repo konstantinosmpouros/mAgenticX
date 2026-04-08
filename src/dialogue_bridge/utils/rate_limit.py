@@ -3,6 +3,8 @@ import os
 from fastapi import Request
 from slowapi import Limiter
 
+from utils.proxy import resolve_client_ip
+
 
 AUTH_RATE_LIMIT_MAX_ATTEMPTS = int(os.getenv("AUTH_RATE_LIMIT_MAX_ATTEMPTS", "4"))
 AUTH_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60"))
@@ -34,23 +36,8 @@ AUTHENTICATE_LIMIT = _build_limit_string(
 
 
 def client_identifier(request: Request) -> str:
-    # Prefer the real client IP passed by Cloudflare / reverse proxies.
-    cf_connecting_ip = request.headers.get("cf-connecting-ip")
-    if cf_connecting_ip:
-        return cf_connecting_ip.strip()
-
-    x_forwarded_for = request.headers.get("x-forwarded-for")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-
-    x_real_ip = request.headers.get("x-real-ip")
-    if x_real_ip:
-        return x_real_ip.strip()
-
-    if request.client and request.client.host:
-        return request.client.host.strip()
-
-    return "unknown"
+    resolved_ip = resolve_client_ip(request)
+    return resolved_ip or "unknown"
 
 
 limiter = Limiter(key_func=client_identifier)
