@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from database.schemas import MessageIn, TitleOut
+from observability import log_event
 from utils.agents import AGENTS_SERVICE_URL
 
 logger = logging.getLogger(__name__)
@@ -65,19 +66,41 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
             response = await client.post(_TITLE_ENDPOINT, json=payload)
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        logger.warning("Title generation request failed: %s", exc)
+        log_event(
+            logger,
+            logging.WARNING,
+            "title_generation_failed",
+            "Conversation title generation failed",
+            error=str(exc),
+        )
         return None
 
     try:
         data = response.json()
         result = TitleOut.model_validate(data)
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Invalid title generation response: %s", exc)
+        log_event(
+            logger,
+            logging.WARNING,
+            "title_generation_invalid_payload",
+            "Conversation title generation returned an invalid payload",
+            error=str(exc),
+        )
         return None
 
-    title = (result.title or "").strip()
+    raw_title = (result.title or "").strip()
+    title = raw_title
     if not title:
         return None
+    truncated = len(title) > _TITLE_MAX_LEN
     if len(title) > _TITLE_MAX_LEN:
         title = title[:_TITLE_MAX_LEN].rstrip()
+    log_event(
+        logger,
+        logging.INFO,
+        "title_generation_succeeded",
+        "Conversation title generated successfully",
+        title_length=len(title),
+        truncated=truncated,
+    )
     return title or None

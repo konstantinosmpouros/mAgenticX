@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 import httpx
 from fastapi import HTTPException
+from observability import log_event
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,9 +62,21 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
             if isinstance(data, list):
                 manifests = data
             else:
-                logger.warning("Unexpected agents payload shape: %s", type(data).__name__)
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "agents_sync_invalid_payload",
+                    "Agents service returned an unexpected discovery payload",
+                    payload_type=type(data).__name__,
+                )
     except httpx.HTTPError as exc:
-        logger.warning("Failed to refresh agents from service: %s", exc)
+        log_event(
+            logger,
+            logging.WARNING,
+            "agents_sync_failed",
+            "Failed to refresh agents from service",
+            error=str(exc),
+        )
         raise HTTPException(503, "Agents service unreachable for agent synchronization.") from exc
 
     manifest_ids: set[str] = set()
@@ -72,7 +85,13 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
         agent_id = manifest.get("id")
         slug = manifest.get("slug") or manifest.get("name") or agent_id
         if not agent_id or not slug:
-            logger.warning("Skipping agent manifest missing id/slug: %s", manifest)
+            log_event(
+                logger,
+                logging.WARNING,
+                "agents_sync_skipped_manifest",
+                "Skipping agent manifest missing id or slug",
+                manifest=manifest,
+            )
             continue
         manifest_ids.add(str(agent_id))
 
@@ -117,6 +136,14 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     await db.commit()
     refreshed = await _load_active_agents(db)
     prime_agent_cache(refreshed)
+    log_event(
+        logger,
+        logging.INFO,
+        "agents_sync_completed",
+        "Agent synchronization completed",
+        active_agents=len(refreshed),
+        discovered_manifests=len(manifest_ids),
+    )
     return refreshed
 
 
@@ -138,7 +165,13 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
             resp = await client.get(_AGENTS_TOOLS_ENDPOINT)
             resp.raise_for_status()
     except httpx.HTTPError as exc:
-        logger.warning("Failed to fetch tools from agents service: %s", exc)
+        log_event(
+            logger,
+            logging.WARNING,
+            "tools_fetch_failed",
+            "Failed to fetch tools from agents service",
+            error=str(exc),
+        )
         raise HTTPException(
             status_code=503,
             detail="Agents service unreachable for tools synchronization.",
@@ -148,6 +181,13 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
         # Parse JSON payload before validating schema shape.
         payload = resp.json()
     except ValueError as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            "tools_fetch_invalid_payload",
+            "Agents service returned invalid JSON for tools",
+            error=str(exc),
+        )
         raise HTTPException(
             status_code=502,
             detail="Agents service returned invalid JSON for tools.",
@@ -155,6 +195,13 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
 
     if not isinstance(payload, list):
         # The UI expects a list of manifests; enforce here for better errors.
+        log_event(
+            logger,
+            logging.WARNING,
+            "tools_fetch_invalid_payload",
+            "Agents service returned an unexpected tools payload",
+            payload_type=type(payload).__name__,
+        )
         raise HTTPException(
             status_code=502,
             detail="Agents service returned an unexpected tools payload.",

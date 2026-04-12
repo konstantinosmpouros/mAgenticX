@@ -1,6 +1,8 @@
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from observability import log_event, set_context
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +25,7 @@ from utils import (
 
 
 router = APIRouter(prefix="/users/{user_id}", tags=["Messages"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -44,6 +47,7 @@ async def addMessageToConversation(
     Append a new message (optionally with attachments) to an existing conversation.
     Returns only the appended message (with attachments) and the updated sidebar summary.
     """
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=None)
     parent_message_id = payload.parentMessageId
     
     try:
@@ -57,7 +61,20 @@ async def addMessageToConversation(
             current_conv.last_message_at = datetime.now()
         
         await db.commit()
-    except Exception:
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "message_create_failed",
+            "Message creation failed",
+            user_id=user_id,
+            conversation_id=conversation_id,
+            parent_message_id=parent_message_id,
+            sender=payload.sender,
+            message_type=payload.type,
+            attachment_count=len(payload.attachments),
+            error=str(exc),
+        )
         await db.rollback()
         raise
     
@@ -74,6 +91,19 @@ async def addMessageToConversation(
     message_out = MessageOut.model_validate(msg_row)
     await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
     summary = ConversationSummary.model_validate(current_conv)
+    log_event(
+        logger,
+        logging.INFO,
+        "message_created",
+        "Message added to conversation",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        message_id=msg.id,
+        sender=payload.sender,
+        message_type=payload.type,
+        attachment_count=len(payload.attachments),
+        parent_message_id=parent_message_id,
+    )
     
     return UpdateConversationResponse(message=message_out, summary=summary)
 
@@ -97,6 +127,7 @@ async def updateMessageInConversation(
     """
     Update an existing message (used to finalise AI placeholders after streaming).
     """
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
     stmt = (
         select(MessageTable)
         .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
@@ -129,7 +160,18 @@ async def updateMessageInConversation(
         current_conv.last_message_at = datetime.now()
 
         await db.commit()
-    except Exception:
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "message_update_failed",
+            "AI message update failed",
+            user_id=user_id,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            raw_event_count=len(payload.rawEvents),
+            error=str(exc),
+        )
         await db.rollback()
         raise
 
@@ -137,6 +179,16 @@ async def updateMessageInConversation(
     await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
     summary = ConversationSummary.model_validate(current_conv)
     message_out = MessageOut.model_validate(msg)
+    log_event(
+        logger,
+        logging.INFO,
+        "message_updated",
+        "AI message updated",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        is_error=bool(msg.is_error),
+    )
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
@@ -156,6 +208,7 @@ async def likeMessage(
     db: AsyncSession = Depends(get_db),
 ):
     # Load message within the validated conversation, including attachments for UI consistency
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
     stmt = (
         select(MessageTable)
         .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
@@ -173,6 +226,16 @@ async def likeMessage(
     msg.liked = None if msg.liked is True else True
     await db.commit()
     await db.refresh(msg)
+    log_event(
+        logger,
+        logging.INFO,
+        "message_like_toggled",
+        "Message like toggled",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        liked=msg.liked,
+    )
     return MessageOut.model_validate(msg)
 
 
@@ -191,6 +254,7 @@ async def dislikeMessage(
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ):
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
     stmt = (
         select(MessageTable)
         .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
@@ -208,6 +272,16 @@ async def dislikeMessage(
     msg.liked = None if msg.liked is False else False
     await db.commit()
     await db.refresh(msg)
+    log_event(
+        logger,
+        logging.INFO,
+        "message_dislike_toggled",
+        "Message dislike toggled",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        liked=msg.liked,
+    )
     return MessageOut.model_validate(msg)
 
 

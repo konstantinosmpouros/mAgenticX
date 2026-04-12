@@ -12,7 +12,6 @@
 - Continue reducing the upload DoS surface: revisit final body limits, keep attachment size/count enforcement aligned between UI and backend, and avoid large base64 payload persistence where possible.
 - Add explicit size limits for persisted payload fields such as `rawEvents`, `plan`, `subagents`, and large message content blobs.
 - Harden containers: run as non-root where possible, drop capabilities, enable `no-new-privileges`, use read-only filesystems where possible, and add CPU / memory limits.
-- Tighten Docker network boundaries and reduce shared external network exposure to the minimum required services.
 - Add browser security headers at the host/app proxy layer: CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, and `X-Content-Type-Options`.
 - Improve secret handling beyond broad env-var usage where practical, e.g. Docker secrets, mounted secret files, or Vault-issued short-lived credentials.
 
@@ -32,7 +31,6 @@
 - Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-
 
 ## Code Quality
 

@@ -1,6 +1,8 @@
 from datetime import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from observability import log_event, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import UserTable, get_db, upsert_user_from_vault
@@ -26,6 +28,7 @@ from vault_auth.client import VaultAuthError, VaultAuthenticator
 
 
 router = APIRouter(tags=["Auth"])
+logger = logging.getLogger(__name__)
 
 try:
     _vault_authenticator = VaultAuthenticator()
@@ -53,6 +56,15 @@ async def authenticate(
     try:
         auth_result = await _vault_authenticator.authenticate(creds.username, creds.password)
     except VaultAuthError as exc:
+        level = logging.WARNING if exc.status_code in (400, 401, 403) else logging.ERROR
+        log_event(
+            logger,
+            level,
+            "auth_login_failed",
+            "Vault authentication failed",
+            username=creds.username,
+            vault_status_code=exc.status_code,
+        )
         if exc.status_code in (400, 401, 403):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,6 +90,14 @@ async def authenticate(
     )
 
     if not user.is_active:
+        log_event(
+            logger,
+            logging.WARNING,
+            "auth_user_inactive",
+            "Authenticated user is inactive",
+            user_id=user.id,
+            username=user.username,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User access has been disabled.",
@@ -88,7 +108,16 @@ async def authenticate(
     await db.refresh(user)
 
     issued = await create_user_session(db, user, request)
+    set_context(user_id=user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
+    log_event(
+        logger,
+        logging.INFO,
+        "auth_login_succeeded",
+        "User authenticated successfully",
+        user_id=user.id,
+        username=user.username,
+    )
     return AuthResponse(**build_auth_response(user, issued.access_ttl))
 
 
@@ -97,6 +126,8 @@ async def session_me(
     current_user: UserTable = Depends(require_current_user),
     session=Depends(require_session),
 ) -> AuthResponse:
+    set_context(user_id=current_user.id, session_id=session.id)
+    log_event(logger, logging.INFO, "session_me", "Session introspection succeeded", user_id=current_user.id)
     return AuthResponse(**build_auth_response(current_user, access_ttl_for_session(session)))
 
 
@@ -109,7 +140,9 @@ async def refresh_session(
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
     issued = await rotate_user_session(db, session, request)
+    set_context(user_id=session.user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
+    log_event(logger, logging.INFO, "session_refresh_succeeded", "Session refresh succeeded", user_id=session.user.id)
     return AuthResponse(**build_auth_response(session.user, issued.access_ttl))
 
 
@@ -130,8 +163,10 @@ async def logout(
             session = None
 
     if session is not None:
+        set_context(user_id=session.user_id, session_id=session.id)
         await revoke_session(session, db)
 
     clear_session_cookies(response)
+    log_event(logger, logging.INFO, "logout_completed", "Logout completed", had_session=session is not None)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

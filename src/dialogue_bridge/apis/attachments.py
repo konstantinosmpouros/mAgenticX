@@ -1,9 +1,11 @@
 import base64
+import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
+from observability import log_event, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +15,7 @@ from utils import validate_userId
 
 
 router = APIRouter(prefix="/users/{user_id}", tags=["Attachments"])
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -32,6 +35,7 @@ async def downloadBlobStream(
     Stream a blob (non-image) with HTTP byte-range support.
     Returns 200 for full content or 206 for partial content.
     """
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
     # Validate ownership and get data + metadata
     result = await db.execute(
         select(
@@ -85,8 +89,9 @@ async def downloadBlobStream(
 
     CHUNK = 1024 * 512
 
-    async def stream_range(start: int, end: int):
+    async def stream_range(start: int, end: int, *, partial: bool):
         pos = start
+        served_bytes = 0
         while pos <= end:
             length = min(CHUNK, end - pos + 1)
             chunk_result = await db.execute(
@@ -101,15 +106,37 @@ async def downloadBlobStream(
                 chunk = chunk.tobytes()
             else:
                 chunk = bytes(chunk)
+            served_bytes += len(chunk)
             yield chunk
             pos += len(chunk)
+        log_event(
+            logger,
+            logging.INFO,
+            "blob_download_completed",
+            "Blob download completed",
+            blob_id=blob_id,
+            file_name=file_name,
+            file_size=file_size,
+            partial=partial,
+            served_bytes=served_bytes,
+        )
     
     # Full content
     if not range_header:
         headers = dict(base_headers)
         headers["Content-Length"] = str(file_size)
+        log_event(
+            logger,
+            logging.INFO,
+            "blob_download_started",
+            "Blob download started",
+            blob_id=blob_id,
+            file_name=file_name,
+            file_size=file_size,
+            partial=False,
+        )
         return StreamingResponse(
-            stream_range(0, file_size - 1),
+            stream_range(0, file_size - 1, partial=False),
             media_type=mime or "application/octet-stream",
             headers=headers,
         )
@@ -125,6 +152,15 @@ async def downloadBlobStream(
         if start > end or start < 0 or end >= file_size:
             raise ValueError
     except Exception:
+        log_event(
+            logger,
+            logging.WARNING,
+            "blob_range_invalid",
+            "Blob download received an invalid range header",
+            blob_id=blob_id,
+            range_header=range_header,
+            file_size=file_size,
+        )
         return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
     
     content_length = end - start + 1
@@ -133,9 +169,21 @@ async def downloadBlobStream(
         "Content-Range": f"bytes {start}-{end}/{file_size}",
         "Content-Length": str(content_length),
     })
+    log_event(
+        logger,
+        logging.INFO,
+        "blob_download_started",
+        "Blob partial download started",
+        blob_id=blob_id,
+        file_name=file_name,
+        file_size=file_size,
+        partial=True,
+        range_start=start,
+        range_end=end,
+    )
     
     return StreamingResponse(
-        stream_range(start, end),
+        stream_range(start, end, partial=True),
         status_code=206,
         media_type=mime or "application/octet-stream",
         headers=headers,
@@ -158,6 +206,7 @@ async def getImagesBatch(
     Returns base64-encoded image data with metadata. The `total` field on the
     Page response can be used instead of a separate summary endpoint.
     """
+    set_context(user_id=user_id)
     stmt = (
         select(
             BlobTable.id.label("blob_id"),
@@ -190,6 +239,17 @@ async def getImagesBatch(
         )
         for r in pages.items
     ]
+    log_event(
+        logger,
+        logging.INFO,
+        "images_page_fetched",
+        "Fetched paginated user images",
+        user_id=user_id,
+        item_count=len(items),
+        total=pages.total,
+        page=pages.page,
+        size=pages.size,
+    )
 
     return Page[ImageOut](items=items, total=pages.total, page=pages.page, size=pages.size)
 

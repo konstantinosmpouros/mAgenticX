@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from observability import set_context
 from database import (
     AttachmentTable,
     ConversationTable,
@@ -18,6 +19,7 @@ async def validate_userId(
     current_user: UserTable = Depends(require_bound_user_id),
 ) -> UserTable:
     """Ensure the caller's authenticated session authorizes access to the requested user."""
+    set_context(user_id=user_id)
     return current_user
 
 
@@ -27,6 +29,7 @@ async def validate_convId(
     db: AsyncSession = Depends(get_db),
 ) -> ConversationTable:
     # Scope the lookup by both conversation and user to enforce ownership.
+    set_context(user_id=user_id, conversation_id=conversation_id)
     q = (
         select(ConversationTable)
         .options(selectinload(ConversationTable.agent))
@@ -48,6 +51,7 @@ async def validate_convId_full(
     db: AsyncSession = Depends(get_db),
 ) -> ConversationTable:
     # Reuse the ownership filter but eagerly load messages + attachments for downstream use.
+    set_context(user_id=user_id, conversation_id=conversation_id)
     q = (
         select(ConversationTable)
         .options(

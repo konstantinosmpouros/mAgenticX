@@ -1,6 +1,9 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
+from observability import log_event, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -26,6 +29,7 @@ from utils import (
 
 
 router = APIRouter(prefix="/users/{user_id}", tags=["Conversations"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -45,6 +49,7 @@ async def createConversation(
     Create a new conversation for the user and persist the very first message
     (with optional attachments). Returns the full conversation detail.
     """
+    set_context(user_id=user_id)
     # Fetch agent metadata
     agent = await get_agent_by_id(payload.agentId)
     if agent is None:
@@ -55,7 +60,21 @@ async def createConversation(
     # Auto-generate a title when none was provided
     if not resolved_title:
         generated = await generate_conversation_title(payload.firstMessage)
-        resolved_title = generated or _preview(payload.firstMessage.content) or agent.name or "New conversation"
+        if generated:
+            resolved_title = generated
+        else:
+            preview_title = _preview(payload.firstMessage.content)
+            fallback_source = "preview" if preview_title else ("agent_name" if agent.name else "default")
+            resolved_title = preview_title or agent.name or "New conversation"
+            log_event(
+                logger,
+                logging.INFO,
+                "title_generation_fallback_used",
+                "Conversation title fallback was used",
+                user_id=user_id,
+                agent_id=agent.id,
+                fallback_source=fallback_source,
+            )
     
     # Create conversation + first message atomically
     try:
@@ -69,7 +88,20 @@ async def createConversation(
             first_message=payload.firstMessage,
         )
         await db.commit()
-    except Exception:
+    except Exception as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "conversation_create_failed",
+            "Conversation creation failed",
+            user_id=user_id,
+            agent_id=payload.agentId,
+            is_private=payload.isPrivate,
+            attachment_count=len(payload.firstMessage.attachments),
+            sender=payload.firstMessage.sender,
+            message_type=payload.firstMessage.type,
+            error=str(exc),
+        )
         await db.rollback()
         raise
     
@@ -79,6 +111,16 @@ async def createConversation(
     # Build both DTOs from the same ORM instance
     detail = ConversationDetail.model_validate(conv_full)
     summary = ConversationSummary.model_validate(conv_full)
+    log_event(
+        logger,
+        logging.INFO,
+        "conversation_created",
+        "Conversation created",
+        user_id=user_id,
+        conversation_id=conv.id,
+        agent_id=agent.id,
+        is_private=payload.isPrivate,
+    )
     
     return CreateConversationResponse(detail=detail, summary=summary)
 
@@ -98,6 +140,7 @@ async def getConvsSummary(
     Return a paginated conversation summary list for the user.
     Use query params: ?page=1&size=50
     """
+    set_context(user_id=user_id)
     # fetch all full rows statement
     stmt = (
         select(ConversationTable)
@@ -124,6 +167,7 @@ async def getConvDetails(
     current_conv: ConversationTable = Depends(validate_convId_full),
 ):
     """Fetch one conversation (messages included) by user + conversation id."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
     return ConversationDetail.model_validate(current_conv)
 
 
@@ -141,8 +185,10 @@ async def deleteConversation(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a conversation entirely (cascades to messages & attachments rows)."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
     await db.delete(current_conv)
     await db.commit()
+    log_event(logger, logging.INFO, "conversation_deleted", "Conversation deleted", user_id=user_id, conversation_id=conversation_id)
     return
 
 
@@ -162,7 +208,17 @@ async def renameConversation(
     db: AsyncSession = Depends(get_db),
 ):
     """Rename an existing conversation and return the refreshed summary."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
     current_conv.title = payload.title
     await db.commit()
     await db.refresh(current_conv, attribute_names=["title", "updated_at", "last_message_preview", "agent"])
+    log_event(
+        logger,
+        logging.INFO,
+        "conversation_renamed",
+        "Conversation title updated",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        title=payload.title,
+    )
     return ConversationSummary.model_validate(current_conv)
