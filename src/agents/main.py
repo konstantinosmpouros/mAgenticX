@@ -1,3 +1,5 @@
+import logging
+
 # Path setup
 from pathlib import Path
 import os
@@ -36,6 +38,8 @@ from utils import (
 )
 from utils.agents import AGENT_REGISTRY
 
+
+logger = logging.getLogger(__name__)
 
 
 def _make_loop_exception_handler(old_handler=None):
@@ -93,9 +97,10 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
     try:
         audio_bytes = await file.read()
     except Exception as exc:
+        logger.warning("Failed to read dictation upload: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read uploaded audio file: {exc}",
+            detail="Failed to read the uploaded audio file.",
         ) from exc
     
     if not audio_bytes:
@@ -103,6 +108,8 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The uploaded audio file is empty.",
         )
+
+    content_type = (file.content_type or "application/octet-stream").strip().lower()
     
     audio_stream = io.BytesIO(audio_bytes)
     audio_stream.name = file.filename
@@ -113,9 +120,10 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
             file=audio_stream,
         )
     except Exception as exc:
+        logger.warning("OpenAI transcription request failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"OpenAI transcription request failed: {exc}",
+            detail="Transcription provider request failed.",
         ) from exc
     
     text = getattr(transcription, "text", None)
@@ -157,9 +165,10 @@ async def get_available_tools() -> List[ToolManifest]:
     try:
         await list_mcp_tools()
     except MCPToolsClientError as exc:
+        logger.warning("Failed to refresh MCP tool manifests: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
+            detail="Tool catalog is temporarily unavailable.",
         ) from exc
 
     # list_mcp_tools primes the cache; return whatever was stored.
@@ -196,8 +205,11 @@ async def stream_agent(agent_slug: str, req: Request):
     except HTTPException:
         raise
     except Exception as exc:
-        detail = f"Failed to initialise agent '{definition.slug}': {exc}"
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+        logger.warning("Failed to initialise agent '%s': %s", agent_slug, exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to initialise the requested agent.",
+        ) from exc
     
     # Stream agent responses
     async def event_stream():

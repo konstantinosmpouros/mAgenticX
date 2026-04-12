@@ -1,6 +1,6 @@
-export const MAX_SINGLE_FILE_MB = 200;   // mirror backend per-file cap (example)
-export const MAX_TOTAL_FILES_MB = 500;   // mirror backend total cap (example)
-export const PROXY_LIMIT_MB = 600;  // must match nginx client_max_body_size
+export const MAX_SINGLE_FILE_MB = 25;
+export const MAX_TOTAL_FILES_MB = 25;
+export const PROXY_LIMIT_MB = 50;  // must match nginx client_max_body_size
 const B = 1024 * 1024;
 const inflateBase64 = (bytes: number) => Math.ceil(bytes * 4 / 3);
 

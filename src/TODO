@@ -1,13 +1,26 @@
 # TODO
 
-## In Progress
+## Security
 
-- Improve the current agent's architecture & remove the user_input_json cause it produces exception in the api call to openai. Concatenate it with the template of each agent.
+- Remove or heavily constrain the free-form SQL endpoint in `rag_service`; replace raw SQL execution with allowlisted read-only queries or a safe query layer.
+- Add internal service-to-service authentication between `dialogue_bridge`, `agents`, and `rag_service`.
+- Implement TLS between Dialogue Bridge - Vault | Dialogue Bridge - Agents | Dialogue Bridge - Database to ensure secure communication.
+- Add refresh replay / refresh reuse detection to the session refresh flow.
+- Add edge rate limiting at the host Nginx / Cloudflare layer for authentication-sensitive endpoints.
+- Secure the inference process by implementing stronger rate limiting and abuse controls.
+- Secure the agents from prompt injection by implementing input filtering / guardrails before requests reach the agents.
+- Continue reducing the upload DoS surface: revisit final body limits, keep attachment size/count enforcement aligned between UI and backend, and avoid large base64 payload persistence where possible.
+- Add explicit size limits for persisted payload fields such as `rawEvents`, `plan`, `subagents`, and large message content blobs.
+- Harden containers: run as non-root where possible, drop capabilities, enable `no-new-privileges`, use read-only filesystems where possible, and add CPU / memory limits.
+- Tighten Docker network boundaries and reduce shared external network exposure to the minimum required services.
+- Add browser security headers at the host/app proxy layer: CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, and `X-Content-Type-Options`.
+- Improve secret handling beyond broad env-var usage where practical, e.g. Docker secrets, mounted secret files, or Vault-issued short-lived credentials.
 
 ## New Features
 
 - Place some suggestions below the input container and if the user write something then remove them. Make this suggestions configurable from the fronted and personalized per user according to the latest conversations and memory we have from him (must come after the long-term memory). Dont use an llm but use embeddings and similarity search to find the latest topics discussed with the user by using a number of predefined questions/queries.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic, procedural).
+- Voice mode [react element](https://elements.ai-sdk.dev/components/persona).
 
 ## Agents
 
@@ -19,13 +32,7 @@
 - Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-- Voice mode [react element](https://elements.ai-sdk.dev/components/persona).
 
-## Dialogue Bridge
-
-- Create an API to process the files when the user uploads them, and chunk them, not append them in any vector store yet.
-- Create the functionality of doc description and add it to the db as well as a column.
-- For the attachment parsing we can create a collection in the vector store with the conv id and chunk the docs and retrieve them from there and in the message contain also a description of the document.
 
 ## Code Quality
 

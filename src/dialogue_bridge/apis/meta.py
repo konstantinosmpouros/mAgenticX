@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, UploadFile, status, HTTPException
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,7 @@ from sqlalchemy import select
 
 
 router = APIRouter(tags=["Utilities"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -39,9 +42,10 @@ async def transcribe_dictation(
     try:
         audio_bytes = await audio.read()
     except Exception as exc:
+        logger.warning("Failed to read dictation upload for user_id=%s: %s", user_id, exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read uploaded audio file: {exc}",
+            detail="Failed to read the uploaded audio file.",
         ) from exc
 
     if not audio_bytes:
@@ -57,21 +61,24 @@ async def transcribe_dictation(
 
     timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(_AGENTS_STT_ENDPOINT, files=files)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(_AGENTS_STT_ENDPOINT, files=files)
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        detail_snippet = exc.response.text.strip()
-        if len(detail_snippet) > 200:
-            detail_snippet = detail_snippet[:197] + "..."
+        logger.warning(
+            "STT service returned HTTP %s for user_id=%s",
+            exc.response.status_code,
+            user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"STT service error ({exc.response.status_code}): {detail_snippet or 'No response body'}",
+            detail="Speech-to-text service failed to process the audio.",
         ) from exc
     except httpx.RequestError as exc:
+        logger.warning("Failed to reach STT service for user_id=%s: %s", user_id, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to reach STT service: {exc}",
+            detail="Speech-to-text service is unavailable.",
         ) from exc
 
     try:
@@ -85,9 +92,10 @@ async def transcribe_dictation(
     try:
         return DictationResponse.model_validate(payload)
     except Exception as exc:
+        logger.warning("Invalid STT payload for user_id=%s: %s", user_id, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"STT service payload validation failed: {exc}",
+            detail="Speech-to-text service returned an invalid response.",
         ) from exc
 
 

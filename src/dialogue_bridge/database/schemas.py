@@ -6,6 +6,10 @@ from datetime import datetime
 Senders = Literal["user", "ai"]
 Types = Literal["text", "file", "image", "audio", "tool"]
 
+MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024
+MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024
+MAX_ATTACHMENTS_PER_MESSAGE = 10
+
 
 #-------------------------------------------
 # AUTHENTICATE USER DTO
@@ -262,6 +266,41 @@ class AttachmentIn(BaseModel):
     dataB64: str
     size: Optional[int] = None  # if missing, will be computed from decoded bytes
 
+    @field_validator("name", "mime", "dataB64", mode="before")
+    @classmethod
+    def _strip_attachment_fields(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @model_validator(mode="after")
+    def _validate_attachment(self):
+        # Basic presence checks
+        if not self.name:
+            raise ValueError("Attachment name is required.")
+        if not self.mime:
+            raise ValueError(f"Attachment '{self.name}' is missing a MIME type.")
+        if not self.dataB64:
+            raise ValueError(f"Attachment '{self.name}' is missing data.")
+
+        # Validate base64 and decode to get raw bytes for size validation and potential re-encoding (for images).
+        try:
+            raw = base64.b64decode(self.dataB64, validate=True)
+        except Exception as exc:
+            raise ValueError(f"Attachment '{self.name}' is not valid base64.") from exc
+
+        # Validate size constraints
+        raw_size = len(raw)
+        if raw_size <= 0:
+            raise ValueError(f"Attachment '{self.name}' is empty.")
+        if raw_size > MAX_ATTACHMENT_SIZE_BYTES:
+            raise ValueError(f"Attachment '{self.name}' exceeds the {MAX_ATTACHMENT_SIZE_BYTES // (1024 * 1024)} MB limit.")
+        if self.size is not None and self.size != raw_size:
+            raise ValueError(f"Attachment '{self.name}' size metadata does not match payload size.")
+
+        self.size = raw_size
+        return self
+
 class MessageIn(BaseModel):
     """
     Create a message (user/agent) with optional attachments.
@@ -289,6 +328,13 @@ class MessageIn(BaseModel):
             return self
         if not self.content and not self.attachments:
             raise ValueError("Either 'content' or at least one attachment is required.")
+        if len(self.attachments) > MAX_ATTACHMENTS_PER_MESSAGE:
+            raise ValueError(f"No more than {MAX_ATTACHMENTS_PER_MESSAGE} attachments are allowed per message.")
+        total_bytes = sum(item.size or 0 for item in self.attachments)
+        if total_bytes > MAX_TOTAL_ATTACHMENT_BYTES:
+            raise ValueError(
+                f"Total attachment payload exceeds the {MAX_TOTAL_ATTACHMENT_BYTES // (1024 * 1024)} MB limit."
+            )
         return self
 
 

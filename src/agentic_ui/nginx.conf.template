@@ -22,11 +22,11 @@ server {
     set $trusted_forwarded_proto $scheme;
   }
 
-  # Allow larger JSON uploads (base64 inflates files ~33%)
-  client_max_body_size 600M;
+  # Keep request bodies bounded; the app also validates lower logical limits.
+  client_max_body_size 50M;
 
   # Give users enough time to upload larger bodies
-  client_body_timeout 120s;
+  client_body_timeout 60s;
 
   root /usr/share/nginx/html;
   index index.html;
