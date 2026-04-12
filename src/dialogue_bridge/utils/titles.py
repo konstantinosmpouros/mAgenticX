@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from database.schemas import MessageIn, TitleOut
-from observability import log_event
+from observability import get_context, log_event
 from utils.agents import AGENTS_SERVICE_URL
 
 logger = logging.getLogger(__name__)
@@ -61,9 +61,11 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     Returns None when the upstream call fails or the response is invalid.
     """
     payload = {"user_input": _message_to_chain_payload(message)}
+    request_id = get_context().get("request_id")
+    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     try:
         async with httpx.AsyncClient(timeout=_TITLE_TIMEOUT) as client:
-            response = await client.post(_TITLE_ENDPOINT, json=payload)
+            response = await client.post(_TITLE_ENDPOINT, json=payload, headers=upstream_headers)
             response.raise_for_status()
     except httpx.HTTPError as exc:
         log_event(
@@ -71,7 +73,9 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
             logging.WARNING,
             "title_generation_failed",
             "Conversation title generation failed",
+            upstream_service="agents",
             error=str(exc),
+            failure_reason="upstream_error",
         )
         return None
 
@@ -84,7 +88,9 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
             logging.WARNING,
             "title_generation_invalid_payload",
             "Conversation title generation returned an invalid payload",
+            upstream_service="agents",
             error=str(exc),
+            failure_reason="invalid_payload",
         )
         return None
 

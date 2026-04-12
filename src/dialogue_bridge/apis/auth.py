@@ -62,8 +62,9 @@ async def authenticate(
             level,
             "auth_login_failed",
             "Vault authentication failed",
-            username=creds.username,
+            exc_info=level == logging.ERROR,
             vault_status_code=exc.status_code,
+            failure_reason="invalid_credentials" if exc.status_code in (400, 401, 403) else "vault_unavailable",
         )
         if exc.status_code in (400, 401, 403):
             raise HTTPException(
@@ -81,6 +82,7 @@ async def authenticate(
             "auth_unexpected_error",
             "Unexpected error during authentication",
             exc_info=True,
+            failure_reason="unexpected_error",
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -103,7 +105,7 @@ async def authenticate(
             "auth_user_inactive",
             "Authenticated user is inactive",
             user_id=user.id,
-            username=user.username,
+            failure_reason="inactive_user",
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

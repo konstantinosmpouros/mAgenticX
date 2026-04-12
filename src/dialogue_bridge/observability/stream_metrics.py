@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterable, AsyncIterator
-from typing import Any
+from typing import Any, Mapping
 import logging
 import time
 
@@ -71,7 +71,8 @@ def log_stream_outcome(
     *,
     metrics: StreamMetrics,
     completed: bool = False,
+    context: Mapping[str, Any] | None = None,
     **fields: Any,
 ) -> None:
     payload = metrics.completed_snapshot() if completed else metrics.snapshot()
-    log_event(logger, level, event, message, **fields, **payload)
+    log_event(logger, level, event, message, context=context, **fields, **payload)

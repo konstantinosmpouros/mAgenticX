@@ -240,7 +240,8 @@ async def renameConversation(
         logging.INFO,
         "conversation_renamed",
         "Conversation title updated",
-        title=payload.title,
+        title_length=len(_preview(payload.title)),
+        new_title=_preview(payload.title),
         conversation_id=conversation_id,
         agent_id=current_conv.agent_id
     )

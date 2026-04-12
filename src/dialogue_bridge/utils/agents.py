@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, Iterable, List, Sequence
 
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from observability import get_context, log_event
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -78,6 +78,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
                     logging.WARNING,
                     "agents_sync_invalid_payload",
                     "Agents service returned an unexpected discovery payload",
+                    upstream_service="agents",
                     payload_type=type(data).__name__,
                 )
     except httpx.HTTPError as exc:
@@ -86,7 +87,9 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
             logging.WARNING,
             "agents_sync_failed",
             "Failed to refresh agents from service",
+            upstream_service="agents",
             error=str(exc),
+            failure_reason="upstream_error",
         )
         raise HTTPException(503, "Agents service unreachable for agent synchronization.") from exc
 
@@ -101,7 +104,8 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
                 logging.WARNING,
                 "agents_sync_skipped_manifest",
                 "Skipping agent manifest missing id or slug",
-                manifest=manifest,
+                upstream_service="agents",
+                manifest_keys=sorted(manifest.keys()) if isinstance(manifest, dict) else None,
             )
             continue
         manifest_ids.add(str(agent_id))
@@ -152,6 +156,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
         logging.INFO,
         "agents_sync_completed",
         "Agent synchronization completed",
+        upstream_service="agents",
         active_agents=len(refreshed),
         discovered_manifests=len(manifest_ids),
     )
@@ -183,7 +188,9 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
             logging.WARNING,
             "tools_fetch_failed",
             "Failed to fetch tools from agents service",
+            upstream_service="agents",
             error=str(exc),
+            failure_reason="upstream_error",
         )
         raise HTTPException(
             status_code=503,
@@ -199,7 +206,9 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
             logging.WARNING,
             "tools_fetch_invalid_payload",
             "Agents service returned invalid JSON for tools",
+            upstream_service="agents",
             error=str(exc),
+            failure_reason="invalid_json",
         )
         raise HTTPException(
             status_code=502,
@@ -213,7 +222,9 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
             logging.WARNING,
             "tools_fetch_invalid_payload",
             "Agents service returned an unexpected tools payload",
+            upstream_service="agents",
             payload_type=type(payload).__name__,
+            failure_reason="unexpected_payload_type",
         )
         raise HTTPException(
             status_code=502,

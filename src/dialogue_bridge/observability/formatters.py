@@ -39,29 +39,25 @@ class JsonFormatter(logging.Formatter):
         payload = {
             "timestamp": _timestamp(),
             "level": record.levelname,
+            "service": getattr(record, "service", "dialogue_bridge"),
+            "env": getattr(record, "env", "development"),
+            "version": getattr(record, "version", "unknown"),
             "logger": record.name,
+            "event": getattr(record, "event", None) or _short_logger_name(record.name),
             "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", "-"),
+            "client_ip": getattr(record, "client_ip", "-"),
+            "http_method": getattr(record, "http_method", None),
+            "http_path": getattr(record, "http_path", None),
+            "user_id": getattr(record, "user_id", "anonymous"),
+            "session_id": getattr(record, "session_id", "no-session"),
+            "conversation_id": getattr(record, "conversation_id", None),
+            "message_id": getattr(record, "message_id", None),
+            "status_code": getattr(record, "status_code", None),
         }
 
-        for key in (
-            "event",
-            "request_id",
-            "client_ip",
-            "http_method",
-            "http_path",
-            "user_id",
-            "session_id",
-            "conversation_id",
-            "message_id",
-            "status_code",
-        ):
-            value = getattr(record, key, None)
-            if value is not None:
-                payload[key] = value
-
         event_data = getattr(record, "event_data", None) or {}
-        if event_data:
-            payload["fields"] = sanitize_for_logging(event_data)
+        payload["fields"] = sanitize_for_logging(event_data)
 
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
@@ -77,6 +73,7 @@ class ConsoleFormatter(logging.Formatter):
         parts = [
             _console_timestamp(),
             f"{record.levelname:<5}",
+            getattr(record, "service", "dialogue_bridge"),
             f"{event_name:<24}",
         ]
 

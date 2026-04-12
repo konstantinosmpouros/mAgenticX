@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from observability import StreamMetrics, elapsed_ms, get_context, iter_tracked_stream, log_event, log_stream_outcome, set_context
 
-from database import ConversationTable, UserTable, MessageTable
+from database import ConversationTable, UserTable
 from database.schemas import InferenceStreamPayload
 from vault_auth.session_auth import require_csrf_protection
 from utils import (
@@ -49,6 +49,7 @@ async def startInferenceStream(
     # Resolve agent stream endpoint
     agent = await get_agent_by_id(current_conv.agent_id)
     agent_url = build_agent_stream_url(agent)
+    agent_slug = getattr(agent, "slug", None)
     
     # Build chat history for the requested branch (fallback = whole conversation)
     message_ids = payload.messagePath if payload and payload.messagePath else None
@@ -73,7 +74,8 @@ async def startInferenceStream(
     
     # Capture request_id from context before entering the generator so it's
     # available even if the context has been cleared by the time chunks flow.
-    request_id = get_context().get("request_id")
+    request_context = get_context()
+    request_id = request_context.get("request_id")
 
     # Stream inference from agent service to client
     async def event_stream():
@@ -119,7 +121,10 @@ async def startInferenceStream(
                             logging.INFO,
                             "inference_upstream_connected",
                             "Inference upstream stream connected",
-                            agent_url=agent_url,
+                            context=request_context,
+                            upstream_service="agents",
+                            agent_id=current_conv.agent_id,
+                            agent_slug=agent_slug,
                             upstream_status_code=r.status_code,
                             upstream_connect_latency_ms=upstream_connect_latency_ms,
                         )
@@ -132,7 +137,10 @@ async def startInferenceStream(
                         "Inference stream completed",
                         metrics=metrics,
                         completed=True,
-                        agent_url=agent_url,
+                        context=request_context,
+                        upstream_service="agents",
+                        agent_id=current_conv.agent_id,
+                        agent_slug=agent_slug,
                     )
                 except asyncio.CancelledError:
                     log_stream_outcome(
@@ -141,6 +149,9 @@ async def startInferenceStream(
                         "inference_stream_cancelled",
                         "Inference stream cancelled by client",
                         metrics=metrics,
+                        context=request_context,
+                        agent_id=current_conv.agent_id,
+                        agent_slug=agent_slug,
                     )
                     return
         except asyncio.CancelledError:
@@ -150,20 +161,23 @@ async def startInferenceStream(
                 "inference_stream_cancelled",
                 "Inference request context cancelled",
                 metrics=metrics,
+                context=request_context,
+                agent_id=current_conv.agent_id,
+                agent_slug=agent_slug,
             )
             return
         except httpx.HTTPError as e:
-            logger.exception(
+            log_event(
+                logger,
+                logging.ERROR,
+                "inference_upstream_error",
                 "Inference upstream error",
-                extra={
-                    "event": "inference_upstream_error",
-                    "event_data": {
-                        "user_id": user_id,
-                        "conversation_id": conversation_id,
-                        "agent_url": agent_url,
-                        "error": str(e),
-                    },
-                },
+                exc_info=True,
+                context=request_context,
+                upstream_service="agents",
+                agent_id=current_conv.agent_id,
+                agent_slug=agent_slug,
+                error=str(e),
             )
             err = {
                 "type": "RUN_ERROR",

@@ -60,11 +60,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
             return response
         except Exception:
+            set_context(status_code=500)
             log_event(
                 logger,
                 logging.ERROR,
                 "http_request_failed",
                 "HTTP request failed before response creation",
+                exc_info=True,
                 duration_ms=elapsed_ms(started_at),
             )
             raise

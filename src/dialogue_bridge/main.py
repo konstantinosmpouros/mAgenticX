@@ -17,8 +17,6 @@ from observability import (
     log_event,
     register_exception_handlers,
 )
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from utils.rate_limit import limiter
 
@@ -48,7 +46,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Bridge Service", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 register_exception_handlers(app)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestLoggingMiddleware)

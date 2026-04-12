@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
-from observability import StreamMetrics, log_event, set_context
+from observability import StreamMetrics, get_context, log_event, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,7 @@ async def downloadBlobStream(
     Returns 200 for full content or 206 for partial content.
     """
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
+    request_context = get_context()
     # Validate ownership and get data + metadata
     result = await db.execute(
         select(
@@ -119,7 +120,6 @@ async def downloadBlobStream(
         finally:
             common = dict(
                 blob_id=blob_id,
-                file_name=file_name,
                 file_size=file_size,
                 partial=partial,
                 served_bytes=metrics.bytes_forwarded,
@@ -128,13 +128,27 @@ async def downloadBlobStream(
                 total_stream_duration_ms=metrics.snapshot()["total_stream_duration_ms"],
             )
             if completed:
-                log_event(logger, logging.INFO, "blob_download_completed", "Blob download completed", **common)
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "blob_download_completed",
+                    "Blob download completed",
+                    context=request_context,
+                    **common,
+                )
             elif isinstance(caught_exc, (asyncio.CancelledError, GeneratorExit)):
-                log_event(logger, logging.WARNING, "blob_download_aborted", "Blob download aborted by client", **common)
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "blob_download_aborted",
+                    "Blob download aborted by client",
+                    context=request_context,
+                    **common,
+                )
             else:
                 log_event(
                     logger, logging.ERROR, "blob_download_error", "Blob download failed",
-                    exc_info=True, error=str(caught_exc) if caught_exc else None, **common,
+                    exc_info=True, context=request_context, error=str(caught_exc) if caught_exc else None, **common,
                 )
     
     # Full content
@@ -146,8 +160,8 @@ async def downloadBlobStream(
             logging.INFO,
             "blob_download_started",
             "Blob download started",
+            context=request_context,
             blob_id=blob_id,
-            file_name=file_name,
             file_size=file_size,
             partial=False,
         )
@@ -173,6 +187,7 @@ async def downloadBlobStream(
             logging.WARNING,
             "blob_range_invalid",
             "Blob download received an invalid range header",
+            context=request_context,
             blob_id=blob_id,
             range_header=range_header,
             file_size=file_size,
@@ -190,8 +205,8 @@ async def downloadBlobStream(
         logging.INFO,
         "blob_download_started",
         "Blob partial download started",
+        context=request_context,
         blob_id=blob_id,
-        file_name=file_name,
         file_size=file_size,
         partial=True,
         range_start=start,

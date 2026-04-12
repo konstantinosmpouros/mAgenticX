@@ -364,7 +364,14 @@ async def require_session(
     try:
         session = await get_access_session(request, db)
     except SessionAuthenticationError as exc:
-        log_event(logger, logging.WARNING, "access_session_invalid", "Access session validation failed", error=str(exc))
+        log_event(
+            logger,
+            logging.WARNING,
+            "access_session_invalid",
+            "Access session validation failed",
+            error=str(exc),
+            failure_reason="access_session_invalid",
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
     set_context(user_id=session.user_id, session_id=session.id)
@@ -408,7 +415,14 @@ async def require_refresh_session(
     try:
         session = await get_refresh_session(request, db)
     except SessionAuthenticationError as exc:
-        log_event(logger, logging.WARNING, "refresh_session_invalid", "Refresh session validation failed", error=str(exc))
+        log_event(
+            logger,
+            logging.WARNING,
+            "refresh_session_invalid",
+            "Refresh session validation failed",
+            error=str(exc),
+            failure_reason="refresh_session_invalid",
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
     set_context(user_id=session.user_id, session_id=session.id)
@@ -432,7 +446,13 @@ async def require_csrf_protection(request: Request) -> None:
     header_value = request.headers.get(CSRF_HEADER_NAME)
     cookie_value = request.cookies.get(CSRF_COOKIE_NAME)
     if not header_value or not cookie_value or not secrets.compare_digest(header_value, cookie_value):
-        log_event(logger, logging.WARNING, "csrf_validation_failed", "CSRF validation failed")
+        log_event(
+            logger,
+            logging.WARNING,
+            "csrf_validation_failed",
+            "CSRF validation failed",
+            failure_reason="csrf_mismatch",
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid CSRF token.",

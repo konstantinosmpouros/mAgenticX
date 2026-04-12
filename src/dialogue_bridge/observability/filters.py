@@ -1,29 +1,46 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from observability.context import get_context
+from observability.redaction import sanitize_context_value
+
+
+_SERVICE_NAME = (os.getenv("LOG_SERVICE_NAME") or "dialogue_bridge").strip() or "dialogue_bridge"
+_APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENV") or "development").strip() or "development"
+_APP_VERSION = (os.getenv("APP_VERSION") or os.getenv("IMAGE_TAG") or "unknown").strip() or "unknown"
 
 
 class RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         context = get_context()
+        context_override = getattr(record, "context_data", {}) or {}
+        if context_override:
+            context = {**context, **context_override}
         event_data = getattr(record, "event_data", {}) or {}
-        record.request_id = context.get("request_id", "-")
-        record.client_ip = context.get("client_ip", "-")
+        record.service = _SERVICE_NAME
+        record.env = _APP_ENV
+        record.version = _APP_VERSION
+        record.request_id = sanitize_context_value("request_id", context.get("request_id", "-"))
+        record.client_ip = sanitize_context_value("client_ip", context.get("client_ip", "-"))
         record.http_method = context.get("http_method")
         record.http_path = context.get("http_path")
-        record.user_id = getattr(record, "user_id", event_data.get("user_id", context.get("user_id", "anonymous")))
-        record.session_id = getattr(record, "session_id", event_data.get("session_id", context.get("session_id", "no-session")))
-        record.conversation_id = getattr(
-            record,
-            "conversation_id",
-            event_data.get("conversation_id", context.get("conversation_id")),
+        record.user_id = sanitize_context_value(
+            "user_id",
+            getattr(record, "user_id", event_data.get("user_id", context.get("user_id", "anonymous"))),
         )
-        record.message_id = getattr(
-            record,
+        record.session_id = sanitize_context_value(
+            "session_id",
+            getattr(record, "session_id", event_data.get("session_id", context.get("session_id", "no-session"))),
+        )
+        record.conversation_id = sanitize_context_value(
+            "conversation_id",
+            getattr(record, "conversation_id", event_data.get("conversation_id", context.get("conversation_id"))),
+        )
+        record.message_id = sanitize_context_value(
             "message_id",
-            event_data.get("message_id", context.get("message_id")),
+            getattr(record, "message_id", event_data.get("message_id", context.get("message_id"))),
         )
         record.status_code = getattr(record, "status_code", context.get("status_code"))
         record.event = getattr(record, "event", None)

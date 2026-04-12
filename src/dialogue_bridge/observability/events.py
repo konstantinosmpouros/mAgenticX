@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Mapping
 
 
 def log_event(
@@ -11,6 +11,10 @@ def log_event(
     message: str,
     *,
     exc_info: bool = False,
+    context: Mapping[str, Any] | None = None,
     **fields: Any,
 ) -> None:
-    logger.log(level, message, exc_info=exc_info, extra={"event": event, "event_data": fields})
+    extra = {"event": event, "event_data": fields}
+    if context is not None:
+        extra["context_data"] = dict(context)
+    logger.log(level, message, exc_info=exc_info, extra=extra)

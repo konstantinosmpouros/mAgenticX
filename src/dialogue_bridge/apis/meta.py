@@ -38,7 +38,6 @@ async def transcribe_dictation(
     and return the transcription text.
     """
     _AGENTS_STT_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/dictate/transcribe"
-    filename = audio.filename or "dictation.wav"
     set_context(user_id=user_id)
 
     try:
@@ -49,8 +48,8 @@ async def transcribe_dictation(
             logging.WARNING,
             "dictation_read_failed",
             "Failed to read dictation upload",
-            filename=filename,
             error=str(exc),
+            failure_reason="upload_read_failed",
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -65,7 +64,7 @@ async def transcribe_dictation(
 
     content_type = audio.content_type or "application/octet-stream"
     files = {
-        "file": (filename, audio_bytes, content_type),
+        "file": (audio.filename or "dictation.wav", audio_bytes, content_type),
     }
 
     request_id = get_context().get("request_id")
@@ -81,7 +80,9 @@ async def transcribe_dictation(
             logging.WARNING,
             "dictation_upstream_http_error",
             "Speech-to-text service returned an HTTP error",
+            upstream_service="agents",
             status_code=exc.response.status_code,
+            failure_reason="upstream_http_error",
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -93,7 +94,9 @@ async def transcribe_dictation(
             logging.WARNING,
             "dictation_upstream_unreachable",
             "Failed to reach speech-to-text service",
+            upstream_service="agents",
             error=str(exc),
+            failure_reason="upstream_unreachable",
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -109,6 +112,8 @@ async def transcribe_dictation(
             "dictation_invalid_json",
             "STT service returned non-JSON response",
             exc_info=True,
+            upstream_service="agents",
+            failure_reason="invalid_json",
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -124,6 +129,8 @@ async def transcribe_dictation(
             "dictation_invalid_payload",
             "Speech-to-text service returned an invalid payload",
             error=str(exc),
+            upstream_service="agents",
+            failure_reason="invalid_payload",
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -134,7 +141,6 @@ async def transcribe_dictation(
         logging.INFO,
         "dictation_transcribed",
         "Speech-to-text transcription completed",
-        filename=filename,
         content_type=content_type,
         upload_bytes=len(audio_bytes),
         transcript_length=len(result.text),
@@ -228,4 +234,3 @@ async def upsert_user_preferences(
         prefers_agentic_chat=bool(payload.prefersAgenticChat),
     )
     return payload
-
