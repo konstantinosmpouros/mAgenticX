@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
-from observability import log_event, set_context
+from observability import StreamMetrics, log_event, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,36 +90,42 @@ async def downloadBlobStream(
     CHUNK = 1024 * 512
 
     async def stream_range(start: int, end: int, *, partial: bool):
+        metrics = StreamMetrics()
         pos = start
-        served_bytes = 0
-        while pos <= end:
-            length = min(CHUNK, end - pos + 1)
-            chunk_result = await db.execute(
-                select(func.substring(BlobTable.data, pos + 1, length))
-                .select_from(BlobTable)
-                .where(BlobTable.id == blob_id)
+        completed = False
+        try:
+            while pos <= end:
+                length = min(CHUNK, end - pos + 1)
+                chunk_result = await db.execute(
+                    select(func.substring(BlobTable.data, pos + 1, length))
+                    .select_from(BlobTable)
+                    .where(BlobTable.id == blob_id)
+                )
+                chunk = chunk_result.scalar_one_or_none()
+                if not chunk:
+                    break
+                if isinstance(chunk, memoryview):
+                    chunk = chunk.tobytes()
+                else:
+                    chunk = bytes(chunk)
+                yield metrics.track(chunk)
+                pos += len(chunk)
+            completed = True
+        finally:
+            log_event(
+                logger,
+                logging.INFO if completed else logging.WARNING,
+                "blob_download_completed" if completed else "blob_download_aborted",
+                "Blob download completed" if completed else "Blob download aborted by client",
+                blob_id=blob_id,
+                file_name=file_name,
+                file_size=file_size,
+                partial=partial,
+                served_bytes=metrics.bytes_forwarded,
+                chunk_count=metrics.chunk_count,
+                first_byte_latency_ms=metrics.first_byte_latency_ms,
+                total_stream_duration_ms=metrics.snapshot()["total_stream_duration_ms"],
             )
-            chunk = chunk_result.scalar_one_or_none()
-            if not chunk:
-                break
-            if isinstance(chunk, memoryview):
-                chunk = chunk.tobytes()
-            else:
-                chunk = bytes(chunk)
-            served_bytes += len(chunk)
-            yield chunk
-            pos += len(chunk)
-        log_event(
-            logger,
-            logging.INFO,
-            "blob_download_completed",
-            "Blob download completed",
-            blob_id=blob_id,
-            file_name=file_name,
-            file_size=file_size,
-            partial=partial,
-            served_bytes=served_bytes,
-        )
     
     # Full content
     if not range_header:
@@ -244,7 +250,6 @@ async def getImagesBatch(
         logging.INFO,
         "images_page_fetched",
         "Fetched paginated user images",
-        user_id=user_id,
         item_count=len(items),
         total=pages.total,
         page=pages.page,

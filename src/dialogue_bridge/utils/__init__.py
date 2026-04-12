@@ -8,7 +8,7 @@ from utils.agents import (
     sync_agents_with_service,
 )
 from utils.conversations import _preview, init_conv, init_message
-from utils.inference import serialise_message_with_images_for_agent
+from utils.inference import prepare_inference_history, serialise_message_with_images_for_agent, validate_and_order_message_path
 from utils.titles import generate_conversation_title
 from utils.validators import validate_convId, validate_convId_full, validate_userId
 
@@ -20,8 +20,10 @@ __all__ = [
     "get_agent_by_id",
     "get_cached_agents",
     "prime_agent_cache",
+    "prepare_inference_history",
     "serialise_message_with_images_for_agent",
     "sync_agents_with_service",
+    "validate_and_order_message_path",
     "validate_convId",
     "validate_convId_full",
     "validate_userId",

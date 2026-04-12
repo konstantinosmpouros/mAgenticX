@@ -11,6 +11,11 @@ services:
     restart: unless-stopped
     networks:
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   rag_service: # 8001
     container_name: rag_service
@@ -25,6 +30,11 @@ services:
     networks:
       - backend
       - frontend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   agents: # 8003
     container_name: agents
@@ -42,6 +52,11 @@ services:
       - backend
       - frontend
       - mcp_gateway
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   chat_postgres: # 5432
     image: postgres:16.3
@@ -55,6 +70,11 @@ services:
     restart: unless-stopped
     networks:
       - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
@@ -66,6 +86,8 @@ services:
       - VAULT_OIDC_ROLE=agenticx
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - LOG_FORMAT=json
+      - LOG_LEVEL=INFO
     depends_on:
       - agents
       - chat_postgres
@@ -73,6 +95,11 @@ services:
     networks:
       - backend
       - hashicorp_vault
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   agentic_ui: # 8050
     container_name: agentic_ui
@@ -88,6 +115,11 @@ services:
       - backend
       - frontend
       - proxy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
 
 

@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
-from observability import log_event, set_context
+from observability import log_event, logged_db_operation, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -71,14 +71,24 @@ async def createConversation(
                 logging.INFO,
                 "title_generation_fallback_used",
                 "Conversation title fallback was used",
-                user_id=user_id,
                 agent_id=agent.id,
                 fallback_source=fallback_source,
             )
     
     # Create conversation + first message atomically
-    try:
-        # Do all inserts/flushes
+    async with logged_db_operation(
+        logger=logger,
+        db=db,
+        success_event=None,
+        failure_event="conversation_create_failed",
+        success_message="Conversation created",
+        failure_message="Conversation creation failed",
+        agent_id=payload.agentId,
+        is_private=payload.isPrivate,
+        attachment_count=len(payload.firstMessage.attachments),
+        sender=payload.firstMessage.sender,
+        message_type=payload.firstMessage.type,
+    ) as operation:
         conv = await init_conv(
             db=db,
             user=current_user,
@@ -88,22 +98,7 @@ async def createConversation(
             first_message=payload.firstMessage,
         )
         await db.commit()
-    except Exception as exc:
-        log_event(
-            logger,
-            logging.ERROR,
-            "conversation_create_failed",
-            "Conversation creation failed",
-            user_id=user_id,
-            agent_id=payload.agentId,
-            is_private=payload.isPrivate,
-            attachment_count=len(payload.firstMessage.attachments),
-            sender=payload.firstMessage.sender,
-            message_type=payload.firstMessage.type,
-            error=str(exc),
-        )
-        await db.rollback()
-        raise
+        operation.add(conversation_id=conv.id)
     
     # Reload with nested attachments->blob so images get base64 injected by AttachmentOut
     conv_full = await validate_convId_full(user_id, conv.id, db)
@@ -111,17 +106,20 @@ async def createConversation(
     # Build both DTOs from the same ORM instance
     detail = ConversationDetail.model_validate(conv_full)
     summary = ConversationSummary.model_validate(conv_full)
+    
+    # Log conversation creation with relevant metadata and the first message details, for better observability of conversation creation and initial engagement
+    log_event(logger, logging.INFO, "conversation_created", "Conversation created", **operation.snapshot())
+    first_msg = conv_full.messages[0] if conv_full.messages else None
     log_event(
         logger,
         logging.INFO,
-        "conversation_created",
-        "Conversation created",
-        user_id=user_id,
-        conversation_id=conv.id,
-        agent_id=agent.id,
-        is_private=payload.isPrivate,
+        "first_message_created",
+        "First message persisted",
+        message_id=first_msg.id if first_msg else None,
+        sender=first_msg.sender if first_msg else None,
+        attachment_count=len(first_msg.attachments) if first_msg else 0,
     )
-    
+
     return CreateConversationResponse(detail=detail, summary=summary)
 
 
@@ -141,7 +139,6 @@ async def getConvsSummary(
     Use query params: ?page=1&size=50
     """
     set_context(user_id=user_id)
-    # fetch all full rows statement
     stmt = (
         select(ConversationTable)
         .options(selectinload(ConversationTable.agent))
@@ -151,7 +148,17 @@ async def getConvsSummary(
         )
         .order_by(ConversationTable.updated_at.desc())
     )
-    return await paginate(db, stmt)
+    page = await paginate(db, stmt)
+    log_event(
+        logger,
+        logging.INFO,
+        "conversation_summary_list_fetched",
+        "Conversation summary list fetched",
+        total=page.total,
+        page=page.page,
+        size=page.size,
+    )
+    return page
 
 
 @router.get(
@@ -168,6 +175,15 @@ async def getConvDetails(
 ):
     """Fetch one conversation (messages included) by user + conversation id."""
     set_context(user_id=user_id, conversation_id=conversation_id)
+    # Log a custom event with the conversation id and number of messages, for better observability of conversation engagement
+    log_event(
+        logger,
+        logging.INFO,
+        "conversation_details_fetched",
+        "Conversation details fetched",
+        conversation_id=conversation_id,
+        message_count=len(current_conv.messages),
+    )
     return ConversationDetail.model_validate(current_conv)
 
 
@@ -188,7 +204,14 @@ async def deleteConversation(
     set_context(user_id=user_id, conversation_id=conversation_id)
     await db.delete(current_conv)
     await db.commit()
-    log_event(logger, logging.INFO, "conversation_deleted", "Conversation deleted", user_id=user_id, conversation_id=conversation_id)
+    log_event(
+        logger,
+        logging.INFO,
+        "conversation_deleted",
+        "Conversation deleted",
+        conversation_id=conversation_id,
+        agent_id=current_conv.agent_id
+    )
     return
 
 
@@ -217,8 +240,8 @@ async def renameConversation(
         logging.INFO,
         "conversation_renamed",
         "Conversation title updated",
-        user_id=user_id,
-        conversation_id=conversation_id,
         title=payload.title,
+        conversation_id=conversation_id,
+        agent_id=current_conv.agent_id
     )
     return ConversationSummary.model_validate(current_conv)

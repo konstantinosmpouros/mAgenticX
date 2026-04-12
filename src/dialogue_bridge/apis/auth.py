@@ -110,14 +110,7 @@ async def authenticate(
     issued = await create_user_session(db, user, request)
     set_context(user_id=user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
-    log_event(
-        logger,
-        logging.INFO,
-        "auth_login_succeeded",
-        "User authenticated successfully",
-        user_id=user.id,
-        username=user.username,
-    )
+    log_event(logger, logging.INFO, "auth_login_succeeded", "User authenticated successfully")
     return AuthResponse(**build_auth_response(user, issued.access_ttl))
 
 
@@ -127,7 +120,7 @@ async def session_me(
     session=Depends(require_session),
 ) -> AuthResponse:
     set_context(user_id=current_user.id, session_id=session.id)
-    log_event(logger, logging.INFO, "session_me", "Session introspection succeeded", user_id=current_user.id)
+    log_event(logger, logging.DEBUG, "session_me", "Session introspection succeeded")
     return AuthResponse(**build_auth_response(current_user, access_ttl_for_session(session)))
 
 
@@ -142,7 +135,7 @@ async def refresh_session(
     issued = await rotate_user_session(db, session, request)
     set_context(user_id=session.user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
-    log_event(logger, logging.INFO, "session_refresh_succeeded", "Session refresh succeeded", user_id=session.user.id)
+    log_event(logger, logging.INFO, "session_refresh_succeeded", "Session refresh succeeded")
     return AuthResponse(**build_auth_response(session.user, issued.access_ttl))
 
 

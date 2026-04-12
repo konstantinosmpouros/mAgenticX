@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, File, UploadFile, status, HTTPException
 import httpx
-from observability import log_event, set_context
+from observability import get_context, log_event, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, UserTable, UserPreferencesTable
@@ -49,7 +49,6 @@ async def transcribe_dictation(
             logging.WARNING,
             "dictation_read_failed",
             "Failed to read dictation upload",
-            user_id=user_id,
             filename=filename,
             error=str(exc),
         )
@@ -69,10 +68,12 @@ async def transcribe_dictation(
         "file": (filename, audio_bytes, content_type),
     }
 
+    request_id = get_context().get("request_id")
+    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
     try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(_AGENTS_STT_ENDPOINT, files=files)
+                resp = await client.post(_AGENTS_STT_ENDPOINT, files=files, headers=upstream_headers)
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
         log_event(
@@ -80,7 +81,6 @@ async def transcribe_dictation(
             logging.WARNING,
             "dictation_upstream_http_error",
             "Speech-to-text service returned an HTTP error",
-            user_id=user_id,
             status_code=exc.response.status_code,
         )
         raise HTTPException(
@@ -93,7 +93,6 @@ async def transcribe_dictation(
             logging.WARNING,
             "dictation_upstream_unreachable",
             "Failed to reach speech-to-text service",
-            user_id=user_id,
             error=str(exc),
         )
         raise HTTPException(
@@ -117,7 +116,6 @@ async def transcribe_dictation(
             logging.WARNING,
             "dictation_invalid_payload",
             "Speech-to-text service returned an invalid payload",
-            user_id=user_id,
             error=str(exc),
         )
         raise HTTPException(
@@ -129,7 +127,6 @@ async def transcribe_dictation(
         logging.INFO,
         "dictation_transcribed",
         "Speech-to-text transcription completed",
-        user_id=user_id,
         filename=filename,
         content_type=content_type,
         upload_bytes=len(audio_bytes),
@@ -177,14 +174,14 @@ async def get_user_preferences(
     result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
     row: UserPreferencesTable | None = result.scalar_one_or_none()
     if row is None:
-        log_event(logger, logging.INFO, "preferences_defaulted", "No stored user preferences found", user_id=user_id)
+        log_event(logger, logging.INFO, "preferences_defaulted", "No stored user preferences found")
         return UserPreferences()
 
     payload: dict = {
         "tools": row.tools if isinstance(row.tools, dict) else {},
         "prefers_agentic_chat": bool(row.prefers_agentic_chat),
     }
-    log_event(logger, logging.INFO, "preferences_loaded", "Loaded user preferences", user_id=user_id)
+    log_event(logger, logging.INFO, "preferences_loaded", "Loaded user preferences")
     return UserPreferences.model_validate(payload)
 
 
@@ -220,7 +217,6 @@ async def upsert_user_preferences(
         logging.INFO,
         "preferences_updated",
         "Updated user preferences",
-        user_id=user_id,
         disabled_tools=len(payload.tools.disabled),
         prefers_agentic_chat=bool(payload.prefersAgenticChat),
     )

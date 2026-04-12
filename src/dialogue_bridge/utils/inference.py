@@ -1,6 +1,88 @@
+import logging
 import base64
 
+from fastapi import HTTPException, status
+from observability import log_event
+
 from database import MessageTable
+
+
+def validate_and_order_message_path(
+    messages: list[MessageTable],
+    message_ids: list[str] | None,
+) -> list[MessageTable]:
+    """
+    Validate a requested message path and return the corresponding messages
+    in the exact requested order.
+    """
+    if not message_ids:
+        return messages
+
+    cleaned_ids: list[str] = []
+    for raw_id in message_ids:
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="messagePath contains invalid ids.",
+            )
+        cleaned_ids.append(raw_id.strip())
+
+    if len(set(cleaned_ids)) != len(cleaned_ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="messagePath contains duplicates.")
+
+    lookup = {message.id: message for message in messages}
+    ordered_messages: list[MessageTable] = []
+    for message_id in cleaned_ids:
+        match = lookup.get(message_id)
+        if not match:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="messagePath references messages outside this conversation or messagePath is corrupted.",
+            )
+        ordered_messages.append(match)
+
+    return ordered_messages
+
+
+def prepare_inference_history(
+    *,
+    logger: logging.Logger,
+    messages: list[MessageTable],
+    message_ids: list[str] | None,
+    enabled_tools_count: int,
+) -> tuple[list[MessageTable], list[dict]]:
+    """
+    Resolve the message branch for inference, strip any trailing empty AI
+    placeholder, serialise the final message list, and emit the branch log.
+    """
+    history_messages = list(validate_and_order_message_path(messages, message_ids))
+    placeholder_stripped = False
+
+    if history_messages:
+        last_msg = history_messages[-1]
+        is_placeholder = (
+            last_msg.sender == "ai"
+            and not last_msg.content
+            and (not getattr(last_msg, "attachments", None))
+        )
+        if is_placeholder:
+            placeholder_stripped = True
+            history_messages = history_messages[:-1]
+
+    history = [serialise_message_with_images_for_agent(message) for message in history_messages]
+    log_event(
+        logger,
+        logging.INFO,
+        "inference_branch_resolved",
+        "Inference branch resolved",
+        requested_message_path_length=len(message_ids or []),
+        branch_source="message_path" if message_ids else "conversation",
+        placeholder_stripped=placeholder_stripped,
+        resolved_history_messages=len(history_messages),
+        serialised_messages=len(history),
+        enabled_tools=enabled_tools_count,
+    )
+    return history_messages, history
 
 
 def serialise_message_with_images_for_agent(msg: MessageTable) -> dict:

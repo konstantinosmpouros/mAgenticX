@@ -4,7 +4,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 import httpx
 from fastapi import HTTPException
-from observability import log_event
+from observability import get_context, log_event
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,9 +34,18 @@ def get_cached_agents() -> List[AgentTable]:
     return list(_AGENT_CACHE.values())
 
 
-def build_agent_stream_url(slug: str) -> str:
+def build_agent_stream_url(agent: AgentTable) -> str:
     """Return the streaming endpoint for a given agent slug."""
     # Normalize base URL to avoid double slashes before attaching slug.
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent metadata unavailable for this conversation",
+        )
+    
+    slug = getattr(agent, "slug", None)
+    if not slug:
+        raise HTTPException(status_code=500, detail="Agent slug not available for this conversation")
     return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{slug}/stream"
 
 
@@ -53,10 +62,12 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     """
     manifests: Sequence[Dict[str, Any]] | None = None
     timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    request_id = get_context().get("request_id")
+    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     try:
         # Pull the latest agent manifests from the agents service.
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(_AGENTS_DISCOVERY_ENDPOINT)
+            resp = await client.get(_AGENTS_DISCOVERY_ENDPOINT, headers=upstream_headers)
             resp.raise_for_status()
             data = resp.json()
             if isinstance(data, list):
@@ -159,10 +170,12 @@ async def get_agent_by_id(agent_id: str) -> AgentTable | None:
 async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
     """Proxy the agents service `/tools` endpoint without caching."""
     timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    request_id = get_context().get("request_id")
+    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     try:
         # Forward the request to the MCP-backed agents service.
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(_AGENTS_TOOLS_ENDPOINT)
+            resp = await client.get(_AGENTS_TOOLS_ENDPOINT, headers=upstream_headers)
             resp.raise_for_status()
     except httpx.HTTPError as exc:
         log_event(

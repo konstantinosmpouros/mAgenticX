@@ -35,7 +35,7 @@ async def _validation_exception_handler(request: Request, exc: RequestValidation
         logging.WARNING,
         "request_validation_failed",
         "Request validation failed",
-        errors=exc.errors(),
+        errors=exc.errors(include_input=False),
     )
     return await request_validation_exception_handler(request, exc)
 

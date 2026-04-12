@@ -7,8 +7,10 @@ import uuid
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from observability.context import set_context
+from observability.context import clear_context, set_context
 from observability.events import log_event
+from observability.operations import elapsed_ms
+from observability.redaction import sanitize_for_logging
 from utils.proxy import resolve_client_ip
 
 
@@ -34,37 +36,37 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
 
         started_at = time.perf_counter()
+        raw_query = dict(request.query_params)
         log_event(
             logger,
             logging.INFO,
             "http_request_started",
             "HTTP request started",
-            query=str(request.url.query or ""),
+            **({"query": sanitize_for_logging(raw_query)} if raw_query else {}),
         )
 
         try:
             response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            set_context(status_code=response.status_code)
+            log_event(
+                logger,
+                logging.INFO,
+                "http_request_completed",
+                "HTTP request completed",
+                duration_ms=elapsed_ms(started_at),
+                response_class=response.__class__.__name__,
+                content_type=response.headers.get("content-type"),
+            )
+            return response
         except Exception:
-            duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             log_event(
                 logger,
                 logging.ERROR,
                 "http_request_failed",
                 "HTTP request failed before response creation",
-                duration_ms=duration_ms,
+                duration_ms=elapsed_ms(started_at),
             )
             raise
-
-        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
-        response.headers["X-Request-ID"] = request_id
-        set_context(status_code=response.status_code)
-        log_event(
-            logger,
-            logging.INFO,
-            "http_request_completed",
-            "HTTP request completed",
-            duration_ms=duration_ms,
-            response_class=response.__class__.__name__,
-            content_type=response.headers.get("content-type"),
-        )
-        return response
+        finally:
+            clear_context()

@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from observability import log_event, set_context
+from observability import log_event, logged_db_operation, set_context
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,35 +49,31 @@ async def addMessageToConversation(
     """
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=None)
     parent_message_id = payload.parentMessageId
-    
-    try:
+
+    async with logged_db_operation(
+        logger=logger,
+        db=db,
+        success_event=None,
+        failure_event="message_create_failed",
+        success_message="Message added to conversation",
+        failure_message="Message creation failed",
+        parent_message_id=parent_message_id,
+        sender=payload.sender,
+        message_type=payload.type,
+        attachment_count=len(payload.attachments),
+    ) as operation:
         # 1) Persist the new message and capture it
         msg = await init_message(db, current_conv, payload, parent_message_id=parent_message_id)
-        
+
         # 2) Bump conversation metadata only when there is meaningful content/attachments
         preview = _preview(payload.content) or (payload.attachments[0].name if payload.attachments else None)
         if preview is not None:
             current_conv.last_message_preview = preview
             current_conv.last_message_at = datetime.now()
-        
+
         await db.commit()
-    except Exception as exc:
-        log_event(
-            logger,
-            logging.ERROR,
-            "message_create_failed",
-            "Message creation failed",
-            user_id=user_id,
-            conversation_id=conversation_id,
-            parent_message_id=parent_message_id,
-            sender=payload.sender,
-            message_type=payload.type,
-            attachment_count=len(payload.attachments),
-            error=str(exc),
-        )
-        await db.rollback()
-        raise
-    
+        operation.add(message_id=msg.id)
+
     # 3) Load only the inserted message with attachments (including blobs for images)
     stmt = (
         select(MessageTable)
@@ -91,20 +87,8 @@ async def addMessageToConversation(
     message_out = MessageOut.model_validate(msg_row)
     await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
     summary = ConversationSummary.model_validate(current_conv)
-    log_event(
-        logger,
-        logging.INFO,
-        "message_created",
-        "Message added to conversation",
-        user_id=user_id,
-        conversation_id=conversation_id,
-        message_id=msg.id,
-        sender=payload.sender,
-        message_type=payload.type,
-        attachment_count=len(payload.attachments),
-        parent_message_id=parent_message_id,
-    )
-    
+    log_event(logger, logging.INFO, "message_created", "Message added to conversation", **operation.snapshot())
+
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
@@ -143,7 +127,16 @@ async def updateMessageInConversation(
     if msg.sender != "ai":
         raise HTTPException(status_code=400, detail="Only AI messages can be updated.")
 
-    try:
+    async with logged_db_operation(
+        logger=logger,
+        db=db,
+        success_event=None,
+        failure_event="message_update_failed",
+        success_message="AI message updated",
+        failure_message="AI message update failed",
+        message_id=message_id,
+        raw_event_count=len(payload.rawEvents),
+    ) as operation:
         msg.content = payload.content
         msg.reasoning_steps = payload.thinking
         msg.reasoning_time_seconds = payload.thinkingTime
@@ -159,36 +152,14 @@ async def updateMessageInConversation(
             current_conv.last_message_preview = preview
         current_conv.last_message_at = datetime.now()
 
+        operation.add(is_error=bool(msg.is_error))
         await db.commit()
-    except Exception as exc:
-        log_event(
-            logger,
-            logging.ERROR,
-            "message_update_failed",
-            "AI message update failed",
-            user_id=user_id,
-            conversation_id=conversation_id,
-            message_id=message_id,
-            raw_event_count=len(payload.rawEvents),
-            error=str(exc),
-        )
-        await db.rollback()
-        raise
 
     await db.refresh(msg)
     await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
     summary = ConversationSummary.model_validate(current_conv)
     message_out = MessageOut.model_validate(msg)
-    log_event(
-        logger,
-        logging.INFO,
-        "message_updated",
-        "AI message updated",
-        user_id=user_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
-        is_error=bool(msg.is_error),
-    )
+    log_event(logger, logging.INFO, "message_updated", "AI message updated", **operation.snapshot())
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
@@ -231,9 +202,6 @@ async def likeMessage(
         logging.INFO,
         "message_like_toggled",
         "Message like toggled",
-        user_id=user_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
         liked=msg.liked,
     )
     return MessageOut.model_validate(msg)
@@ -277,9 +245,6 @@ async def dislikeMessage(
         logging.INFO,
         "message_dislike_toggled",
         "Message dislike toggled",
-        user_id=user_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
         liked=msg.liked,
     )
     return MessageOut.model_validate(msg)

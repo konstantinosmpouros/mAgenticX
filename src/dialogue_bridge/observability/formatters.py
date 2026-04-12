@@ -95,7 +95,7 @@ class ConsoleFormatter(logging.Formatter):
             parts.append(f"{duration_ms:.2f}ms")
 
         message = record.getMessage()
-        if message and message not in {"HTTP request started", "HTTP request completed"}:
+        if message and event_name not in {"http_request_started", "http_request_completed"}:
             parts.append(message)
 
         context_parts: list[str] = []
