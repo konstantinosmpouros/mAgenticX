@@ -103,6 +103,13 @@ async def transcribe_dictation(
     try:
         payload = resp.json()
     except ValueError as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "dictation_invalid_json",
+            "STT service returned non-JSON response",
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="STT service returned invalid JSON payload.",

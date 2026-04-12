@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import logging
 
@@ -93,6 +94,7 @@ async def downloadBlobStream(
         metrics = StreamMetrics()
         pos = start
         completed = False
+        caught_exc: BaseException | None = None
         try:
             while pos <= end:
                 length = min(CHUNK, end - pos + 1)
@@ -111,12 +113,11 @@ async def downloadBlobStream(
                 yield metrics.track(chunk)
                 pos += len(chunk)
             completed = True
+        except BaseException as exc:
+            caught_exc = exc
+            raise
         finally:
-            log_event(
-                logger,
-                logging.INFO if completed else logging.WARNING,
-                "blob_download_completed" if completed else "blob_download_aborted",
-                "Blob download completed" if completed else "Blob download aborted by client",
+            common = dict(
                 blob_id=blob_id,
                 file_name=file_name,
                 file_size=file_size,
@@ -126,6 +127,15 @@ async def downloadBlobStream(
                 first_byte_latency_ms=metrics.first_byte_latency_ms,
                 total_stream_duration_ms=metrics.snapshot()["total_stream_duration_ms"],
             )
+            if completed:
+                log_event(logger, logging.INFO, "blob_download_completed", "Blob download completed", **common)
+            elif isinstance(caught_exc, (asyncio.CancelledError, GeneratorExit)):
+                log_event(logger, logging.WARNING, "blob_download_aborted", "Blob download aborted by client", **common)
+            else:
+                log_event(
+                    logger, logging.ERROR, "blob_download_error", "Blob download failed",
+                    exc_info=True, error=str(caught_exc) if caught_exc else None, **common,
+                )
     
     # Full content
     if not range_header:

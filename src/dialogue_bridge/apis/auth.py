@@ -75,6 +75,13 @@ async def authenticate(
             detail="Authentication service is unavailable.",
         ) from exc
     except Exception as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "auth_unexpected_error",
+            "Unexpected error during authentication",
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication failed.",

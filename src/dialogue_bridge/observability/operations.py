@@ -57,7 +57,7 @@ async def logged_db_operation(
                 payload["duration_ms"] = elapsed_ms(started_at)
             if include_error:
                 payload["error"] = str(exc)
-            log_event(logger, failure_level, failure_event, failure_message, **payload)
+            log_event(logger, failure_level, failure_event, failure_message, exc_info=True, **payload)
         raise
     else:
         if success_event:
