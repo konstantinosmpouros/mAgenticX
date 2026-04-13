@@ -1,10 +1,9 @@
-import logging
 import os
 from typing import Any, Dict, Iterable, List, Sequence
 
 import httpx
 from fastapi import HTTPException, status
-from observability import get_context, log_event
+from observability import get_context, get_logger
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +12,7 @@ from sqlalchemy.sql import func
 from database import AgentTable
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 AGENTS_SERVICE_URL = os.getenv("AGENTS_SERVICE_URL", "http://agents:8003")
 _AGENTS_DISCOVERY_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/agents"
@@ -73,24 +72,9 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
             if isinstance(data, list):
                 manifests = data
             else:
-                log_event(
-                    logger,
-                    logging.WARNING,
-                    "agents_sync_invalid_payload",
-                    "Agents service returned an unexpected discovery payload",
-                    upstream_service="agents",
-                    payload_type=type(data).__name__,
-                )
+                logger.warning("agents_sync_invalid_payload", "Agents service returned an unexpected discovery payload", upstream_service="agents", payload_type=type(data).__name__)
     except httpx.HTTPError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "agents_sync_failed",
-            "Failed to refresh agents from service",
-            upstream_service="agents",
-            error=str(exc),
-            failure_reason="upstream_error",
-        )
+        logger.warning("agents_sync_failed", "Failed to refresh agents from service", upstream_service="agents", error=str(exc), failure_reason="upstream_error")
         raise HTTPException(503, "Agents service unreachable for agent synchronization.") from exc
 
     manifest_ids: set[str] = set()
@@ -99,14 +83,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
         agent_id = manifest.get("id")
         slug = manifest.get("slug") or manifest.get("name") or agent_id
         if not agent_id or not slug:
-            log_event(
-                logger,
-                logging.WARNING,
-                "agents_sync_skipped_manifest",
-                "Skipping agent manifest missing id or slug",
-                upstream_service="agents",
-                manifest_keys=sorted(manifest.keys()) if isinstance(manifest, dict) else None,
-            )
+            logger.warning("agents_sync_skipped_manifest", "Skipping agent manifest missing id or slug", upstream_service="agents", manifest_keys=sorted(manifest.keys()) if isinstance(manifest, dict) else None)
             continue
         manifest_ids.add(str(agent_id))
 
@@ -151,15 +128,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     await db.commit()
     refreshed = await _load_active_agents(db)
     prime_agent_cache(refreshed)
-    log_event(
-        logger,
-        logging.INFO,
-        "agents_sync_completed",
-        "Agent synchronization completed",
-        upstream_service="agents",
-        active_agents=len(refreshed),
-        discovered_manifests=len(manifest_ids),
-    )
+    logger.info("agents_sync_completed", "Agent synchronization completed", upstream_service="agents", active_agents=len(refreshed), discovered_manifests=len(manifest_ids))
     return refreshed
 
 
@@ -183,15 +152,7 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
             resp = await client.get(_AGENTS_TOOLS_ENDPOINT, headers=upstream_headers)
             resp.raise_for_status()
     except httpx.HTTPError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "tools_fetch_failed",
-            "Failed to fetch tools from agents service",
-            upstream_service="agents",
-            error=str(exc),
-            failure_reason="upstream_error",
-        )
+        logger.warning("tools_fetch_failed", "Failed to fetch tools from agents service", upstream_service="agents", error=str(exc), failure_reason="upstream_error")
         raise HTTPException(
             status_code=503,
             detail="Agents service unreachable for tools synchronization.",
@@ -201,15 +162,7 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
         # Parse JSON payload before validating schema shape.
         payload = resp.json()
     except ValueError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "tools_fetch_invalid_payload",
-            "Agents service returned invalid JSON for tools",
-            upstream_service="agents",
-            error=str(exc),
-            failure_reason="invalid_json",
-        )
+        logger.warning("tools_fetch_invalid_payload", "Agents service returned invalid JSON for tools", upstream_service="agents", error=str(exc), failure_reason="invalid_json")
         raise HTTPException(
             status_code=502,
             detail="Agents service returned invalid JSON for tools.",
@@ -217,15 +170,7 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
 
     if not isinstance(payload, list):
         # The UI expects a list of manifests; enforce here for better errors.
-        log_event(
-            logger,
-            logging.WARNING,
-            "tools_fetch_invalid_payload",
-            "Agents service returned an unexpected tools payload",
-            upstream_service="agents",
-            payload_type=type(payload).__name__,
-            failure_reason="unexpected_payload_type",
-        )
+        logger.warning("tools_fetch_invalid_payload", "Agents service returned an unexpected tools payload", upstream_service="agents", payload_type=type(payload).__name__, failure_reason="unexpected_payload_type")
         raise HTTPException(
             status_code=502,
             detail="Agents service returned an unexpected tools payload.",

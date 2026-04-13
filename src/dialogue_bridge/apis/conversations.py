@@ -1,9 +1,7 @@
-import logging
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
-from observability import log_event, logged_db_operation, set_context
+from observability import get_logger, logged_db_operation, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,7 +27,7 @@ from utils import (
 
 
 router = APIRouter(prefix="/users/{user_id}", tags=["Conversations"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.post(
@@ -66,14 +64,7 @@ async def createConversation(
             preview_title = _preview(payload.firstMessage.content)
             fallback_source = "preview" if preview_title else ("agent_name" if agent.name else "default")
             resolved_title = preview_title or agent.name or "New conversation"
-            log_event(
-                logger,
-                logging.INFO,
-                "title_generation_fallback_used",
-                "Conversation title fallback was used",
-                agent_id=agent.id,
-                fallback_source=fallback_source,
-            )
+            logger.info("title_generation_fallback_used", "Conversation title fallback was used", agent_id=agent.id, fallback_source=fallback_source)
     
     # Create conversation + first message atomically
     async with logged_db_operation(
@@ -108,17 +99,9 @@ async def createConversation(
     summary = ConversationSummary.model_validate(conv_full)
     
     # Log conversation creation with relevant metadata and the first message details, for better observability of conversation creation and initial engagement
-    log_event(logger, logging.INFO, "conversation_created", "Conversation created", **operation.snapshot())
+    logger.info("conversation_created", "Conversation created", **operation.snapshot())
     first_msg = conv_full.messages[0] if conv_full.messages else None
-    log_event(
-        logger,
-        logging.INFO,
-        "first_message_created",
-        "First message persisted",
-        message_id=first_msg.id if first_msg else None,
-        sender=first_msg.sender if first_msg else None,
-        attachment_count=len(first_msg.attachments) if first_msg else 0,
-    )
+    logger.info("first_message_created", "First message persisted", message_id=first_msg.id if first_msg else None, sender=first_msg.sender if first_msg else None, attachment_count=len(first_msg.attachments) if first_msg else 0)
 
     return CreateConversationResponse(detail=detail, summary=summary)
 
@@ -149,15 +132,7 @@ async def getConvsSummary(
         .order_by(ConversationTable.updated_at.desc())
     )
     page = await paginate(db, stmt)
-    log_event(
-        logger,
-        logging.INFO,
-        "conversation_summary_list_fetched",
-        "Conversation summary list fetched",
-        total=page.total,
-        page=page.page,
-        size=page.size,
-    )
+    logger.info("conversation_summary_list_fetched", "Conversation summary list fetched", total=page.total, page=page.page, size=page.size)
     return page
 
 
@@ -176,14 +151,7 @@ async def getConvDetails(
     """Fetch one conversation (messages included) by user + conversation id."""
     set_context(user_id=user_id, conversation_id=conversation_id)
     # Log a custom event with the conversation id and number of messages, for better observability of conversation engagement
-    log_event(
-        logger,
-        logging.INFO,
-        "conversation_details_fetched",
-        "Conversation details fetched",
-        conversation_id=conversation_id,
-        message_count=len(current_conv.messages),
-    )
+    logger.info("conversation_details_fetched", "Conversation details fetched", conversation_id=conversation_id, message_count=len(current_conv.messages))
     return ConversationDetail.model_validate(current_conv)
 
 
@@ -204,14 +172,7 @@ async def deleteConversation(
     set_context(user_id=user_id, conversation_id=conversation_id)
     await db.delete(current_conv)
     await db.commit()
-    log_event(
-        logger,
-        logging.INFO,
-        "conversation_deleted",
-        "Conversation deleted",
-        conversation_id=conversation_id,
-        agent_id=current_conv.agent_id
-    )
+    logger.info("conversation_deleted", "Conversation deleted", conversation_id=conversation_id, agent_id=current_conv.agent_id)
     return
 
 
@@ -235,14 +196,5 @@ async def renameConversation(
     current_conv.title = payload.title
     await db.commit()
     await db.refresh(current_conv, attribute_names=["title", "updated_at", "last_message_preview", "agent"])
-    log_event(
-        logger,
-        logging.INFO,
-        "conversation_renamed",
-        "Conversation title updated",
-        title_length=len(_preview(payload.title)),
-        new_title=_preview(payload.title),
-        conversation_id=conversation_id,
-        agent_id=current_conv.agent_id
-    )
+    logger.info("conversation_renamed", "Conversation title updated", title_length=len(_preview(payload.title)), new_title=_preview(payload.title), conversation_id=conversation_id, agent_id=current_conv.agent_id)
     return ConversationSummary.model_validate(current_conv)

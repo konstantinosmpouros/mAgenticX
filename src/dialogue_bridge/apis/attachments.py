@@ -1,12 +1,11 @@
 import asyncio
 import base64
-import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
-from observability import StreamMetrics, get_context, log_event, set_context
+from observability import StreamMetrics, get_context, get_logger, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +15,7 @@ from utils import validate_userId
 
 
 router = APIRouter(prefix="/users/{user_id}", tags=["Attachments"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.get(
@@ -128,43 +127,17 @@ async def downloadBlobStream(
                 total_stream_duration_ms=metrics.snapshot()["total_stream_duration_ms"],
             )
             if completed:
-                log_event(
-                    logger,
-                    logging.INFO,
-                    "blob_download_completed",
-                    "Blob download completed",
-                    context=request_context,
-                    **common,
-                )
+                logger.info("blob_download_completed", "Blob download completed", context=request_context, **common)
             elif isinstance(caught_exc, (asyncio.CancelledError, GeneratorExit)):
-                log_event(
-                    logger,
-                    logging.WARNING,
-                    "blob_download_aborted",
-                    "Blob download aborted by client",
-                    context=request_context,
-                    **common,
-                )
+                logger.warning("blob_download_aborted", "Blob download aborted by client", context=request_context, **common)
             else:
-                log_event(
-                    logger, logging.ERROR, "blob_download_error", "Blob download failed",
-                    exc_info=True, context=request_context, error=str(caught_exc) if caught_exc else None, **common,
-                )
+                logger.error("blob_download_error", "Blob download failed", exc_info=True, context=request_context, error=str(caught_exc) if caught_exc else None, **common)
     
     # Full content
     if not range_header:
         headers = dict(base_headers)
         headers["Content-Length"] = str(file_size)
-        log_event(
-            logger,
-            logging.INFO,
-            "blob_download_started",
-            "Blob download started",
-            context=request_context,
-            blob_id=blob_id,
-            file_size=file_size,
-            partial=False,
-        )
+        logger.info("blob_download_started", "Blob download started", context=request_context, blob_id=blob_id, file_size=file_size, partial=False)
         return StreamingResponse(
             stream_range(0, file_size - 1, partial=False),
             media_type=mime or "application/octet-stream",
@@ -182,16 +155,7 @@ async def downloadBlobStream(
         if start > end or start < 0 or end >= file_size:
             raise ValueError
     except Exception:
-        log_event(
-            logger,
-            logging.WARNING,
-            "blob_range_invalid",
-            "Blob download received an invalid range header",
-            context=request_context,
-            blob_id=blob_id,
-            range_header=range_header,
-            file_size=file_size,
-        )
+        logger.warning("blob_range_invalid", "Blob download received an invalid range header", context=request_context, blob_id=blob_id, range_header=range_header, file_size=file_size)
         return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
     
     content_length = end - start + 1
@@ -200,18 +164,7 @@ async def downloadBlobStream(
         "Content-Range": f"bytes {start}-{end}/{file_size}",
         "Content-Length": str(content_length),
     })
-    log_event(
-        logger,
-        logging.INFO,
-        "blob_download_started",
-        "Blob partial download started",
-        context=request_context,
-        blob_id=blob_id,
-        file_size=file_size,
-        partial=True,
-        range_start=start,
-        range_end=end,
-    )
+    logger.info("blob_download_started", "Blob partial download started", context=request_context, blob_id=blob_id, file_size=file_size, partial=True, range_start=start, range_end=end)
     
     return StreamingResponse(
         stream_range(start, end, partial=True),
@@ -270,16 +223,7 @@ async def getImagesBatch(
         )
         for r in pages.items
     ]
-    log_event(
-        logger,
-        logging.INFO,
-        "images_page_fetched",
-        "Fetched paginated user images",
-        item_count=len(items),
-        total=pages.total,
-        page=pages.page,
-        size=pages.size,
-    )
+    logger.info("images_page_fetched", "Fetched paginated user images", item_count=len(items), total=pages.total, page=pages.page, size=pages.size)
 
     return Page[ImageOut](items=items, total=pages.total, page=pages.page, size=pages.size)
 

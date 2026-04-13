@@ -1,13 +1,12 @@
-import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from schemas import MessageIn, TitleOut
-from observability import get_context, log_event
+from observability import get_context, get_logger
 from utils.agents import AGENTS_SERVICE_URL
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _TITLE_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/titles/generate"
 _TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
@@ -68,9 +67,7 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
             response = await client.post(_TITLE_ENDPOINT, json=payload, headers=upstream_headers)
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
+        logger.warning(
             "title_generation_failed",
             "Conversation title generation failed",
             upstream_service="agents",
@@ -83,9 +80,7 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
         data = response.json()
         result = TitleOut.model_validate(data)
     except Exception as exc:  # pragma: no cover - defensive
-        log_event(
-            logger,
-            logging.WARNING,
+        logger.warning(
             "title_generation_invalid_payload",
             "Conversation title generation returned an invalid payload",
             upstream_service="agents",
@@ -101,12 +96,5 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     truncated = len(title) > _TITLE_MAX_LEN
     if len(title) > _TITLE_MAX_LEN:
         title = title[:_TITLE_MAX_LEN].rstrip()
-    log_event(
-        logger,
-        logging.INFO,
-        "title_generation_succeeded",
-        "Conversation title generated successfully",
-        title_length=len(title),
-        truncated=truncated,
-    )
+    logger.info("title_generation_succeeded", "Conversation title generated successfully", title_length=len(title), truncated=truncated)
     return title or None

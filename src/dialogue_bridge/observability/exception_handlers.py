@@ -12,16 +12,15 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.responses import JSONResponse
 
-from observability.events import log_event
+from observability.events import get_logger
 
 
-logger = logging.getLogger("dialogue_bridge.exceptions")
+logger = get_logger("dialogue_bridge.exceptions")
 
 
 async def _http_exception_handler(request: Request, exc: HTTPException):
     level = logging.WARNING if exc.status_code < 500 else logging.ERROR
-    log_event(
-        logger,
+    logger.log(
         level,
         "http_exception",
         "HTTP exception raised",
@@ -33,33 +32,17 @@ async def _http_exception_handler(request: Request, exc: HTTPException):
 
 
 async def _validation_exception_handler(request: Request, exc: RequestValidationError):
-    log_event(
-        logger,
-        logging.WARNING,
-        "request_validation_failed",
-        "Request validation failed",
-        errors=exc.errors(include_input=False),
-    )
+    logger.warning("request_validation_failed", "Request validation failed", errors=exc.errors(include_input=False))
     return await request_validation_exception_handler(request, exc)
 
 
 async def _unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception(
-        "Unhandled exception raised during request processing",
-        extra={"event": "unhandled_exception", "event_data": {"exception_type": exc.__class__.__name__}},
-    )
+    logger.exception("unhandled_exception", "Unhandled exception raised during request processing", exception_type=exc.__class__.__name__)
     return JSONResponse(status_code=500, content={"detail": "Internal server error."})
 
 
 async def _rate_limit_exception_handler(request: Request, exc: RateLimitExceeded):
-    log_event(
-        logger,
-        logging.WARNING,
-        "rate_limit_exceeded",
-        "Rate limit exceeded",
-        status_code=429,
-        limit=getattr(exc, "detail", None),
-    )
+    logger.warning("rate_limit_exceeded", "Rate limit exceeded", status_code=429, limit=getattr(exc, "detail", None))
     return _rate_limit_exceeded_handler(request, exc)
 
 

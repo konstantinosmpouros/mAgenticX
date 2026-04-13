@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import time
 import uuid
 
@@ -8,13 +7,13 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from observability.context import clear_context, set_context
-from observability.events import log_event
+from observability.events import get_logger
 from observability.operations import elapsed_ms
 from observability.redaction import sanitize_for_logging
 from utils.proxy import resolve_client_ip
 
 
-logger = logging.getLogger("dialogue_bridge.request")
+logger = get_logger("dialogue_bridge.request")
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -37,21 +36,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         started_at = time.perf_counter()
         raw_query = dict(request.query_params)
-        log_event(
-            logger,
-            logging.INFO,
-            "http_request_started",
-            "HTTP request started",
-            **({"query": sanitize_for_logging(raw_query)} if raw_query else {}),
-        )
+        logger.info("http_request_started", "HTTP request started", **({"query": sanitize_for_logging(raw_query)} if raw_query else {}))
 
         try:
             response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
             set_context(status_code=response.status_code)
-            log_event(
-                logger,
-                logging.INFO,
+            logger.info(
                 "http_request_completed",
                 "HTTP request completed",
                 duration_ms=elapsed_ms(started_at),
@@ -61,9 +52,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             return response
         except Exception:
             set_context(status_code=500)
-            log_event(
-                logger,
-                logging.ERROR,
+            logger.error(
                 "http_request_failed",
                 "HTTP request failed before response creation",
                 exc_info=True,

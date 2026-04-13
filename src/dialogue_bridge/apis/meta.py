@@ -1,8 +1,6 @@
-import logging
-
 from fastapi import APIRouter, Depends, File, UploadFile, status, HTTPException
 import httpx
-from observability import get_context, log_event, set_context
+from observability import get_context, get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, UserTable, UserPreferencesTable
@@ -19,7 +17,7 @@ from sqlalchemy import select
 
 
 router = APIRouter(tags=["Utilities"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.post(
@@ -43,14 +41,7 @@ async def transcribe_dictation(
     try:
         audio_bytes = await audio.read()
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "dictation_read_failed",
-            "Failed to read dictation upload",
-            error=str(exc),
-            failure_reason="upload_read_failed",
-        )
+        logger.warning("dictation_read_failed", "Failed to read dictation upload", error=str(exc), failure_reason="upload_read_failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to read the uploaded audio file.",
@@ -75,29 +66,13 @@ async def transcribe_dictation(
                 resp = await client.post(_AGENTS_STT_ENDPOINT, files=files, headers=upstream_headers)
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "dictation_upstream_http_error",
-            "Speech-to-text service returned an HTTP error",
-            upstream_service="agents",
-            status_code=exc.response.status_code,
-            failure_reason="upstream_http_error",
-        )
+        logger.warning("dictation_upstream_http_error", "Speech-to-text service returned an HTTP error", upstream_service="agents", status_code=exc.response.status_code, failure_reason="upstream_http_error")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Speech-to-text service failed to process the audio.",
         ) from exc
     except httpx.RequestError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "dictation_upstream_unreachable",
-            "Failed to reach speech-to-text service",
-            upstream_service="agents",
-            error=str(exc),
-            failure_reason="upstream_unreachable",
-        )
+        logger.warning("dictation_upstream_unreachable", "Failed to reach speech-to-text service", upstream_service="agents", error=str(exc), failure_reason="upstream_unreachable")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Speech-to-text service is unavailable.",
@@ -106,15 +81,7 @@ async def transcribe_dictation(
     try:
         payload = resp.json()
     except ValueError as exc:
-        log_event(
-            logger,
-            logging.ERROR,
-            "dictation_invalid_json",
-            "STT service returned non-JSON response",
-            exc_info=True,
-            upstream_service="agents",
-            failure_reason="invalid_json",
-        )
+        logger.error("dictation_invalid_json", "STT service returned non-JSON response", exc_info=True, upstream_service="agents", failure_reason="invalid_json")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="STT service returned invalid JSON payload.",
@@ -123,28 +90,12 @@ async def transcribe_dictation(
     try:
         result = DictationResponse.model_validate(payload)
     except Exception as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "dictation_invalid_payload",
-            "Speech-to-text service returned an invalid payload",
-            error=str(exc),
-            upstream_service="agents",
-            failure_reason="invalid_payload",
-        )
+        logger.warning("dictation_invalid_payload", "Speech-to-text service returned an invalid payload", error=str(exc), upstream_service="agents", failure_reason="invalid_payload")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Speech-to-text service returned an invalid response.",
         ) from exc
-    log_event(
-        logger,
-        logging.INFO,
-        "dictation_transcribed",
-        "Speech-to-text transcription completed",
-        content_type=content_type,
-        upload_bytes=len(audio_bytes),
-        transcript_length=len(result.text),
-    )
+    logger.info("dictation_transcribed", "Speech-to-text transcription completed", content_type=content_type, upload_bytes=len(audio_bytes), transcript_length=len(result.text))
     return result
 
 
@@ -157,10 +108,10 @@ async def get_available_agents(_: UserTable = Depends(require_current_user), db:
     # Try to get agents from cache first
     agents = get_cached_agents()
     if agents:
-        log_event(logger, logging.INFO, "agents_cache_hit", "Served agents from cache", count=len(agents))
+        logger.info("agents_cache_hit", "Served agents from cache", count=len(agents))
     # If cache is empty, sync with agents service once more
     if not agents:
-        log_event(logger, logging.INFO, "agents_cache_miss", "Agent cache empty; synchronizing with agents service")
+        logger.info("agents_cache_miss", "Agent cache empty; synchronizing with agents service")
         agents = await sync_agents_with_service(db)
     return [AgentPublic.model_validate(a) for a in agents]
 
@@ -169,7 +120,7 @@ async def get_available_agents(_: UserTable = Depends(require_current_user), db:
 async def get_available_tools(_: UserTable = Depends(require_current_user),):
     """Return the tools exposed by the MCP server via the agents service."""
     payload = await fetch_tools_from_agents_service()
-    log_event(logger, logging.INFO, "tools_fetched", "Fetched tools from agents service", count=len(payload))
+    logger.info("tools_fetched", "Fetched tools from agents service", count=len(payload))
     return [ToolManifest.model_validate(item) for item in payload]
 
 
@@ -187,14 +138,14 @@ async def get_user_preferences(
     result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
     row: UserPreferencesTable | None = result.scalar_one_or_none()
     if row is None:
-        log_event(logger, logging.INFO, "preferences_defaulted", "No stored user preferences found")
+        logger.info("preferences_defaulted", "No stored user preferences found")
         return UserPreferences()
 
     payload: dict = {
         "tools": row.tools if isinstance(row.tools, dict) else {},
         "prefers_agentic_chat": bool(row.prefers_agentic_chat),
     }
-    log_event(logger, logging.INFO, "preferences_loaded", "Loaded user preferences")
+    logger.info("preferences_loaded", "Loaded user preferences")
     return UserPreferences.model_validate(payload)
 
 
@@ -225,12 +176,5 @@ async def upsert_user_preferences(
         )
 
     await db.commit()
-    log_event(
-        logger,
-        logging.INFO,
-        "preferences_updated",
-        "Updated user preferences",
-        disabled_tools=len(payload.tools.disabled),
-        prefers_agentic_chat=bool(payload.prefersAgenticChat),
-    )
+    logger.info("preferences_updated", "Updated user preferences", disabled_tools=len(payload.tools.disabled), prefers_agentic_chat=bool(payload.prefersAgenticChat))
     return payload

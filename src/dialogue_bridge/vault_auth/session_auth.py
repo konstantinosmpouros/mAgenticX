@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import logging
 import os
 import secrets
 from dataclasses import dataclass
@@ -8,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, Response, status
-from observability import log_event, set_context
+from observability import get_logger, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from database import SessionTable, UserTable, get_db
 from utils.proxy import resolve_client_ip
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _as_bool(value: str | None, default: bool) -> bool:
@@ -191,15 +190,7 @@ async def _enforce_session_limit(db: AsyncSession, user_id: str) -> None:
         revoked_sessions = active_sessions[:overflow]
         for session in revoked_sessions:
             session.revoked_at = now
-        log_event(
-            logger,
-            logging.INFO,
-            "session_limit_enforced",
-            "Session limit enforced by revoking older sessions",
-            user_id=user_id,
-            revoked_sessions=len(revoked_sessions),
-            session_limit=SESSION_MAX_PER_USER,
-        )
+        logger.info("session_limit_enforced", "Session limit enforced by revoking older sessions", user_id=user_id, revoked_sessions=len(revoked_sessions), session_limit=SESSION_MAX_PER_USER)
 
 
 async def create_user_session(
@@ -227,16 +218,7 @@ async def create_user_session(
     )
     db.add(session)
     await db.commit()
-    log_event(
-        logger,
-        logging.INFO,
-        "session_created",
-        "User session created",
-        user_id=user.id,
-        session_id=session.id,
-        access_ttl=ACCESS_TTL_SECONDS,
-        refresh_ttl=REFRESH_TTL_SECONDS,
-    )
+    logger.info("session_created", "User session created", user_id=user.id, session_id=session.id, access_ttl=ACCESS_TTL_SECONDS, refresh_ttl=REFRESH_TTL_SECONDS)
     return IssuedSession(
         session_id=session.id,
         access_token=access_token,
@@ -318,16 +300,7 @@ async def rotate_user_session(
 
     await db.commit()
     await db.refresh(session)
-    log_event(
-        logger,
-        logging.INFO,
-        "session_rotated",
-        "User session rotated",
-        user_id=session.user_id,
-        session_id=session.id,
-        access_ttl=ACCESS_TTL_SECONDS,
-        refresh_ttl=REFRESH_TTL_SECONDS,
-    )
+    logger.info("session_rotated", "User session rotated", user_id=session.user_id, session_id=session.id, access_ttl=ACCESS_TTL_SECONDS, refresh_ttl=REFRESH_TTL_SECONDS)
     return IssuedSession(
         session_id=session.id,
         access_token=access_token,
@@ -342,14 +315,7 @@ async def revoke_session(session: SessionTable, db: AsyncSession) -> None:
     if session.revoked_at is None:
         session.revoked_at = utcnow()
         await db.commit()
-        log_event(
-            logger,
-            logging.INFO,
-            "session_revoked",
-            "User session revoked",
-            user_id=session.user_id,
-            session_id=session.id,
-        )
+        logger.info("session_revoked", "User session revoked", user_id=session.user_id, session_id=session.id)
 
 
 def access_ttl_for_session(session: SessionTable) -> int:
@@ -364,20 +330,13 @@ async def require_session(
     try:
         session = await get_access_session(request, db)
     except SessionAuthenticationError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "access_session_invalid",
-            "Access session validation failed",
-            error=str(exc),
-            failure_reason="access_session_invalid",
-        )
+        logger.warning("access_session_invalid", "Access session validation failed", error=str(exc), failure_reason="access_session_invalid")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
     set_context(user_id=session.user_id, session_id=session.id)
     if session.user is None or not session.user.is_active:
         await revoke_session(session, db)
-        log_event(logger, logging.WARNING, "access_session_inactive_user", "Access session belongs to an inactive user")
+        logger.warning("access_session_inactive_user", "Access session belongs to an inactive user")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
     return session
 
@@ -393,14 +352,7 @@ async def require_bound_user_id(
     current_user: UserTable = Depends(require_current_user),
 ) -> UserTable:
     if user_id != current_user.id:
-        log_event(
-            logger,
-            logging.WARNING,
-            "user_scope_mismatch",
-            "Authenticated user attempted to access another user scope",
-            requested_user_id=user_id,
-            authenticated_user_id=current_user.id,
-        )
+        logger.warning("user_scope_mismatch", "Authenticated user attempted to access another user scope", requested_user_id=user_id, authenticated_user_id=current_user.id)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Token does not grant access to this user.",
@@ -415,20 +367,13 @@ async def require_refresh_session(
     try:
         session = await get_refresh_session(request, db)
     except SessionAuthenticationError as exc:
-        log_event(
-            logger,
-            logging.WARNING,
-            "refresh_session_invalid",
-            "Refresh session validation failed",
-            error=str(exc),
-            failure_reason="refresh_session_invalid",
-        )
+        logger.warning("refresh_session_invalid", "Refresh session validation failed", error=str(exc), failure_reason="refresh_session_invalid")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
     set_context(user_id=session.user_id, session_id=session.id)
     if session.user is None or not session.user.is_active:
         await revoke_session(session, db)
-        log_event(logger, logging.WARNING, "refresh_session_inactive_user", "Refresh session belongs to an inactive user")
+        logger.warning("refresh_session_inactive_user", "Refresh session belongs to an inactive user")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
     return session
 
@@ -446,13 +391,7 @@ async def require_csrf_protection(request: Request) -> None:
     header_value = request.headers.get(CSRF_HEADER_NAME)
     cookie_value = request.cookies.get(CSRF_COOKIE_NAME)
     if not header_value or not cookie_value or not secrets.compare_digest(header_value, cookie_value):
-        log_event(
-            logger,
-            logging.WARNING,
-            "csrf_validation_failed",
-            "CSRF validation failed",
-            failure_reason="csrf_mismatch",
-        )
+        logger.warning("csrf_validation_failed", "CSRF validation failed", failure_reason="csrf_mismatch")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid CSRF token.",

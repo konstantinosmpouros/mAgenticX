@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from observability.events import log_event
+from observability.events import EventLogger, log_event
 
 
 def elapsed_ms(started_at: float) -> float:
@@ -30,7 +30,7 @@ class LoggedOperation:
 @asynccontextmanager
 async def logged_db_operation(
     *,
-    logger: logging.Logger,
+    logger: logging.Logger | EventLogger,
     db: AsyncSession | None,
     success_event: str | None,
     failure_event: str | None,

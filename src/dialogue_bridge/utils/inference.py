@@ -1,8 +1,7 @@
-import logging
 import base64
 
 from fastapi import HTTPException, status
-from observability import log_event
+from observability import EventLogger
 
 from database import MessageTable
 
@@ -46,7 +45,7 @@ def validate_and_order_message_path(
 
 def prepare_inference_history(
     *,
-    logger: logging.Logger,
+    logger: EventLogger,
     messages: list[MessageTable],
     message_ids: list[str] | None,
     enabled_tools_count: int,
@@ -70,9 +69,7 @@ def prepare_inference_history(
             history_messages = history_messages[:-1]
 
     history = [serialise_message_with_images_for_agent(message) for message in history_messages]
-    log_event(
-        logger,
-        logging.INFO,
+    logger.info(
         "inference_branch_resolved",
         "Inference branch resolved",
         requested_message_path_length=len(message_ids or []),

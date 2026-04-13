@@ -6,7 +6,7 @@ import time
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from observability import StreamMetrics, elapsed_ms, get_context, iter_tracked_stream, log_event, log_stream_outcome, set_context
+from observability import StreamMetrics, elapsed_ms, get_context, get_logger, iter_tracked_stream, log_stream_outcome, set_context
 
 from database import ConversationTable, UserTable
 from schemas import InferenceStreamPayload
@@ -25,7 +25,7 @@ router = APIRouter(
     tags=["Inference"],
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.post("/inference/stream")
@@ -50,27 +50,20 @@ async def startInferenceStream(
     agent = await get_agent_by_id(current_conv.agent_id)
     agent_url = build_agent_stream_url(agent)
     agent_slug = getattr(agent, "slug", None)
+    request_logger = logger.bind(agent_id=current_conv.agent_id, agent_slug=agent_slug)
     
     # Build chat history for the requested branch (fallback = whole conversation)
     message_ids = payload.messagePath if payload and payload.messagePath else None
     enabled_tools = payload.enabledTools if payload else None
     history_messages, history = prepare_inference_history(
-        logger=logger,
+        logger=request_logger,
         messages=current_conv.messages,
         message_ids=message_ids,
         enabled_tools_count=len(enabled_tools or []),
     )
     
     # Log inference start with history and tools metadata
-    log_event(
-        logger,
-        logging.INFO,
-        "inference_stream_started",
-        "Inference stream started",
-        agent_id=current_conv.agent_id,
-        history_messages=len(history_messages),
-        enabled_tools=len(enabled_tools or []),
-    )
+    request_logger.info("inference_stream_started", "Inference stream started", history_messages=len(history_messages), enabled_tools=len(enabled_tools or []))
     
     # Capture request_id from context before entering the generator so it's
     # available even if the context has been cleared by the time chunks flow.
@@ -116,22 +109,18 @@ async def startInferenceStream(
                     ) as r:
                         r.raise_for_status()
                         upstream_connect_latency_ms = elapsed_ms(upstream_started_at)
-                        log_event(
-                            logger,
-                            logging.INFO,
+                        request_logger.info(
                             "inference_upstream_connected",
                             "Inference upstream stream connected",
                             context=request_context,
                             upstream_service="agents",
-                            agent_id=current_conv.agent_id,
-                            agent_slug=agent_slug,
                             upstream_status_code=r.status_code,
                             upstream_connect_latency_ms=upstream_connect_latency_ms,
                         )
                         async for chunk in iter_tracked_stream(r.aiter_bytes(), metrics):
                             yield chunk
                     log_stream_outcome(
-                        logger,
+                        request_logger,
                         logging.INFO,
                         "inference_stream_completed",
                         "Inference stream completed",
@@ -139,44 +128,34 @@ async def startInferenceStream(
                         completed=True,
                         context=request_context,
                         upstream_service="agents",
-                        agent_id=current_conv.agent_id,
-                        agent_slug=agent_slug,
                     )
                 except asyncio.CancelledError:
                     log_stream_outcome(
-                        logger,
+                        request_logger,
                         logging.INFO,
                         "inference_stream_cancelled",
                         "Inference stream cancelled by client",
                         metrics=metrics,
                         context=request_context,
-                        agent_id=current_conv.agent_id,
-                        agent_slug=agent_slug,
                     )
                     return
         except asyncio.CancelledError:
             log_stream_outcome(
-                logger,
+                request_logger,
                 logging.INFO,
                 "inference_stream_cancelled",
                 "Inference request context cancelled",
                 metrics=metrics,
                 context=request_context,
-                agent_id=current_conv.agent_id,
-                agent_slug=agent_slug,
             )
             return
         except httpx.HTTPError as e:
-            log_event(
-                logger,
-                logging.ERROR,
+            request_logger.error(
                 "inference_upstream_error",
                 "Inference upstream error",
                 exc_info=True,
                 context=request_context,
                 upstream_service="agents",
-                agent_id=current_conv.agent_id,
-                agent_slug=agent_slug,
                 error=str(e),
             )
             err = {

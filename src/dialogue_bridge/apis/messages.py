@@ -1,8 +1,7 @@
 from datetime import datetime
-import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from observability import log_event, logged_db_operation, set_context
+from observability import get_logger, logged_db_operation, set_context
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +24,7 @@ from utils import (
 
 
 router = APIRouter(prefix="/users/{user_id}", tags=["Messages"])
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @router.post(
@@ -87,7 +86,7 @@ async def addMessageToConversation(
     message_out = MessageOut.model_validate(msg_row)
     await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
     summary = ConversationSummary.model_validate(current_conv)
-    log_event(logger, logging.INFO, "message_created", "Message added to conversation", **operation.snapshot())
+    logger.info("message_created", "Message added to conversation", **operation.snapshot())
 
     return UpdateConversationResponse(message=message_out, summary=summary)
 
@@ -159,7 +158,7 @@ async def updateMessageInConversation(
     await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
     summary = ConversationSummary.model_validate(current_conv)
     message_out = MessageOut.model_validate(msg)
-    log_event(logger, logging.INFO, "message_updated", "AI message updated", **operation.snapshot())
+    logger.info("message_updated", "AI message updated", **operation.snapshot())
     return UpdateConversationResponse(message=message_out, summary=summary)
 
 
@@ -197,13 +196,7 @@ async def likeMessage(
     msg.liked = None if msg.liked is True else True
     await db.commit()
     await db.refresh(msg)
-    log_event(
-        logger,
-        logging.INFO,
-        "message_like_toggled",
-        "Message like toggled",
-        liked=msg.liked,
-    )
+    logger.info("message_like_toggled", "Message like toggled", liked=msg.liked)
     return MessageOut.model_validate(msg)
 
 
@@ -240,13 +233,6 @@ async def dislikeMessage(
     msg.liked = None if msg.liked is False else False
     await db.commit()
     await db.refresh(msg)
-    log_event(
-        logger,
-        logging.INFO,
-        "message_dislike_toggled",
-        "Message dislike toggled",
-        liked=msg.liked,
-    )
+    logger.info("message_dislike_toggled", "Message dislike toggled", liked=msg.liked)
     return MessageOut.model_validate(msg)
-
 
