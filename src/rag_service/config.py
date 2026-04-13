@@ -7,6 +7,10 @@ from langchain_openai import OpenAIEmbeddings
 
 import duckdb
 import pandas as pd
+from observability import get_logger
+
+
+logger = get_logger(__name__)
 
 # --------------------------------------------------------------------------------------
 # Excel db Configs
@@ -27,7 +31,7 @@ for file_path in DATA_DIR.iterdir():
         try:
             df = pd.read_excel(file_path, sheet_name=0)  # first sheet only
         except Exception as exc:
-            print(f"[WARN] Could not read {file_path.name}: {exc}")
+            logger.warning("workbook_load_skipped", "Failed to read workbook; skipping it", workbook_name=file_path.name, error=str(exc))
             continue
             
         db.register(safe_name, df)
@@ -35,6 +39,7 @@ for file_path in DATA_DIR.iterdir():
             "table_name": safe_name,
             "schema": {col: str(dtype) for col, dtype in df.dtypes.items()},
         }
+        logger.info("workbook_loaded", "Workbook registered in DuckDB", workbook_name=file_path.name, table_name=safe_name, column_count=len(df.columns), row_count=len(df))
 
 if not TABLES:
     raise RuntimeError("No Excel workbooks were successfully loaded from 'data/'.")

@@ -7,6 +7,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
+from observability import get_context
 from config import ORTHODOX_ENDPOINT as ENDPOINT
 from langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
 from langgraph_agents.orthodox_agent_v1.prompt_templates import (
@@ -151,8 +152,10 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         tcid = str(uuid4())
         
         async def fetch_single(query: str):
+            request_id = get_context().get("request_id")
+            headers = {"X-Request-ID": request_id} if request_id else {}
             async with httpx.AsyncClient() as client:
-                resp = await client.post(ENDPOINT, json={"query": query, "k": 10}, timeout=30)
+                resp = await client.post(ENDPOINT, json={"query": query, "k": 10}, headers=headers, timeout=30)
                 resp.raise_for_status()
                 retrieved_docs.extend(resp.json()["documents"])
                 

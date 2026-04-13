@@ -1,16 +1,43 @@
+from contextlib import asynccontextmanager
+from pathlib import Path
+import os
+import sys
+
+PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
+sys.path.append(str(PACKAGE_ROOT))
+
 from fastapi import FastAPI, HTTPException
 
 import chromadb
 from langchain_chroma import Chroma
 from langchain.schema import Document
 
+from observability import (
+    RequestLoggingMiddleware,
+    configure_logging,
+    get_logger,
+    register_exception_handlers,
+)
+
+configure_logging()
+logger = get_logger(__name__)
+
 from config import RAG_HOST, RAG_PORT, settings, embeddings_model
 from config import TABLES, db
 from schemas import Query, ExcelSQLQuery
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    logger.info("service_startup", "RAG service startup initiated", loaded_tables=len(TABLES))
+    yield
+    logger.info("service_shutdown", "RAG service shutdown completed")
+
+
 # Initialize FastAPI server
-app = FastAPI()
+app = FastAPI(lifespan=_lifespan, title="RAG Service")
+register_exception_handlers(app)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 # --------------------------------------------------------------------------------------
@@ -19,6 +46,7 @@ app = FastAPI()
 @app.post("/retrieve/{collection_name}")
 async def retrieve(request: Query, collection_name: str):
     """Retrieve documents from the specified collection using the provided query and k value."""
+    logger.info("retrieval_started", "Vector retrieval started", collection_name=collection_name, k=request.k, query_length=len(request.query.strip()))
     client = chromadb.HttpClient(
         host=RAG_HOST,
         port=int(RAG_PORT),
@@ -33,7 +61,9 @@ async def retrieve(request: Query, collection_name: str):
     retriever = vectordb.as_retriever(search_kwargs={"k": request.k})
     docs: list[Document] = await retriever.ainvoke(request.query)
     if not docs:
+        logger.warning("retrieval_no_results", "Vector retrieval returned no documents", collection_name=collection_name, k=request.k)
         raise HTTPException(status_code=404, detail="No documents found")
+    logger.info("retrieval_completed", "Vector retrieval completed", collection_name=collection_name, k=request.k, document_count=len(docs))
     return {
         "query": request.query,
         "k": request.k,
@@ -49,8 +79,12 @@ async def retrieve(request: Query, collection_name: str):
 @app.get("/excel/{table}/schema")
 async def get_schema(table: str):
     """Return column names and DuckDB types so the agent can reason about them."""
-    
+    if table not in TABLES:
+        logger.warning("schema_table_not_found", "Schema requested for unknown table", table=table)
+        raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
+
     description = db.execute(f"DESCRIBE {table}").fetchall()
+    logger.info("schema_served", "DuckDB schema served", table=table, column_count=len(description))
     return [
         {"column": col, "type": dtype}
         for col, dtype, *_ in description
@@ -60,14 +94,17 @@ async def get_schema(table: str):
 @app.post("/excel/{table}/query/sql")
 async def query_sql(body: ExcelSQLQuery, table: str):
     """Run arbitrary SQL and return result rows as JSON. The SQL *must* reference the table name provided in the path parameter."""
-    
+    logger.info("sql_query_started", "DuckDB SQL query started", table=table, sql_length=len(body.sql))
     if not table in TABLES.keys():
+        logger.warning("sql_table_not_found", "SQL query requested for unknown table", table=table)
         raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
     try:
         df = db.execute(body.sql).fetch_df()
     except Exception as exc:
+        logger.warning("sql_query_failed", "DuckDB SQL query failed", table=table, error=str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    
+
+    logger.info("sql_query_completed", "DuckDB SQL query completed", table=table, row_count=len(df), column_count=len(df.columns))
     return {
         "row_count": len(df),
         "data": df.to_dict(orient="records"),

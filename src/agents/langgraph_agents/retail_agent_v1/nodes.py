@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
+from observability import get_context
 from config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
 from langgraph_agents.retail_agent_v1.agents import RetailAgents
 from langgraph_agents.retail_agent_v1.prompt_templates import (
@@ -78,8 +79,10 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
             writer=writer,
         )
         try:
+            request_id = get_context().get("request_id")
+            headers = {"X-Request-ID": request_id} if request_id else {}
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(SCHEMA_ENDPOINT)
+                response = await client.get(SCHEMA_ENDPOINT, headers=headers)
                 response.raise_for_status()
                 db_schema_json = response.json()
                 agui.tool_call_result(tcid, "Retrieved database schema.", writer)
@@ -191,8 +194,10 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         )
 
         try:
+            request_id = get_context().get("request_id")
+            headers = {"X-Request-ID": request_id} if request_id else {}
             async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.post(QUERY_ENDPOINT, json={"sql": sql_query}, timeout=30)
+                response = await client.post(QUERY_ENDPOINT, json={"sql": sql_query}, headers=headers, timeout=30)
                 response.raise_for_status()
                 payload = response.json()
         except httpx.HTTPStatusError as exc:
