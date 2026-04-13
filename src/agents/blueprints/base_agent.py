@@ -3,11 +3,13 @@ from uuid import uuid4
 import traceback
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Literal
 
+from observability import get_logger
 from utils import (
     build_tool_cache_key,
     get_tool_cache_key,
 )
 
+logger = get_logger(__name__)
 
 class BaseAgent:
     """
@@ -121,9 +123,16 @@ class BaseAgent:
 
         missing = desired - seen
         if missing:
-            print(f"[MCP tools] Agent '{self.name}' missing tools: {sorted(missing)}")
+            logger.warning("agent_tools_missing", "Configured tools were not found in live MCP tools", agent_slug=self.name, missing_tools=sorted(missing))
 
-        print(f"[MCP tools] Agent '{self.name}' resolved tools: {sorted(seen)}")
+        logger.info(
+            "agent_tools_resolved",
+            "Resolved configured MCP tools for agent",
+            agent_slug=self.name,
+            resolved_tools=sorted(seen),
+            requested_tools=len(desired),
+            resolved_count=len(seen),
+        )
         return resolved
 
 
@@ -227,10 +236,14 @@ class BaseAgent:
     def _encode_run_error(cls, exc: BaseException) -> bytes:
         """Log the full traceback to stdout and return a clean SSE RUN_ERROR frame."""
         tb = traceback.format_exc()
-        if tb and tb.strip() and tb.strip() != "NoneType: None":
-            print(f"[{cls.name}] RUN_ERROR\n{tb.strip()}")
-        else:
-            print(f"[{cls.name}] RUN_ERROR — {type(exc).__name__}: {exc}")
+        logger.error(
+            "agent_run_error",
+            "Agent run failed",
+            exc_info=True,
+            agent_slug=cls.name,
+            exception_type=type(exc).__name__,
+            traceback_summary=tb.strip() if tb and tb.strip() != "NoneType: None" else None,
+        )
 
         user_message = f"{type(exc).__name__}: {exc}"
         err = {"type": "RUN_ERROR", "message": user_message}

@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AttachmentTable, ConversationTable, MessageTable, get_db, UserTable
-from database.schemas import (
+from schemas import (
     ConversationSummary,
     MessageIn,
     MessageOut,

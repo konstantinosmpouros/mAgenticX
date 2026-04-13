@@ -6,7 +6,7 @@ from observability import get_context, log_event, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, UserTable, UserPreferencesTable
-from database.schemas import AgentPublic, DictationResponse, ToolManifest, UserPreferences
+from schemas import AgentPublic, DictationResponse, ToolManifest, UserPreferences
 from utils import (
     AGENTS_SERVICE_URL,
     fetch_tools_from_agents_service,

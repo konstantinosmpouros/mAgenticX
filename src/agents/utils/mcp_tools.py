@@ -6,8 +6,10 @@ import mcp
 from mcp import types
 from mcp.client.sse import sse_client
 
+from observability import get_logger
 from schemas import ToolManifest
 
+logger = get_logger(__name__)
 
 class MCPToolsClientError(RuntimeError):
     """Raised when the MCP tools endpoint cannot be queried."""
@@ -153,12 +155,22 @@ async def _fetch_tools_from_gateway() -> List[types.Tool]:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 
     try:
+        logger.info("mcp_tools_fetch_started", "MCP tools fetch started", upstream_service="mcp_gateway", endpoint=endpoint)
         async with sse_client(url=endpoint) as (read_stream, write_stream):
             async with mcp.ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 result = await session.list_tools()
-                return list(result.tools)
+                tools = list(result.tools)
+                logger.info("mcp_tools_fetch_completed", "MCP tools fetch completed", upstream_service="mcp_gateway", tool_count=len(tools))
+                return tools
     except Exception as exc:  # pragma: no cover - defensive guardrail
+        logger.warning(
+            "mcp_tools_fetch_failed",
+            "Failed to fetch tools from MCP gateway",
+            upstream_service="mcp_gateway",
+            error=str(exc),
+            failure_reason="gateway_error",
+        )
         raise MCPToolsClientError(f"Failed to list tools from MCP server: {exc}") from exc
 
 
@@ -168,10 +180,12 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
     callers that need raw definitions (not callable LangChain tools).
     """
     if _MCP_TOOL_MANIFEST_CACHE and not force_refresh:
+        logger.info("mcp_tools_cache_hit", "Using cached MCP tool manifests", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
         return []
     
     tools = await _fetch_tools_from_gateway()
     _prime_manifest_cache(tools)
+    logger.info("mcp_tools_cache_refreshed", "MCP tool manifest cache refreshed", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
     
     return tools
 
@@ -183,7 +197,12 @@ async def mcp_session_context():
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 
+    logger.info("mcp_session_starting", "Opening MCP session", upstream_service="mcp_gateway", endpoint=endpoint)
     async with sse_client(url=endpoint) as (read_stream, write_stream):
         async with mcp.ClientSession(read_stream, write_stream) as session:
             await session.initialize()
-            yield session
+            logger.info("mcp_session_ready", "MCP session initialized", upstream_service="mcp_gateway")
+            try:
+                yield session
+            finally:
+                logger.info("mcp_session_closed", "MCP session closed", upstream_service="mcp_gateway")

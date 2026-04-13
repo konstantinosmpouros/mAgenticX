@@ -11,7 +11,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AttachmentTable, BlobTable, ConversationTable, MessageTable, get_db, UserTable
-from database.schemas import ImageOut
+from schemas import ImageOut
 from utils import validate_userId
 
 

@@ -8,6 +8,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from agui import AGUIEmitter, AGUIStreamNormalizer
 from blueprints.base_agent import BaseAgent
+from observability import get_logger
+
+logger = get_logger(__name__)
 
 STREAMING_MODES = Literal["custom"] | list[Literal["messages", "updates"]]
 
@@ -96,6 +99,7 @@ class LangGraphAgent(BaseAgent, ABC):
         when no ``state`` is defined, ``self.agents`` is returned directly.
         """
         if self.graph is None:
+            logger.info("langgraph_build_started", "LangGraph build started", agent_slug=self.name)
             self.memory_saver = InMemorySaver()  # ephemeral: lives only for this inference
             self.register_agents_and_nodes()
 
@@ -106,6 +110,7 @@ class LangGraphAgent(BaseAgent, ABC):
                 graph = self.register_graph_nodes(graph)
                 graph = self.register_graph_edges(graph)
                 self.graph = graph.compile(checkpointer=self.memory_saver)
+            logger.info("langgraph_build_completed", "LangGraph build completed", agent_slug=self.name)
         return
 
 
@@ -127,6 +132,7 @@ class LangGraphAgent(BaseAgent, ABC):
         try:
             # Build graph if not already done
             self.build()
+            logger.info("langgraph_execution_started", "LangGraph execution started", agent_slug=self.name, stream_mode=self.stream_mode)
 
             # Stream graph execution results
             async for chunk in self.graph.astream(
@@ -139,7 +145,9 @@ class LangGraphAgent(BaseAgent, ABC):
                 else:
                     for agui_event in self.agui_normalizer.handle_chunk(chunk):
                         yield agui_event
+            logger.info("langgraph_execution_completed", "LangGraph execution completed", agent_slug=self.name)
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
+            logger.info("langgraph_execution_cancelled", "LangGraph execution cancelled", agent_slug=self.name)
             return
         except Exception as exc:
             yield self._encode_run_error(exc)

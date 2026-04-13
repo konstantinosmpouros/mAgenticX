@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from observability import StreamMetrics, elapsed_ms, get_context, iter_tracked_stream, log_event, log_stream_outcome, set_context
 
 from database import ConversationTable, UserTable
-from database.schemas import InferenceStreamPayload
+from schemas import InferenceStreamPayload
 from vault_auth.session_auth import require_csrf_protection
 from utils import (
     build_agent_stream_url,

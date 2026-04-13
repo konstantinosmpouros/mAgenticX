@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from database import ConversationTable, get_db, UserTable
-from database.schemas import (
+from schemas import (
     ConversationDetail,
     ConversationIn,
     ConversationSummary,

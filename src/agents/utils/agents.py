@@ -5,8 +5,10 @@ from typing import Dict, Set
 import langgraph_agents
 import deep_agents
 from blueprints import LangGraphAgent, DeepAgent
+from observability import get_logger
 from schemas import AgentDefinition
 
+logger = get_logger(__name__)
 
 def _normalize_slug(slug: str) -> str:
     """Trim whitespace and lowercase for comparisons."""
@@ -44,13 +46,13 @@ def _discover_agents() -> Dict[str, AgentDefinition]:
                 continue
             normalized_slug = _normalize_slug(slug)
             if normalized_slug in disabled_slugs:
-                print(f"Agent '{slug}' disabled via DISABLED_AGENT_SLUGS; skipping registration.")
+                logger.info("agent_registration_skipped", "Agent disabled via DISABLED_AGENT_SLUGS; skipping registration", agent_slug=slug)
                 continue
             manifest = candidate.manifest()
             registry[slug] = AgentDefinition(slug=slug, cls=candidate, manifest=manifest)
 
+    logger.info("agent_registry_discovered", "Agent registry discovered", count=len(registry))
     return registry
 
 
 AGENT_REGISTRY: Dict[str, AgentDefinition] = _discover_agents()
-

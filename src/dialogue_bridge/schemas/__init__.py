@@ -337,6 +337,37 @@ class MessageIn(BaseModel):
             )
         return self
 
+class ConversationIn(BaseModel):
+    """Create a conversation and persist the very first message."""
+    agentId: str = Field(..., description="Target agent id")
+    isPrivate: bool = Field(False, description="Optional privacy flag")
+    title: Optional[str] = Field(None, description="Optional custom title")
+    firstMessage: MessageIn
+
+class CreateConversationResponse(BaseModel):
+    """Response when creating a conversation: summary + full detail."""
+    detail: ConversationDetail
+    summary: ConversationSummary
+
+
+
+#-------------------------------------------
+# INFERENCE STREAM DTO
+#-------------------------------------------
+class InferenceStreamPayload(BaseModel):
+    """Payload to map the messages branch from the UI and start an inference stream from the agent."""
+    messagePath: list[str] | None = None
+    enabledTools: list[ToolPreference] | None = Field(default=None, validation_alias="enabledTools")
+
+
+
+#-------------------------------------------
+# CONVERSATION UPDATE DTO
+#-------------------------------------------
+class UpdateConversationResponse(BaseModel):
+    message: MessageOut
+    summary: ConversationSummary
+
 
 class MessageUpdate(BaseModel):
     """
@@ -357,32 +388,6 @@ class MessageUpdate(BaseModel):
         if self.content is None:
             raise ValueError("Message content is required to update the message.")
         return self
-
-class ConversationIn(BaseModel):
-    """Create a conversation and persist the very first message."""
-    agentId: str = Field(..., description="Target agent id")
-    isPrivate: bool = Field(False, description="Optional privacy flag")
-    title: Optional[str] = Field(None, description="Optional custom title")
-    firstMessage: MessageIn
-
-class CreateConversationResponse(BaseModel):
-    """Response when creating a conversation: summary + full detail."""
-    detail: ConversationDetail
-    summary: ConversationSummary
-
-class InferenceStreamPayload(BaseModel):
-    """Payload to map the messages branch from the UI and start an inference stream from the agent."""
-    messagePath: list[str] | None = None
-    enabledTools: list[ToolPreference] | None = Field(default=None, validation_alias="enabledTools")
-
-
-
-#-------------------------------------------
-# CONVERSATION UPDATE DTO
-#-------------------------------------------
-class UpdateConversationResponse(BaseModel):
-    message: MessageOut
-    summary: ConversationSummary
 
 
 
@@ -422,3 +427,30 @@ class ConversationTitleUpdate(BaseModel):
         return self
 
 
+__all__ = [
+    "AuthRequest",
+    "UserProfile",
+    "AuthResponse",
+    "DictationResponse",
+    "AgentFull",
+    "AgentPublic",
+    "ToolManifest",
+    "ToolPreference",
+    "ToolsPreferences",
+    "UserPreferences",
+    "ConversationSummary",
+    "BlobOut",
+    "AttachmentOut",
+    "MessageOut",
+    "ConversationDetail",
+    "AttachmentIn",
+    "MessageIn",
+    "ConversationIn",
+    "CreateConversationResponse",
+    "InferenceStreamPayload",
+    "UpdateConversationResponse",
+    "MessageUpdate",
+    "ImageOut",
+    "TitleOut",
+    "ConversationTitleUpdate",
+]

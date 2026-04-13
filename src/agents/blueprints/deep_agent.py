@@ -8,7 +8,9 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from agui import AGUIEmitter, AGUIStreamNormalizer
 from blueprints.base_agent import BaseAgent
+from observability import get_logger
 
+logger = get_logger(__name__)
 
 STREAMING_MODES = Literal["updates", "messages"]
 SubAgentsT = Sequence[Any] | Mapping[str, Any] | None
@@ -195,11 +197,21 @@ class DeepAgent(BaseAgent, ABC):
     def build(self) -> None:
         """Invoke lifecycle hooks in order and assemble the agent."""
         if self.agent is None:
+            logger.info("deep_agent_build_started", "Deep agent build started", agent_slug=self.name)
             self.skills_paths   = self.load_skills()
             self.memory         = self.load_memory()
             self.agent_md_paths = self.load_agent_md()
             self.sub_agents     = self.register_subagents()
             self.agent          = self.register_agent()
+            logger.info(
+                "deep_agent_build_completed",
+                "Deep agent build completed",
+                agent_slug=self.name,
+                skills_count=len(self.skills_paths),
+                agent_md_count=len(self.agent_md_paths),
+                has_memory=self.memory is not None,
+                has_subagents=self.sub_agents is not None,
+            )
 
 
 
@@ -217,6 +229,7 @@ class DeepAgent(BaseAgent, ABC):
         """
         try:
             self.build()
+            logger.info("deep_agent_execution_started", "Deep agent execution started", agent_slug=self.name, stream_mode=self.stream_mode)
 
             async for chunk in self.agent.astream(
                 payload,
@@ -229,7 +242,9 @@ class DeepAgent(BaseAgent, ABC):
                 else:
                     for agui_event in self.agui_normalizer.handle_chunk(chunk):
                         yield agui_event
+            logger.info("deep_agent_execution_completed", "Deep agent execution completed", agent_slug=self.name)
         except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
+            logger.info("deep_agent_execution_cancelled", "Deep agent execution cancelled", agent_slug=self.name)
             return
         except Exception as exc:
             yield self._encode_run_error(exc)
@@ -257,9 +272,11 @@ class DeepAgent(BaseAgent, ABC):
             filtered_tools.append(tool)
 
         if excluded_names:
-            print(
-                f"[MCP tools] DeepAgent '{self.name}' excluded reserved tools: "
-                f"{sorted(set(excluded_names))}"
+            logger.info(
+                "deep_agent_reserved_tools_excluded",
+                "Deep agent excluded reserved internal tools from MCP attachment",
+                agent_slug=self.name,
+                excluded_tools=sorted(set(excluded_names)),
             )
 
         super()._apply_live_tools(filtered_tools)

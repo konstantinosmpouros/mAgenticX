@@ -1,5 +1,11 @@
 # TODO
 
+## General
+
+- Add more comprehensive logging and monitoring across all services, including structured logs, distributed tracing, and alerting for error conditions. Consider using a centralized logging solution like ELK or Datadog or loki with Grafana for better observability.
+- Implement a more robust error handling strategy across services, with consistent error responses and retry logic where appropriate.
+- Add more comprehensive unit and integration tests, especially for critical components like the RAG service and agents.
+
 ## Security
 
 - Remove or heavily constrain the free-form SQL endpoint in `rag_service`; replace raw SQL execution with allowlisted read-only queries or a safe query layer.
@@ -10,7 +16,7 @@
 - Secure the inference process by implementing stronger rate limiting and abuse controls.
 - Secure the agents from prompt injection by implementing input filtering / guardrails before requests reach the agents.
 - Continue reducing the upload DoS surface: revisit final body limits, keep attachment size/count enforcement aligned between UI and backend, and avoid large base64 payload persistence where possible.
-- Add explicit size limits for persisted payload fields such as `rawEvents`, `plan`, `subagents`, and large message content blobs.
+- Add explicit size limits for persisted payload fields such as large message content & blobs.
 - Harden containers: run as non-root where possible, drop capabilities, enable `no-new-privileges`, use read-only filesystems where possible, and add CPU / memory limits.
 - Add browser security headers at the host/app proxy layer: CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, and `X-Content-Type-Options`.
 - Improve secret handling beyond broad env-var usage where practical, e.g. Docker secrets, mounted secret files, or Vault-issued short-lived credentials.
@@ -31,8 +37,3 @@
 - Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-
-## Code Quality
-
-- Check the naming conventions and make them consistent across the codebase.
-- Add inline documentation for all functions and classes.

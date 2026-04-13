@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from database.schemas import MessageIn, TitleOut
+from schemas import MessageIn, TitleOut
 from observability import get_context, log_event
 from utils.agents import AGENTS_SERVICE_URL
 

@@ -6,7 +6,7 @@ from observability import log_event, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import UserTable, get_db, upsert_user_from_vault
-from database.schemas import AuthRequest, AuthResponse
+from schemas import AuthRequest, AuthResponse
 from utils.rate_limit import AUTHENTICATE_LIMIT, limiter
 from vault_auth.session_auth import (
     build_auth_response,

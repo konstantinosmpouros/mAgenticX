@@ -12,7 +12,7 @@ from database import (
     MessageTable,
     UserTable,
 )
-from database.schemas import AttachmentIn, MessageIn
+from schemas import AttachmentIn, MessageIn
 
 
 async def init_conv(
