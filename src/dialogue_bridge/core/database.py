@@ -1,4 +1,3 @@
-import os
 from uuid import uuid4
 import base64
 
@@ -23,6 +22,7 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
 )
+from core.config import settings
 
 
 def gen_uuid() -> str: return str(uuid4())
@@ -33,20 +33,13 @@ def b64_decode(s: str) -> bytes: return base64.b64decode(s, validate=True)
 
 
 
-# -------------------------------------------------------------------------------
-# Configurations
-# -------------------------------------------------------------------------------
-DATABASE_URL = os.getenv("DATABASE_URL", None)
-if DATABASE_URL is None:
-    raise Exception("The service wasn't provided with a database url to persist the conversations!")
-
 engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    pool_size=5,
-    max_overflow=20,
+    settings.database.url,
+    echo=settings.database.echo,
+    pool_pre_ping=settings.database.pool_pre_ping,
+    pool_recycle=settings.database.pool_recycle,
+    pool_size=settings.database.pool_size,
+    max_overflow=settings.database.max_overflow,
 )
 
 # Factory that returns AsyncSession objects

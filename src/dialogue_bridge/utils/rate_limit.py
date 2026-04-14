@@ -1,13 +1,12 @@
-import os
-
 from fastapi import Request
 from slowapi import Limiter
 
+from core.config import settings
 from utils.proxy import resolve_client_ip
 
 
-AUTH_RATE_LIMIT_MAX_ATTEMPTS = int(os.getenv("AUTH_RATE_LIMIT_MAX_ATTEMPTS", "4"))
-AUTH_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60"))
+AUTH_RATE_LIMIT_MAX_ATTEMPTS = settings.rate_limit.auth_max_attempts
+AUTH_RATE_LIMIT_WINDOW_SECONDS = settings.rate_limit.auth_window_seconds
 
 
 def _build_limit_string(max_attempts: int, window_seconds: int) -> str:

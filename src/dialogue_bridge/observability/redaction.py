@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import os
 from typing import Any
 
+from core.config import settings
 
 _SENSITIVE_FIELD_TOKENS = (
     "password",
@@ -20,11 +20,7 @@ _DROP_FIELD_NAMES = {"username", "title", "file_name", "filename", "message_cont
 _HASHED_CONTEXT_FIELDS = {"client_ip", "session_id"}
 _HASHED_FIELD_NAMES = {"client_ip", "session_id"}
 _MAX_STRING_LENGTH = 256
-_REDACTION_SECRET = (
-    os.getenv("LOG_REDACTION_SECRET")
-    or os.getenv("SESSION_TOKEN_SECRET")
-    or "dialogue-bridge-log-redaction"
-).encode("utf-8")
+_REDACTION_SECRET = settings.logging.redaction_secret.encode("utf-8")
 
 
 def _is_sensitive_key(key: str) -> bool:

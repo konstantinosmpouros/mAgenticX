@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import logging
-import os
 
+from core.config import settings
 from observability.context import get_context
 from observability.redaction import sanitize_context_value
 
 
-_SERVICE_NAME = (os.getenv("LOG_SERVICE_NAME") or "dialogue_bridge").strip() or "dialogue_bridge"
-_APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENV") or "development").strip() or "development"
-_APP_VERSION = (os.getenv("APP_VERSION") or os.getenv("IMAGE_TAG") or "unknown").strip() or "unknown"
+_SERVICE_NAME = settings.app.service_name
+_APP_ENV = settings.app.env
+_APP_VERSION = settings.app.version
 
 
 class RequestContextFilter(logging.Filter):

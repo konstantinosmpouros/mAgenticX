@@ -1,8 +1,9 @@
-import os
 from dataclasses import dataclass
 from typing import Optional
 
 import httpx
+
+from core.config import VaultSettings, settings as service_settings
 
 
 class VaultAuthError(Exception):
@@ -21,35 +22,13 @@ class VaultAuthResult:
     client_token_renewable: bool
 
 
-@dataclass(slots=True)
-class VaultSettings:
-    addr: str
-    userpass_mount: str = "userpass"
-    oidc_role: str = "agenticx"
-    oidc_path: str = "identity/oidc/token"
-    namespace: Optional[str] = None
-    timeout: float = 10.0
-
-    @classmethod
-    def from_env(cls) -> "VaultSettings":
-        addr = os.getenv("VAULT_ADDR")
-        if not addr:
-            raise RuntimeError("VAULT_ADDR is not configured.")
-        return cls(
-            addr=addr.rstrip("/"),
-            userpass_mount=os.getenv("VAULT_USERPASS_MOUNT", "userpass"),
-            oidc_role=os.getenv("VAULT_OIDC_ROLE", "agenticx"),
-            oidc_path=os.getenv("VAULT_OIDC_PATH", "identity/oidc/token"),
-            namespace=os.getenv("VAULT_NAMESPACE"),
-            timeout=float(os.getenv("VAULT_HTTP_TIMEOUT", "10")),
-        )
-
-
 class VaultAuthenticator:
     """Small client that authenticates users against Vault userpass."""
 
     def __init__(self, settings: VaultSettings | None = None):
-        self._settings = settings or VaultSettings.from_env()
+        self._settings = settings or service_settings.vault
+        if not self._settings.addr:
+            raise RuntimeError("VAULT_ADDR is not configured.")
 
     async def authenticate(self, username: str, password: str) -> VaultAuthResult:
         async with httpx.AsyncClient(timeout=self._settings.timeout) as client:
@@ -93,10 +72,10 @@ class VaultAuthenticator:
         return headers
 
     def _build_login_url(self, username: str) -> str:
-        return f"{self._settings.addr}/v1/auth/{self._settings.userpass_mount}/login/{username}"
+        return f"{self._settings.addr.rstrip('/')}/v1/auth/{self._settings.userpass_mount}/login/{username}"
 
     def _build_oidc_url(self) -> str:
-        return f"{self._settings.addr}/v1/{self._settings.oidc_path.rstrip('/')}/{self._settings.oidc_role}"
+        return f"{self._settings.addr.rstrip('/')}/v1/{self._settings.oidc_path.rstrip('/')}/{self._settings.oidc_role}"
 
     @staticmethod
     def _parse_json(response: httpx.Response, context: str) -> dict:

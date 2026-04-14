@@ -1,4 +1,3 @@
-import os
 from typing import Any, Dict, Iterable, List, Sequence
 
 import httpx
@@ -9,12 +8,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
+from core.config import settings
 from core.database import AgentTable
 
 
 logger = get_logger(__name__)
 
-AGENTS_SERVICE_URL = os.getenv("AGENTS_SERVICE_URL", "http://agents:8003")
+AGENTS_SERVICE_URL = settings.upstream.agents_service_url
 _AGENTS_DISCOVERY_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/agents"
 _AGENTS_TOOLS_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/tools"
 _AGENT_CACHE: Dict[str, AgentTable] = {}

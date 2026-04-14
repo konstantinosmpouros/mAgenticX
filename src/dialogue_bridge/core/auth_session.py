@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -12,44 +11,25 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from core.config import settings
 from core.database import SessionTable, UserTable, get_db
 from utils.proxy import resolve_client_ip
 
 logger = get_logger(__name__)
 
+SESSION_COOKIE_SECURE = settings.session.secure
+SESSION_COOKIE_SAMESITE = settings.session.samesite
+SESSION_COOKIE_DOMAIN = settings.session.domain
+SESSION_ACCESS_COOKIE_NAME = settings.session.access_cookie_name
+SESSION_REFRESH_COOKIE_NAME = settings.session.refresh_cookie_name
+CSRF_COOKIE_NAME = settings.session.csrf_cookie_name
+CSRF_HEADER_NAME = settings.session.csrf_header_name
 
-def _as_bool(value: str | None, default: bool) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+ACCESS_TTL_SECONDS = settings.session.access_ttl_seconds
+REFRESH_TTL_SECONDS = settings.session.refresh_ttl_seconds
+SESSION_MAX_PER_USER = settings.session.max_per_user
 
-
-SESSION_COOKIE_SECURE = _as_bool(os.getenv("SESSION_COOKIE_SECURE"), default=True)
-SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "lax")
-SESSION_COOKIE_DOMAIN = (
-    None if os.getenv("SESSION_COOKIE_DOMAIN") in (None, "") else os.getenv("SESSION_COOKIE_DOMAIN")
-)
-SESSION_ACCESS_COOKIE_NAME = os.getenv(
-    "SESSION_COOKIE_NAME",
-    "__Host-mx_session" if SESSION_COOKIE_SECURE and SESSION_COOKIE_DOMAIN is None else "mx_session",
-)
-SESSION_REFRESH_COOKIE_NAME = os.getenv(
-    "SESSION_REFRESH_COOKIE_NAME",
-    "__Host-mx_refresh" if SESSION_COOKIE_SECURE and SESSION_COOKIE_DOMAIN is None else "mx_refresh",
-)
-CSRF_COOKIE_NAME = os.getenv(
-    "SESSION_CSRF_COOKIE_NAME",
-    "__Host-mx_csrf" if SESSION_COOKIE_SECURE and SESSION_COOKIE_DOMAIN is None else "mx_csrf",
-)
-CSRF_HEADER_NAME = os.getenv("SESSION_CSRF_HEADER_NAME", "X-CSRF-Token")
-
-ACCESS_TTL_SECONDS = int(os.getenv("SESSION_ACCESS_TTL_SECONDS", "900"))
-REFRESH_TTL_SECONDS = int(os.getenv("SESSION_REFRESH_TTL_SECONDS", "604800"))
-SESSION_MAX_PER_USER = int(os.getenv("SESSION_MAX_PER_USER", "3"))
-
-_TOKEN_SECRET = os.getenv("SESSION_TOKEN_SECRET")
-if not _TOKEN_SECRET:
-    _TOKEN_SECRET = secrets.token_hex(32)
+_TOKEN_SECRET = settings.session.token_secret
 
 
 class SessionAuthenticationError(Exception):
