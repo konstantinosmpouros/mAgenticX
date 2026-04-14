@@ -3,7 +3,7 @@ import base64
 from fastapi import HTTPException, status
 from observability import EventLogger
 
-from database import MessageTable
+from core.database import MessageTable
 
 
 def validate_and_order_message_path(

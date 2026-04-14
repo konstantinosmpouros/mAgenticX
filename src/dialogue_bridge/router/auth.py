@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from observability import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import UserTable, get_db, upsert_user_from_vault
+from core.database import UserTable, get_db, upsert_user_from_vault
 from schemas import AuthRequest, AuthResponse
 from utils.rate_limit import AUTHENTICATE_LIMIT, limiter
-from vault_auth.session_auth import (
+from core.auth_session import (
     build_auth_response,
     clear_session_cookies,
     create_user_session,
@@ -23,10 +23,10 @@ from vault_auth.session_auth import (
     SessionAuthenticationError,
     access_ttl_for_session,
 )
-from vault_auth.client import VaultAuthError, VaultAuthenticator
+from core.auth_client import VaultAuthError, VaultAuthenticator
 
 
-router = APIRouter(tags=["Auth"])
+router = APIRouter()
 logger = get_logger(__name__)
 
 try:
@@ -35,7 +35,7 @@ except RuntimeError:
     _vault_authenticator = None
 
 
-@router.post("/authenticate", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+@router.post("/login", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 @limiter.limit(AUTHENTICATE_LIMIT)
 async def authenticate(
     creds: AuthRequest,
@@ -113,7 +113,7 @@ async def authenticate(
     return AuthResponse(**build_auth_response(user, issued.access_ttl))
 
 
-@router.get("/session/me", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+@router.get("/session", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 async def session_me(
     current_user: UserTable = Depends(require_current_user),
     session=Depends(require_session),

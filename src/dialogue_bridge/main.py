@@ -9,7 +9,7 @@ sys.path.append(str(PACKAGE_ROOT))
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi_pagination import add_pagination
-from database import Base, engine
+from core.database import Base, engine
 from observability import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -19,13 +19,14 @@ from observability import (
 from slowapi.middleware import SlowAPIMiddleware
 from utils.rate_limit import limiter
 
-from apis import (
+from router import (
     auth_router,
+    catalog_router,
     inference_router,
-    meta_router,
+    preferences_router,
     conversations_router,
     messages_router,
-    attachments_router
+    attachments_router,
 )
 
 configure_logging()
@@ -43,16 +44,64 @@ async def lifespan(app: FastAPI):
     logger.info("service_shutdown", "Dialogue bridge shutdown completed")
 
 
-app = FastAPI(title="Bridge Service", lifespan=lifespan)
+# Initialize FastAPI app
+app = FastAPI(
+    title="Bridge Service",
+    description="A service that bridges the gap between various dialogue systems and applications.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    lifespan=lifespan
+)
+
+
+# Attach rate limiter to app state
 app.state.limiter = limiter
+
+
+# Register exception handlers and middlewares
 register_exception_handlers(app)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+
+
+# Add pagination
 add_pagination(app)
 
-app.include_router(auth_router)
-app.include_router(inference_router)
-app.include_router(meta_router)
-app.include_router(conversations_router)
-app.include_router(messages_router)
-app.include_router(attachments_router)
+
+# Include API routers
+app.include_router(
+    auth_router,
+    prefix=f"/v1/auth",
+    tags=["Auth"]
+)
+app.include_router(
+    inference_router,
+    prefix=f"/v1/inference",
+    tags=["Inference"],
+)
+app.include_router(
+    catalog_router,
+    prefix=f"/v1/catalog",
+    tags=["Catalog"]
+)
+app.include_router(
+    preferences_router,
+    prefix=f"/v1/preferences",
+    tags=["Preferences"]
+)
+app.include_router(
+    conversations_router,
+    prefix=f"/v1/conversations",
+    tags=["Conversations"],
+)
+app.include_router(
+    messages_router,
+    prefix=f"/v1/messages",
+    tags=["Messages"],
+)
+app.include_router(
+    attachments_router,
+    prefix=f"/v1/attachments",
+    tags=["Attachments"],
+)

@@ -4,14 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from observability import set_context
-from database import (
+from core.database import (
     AttachmentTable,
     ConversationTable,
     MessageTable,
     UserTable,
     get_db,
 )
-from vault_auth.session_auth import require_bound_user_id
+from core.auth_session import require_bound_user_id
 
 
 async def validate_userId(

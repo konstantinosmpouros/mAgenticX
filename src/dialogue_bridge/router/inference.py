@@ -4,14 +4,15 @@ import logging
 import time
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from observability import StreamMetrics, elapsed_ms, get_context, get_logger, iter_tracked_stream, log_stream_outcome, set_context
 
-from database import ConversationTable, UserTable
-from schemas import InferenceStreamPayload
-from vault_auth.session_auth import require_csrf_protection
+from core.database import ConversationTable, UserTable
+from schemas import DictationResponse, InferenceStreamPayload
+from core.auth_session import require_csrf_protection
 from utils import (
+    AGENTS_SERVICE_URL,
     build_agent_stream_url,
     get_agent_by_id,
     prepare_inference_history,
@@ -20,15 +21,12 @@ from utils import (
 )
 
 
-router = APIRouter(
-    prefix="/users/{user_id}/conversations/{conversation_id}",
-    tags=["Inference"],
-)
+router = APIRouter()
 
 logger = get_logger(__name__)
 
 
-@router.post("/inference/stream")
+@router.post("/stream/{user_id}/{conversation_id}")
 async def startInferenceStream(
     user_id: str,
     conversation_id: str,
@@ -171,3 +169,82 @@ async def startInferenceStream(
         "X-Accel-Buffering": "no",
     }
     return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+
+
+@router.post(
+    "/dictation/{user_id}",
+    response_model=DictationResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def transcribe_dictation(
+    user_id: str,
+    audio: UploadFile = File(...),
+    _: UserTable = Depends(validate_userId),
+    __: None = Depends(require_csrf_protection),
+) -> DictationResponse:
+    """
+    Accept an audio upload from the UI, proxy it to the agents STT endpoint,
+    and return the transcription text.
+    """
+    _AGENTS_STT_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/dictate/transcribe"
+    set_context(user_id=user_id)
+
+    try:
+        audio_bytes = await audio.read()
+    except Exception as exc:
+        logger.warning("dictation_read_failed", "Failed to read dictation upload", error=str(exc), failure_reason="upload_read_failed")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to read the uploaded audio file.",
+        ) from exc
+
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded audio file is empty.",
+        )
+
+    content_type = audio.content_type or "application/octet-stream"
+    files = {
+        "file": (audio.filename or "dictation.wav", audio_bytes, content_type),
+    }
+
+    request_id = get_context().get("request_id")
+    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
+    timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
+    try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(_AGENTS_STT_ENDPOINT, files=files, headers=upstream_headers)
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.warning("dictation_upstream_http_error", "Speech-to-text service returned an HTTP error", upstream_service="agents", status_code=exc.response.status_code, failure_reason="upstream_http_error")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Speech-to-text service failed to process the audio.",
+        ) from exc
+    except httpx.RequestError as exc:
+        logger.warning("dictation_upstream_unreachable", "Failed to reach speech-to-text service", upstream_service="agents", error=str(exc), failure_reason="upstream_unreachable")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Speech-to-text service is unavailable.",
+        ) from exc
+
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        logger.error("dictation_invalid_json", "STT service returned non-JSON response", exc_info=True, upstream_service="agents", failure_reason="invalid_json")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="STT service returned invalid JSON payload.",
+        ) from exc
+
+    try:
+        result = DictationResponse.model_validate(payload)
+    except Exception as exc:
+        logger.warning("dictation_invalid_payload", "Speech-to-text service returned an invalid payload", error=str(exc), upstream_service="agents", failure_reason="invalid_payload")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Speech-to-text service returned an invalid response.",
+        ) from exc
+    logger.info("dictation_transcribed", "Speech-to-text transcription completed", content_type=content_type, upload_bytes=len(audio_bytes), transcript_length=len(result.text))
+    return result

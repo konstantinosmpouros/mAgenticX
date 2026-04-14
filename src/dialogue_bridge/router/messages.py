@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import AttachmentTable, ConversationTable, MessageTable, get_db, UserTable
+from core.database import AttachmentTable, ConversationTable, MessageTable, get_db, UserTable
 from schemas import (
     ConversationSummary,
     MessageIn,
@@ -14,7 +14,7 @@ from schemas import (
     MessageUpdate,
     UpdateConversationResponse,
 )
-from vault_auth.session_auth import require_csrf_protection
+from core.auth_session import require_csrf_protection
 from utils import (
     _preview,
     init_message,
@@ -23,12 +23,12 @@ from utils import (
 )
 
 
-router = APIRouter(prefix="/users/{user_id}", tags=["Messages"])
+router = APIRouter()
 logger = get_logger(__name__)
 
 
 @router.post(
-    "/conversations/{conversation_id}/messages",
+    "/{user_id}/{conversation_id}",
     response_model=UpdateConversationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Add a new message to an existing conversation",
@@ -92,7 +92,7 @@ async def addMessageToConversation(
 
 
 @router.patch(
-    "/conversations/{conversation_id}/messages/{message_id}",
+    "/{user_id}/{conversation_id}/{message_id}",
     response_model=UpdateConversationResponse,
     status_code=status.HTTP_200_OK,
     summary="Update an existing message within a conversation",
@@ -108,7 +108,7 @@ async def updateMessageInConversation(
     db: AsyncSession = Depends(get_db),
 ) -> UpdateConversationResponse:
     """
-    Update an existing message (used to finalise AI placeholders after streaming).
+    Update an existing message (used to finalize AI placeholders after streaming).
     """
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
     stmt = (
@@ -163,7 +163,7 @@ async def updateMessageInConversation(
 
 
 @router.post(
-    "/conversations/{conversation_id}/messages/{message_id}/like",
+    "/{user_id}/{conversation_id}/{message_id}/like",
     response_model=MessageOut,
     status_code=status.HTTP_200_OK,
     summary="Like a message in a conversation",
@@ -201,7 +201,7 @@ async def likeMessage(
 
 
 @router.post(
-    "/conversations/{conversation_id}/messages/{message_id}/dislike",
+    "/{user_id}/{conversation_id}/{message_id}/dislike",
     response_model=MessageOut,
     status_code=status.HTTP_200_OK,
     summary="Dislike a message in a conversation",
@@ -235,4 +235,3 @@ async def dislikeMessage(
     await db.refresh(msg)
     logger.info("message_dislike_toggled", "Message dislike toggled", liked=msg.liked)
     return MessageOut.model_validate(msg)
-

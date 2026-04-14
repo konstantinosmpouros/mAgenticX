@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from database import SessionTable, UserTable, get_db
+from core.database import SessionTable, UserTable, get_db
 from utils.proxy import resolve_client_ip
 
 logger = get_logger(__name__)

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from database import ConversationTable, get_db, UserTable
+from core.database import ConversationTable, get_db, UserTable
 from schemas import (
     ConversationDetail,
     ConversationIn,
@@ -14,7 +14,7 @@ from schemas import (
     CreateConversationResponse,
     ConversationTitleUpdate,
 )
-from vault_auth.session_auth import require_csrf_protection
+from core.auth_session import require_csrf_protection
 from utils import (
     _preview,
     generate_conversation_title,
@@ -26,12 +26,12 @@ from utils import (
 )
 
 
-router = APIRouter(prefix="/users/{user_id}", tags=["Conversations"])
+router = APIRouter()
 logger = get_logger(__name__)
 
 
 @router.post(
-    "/conversations",
+    "/{user_id}",
     response_model=CreateConversationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new conversation for the user",
@@ -107,7 +107,7 @@ async def createConversation(
 
 
 @router.get(
-    "/conversations",
+    "/{user_id}",
     response_model=Page[ConversationSummary],
     status_code=status.HTTP_200_OK,
     summary="Get paginated conversation summaries for the user",
@@ -137,7 +137,7 @@ async def getConvsSummary(
 
 
 @router.get(
-    "/conversations/{conversation_id}",
+    "/{user_id}/{conversation_id}",
     response_model=ConversationDetail,
     status_code=status.HTTP_200_OK,
     summary="Get one conversation (messages included) by user + conversation id",
@@ -156,7 +156,7 @@ async def getConvDetails(
 
 
 @router.delete(
-    "/conversations/{conversation_id}",
+    "/{user_id}/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a conversation by user + conversation id"
 )
@@ -177,7 +177,7 @@ async def deleteConversation(
 
 
 @router.patch(
-    "/conversations/{conversation_id}/title",
+    "/{user_id}/{conversation_id}/title",
     response_model=ConversationSummary,
     status_code=status.HTTP_200_OK,
     summary="Update a conversation title",

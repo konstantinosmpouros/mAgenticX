@@ -9,17 +9,17 @@ from observability import StreamMetrics, get_context, get_logger, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import AttachmentTable, BlobTable, ConversationTable, MessageTable, get_db, UserTable
+from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable, get_db, UserTable
 from schemas import ImageOut
 from utils import validate_userId
 
 
-router = APIRouter(prefix="/users/{user_id}", tags=["Attachments"])
+router = APIRouter()
 logger = get_logger(__name__)
 
 
 @router.get(
-    "/conversations/{conversation_id}/messages/{message_id}/blobs/{blob_id}",
+    "/download/{user_id}/{conversation_id}/{message_id}/{blob_id}",
     summary="Stream a blob (non-image) with HTTP byte-range support",
 )
 async def downloadBlobStream(
@@ -175,7 +175,7 @@ async def downloadBlobStream(
 
 
 @router.get(
-    "/images",
+    "/images/{user_id}",
     response_model=Page[ImageOut],
     status_code=status.HTTP_200_OK,
     summary="Get paginated images for the user",

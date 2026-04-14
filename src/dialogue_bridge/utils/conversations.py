@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import (
+from core.database import (
     AgentTable,
     AttachmentTable,
     BlobTable,

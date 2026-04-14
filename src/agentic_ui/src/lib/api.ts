@@ -28,10 +28,20 @@ import {
 } from "./consts";
 
 
+const API_BASE_PATH = "/api/v1";
+const AUTH_BASE_PATH = `${API_BASE_PATH}/auth`;
+const CATALOG_BASE_PATH = `${API_BASE_PATH}/catalog`;
+const PREFERENCES_BASE_PATH = `${API_BASE_PATH}/preferences`;
+const CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/conversations`;
+const MESSAGES_BASE_PATH = `${API_BASE_PATH}/messages`;
+const ATTACHMENTS_BASE_PATH = `${API_BASE_PATH}/attachments`;
+const INFERENCE_BASE_PATH = `${API_BASE_PATH}/inference`;
+
+
 
 // Authenticate user credentials
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
-  const res = await fetch("/api/authenticate", withSessionRequest({
+  const res = await fetch(`${AUTH_BASE_PATH}/login`, withSessionRequest({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -66,7 +76,7 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
 
 // Get current session info (used for session restoration and auth checks)
 export async function getSessionMe(): Promise<AuthResponse> {
-  const res = await fetch("/api/session/me", withSessionRequest({
+  const res = await fetch(`${AUTH_BASE_PATH}/session`, withSessionRequest({
     headers: {
       "Accept": "application/json",
     },
@@ -101,7 +111,7 @@ export async function restoreSession(): Promise<AuthResponse | null> {
 
 // Refresh user session
 export async function refreshSession(emitOnUnauthorized: boolean = true): Promise<AuthResponse> {
-  const res = await fetch("/api/session/refresh", withSessionRequest({
+  const res = await fetch(`${AUTH_BASE_PATH}/session/refresh`, withSessionRequest({
     method: "POST",
     headers: {
       "Accept": "application/json",
@@ -118,7 +128,7 @@ export async function refreshSession(emitOnUnauthorized: boolean = true): Promis
 
 // Logout user session
 export async function logoutSession(): Promise<void> {
-  const res = await fetch("/api/logout", withSessionRequest({
+  const res = await fetch(`${AUTH_BASE_PATH}/logout`, withSessionRequest({
     method: "POST",
   }, { csrf: true }));
   if (!res.ok && res.status !== 401) {
@@ -129,7 +139,7 @@ export async function logoutSession(): Promise<void> {
 
 // Fetch agents from backend via nginx proxy
 export async function getAgents(): Promise<Agent[]> {
-  const res = await fetch("/api/agents", withSessionRequest({
+  const res = await fetch(`${CATALOG_BASE_PATH}/agents`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -150,7 +160,7 @@ export async function getAgents(): Promise<Agent[]> {
 
 // Fetch available tools from backend
 export async function getTools(): Promise<ToolMetadata[]> {
-  const res = await fetch("/api/tools", withSessionRequest({
+  const res = await fetch(`${CATALOG_BASE_PATH}/tools`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -172,7 +182,7 @@ export async function getTools(): Promise<ToolMetadata[]> {
 
 // Fetch user preferences
 export async function getUserPreferences(userId: string) {
-  const res = await fetch(`/api/users/${userId}/preferences`, withSessionRequest({
+  const res = await fetch(`${PREFERENCES_BASE_PATH}/${userId}`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -192,7 +202,7 @@ export async function getUserPreferences(userId: string) {
 
 // Update user preferences
 export async function updateUserPreferences(userId: string, prefs: any) {
-  const res = await fetch(`/api/users/${userId}/preferences`, withSessionRequest({
+  const res = await fetch(`${PREFERENCES_BASE_PATH}/${userId}`, withSessionRequest({
     method: "PUT",
     headers: { "Accept": "application/json", "Content-Type": "application/json" },
     body: JSON.stringify(prefs),
@@ -217,7 +227,7 @@ export async function getConversations(
   page: number = 1,
   size: number = 10,
 ): Promise<ConversationSummary[]> {
-  const res = await fetch(`/api/users/${userId}/conversations?page=${page}&size=${size}`, withSessionRequest({
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}?page=${page}&size=${size}`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -236,7 +246,7 @@ export async function getConversationDetail(
   userId: string,
   conversationId: string,
 ): Promise<ConversationDetail> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withSessionRequest({
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
@@ -250,7 +260,7 @@ export async function getConversationDetail(
 
 // Delete a conversation
 export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}`, withSessionRequest({
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}`, withSessionRequest({
     method: "DELETE",
     headers: { "Accept": "application/json" },
   }, { csrf: true }));
@@ -267,7 +277,7 @@ export async function renameConversation(
   conversationId: string,
   title: string,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/title`, withSessionRequest({
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/title`, withSessionRequest({
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -289,7 +299,7 @@ export async function createConversation(
   userId: string,
   payload: ConversationIn,
 ): Promise<CreateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations`, withSessionRequest({
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}`, withSessionRequest({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -328,7 +338,7 @@ export async function addMessageToConversation(
   conversationId: string,
   payload: MessageIn,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages`, withSessionRequest({
+  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}`, withSessionRequest({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -377,7 +387,7 @@ export async function updateMessageInConversation(
   messageId: string,
   payload: MessageUpdate,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}`, withSessionRequest({
+  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}`, withSessionRequest({
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -408,7 +418,7 @@ export async function likeMessage(
   conversationId: string,
   messageId: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/like`, withSessionRequest({
+  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/like`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "application/json" },
   }, { csrf: true }));
@@ -427,7 +437,7 @@ export async function dislikeMessage(
   conversationId: string,
   messageId: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/dislike`, withSessionRequest({
+  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/dislike`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "application/json" },
   }, { csrf: true }));
@@ -448,7 +458,7 @@ export async function downloadAttachment({
   blobId,
   filename,
 }: DownloadAttachmentParams): Promise<void> {
-  const url = `/api/users/${userId}/conversations/${conversationId}/messages/${messageId}/blobs/${blobId}`;
+  const url = `${ATTACHMENTS_BASE_PATH}/download/${userId}/${conversationId}/${messageId}/${blobId}`;
   const res = await fetch(url, withSessionRequest());
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
@@ -478,7 +488,7 @@ export async function transcribeDictation(
   const safeName = filename || "dictation.webm";
   formData.append("audio", audio, safeName);
 
-  const res = await fetch(`/api/users/${userId}/dictation/transcribe`, withSessionRequest({
+  const res = await fetch(`${INFERENCE_BASE_PATH}/dictation/${userId}`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "application/json" },
     body: formData,
@@ -530,7 +540,7 @@ export async function streamInference(
   const headers: Record<string, string> = { "Accept": "text/event-stream" };
   if (Object.keys(payload).length > 0) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`/api/users/${userId}/conversations/${conversationId}/inference/stream`, withSessionRequest({
+  const res = await fetch(`${INFERENCE_BASE_PATH}/stream/${userId}/${conversationId}`, withSessionRequest({
     method: "POST",
     headers,
     signal,
