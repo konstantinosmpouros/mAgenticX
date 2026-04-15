@@ -35,7 +35,7 @@ server {
   # Note: proxy_pass with a variable skips automatic URI stripping, so we use
   # rewrite to manually strip the /api/ prefix before forwarding.
   resolver 127.0.0.11 valid=10s;
-  set $bff http://${BFF_HOST}:${BFF_PORT};
+  set $bff ${BFF_BASE_URL};
 
   # Proxy API requests to backend service inside docker network
   location /api/ {

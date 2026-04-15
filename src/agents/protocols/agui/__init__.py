@@ -1,6 +1,6 @@
-from agui.emitter import AGUIEmitter
-from agui.normalizer import AGUIStreamNormalizer
-from agui.events import (
+from protocols.agui.emitter import AGUIEmitter
+from protocols.agui.normalizer import AGUIStreamNormalizer
+from protocols.agui.events import (
     HITL_INTERRUPT_EVENT_TYPE,
     HITLInterruptEvent,
     PLAN_SNAPSHOT_EVENT_TYPE,

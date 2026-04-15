@@ -3,7 +3,7 @@ from typing import Optional
 
 import httpx
 
-from core.config import VaultSettings, settings as service_settings
+from core.configs import VaultSettings, settings as service_settings
 
 
 class VaultAuthError(Exception):
@@ -28,7 +28,7 @@ class VaultAuthenticator:
     def __init__(self, settings: VaultSettings | None = None):
         self._settings = settings or service_settings.vault
         if not self._settings.addr:
-            raise RuntimeError("VAULT_ADDR is not configured.")
+            raise RuntimeError("VAULT_URL is not configured.")
 
     async def authenticate(self, username: str, password: str) -> VaultAuthResult:
         async with httpx.AsyncClient(timeout=self._settings.timeout) as client:

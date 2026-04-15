@@ -22,7 +22,7 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
 )
-from core.config import settings
+from core.configs import settings
 
 
 def gen_uuid() -> str: return str(uuid4())

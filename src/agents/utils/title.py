@@ -1,8 +1,9 @@
 from fastapi import HTTPException, status
+from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
-from llms import gpt_4o_titles
+from core.configs import configs
 from observability import get_logger
 from utils import make_merge_with_template
 from schemas import TitleRequest, ConversationTitle
@@ -20,7 +21,11 @@ TITLE_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
 
 
 _title_prompt_merge = RunnableLambda(make_merge_with_template(TITLE_PROMPT_TEMPLATE))
-_title_chain = _title_prompt_merge | gpt_4o_titles.with_structured_output(ConversationTitle)
+_title_chain = _title_prompt_merge | init_chat_model(
+    configs.runtime_models.title,
+    temperature=2,
+    max_tokens=64,
+).with_structured_output(ConversationTitle)
 
 async def generate_title(req: TitleRequest) -> ConversationTitle:
     """Generate a short, descriptive title for a new conversation."""

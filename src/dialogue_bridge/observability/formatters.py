@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from core.config import settings
+from core.configs import settings
 from observability.redaction import sanitize_for_logging
 
 

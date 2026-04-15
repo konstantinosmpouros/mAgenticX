@@ -16,8 +16,7 @@ RUN npm run build -- --debug
 # 2) Runtime stage
 FROM nginx:1.25-alpine
 
-ENV BFF_HOST=dialogue_bridge
-ENV BFF_PORT=8002
+ENV BFF_BASE_URL=http://dialogue_bridge:8002
 ENV TRUSTED_PROXY_SECRET=
 
 # Copy the compiled static files from previous stage

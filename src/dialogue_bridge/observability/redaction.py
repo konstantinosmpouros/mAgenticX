@@ -4,7 +4,7 @@ import hashlib
 import hmac
 from typing import Any
 
-from core.config import settings
+from core.configs import settings
 
 _SENSITIVE_FIELD_TOKENS = (
     "password",

@@ -6,8 +6,8 @@ from abc import abstractmethod, ABC
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from agui import AGUIEmitter, AGUIStreamNormalizer
-from blueprints.base_agent import BaseAgent
+from protocols.agui import AGUIEmitter, AGUIStreamNormalizer
+from agent_runtime.base_agent import BaseAgent
 from observability import get_logger
 
 logger = get_logger(__name__)

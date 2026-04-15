@@ -8,7 +8,9 @@ sys.path.append(str(PACKAGE_ROOT))
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
+from core.configs import settings
 from core.database import Base, engine
 from observability import (
     RequestLoggingMiddleware,
@@ -61,6 +63,15 @@ app.state.limiter = limiter
 
 # Register exception handlers and middlewares
 register_exception_handlers(app)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors.allowed_origins),
+    allow_credentials=settings.cors.allow_credentials,
+    allow_methods=list(settings.cors.allow_methods),
+    allow_headers=list(settings.cors.allow_headers),
+    expose_headers=list(settings.cors.expose_headers),
+    max_age=settings.cors.max_age_seconds,
+)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 

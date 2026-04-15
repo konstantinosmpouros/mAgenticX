@@ -17,6 +17,7 @@ from fastapi.responses import StreamingResponse
 
 from openai import OpenAI
 
+from core.configs import configs
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from observability import (
@@ -48,6 +49,7 @@ from utils.agents import AGENT_REGISTRY
 
 configure_logging()
 logger = get_logger(__name__)
+_OPENAI_CLIENT = OpenAI(api_key=configs.api_keys.openai) if configs.api_keys.openai else OpenAI()
 
 
 def _make_loop_exception_handler(old_handler=None):
@@ -105,8 +107,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
     """
     Transcribe an uploaded audio file using OpenAI's Speech-to-Text capability.
     """
-    _OPENAI_STT_MODEL = "gpt-4o-transcribe"
-    _OPENAI_CLIENT = OpenAI()
+    stt_model = configs.runtime_models.dictation
     logger.info("dictation_request_received", "Dictation request received")
     
     if not file.filename:
@@ -137,9 +138,9 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
     audio_stream.name = file.filename
     
     try:
-        logger.info("dictation_provider_started", "Dictation provider request started", provider="openai", model=_OPENAI_STT_MODEL)
+        logger.info("dictation_provider_started", "Dictation provider request started", provider="openai", model=stt_model)
         transcription = _OPENAI_CLIENT.audio.transcriptions.create(
-            model=_OPENAI_STT_MODEL,
+            model=stt_model,
             file=audio_stream,
         )
     except Exception as exc:
@@ -147,7 +148,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
             "dictation_provider_failed",
             "OpenAI transcription request failed",
             provider="openai",
-            model=_OPENAI_STT_MODEL,
+            model=stt_model,
             error=str(exc),
             failure_reason="provider_request_failed",
         )
@@ -165,14 +166,14 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
             "dictation_provider_invalid_payload",
             "Transcription provider response did not include text",
             provider="openai",
-            model=_OPENAI_STT_MODEL,
+            model=stt_model,
             failure_reason="missing_text",
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="OpenAI transcription response did not include text.",
         )
-    logger.info("dictation_transcribed", "Dictation transcribed successfully", provider="openai", model=_OPENAI_STT_MODEL, transcript_length=len(text))
+    logger.info("dictation_transcribed", "Dictation transcribed successfully", provider="openai", model=stt_model, transcript_length=len(text))
     return TranscriptionResponse(text=text)
 
 

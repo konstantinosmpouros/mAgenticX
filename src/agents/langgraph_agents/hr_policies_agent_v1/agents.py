@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent as react_agent
 
+from core.configs import configs
 from utils import make_merge_with_template
-from llms import gpt_o3_mini, gpt_4o, gpt_4_1, gpt_5
 from langgraph_agents.hr_policies_agent_v1.structured_outputs import (
     AnalyzerOutput,
     ReflectionOutput,
@@ -34,23 +35,25 @@ class HRAgents:
     tools: Sequence[Any]
 
 
+
 def build_hr_agents(*, tools: Sequence[Any] | None = None) -> HRAgents:
     """Construct all runnable components for the HR Policies workflow."""
+    workflow = configs.workflows.hr
     
     merge_runnable = RunnableLambda(make_merge_with_template(analyzer_template))
-    analysis_agent = merge_runnable | gpt_4o.with_structured_output(AnalyzerOutput)
+    analysis_agent = merge_runnable | init_chat_model(workflow.analysis_model).with_structured_output(AnalyzerOutput)
     
-    simple_gen_agent = react_agent(model=gpt_5, tools=tools)
+    simple_gen_agent = react_agent(model=init_chat_model(workflow.simple_generation_model), tools=tools)
     
-    query_reflective_agent = query_gen_with_reflection_template | gpt_o3_mini.with_structured_output(RetrievalQueriesOutput)
-    query_no_reflective_agent = query_gen_no_reflection_template | gpt_o3_mini.with_structured_output(RetrievalQueriesOutput)
+    query_reflective_agent = query_gen_with_reflection_template | init_chat_model(workflow.query_reflective_model).with_structured_output(RetrievalQueriesOutput)
+    query_no_reflective_agent = query_gen_no_reflection_template | init_chat_model(workflow.query_no_reflective_model).with_structured_output(RetrievalQueriesOutput)
     
-    doc_ranking_agent = ranking_template | gpt_4_1.with_structured_output(RankingOutput)
+    doc_ranking_agent = ranking_template | init_chat_model(workflow.doc_ranking_model).with_structured_output(RankingOutput)
     
-    summarizer_agent = summarization_template | gpt_4o
-    complex_gen_agent = react_agent(model=gpt_5, tools=tools)
+    summarizer_agent = summarization_template | init_chat_model(workflow.summarization_model)
+    complex_gen_agent = react_agent(model=init_chat_model(workflow.complex_generation_model), tools=tools)
     
-    reflection_agent = reflection_template | gpt_4o.with_structured_output(ReflectionOutput)
+    reflection_agent = reflection_template | init_chat_model(workflow.reflection_model).with_structured_output(ReflectionOutput)
     
     return HRAgents(
         analysis_agent=analysis_agent,
@@ -63,4 +66,3 @@ def build_hr_agents(*, tools: Sequence[Any] | None = None) -> HRAgents:
         reflection_agent=reflection_agent,
         tools=tools,
     )
-

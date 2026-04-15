@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from core.configs import configs
 from observability.redaction import sanitize_for_logging
 
 
 def _resolve_timezone():
-    configured = (os.getenv("LOG_TIMEZONE") or os.getenv("TZ") or "Europe/Athens").strip()
+    configured = configs.logging.timezone
     if configured:
         try:
             return ZoneInfo(configured)

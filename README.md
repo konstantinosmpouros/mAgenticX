@@ -83,7 +83,7 @@ Run services independently when iterating. Each README in the corresponding dire
 | Service | Local bootstrap |
 | --- | --- |
 | `agentic_ui` | `npm install && npm run dev` (Vite on port 8080). Configure a `/api` proxy to reach the bridge during development. |
-| `dialogue_bridge` | Python 3.11+. `pip install -r requirements.txt`, set `DATABASE_URL` plus Vault env vars (e.g. `VAULT_ADDR`, `VAULT_USERPASS_MOUNT`, `VAULT_OIDC_ROLE`), then `uvicorn main:app --host 0.0.0.0 --port 8002 --reload`. |
+| `dialogue_bridge` | Python 3.11+. `pip install -r requirements.txt`, set `DATABASE_URL` plus Vault env vars (e.g. `VAULT_URL`, `VAULT_USERPASS_MOUNT`, `VAULT_OIDC_ROLE`), then `uvicorn main:app --host 0.0.0.0 --port 8002 --reload`. |
 | `agents` | Python 3.11+. Install dependencies, export `OPENAI_API_KEY`, `RAG_HOST`, `RAG_PORT`, then `uvicorn main:app --host 0.0.0.0 --port 8003 --reload`. |
 | `rag_service` | Python 3.11+. Install requirements, ensure `src/rag_service/data/` has Excel files, export `OPENAI_API_KEY`, `RAG_HOST`, `RAG_PORT`, then `uvicorn main:app --host 0.0.0.0 --port 8001 --reload`. |
 | `vectordb` | `docker run chromadb/chroma:0.6.3` with the volume bound to `./src/vectorstores/chroma_db_openai`, or reuse the compose container. |

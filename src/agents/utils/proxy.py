@@ -1,31 +1,15 @@
 import ipaddress
-import os
 import secrets
 
 from fastapi import Request
+from core.configs import configs
 
 ProxyNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
-TRUSTED_PROXY_HEADER_NAME = os.getenv("TRUSTED_PROXY_HEADER_NAME", "X-Internal-Proxy-Secret")
-TRUSTED_PROXY_SECRET = os.getenv("TRUSTED_PROXY_SECRET", "").strip()
-
-
-def _load_trusted_proxy_networks() -> tuple[ProxyNetwork, ...]:
-    raw = os.getenv("TRUSTED_PROXY_CIDRS", "")
-    networks: list[ProxyNetwork] = []
-    for item in raw.split(","):
-        candidate = item.strip()
-        if not candidate:
-            continue
-        try:
-            networks.append(ipaddress.ip_network(candidate, strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
-
-
-TRUSTED_PROXY_NETWORKS = _load_trusted_proxy_networks()
+TRUSTED_PROXY_HEADER_NAME = configs.proxy.trusted_proxy_header_name
+TRUSTED_PROXY_SECRET = configs.proxy.trusted_proxy_secret
+TRUSTED_PROXY_NETWORKS = configs.proxy.trusted_proxy_networks
 
 
 def _normalize_ip(value: str | None) -> str | None:

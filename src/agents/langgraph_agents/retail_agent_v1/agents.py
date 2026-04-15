@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent as react_agent
 
+from core.configs import configs
 from utils import make_merge_with_template
-from llms import gpt_o4_mini, gpt_4_1_mini, gpt_4o
 from langgraph_agents.retail_agent_v1.structured_outputs import (
     AnalysisOutput,
     SQLQueryOutput,
@@ -28,6 +29,7 @@ class RetailAgents:
     tools: Sequence[Any]
 
 
+
 def build_retail_agents(*, tools: Sequence[Any] | None = None) -> RetailAgents:
     """
     Construct the runnable building blocks for the retail workflow.
@@ -38,14 +40,15 @@ def build_retail_agents(*, tools: Sequence[Any] | None = None) -> RetailAgents:
         Optional sequence of LangChain tool instances selected at runtime. If
         omitted or empty, the full default retail toolset is used.
     """
+    workflow = configs.workflows.retail
     # Build runnable chains
     merge_runnable = RunnableLambda(make_merge_with_template(analyzer_template))
-    analysis_agent = merge_runnable | gpt_4o.with_structured_output(AnalysisOutput)
+    analysis_agent = merge_runnable | init_chat_model(workflow.analysis_model).with_structured_output(AnalysisOutput)
     
-    simple_gen_agent = react_agent(model=gpt_4_1_mini, tools=tools)
-    sql_gen_agent = sql_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
-    sql_error_gen_agent = sql_error_gen_template | gpt_o4_mini.with_structured_output(SQLQueryOutput)
-    answer_agent = react_agent(model=gpt_4o, tools=tools)
+    simple_gen_agent = react_agent(model=init_chat_model(workflow.simple_generation_model), tools=tools)
+    sql_gen_agent = sql_gen_template | init_chat_model(workflow.sql_generation_model).with_structured_output(SQLQueryOutput)
+    sql_error_gen_agent = sql_error_gen_template | init_chat_model(workflow.sql_error_generation_model).with_structured_output(SQLQueryOutput)
+    answer_agent = react_agent(model=init_chat_model(workflow.answer_generation_model), tools=tools)
     
     return RetailAgents(
         analysis_agent=analysis_agent,
@@ -55,5 +58,4 @@ def build_retail_agents(*, tools: Sequence[Any] | None = None) -> RetailAgents:
         answer_agent=answer_agent,
         tools=tools,
     )
-
 

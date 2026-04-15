@@ -2,7 +2,7 @@ import ipaddress
 import secrets
 
 from fastapi import Request
-from core.config import settings
+from core.configs import settings
 
 ProxyNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 

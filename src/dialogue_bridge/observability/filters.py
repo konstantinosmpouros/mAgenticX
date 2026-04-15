@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from core.config import settings
+from core.configs import settings
 from observability.context import get_context
 from observability.redaction import sanitize_context_value
 

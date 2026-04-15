@@ -1,10 +1,10 @@
 import inspect
-import os
 from typing import Dict, Set
 
 import langgraph_agents
 import deep_agents
-from blueprints import LangGraphAgent, DeepAgent
+from agent_runtime import LangGraphAgent, DeepAgent
+from core.configs import configs
 from observability import get_logger
 from schemas import AgentDefinition
 
@@ -15,19 +15,10 @@ def _normalize_slug(slug: str) -> str:
     return slug.strip().lower()
 
 
-def _disabled_slugs_from_env() -> Set[str]:
-    """Parse DISABLED_AGENT_SLUGS env var into a normalized set."""
-    raw_value = os.getenv("DISABLED_AGENT_SLUGS", "")
-    if not raw_value:
-        return set()
-    parts = [item.strip() for item in raw_value.split(",")]
-    return {_normalize_slug(item) for item in parts if item}
-
-
 def _discover_agents() -> Dict[str, AgentDefinition]:
     """Inspect langgraph_agents and deep_agents exports and register available agent templates."""
     registry: Dict[str, AgentDefinition] = {}
-    disabled_slugs = _disabled_slugs_from_env()
+    disabled_slugs: Set[str] = set(configs.registry.disabled_agent_slugs)
 
     sources = [
         (langgraph_agents, LangGraphAgent),

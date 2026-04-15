@@ -35,7 +35,7 @@ Schema creation runs in the lifespan hook on startup.
 
 - `DATABASE_URL` – async SQLAlchemy URL.
 - `AGENTS_SERVICE_URL` – base URL for the agents service (default `http://agents:8003`).
-- Vault: `VAULT_ADDR`, `VAULT_USERPASS_MOUNT`, `VAULT_OIDC_ROLE`, `VAULT_OIDC_PATH`, `VAULT_NAMESPACE`, `VAULT_HTTP_TIMEOUT`, `VAULT_OIDC_DISCOVERY_URL`, `VAULT_JWT_AUDIENCE`.
+- Vault: `VAULT_URL`, `VAULT_USERPASS_MOUNT`, `VAULT_OIDC_ROLE`, `VAULT_OIDC_PATH`, `VAULT_NAMESPACE`, `VAULT_HTTP_TIMEOUT`, `VAULT_OIDC_DISCOVERY_URL`, `VAULT_JWT_AUDIENCE`.
 - Cookies: `SESSION_COOKIE_NAME`, `SESSION_REFRESH_COOKIE_NAME`, `SESSION_COOKIE_DOMAIN`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE`, `SESSION_COOKIE_DEFAULT_TTL`.
 
 ## Local development
@@ -48,7 +48,7 @@ pip install -r requirements.txt
 
 export DATABASE_URL=postgresql+asyncpg://admin:admin@localhost:5432/chat_db
 export AGENTS_SERVICE_URL=http://localhost:8003
-export VAULT_ADDR=http://<vault-host>:<vault-port>
+export VAULT_URL=http://<vault-host>:<vault-port>
 export VAULT_USERPASS_MOUNT=userpass
 export VAULT_OIDC_ROLE=agenticx
 uvicorn main:app --host 0.0.0.0 --port 8002 --reload

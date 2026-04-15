@@ -7,7 +7,7 @@ import queue
 import sys
 from logging.handlers import QueueHandler, QueueListener
 
-from core.config import settings
+from core.configs import settings
 from observability.filters import RequestContextFilter
 from observability.formatters import ConsoleFormatter, JsonFormatter
 

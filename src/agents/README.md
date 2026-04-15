@@ -13,7 +13,7 @@ LangGraph-backed FastAPI service that streams AG-UI events for each persona, lis
 ## API surface
 
 - `GET /agents` – agent manifests discovered from the registry.
-- `GET /tools` – MCP tool manifests pulled via `MCP_TOOLS_HTTP_URL`.
+- `GET /tools` – MCP tool manifests pulled via `MCP_GATEWAY_URL`.
 - `POST /agents/{agent_slug}/stream` – streams AG-UI SSE frames. Body shape:
 
   ```json
@@ -31,15 +31,15 @@ LangGraph-backed FastAPI service that streams AG-UI events for each persona, lis
 
 - `blueprints/langgraph_agent.py` defines the `LangGraphAgent` base: validates tool selections, resolves MCP tools, builds the LangGraph `StateGraph`, and caches the compiled graph.
 - `langgraph_agents/*` house the concrete workflows (state models, prompts, nodes, wiring). Each class exposes `name` (slug) and `manifest()`.
-- `utils/mcp_tools.py` connects to the MCP gateway over SSE (`MCP_TOOLS_HTTP_URL`), caches manifests, and offers helper functions to map server/tool identifiers.
+- `utils/mcp_tools.py` connects to the MCP gateway over SSE (`MCP_GATEWAY_URL`), caches manifests, and offers helper functions to map server/tool identifiers.
 - `utils/agents.py` discovers agents into `AGENT_REGISTRY`, builds stream URLs, and surfaces manifests for the bridge cache.
 - `agui.py` emits AG-UI frames for runs, thinking, tool calls, and assistant messages.
 
 ## Configuration
 
 - `OPENAI_API_KEY` (required) – used for LLM calls, embeddings, and dictation.
-- `RAG_HOST` / `RAG_PORT` – point retrieval tools at the RAG service (defaults align with Compose).
-- `MCP_TOOLS_HTTP_URL` – MCP gateway SSE endpoint (default `http://mcp_gateway:8005/sse`).
+- `RAG_BASE_URL` – points retrieval tools at the RAG service (default `http://rag_service:8001`).
+- `MCP_GATEWAY_URL` – MCP gateway SSE endpoint (default `http://mcp_gateway:8005/sse`).
 - `DISABLED_AGENT_SLUGS` (optional) – comma-separated agent slugs to skip at startup (e.g., `hr-policies-agent-v1, Retail Agent`). Whitespace around commas is ignored; whitespace inside a slug is preserved. Leaving it empty registers all agents.
 
 ## Local development
@@ -51,9 +51,8 @@ source .venv/bin/activate   # use .venv\\Scripts\\activate on Windows
 pip install -r requirements.txt
 
 export OPENAI_API_KEY=sk-...
-export RAG_HOST=localhost
-export RAG_PORT=8001
-export MCP_TOOLS_HTTP_URL=http://localhost:8005/sse   # match your gateway port
+export RAG_BASE_URL=http://localhost:8001
+export MCP_GATEWAY_URL=http://localhost:8005/sse   # match your gateway port
 uvicorn main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
@@ -61,4 +60,4 @@ Ensure the RAG service and MCP gateway are reachable before exercising retrieval
 
 ## Docker notes
 
-The Dockerfile targets `python:3.11-slim`, installs dependencies, and starts Uvicorn. Docker Compose binds port 8003, depends on `rag_service`, sets `MCP_TOOLS_HTTP_URL`, and relies on in-memory LangGraph checkpointing (no checkpoints volume).
+The Dockerfile targets `python:3.11-slim`, installs dependencies, and starts Uvicorn. Docker Compose binds port 8003, depends on `rag_service`, sets `MCP_GATEWAY_URL`, and relies on in-memory LangGraph checkpointing (no checkpoints volume).

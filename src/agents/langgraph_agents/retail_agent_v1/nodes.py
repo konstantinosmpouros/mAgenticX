@@ -6,17 +6,24 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
+from core.configs import configs
 from observability import get_context
-from config import SCHEMA_ENDPOINT, QUERY_ENDPOINT, TABLE
 from langgraph_agents.retail_agent_v1.agents import RetailAgents
 from langgraph_agents.retail_agent_v1.prompt_templates import (
     schema_help_template,
     answer_gen_template,
 )
-from agui import AGUIEmitter
+from protocols.agui import AGUIEmitter
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
+
+TABLE = configs.workflows.retail.table_name
+SCHEMA_ENDPOINT = configs.rag.excel_schema_url(TABLE)
+QUERY_ENDPOINT = configs.rag.excel_query_url(TABLE)
+SCHEMA_TIMEOUT_SECONDS = configs.workflows.retail.schema_timeout_seconds
+QUERY_CONNECT_TIMEOUT_SECONDS = configs.workflows.retail.query_connect_timeout_seconds
+QUERY_TIMEOUT_SECONDS = configs.workflows.retail.query_timeout_seconds
 
 class RetailV1_State(BaseModel):
     """Data model representing the state of a retail agent process in version 1."""
@@ -81,7 +88,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         try:
             request_id = get_context().get("request_id")
             headers = {"X-Request-ID": request_id} if request_id else {}
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=SCHEMA_TIMEOUT_SECONDS) as client:
                 response = await client.get(SCHEMA_ENDPOINT, headers=headers)
                 response.raise_for_status()
                 db_schema_json = response.json()
@@ -196,8 +203,13 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         try:
             request_id = get_context().get("request_id")
             headers = {"X-Request-ID": request_id} if request_id else {}
-            async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.post(QUERY_ENDPOINT, json={"sql": sql_query}, headers=headers, timeout=30)
+            async with httpx.AsyncClient(timeout=QUERY_CONNECT_TIMEOUT_SECONDS) as client:
+                response = await client.post(
+                    QUERY_ENDPOINT,
+                    json={"sql": sql_query},
+                    headers=headers,
+                    timeout=QUERY_TIMEOUT_SECONDS,
+                )
                 response.raise_for_status()
                 payload = response.json()
         except httpx.HTTPStatusError as exc:

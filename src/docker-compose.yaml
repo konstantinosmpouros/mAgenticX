@@ -40,9 +40,8 @@ services:
       dockerfile: Dockerfile
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - RAG_HOST=rag_service
-      - RAG_PORT=8001
-      - MCP_TOOLS_HTTP_URL=http://mcp_gateway:8005/sse
+      - RAG_BASE_URL=http://rag_service:8001
+      - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-}
     depends_on:
       - rag_service
@@ -80,7 +79,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
-      - VAULT_ADDR=http://vault:8004
+      - VAULT_URL=http://vault:8004
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on:
@@ -102,8 +101,7 @@ services:
       context: ./agentic_ui
       dockerfile: Dockerfile
     environment:
-      - BFF_HOST=dialogue_bridge
-      - BFF_PORT=8002
+      - BFF_BASE_URL=http://dialogue_bridge:8002
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on: 
       - dialogue_bridge

@@ -7,17 +7,21 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel, Field
 
+from core.configs import configs
 from observability import get_context
-from config import HR_ENDPOINT as ENDPOINT
 from langgraph_agents.hr_policies_agent_v1.agents import HRAgents
 from langgraph_agents.hr_policies_agent_v1.prompt_templates import (
     non_hr_gen_template,
     hr_gen_template,
 )
-from agui import AGUIEmitter
+from protocols.agui import AGUIEmitter
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
+
+ENDPOINT = configs.rag.retrieve_url(configs.workflows.hr.collection_name)
+REQUEST_TIMEOUT_SECONDS = configs.rag.request_timeout_seconds
+RETRIEVE_TOP_K = configs.workflows.hr.retrieve_top_k
 
 class HRPoliciesV1_State(BaseModel):
     messages: Any
@@ -162,7 +166,12 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
             request_id = get_context().get("request_id")
             headers = {"X-Request-ID": request_id} if request_id else {}
             async with httpx.AsyncClient() as client:
-                resp = await client.post(ENDPOINT, json={"query": query, "k": 2}, headers=headers, timeout=30)
+                resp = await client.post(
+                    ENDPOINT,
+                    json={"query": query, "k": RETRIEVE_TOP_K},
+                    headers=headers,
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                )
                 resp.raise_for_status()
                 retrieved_docs.extend(resp.json()["documents"])
         

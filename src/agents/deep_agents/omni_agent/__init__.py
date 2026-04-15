@@ -3,7 +3,8 @@ from typing import Any
 from deepagents import create_deep_agent, SubAgent
 from deepagents.backends import FilesystemBackend
 
-from blueprints.deep_agent import DeepAgent
+from agent_runtime import DeepAgent
+from core.configs import configs
 from deep_agents.omni_agent.system_prompts import RESEARCHER_SYSTEM_PROMPT, WRITER_SYSTEM_PROMPT
 
 class OmniAgent(DeepAgent):
@@ -36,8 +37,10 @@ class OmniAgent(DeepAgent):
     # Sub-agents
     # ------------------------------------------------------------------
     def register_subagents(self) -> list[SubAgent]:
+        omni = configs.deep_agents.omni
         return [
             SubAgent(
+                model=omni.researcher_model,
                 name="researcher",
                 description=(
                     "Deep-dives a topic, looks up facts, gathers and verifies "
@@ -47,6 +50,7 @@ class OmniAgent(DeepAgent):
                 tools=[],
             ),
             SubAgent(
+                model=omni.writer_model,
                 name="writer",
                 description=(
                     "Formats, polishes, and produces structured written output. "
@@ -61,8 +65,9 @@ class OmniAgent(DeepAgent):
     # Main agent
     # ------------------------------------------------------------------
     def register_agent(self) -> Any:
+        omni = configs.deep_agents.omni
         return create_deep_agent(
-            model="openai:gpt-5",
+            model=omni.main_model,
             name=self.name,
             tools=self.tools,
             memory=self.agent_md_paths,

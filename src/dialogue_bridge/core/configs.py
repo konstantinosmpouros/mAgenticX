@@ -54,6 +54,53 @@ def _load_trusted_proxy_networks(raw: str | None) -> tuple[ProxyNetwork, ...]:
     return tuple(networks)
 
 
+def _load_csv_items(raw: str | None) -> tuple[str, ...]:
+    items: list[str] = []
+    for item in (raw or "").split(","):
+        candidate = item.strip()
+        if candidate:
+            items.append(candidate)
+    return tuple(items)
+
+
+def _load_csv_items_or_default(raw: str | None, default: tuple[str, ...]) -> tuple[str, ...]:
+    items = _load_csv_items(raw)
+    return items or default
+
+
+def _default_agentic_ui_origins() -> tuple[str, ...]:
+    return (
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8050",
+        "http://127.0.0.1:8050",
+    )
+
+
+def _default_cors_headers(cors_csrf_header_name: str | None = None) -> tuple[str, ...]:
+    return (
+        "Accept",
+        "Content-Type",
+        "Authorization",
+        "Range",
+        "If-Range",
+        cors_csrf_header_name,
+    )
+
+
+def _default_cors_methods() -> tuple[str, ...]:
+    return ("GET", "POST", "PUT", "PATCH", "DELETE")
+
+
+def _default_cors_expose_headers() -> tuple[str, ...]:
+    return (
+        "Content-Disposition",
+        "Content-Length",
+        "Content-Range",
+        "Accept-Ranges",
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class AppSettings:
     env: str
@@ -124,6 +171,16 @@ class LoggingSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class CorsSettings:
+    allowed_origins: tuple[str, ...]
+    allow_credentials: bool
+    allow_methods: tuple[str, ...]
+    allow_headers: tuple[str, ...]
+    expose_headers: tuple[str, ...]
+    max_age_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class Settings:
     app: AppSettings
     database: DatabaseSettings
@@ -133,9 +190,11 @@ class Settings:
     proxy: ProxySettings
     rate_limit: RateLimitSettings
     logging: LoggingSettings
+    cors: CorsSettings
 
 
 def load_settings() -> Settings:
+    # Determine secure cookie defaults based on environment variables
     session_secure = _as_bool(os.getenv("SESSION_COOKIE_SECURE"), default=True)
     session_domain = _optional_str(os.getenv("SESSION_COOKIE_DOMAIN"))
     default_access_cookie = "__Host-mx_session" if session_secure and session_domain is None else "mx_session"
@@ -143,7 +202,27 @@ def load_settings() -> Settings:
     default_csrf_cookie = "__Host-mx_csrf" if session_secure and session_domain is None else "mx_csrf"
     session_token_secret = _optional_str(os.getenv("SESSION_TOKEN_SECRET")) or secrets.token_hex(32)
 
+    # Load trusted proxy CIDRs and networks
     proxy_cidrs = os.getenv("TRUSTED_PROXY_CIDRS", "")
+
+    # Validate CORS settings
+    cors_allowed_origins = _load_csv_items_or_default(os.getenv("CORS_ALLOWED_ORIGINS"), _default_agentic_ui_origins())
+    cors_allow_credentials = _as_bool(os.getenv("CORS_ALLOW_CREDENTIALS"), default=True)
+    cors_csrf_header_name = os.getenv("SESSION_CSRF_HEADER_NAME", "X-CSRF-Token")
+    cors_allow_methods = _load_csv_items_or_default(
+        os.getenv("CORS_ALLOW_METHODS"),
+        _default_cors_methods(),
+    )
+    cors_allow_headers = _load_csv_items_or_default(
+        os.getenv("CORS_ALLOW_HEADERS"),
+        _default_cors_headers(cors_csrf_header_name),
+    )
+    cors_expose_headers = _load_csv_items_or_default(
+        os.getenv("CORS_EXPOSE_HEADERS"),
+        _default_cors_expose_headers(),
+    )
+    if cors_allow_credentials and "*" in cors_allowed_origins:
+        raise RuntimeError("CORS_ALLOWED_ORIGINS cannot contain '*' when CORS_ALLOW_CREDENTIALS is enabled.")
 
     return Settings(
         app=AppSettings(
@@ -173,7 +252,7 @@ def load_settings() -> Settings:
             token_secret=session_token_secret,
         ),
         vault=VaultSettings(
-            addr=_optional_str(os.getenv("VAULT_ADDR")),
+            addr=_optional_str(os.getenv("VAULT_URL")),
             userpass_mount=os.getenv("VAULT_USERPASS_MOUNT", "userpass"),
             oidc_role=os.getenv("VAULT_OIDC_ROLE", "agenticx"),
             oidc_path=os.getenv("VAULT_OIDC_PATH", "identity/oidc/token"),
@@ -203,8 +282,15 @@ def load_settings() -> Settings:
                 or "dialogue-bridge-log-redaction"
             ),
         ),
+        cors=CorsSettings(
+            allowed_origins=cors_allowed_origins,
+            allow_credentials=cors_allow_credentials,
+            allow_methods=cors_allow_methods,
+            allow_headers=cors_allow_headers,
+            expose_headers=cors_expose_headers,
+            max_age_seconds=_as_int(os.getenv("CORS_MAX_AGE_SECONDS"), 600),
+        ),
     )
 
 
 settings = load_settings()
-

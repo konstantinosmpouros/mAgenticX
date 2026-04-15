@@ -152,7 +152,7 @@ const setupSections = [
     bullets: [
       "OPENAI_API_KEY for agents + rag_service.",
       "DATABASE_URL for dialogue_bridge (compose default: postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db).",
-      "VAULT_ADDR, VAULT_USERPASS_MOUNT, VAULT_OIDC_ROLE to talk to Vault (when enabled).",
+      "VAULT_URL, VAULT_USERPASS_MOUNT, VAULT_OIDC_ROLE to talk to Vault (when enabled).",
       "MCP secrets in src/mcp_gateway/mcp_secret.env (e.g., tavily.api_token=...).",
     ],
   },
