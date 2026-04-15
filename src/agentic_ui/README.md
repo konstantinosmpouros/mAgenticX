@@ -1,50 +1,511 @@
 # Agentic UI
 
-React + Vite 18 single-page app for the mAgenticX chat experience. It talks only to the dialogue bridge, streams AG-UI SSE frames, and renders agent thinking, tool calls, branches, and attachments in real time.
+`agentic_ui` is the browser-facing frontend for mAgenticX. It is a React 18 + Vite single-page application that renders the chat workspace, authenticates through the dialogue bridge, streams AG-UI events over Server-Sent Events, and exposes agent-specific interaction features such as planning traces, sub-agent activity, branching, file attachments, and voice dictation.
 
-## What it does
+The UI does not call the agents service, the RAG service, Chroma, or Postgres directly. Every backend request goes through the dialogue bridge under `/api/v1/*`, with nginx acting as the production reverse proxy inside the UI container.
 
-- Authenticates against the bridge, keeps session cookies fresh, and persists the signed-in user locally.
-- Renders the chat workspace with agent switching, paginated conversation history, private-mode toggles, branching, and message editing/retries.
-- Validates and uploads attachments (per-file, aggregate, and base64-inflated payload size) against the 600 MB proxy cap before posting to the bridge.
-- Streams inference over SSE and paints thinking/tool frames incrementally, including branch-aware `messagePath` replies from the bridge.
-- Provides voice dictation in the composer (WebAudio -> `/api/users/{userId}/dictation/transcribe` -> transcript dropped into the draft).
-- Surfaces the MCP tool catalog and per-user tool disablement in the profile panel; preferences are saved through the bridge and respected when sending inference configs.
-- Persists lightweight UI state (agents, tools, conversation summaries, sidebar tab, selected agent, private-mode toggle) in IndexedDB for fast reloads.
+## Responsibilities
 
-## Code map
+- Authenticate users against the bridge and keep bridge-issued session cookies fresh.
+- Render the main chat experience, including agent selection, conversation history, message editing, branching, and private-mode state.
+- Stream AG-UI inference events and normalize them into visible assistant output, thinking timelines, tool activity, plan snapshots, and sub-agent traces.
+- Validate files before upload and hand attachment persistence to the bridge.
+- Support voice dictation and drop the resulting transcript back into the message composer.
+- Cache lightweight UI state locally so reloads feel faster without storing the entire conversation transcript in the browser.
 
-- `src/components/ChatPage.tsx` (exports `ChatInterface`) orchestrates the layout, state, streaming lifecycle, UI snapshot persistence, and handler wiring.
-- `src/components/chat/` holds the UI surfaces (header, sidebar, profile panel with MCP tools, message body, input bar with recorder).
-- `src/components/handlers/` are domain-specific state machines for auth/session refresh, roster + tools fetch, conversations + pagination, inference streaming (SSE parsing and retries), attachments, preferences, branching, and UI affordances like sticky bars.
-- `src/lib/api.ts` wraps every bridge endpoint (auth/session, agents, tools, preferences, dictation, conversations, attachments, inference) with credentialed fetch helpers and SSE parsing.
-- `src/lib/uploadGuards.ts`, `src/lib/utils.ts`, `src/lib/authStorage.ts`, and `src/lib/uiStateStorage.ts` cover client-side validation (size limits aligned with Nginx), persistence, and utility helpers.
-- `nginx.conf.template`, Tailwind config, and the Dockerfile live here for production builds; the Nginx config bumps `client_max_body_size`, keeps SSE unbuffered, and is rendered from `BFF_BASE_URL` at container start.
+## System Position
 
-## API expectations
+```mermaid
+flowchart LR
+    User["Browser User"]
+    UI["Agentic UI\nReact + Vite SPA"]
+    Nginx["nginx\nstatic hosting + /api proxy"]
+    Bridge["Dialogue Bridge\nFastAPI BFF"]
+    Agents["Agents Service"]
+    RAG["RAG Service"]
+    Vault["Vault"]
+    PG["Postgres"]
 
-- The dev server runs on `http://localhost:8080`; `/api/*` must be proxied to the dialogue bridge (Compose already routes to `dialogue_bridge:8002`).
-- Voice dictation uses the bridge proxy for `/users/{userId}/dictation/transcribe` and expects `gpt-4o-transcribe` on the agents service.
-- MCP tool discovery/preferences use `/api/tools` and `/api/users/{userId}/preferences`, then annotate inference requests with the enabled tools list.
-- Nginx disables response buffering for `/api/*` so SSE frames and attachment downloads remain streaming; keep `client_max_body_size 600M` in sync with `PROXY_LIMIT_MB` in `uploadGuards.ts`.
+    User --> UI
+    UI --> Nginx
+    Nginx --> Bridge
+    Bridge --> Vault
+    Bridge --> PG
+    Bridge --> Agents
+    Agents --> RAG
+```
+
+## Runtime Architecture
+
+At runtime, the UI is mostly a state orchestration layer around the chat page. `App.tsx` wires global providers, the router selects the active page, and `ChatPage.tsx` coordinates session rehydration, data fetching, SSE streaming, persistence, and the main interaction state.
+
+```mermaid
+flowchart TD
+    Main["main.tsx"]
+    App["App.tsx"]
+    Router["react-router-dom"]
+    Login["pages/Login.tsx"]
+    Chat["pages/ChatPage.tsx"]
+    Arch["pages/Architecture.tsx"]
+    Test["pages/Test.tsx"]
+    API["lib/api.ts"]
+    AGUI["components/handlers/agui.ts"]
+    Storage["authStorage.ts + uiStateStorage.ts"]
+    UI["chat/* components"]
+
+    Main --> App
+    App --> Router
+    Router --> Login
+    Router --> Chat
+    Router --> Arch
+    Router --> Test
+    Chat --> API
+    Chat --> AGUI
+    Chat --> Storage
+    Chat --> UI
+```
+
+## Routes
+
+The app defines a small set of browser routes:
+
+- `/` renders `ChatInterface`, the production chat workspace.
+- `/login` renders the credential-based login flow.
+- `/architecture` renders an in-product architecture explainer page.
+- `/test` renders an internal AG-UI/sub-agent replay playground.
+- Any unknown route falls back to `NotFound`.
+
+## Main UI Logic
+
+`src/pages/ChatPage.tsx` is the operational center of the frontend. It owns the current conversation, draft message text, attachments, selected agent, preferences, active plan snapshots, dictation state, sidebar state, conversation pagination state, and the currently streamed assistant response.
+
+The page delegates behavior to modular handlers instead of placing all business logic inline:
+
+- `handlers/auth.ts` handles login/logout side effects and post-auth bootstrap.
+- `handlers/inference.ts` prepares sends, creates optimistic placeholders, and starts the AG-UI stream.
+- `handlers/agui.ts` parses the incoming event stream and turns it into UI state plus persisted assistant messages.
+- `handlers/preferences.ts` computes enabled tool state and saves user preferences.
+- `handlers/attachments.ts` manages file picking, paste flows, validation, and download behavior.
+- `handlers/messages.tsx`, `handlers/agents.ts`, and branching/retry/edit handlers cover conversation-level user actions.
+
+## Authentication and Session Model
+
+The UI uses the dialogue bridge as the sole auth surface. It does not store backend tokens directly. Instead:
+
+- the bridge sets session and refresh cookies
+- the UI calls `/api/v1/auth/session` to restore browser state
+- the UI periodically refreshes the server session via `/api/v1/auth/session/refresh`
+- local storage keeps only a lightweight session snapshot for UX continuity
+
+`src/lib/authStorage.ts` stores:
+
+- `userId`
+- `expiresAt`
+- serialized `user`
+- `lastConversationId`
+- `selectedAgent`
+- `isPrivateMode`
+
+That local snapshot is a UX cache, not the source of truth. The bridge session remains authoritative.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Agentic UI
+    participant B as Dialogue Bridge
+    participant V as Vault
+
+    U->>UI: Submit username/password
+    UI->>B: POST /api/v1/auth/login
+    B->>V: Validate credentials
+    V-->>B: Auth success
+    B-->>UI: Set session + refresh cookies
+    UI->>UI: Save lightweight session snapshot
+    UI->>B: GET /api/v1/auth/session
+    B-->>UI: Authenticated user payload
+```
+
+## Bootstrap and Rehydration
+
+`useAuthRehydrateEffect(...)` is the startup path for an already-open browser session. It:
+
+1. Calls `restoreSession()` against the bridge.
+2. Clears local browser state if the server session is gone.
+3. Loads the IndexedDB UI snapshot when available.
+4. Fetches agents, tools, preferences, and conversation summaries.
+5. Rehydrates the last opened conversation if an ID is known.
+
+The hook uses the local and IndexedDB caches as accelerators, but server responses still win.
+
+```mermaid
+flowchart TD
+    Start["App opens"]
+    Restore["GET /api/v1/auth/session"]
+    NoSession["Clear local session and show logged-out state"]
+    Snapshot["Load IndexedDB UI snapshot"]
+    Fetch["Fetch agents, tools, preferences, conversations"]
+    Detail{"Known last conversation?"}
+    LoadConv["Fetch conversation detail"]
+    Ready["Chat page ready"]
+
+    Start --> Restore
+    Restore -->|Unauthenticated| NoSession
+    Restore -->|Authenticated| Snapshot
+    Snapshot --> Fetch
+    Fetch --> Detail
+    Detail -->|Yes| LoadConv
+    Detail -->|No| Ready
+    LoadConv --> Ready
+```
+
+## Data Access Layer
+
+`src/lib/api.ts` centralizes all network traffic and uses `withSessionRequest(...)` from `src/lib/utils.ts` to include credentials and CSRF protection. The UI expects the backend to be exposed under `/api/v1`.
+
+Main endpoint groups:
+
+- Auth
+  - `/auth/login`
+  - `/auth/session`
+  - `/auth/session/refresh`
+  - `/auth/logout`
+- Catalog
+  - `/catalog/agents`
+  - `/catalog/tools`
+- Preferences
+  - `/preferences/{userId}`
+- Conversations
+  - `/conversations/{userId}`
+  - `/conversations/{userId}/{conversationId}`
+  - `/conversations/{userId}/{conversationId}/title`
+- Messages
+  - `/messages/{userId}/{conversationId}`
+  - `/messages/{userId}/{conversationId}/{messageId}`
+  - like/dislike endpoints
+- Attachments
+  - `/attachments/download/{userId}/{conversationId}/{messageId}/{blobId}`
+- Inference
+  - `/inference/dictation/{userId}`
+  - `/inference/stream/{userId}/{conversationId}`
+
+## AG-UI Streaming Model
+
+The most important runtime path is the streamed assistant response. `streamInference(...)` opens a `fetch(...)` request, reads the response body with a `ReadableStream` reader, and feeds the bytes into `parseSSE(...)`.
+
+The parsed events are then handled by `streamAguiRun(...)` in `components/handlers/agui.ts`. That module keeps transient runtime state until the run completes, then persists the final AI message back through the bridge.
+
+Supported event categories include standard AG-UI events and app-specific custom events:
+
+- run lifecycle
+  - `RUN_STARTED`
+  - `RUN_ERROR`
+- thinking lifecycle
+  - `THINKING_START`
+  - `THINKING_TEXT_MESSAGE_CONTENT`
+  - `THINKING_END`
+- tool activity
+  - `TOOL_CALL_START`
+  - `TOOL_CALL_ARGS`
+  - `TOOL_CALL_RESULT`
+- text streaming
+  - `TEXT_MESSAGE_START`
+  - `TEXT_MESSAGE_CHUNK`
+  - `TEXT_MESSAGE_CONTENT`
+  - `TEXT_MESSAGE_END`
+- custom agentic extensions from `src/lib/agui.ts`
+  - `PLAN_SNAPSHOT`
+  - `TASK_SUBAGENT`
+  - `SUBAGENT_EVENT`
+  - `BEFORE_AGENT_EVENT`
+  - `HITL_INTERRUPT`
+
+```mermaid
+sequenceDiagram
+    participant UI as Chat Page
+    participant B as Dialogue Bridge
+    participant A as Agents Service
+
+    UI->>B: POST /api/v1/inference/stream/{userId}/{conversationId}
+    B->>A: Forward normalized request
+    A-->>B: SSE AG-UI event stream
+    B-->>UI: Forward SSE frames
+    UI->>UI: parseSSE(...)
+    UI->>UI: streamAguiRun(...)
+    UI->>UI: Update thinking, tools, text, plans, subagents
+    UI->>B: Persist final assistant message
+```
+
+## Plan and Sub-Agent Rendering
+
+The UI is explicitly designed to show agentic traces, not just plain chat output. Two custom event families matter here:
+
+- `PLAN_SNAPSHOT` updates the visible task plan cards shown above the transcript.
+- `TASK_SUBAGENT`, `SUBAGENT_EVENT`, `BEFORE_AGENT_EVENT`, and `HITL_INTERRUPT` build a structured sub-agent model that the UI can render after or during the run.
+
+This means the frontend is not merely rendering raw SSE lines. It is normalizing multiple event types into stable UI concepts.
+
+```mermaid
+flowchart TD
+    Frame["Incoming SSE frame"]
+    Parse["AG-UI schema parse"]
+    Custom{"Custom event?"}
+    Plan["Update latest plan snapshot"]
+    Task["Register sub-agent task"]
+    Sub["Append wrapped sub-agent event"]
+    Interrupt["Store HITL interrupt"]
+    Text["Append assistant text"]
+    Tool["Append tool call activity"]
+    Persist["Persist final message metadata"]
+
+    Frame --> Parse
+    Parse --> Custom
+    Custom -->|PLAN_SNAPSHOT| Plan
+    Custom -->|TASK_SUBAGENT| Task
+    Custom -->|SUBAGENT_EVENT / BEFORE_AGENT_EVENT| Sub
+    Custom -->|HITL_INTERRUPT| Interrupt
+    Custom -->|No| Text
+    Text --> Tool
+    Plan --> Persist
+    Task --> Persist
+    Sub --> Persist
+    Interrupt --> Persist
+    Tool --> Persist
+```
+
+## Conversation and Branching Model
+
+The UI supports branch-aware conversations rather than a single linear transcript. `useBranchingHandlers(...)` computes:
+
+- the currently active message path
+- child-message alternatives
+- the visible message set for the current branch
+
+This allows retries, edits, and alternate continuations without flattening everything into one timeline. `ChatBody` renders the active branch while `ChatHeader` and action handlers expose branch-sensitive controls.
+
+## File Attachments
+
+Attachment validation happens on the client before the UI sends any payload to the bridge. The limits are defined in `src/lib/uploadGuards.ts`:
+
+- `MAX_SINGLE_FILE_MB = 25`
+- `MAX_TOTAL_FILES_MB = 25`
+- `PROXY_LIMIT_MB = 50`
+
+The final check accounts for base64 expansion so browser-side validation stays aligned with the nginx body limit.
+
+The current production proxy limit is `50M`, not `600M`.
+
+```mermaid
+flowchart LR
+    Pick["User selects files"]
+    Validate["validateAttachmentsForUpload(...)"]
+    Single{"Any file > 25 MB?"}
+    Total{"Total raw size > 25 MB?"}
+    Inflated{"Inflated payload > 50 MB?"}
+    Reject["Show validation error"]
+    Send["Send to bridge with message payload"]
+
+    Pick --> Validate
+    Validate --> Single
+    Single -->|Yes| Reject
+    Single -->|No| Total
+    Total -->|Yes| Reject
+    Total -->|No| Inflated
+    Inflated -->|Yes| Reject
+    Inflated -->|No| Send
+```
+
+## Dictation Flow
+
+The composer includes voice dictation support through `react-voice-visualizer`. The UI captures audio locally, posts it to the bridge’s dictation endpoint, and inserts the returned transcript into the draft input.
+
+The browser never sends audio directly to the agents service.
+
+## Local Persistence Model
+
+The frontend uses two different browser storage layers:
+
+- `localStorage`
+  - session-shaped metadata in `authStorage.ts`
+- `IndexedDB`
+  - UI snapshot metadata in `uiStateStorage.ts`
+
+The IndexedDB snapshot intentionally stores lightweight metadata instead of full conversation bodies:
+
+- selected agent
+- private mode
+- active profile tab
+- sidebar open state
+- last conversation ID
+- available tools
+- agent catalog
+- conversation summaries
+- user preferences
+
+Images and full transcripts are not used as the durable local source of truth.
+
+```mermaid
+flowchart TD
+    Session["localStorage\nmx_auth_session"]
+    UIState["IndexedDB\nmx_ui_state"]
+    Chat["Live React state"]
+    Bridge["Dialogue Bridge"]
+
+    Bridge --> Chat
+    Chat --> Session
+    Chat --> UIState
+    Session --> Chat
+    UIState --> Chat
+```
+
+## Presentational Composition
+
+The chat experience is split into focused surfaces under `src/components/chat`:
+
+- `ChatHeader`
+  - agent selector
+  - private-mode toggle
+  - conversation actions
+- `ChatSidebar`
+  - conversation list
+  - pagination and archive/delete affordances
+  - profile entry point
+- `ProfilePanel`
+  - user profile
+  - theme selection
+  - MCP tool preference toggles
+  - links to auxiliary views
+- `ChatBody`
+  - transcript rendering
+  - loading states
+  - branch-aware message display
+- `ChatInputBar`
+  - composer
+  - attachment strip
+  - dictation controls
+  - send/stop actions
+
+## Styling and UI Stack
+
+The UI stack is based on:
+
+- React 18
+- Vite
+- TypeScript
+- Tailwind CSS
+- Radix UI primitives
+- `@tanstack/react-query`
+- `next-themes`
+- `lucide-react`
+- `react-markdown`, `remark-gfm`, `rehype-highlight`, and `rehype-katex`
+
+The app also includes additional motion, markdown, and playground-oriented dependencies, but the core production path remains the chat runtime described above.
+
+## Production Proxy and Container Behavior
+
+The Docker image is a two-stage build:
+
+1. `node:20-alpine` builds the Vite bundle.
+2. `nginx:1.25-alpine` serves the static assets and proxies `/api/` traffic.
+
+`nginx.conf.template` is the operational boundary between the browser and the bridge:
+
+- rewrites `/api/...` before proxying to `${BFF_BASE_URL}`
+- forwards `X-Real-IP`, `X-Forwarded-For`, `CF-Connecting-IP`, and `X-Forwarded-Proto`
+- injects `X-Internal-Proxy-Secret ${TRUSTED_PROXY_SECRET}`
+- disables request and response buffering for large uploads and SSE
+- sets `client_max_body_size 50M`
+
+```mermaid
+flowchart LR
+    Browser["Browser"]
+    Nginx["nginx container"]
+    Bridge["${BFF_BASE_URL}\n(default http://dialogue_bridge:8002)"]
+
+    Browser -->|GET static assets| Nginx
+    Browser -->|/api/*| Nginx
+    Nginx -->|rewritten upstream request| Bridge
+```
+
+## Configuration
+
+Important runtime values:
+
+- `BFF_BASE_URL`
+  - upstream base URL for proxied API traffic
+  - Docker default: `http://dialogue_bridge:8002`
+- `TRUSTED_PROXY_SECRET`
+  - shared secret added to proxied requests for bridge-side trust checks
+
+Development settings of note:
+
+- Vite dev server listens on port `8080`
+- `vite.config.ts` binds host `::`
+- production nginx listens on port `80`
+
+## Directory Map
+
+Key files and folders:
+
+- `src/main.tsx`
+  - bootstraps the app, router, and root error boundary
+- `src/App.tsx`
+  - registers providers and browser routes
+- `src/pages/ChatPage.tsx`
+  - main orchestration page
+- `src/pages/Login.tsx`
+  - login and session-restore entry point
+- `src/components/chat/`
+  - presentational chat surfaces
+- `src/components/handlers/`
+  - stateful domain logic for auth, inference, preferences, attachments, retries, and branching
+- `src/hooks/`
+  - session effects, scrolling behavior, thinking progress, and layout helpers
+- `src/lib/api.ts`
+  - bridge API wrapper and SSE transport
+- `src/lib/agui.ts`
+  - AG-UI event schemas plus custom event definitions
+- `src/lib/authStorage.ts`
+  - browser session snapshot persistence
+- `src/lib/uiStateStorage.ts`
+  - IndexedDB UI snapshot persistence
+- `src/lib/uploadGuards.ts`
+  - browser-side file limit enforcement
+- `nginx.conf.template`
+  - production reverse proxy behavior
+- `Dockerfile`
+  - production build and serving image
 
 ## Development
 
-```shell
+```bash
 cd src/agentic_ui
 npm install
 npm run dev
 ```
 
-## Build & Deploy
+The UI expects `/api/v1/*` to resolve to the dialogue bridge. In Docker Compose this is handled by nginx inside the UI container. In standalone local development you need an equivalent proxy arrangement.
 
-```shell
+## Build and Verification
+
+```bash
 npm run build
-npm run preview   # static preview of the built assets
+npm run preview
+npm run lint
 ```
 
-The Dockerfile produces an nginx image and uses the base image's built-in template rendering for `/api/*`. Compose can override `BFF_BASE_URL`; otherwise the image defaults to `http://dialogue_bridge:8002`.
+## Extension Points
 
-## Tooling
+When extending the UI, the existing seams are:
 
-`npm run lint` runs ESLint; Tailwind + shadcn provide the design system components.
+- add new backend endpoints in `src/lib/api.ts`
+- add new AG-UI event schemas in `src/lib/agui.ts`
+- normalize new stream behaviors in `components/handlers/agui.ts`
+- expose new controls via `ProfilePanel`, `ChatHeader`, or `ChatInputBar`
+- persist only lightweight metadata to IndexedDB unless there is a strong reason to widen the browser cache
+
+## Operational Notes
+
+- The UI assumes the dialogue bridge owns authentication, conversation persistence, and attachment persistence.
+- SSE rendering depends on buffering being disabled in the reverse proxy path.
+- Attachment validation is intentionally stricter in the browser than the raw proxy ceiling when base64 inflation is considered.
+- The `/architecture` and `/test` routes are auxiliary pages and not part of the primary chat runtime.
