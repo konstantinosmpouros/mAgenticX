@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field, ValidationError
 # --------------------------------------------------------------------------------------
 # Content schemas (extensible: add audio, video, etc. later)
 # --------------------------------------------------------------------------------------
-
 class TextPart(BaseModel):
     """Text content part."""
     type: Literal["text"] = "text"
@@ -82,7 +81,6 @@ def _normalize_content(
 # --------------------------------------------------------------------------------------
 # Role normalization and dict -> BaseMessage
 # --------------------------------------------------------------------------------------
-
 _ROLE_MAP = {
     "system": "system",
     "user": "human",
@@ -126,7 +124,6 @@ def dict_to_message(data: Mapping[str, Any]) -> BaseMessage:
 # --------------------------------------------------------------------------------------
 # Public normaliser: ALWAYS strips system (agents inject their own system prompts)
 # --------------------------------------------------------------------------------------
-
 UserInputT = Union[
     ChatPromptTemplate,
     Sequence[BaseMessage],

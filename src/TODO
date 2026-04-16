@@ -38,3 +38,7 @@
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
 - Create more features like the grok sidebar.
+
+## RAG Service
+
+- Instead of a ChromaDB consider adding pgvector in the database and use it for the retrieval, this will reduce the complexity of the system and the number of components to maintain. Also it will provide an easier way to keep the data consistent and avoid issues with synchronization between the database and the vector store.
