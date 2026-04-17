@@ -144,6 +144,11 @@ class VaultSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class TlsSettings:
+    ca_cert_path: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class UpstreamSettings:
     agents_service_url: str
 
@@ -187,6 +192,7 @@ class Settings:
     session: SessionSettings
     vault: VaultSettings
     upstream: UpstreamSettings
+    tls: TlsSettings
     proxy: ProxySettings
     rate_limit: RateLimitSettings
     logging: LoggingSettings
@@ -260,7 +266,10 @@ def load_settings() -> Settings:
             timeout=_as_float(os.getenv("VAULT_HTTP_TIMEOUT"), 10.0),
         ),
         upstream=UpstreamSettings(
-            agents_service_url=os.getenv("AGENTS_SERVICE_URL", "http://agents:8003"),
+            agents_service_url=os.getenv("AGENTS_SERVICE_URL", "https://agents:8003"),
+        ),
+        tls=TlsSettings(
+            ca_cert_path=_optional_str(os.getenv("INTERNAL_CA_CERT_PATH")),
         ),
         proxy=ProxySettings(
             header_name=os.getenv("TRUSTED_PROXY_HEADER_NAME", "X-Internal-Proxy-Secret"),

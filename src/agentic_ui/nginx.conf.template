@@ -1,5 +1,11 @@
 server {
   listen 80;
+
+  # TLS listener and upstream SSL verification (generated at container startup
+  # by entrypoint-nginx-tls.sh).  The glob pattern ensures Nginx starts cleanly
+  # in local dev where no entrypoint runs and the file does not exist.
+  include /etc/nginx/conf.d/tls.inc*;
+
   server_name _;
 
   set $trusted_client_ip $http_x_real_ip;

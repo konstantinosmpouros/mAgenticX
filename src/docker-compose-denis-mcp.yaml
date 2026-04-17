@@ -13,9 +13,9 @@ services:
     - --config=./app/mcp_config.yaml
     - --secrets=/app/mcp_secret
     volumes:
-      - /home/kostas/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
-      - /home/kostas/mcp_secret.env:/app/mcp_secret:ro
-      - /home/kostas/mcp_config.yaml:/app/mcp_config.yaml:ro
+      - /opt/magenticx/mcp_config/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
+      - /opt/magenticx/mcp_config/mcp_secret.env:/app/mcp_secret:ro
+      - /opt/magenticx/mcp_config/mcp_config.yaml:/app/mcp_config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     networks:

@@ -42,7 +42,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_BASE_URL=http://rag_service:8001
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
-      - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-}
     depends_on:
       - rag_service
     restart: unless-stopped
@@ -80,6 +79,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - VAULT_URL=http://vault:8004
+      - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on:

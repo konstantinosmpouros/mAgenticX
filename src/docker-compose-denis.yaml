@@ -17,16 +17,25 @@ services:
         max-size: "20m"
         max-file: "3"
 
+
   rag_service: # 8001
     container_name: rag_service
-    image: konstantinosmpouros/rag_service:v1.1.3
+    image: konstantinosmpouros/rag_service:v1.2.0
+    entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
+    command: ["main:app", "--host", "0.0.0.0", "--port", "8001"]
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
       - RAG_PORT=8000
+      - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
     depends_on:
       - vectordb
     restart: unless-stopped
+    volumes:
+      - /opt/magenticx/rag_service/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
+      - /opt/magenticx/rag_service/tls/tls.key:/app/tls/tls.key:ro
+      - /opt/magenticx/rag_service/tls/tls.crt:/app/tls/tls.crt:ro
+      - /opt/magenticx/rag_service/tls/ca.crt:/app/tls/ca.crt:ro
     networks:
       - backend
       - frontend
@@ -36,17 +45,25 @@ services:
         max-size: "20m"
         max-file: "3"
 
+
   agents: # 8003
     container_name: agents
-    image: konstantinosmpouros/agents:v1.11.0
+    image: konstantinosmpouros/agents:v1.12.0
+    entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
+    command: ["main:app", "--host", "0.0.0.0", "--port", "8003"]
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - RAG_BASE_URL=http://rag_service:8001
+      - RAG_BASE_URL=https://rag_service:8001
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
-      - DISABLED_AGENT_SLUGS=${DISABLED_AGENT_SLUGS:-}
+      - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
     depends_on:
       - rag_service
     restart: unless-stopped
+    volumes:
+      - /opt/magenticx/agents/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
+      - /opt/magenticx/agents/tls/tls.key:/app/tls/tls.key:ro
+      - /opt/magenticx/agents/tls/tls.crt:/app/tls/tls.crt:ro
+      - /opt/magenticx/agents/tls/ca.crt:/app/tls/ca.crt:ro
     networks:
       - backend
       - frontend
@@ -57,15 +74,22 @@ services:
         max-size: "50m"
         max-file: "5"
 
+
   chat_postgres: # 5432
     image: postgres:16.3
     container_name: chat_postgres
+    entrypoint: ["/bin/sh", "/var/lib/postgresql/tls/entrypoint-postgres-tls.sh"]
+    command: ["postgres"]
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
       POSTGRES_DB: chat_db
     volumes:
       - chat_convs:/var/lib/postgresql/data
+      - /opt/magenticx/postgres/tls/entrypoint-postgres-tls.sh:/var/lib/postgresql/tls/entrypoint-postgres-tls.sh:ro
+      - /opt/magenticx/postgres/tls/server.key:/var/lib/postgresql/tls/server.key:ro
+      - /opt/magenticx/postgres/tls/server.crt:/var/lib/postgresql/tls/server.crt:ro
+      - /opt/magenticx/postgres/tls/ca.crt:/var/lib/postgresql/tls/ca.crt:ro
     restart: unless-stopped
     networks:
       - backend
@@ -75,18 +99,28 @@ services:
         max-size: "20m"
         max-file: "3"
 
+
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.4.4
+    image: konstantinosmpouros/dialogue_bridge:v2.5.0
+    entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
+    command: ["main:app", "--host", "0.0.0.0", "--port", "8002"]
     environment:
-      - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
-      - VAULT_URL=http://vault:8004
+      - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db?ssl=verify-full
+      - VAULT_URL=https://vault:8004
+      - AGENTS_SERVICE_URL=https://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
     depends_on:
       - agents
       - chat_postgres
     restart: unless-stopped
+    volumes:
+      - /opt/magenticx/dialogue_bridge/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
+      - /opt/magenticx/dialogue_bridge/tls/tls.key:/app/tls/tls.key:ro
+      - /opt/magenticx/dialogue_bridge/tls/tls.crt:/app/tls/tls.crt:ro
+      - /opt/magenticx/dialogue_bridge/tls/ca.crt:/app/tls/ca.crt:ro
     networks:
       - backend
       - hashicorp_vault
@@ -96,15 +130,23 @@ services:
         max-size: "50m"
         max-file: "5"
 
+
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.6.1
+    image: konstantinosmpouros/agentic_ui:v0.6.2
+    entrypoint: ["/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
+    command: ["nginx", "-g", "daemon off;"]
     environment:
-      - BFF_BASE_URL=http://dialogue_bridge:8002
+      - BFF_BASE_URL=https://dialogue_bridge:8002
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on:
       - dialogue_bridge
     restart: unless-stopped
+    volumes:
+      - /opt/magenticx/agentic_ui/tls/entrypoint-nginx-tls.sh:/etc/nginx/tls/entrypoint-nginx-tls.sh:ro
+      - /opt/magenticx/agentic_ui/tls/tls.key:/etc/nginx/tls/tls.key:ro
+      - /opt/magenticx/agentic_ui/tls/tls.crt:/etc/nginx/tls/tls.crt:ro
+      - /opt/magenticx/agentic_ui/tls/ca.crt:/etc/nginx/tls/ca.crt:ro
     networks:
       - backend
       - frontend
@@ -137,6 +179,8 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /home/kostas/vectorstores/chroma_db_openai
+      device: /opt/magenticx/vectorstores/chroma_db_openai
 
   chat_convs:
+
+

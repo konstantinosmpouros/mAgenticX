@@ -13,16 +13,28 @@ services:
           "disable_mlock": true,
           "storage": { "raft": { "path": "/vault/data", "node_id": "vault-node-1" } },
           "listener": [
-            { "tcp": { "address": "0.0.0.0:8004", "cluster_address": "0.0.0.0:8005", "tls_disable": true } }
+            {
+              "tcp": {
+                "address": "0.0.0.0:8004",
+                "cluster_address": "0.0.0.0:8005",
+                "tls_disable": false,
+                "tls_cert_file": "/vault/tls/tls.crt",
+                "tls_key_file": "/vault/tls/tls.key",
+                "tls_client_ca_file": "/vault/tls/ca.crt"
+              }
+            }
           ],
-          "api_addr": "http://vault:8004",
-          "cluster_addr": "http://vault:8005"
+          "api_addr": "https://vault:8004",
+          "cluster_addr": "https://vault:8005"
         }
     command: ["server"]
     volumes:
       - data:/vault/data
+      - /opt/vault/tls/tls.key:/vault/tls/tls.key:ro
+      - /opt/vault/tls/tls.crt:/vault/tls/tls.crt:ro
+      - /opt/vault/tls/ca.crt:/vault/tls/ca.crt:ro
     restart: unless-stopped
-    networks: 
+    networks:
       - vault
 
 volumes:
@@ -35,3 +47,5 @@ volumes:
 
 networks:
   vault:
+
+

@@ -48,8 +48,8 @@ if not TABLES:
 # --------------------------------------------------------------------------------------
 # RAG Configs
 # --------------------------------------------------------------------------------------
-RAG_HOST = os.getenv("RAG_HOST")
-RAG_PORT = os.getenv("RAG_PORT")
+RAG_HOST = os.getenv("RAG_HOST", "vectordb")
+RAG_PORT = os.getenv("RAG_PORT", "8000")
 embeddings_model = OpenAIEmbeddings(model='text-embedding-3-large', api_key=os.getenv("OPENAI_API_KEY"))
 settings = Settings(
     chroma_api_impl="rest",

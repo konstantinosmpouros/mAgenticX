@@ -7,6 +7,7 @@ import httpx
 from pydantic import BaseModel
 
 from core.configs import configs
+from core.tls import get_httpx_verify
 from observability import get_context
 from langgraph_agents.retail_agent_v1.agents import RetailAgents
 from langgraph_agents.retail_agent_v1.prompt_templates import (
@@ -88,7 +89,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         try:
             request_id = get_context().get("request_id")
             headers = {"X-Request-ID": request_id} if request_id else {}
-            async with httpx.AsyncClient(timeout=SCHEMA_TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(timeout=SCHEMA_TIMEOUT_SECONDS, verify=get_httpx_verify()) as client:
                 response = await client.get(SCHEMA_ENDPOINT, headers=headers)
                 response.raise_for_status()
                 db_schema_json = response.json()
@@ -203,7 +204,7 @@ def build_retail_nodes(*, agents: RetailAgents, agui: AGUIEmitter) -> RetailNode
         try:
             request_id = get_context().get("request_id")
             headers = {"X-Request-ID": request_id} if request_id else {}
-            async with httpx.AsyncClient(timeout=QUERY_CONNECT_TIMEOUT_SECONDS) as client:
+            async with httpx.AsyncClient(timeout=QUERY_CONNECT_TIMEOUT_SECONDS, verify=get_httpx_verify()) as client:
                 response = await client.post(
                     QUERY_ENDPOINT,
                     json={"sql": sql_query},

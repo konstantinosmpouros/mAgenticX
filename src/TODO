@@ -10,7 +10,6 @@
 
 - Remove or heavily constrain the free-form SQL endpoint in `rag_service`; replace raw SQL execution with allowlisted read-only queries or a safe query layer.
 - Add internal service-to-service authentication between `dialogue_bridge`, `agents`, and `rag_service`.
-- Implement TLS between Dialogue Bridge - Vault | Dialogue Bridge - Agents | Dialogue Bridge - Database to ensure secure communication.
 - Add refresh replay / refresh reuse detection to the session refresh flow.
 - Add edge rate limiting at the host Nginx / Cloudflare layer for authentication-sensitive endpoints.
 - Secure the inference process by implementing stronger rate limiting and abuse controls.

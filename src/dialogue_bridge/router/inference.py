@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from observability import StreamMetrics, elapsed_ms, get_context, get_logger, iter_tracked_stream, log_stream_outcome, set_context
 
 from core.database import ConversationTable, UserTable
+from core.tls import get_httpx_verify
 from schemas import DictationResponse, InferenceStreamPayload
 from core.auth_session import require_csrf_protection
 from utils import (
@@ -73,7 +74,7 @@ async def startInferenceStream(
         metrics = StreamMetrics(event_separator=b"\n\n", started_at=time.perf_counter())
         timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
                 try:
                     tools_config = (
                         [{"tool_name": item.tool_name, "server_id": item.server_id} for item in enabled_tools]
@@ -213,7 +214,7 @@ async def transcribe_dictation(
     upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
     try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
                 resp = await client.post(_AGENTS_STT_ENDPOINT, files=files, headers=upstream_headers)
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:

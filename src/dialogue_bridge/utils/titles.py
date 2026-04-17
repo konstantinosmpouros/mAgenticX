@@ -4,6 +4,7 @@ import httpx
 
 from schemas import MessageIn, TitleOut
 from observability import get_context, get_logger
+from core.tls import get_httpx_verify
 from utils.agents import AGENTS_SERVICE_URL
 
 logger = get_logger(__name__)
@@ -63,7 +64,7 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     request_id = get_context().get("request_id")
     upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     try:
-        async with httpx.AsyncClient(timeout=_TITLE_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_TITLE_TIMEOUT, verify=get_httpx_verify()) as client:
             response = await client.post(_TITLE_ENDPOINT, json=payload, headers=upstream_headers)
             response.raise_for_status()
     except httpx.HTTPError as exc:

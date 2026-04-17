@@ -1,5 +1,6 @@
 from uuid import uuid4
 import base64
+import ssl as _ssl
 
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
@@ -32,6 +33,17 @@ def b64_encode(b: bytes) -> str: return base64.b64encode(b).decode("ascii")
 def b64_decode(s: str) -> bytes: return base64.b64decode(s, validate=True)
 
 
+def _build_pg_ssl_context() -> _ssl.SSLContext | None:
+    ca_path = settings.tls.ca_cert_path
+    if not ca_path:
+        return None
+    ctx = _ssl.create_default_context(cafile=ca_path)
+    ctx.check_hostname = True
+    ctx.verify_mode = _ssl.CERT_REQUIRED
+    return ctx
+
+
+_pg_ssl_context = _build_pg_ssl_context()
 
 engine = create_async_engine(
     settings.database.url,
@@ -40,6 +52,7 @@ engine = create_async_engine(
     pool_recycle=settings.database.pool_recycle,
     pool_size=settings.database.pool_size,
     max_overflow=settings.database.max_overflow,
+    connect_args={"ssl": _pg_ssl_context} if _pg_ssl_context else {},
 )
 
 # Factory that returns AsyncSession objects

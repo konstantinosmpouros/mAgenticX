@@ -8,6 +8,7 @@ import httpx
 from pydantic import BaseModel
 
 from core.configs import configs
+from core.tls import get_httpx_verify
 from observability import get_context
 from langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
 from langgraph_agents.orthodox_agent_v1.prompt_templates import (
@@ -158,7 +159,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         async def fetch_single(query: str):
             request_id = get_context().get("request_id")
             headers = {"X-Request-ID": request_id} if request_id else {}
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(verify=get_httpx_verify()) as client:
                 resp = await client.post(
                     ENDPOINT,
                     json={"query": query, "k": RETRIEVE_TOP_K},

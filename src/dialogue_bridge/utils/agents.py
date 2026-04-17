@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from core.configs import settings
+from core.tls import get_httpx_verify
 from core.database import AgentTable
 
 
@@ -65,7 +66,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     try:
         # Pull the latest agent manifests from the agents service.
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
             resp = await client.get(_AGENTS_DISCOVERY_ENDPOINT, headers=upstream_headers)
             resp.raise_for_status()
             data = resp.json()
@@ -148,7 +149,7 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
     upstream_headers = {"X-Request-ID": request_id} if request_id else {}
     try:
         # Forward the request to the MCP-backed agents service.
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
             resp = await client.get(_AGENTS_TOOLS_ENDPOINT, headers=upstream_headers)
             resp.raise_for_status()
     except httpx.HTTPError as exc:

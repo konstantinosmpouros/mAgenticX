@@ -16,3 +16,13 @@ src/vault/*
 src/mcp_gateway/mcp_secret.env
 
 data/*
+
+# Internal TLS certs (generated, contain private keys)
+src/tls/ca/
+src/tls/agentic_ui/
+src/tls/dialogue_bridge/
+src/tls/agents/
+src/tls/rag_service/
+src/tls/chat_postgres/
+src/tls/vault/
+src/tls/npm/

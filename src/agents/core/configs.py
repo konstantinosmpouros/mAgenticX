@@ -122,6 +122,11 @@ class McpConfig:
 
 
 @dataclass(frozen=True)
+class TlsConfig:
+    ca_cert_path: str | None
+
+
+@dataclass(frozen=True)
 class ProxyConfig:
     trusted_proxy_header_name: str
     trusted_proxy_secret: str
@@ -213,6 +218,7 @@ class AgentsConfigs:
     api_keys: ApiKeysConfig
     rag: RagConfig
     mcp: McpConfig
+    tls: TlsConfig
     proxy: ProxyConfig
     logging: LoggingConfig
     registry: AgentRegistryConfig
@@ -238,13 +244,16 @@ def load_configs() -> AgentsConfigs:
             anthropic=_env_optional_str("ANTHROPIC_API_KEY"),
         ),
         rag=RagConfig(
-            base_url=_env_str("RAG_BASE_URL", "http://rag_service:8001"),
+            base_url=_env_str("RAG_BASE_URL", "https://rag_service:8001"),
             request_timeout_seconds=_env_int("RAG_REQUEST_TIMEOUT_SECONDS", 30),
             connect_timeout_seconds=_env_int("RAG_CONNECT_TIMEOUT_SECONDS", 10),
         ),
         mcp=McpConfig(
             mcp_gateway_url=_env_str("MCP_GATEWAY_URL", "http://mcp_gateway:8005/sse"),
             manifest_cache_enabled=_env_bool("MCP_MANIFEST_CACHE_ENABLED", True),
+        ),
+        tls=TlsConfig(
+            ca_cert_path=_env_optional_str("INTERNAL_CA_CERT_PATH"),
         ),
         proxy=ProxyConfig(
             trusted_proxy_header_name=_env_str("TRUSTED_PROXY_HEADER_NAME", "X-Internal-Proxy-Secret"),
