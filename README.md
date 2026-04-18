@@ -15,9 +15,41 @@
   <a href="#documentation-hub">Docs</a>
 </p>
 
-<p align="center">
-  <img src="docs/Screenshot%202025-10-31%20015842.png" alt="mAgenticX platform overview" width="920" />
-</p>
+```mermaid
+flowchart TB
+    subgraph Users["Users"]
+        Admin["Admin"]
+        Browser["End user browser"]
+    end
+
+    subgraph Platform["mAgenticX Platform"]
+        UI["agentic_ui<br/>(served by nginx)"]
+        Bridge["dialogue_bridge<br/>(FastAPI BFF)"]
+        Agents["agents<br/>(LangGraph workflows)"]
+        MCP["mcp_gateway<br/>(MCP tool catalog SSE)"]
+        RAG["rag_service<br/>(retrieval and analytics)"]
+    end
+
+    subgraph Stores["Managed stores & services"]
+        PG["chat_postgres<br/>(conversations and blobs)"]
+        Vault["HashiCorp Vault<br/>(auth and JWT)"]
+        Chroma["vectordb Chroma<br/>(vector collections)"]
+        OpenAI["OpenAI API<br/>(LLMs and embeddings)"]
+    end
+
+    Admin -->|"configure UI"| UI
+    Browser -->|"HTTP SSE via 8050"| UI
+    UI -->|"REST SSE via /api"| Bridge
+    Bridge -->|"Proxy SSE and tools"| Agents
+    Agents -->|"Tool catalog SSE"| MCP
+    Bridge -->|"Persist conversations"| PG
+    Bridge -->|"JWT exchange"| Vault
+    Agents -->|"Document and analytics tools"| RAG
+    RAG -->|"Vector REST"| Chroma
+    RAG -->|"Embeddings"| OpenAI
+    Admin -->|"DB tooling"| PG
+    Admin -->|"Vault CLI UI"| Vault
+```
 
 ## What mAgenticX Is
 
@@ -256,7 +288,7 @@ For service-by-service development, use the implementation READMEs:
 
 | Network and request flow | Platform overview |
 | --- | --- |
-| ![Network flow](docs/Screenshot%202025-10-31%20014810.png) | ![Platform overview](docs/Screenshot%202025-10-31%20015842.png) |
+| ![Network flow](docs/Screenshot%202025-10-31%20014810.png) | See the Mermaid platform overview at the top of this README |
 
 | Chat lifecycle | Authentication |
 | --- | --- |
