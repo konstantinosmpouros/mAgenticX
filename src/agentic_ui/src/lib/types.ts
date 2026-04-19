@@ -108,6 +108,8 @@ export type ConversationSummary = {
     isPrivate: boolean;
     isArchived?: boolean;
     archivedAt?: Date | null;
+    isReported?: boolean;
+    reportedAt?: Date | null;
     lastMessage?: string;
     created_at: string;
     updated_at: string;
@@ -121,9 +123,17 @@ export type ConversationDetail = {
     isPrivate: boolean;
     isArchived?: boolean;
     archivedAt?: Date | null;
+    isReported?: boolean;
+    reportedAt?: Date | null;
     created_at: Date;
     updated_at: Date;
     messages: MessageOut[];
+};
+
+export type ConversationReportPayload = {
+    reason: string;
+    details?: string;
+    messageId?: string | null;
 };
 
 // Backend message type from API response

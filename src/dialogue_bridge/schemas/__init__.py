@@ -179,6 +179,8 @@ class ConversationSummary(BaseModel):
     isPrivate: bool = Field(..., validation_alias="is_private")
     isArchived: bool = Field(False, validation_alias="is_archived")
     archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
+    isReported: bool = Field(False, validation_alias="is_reported")
+    reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
     lastMessage: Optional[str] = Field(None, validation_alias="last_message_preview")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
@@ -251,6 +253,8 @@ class ConversationDetail(BaseModel):
     isPrivate: bool = Field(..., validation_alias="is_private")
     isArchived: bool = Field(False, validation_alias="is_archived")
     archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
+    isReported: bool = Field(False, validation_alias="is_reported")
+    reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
@@ -431,6 +435,32 @@ class ConversationTitleUpdate(BaseModel):
         return self
 
 
+class ConversationReportIn(BaseModel):
+    """Payload to create a conversation report with an optional specific message target."""
+    reason: str
+    details: Optional[str] = None
+    messageId: Optional[str] = Field(None, validation_alias="messageId")
+
+    @model_validator(mode="after")
+    def _normalize_and_validate(self):
+        resolved_reason = (self.reason or "").strip()
+        if not resolved_reason:
+            raise ValueError("Reason is required.")
+        if len(resolved_reason) > 120:
+            resolved_reason = resolved_reason[:120].rstrip()
+
+        resolved_details = (self.details or "").strip() or None
+        if resolved_details and len(resolved_details) > 2000:
+            resolved_details = resolved_details[:2000].rstrip()
+
+        resolved_message_id = (self.messageId or "").strip() or None
+
+        self.reason = resolved_reason
+        self.details = resolved_details
+        self.messageId = resolved_message_id
+        return self
+
+
 __all__ = [
     "AuthRequest",
     "UserProfile",
@@ -457,4 +487,5 @@ __all__ = [
     "ImageOut",
     "TitleOut",
     "ConversationTitleUpdate",
+    "ConversationReportIn",
 ]

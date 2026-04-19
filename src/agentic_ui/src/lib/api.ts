@@ -8,6 +8,7 @@ import type {
   ConversationSummary,
   MessageOut,
   ConversationIn,
+  ConversationReportPayload,
   CreateConversationResponse,
   MessageIn,
   MessageUpdate,
@@ -320,6 +321,36 @@ export async function unarchiveConversation(
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to unarchive conversation: ${res.status}`);
+  }
+  const data = await res.json();
+  return transformConversationSummary(data);
+}
+
+
+// Report a conversation with an optional specific message target
+export async function reportConversation(
+  userId: string,
+  conversationId: string,
+  payload: ConversationReportPayload,
+): Promise<ConversationSummary> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/report`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to report conversation: ${res.status}`);
   }
   const data = await res.json();
   return transformConversationSummary(data);

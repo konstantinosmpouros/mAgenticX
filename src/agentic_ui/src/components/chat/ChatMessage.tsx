@@ -29,6 +29,8 @@ type ChatMessageProps = {
   onCopy: (content: string, messageId: string) => void;
   onLike: (message: MessageOut) => void;
   onDislike: (message: MessageOut) => void;
+  onReportMessage?: (message: MessageOut) => void;
+  conversationIsReported?: boolean;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
@@ -65,6 +67,8 @@ export function ChatMessage({
   onCopy,
   onLike,
   onDislike,
+  onReportMessage,
+  conversationIsReported = false,
   toast,
   onRetryMessage,
   isStreaming,
@@ -232,6 +236,8 @@ export function ChatMessage({
                     onCopy={onCopy}
                     onLike={onLike}
                     onDislike={onDislike}
+                    onReportMessage={onReportMessage}
+                    conversationIsReported={conversationIsReported}
                     toast={toast}
                     onRetryMessage={onRetryMessage}
                     isStreaming={isStreaming}

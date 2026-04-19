@@ -32,11 +32,13 @@ type BaseActionBarProps = {
 type AIActionBarProps = BaseActionBarProps & {
   onLike: (message: MessageOut) => void;
   onDislike: (message: MessageOut) => void;
+  onReportMessage?: (message: MessageOut) => void;
   onRetryMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
   agentName?: string;
   AgentIcon?: LucideIcon;
   timestampLabel?: string;
+  conversationIsReported?: boolean;
 };
 
 type UserActionBarProps = BaseActionBarProps & {
@@ -109,13 +111,14 @@ export const AIActionBar = ({
   onCopy,
   onLike,
   onDislike,
-  toast,
+  onReportMessage,
   onRetryMessage,
   isStreaming,
   branchControls,
   agentName,
   AgentIcon,
   timestampLabel,
+  conversationIsReported = false,
 }: AIActionBarProps) => (
   <div className="flex flex-wrap items-center justify-end gap-2">
     {(timestampLabel || agentName) && (
@@ -198,40 +201,37 @@ export const AIActionBar = ({
         </div>
       )}
 
-      <div className="mt-1">
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="
-                h-8 w-8 text-muted-foreground
-                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
-                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
-                focus:ring-0 focus-visible:ring-0 transition-colors
-              "
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() =>
-                toast?.({
-                  title: "Coming soon",
-                  description: "Report functionality will be available soon.",
-                })
-              }
-              aria-label="Report message (coming soon)"
+      {!conversationIsReported && onReportMessage && (
+        <div className="mt-1">
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="
+                  h-8 w-8 text-muted-foreground
+                  hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                  active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
+                  focus:ring-0 focus-visible:ring-0 transition-colors
+                "
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onReportMessage(message)}
+                aria-label="Report message"
+              >
+                <LuFlag className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="center"
+              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
             >
-              <LuFlag className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent
-            side="bottom"
-            align="center"
-            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-          >
-            <p>Report</p>
-          </TooltipContent>
-        </Tooltip>
-      </div>
+              <p>Report</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      )}
 
       <div className="mt-1">
         <Tooltip delayDuration={0}>
@@ -282,7 +282,6 @@ export const UserActionBar = ({
   copiedId,
   onCopy,
   onFlashUserActionBar,
-  toast,
   onRequestEdit,
   branchControls,
   className,
@@ -303,39 +302,6 @@ export const UserActionBar = ({
           onClick={() => onCopy(message.content ?? "", message.id)}
           onAfterCopy={() => onFlashUserActionBar(message.id)}
         />
-
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="
-                h-8 w-8 text-muted-foreground
-                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
-                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
-                focus:ring-0 focus-visible:ring-0 transition-colors
-              "
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() =>
-                toast?.({
-                  title: "Coming soon",
-                  description: "Report functionality will be available soon.",
-                })
-              }
-              aria-label="Report message (coming soon)"
-            >
-              <LuFlag className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent
-            side="bottom"
-            align="center"
-            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-          >
-            <p>Report</p>
-          </TooltipContent>
-        </Tooltip>
 
         {onRequestEdit && (
           <Tooltip delayDuration={0}>

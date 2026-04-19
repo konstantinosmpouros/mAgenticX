@@ -165,6 +165,8 @@ class ConversationTable(Base):
     is_private = Column(Boolean, nullable=False, server_default="false")
     is_archived = Column(Boolean, nullable=False, server_default="false")
     archived_at = Column(DateTime, nullable=True)
+    is_reported = Column(Boolean, nullable=False, server_default="false")
+    reported_at = Column(DateTime, nullable=True)
     
     # for fast conversation list rendering
     last_message_preview = Column(String, server_default="", nullable=True)
@@ -181,6 +183,13 @@ class ConversationTable(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="MessageTable.created_at.asc()",
+    )
+    report = relationship(
+        "ConversationReportTable",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
     )
 
 
@@ -228,6 +237,23 @@ class MessageTable(Base):
         passive_deletes=True,
         order_by="AttachmentTable.created_at.asc()",
     )
+
+
+class ConversationReportTable(Base):
+    __tablename__ = "conversation_reports"
+    __table_args__ = (UniqueConstraint("conversation_id", name="uq_conversation_reports_conversation_id"),)
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
+    reason = Column(String, nullable=False)
+    details = Column(Text, nullable=True)
+    status = Column(String, nullable=False, server_default="open")
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    conversation = relationship("ConversationTable", back_populates="report")
 
 
 class AttachmentTable(Base):

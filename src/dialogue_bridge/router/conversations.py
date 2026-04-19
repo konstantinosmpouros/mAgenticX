@@ -7,10 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from datetime import datetime
 
-from core.database import ConversationTable, get_db, UserTable
+from core.database import ConversationReportTable, ConversationTable, MessageTable, get_db, UserTable
 from schemas import (
     ConversationDetail,
     ConversationIn,
+    ConversationReportIn,
     ConversationSummary,
     CreateConversationResponse,
     ConversationTitleUpdate,
@@ -306,5 +307,80 @@ async def unarchiveConversation(
         "Conversation unarchived",
         conversation_id=conversation_id,
         agent_id=current_conv.agent_id,
+    )
+    return ConversationSummary.model_validate(current_conv)
+
+
+@router.post(
+    "/{user_id}/{conversation_id}/report",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_200_OK,
+    summary="Report a conversation with an optional specific message target",
+)
+async def reportConversation(
+    user_id: str,
+    conversation_id: str,
+    payload: ConversationReportIn,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a report for a conversation, optionally scoped to a specific message."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+
+    if current_conv.is_reported:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Conversation has already been reported.",
+        )
+
+    resolved_message_id = payload.messageId
+    if resolved_message_id:
+        message_result = await db.execute(
+            select(MessageTable).where(
+                MessageTable.id == resolved_message_id,
+                MessageTable.conversation_id == conversation_id,
+            )
+        )
+        target_message = message_result.scalar_one_or_none()
+        if target_message is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Reported message does not belong to this conversation.",
+            )
+
+    report = ConversationReportTable(
+        conversation_id=conversation_id,
+        user_id=current_user.id,
+        message_id=resolved_message_id,
+        reason=payload.reason,
+        details=payload.details,
+    )
+    db.add(report)
+
+    current_conv.is_reported = True
+    current_conv.reported_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(
+        current_conv,
+        attribute_names=[
+            "title",
+            "updated_at",
+            "last_message_preview",
+            "agent",
+            "is_reported",
+            "reported_at",
+            "is_archived",
+            "archived_at",
+        ],
+    )
+    logger.info(
+        "conversation_reported",
+        "Conversation reported",
+        conversation_id=conversation_id,
+        agent_id=current_conv.agent_id,
+        message_id=resolved_message_id,
+        reason=payload.reason,
     )
     return ConversationSummary.model_validate(current_conv)

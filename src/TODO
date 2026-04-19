@@ -2,9 +2,9 @@
 
 ## General
 
-- Add more comprehensive logging and monitoring across all services, including structured logs, distributed tracing, and alerting for error conditions. Consider using a centralized logging solution like ELK or Datadog or loki with Grafana for better observability.
+- Consider using a centralized logging solution like ELK or Datadog or loki with Grafana for better observability.
 - Implement a more robust error handling strategy across services, with consistent error responses and retry logic where appropriate.
-- Add more comprehensive unit and integration tests, especially for critical components like the RAG service and agents.
+- Add more comprehensive unit and integration tests, especially for critical components like the RAG service and agents along with stress test.
 
 ## Security
 

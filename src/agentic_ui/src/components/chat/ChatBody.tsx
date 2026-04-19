@@ -23,6 +23,8 @@ type ChatBody = {
   onCopy: (content: string, messageId: string) => void;
   onLike: (message: MessageOut) => void;
   onDislike: (message: MessageOut) => void;
+  onReportMessage?: (message: MessageOut) => void;
+  conversationIsReported?: boolean;
   stickyUserBarId: string | null;
   onFlashUserActionBar: (messageId: string) => void;
   AiTransitionIndicator?: ComponentType;
@@ -61,6 +63,8 @@ export default function ChatBody({
   onCopy,
   onLike,
   onDislike,
+  onReportMessage,
+  conversationIsReported = false,
   stickyUserBarId,
   onFlashUserActionBar,
   AiTransitionIndicator,
@@ -172,6 +176,8 @@ export default function ChatBody({
                     onCopy={onCopy}
                     onLike={onLike}
                     onDislike={onDislike}
+                    onReportMessage={onReportMessage}
+                    conversationIsReported={conversationIsReported}
                     toast={toast}
                     onRetryMessage={onRetryMessage}
                     isStreaming={isStreaming}

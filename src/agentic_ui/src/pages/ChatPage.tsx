@@ -11,6 +11,7 @@ import type {
   MessageOut,
   ConversationDetail,
   ConversationSummary,
+  ConversationReportPayload,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
@@ -56,6 +57,7 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import { PlanCard } from "@/components/chat/message_parts/agentic_parts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
+import ReportConversationDialog from "@/components/chat/ReportConversationDialog";
 import ChatBody from "@/components/chat/ChatBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 import { Loader } from "@/components/ui/shadcn-io/loader";
@@ -131,6 +133,11 @@ export function ChatInterface() {
   const [isHeaderActionMenuOpen, setIsHeaderActionMenuOpen] = useState(false);
   const [isSidebarFloatingUiOpen, setIsSidebarFloatingUiOpen] = useState(false);
   const [sidebarDismissFloatingUiSignal, setSidebarDismissFloatingUiSignal] = useState(0);
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [reportTargetConversationId, setReportTargetConversationId] = useState<string | null>(null);
+  const [reportTargetMessageId, setReportTargetMessageId] = useState<string | null>(null);
+  const [reportConversationTitle, setReportConversationTitle] = useState<string | null>(null);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   
   // Sticky user action bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
@@ -282,6 +289,24 @@ export function ChatInterface() {
     });
   }, []);
 
+  const closeReportDialog = useCallback(() => {
+    setIsReportDialogOpen(false);
+    setReportTargetConversationId(null);
+    setReportTargetMessageId(null);
+    setReportConversationTitle(null);
+    setIsSubmittingReport(false);
+  }, []);
+
+  const openReportDialog = useCallback(
+    (conversationId: string, options?: { messageId?: string | null; title?: string | null }) => {
+      setReportTargetConversationId(conversationId);
+      setReportTargetMessageId(options?.messageId ?? null);
+      setReportConversationTitle(options?.title ?? null);
+      setIsReportDialogOpen(true);
+    },
+    [],
+  );
+
   // Request to edit a message
   const handleRequestEditMessage = (message: MessageOut) => {
     if (message.sender !== "user") return;
@@ -417,6 +442,11 @@ export function ChatInterface() {
       return true;
     }
 
+    if (isReportDialogOpen) {
+      closeReportDialog();
+      return true;
+    }
+
     if (showUserProfile) {
       closeProfilePanel();
       return true;
@@ -458,12 +488,14 @@ export function ChatInterface() {
 
     return false;
   }, [
+    closeReportDialog,
     closeProfilePanel,
     editingMessageId,
     handleCancelEditMessage,
     handleCloseImagePreview,
     isAgentPickerOpen,
     isHeaderActionMenuOpen,
+    isReportDialogOpen,
     isSidebarFloatingUiOpen,
     selectedImage,
     showUserProfile,
@@ -578,10 +610,9 @@ export function ChatInterface() {
     handleRenameConversation,
     handleArchiveConversation,
     handleUnarchiveConversation,
-    handleReportConversation,
     handleArchiveCurrentConversation,
     handleUnarchiveCurrentConversation,
-    handleReportCurrentConversation,
+    submitConversationReport,
     handleOpenSearch,
     refreshArchivedConversations,
     handleLoadMoreArchivedConversations,
@@ -632,6 +663,43 @@ export function ChatInterface() {
     closeProfilePanel();
     await handleConversationSelect(conversation);
   }, [closeProfilePanel, handleConversationSelect]);
+
+  const handleReportConversationFromSidebar = useCallback((conversationId: string) => {
+    const conversation = conversations.find((item) => item.id === conversationId);
+    if (!conversation || conversation.isReported) {
+      return;
+    }
+    openReportDialog(conversationId, { title: conversation.title ?? null });
+  }, [conversations, openReportDialog]);
+
+  const handleReportCurrentConversation = useCallback(() => {
+    if (!currentConversation?.id || currentConversation.isReported) {
+      return;
+    }
+    openReportDialog(currentConversation.id, { title: currentConversation.title ?? null });
+  }, [currentConversation, openReportDialog]);
+
+  const handleReportAiMessage = useCallback((message: MessageOut) => {
+    if (!currentConversation?.id || currentConversation.isReported) {
+      return;
+    }
+    openReportDialog(currentConversation.id, {
+      messageId: message.id,
+      title: currentConversation.title ?? null,
+    });
+  }, [currentConversation, openReportDialog]);
+
+  const handleSubmitConversationReport = useCallback(async (payload: ConversationReportPayload) => {
+    if (!reportTargetConversationId) {
+      return;
+    }
+    setIsSubmittingReport(true);
+    const success = await submitConversationReport(reportTargetConversationId, payload);
+    setIsSubmittingReport(false);
+    if (success) {
+      closeReportDialog();
+    }
+  }, [closeReportDialog, reportTargetConversationId, submitConversationReport]);
   
   // Agent change handler
   const { handleAgentChange } = createAgentHandlers({
@@ -763,7 +831,7 @@ export function ChatInterface() {
           onDeleteConversation={handleDeleteConversation}
           onRenameConversation={handleRenameConversation}
           onArchiveConversation={handleArchiveConversation}
-          onReportConversation={handleReportConversation}
+          onReportConversation={handleReportConversationFromSidebar}
           onLoadMore={handleLoadMoreConversations}
           onTitleClick={handleTitleClick}
           onNewChat={handleNewChat}
@@ -796,6 +864,7 @@ export function ChatInterface() {
                 showBottomBorder={headerHasDivider}
                 showConversationActions={Boolean(currentConversation?.id)}
                 isConversationArchived={Boolean(currentConversation?.isArchived)}
+                isConversationReported={Boolean(currentConversation?.isReported)}
                 conversationActionsOpen={isHeaderActionMenuOpen}
                 onConversationActionsOpenChange={setIsHeaderActionMenuOpen}
                 onArchiveConversation={handleArchiveCurrentConversation}
@@ -819,6 +888,8 @@ export function ChatInterface() {
                   onCopy={handleCopy}
                   onLike={handleLike}
                   onDislike={handleDislike}
+                  onReportMessage={handleReportAiMessage}
+                  conversationIsReported={Boolean(currentConversation?.isReported)}
                   stickyUserBarId={stickyUserBarId}
                   onFlashUserActionBar={flashUserActionBar}
                   AiTransitionIndicator={AiTransitionIndicator}
@@ -924,6 +995,15 @@ export function ChatInterface() {
                 onUnarchiveConversation={(conversation) => void handleUnarchiveConversation(conversation.id)}
                 onToggleToolPreference={handleToggleToolPreference}
                 preferencesSaving={isSavingPreferences}
+              />
+
+              <ReportConversationDialog
+                open={isReportDialogOpen}
+                onClose={closeReportDialog}
+                onSubmit={handleSubmitConversationReport}
+                submitting={isSubmittingReport}
+                messageId={reportTargetMessageId}
+                conversationTitle={reportConversationTitle}
               />
             
               {/* Image Preview Modal */}

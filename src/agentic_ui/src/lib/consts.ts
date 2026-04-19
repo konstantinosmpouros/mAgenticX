@@ -115,6 +115,7 @@ export const transformConversationSummary = (
   summary: Record<string, any>,
 ): ConversationSummary => {
   const archivedAt = summary.archivedAt ?? summary.archived_at;
+  const reportedAt = summary.reportedAt ?? summary.reported_at;
   return {
     id: summary.id,
     agent: transformAgent(summary.agent, {
@@ -126,6 +127,8 @@ export const transformConversationSummary = (
     isPrivate: Boolean(summary.isPrivate),
     isArchived: Boolean(summary.isArchived ?? summary.is_archived),
     archivedAt: archivedAt ? toDate(archivedAt) : null,
+    isReported: Boolean(summary.isReported ?? summary.is_reported),
+    reportedAt: reportedAt ? toDate(reportedAt) : null,
     lastMessage: summary.lastMessage ?? undefined,
     created_at: summary.created_at ?? "",
     updated_at: summary.updated_at ?? "",
@@ -138,6 +141,7 @@ export const transformConversationDetail = (
   detail: Record<string, any>,
 ): ConversationDetail => {
   const archivedAt = detail.archivedAt ?? detail.archived_at;
+  const reportedAt = detail.reportedAt ?? detail.reported_at;
   return {
     id: detail.id,
     agent: transformAgent(detail.agent, {
@@ -149,6 +153,8 @@ export const transformConversationDetail = (
     isPrivate: Boolean(detail.isPrivate),
     isArchived: Boolean(detail.isArchived ?? detail.is_archived),
     archivedAt: archivedAt ? toDate(archivedAt) : null,
+    isReported: Boolean(detail.isReported ?? detail.is_reported),
+    reportedAt: reportedAt ? toDate(reportedAt) : null,
     created_at: toDate(detail.created_at),
     updated_at: toDate(detail.updated_at),
     messages: (detail.messages || []).map(transformMessage),

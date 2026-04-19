@@ -20,6 +20,7 @@ type ChatHeaderProps = {
     showBottomBorder?: boolean;
     showConversationActions?: boolean;
     isConversationArchived?: boolean;
+    isConversationReported?: boolean;
     conversationActionsOpen?: boolean;
     onConversationActionsOpenChange?: (open: boolean) => void;
     onArchiveConversation?: () => void;
@@ -42,6 +43,7 @@ export default function ChatHeader({
     showBottomBorder = false,
     showConversationActions = false,
     isConversationArchived = false,
+    isConversationReported = false,
     conversationActionsOpen = false,
     onConversationActionsOpenChange,
     onArchiveConversation,
@@ -204,17 +206,19 @@ export default function ChatHeader({
                                             </div>
                                             <span>{isConversationArchived ? "Unarchive" : "Archive"}</span>
                                         </DropdownMenu.Item>
-                                        <DropdownMenu.Item
-                                            onSelect={() => {
-                                                onReportConversation?.();
-                                            }}
-                                            className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
-                                        >
-                                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                                <Flag size={16} />
-                                            </div>
-                                            <span>Report</span>
-                                        </DropdownMenu.Item>
+                                        {!isConversationReported && (
+                                            <DropdownMenu.Item
+                                                onSelect={() => {
+                                                    onReportConversation?.();
+                                                }}
+                                                className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                            >
+                                                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                                    <Flag size={16} />
+                                                </div>
+                                                <span>Report</span>
+                                            </DropdownMenu.Item>
+                                        )}
                                     <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
                                         <DropdownMenu.Item
                                             onSelect={() => {
