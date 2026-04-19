@@ -26,9 +26,40 @@ jobs:
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude-model: claude-sonnet-4-5-20250929
-          comment-pr: true
-          upload-results: true
+          comment-pr: ${{ github.event_name == 'pull_request' }}
+          upload-results: ${{ github.event_name == 'pull_request' }}
           claudecode-timeout: 20
           exclude-directories: 'node_modules,dist,build,.next,vendor,notebooks,docs,data,public,tls,vectorstores,__pycache__,.venv,.env,'
           custom-security-scan-instructions: .github/claude/security-instructions.md
           # false-positive-filtering-instructions: .github/claude/fp-filter.md
+
+      - name: Ensure security report artifact exists
+        if: always()
+        run: |
+          if [ ! -f security-report.md ]; then
+            {
+              echo "# Security Review"
+              echo
+              echo "No \`security-report.md\` file was produced by the Claude security review step."
+              echo
+              echo "Context:"
+              echo "- Event: \`${{ github.event_name }}\`"
+              echo "- Repository: \`${{ github.repository }}\`"
+              echo "- SHA: \`${{ github.sha }}\`"
+              echo "- PR number: \`${{ github.event.pull_request.number || 'n/a' }}\`"
+              echo
+              echo "Possible reasons:"
+              echo "- The run was started with \`workflow_dispatch\` and has no PR context."
+              echo "- The security review action completed without writing a workspace report file."
+              echo "- The action hit an internal error or a tool permission denial before report generation."
+            } > security-report.md
+          fi
+
+      - name: Upload security report as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-review-results
+          path: security-report.md
+          retention-days: 90
+          if-no-files-found: error
