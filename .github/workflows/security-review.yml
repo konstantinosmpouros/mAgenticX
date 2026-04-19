@@ -13,12 +13,14 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
+      # Checkout the code to analyze the changes in the pull request
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
+      # Run the Claude security review action
       - name: Claude security review
         uses: anthropics/claude-code-security-review@main
         with:
@@ -27,6 +29,6 @@ jobs:
           comment-pr: true
           upload-results: true
           claudecode-timeout: 20
-          exclude-directories: 'node_modules,dist,build,.next,vendor,notebooks,docs,data,public,tls'
+          exclude-directories: 'node_modules,dist,build,.next,vendor,notebooks,docs,data,public,tls,vectorstores,__pycache__,.venv,.env,'
           custom-security-scan-instructions: .github/claude/security-instructions.md
           # false-positive-filtering-instructions: .github/claude/fp-filter.md

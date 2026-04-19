@@ -1,0 +1,166 @@
+name: Code Quality Review
+
+permissions:
+  pull-requests: write
+  contents: read
+  issues: read
+  id-token: write
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the code at the PR head or the current commit for workflow_dispatch
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      # Run the Claude code quality review action
+      - name: Claude code quality review
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --model "claude-opus-4-5-20251101"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+          prompt: |
+            You are performing a comprehensive code quality review on PR #${{ github.event.pull_request.number }}
+            in repository ${{ github.repository }}.
+
+            # Code Review Instructions — mAgenticX
+
+            ## Project context
+
+            This repository is a multi-service agentic platform, not a single app.
+
+            - `src/agentic_ui/`: React 18 + Vite + TypeScript frontend. Renders chat, AG-UI traces, branches, attachments, and dictation. All browser API traffic must go through the dialogue bridge under `/api/v1/*`.
+            - `src/dialogue_bridge/`: FastAPI backend-for-frontend. Owns Vault auth, bridge-managed sessions, CSRF, Postgres persistence, catalog proxying, and SSE proxying to the agents service.
+            - `src/agents/`: FastAPI inference/orchestration service. Discovers `LangGraphAgent` and `DeepAgent` implementations, loads MCP tools, calls the RAG service, and streams normalized AG-UI SSE events.
+            - `src/rag_service/`: FastAPI retrieval and Excel/DuckDB analytics service. Provides semantic retrieval over Chroma and read-only SQL over loaded workbook data.
+            - Runtime is primarily Docker Compose based. Frontend uses npm/Vite, backend services use Python 3.11+, FastAPI, Pydantic v2, and async I/O.
+
+            ## Review priorities
+
+            Prioritize behavior, service boundaries, and production risks over style.
+
+            - Check that frontend changes still talk only to the dialogue bridge, not directly to agents, RAG, Postgres, Vault, or Chroma.
+            - Check that bridge changes preserve session, cookie, CSRF, authorization, and user-scoping behavior.
+            - Check that agents changes preserve AG-UI event semantics, SSE framing, tool attachment rules, and stream error handling.
+            - Check that RAG changes preserve safe table/schema handling, correct query results, and startup behavior around workbook loading.
+            - Flag regressions in conversation branching, attachment handling, dictation, tool catalogs, and streamed assistant persistence.
+
+            ## Repo-specific patterns
+
+            - Do not assume generic paths like `src/tools/`, `src/prompts/`, or `src/db/`. Those are not the project layout.
+            - Agent discovery is dynamic. New runnable agents should fit the existing registration model in `src/agents/agent_runtime/` and the `langgraph_agents/` or `deep_agents/` packages.
+            - The bridge is the persistence and auth boundary. If code bypasses bridge validation or user binding, flag it.
+            - AG-UI stream normalization matters. Event names, ordering, partial chunks, and end-of-stream behavior are user-visible API surface.
+            - Frontend request helpers should preserve credentials and CSRF handling through the existing API utilities.
+            - Python services use the shared observability pattern with structured logging. Prefer the configured logger over ad hoc prints or swallowed exceptions.
+
+            ## Things to flag aggressively
+
+            - Direct browser calls to backend services other than the dialogue bridge.
+            - Broken auth/session flows: missing CSRF enforcement, unsafe cookie changes, user ID trust from the client, or authorization gaps on conversation/message routes.
+            - SSE bugs: malformed `text/event-stream` responses, dropped cleanup, missing terminal events, buffering issues, or changes that can leave the UI stuck in a streaming state.
+            - Contract mismatches between services or between backend payloads and frontend TypeScript types.
+            - Hardcoded model names, service URLs, ports, secrets, or timeouts when config already exists or should exist.
+            - Async correctness problems: missing `await`, blocking I/O in request paths, leaked streams, unclosed clients, or race conditions around streaming/persistence.
+            - Attachment and upload issues: skipped validation, unsafe content assumptions, memory-heavy reads without need, or download/auth bypasses.
+            - SQL/retrieval issues: unsanitized table handling, incorrect schema assumptions, hidden startup failures, or behavior that can silently return wrong data.
+            - Error handling that hides failures from logs, from clients, or from downstream stream consumers.
+
+            ## Things to treat as lower priority or usually ignore
+
+            - Pure formatting or lint issues that ESLint, TypeScript, or Python tooling will catch automatically.
+            - `notebooks/`, `docs/`, screenshots, and exploratory assets unless the PR explicitly changes runtime behavior through them.
+            - Lockfiles, generated artifacts, and catalog/vendor-style data files unless they look suspicious or inconsistent with the source change.
+            - Minor copy edits in README files unless they contradict actual behavior.
+
+            ## Review tone
+
+            Be direct and concrete. Prefer a small number of actionable findings over broad commentary.
+
+            - If something is fine, say `LGTM`.
+            - Every finding should describe the user-visible or operational risk, not just the code smell.
+            - Suggest fixes that match this repo's existing architecture instead of recommending a different stack or project structure.
+
+            ## Scope the diff
+            Examine only the files changed in this PR. Ignore these directories entirely:
+            node_modules, dist, build, .next, vendor, notebooks, docs, data, public, tls.
+            Also ignore: lockfiles, auto-generated code, snapshot test outputs.
+
+            ## Review across these axes
+            1. **Design & architecture** — fit with existing patterns, appropriate abstractions,
+                SOLID / DRY / separation of concerns.
+            2. **Readability & maintainability** — naming, structure, comments where needed,
+                would a new engineer grok this in 6 months.
+            3. **Correctness & logic** — edge cases, null/undefined handling, off-by-one,
+                race conditions, error propagation, wrong assumptions.
+            4. **Performance** — inefficient algorithms, N+1 queries, unnecessary renders,
+                memory leaks, blocking I/O in hot paths.
+            5. **Testability & coverage** — new behavior covered by meaningful tests (not just
+                mocking what the implementation does).
+            6. **Error handling** — errors caught at the right layer, no silent failures,
+                useful logging with context.
+            7. **Quality and best practices** — best coding practices should be followed and
+                code should adhere to the project's style guide. No redundant code or anti-patterns.
+
+            Do NOT flag style issues that a linter/formatter would catch.
+            Do NOT invent findings to pad the review.
+
+            ## Post the review as a single PR comment
+            Post ONE top-level comment on the PR using exactly this markdown structure:
+
+            ## 🤖 Code Quality Review
+
+            **Overall:** <1-2 sentence verdict — LGTM / minor changes / needs rework>
+
+            ### Findings
+
+            For each finding, use this format:
+
+            > **[Severity]** `path/to/file.ext:line` — _Category_
+            > **Issue:** what's wrong
+            > **Suggestion:** concrete fix (with code snippet if helpful)
+
+            Severity values: Critical, High, Medium, Low, Nit.
+            Categories: Design, Readability, Correctness, Performance, Testing, Error handling.
+
+            ### Positives
+            Briefly note 1-3 things done well (keep genuine, skip if forced).
+
+            ### Summary
+            | Severity | Count |
+            |---|---|
+            | Critical | N |
+            | High | N |
+            | Medium | N |
+            | Low | N |
+            | Nit | N |
+
+            ## Finally — Also save the review to disk
+            Write the exact same markdown content you posted as the PR comment to a file
+            named `code-review.md` in the workspace root. This will be uploaded as an
+            artifact for later reference. If you cant write the file, skip this step but still post the PR comment
+            using the gh tools like `gh pr comment`. Make sure to use the gh tools for commenting so that the comment 
+            is properly associated with the PR and not lost if the file writing fails.
+
+      # Post the review comment using gh CLI to ensure it gets associated with the PR, and also write the same content to code-review.md for artifact upload.
+      # If file writing fails, still post the comment.
+      - name: Upload review as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-results
+          path: code-review.md
+          retention-days: 14
+          if-no-files-found: ignore
