@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  security:
+  security-claude-code:
     runs-on: ubuntu-latest
     steps:
       # Checkout the code to analyze the changes in the pull request
