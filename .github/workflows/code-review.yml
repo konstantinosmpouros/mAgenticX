@@ -29,7 +29,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_args: |
-            --model "claude-opus-4-5-20251101"
+            --model "claude-sonnet-4-5-20250929"
             --allowedTools "mcp__github_inline_comment__create_inline_comment,,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
           prompt: |
             You are performing a comprehensive code quality review on PR #${{ github.event.pull_request.number }}
@@ -147,12 +147,12 @@ jobs:
             | Low | N |
             | Nit | N |
 
-            ## Finally — Also save the review to disk
-            Write the exact same markdown content you posted as the PR comment to a file
-            named `code-review.md` in the workspace root. This will be uploaded as an
-            artifact for later reference. If you cant write the file, skip this step but still post the PR comment
-            using the gh tools like `gh pr comment`. Make sure to use the gh tools for commenting so that the comment 
-            is properly associated with the PR and not lost if the file writing fails.
+            ## Finally — Also do it
+              - Post an artifact named `code-review.md` with the same content as the PR comment for record-keeping and workflow integration.
+              - If the PR has the "request changes" label, also open an issue summarizing the findings and link it in the comment. Otherwise, just post the comment.
+              - If the PR is from a fork and the action doesn't have permission to comment, still create the `code-review.md` artifact with the review content.
+              - If there is no PR number (e.g. we are in the workflow_dispatch), just create the `code-review.md` artifact without attempting to comment.
+              - Also upload the review content as an artifact named `code-review.md` for record-keeping and workflow integration.
 
       # Post the review comment using gh CLI to ensure it gets associated with the PR, and also write the same content to code-review.md for artifact upload.
       # If file writing fails, still post the comment.
@@ -162,5 +162,5 @@ jobs:
         with:
           name: code-review-results
           path: code-review.md
-          retention-days: 14
+          retention-days: 90
           if-no-files-found: ignore
