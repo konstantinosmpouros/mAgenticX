@@ -1,4 +1,4 @@
-name: Code Quality Review
+name: Code Review Claude
 
 permissions:
   pull-requests: write
