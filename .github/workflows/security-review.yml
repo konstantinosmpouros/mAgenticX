@@ -3,6 +3,7 @@ name: Security Review
 permissions:
   pull-requests: write
   contents: read
+  id-token: write
 
 on:
   pull_request:
@@ -20,18 +21,47 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
-      # Run the Claude security review action
-      - name: Claude security review
+      - name: Claude security review for PR
+        if: github.event_name == 'pull_request'
         uses: anthropics/claude-code-security-review@main
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude-model: claude-sonnet-4-5-20250929
-          comment-pr: ${{ github.event_name == 'pull_request' }}
-          upload-results: ${{ github.event_name == 'pull_request' }}
-          claudecode-timeout: 20
+          comment-pr: true
+          upload-results: true
+          claudecode-timeout: 25
           exclude-directories: 'node_modules,dist,build,.next,vendor,notebooks,docs,data,public,tls,vectorstores,__pycache__,.venv,.env,'
           custom-security-scan-instructions: .github/claude/security-instructions.md
           # false-positive-filtering-instructions: .github/claude/fp-filter.md
+
+      - name: Claude security review for workflow dispatch
+        if: github.event_name != 'pull_request'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            EVENT: ${{ github.event_name }}
+            SHA: ${{ github.sha }}
+
+            Read `.github/claude/security-instructions.md` and follow it exactly, with one adjustment:
+            there is no pull request context for this run.
+
+            Scope:
+            - Review the currently checked out repository snapshot at this commit
+            - Focus only on high-confidence, actionable security findings
+            - Do not attempt PR commenting or PR-specific operations
+
+            Output requirements:
+            - Produce a single markdown security report
+            - Write that report to `security-report.md` in the workspace root
+            - If there are no findings, still write a concise markdown report stating that no high-confidence security findings were identified
+
+            Note:
+            - Your final reply must be only the markdown report text
+          claude_args: |
+            --model "claude-sonnet-4-5-20250929"
+            --allowedTools "Read,Glob,Grep,LS,Task,Write,Edit,MultiEdit,Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(git show:*),Bash(git remote show:*)"
 
       - name: Ensure security report artifact exists
         if: always()
