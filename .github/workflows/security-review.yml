@@ -1,52 +1,65 @@
 name: Security Review
 
 permissions:
-  pull-requests: write   # Needs to post comments on PRs
+  pull-requests: write
   contents: read
+  issues: write   # για να μπορεί να κάνει create issue σε push events
 
 on:
-  # Run on pull request events to catch issues early in the review process
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-
-  # Run on pushes to main, develop, and release branches to catch any issues before they hit production
   push:
     branches:
       - main
       - develop
-      - 'release/**'
-
-  # Bonus: manual trigger from the Actions tab
   workflow_dispatch:
 
 jobs:
-  security:
+  # Job 1: PR scanning με το official security-review action
+  pr-security:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
 
-      - name: Run Claude Security Review
-        uses: anthropics/claude-code-security-review@main
+      - uses: anthropics/claude-code-security-review@main
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          comment-pr: true
-          upload-results: true
-
-          # What model to use (default is claude-opus-4-5-20251101)
           claude-model: claude-opus-4-5-20251101
-
-          # Timeout in minutes
-          claudecode-timeout: 20
-
-          # Directories to exclude from the scan (comma-separated)
+          comment-pr: true
           exclude-directories: 'node_modules,dist,build,.next,vendor,notebooks,docs,data,public,tls'
-
-          # Custom instructions for the security scan (optional)
           custom-security-scan-instructions: .github/claude/security-instructions.md
 
-          # False-positive filtering tuning (optional)
-          # false-positive-filtering-instructions: .github/fp-filter.md
+  # Job 2: Push scanning με το generic claude-code-action
+  push-security:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # για να έχουμε και το parent commit
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: '--model claude-opus-4-5-20251101'
+          prompt: |
+            You are performing a security audit on the latest commit pushed to
+            ${{ github.ref_name }} in ${{ github.repository }}.
+
+            1. Read .github/claude/security-instructions.md for project-specific rules.
+            2. Examine the diff of the latest commit against its parent
+               (git diff HEAD~1 HEAD).
+            3. Identify security vulnerabilities: injection, auth/authz flaws,
+               hardcoded secrets, insecure crypto, input validation, business logic
+               flaws, SSRF/XXE, deserialization, XSS, supply chain risks.
+            4. Ignore these directories: node_modules, dist, build, .next, vendor,
+               notebooks, docs, data, public, tls.
+            5. If findings exist, create a GitHub Issue titled
+               "Security Review: <short-sha>" using `gh issue create`, with
+               findings grouped by severity (Critical / High / Medium / Low),
+               each with file:line reference, CWE, description, and suggested fix.
+            6. If no findings, do nothing (no issue, no noise).
