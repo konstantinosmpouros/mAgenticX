@@ -19,9 +19,11 @@ type ChatHeaderProps = {
     onTogglePrivate: () => void;
     showBottomBorder?: boolean;
     showConversationActions?: boolean;
+    isConversationArchived?: boolean;
     conversationActionsOpen?: boolean;
     onConversationActionsOpenChange?: (open: boolean) => void;
     onArchiveConversation?: () => void;
+    onUnarchiveConversation?: () => void;
     onReportConversation?: () => void;
     onDeleteConversation?: () => void;
 };
@@ -39,9 +41,11 @@ export default function ChatHeader({
     onTogglePrivate,
     showBottomBorder = false,
     showConversationActions = false,
+    isConversationArchived = false,
     conversationActionsOpen = false,
     onConversationActionsOpenChange,
     onArchiveConversation,
+    onUnarchiveConversation,
     onReportConversation,
     onDeleteConversation,
 }: ChatHeaderProps) {
@@ -187,6 +191,10 @@ export default function ChatHeader({
                                     >
                                         <DropdownMenu.Item
                                             onSelect={() => {
+                                                if (isConversationArchived) {
+                                                    onUnarchiveConversation?.();
+                                                    return;
+                                                }
                                                 onArchiveConversation?.();
                                             }}
                                             className="flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-foreground transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
@@ -194,7 +202,7 @@ export default function ChatHeader({
                                             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
                                                 <Archive size={16} />
                                             </div>
-                                            <span>Archive</span>
+                                            <span>{isConversationArchived ? "Unarchive" : "Archive"}</span>
                                         </DropdownMenu.Item>
                                         <DropdownMenu.Item
                                             onSelect={() => {

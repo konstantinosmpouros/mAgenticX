@@ -113,34 +113,44 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
 // Transform conversation summary object from backend to frontend type
 export const transformConversationSummary = (
   summary: Record<string, any>,
-): ConversationSummary => ({
-  id: summary.id,
-  agent: transformAgent(summary.agent, {
-    id: summary.agent?.id ?? summary.agentId ?? summary.agent_id,
-    name: summary.agent?.name ?? summary.agentName ?? summary.agent_name,
-    isActive: summary.agent?.isActive ?? summary.agent?.is_active ?? summary.isActive ?? summary.is_active,
-  }),
-  title: summary.title ?? undefined,
-  isPrivate: Boolean(summary.isPrivate),
-  lastMessage: summary.lastMessage ?? undefined,
-  created_at: summary.created_at ?? "",
-  updated_at: summary.updated_at ?? "",
-});
+): ConversationSummary => {
+  const archivedAt = summary.archivedAt ?? summary.archived_at;
+  return {
+    id: summary.id,
+    agent: transformAgent(summary.agent, {
+      id: summary.agent?.id ?? summary.agentId ?? summary.agent_id,
+      name: summary.agent?.name ?? summary.agentName ?? summary.agent_name,
+      isActive: summary.agent?.isActive ?? summary.agent?.is_active ?? summary.isActive ?? summary.is_active,
+    }),
+    title: summary.title ?? undefined,
+    isPrivate: Boolean(summary.isPrivate),
+    isArchived: Boolean(summary.isArchived ?? summary.is_archived),
+    archivedAt: archivedAt ? toDate(archivedAt) : null,
+    lastMessage: summary.lastMessage ?? undefined,
+    created_at: summary.created_at ?? "",
+    updated_at: summary.updated_at ?? "",
+  };
+};
 
 
 // Transform conversation detail object from backend to frontend type
 export const transformConversationDetail = (
   detail: Record<string, any>,
-): ConversationDetail => ({
-  id: detail.id,
-  agent: transformAgent(detail.agent, {
-    id: detail.agent?.id ?? detail.agentId ?? detail.agent_id,
-    name: detail.agent?.name ?? detail.agentName ?? detail.agent_name,
-    isActive: detail.agent?.isActive ?? detail.agent?.is_active ?? detail.isActive ?? detail.is_active,
-  }),
-  title: detail.title ?? "",
-  isPrivate: Boolean(detail.isPrivate),
-  created_at: toDate(detail.created_at),
-  updated_at: toDate(detail.updated_at),
-  messages: (detail.messages || []).map(transformMessage),
-});
+): ConversationDetail => {
+  const archivedAt = detail.archivedAt ?? detail.archived_at;
+  return {
+    id: detail.id,
+    agent: transformAgent(detail.agent, {
+      id: detail.agent?.id ?? detail.agentId ?? detail.agent_id,
+      name: detail.agent?.name ?? detail.agentName ?? detail.agent_name,
+      isActive: detail.agent?.isActive ?? detail.agent?.is_active ?? detail.isActive ?? detail.is_active,
+    }),
+    title: detail.title ?? "",
+    isPrivate: Boolean(detail.isPrivate),
+    isArchived: Boolean(detail.isArchived ?? detail.is_archived),
+    archivedAt: archivedAt ? toDate(archivedAt) : null,
+    created_at: toDate(detail.created_at),
+    updated_at: toDate(detail.updated_at),
+    messages: (detail.messages || []).map(transformMessage),
+  };
+};

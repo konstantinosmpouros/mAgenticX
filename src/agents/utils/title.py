@@ -23,7 +23,7 @@ TITLE_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
 _title_prompt_merge = RunnableLambda(make_merge_with_template(TITLE_PROMPT_TEMPLATE))
 _title_chain = _title_prompt_merge | init_chat_model(
     configs.runtime_models.title,
-    temperature=2,
+    temperature=1,
     max_tokens=64,
 ).with_structured_output(ConversationTitle)
 

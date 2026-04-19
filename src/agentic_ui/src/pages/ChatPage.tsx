@@ -89,6 +89,11 @@ export function ChatInterface() {
   const [convHasMore, setConvHasMore] = useState<boolean>(true);
   const [convIsLoadingMore, setConvIsLoadingMore] = useState<boolean>(false);
   const CONV_PAGE_SIZE = 10;
+  const [archivedConversations, setArchivedConversations] = useState<ConversationSummary[]>([]);
+  const [archivedConvPage, setArchivedConvPage] = useState<number>(1);
+  const [archivedConvHasMore, setArchivedConvHasMore] = useState<boolean>(true);
+  const [archivedConvIsLoading, setArchivedConvIsLoading] = useState<boolean>(false);
+  const ARCHIVED_CONV_PAGE_SIZE = 10;
   
   // Thinking variables (will be changed)
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
@@ -572,13 +577,16 @@ export function ChatInterface() {
     handleDeleteCurrentConversation,
     handleRenameConversation,
     handleArchiveConversation,
+    handleUnarchiveConversation,
     handleReportConversation,
     handleArchiveCurrentConversation,
+    handleUnarchiveCurrentConversation,
     handleReportCurrentConversation,
     handleOpenSearch,
+    refreshArchivedConversations,
+    handleLoadMoreArchivedConversations,
   } = createConversationHandlers({
     userId,
-    conversations,
     setConversations,
     currentConversation,
     handleStopStreaming,
@@ -601,8 +609,29 @@ export function ChatInterface() {
     convIsLoadingMore,
     setConvIsLoadingMore,
     pageSize: CONV_PAGE_SIZE,
+    setArchivedConversations,
+    archivedConvPage,
+    setArchivedConvPage,
+    archivedConvHasMore,
+    setArchivedConvHasMore,
+    archivedConvIsLoading,
+    setArchivedConvIsLoading,
+    archivedPageSize: ARCHIVED_CONV_PAGE_SIZE,
     persistUIState: requestPersist,
   });
+
+  useEffect(() => {
+    if (!showUserProfile || activeProfileTab !== "archived") {
+      return;
+    }
+
+    void refreshArchivedConversations();
+  }, [activeProfileTab, showUserProfile, userId]);
+
+  const handleOpenArchivedConversation = useCallback(async (conversation: ConversationSummary) => {
+    closeProfilePanel();
+    await handleConversationSelect(conversation);
+  }, [closeProfilePanel, handleConversationSelect]);
   
   // Agent change handler
   const { handleAgentChange } = createAgentHandlers({
@@ -766,9 +795,11 @@ export function ChatInterface() {
                 onTogglePrivate={handleTogglePrivateMode}
                 showBottomBorder={headerHasDivider}
                 showConversationActions={Boolean(currentConversation?.id)}
+                isConversationArchived={Boolean(currentConversation?.isArchived)}
                 conversationActionsOpen={isHeaderActionMenuOpen}
                 onConversationActionsOpenChange={setIsHeaderActionMenuOpen}
                 onArchiveConversation={handleArchiveCurrentConversation}
+                onUnarchiveConversation={handleUnarchiveCurrentConversation}
                 onReportConversation={handleReportCurrentConversation}
                 onDeleteConversation={handleDeleteCurrentConversation}
               />
@@ -885,6 +916,12 @@ export function ChatInterface() {
                 user={userProfile}
                 availableTools={toolsWithStatus}
                 userPreferences={resolvedPreferences}
+                archivedConversations={archivedConversations}
+                archivedConversationsLoading={archivedConvIsLoading}
+                archivedConversationsHasMore={archivedConvHasMore}
+                onLoadMoreArchivedConversations={handleLoadMoreArchivedConversations}
+                onSelectArchivedConversation={handleOpenArchivedConversation}
+                onUnarchiveConversation={(conversation) => void handleUnarchiveConversation(conversation.id)}
                 onToggleToolPreference={handleToggleToolPreference}
                 preferencesSaving={isSavingPreferences}
               />

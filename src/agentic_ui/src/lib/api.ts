@@ -241,6 +241,25 @@ export async function getConversations(
 }
 
 
+// Fetch archived conversations for a user
+export async function getArchivedConversations(
+  userId: string,
+  page: number = 1,
+  size: number = 10,
+): Promise<ConversationSummary[]> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/archived?page=${page}&size=${size}`, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch archived conversations: ${res.status}`);
+  }
+  const data = await res.json();
+  const items = Array.isArray(data) ? data : (data?.items ?? []);
+  return (items as any[]).map(transformConversationSummary);
+}
+
+
 // Fetch conversation details with full message history
 export async function getConversationDetail(
   userId: string,
@@ -268,6 +287,42 @@ export async function deleteConversation(userId: string, conversationId: string)
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to delete conversation: ${res.status}`);
   }
+}
+
+
+// Archive a conversation and return the updated summary
+export async function archiveConversation(
+  userId: string,
+  conversationId: string,
+): Promise<ConversationSummary> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/archive`, withSessionRequest({
+    method: "PATCH",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to archive conversation: ${res.status}`);
+  }
+  const data = await res.json();
+  return transformConversationSummary(data);
+}
+
+
+// Unarchive a conversation and return the updated summary
+export async function unarchiveConversation(
+  userId: string,
+  conversationId: string,
+): Promise<ConversationSummary> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/unarchive`, withSessionRequest({
+    method: "PATCH",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to unarchive conversation: ${res.status}`);
+  }
+  const data = await res.json();
+  return transformConversationSummary(data);
 }
 
 

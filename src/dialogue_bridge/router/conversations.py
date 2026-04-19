@@ -5,6 +5,7 @@ from observability import get_logger, logged_db_operation, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from datetime import datetime
 
 from core.database import ConversationTable, get_db, UserTable
 from schemas import (
@@ -128,11 +129,42 @@ async def getConvsSummary(
         .where(
             ConversationTable.user_id == user_id,
             ConversationTable.is_private == False,
+            ConversationTable.is_archived == False,
         )
         .order_by(ConversationTable.updated_at.desc())
     )
     page = await paginate(db, stmt)
     logger.info("conversation_summary_list_fetched", "Conversation summary list fetched", total=page.total, page=page.page, size=page.size)
+    return page
+
+
+@router.get(
+    "/{user_id}/archived",
+    response_model=Page[ConversationSummary],
+    status_code=status.HTTP_200_OK,
+    summary="Get paginated archived conversation summaries for the user",
+)
+async def getArchivedConvsSummary(
+    user_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Return a paginated archived conversation summary list for the user.
+    """
+    set_context(user_id=user_id)
+    stmt = (
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(
+            ConversationTable.user_id == user_id,
+            ConversationTable.is_private == False,
+            ConversationTable.is_archived == True,
+        )
+        .order_by(ConversationTable.archived_at.desc(), ConversationTable.updated_at.desc())
+    )
+    page = await paginate(db, stmt)
+    logger.info("conversation_archived_summary_list_fetched", "Archived conversation summary list fetched", total=page.total, page=page.page, size=page.size)
     return page
 
 
@@ -197,4 +229,82 @@ async def renameConversation(
     await db.commit()
     await db.refresh(current_conv, attribute_names=["title", "updated_at", "last_message_preview", "agent"])
     logger.info("conversation_renamed", "Conversation title updated", title_length=len(_preview(payload.title)), new_title=_preview(payload.title), conversation_id=conversation_id, agent_id=current_conv.agent_id)
+    return ConversationSummary.model_validate(current_conv)
+
+
+@router.patch(
+    "/{user_id}/{conversation_id}/archive",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_200_OK,
+    summary="Archive a conversation",
+)
+async def archiveConversation(
+    user_id: str,
+    conversation_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Archive an existing conversation and return the refreshed summary."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    current_conv.is_archived = True
+    current_conv.archived_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(
+        current_conv,
+        attribute_names=[
+            "title",
+            "updated_at",
+            "last_message_preview",
+            "agent",
+            "is_archived",
+            "archived_at",
+        ],
+    )
+    logger.info(
+        "conversation_archived",
+        "Conversation archived",
+        conversation_id=conversation_id,
+        agent_id=current_conv.agent_id,
+    )
+    return ConversationSummary.model_validate(current_conv)
+
+
+@router.patch(
+    "/{user_id}/{conversation_id}/unarchive",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_200_OK,
+    summary="Unarchive a conversation",
+)
+async def unarchiveConversation(
+    user_id: str,
+    conversation_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unarchive an existing conversation and return the refreshed summary."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    current_conv.is_archived = False
+    current_conv.archived_at = None
+    await db.commit()
+    await db.refresh(
+        current_conv,
+        attribute_names=[
+            "title",
+            "updated_at",
+            "last_message_preview",
+            "agent",
+            "is_archived",
+            "archived_at",
+        ],
+    )
+    logger.info(
+        "conversation_unarchived",
+        "Conversation unarchived",
+        conversation_id=conversation_id,
+        agent_id=current_conv.agent_id,
+    )
     return ConversationSummary.model_validate(current_conv)

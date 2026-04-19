@@ -163,6 +163,8 @@ class ConversationTable(Base):
     agent_name = Column(String, nullable=True)
     title = Column(String, nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="false")
+    is_archived = Column(Boolean, nullable=False, server_default="false")
+    archived_at = Column(DateTime, nullable=True)
     
     # for fast conversation list rendering
     last_message_preview = Column(String, server_default="", nullable=True)

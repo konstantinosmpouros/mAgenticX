@@ -1,5 +1,5 @@
 import { Building2 } from 'lucide-react';
-import { getConversationDetail, deleteConversation, getConversations, renameConversation } from '@/lib/api';
+import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, getArchivedConversations } from '@/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Agent, ConversationDetail, ConversationSummary, MessageOut } from '@/lib/types';
 
@@ -62,8 +62,7 @@ export function createConversationMessageSetter({
 
 type ConversationsCtx = {
   userId: string | null;
-  conversations: ConversationSummary[];
-  setConversations: (updater: (prev: ConversationSummary[]) => ConversationSummary[]) => void;
+  setConversations: Dispatch<SetStateAction<ConversationSummary[]>>;
   currentConversation: ConversationDetail | null;
   handleStopStreaming?: () => void;
   agents: Agent[];
@@ -76,6 +75,14 @@ type ConversationsCtx = {
   convIsLoadingMore: boolean;
   setConvIsLoadingMore: Dispatch<SetStateAction<boolean>>;
   pageSize: number;
+  setArchivedConversations: Dispatch<SetStateAction<ConversationSummary[]>>;
+  archivedConvPage: number;
+  setArchivedConvPage: Dispatch<SetStateAction<number>>;
+  archivedConvHasMore: boolean;
+  setArchivedConvHasMore: Dispatch<SetStateAction<boolean>>;
+  archivedConvIsLoading: boolean;
+  setArchivedConvIsLoading: Dispatch<SetStateAction<boolean>>;
+  archivedPageSize: number;
 
   setLoadingConversation: (v: boolean) => void;
   setIsClearing: (v: boolean) => void;
@@ -93,10 +100,20 @@ type ConversationsCtx = {
 
 const LOAD_MORE_DELAY_MS = 1200;
 
+const getConversationUpdatedTime = (value: string | Date | undefined | null) => {
+  if (!value) return 0;
+  const ts = new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+};
+
+const sortConversationSummaries = (items: ConversationSummary[]) =>
+  [...items].sort(
+    (a, b) => getConversationUpdatedTime(b.updated_at) - getConversationUpdatedTime(a.updated_at)
+  );
+
 export function createConversationHandlers(ctx: ConversationsCtx) {
   const {
     userId,
-    conversations,
     setConversations,
     currentConversation,
     handleStopStreaming,
@@ -109,6 +126,14 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     convIsLoadingMore,
     setConvIsLoadingMore,
     pageSize,
+    setArchivedConversations,
+    archivedConvPage,
+    setArchivedConvPage,
+    archivedConvHasMore,
+    setArchivedConvHasMore,
+    archivedConvIsLoading,
+    setArchivedConvIsLoading,
+    archivedPageSize,
     setLoadingConversation,
     setIsClearing,
     setSelectedAgent,
@@ -239,7 +264,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     try {
       await deleteConversation(userId, conversationId);
       // Remove the row locally as soon as the delete succeeds so sidebar and detail stay aligned.
-      setConversations(conversations.filter(c => c.id !== conversationId) as any);
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
       if (conversationId === currentConversation?.id) clearChatAndStopThinking();
       toast({ title: 'Conversation deleted', description: 'The conversation has been removed from your history', duration: 2000 });
       persistUIState();
@@ -277,17 +302,11 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     try {
       const summary = await renameConversation(userId, conversationId, trimmed);
       setConversations(prev => {
-        const toTime = (value: string) => {
-          const ts = new Date(value).getTime();
-          return Number.isFinite(ts) ? ts : 0;
-        };
         const updated = prev.map((c) =>
           c.id === summary.id ? { ...c, ...summary } : c
         );
         // Keep the list sorted by recent updates so the renamed chat stays current.
-        return [...updated].sort(
-          (a, b) => toTime(b.updated_at) - toTime(a.updated_at)
-        );
+        return sortConversationSummaries(updated);
       });
       setCurrentConversation(prev => {
         if (!prev || prev.id !== summary.id) return prev;
@@ -312,13 +331,67 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   };
 
 
-  const handleArchiveConversation = (conversationId?: string | null) => {
+  const handleArchiveConversation = async (conversationId?: string | null) => {
     if (!conversationId) {
       toast({ title: 'No conversation selected', description: 'Select a conversation to archive first.', duration: 2000 });
       return;
     }
-    // Placeholder until archive support exists end-to-end.
-    toast({ title: 'Archive coming soon', description: 'Conversation archiving is not available yet.', duration: 2500 });
+    if (!userId) {
+      toast({ title: 'Not signed in', description: 'You need to be signed in to archive conversations.', duration: 2000 });
+      return;
+    }
+    try {
+      const summary = await archiveConversation(userId, conversationId);
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      setArchivedConversations(prev => {
+        const next = prev.filter((conversation) => conversation.id !== summary.id);
+        return [summary, ...next];
+      });
+      if (conversationId === currentConversation?.id) {
+        clearChatAndStopThinking();
+      }
+      toast({ title: 'Conversation archived', description: 'The conversation has been moved out of the sidebar.', duration: 2200 });
+      persistUIState();
+    } catch (error) {
+      console.error('Failed to archive conversation:', error);
+      toast({ title: 'Failed to archive conversation', description: 'There was an error archiving the conversation. Please try again.', variant: 'destructive', duration: 3000 });
+    }
+  };
+
+
+  const handleUnarchiveConversation = async (conversationId?: string | null) => {
+    if (!conversationId) {
+      toast({ title: 'No conversation selected', description: 'Select a conversation to unarchive first.', duration: 2000 });
+      return;
+    }
+    if (!userId) {
+      toast({ title: 'Not signed in', description: 'You need to be signed in to unarchive conversations.', duration: 2000 });
+      return;
+    }
+    try {
+      const summary = await unarchiveConversation(userId, conversationId);
+      setArchivedConversations(prev => prev.filter((conversation) => conversation.id !== conversationId));
+      setConversations(prev => {
+        const next = prev.filter((conversation) => conversation.id !== summary.id);
+        return sortConversationSummaries([summary, ...next]);
+      });
+      setCurrentConversation(prev => {
+        if (!prev || prev.id !== summary.id) return prev;
+        return {
+          ...prev,
+          title: summary.title ?? prev.title,
+          updated_at: new Date(summary.updated_at),
+          agent: summary.agent ?? prev.agent,
+          isArchived: false,
+          archivedAt: null,
+        };
+      });
+      toast({ title: 'Conversation unarchived', description: 'The conversation is back in the sidebar.', duration: 2200 });
+      persistUIState();
+    } catch (error) {
+      console.error('Failed to unarchive conversation:', error);
+      toast({ title: 'Failed to unarchive conversation', description: 'There was an error unarchiving the conversation. Please try again.', variant: 'destructive', duration: 3000 });
+    }
   };
 
 
@@ -334,7 +407,13 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   const handleArchiveCurrentConversation = () => {
     // Keep current-thread actions as thin wrappers over the shared row-level handlers.
-    handleArchiveConversation(currentConversation?.id);
+    void handleArchiveConversation(currentConversation?.id);
+  };
+
+
+  const handleUnarchiveCurrentConversation = () => {
+    // Keep current-thread actions as thin wrappers over the shared row-level handlers.
+    void handleUnarchiveConversation(currentConversation?.id);
   };
 
 
@@ -358,6 +437,56 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   };
 
 
+  const loadArchivedConversationPage = async (page: number, options?: { reset?: boolean }) => {
+    if (!userId || archivedConvIsLoading) {
+      return;
+    }
+
+    setArchivedConvIsLoading(true);
+    try {
+      const items = await getArchivedConversations(userId, page, archivedPageSize);
+      setArchivedConversations((prev) => {
+        const base = options?.reset ? [] : prev;
+        const seen = new Set(base.map((conversation) => conversation.id));
+        const nextItems = items.filter((conversation) => !seen.has(conversation.id));
+        return [...base, ...nextItems];
+      });
+      setArchivedConvPage(page);
+      setArchivedConvHasMore(items.length >= archivedPageSize);
+    } catch (error) {
+      console.error('Failed to load archived conversations:', error);
+      toast({
+        title: 'Failed to load archived chats',
+        description: 'There was an error loading archived conversations. Please try again.',
+        variant: 'destructive',
+        duration: 3000,
+      });
+      if (options?.reset) {
+        setArchivedConversations([]);
+      }
+      setArchivedConvHasMore(false);
+    } finally {
+      setArchivedConvIsLoading(false);
+    }
+  };
+
+
+  const refreshArchivedConversations = async () => {
+    setArchivedConvPage(1);
+    setArchivedConvHasMore(true);
+    setArchivedConversations([]);
+    await loadArchivedConversationPage(1, { reset: true });
+  };
+
+
+  const handleLoadMoreArchivedConversations = async () => {
+    if (!archivedConvHasMore || archivedConvIsLoading) {
+      return;
+    }
+    await loadArchivedConversationPage(archivedConvPage + 1);
+  };
+
+
   return {
     handleConversationSelect,
     handleDeleteConversation,
@@ -368,10 +497,15 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleDeleteCurrentConversation,
     handleRenameConversation,
     handleArchiveConversation,
+    handleUnarchiveConversation,
     handleReportConversation,
     handleArchiveCurrentConversation,
+    handleUnarchiveCurrentConversation,
     handleReportCurrentConversation,
     handleOpenSearch,
+    loadArchivedConversationPage,
+    refreshArchivedConversations,
+    handleLoadMoreArchivedConversations,
   };
 }
 

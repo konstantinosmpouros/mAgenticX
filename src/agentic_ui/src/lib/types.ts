@@ -106,6 +106,8 @@ export type ConversationSummary = {
     agent: Agent;
     title?: string;
     isPrivate: boolean;
+    isArchived?: boolean;
+    archivedAt?: Date | null;
     lastMessage?: string;
     created_at: string;
     updated_at: string;
@@ -117,6 +119,8 @@ export type ConversationDetail = {
     agent: Agent;
     title?: string;
     isPrivate: boolean;
+    isArchived?: boolean;
+    archivedAt?: Date | null;
     created_at: Date;
     updated_at: Date;
     messages: MessageOut[];

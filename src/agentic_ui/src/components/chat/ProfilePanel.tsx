@@ -6,6 +6,7 @@ import {
     Settings,
     Palette,
     HelpCircle,
+    Archive,
     Keyboard,
     LogOut,
     Sparkles,
@@ -17,7 +18,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
+import { ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     SHORTCUTS,
@@ -36,6 +37,12 @@ type ProfilePanelProps = {
     user: UserProfile | null;
     availableTools: (ToolMetadata & { enabled?: boolean })[];
     userPreferences: UserPreferences;
+    archivedConversations: ConversationSummary[];
+    archivedConversationsLoading?: boolean;
+    archivedConversationsHasMore?: boolean;
+    onLoadMoreArchivedConversations?: () => void;
+    onSelectArchivedConversation?: (conversation: ConversationSummary) => void;
+    onUnarchiveConversation?: (conversation: ConversationSummary) => void;
     onToggleToolPreference?: (tool: ToolMetadata) => void;
     preferencesSaving?: boolean;
 };
@@ -86,6 +93,12 @@ export default function ProfilePanel({
     user,
     availableTools,
     userPreferences,
+    archivedConversations,
+    archivedConversationsLoading = false,
+    archivedConversationsHasMore = false,
+    onLoadMoreArchivedConversations,
+    onSelectArchivedConversation,
+    onUnarchiveConversation,
     onToggleToolPreference,
     preferencesSaving = false,
 }: ProfilePanelProps) {
@@ -177,6 +190,7 @@ export default function ProfilePanel({
     const navItems = [
         { id: "profile", label: "User Profile", icon: User },
         { id: "mcp", label: "MCP Servers", icon: McpIcon },
+        { id: "archived", label: "Archived Chats", icon: Archive },
         { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
         { id: "appearance", label: "Appearance", icon: Palette },
         { id: "settings", label: "Settings", icon: Settings },
@@ -225,6 +239,17 @@ export default function ProfilePanel({
         category,
         items: SHORTCUTS.filter((shortcut) => shortcut.category === category),
     }));
+
+    const handleArchivedScroll = (event: React.UIEvent<HTMLDivElement>) => {
+        if (!archivedConversationsHasMore || archivedConversationsLoading) {
+            return;
+        }
+
+        const node = event.currentTarget;
+        if (node.scrollTop + node.clientHeight >= node.scrollHeight - 24) {
+            onLoadMoreArchivedConversations?.();
+        }
+    };
 
     if (!open) return null;
 
@@ -718,6 +743,89 @@ export default function ProfilePanel({
                                                     </section>
                                                 ))}
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === "archived" && (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="space-y-2 border-b border-border/60 pb-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                    History
+                                                </p>
+                                                <h3 className="text-lg font-semibold">Archived Chats</h3>
+                                                <p className="text-[0.7rem] text-muted-foreground">
+                                                    Archived conversations stay out of the sidebar but can still be reopened from here.
+                                                </p>
+                                            </div>
+
+                                            <ScrollArea
+                                                className="h-[24rem] rounded-2xl border border-border/60 bg-card/50"
+                                                onScroll={handleArchivedScroll}
+                                            >
+                                                <div className="space-y-3 p-4">
+                                                    {archivedConversations.length === 0 && !archivedConversationsLoading ? (
+                                                        <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+                                                            <p className="text-sm text-muted-foreground">
+                                                                No archived conversations yet.
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        archivedConversations.map((conversation) => (
+                                                            <div
+                                                                key={conversation.id}
+                                                                className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm transition hover:border-border hover:bg-muted/40"
+                                                            >
+                                                                <div className="flex items-start justify-between gap-4">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => onSelectArchivedConversation?.(conversation)}
+                                                                        className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded-xl"
+                                                                    >
+                                                                        <div className="min-w-0 space-y-1.5">
+                                                                            <p className="truncate text-sm font-semibold text-foreground">
+                                                                                {conversation.title?.trim() || "Untitled conversation"}
+                                                                            </p>
+                                                                            <p className="text-[0.72rem] uppercase tracking-[0.18em] text-muted-foreground">
+                                                                                {conversation.agent.name}
+                                                                            </p>
+                                                                            {conversation.lastMessage && (
+                                                                                <p className="line-clamp-2 text-[0.78rem] text-muted-foreground">
+                                                                                    {conversation.lastMessage}
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    </button>
+                                                                    <div className="flex-shrink-0 text-right">
+                                                                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                            Archived
+                                                                        </p>
+                                                                        <p className="mt-1 text-[0.72rem] text-muted-foreground">
+                                                                            {conversation.archivedAt ? conversation.archivedAt.toLocaleDateString() : new Date(conversation.updated_at).toLocaleDateString()}
+                                                                        </p>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={() => onUnarchiveConversation?.(conversation)}
+                                                                            className="mt-3 h-8 rounded-lg px-3 text-[0.66rem] font-semibold uppercase tracking-[0.18em]"
+                                                                        >
+                                                                            Unarchive
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+
+                                                    {archivedConversationsLoading && (
+                                                        <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-4 text-center">
+                                                            <p className="text-sm text-muted-foreground">
+                                                                Loading archived conversations...
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </ScrollArea>
                                         </div>
                                     )}
 
