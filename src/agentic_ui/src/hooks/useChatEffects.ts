@@ -118,6 +118,38 @@ export function useSidebarInteractionEffect(params: {
 
 
 // ---------------------------------------------------------------------------
+// Sticky user action bar effect
+// ---------------------------------------------------------------------------
+export function useStickyUserBarEffect(params: {
+  setStickyUserBarId: (id: string | null) => void;
+}) {
+  const { setStickyUserBarId } = params;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const flashUserActionBar = useCallback(
+    (id: string, ms = 3000) => {
+      setStickyUserBarId(id);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(() => setStickyUserBarId(null), ms);
+    },
+    [setStickyUserBarId],
+  );
+
+  return { flashUserActionBar };
+}
+
+
+// ---------------------------------------------------------------------------
 // Centered composer layout effect
 // ---------------------------------------------------------------------------
 type CenteredComposerLayoutArgs = {

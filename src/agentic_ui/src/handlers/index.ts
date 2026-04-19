@@ -1,3 +1,4 @@
+// Central barrel for the chat handler layer.
 export * from './attachments';
 export * from './inference';
 export * from './conversations';

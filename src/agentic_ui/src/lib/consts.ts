@@ -17,7 +17,7 @@ export const mapIcon = (name: string | null | undefined): LucideIcon => {
   if (!name) {
     return Icons.Building2;
   }
-  const Icon = (Icons as Record<string, LucideIcon | undefined>)[name];
+  const Icon = (Icons as unknown as Record<string, LucideIcon | undefined>)[name];
   return Icon ?? Icons.Building2;
 };
 

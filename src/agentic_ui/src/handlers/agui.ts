@@ -25,7 +25,9 @@ import type { PlanSnapshot } from '@/lib/agui';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import type { MessageIn, MessageOut, ToolPreference } from '@/lib/types';
 
-
+// `streamAguiRun` is the bridge between low-level AG-UI stream events and the chat UI model.
+// It keeps a transient in-memory runtime while the stream is live, mirrors partial state into React,
+// then persists the final assistant message back into the conversation store.
 const parseEvent = (raw: unknown) => {
   // Parse any incoming frame against the full AG-UI union before we branch on its exact type.
   const result = EventSchemas.safeParse(raw);
@@ -50,10 +52,13 @@ type StreamSubagentState = {
 
 
 export type AguiStreamOptions = {
+  // Auth and conversation identity needed for persistence and stream bootstrap.
   userId: string;
   conversationId: string;
   replyParentMessageId: string;
+  // UI branch path controls where optimistic thinking/message updates should appear.
   uiBranchPath: string[];
+  // Server branch path can differ when we want the backend to stream against a different lineage.
   serverBranchPath?: string[];
   setMessages: MessageSetter;
   setThinkingState: ThinkingSetter;
@@ -142,6 +147,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     // Always mark reasoning complete at stream teardown even if the backend ends abruptly.
     setThinkingState((prev: any) => {
       if (!prev) return prev;
+      // Preserve the existing state object if it is already finalized to avoid pointless rerenders.
       if (prev.isDone && !prev.isActive) return prev;
       const endTs = runtime.thinkingEnd || Date.now();
       return {
@@ -158,6 +164,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
     // Ignore anything after cancellation to avoid stale UI writes.
     if (aborted) return;
     const ev = parseEvent(raw);
+    // Unknown or invalid frames are ignored instead of crashing the whole stream lifecycle.
     if (!ev) return;
     
     // The first event doubles as a durable fallback start time for thinking duration math.
@@ -200,6 +207,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
 
         const interruptEvent = HITLInterruptCustomEventSchema.safeParse(ev);
         if (interruptEvent.success) {
+          // Interrupt payloads are still persisted even if the UI does not yet provide a dedicated HITL surface.
           pushSubagentEvent('interrupts', interruptEvent.data.value);
         }
         return;
@@ -219,6 +227,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
         if (!thinkingStartEvent.success || aborted) return;
         runtime.thinkingStart = Date.now();
         runtime.thinkingEnd = 0;
+        // The staged assistant message id is not known yet, so thinking is keyed by branch path first.
         setThinkingState({
           messageId: '',
           thoughts: [],
@@ -394,6 +403,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
             // Fallback path: create the assistant message only after streaming completes.
             const resp = await addMessageToConversation(userId, conversationId, payload);
             const id = runtime.stagedMessageId;
+            // If we created a local staged row earlier, replace it; otherwise append the saved assistant row.
             setMessages((prev: MessageOut[]) => prev.map((m) => (m.id === id ? resp.message : m)));
             setCurrentConversation((prev: any) => (prev ? { ...prev, updated_at: new Date(resp.summary.updated_at) } : prev));
             setConversations((prev: any[]) =>
@@ -469,6 +479,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
       }
 
       default:
+        // Unknown-but-validated AG-UI events are intentionally ignored until the UI has a use for them.
         return;
     }
   };
@@ -476,6 +487,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   try {
     // The server branch path wins when retries or branch switches need to stream against a different lineage.
     const outboundPath = serverBranchPath ?? runtime.messagePath;
+    // `streamInference` owns the transport; `onEvent` above owns all client-side interpretation and persistence.
     await streamInference(userId, conversationId, outboundPath, onEvent, signal, enabledTools);
   } catch (err) {
     const name = (err as any)?.name;
@@ -500,6 +512,7 @@ export async function streamAguiRun(options: AguiStreamOptions): Promise<void> {
   } finally {
     // Final cleanup runs for success, server errors, and manual aborts.
     finalizeThinkingState();
+    // Always hide the optimistic transition indicator once the stream lifecycle is considered over.
     if (setShowAiTransition) setShowAiTransition(false);
   }
 }

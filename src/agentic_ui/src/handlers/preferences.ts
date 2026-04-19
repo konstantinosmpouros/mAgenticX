@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { updateUserPreferences } from '@/lib/api';
 import type { ToolMetadata, ToolPreference, UserPreferences } from '@/lib/types';
 
+// Preferences handlers derive the tool toggle model shown in settings and persist changes optimistically.
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 
 export type PreferencesHandlers = {
@@ -35,6 +36,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
   } = ctx;
 
   const defaultPreferences: UserPreferences = useMemo(
+    // Keep downstream code simple by always resolving a complete preference object.
     () => ({ tools: { disabled: [] }, prefersAgenticChat: false }),
     []
   );
@@ -43,6 +45,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
   const toolKey = (serverId: string | undefined, toolName: string) => `${serverId || 'default'}::${toolName}`;
 
   const disabledToolKeys = useMemo(() => {
+    // Normalize old and new field names so stored preferences remain backward compatible.
     const entries = resolvedPreferences?.tools?.disabled ?? [];
     const keys = entries
       .map((item) => {
@@ -55,6 +58,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
   }, [resolvedPreferences]);
 
   const toolsWithStatus = useMemo(
+    // Combine tool metadata with preference state so the UI can render a single enriched list.
     () =>
       availableTools.map((tool) => ({
         ...tool,
@@ -64,6 +68,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
   );
 
   const enabledToolsForRequest: ToolPreference[] = useMemo(
+    // Outbound inference requests only need the enabled subset.
     () =>
       toolsWithStatus
         .filter((t) => t.enabled)
@@ -82,6 +87,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
     const key = toolKey(tool.serverId, tool.toolName);
     const prevPrefs = resolvedPreferences;
     const nextDisabled = new Set(disabledToolKeys);
+    // Flip the local set first so the toggle feels instant; revert on persistence failure.
     if (nextDisabled.has(key)) {
       nextDisabled.delete(key);
     } else {
@@ -100,6 +106,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
     setIsSavingPreferences(true);
     try {
       const saved = await updateUserPreferences(userId, nextPrefs);
+      // Replace the optimistic snapshot with the canonical payload returned by the backend.
       setUserPreferences(saved);
       persistUIState();
     } catch (error) {

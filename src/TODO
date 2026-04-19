@@ -29,7 +29,6 @@
 ## Agents
 
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
-- Check if instead of a whole dynamic rag system per conversation it can be replaced with the virtual file system of the deep agents.
 
 ## Agentic UI
 
@@ -37,6 +36,7 @@
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
 - Create more features like the grok sidebar.
+- Add key shortcuts for the agentic UI, e.g., to open/close the sidebar, approve/reject HITL events, or trigger specific agent actions, send messages/start inference.
 
 ## RAG Service
 

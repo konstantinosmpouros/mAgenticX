@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Building2 } from "lucide-react";
 
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
-import { PlanCard, PlanningContainer, SubagentCard, SubagentContainer } from "@/components/chat/agentic_parts";
+import { PlanCard, PlanningContainer, SubagentCard, SubagentContainer } from "@/components/chat/message_parts/agentic_parts";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import type { PlanSnapshot } from "@/lib/agui";
-import type { SubagentItem } from "@/components/chat/agentic_parts/SubagentContainer";
+import type { SubagentItem } from "@/components/chat/message_parts/agentic_parts/SubagentContainer";
 
 type ReplayEvent = {
   type: string;

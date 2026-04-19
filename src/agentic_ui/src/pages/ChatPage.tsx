@@ -15,13 +15,13 @@ import type {
   ToolMetadata,
   UserPreferences } from "@/lib/types";
 import type { PlanSnapshot } from "@/lib/agui";
-import { createPreferencesHandlers } from "@/components/handlers/preferences";
-import { useThinkingProgressEffect } from "@/hooks/useThinking";
+import { createPreferencesHandlers } from "@/handlers/preferences";
 import { 
   useAutoScrollEffect,
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
   useCenteredComposerLayout,
+  useStickyUserBarEffect,
   useSidebarInteractionEffect,
 } from "@/hooks/useChatEffects";
 import {
@@ -41,19 +41,19 @@ import {
   createAuthHandlers,
   createUIHandlers,
   createAiTransitionHandlers,
-  createStickyUserBarHandlers,
+  createConversationMessageSetter,
   createFeedbackHandlers,
   createMessageEditHandlers,
   createRetryHandlers,
   useBranchingHandlers
-} from "@/components/handlers";
+} from "@/handlers";
 import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail } from "@/lib/api";
 
 // Chat Interface component
 import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-import { PlanCard } from "@/components/chat/agentic_parts";
+import { PlanCard } from "@/components/chat/message_parts/agentic_parts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ChatBody from "@/components/chat/ChatBody";
@@ -124,7 +124,7 @@ export function ChatInterface() {
   
   // Sticky user action bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
-  const { flashUserActionBar } = createStickyUserBarHandlers({ setStickyUserBarId });
+  const { flashUserActionBar } = useStickyUserBarEffect({ setStickyUserBarId });
 
   // Branch selections (parentId -> child index)
   const [branchSelections, setBranchSelections] = useState<Record<string, number>>({});
@@ -236,37 +236,12 @@ export function ChatInterface() {
   const [activePlanSnapshots, setActivePlanSnapshots] = useState<PlanSnapshot[]>([]);
   const [isPlanExpanded, setIsPlanExpanded] = useState(true);
 
-  // Function to set conversation messages
-  const setConversationMessages = (updater: MessageOut[] | ((prev: MessageOut[]) => MessageOut[])) => {
-    setCurrentConversation(prev => {
-      const prevMessages = prev?.messages ?? [];
-      const nextMessages = typeof updater === 'function'
-        ? (updater as (prev: MessageOut[]) => MessageOut[])(prevMessages)
-        : updater;
-      if (prev) {
-        return { ...prev, messages: nextMessages };
-      }
-      if (nextMessages.length === 0) return prev;
-      const agentMeta = agents.find(a => a.id === selectedAgent);
-      const now = new Date();
-      return {
-        id: '',
-        agent: agentMeta ?? {
-          id: selectedAgent,
-          name: agentMeta?.name || 'Unknown agent',
-          description: agentMeta?.description ?? '',
-          icon: agentMeta?.icon ?? Building2,
-          version: agentMeta?.version,
-          isActive: agentMeta?.isActive ?? true,
-        },
-        title: '',
-        isPrivate: isPrivateMode,
-        created_at: now,
-        updated_at: now,
-        messages: nextMessages,
-      } as ConversationDetail;
-    });
-  };
+  const setConversationMessages = createConversationMessageSetter({
+    agents,
+    selectedAgent,
+    isPrivateMode,
+    setCurrentConversation,
+  });
 
   // Message editing handlers
   const handleEditDraftChange = (value: string) => {
@@ -326,9 +301,6 @@ export function ChatInterface() {
 
   // Auto-scroll effect
   useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
-
-  // Thinking progress effect
-  useThinkingProgressEffect({ thinkingState, setThinkingState, agents, selectedAgent, setMessages: setConversationMessages });
 
   // Session auto-refresh effect
   useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
@@ -630,8 +602,7 @@ export function ChatInterface() {
   // Determine current agent and its icon
   const conversationAgent = currentConversation?.agent ?? null;
   const selectedAgentFromList = agents.find(a => a.id === selectedAgent) ?? null;
-  const fallbackSelectedAgent =
-    inactiveAgentFallback && inactiveAgentFallback.id === selectedAgent ? inactiveAgentFallback : null;
+  const fallbackSelectedAgent = inactiveAgentFallback && inactiveAgentFallback.id === selectedAgent ? inactiveAgentFallback : null;
   const effectiveSelectedAgent = selectedAgentFromList ?? fallbackSelectedAgent ?? null;
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   const AgentIcon = currentAgent?.icon || Building2;
@@ -743,7 +714,7 @@ export function ChatInterface() {
                 isMessagesEmpty={isMessagesEmpty}
                 positionClass={
                   isMessagesEmpty
-                    ? "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
+                    ? "absolute left-1/2 top-[35%] -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
                     : "sticky bottom-0 left-0 right-0 z-30 p-6"
                 }
                 

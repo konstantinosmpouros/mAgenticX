@@ -2,6 +2,8 @@ import { validateAdd } from '@/lib/uploadGuards';
 import { downloadAttachment } from '@/lib/api';
 import type { ConversationDetail, MessageOut } from '@/lib/types';
 
+// Attachment handlers centralize the file lifecycle for the composer:
+// validate pending files, derive previews, and fetch persisted blobs.
 type AttachmentsCtx = {
   attachments: File[];
   setAttachments: (updater: (prev: File[]) => File[]) => void;
@@ -14,6 +16,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
   const { attachments, setAttachments, toast } = ctx;
 
   const isImageFile = (file: File | any): boolean => {
+    // Pending uploads, persisted attachments, and raw urls each expose different fields.
     if (file?.mime) return file.mime.startsWith('image/');
     if (file?.type) return file.type.startsWith('image/');
     if (file?.url) return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(file.url);
@@ -22,6 +25,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
   };
 
   const getImageUrl = (file: File | any): string => {
+    // Return the best preview source without forcing the caller to care about attachment shape.
     if (file?.data && file?.mime) return `data:${file.mime};base64,${file.data}`;
     if (file?.url) return file.url;
     if (file instanceof File) return URL.createObjectURL(file);
@@ -32,6 +36,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const input = event.target as HTMLInputElement;
     const files: File[] = input.files ? Array.from(input.files) : [];
+    // Reset the native input when nothing is selected so choosing the same file still works later.
     if (files.length === 0) {
       if (input) input.value = '';
       return;
@@ -43,6 +48,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     let extraFiles = 0;
 
     if (files.length > remainingSlots) {
+      // Clip the selection before validation so the error/toast reflects what can actually fit.
       filesToAdd = files.slice(0, remainingSlots);
       extraFiles = files.length - filesToAdd.length;
 
@@ -63,6 +69,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     } else {
       filesToAdd = files;
 
+      // Even within the slot limit we still enforce the aggregate upload size guard.
       const sizeErr = validateAdd(attachments, filesToAdd);
       if (sizeErr) {
         toast({ title: 'Attachment too large', description: sizeErr, variant: 'destructive', duration: 3000 });
@@ -107,6 +114,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
       const file = item.getAsFile();
       if (file) {
         totalFilesFound++;
+        // Preserve only the files that fit in the remaining local attachment slots.
         if (filesToAdd.length >= remainingSlots) {
           excludedFiles.push({ file, reason: 'slot limit' });
         } else {
@@ -118,6 +126,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     if (totalFilesFound === 0) return;
 
     if (filesToAdd.length > 0) {
+      // Paste can inject many screenshots at once, so reuse the same size validation as uploads.
       const sizeErr = validateAdd(attachments, filesToAdd);
       if (sizeErr) {
         toast({ title: 'Files too large', description: sizeErr, variant: 'destructive', duration: 3000 });
@@ -148,11 +157,13 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
   };
 
   const removeAttachment = (index: number) => {
+    // Pending attachments have no stable ids yet, so index removal is the simplest local contract.
     setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleFileDownload = async (attachment: any, message: MessageOut) => {
     const { userId, currentConversation } = ctx;
+    // Downloads only work for persisted blobs tied to a real conversation/message.
     if (!userId || !currentConversation) {
       toast({ title: 'Download unavailable', description: 'You must be signed in to download attachments', variant: 'destructive', duration: 3000 });
       return;
@@ -164,6 +175,7 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
     }
 
     try {
+      // Give immediate feedback because the real file save begins after the API fetches the blob.
       toast({ title: 'Download starting', description: `Preparing ${attachment.name}`, duration: 2000 });
       await downloadAttachment({
         userId,

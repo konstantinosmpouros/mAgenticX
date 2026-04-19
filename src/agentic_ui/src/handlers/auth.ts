@@ -4,6 +4,7 @@ import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
 import { clearUISnapshot } from '@/lib/uiStateStorage';
 
+// Auth handlers bridge API auth with local session persistence and a full chat-shell reset.
 type AuthCtx = {
   setIsLoggedIn: (v: boolean) => void;
   setUserId: (v: string | null) => void;
@@ -49,6 +50,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
 
   const handleLogin = async () => {
     try {
+      // Authenticate first; all follow-up bootstrap requests depend on the user id from this response.
       const response = await authenticate({ username: (loginUsername || "").trim(), password: loginPassword || "" });
 
       if (response.authenticated && response.user && response.user.id) {
@@ -56,12 +58,14 @@ export function createAuthHandlers(ctx: AuthCtx) {
         const ttlSeconds = typeof response.tokenTtl === 'number' && response.tokenTtl > 0 ? response.tokenTtl : 3600;
         const ttlMs = ttlSeconds * 1000;
         setTimeout(async () => {
+          // Delay the heavy state swap slightly so the login transition can settle visually.
           setIsLoggedIn(true);
           setUserProfile(user);
           setUserId(user.id);
           // Persist session with 1 hour TTL
           saveSession(user, ttlMs);
           setConversationsLoading(true);
+          // Fetch all bootstrap data in parallel; each result can fail independently without blocking login.
           const agentsPromise = getAgents();
           const toolsPromise = getTools();
           const preferencesPromise = getUserPreferences(user.id);
@@ -72,6 +76,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
             setAgents(agentsList);
           } catch (e) {
             console.error("Failed to fetch agents after login:", e);
+            // Keep the app responsive even if one bootstrap endpoint is temporarily unavailable.
             setAgents([]);
           }
 
@@ -106,6 +111,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
         setLoginUsername?.('');
         setLoginPassword?.('');
       } else {
+        // The API can reject credentials without throwing, so surface that branch explicitly.
         toast({ title: 'Authentication failed', description: 'Please check your credentials and try again.', variant: 'destructive', duration: 2000 });
       }
     } catch (error) {
@@ -128,6 +134,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
   };
 
   const handleLogout = () => {
+    // Close the profile panel first so logout feels immediate before the full shell reset finishes.
     setShowUserProfile(false);
     setTimeout(() => {
       handleLogoutLocal();
@@ -139,6 +146,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
       setAvailableTools([]);
       setConversations([]);
       setConversationsLoading(false);
+      // Reuse the shared chat reset path so logout clears the same transient state as "new chat".
       clearChatAndStopThinking();
       persistUIState();
       onLoggedOut?.();
