@@ -53,6 +53,8 @@ type ChatInputBarProps = {
     onDictationSubmit?: (audioBlob: Blob) => void;
     onDictationStatusChange?: (status: DictationStatus) => void;
     dictationStatus?: DictationStatus;
+    dictationRequestSignal?: number;
+    dictationCancelSignal?: number;
     topAccessory?: React.ReactNode;
 };
 
@@ -103,6 +105,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
         onDictationSubmit,
         onDictationStatusChange,
         dictationStatus = "idle",
+        dictationRequestSignal,
+        dictationCancelSignal,
         topAccessory,
     } = props;
 
@@ -297,6 +301,16 @@ export function ChatInputBar(props: ChatInputBarProps) {
         }
     }, [dictationStatus, isDictationBusy, onDictationStatusChange, startRecording, toast]);
 
+    const lastDictationRequestSignalRef = React.useRef(dictationRequestSignal ?? 0);
+    React.useEffect(() => {
+        const nextSignal = dictationRequestSignal ?? 0;
+        if (nextSignal === 0 || nextSignal === lastDictationRequestSignalRef.current) {
+            return;
+        }
+        lastDictationRequestSignalRef.current = nextSignal;
+        handleDictationRequest();
+    }, [dictationRequestSignal, handleDictationRequest]);
+
     const handleCancelDictation = React.useCallback(() => {
         if (dictationStatus === "idle" || dictationStatus === "submitting") return;
         cancelRequestedRef.current = true;
@@ -329,6 +343,16 @@ export function ChatInputBar(props: ChatInputBarProps) {
         toast,
         _setIsProcessingAudioOnComplete,
     ]);
+
+    const lastDictationCancelSignalRef = React.useRef(dictationCancelSignal ?? 0);
+    React.useEffect(() => {
+        const nextSignal = dictationCancelSignal ?? 0;
+        if (nextSignal === 0 || nextSignal === lastDictationCancelSignalRef.current) {
+            return;
+        }
+        lastDictationCancelSignalRef.current = nextSignal;
+        handleCancelDictation();
+    }, [dictationCancelSignal, handleCancelDictation]);
 
     const handleConfirmDictation = React.useCallback(() => {
         if (dictationStatus === "idle" || dictationStatus === "submitting") return;

@@ -1,6 +1,6 @@
 # Agentic UI
 
-`agentic_ui` is the browser-facing frontend for mAgenticX. It is a React 18 + Vite single-page application that renders the chat workspace, authenticates through the dialogue bridge, streams AG-UI events over Server-Sent Events, and exposes agent-specific interaction features such as planning traces, sub-agent activity, branching, file attachments, and voice dictation.
+`agentic_ui` is the browser-facing frontend for mAgenticX. It is a React 18 + Vite single-page application that renders the chat workspace, authenticates through the dialogue bridge, streams AG-UI events over Server-Sent Events, and exposes agent-specific interaction features such as planning traces, sub-agent activity, branching, file attachments, voice dictation, archive flows, and conversation reporting.
 
 The UI does not call the agents service, the RAG service, Chroma, or Postgres directly. Every backend request goes through the dialogue bridge under `/api/v1/*`, with nginx acting as the production reverse proxy inside the UI container.
 
@@ -11,6 +11,8 @@ The UI does not call the agents service, the RAG service, Chroma, or Postgres di
 - Stream AG-UI inference events and normalize them into visible assistant output, thinking timelines, tool activity, plan snapshots, and sub-agent traces.
 - Validate files before upload and hand attachment persistence to the bridge.
 - Support voice dictation and drop the resulting transcript back into the message composer.
+- Support conversation archive and unarchive flows across the sidebar, header actions, and profile panel.
+- Support conversation-level reporting, with optional targeting of a specific assistant message from the AI action bar.
 - Provide a registry-driven keyboard shortcut system for global chat actions, composer send flows, and dismissible overlays.
 - Cache lightweight UI state locally so reloads feel faster without storing the entire conversation transcript in the browser.
 
@@ -78,7 +80,7 @@ The app defines a small set of browser routes:
 
 ## Main UI Logic
 
-`src/pages/ChatPage.tsx` is the operational center of the frontend. It owns the current conversation, draft message text, attachments, selected agent, preferences, active plan snapshots, dictation state, sidebar state, conversation pagination state, and the currently streamed assistant response.
+`src/pages/ChatPage.tsx` is the operational center of the frontend. It owns the current conversation, draft message text, attachments, selected agent, preferences, active plan snapshots, dictation state, sidebar state, conversation pagination state, archived conversation pagination state, report-dialog state, and the currently streamed assistant response.
 
 The page delegates behavior to modular handlers instead of placing all business logic inline:
 
@@ -178,8 +180,12 @@ Main endpoint groups:
   - `/preferences/{userId}`
 - Conversations
   - `/conversations/{userId}`
+  - `/conversations/{userId}/archived`
   - `/conversations/{userId}/{conversationId}`
   - `/conversations/{userId}/{conversationId}/title`
+  - `/conversations/{userId}/{conversationId}/archive`
+  - `/conversations/{userId}/{conversationId}/unarchive`
+  - `/conversations/{userId}/{conversationId}/report`
 - Messages
   - `/messages/{userId}/{conversationId}`
   - `/messages/{userId}/{conversationId}/{messageId}`
@@ -337,11 +343,27 @@ The current shortcut set covers:
 - search
 - profile panel and shortcuts help
 - composer focus
+- attachment picker
+- voice dictation start
 - agent picker
 - private-mode toggle when allowed
-- `Esc` dismissal of active overlays and inline edit state
+- `Esc` dismissal of active overlays, dictation, and inline edit state
 - `Enter` or `Ctrl/Cmd+Enter` to send from the composer or inline edit textarea
 - `Shift+Enter` for newline
+
+Current global shortcuts:
+
+- `Ctrl/Cmd+B` toggle sidebar
+- `Ctrl/Cmd+Shift+X` new chat, with `Ctrl/Cmd+N` kept as an opportunistic browser-dependent alias
+- `Ctrl/Cmd+K` open search
+- `Ctrl/Cmd+L` focus composer
+- `Ctrl/Cmd+U` open the attach files and photos picker
+- `Ctrl/Cmd+M` start dictation
+- `Ctrl/Cmd+Shift+A` open the agent picker
+- `Ctrl/Cmd+Shift+P` toggle private mode when the current chat allows it
+- `Ctrl/Cmd+,` or `Ctrl/Cmd+.` open the profile panel
+- `Ctrl/Cmd+/` open the profile panel directly on the Shortcuts tab
+- `Esc` close active overlays, cancel dictation, close menus/dropdowns, or cancel inline edit state
 
 The profile panel includes a `Shortcuts` tab that renders from the same shared shortcut registry used by the runtime listener.
 
@@ -395,21 +417,23 @@ The chat experience is split into focused surfaces under `src/components/chat`:
 - `ChatHeader`
   - agent selector
   - private-mode toggle
-  - conversation actions
+  - conversation actions for archive, unarchive, report, and delete
 - `ChatSidebar`
   - conversation list
-  - pagination and archive/delete affordances
+  - pagination plus archive, report, rename, and delete affordances
   - profile entry point
 - `ProfilePanel`
   - user profile
   - theme selection
   - MCP tool preference toggles
+  - archived conversations tab with paginated lazy loading and unarchive support
   - shortcuts reference tab rendered from the shared shortcut registry
   - links to auxiliary views
 - `ChatBody`
   - transcript rendering
   - loading states
   - branch-aware message display
+  - AI message action bar with conversation-aware report affordance
 - `ChatInputBar`
   - composer
   - attachment strip

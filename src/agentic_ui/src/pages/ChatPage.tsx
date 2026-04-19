@@ -250,6 +250,8 @@ export function ChatInterface() {
 
   // Dictation state machine
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>("idle");
+  const [dictationRequestSignal, setDictationRequestSignal] = useState(0);
+  const [dictationCancelSignal, setDictationCancelSignal] = useState(0);
   const [activePlanSnapshots, setActivePlanSnapshots] = useState<PlanSnapshot[]>([]);
   const [isPlanExpanded, setIsPlanExpanded] = useState(true);
 
@@ -281,6 +283,24 @@ export function ChatInterface() {
   const focusComposer = useCallback(() => {
     textareaRef.current?.focus();
   }, []);
+
+  const openAttachments = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const startDictation = useCallback(() => {
+    if (isSendingMessage || dictationStatus !== "idle") {
+      return;
+    }
+    setDictationRequestSignal((prev) => prev + 1);
+  }, [dictationStatus, isSendingMessage]);
+
+  const cancelDictation = useCallback(() => {
+    if (dictationStatus === "idle" || dictationStatus === "submitting") {
+      return;
+    }
+    setDictationCancelSignal((prev) => prev + 1);
+  }, [dictationStatus]);
 
   const openAgentPicker = useCallback(() => {
     setIsAgentPickerOpen(true);
@@ -442,6 +462,11 @@ export function ChatInterface() {
       return true;
     }
 
+    if (dictationStatus !== "idle" && dictationStatus !== "submitting") {
+      cancelDictation();
+      return true;
+    }
+
     if (isReportDialogOpen) {
       closeReportDialog();
       return true;
@@ -488,8 +513,10 @@ export function ChatInterface() {
 
     return false;
   }, [
+    cancelDictation,
     closeReportDialog,
     closeProfilePanel,
+    dictationStatus,
     editingMessageId,
     handleCancelEditMessage,
     handleCloseImagePreview,
@@ -817,6 +844,8 @@ export function ChatInterface() {
           canTogglePrivateMode,
           openSearch: handleOpenSearch,
           focusComposer,
+          openAttachments,
+          startDictation,
           openAgentPicker,
           togglePrivateMode: handleTogglePrivateMode,
           openProfilePanel,
@@ -949,6 +978,8 @@ export function ChatInterface() {
                 onDictationSubmit={handleDictationSubmit}
                 onDictationStatusChange={handleDictationStatusChange}
                 dictationStatus={dictationStatus}
+                dictationRequestSignal={dictationRequestSignal}
+                dictationCancelSignal={dictationCancelSignal}
                 
                 // UI deps
                 AgentIcon={AgentIcon}

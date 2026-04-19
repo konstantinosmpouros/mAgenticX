@@ -20,6 +20,8 @@ export type ChatKeyboardShortcutOptions = {
   canTogglePrivateMode: boolean;
   openSearch: () => void;
   focusComposer: () => void;
+  openAttachments: () => void;
+  startDictation: () => void;
   openAgentPicker: () => void;
   togglePrivateMode: () => void;
   openProfilePanel: (tab?: string) => void;
@@ -141,6 +143,8 @@ export function useChatKeyboardShortcuts(
       toggleSidebar: options.toggleSidebar,
       openSearch: options.openSearch,
       focusComposer: options.focusComposer,
+      openAttachments: options.openAttachments,
+      startDictation: options.startDictation,
       openAgentPicker: options.openAgentPicker,
       togglePrivateMode: options.togglePrivateMode,
       openProfilePanel: options.openProfilePanel,

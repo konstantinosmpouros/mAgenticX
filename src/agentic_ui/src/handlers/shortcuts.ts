@@ -4,6 +4,8 @@ type ShortcutHandlersCtx = {
   toggleSidebar: () => void;
   openSearch: () => void;
   focusComposer: () => void;
+  openAttachments: () => void;
+  startDictation: () => void;
   openAgentPicker: () => void;
   togglePrivateMode: () => void;
   openProfilePanel: (tab?: string) => void;
@@ -30,6 +32,8 @@ export function createShortcutHandlers(ctx: ShortcutHandlersCtx): ShortcutAction
     "chat.new": ctx.startNewChat,
     "search.open": ctx.openSearch,
     "composer.focus": ctx.focusComposer,
+    "attachments.open": ctx.openAttachments,
+    "dictation.start": ctx.startDictation,
     "agentPicker.open": ctx.openAgentPicker,
     "private.toggle": ctx.togglePrivateMode,
     "profile.open": () => ctx.openProfilePanel(),

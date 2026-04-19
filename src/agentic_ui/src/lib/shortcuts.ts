@@ -3,6 +3,8 @@ export type ShortcutId =
   | "chat.new"
   | "search.open"
   | "composer.focus"
+  | "attachments.open"
+  | "dictation.start"
   | "agentPicker.open"
   | "private.toggle"
   | "profile.open"
@@ -167,6 +169,40 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     labels: {
       mac: "Cmd+L",
       win: "Ctrl+L",
+    },
+  },
+  {
+    id: "attachments.open",
+    title: "Open file picker",
+    description: "Open the file browser for attaching files and photos.",
+    category: "Chat",
+    scope: "Global",
+    implementation: "global",
+    allowInEditable: true,
+    combos: {
+      mac: [{ key: "u", meta: true }],
+      win: [{ key: "u", code: "KeyU", ctrl: true }],
+    },
+    labels: {
+      mac: "Cmd+U",
+      win: "Ctrl+U",
+    },
+  },
+  {
+    id: "dictation.start",
+    title: "Start dictation",
+    description: "Start voice dictation from the main composer.",
+    category: "Chat",
+    scope: "Global",
+    implementation: "global",
+    allowInEditable: true,
+    combos: {
+      mac: [{ key: "m", meta: true }],
+      win: [{ key: "m", code: "KeyM", ctrl: true }],
+    },
+    labels: {
+      mac: "Cmd+M",
+      win: "Ctrl+M",
     },
   },
   {
