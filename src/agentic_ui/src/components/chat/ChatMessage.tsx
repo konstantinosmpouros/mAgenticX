@@ -184,6 +184,8 @@ export function ChatMessage({
             editingDraft={editingDraft}
             editingBusy={editingBusy}
             onChangeEditDraft={onChangeEditDraft}
+            onCancelEdit={onCancelEdit}
+            onSubmitEdit={onSubmitEdit}
           />
 
           <div className="text-sm">

@@ -52,6 +52,8 @@ type ChatSidebarProps = {
   onOpenUserProfile: () => void;
   agents: Agent[];
   userProfile: UserProfile | null;
+  dismissFloatingUiSignal?: number;
+  onFloatingUiStateChange?: (open: boolean) => void;
   sidebarInteractionHook: (args: {
     isCollapsed: boolean;
     toggleSidebar: () => void;
@@ -100,6 +102,8 @@ export default function ChatSidebar({
   onOpenUserProfile,
   agents,
   userProfile,
+  dismissFloatingUiSignal = 0,
+  onFloatingUiStateChange,
   sidebarInteractionHook,
 }: ChatSidebarProps) {
   const { isMobile, setOpenMobile, state, toggleSidebar } = useSidebar();
@@ -263,6 +267,21 @@ export default function ChatSidebar({
       window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [handleCancelRename, renamingConversationId]);
+
+  React.useEffect(() => {
+    onFloatingUiStateChange?.(Boolean(openActionMenuId || renamingConversationId));
+  }, [onFloatingUiStateChange, openActionMenuId, renamingConversationId]);
+
+  const lastDismissFloatingUiSignalRef = React.useRef(dismissFloatingUiSignal);
+  React.useEffect(() => {
+    if (dismissFloatingUiSignal === lastDismissFloatingUiSignalRef.current) {
+      return;
+    }
+
+    lastDismissFloatingUiSignalRef.current = dismissFloatingUiSignal;
+    setOpenActionMenuId(null);
+    handleCancelRename();
+  }, [dismissFloatingUiSignal, handleCancelRename]);
 
   const canSubmitRename = renameDraft.trim().length > 0;
 

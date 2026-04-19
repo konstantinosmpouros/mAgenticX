@@ -4,6 +4,7 @@ import { VariantProps, cva } from "class-variance-authority"
 import { PanelLeft } from "lucide-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useChatKeyboardShortcuts, type ChatKeyboardShortcutOptions } from "@/hooks/useKeyboardShortcuts"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -57,6 +58,8 @@ const SidebarProvider = React.forwardRef<
     defaultOpen?: boolean
     open?: boolean
     onOpenChange?: (open: boolean) => void
+    enableKeyboardShortcut?: boolean
+    chatKeyboardShortcuts?: ChatKeyboardShortcutOptions
   }
 >(
   (
@@ -64,6 +67,8 @@ const SidebarProvider = React.forwardRef<
       defaultOpen = false,
       open: openProp,
       onOpenChange: setOpenProp,
+      enableKeyboardShortcut = true,
+      chatKeyboardShortcuts,
       className,
       style,
       children,
@@ -100,8 +105,21 @@ const SidebarProvider = React.forwardRef<
         : setOpen((open) => !open)
     }, [isMobile, setOpen, setOpenMobile])
 
+    useChatKeyboardShortcuts(
+      chatKeyboardShortcuts
+        ? {
+            ...chatKeyboardShortcuts,
+            toggleSidebar,
+          }
+        : null
+    )
+
     // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
+      if (!enableKeyboardShortcut) {
+        return
+      }
+
       const handleKeyDown = (event: KeyboardEvent) => {
         if (
           event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
@@ -114,7 +132,7 @@ const SidebarProvider = React.forwardRef<
 
       window.addEventListener("keydown", handleKeyDown)
       return () => window.removeEventListener("keydown", handleKeyDown)
-    }, [toggleSidebar])
+    }, [enableKeyboardShortcut, toggleSidebar])
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.

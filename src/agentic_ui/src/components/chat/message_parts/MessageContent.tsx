@@ -9,6 +9,8 @@ type MessageContentProps = {
   editingDraft?: string;
   editingBusy?: boolean;
   onChangeEditDraft?: (value: string) => void;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: () => void;
 };
 
 export function MessageContent({
@@ -17,6 +19,8 @@ export function MessageContent({
   editingDraft,
   editingBusy,
   onChangeEditDraft,
+  onCancelEdit,
+  onSubmitEdit,
 }: MessageContentProps) {
   const normalizedContent = useMemo(() => {
     const raw = message.content ?? "";
@@ -37,6 +41,18 @@ export function MessageContent({
       <Textarea
         value={editingDraft ?? ""}
         onChange={(event) => onChangeEditDraft?.(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancelEdit?.();
+            return;
+          }
+
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            onSubmitEdit?.();
+          }
+        }}
         disabled={editingBusy}
         autoFocus
         className="w-full min-h-[6rem] resize-none bg-transparent text-inherit border-none p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-none focus-visible:outline-none"

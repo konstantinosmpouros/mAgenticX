@@ -36,7 +36,7 @@
 - Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
 - This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
 - Create more features like the grok sidebar.
-- Add key shortcuts for the agentic UI, e.g., to open/close the sidebar, approve/reject HITL events, or trigger specific agent actions, send messages/start inference.
+- Refactor the profile panel and redesign it with a more polished AI-company style visual language and interaction model.
 
 ## RAG Service
 

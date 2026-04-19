@@ -11,6 +11,7 @@ The UI does not call the agents service, the RAG service, Chroma, or Postgres di
 - Stream AG-UI inference events and normalize them into visible assistant output, thinking timelines, tool activity, plan snapshots, and sub-agent traces.
 - Validate files before upload and hand attachment persistence to the bridge.
 - Support voice dictation and drop the resulting transcript back into the message composer.
+- Provide a registry-driven keyboard shortcut system for global chat actions, composer send flows, and dismissible overlays.
 - Cache lightweight UI state locally so reloads feel faster without storing the entire conversation transcript in the browser.
 
 ## System Position
@@ -86,6 +87,7 @@ The page delegates behavior to modular handlers instead of placing all business 
 - `handlers/agui.ts` parses the incoming event stream and turns it into UI state plus persisted assistant messages.
 - `handlers/preferences.ts` computes enabled tool state and saves user preferences.
 - `handlers/attachments.ts` manages file picking, paste flows, validation, and download behavior.
+- `handlers/shortcuts.ts` maps shared shortcut IDs onto page-owned actions, while `hooks/useKeyboardShortcuts.ts` attaches the global listener.
 - `handlers/messages.tsx`, `handlers/agents.ts`, and branching/retry/edit handlers cover conversation-level user actions.
 
 ## Authentication and Session Model
@@ -320,6 +322,35 @@ The composer includes voice dictation support through `react-voice-visualizer`. 
 
 The browser never sends audio directly to the agents service.
 
+## Keyboard Shortcuts
+
+Keyboard shortcuts are defined centrally in `src/lib/shortcuts.ts`. The runtime splits them into:
+
+- global shortcuts handled by `src/hooks/useKeyboardShortcuts.ts`
+- page-level action mapping handled by `src/handlers/shortcuts.ts`
+- composer-local keys handled directly inside `ChatInputBar` and inline edit textareas
+
+The current shortcut set covers:
+
+- sidebar toggle
+- new chat
+- search
+- profile panel and shortcuts help
+- composer focus
+- agent picker
+- private-mode toggle when allowed
+- `Esc` dismissal of active overlays and inline edit state
+- `Enter` or `Ctrl/Cmd+Enter` to send from the composer or inline edit textarea
+- `Shift+Enter` for newline
+
+The profile panel includes a `Shortcuts` tab that renders from the same shared shortcut registry used by the runtime listener.
+
+Browser caveats matter here:
+
+- some browser shortcuts cannot be reliably overridden from a web app, especially `Ctrl/Cmd+N`
+- because of that, the web UI exposes a browser-safe fallback for new chat: `Ctrl/Cmd+Shift+X`
+- the profile panel shortcut also supports `Ctrl/Cmd+.` as a safer fallback alongside `Ctrl/Cmd+,`
+
 ## Local Persistence Model
 
 The frontend uses two different browser storage layers:
@@ -373,6 +404,7 @@ The chat experience is split into focused surfaces under `src/components/chat`:
   - user profile
   - theme selection
   - MCP tool preference toggles
+  - shortcuts reference tab rendered from the shared shortcut registry
   - links to auxiliary views
 - `ChatBody`
   - transcript rendering
@@ -460,16 +492,22 @@ Key files and folders:
   - stateful domain logic for auth, inference, preferences, attachments, retries, and branching
 - `src/hooks/`
   - session effects, scrolling behavior, thinking progress, and layout helpers
+- `src/hooks/useKeyboardShortcuts.ts`
+  - global shortcut listener and chat shortcut bridge
 - `src/lib/api.ts`
   - bridge API wrapper and SSE transport
 - `src/lib/agui.ts`
   - AG-UI event schemas plus custom event definitions
+- `src/lib/shortcuts.ts`
+  - shortcut registry, labels, and platform-aware key definitions
 - `src/lib/authStorage.ts`
   - browser session snapshot persistence
 - `src/lib/uiStateStorage.ts`
   - IndexedDB UI snapshot persistence
 - `src/lib/uploadGuards.ts`
   - browser-side file limit enforcement
+- `src/handlers/shortcuts.ts`
+  - runtime mapping from shortcut IDs to page-owned UI actions
 - `nginx.conf.template`
   - production reverse proxy behavior
 - `Dockerfile`

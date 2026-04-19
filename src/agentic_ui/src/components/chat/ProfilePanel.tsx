@@ -6,6 +6,7 @@ import {
     Settings,
     Palette,
     HelpCircle,
+    Keyboard,
     LogOut,
     Sparkles,
     MoonStar,
@@ -18,6 +19,13 @@ import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+    SHORTCUTS,
+    detectShortcutPlatform,
+    getShortcutLabel,
+    type ShortcutCategory,
+    type ShortcutPlatform,
+} from "@/lib/shortcuts";
 
 type ProfilePanelProps = {
     open: boolean;
@@ -87,6 +95,7 @@ export default function ProfilePanel({
         typeof window !== "undefined" ? window.innerWidth < 960 : false
     );
     const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
+    const [shortcutPlatform, setShortcutPlatform] = useState<ShortcutPlatform>(() => detectShortcutPlatform());
     const { theme, setTheme } = useTheme();
 
     const toolKey = (tool: ToolWithStatus) => {
@@ -133,8 +142,6 @@ export default function ProfilePanel({
 
 
 
-    if (!open) return null;
-
     const NA = "N/A";
 
     const safeText = (v?: string | null) =>
@@ -170,6 +177,7 @@ export default function ProfilePanel({
     const navItems = [
         { id: "profile", label: "User Profile", icon: User },
         { id: "mcp", label: "MCP Servers", icon: McpIcon },
+        { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
         { id: "appearance", label: "Appearance", icon: Palette },
         { id: "settings", label: "Settings", icon: Settings },
         { id: "help", label: "Help", icon: HelpCircle },
@@ -212,6 +220,13 @@ export default function ProfilePanel({
             desc: "Get help from our support team.",
         },
     ];
+
+    const shortcutSections = (["Workspace", "Chat", "Composer", "Dismiss"] as ShortcutCategory[]).map((category) => ({
+        category,
+        items: SHORTCUTS.filter((shortcut) => shortcut.category === category),
+    }));
+
+    if (!open) return null;
 
     const handleHelpCardClick = (card: HelpCard) => {
         if (!card.href) return;
@@ -601,6 +616,107 @@ export default function ProfilePanel({
                                                         );
                                                     })
                                                 )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === "shortcuts" && (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="space-y-3 border-b border-border/60 pb-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                    Keyboard
+                                                </p>
+                                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div className="space-y-1.5">
+                                                        <h3 className="text-lg font-semibold">Keyboard Shortcuts</h3>
+                                                        <p className="max-w-xl text-[0.7rem] text-muted-foreground">
+                                                            This tab is rendered from the same shortcut registry used by the runtime keyboard handler. Global shortcuts use the shared app listener, while composer keys stay local to the input components.
+                                                        </p>
+                                                    </div>
+                                                    <div className="inline-flex rounded-xl border border-border/60 bg-muted/20 p-1">
+                                                        {[
+                                                            { id: "mac" as const, label: "Mac" },
+                                                            { id: "win" as const, label: "Windows/Linux" },
+                                                        ].map((platform) => {
+                                                            const isActive = shortcutPlatform === platform.id;
+                                                            return (
+                                                                <button
+                                                                    key={platform.id}
+                                                                    type="button"
+                                                                    onClick={() => setShortcutPlatform(platform.id)}
+                                                                    className={cn(
+                                                                        "rounded-lg px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.18em] transition-colors",
+                                                                        isActive
+                                                                            ? "bg-primary/15 text-primary"
+                                                                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                                                    )}
+                                                                >
+                                                                    {platform.label}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl border border-border/60 bg-card/60 p-4 shadow-sm">
+                                                <div className="flex flex-col gap-2">
+                                                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                        Escape behavior
+                                                    </p>
+                                                    <p className="text-sm text-foreground">
+                                                        `Esc` dismisses the top active app surface first: image preview, profile panel, agent picker, conversation action menus, sidebar rename or action menus, then inline message editing. It never stops inference or voice dictation.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                {shortcutSections.map(({ category, items }) => (
+                                                    <section key={category} className="space-y-3">
+                                                        <div className="space-y-1">
+                                                            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                                {category}
+                                                            </p>
+                                                            <p className="text-[0.7rem] text-muted-foreground">
+                                                                {category === "Workspace" && "Global workspace navigation and panel actions."}
+                                                                {category === "Chat" && "Conversation-level actions that affect the current chat shell."}
+                                                                {category === "Composer" && "Composer-local keys handled directly inside the message input."}
+                                                                {category === "Dismiss" && "Context-aware closing and cancellation behavior."}
+                                                            </p>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            {items.map((shortcut) => (
+                                                                <div
+                                                                    key={shortcut.id}
+                                                                    className="grid gap-3 rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm md:grid-cols-[minmax(0,1fr),auto]"
+                                                                >
+                                                                    <div className="space-y-1.5">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <p className="text-sm font-semibold text-foreground">{shortcut.title}</p>
+                                                                            <span className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                                {shortcut.scope}
+                                                                            </span>
+                                                                            <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-primary">
+                                                                                {shortcut.implementation}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-[0.78rem] text-muted-foreground">{shortcut.description}</p>
+                                                                        {shortcut.availabilityNote && (
+                                                                            <p className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                                                                {shortcut.availabilityNote}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-start md:items-center">
+                                                                        <div className="inline-flex min-w-[8rem] justify-center rounded-xl border border-border/60 bg-background/80 px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-foreground shadow-sm">
+                                                                            {getShortcutLabel(shortcut, shortcutPlatform)}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </section>
+                                                ))}
                                             </div>
                                         </div>
                                     )}

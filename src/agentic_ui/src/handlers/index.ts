@@ -7,3 +7,4 @@ export * from './auth';
 export * from './agui';
 export * from './messages';
 export * from './preferences';
+export * from './shortcuts';

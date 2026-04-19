@@ -114,6 +114,7 @@ export function ChatInterface() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
   
   // Copy to clipboard state
@@ -121,6 +122,10 @@ export function ChatInterface() {
   
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isAgentPickerOpen, setIsAgentPickerOpen] = useState(false);
+  const [isHeaderActionMenuOpen, setIsHeaderActionMenuOpen] = useState(false);
+  const [isSidebarFloatingUiOpen, setIsSidebarFloatingUiOpen] = useState(false);
+  const [sidebarDismissFloatingUiSignal, setSidebarDismissFloatingUiSignal] = useState(0);
   
   // Sticky user action bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
@@ -247,6 +252,30 @@ export function ChatInterface() {
   const handleEditDraftChange = (value: string) => {
     setEditingDraft(value);
   };
+
+  const openProfilePanel = useCallback(
+    (tab: string = "profile") => {
+      setActiveProfileTab(tab);
+      setShowUserProfile(true);
+      requestPersist();
+    },
+    [requestPersist],
+  );
+
+  const closeProfilePanel = useCallback(() => {
+    setShowUserProfile(false);
+  }, []);
+
+  const focusComposer = useCallback(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  const openAgentPicker = useCallback(() => {
+    setIsAgentPickerOpen(true);
+    requestAnimationFrame(() => {
+      agentTriggerRef.current?.focus();
+    });
+  }, []);
 
   // Request to edit a message
   const handleRequestEditMessage = (message: MessageOut) => {
@@ -376,6 +405,64 @@ export function ChatInterface() {
   
   // Create UI handlers
   const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
+
+  const dismissActiveUi = useCallback(() => {
+    if (selectedImage) {
+      handleCloseImagePreview();
+      return true;
+    }
+
+    if (showUserProfile) {
+      closeProfilePanel();
+      return true;
+    }
+
+    if (isAgentPickerOpen) {
+      setIsAgentPickerOpen(false);
+      return true;
+    }
+
+    if (isHeaderActionMenuOpen) {
+      setIsHeaderActionMenuOpen(false);
+      return true;
+    }
+
+    if (isSidebarFloatingUiOpen) {
+      setSidebarDismissFloatingUiSignal((prev) => prev + 1);
+      return true;
+    }
+
+    if (editingMessageId) {
+      handleCancelEditMessage();
+      return true;
+    }
+
+    if (typeof document !== "undefined") {
+      const expandedTrigger = document.querySelector<HTMLElement>('[aria-expanded="true"]');
+      if (expandedTrigger) {
+        expandedTrigger.blur();
+        return true;
+      }
+
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement && activeElement !== document.body) {
+        activeElement.blur();
+        return true;
+      }
+    }
+
+    return false;
+  }, [
+    closeProfilePanel,
+    editingMessageId,
+    handleCancelEditMessage,
+    handleCloseImagePreview,
+    isAgentPickerOpen,
+    isHeaderActionMenuOpen,
+    isSidebarFloatingUiOpen,
+    selectedImage,
+    showUserProfile,
+  ]);
   
   // AI transition dot (between DB persistence and thinking start)
   const [showAiTransition, setShowAiTransition] = useState(false);
@@ -608,6 +695,7 @@ export function ChatInterface() {
   const AgentIcon = currentAgent?.icon || Building2;
   const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
   const showPlanningCard = isSendingMessage && Boolean(activePlan);
+  const canTogglePrivateMode = (currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode;
   
   // Main Chat Interface
   if (!authResolved) {
@@ -627,6 +715,17 @@ export function ChatInterface() {
         className="min-h-svh"
         open={sidebarOpen}
         onOpenChange={handleSidebarOpenChange}
+        enableKeyboardShortcut={false}
+        chatKeyboardShortcuts={{
+          canTogglePrivateMode,
+          openSearch: handleOpenSearch,
+          focusComposer,
+          openAgentPicker,
+          togglePrivateMode: handleTogglePrivateMode,
+          openProfilePanel,
+          startNewChat: handleNewChat,
+          dismissActiveUi,
+        }}
       >
         <ChatSidebar
           conversations={conversations}
@@ -640,9 +739,11 @@ export function ChatInterface() {
           onTitleClick={handleTitleClick}
           onNewChat={handleNewChat}
           onOpenSearch={handleOpenSearch}
-          onOpenUserProfile={() => setShowUserProfile(true)}
+          onOpenUserProfile={() => openProfilePanel()}
           agents={agents}
           userProfile={userProfile}
+          dismissFloatingUiSignal={sidebarDismissFloatingUiSignal}
+          onFloatingUiStateChange={setIsSidebarFloatingUiOpen}
           isLoadingMore={convIsLoadingMore}
           isInitialLoading={conversationsLoading}
           hasMore={convHasMore}
@@ -657,11 +758,16 @@ export function ChatInterface() {
                 inactiveAgent={inactiveAgentFallback}
                 selectedAgent={selectedAgent}
                 onAgentChange={handleAgentChange}
+                agentTriggerRef={agentTriggerRef}
+                agentPickerOpen={isAgentPickerOpen}
+                onAgentPickerOpenChange={setIsAgentPickerOpen}
                 showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
                 isPrivateMode={isPrivateMode}
                 onTogglePrivate={handleTogglePrivateMode}
                 showBottomBorder={headerHasDivider}
                 showConversationActions={Boolean(currentConversation?.id)}
+                conversationActionsOpen={isHeaderActionMenuOpen}
+                onConversationActionsOpenChange={setIsHeaderActionMenuOpen}
                 onArchiveConversation={handleArchiveCurrentConversation}
                 onReportConversation={handleReportCurrentConversation}
                 onDeleteConversation={handleDeleteCurrentConversation}
@@ -772,7 +878,7 @@ export function ChatInterface() {
               {/* User Profile Modal */}
               <ProfilePanel
               open={showUserProfile}
-                onClose={() => setShowUserProfile(false)}
+                onClose={closeProfilePanel}
                 activeTab={activeProfileTab}
                 setActiveTab={handleSetActiveProfileTab}
                 onLogout={handleLogout}

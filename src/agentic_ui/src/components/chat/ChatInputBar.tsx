@@ -547,12 +547,14 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                     onPaste={handlePaste}
                                     placeholder={`Message ${agentDisplayName}...`}
                                     onKeyDown={(e: any) => {
-                                        if (
+                                        const shouldSubmit =
                                             e.key === "Enter" &&
                                             !e.shiftKey &&
                                             !thinkingActive &&
                                             !isStreaming &&
-                                            (currentMessage.trim() || attachments.length > 0)
+                                            (currentMessage.trim() || attachments.length > 0);
+                                        if (
+                                            shouldSubmit
                                         ) {
                                             e.preventDefault();
                                             handleSendMessage();

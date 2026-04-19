@@ -11,11 +11,16 @@ type ChatHeaderProps = {
     inactiveAgent?: Agent | null;
     selectedAgent: string;
     onAgentChange: (id: string) => void;
+    agentTriggerRef?: React.Ref<HTMLButtonElement>;
+    agentPickerOpen?: boolean;
+    onAgentPickerOpenChange?: (open: boolean) => void;
     showPrivateToggle: boolean;
     isPrivateMode: boolean;
     onTogglePrivate: () => void;
     showBottomBorder?: boolean;
     showConversationActions?: boolean;
+    conversationActionsOpen?: boolean;
+    onConversationActionsOpenChange?: (open: boolean) => void;
     onArchiveConversation?: () => void;
     onReportConversation?: () => void;
     onDeleteConversation?: () => void;
@@ -26,11 +31,16 @@ export default function ChatHeader({
     inactiveAgent = null,
     selectedAgent,
     onAgentChange,
+    agentTriggerRef,
+    agentPickerOpen = false,
+    onAgentPickerOpenChange,
     showPrivateToggle,
     isPrivateMode,
     onTogglePrivate,
     showBottomBorder = false,
     showConversationActions = false,
+    conversationActionsOpen = false,
+    onConversationActionsOpenChange,
     onArchiveConversation,
     onReportConversation,
     onDeleteConversation,
@@ -58,8 +68,14 @@ export default function ChatHeader({
                     className="inline-flex h-10 w-10 rounded-lg bg-transparent text-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:ring-2 focus-visible:ring-ring md:hidden"
                 />
                 <div className="flex items-center gap-2">
-                    <Select value={selectedAgent} onValueChange={onAgentChange}>
+                    <Select
+                        value={selectedAgent}
+                        open={agentPickerOpen}
+                        onOpenChange={onAgentPickerOpenChange}
+                        onValueChange={onAgentChange}
+                    >
                         <SelectTrigger
+                            ref={agentTriggerRef}
                             onMouseDown={(e) => e.preventDefault()}
                             className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] justify-start gap-2 px-3 h-11"
                         >
@@ -149,7 +165,10 @@ export default function ChatHeader({
                         </Tooltip>
                     )}
                     {showConversationActions && (
-                        <DropdownMenu.Root>
+                        <DropdownMenu.Root
+                            open={conversationActionsOpen}
+                            onOpenChange={onConversationActionsOpenChange}
+                        >
                             <DropdownMenu.Trigger asChild>
                                 <button
                                     type="button"
