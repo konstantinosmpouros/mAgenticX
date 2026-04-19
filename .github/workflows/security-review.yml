@@ -1,50 +1,63 @@
-name: Security Review
+name: Claude Security Review
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - ".gitignore"
-      - "LICENSE"
   push:
     branches:
       - main
       - develop
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - ".gitignore"
-      - "LICENSE"
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 concurrency:
-  group: security-review-${{ github.workflow }}-${{ github.ref }}
+  group: claude-security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  security:
-    name: Claude Security Scan
+  security-review:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
-      - name: Run Claude Code Security Review
-        uses: anthropics/claude-code-security-review@main
+      - name: Run Claude security review
+        uses: anthropics/claude-code-action@v1
         with:
-          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          comment-pr: true
-          upload-results: true
-          claudecode-timeout: 20
-          exclude-directories: "node_modules,dist,build,.next,coverage,venv,.venv,__pycache__,.pytest_cache"
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.MAGENTICX_GITHUB_TOKEN }}
+          display_report: "true"
+          prompt: |
+            Perform a focused security review of this repository change.
+
+            Scope:
+            - If this workflow was triggered by a pull request, review the PR diff in context.
+            - If this workflow was triggered by a push, review the commit/push changes in context.
+
+            Focus on:
+            - auth/authz flaws
+            - secrets exposure
+            - injection risks
+            - SSRF
+            - unsafe deserialization
+            - file upload risks
+            - insecure shell execution
+            - sensitive data leakage
+            - obvious dependency/supply-chain risk introduced by the change
+
+            Output requirements:
+            - Give a concise security report
+            - Group findings by severity: Critical / High / Medium / Low
+            - For each finding include:
+              - title
+              - impacted file(s)
+              - why it is a vulnerability
+              - concrete remediation
+            - If no meaningful issues are found, say so explicitly.
