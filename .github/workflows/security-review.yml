@@ -1,63 +1,52 @@
-name: Claude Security Review
+name: Security Review
+
+permissions:
+  pull-requests: write   # Needs to post comments on PRs
+  contents: read
 
 on:
+  # Run on pull request events to catch issues early in the review process
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+  # Run on pushes to main, develop, and release branches to catch any issues before they hit production
   push:
     branches:
       - main
       - develop
+      - 'release/**'
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-
-concurrency:
-  group: claude-security-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Bonus: manual trigger from the Actions tab
+  workflow_dispatch:
 
 jobs:
-  security-review:
+  security:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
-      - name: Run Claude security review
-        uses: anthropics/claude-code-action@v1
+      - name: Run Claude Security Review
+        uses: anthropics/claude-code-security-review@main
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.MAGENTICX_GITHUB_TOKEN }}
-          display_report: "true"
-          prompt: |
-            Perform a focused security review of this repository change.
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment-pr: true
+          upload-results: true
 
-            Scope:
-            - If this workflow was triggered by a pull request, review the PR diff in context.
-            - If this workflow was triggered by a push, review the commit/push changes in context.
+          # What model to use (default is claude-opus-4-5-20251101)
+          claude-model: claude-opus-4-5-20251101
 
-            Focus on:
-            - auth/authz flaws
-            - secrets exposure
-            - injection risks
-            - SSRF
-            - unsafe deserialization
-            - file upload risks
-            - insecure shell execution
-            - sensitive data leakage
-            - obvious dependency/supply-chain risk introduced by the change
+          # Timeout in minutes
+          claudecode-timeout: 20
 
-            Output requirements:
-            - Give a concise security report
-            - Group findings by severity: Critical / High / Medium / Low
-            - For each finding include:
-              - title
-              - impacted file(s)
-              - why it is a vulnerability
-              - concrete remediation
-            - If no meaningful issues are found, say so explicitly.
+          # Directories to exclude from the scan (comma-separated)
+          exclude-directories: 'node_modules,dist,build,.next,vendor,notebooks,docs,data,public,tls'
+
+          # Custom instructions for the security scan (optional)
+          custom-security-scan-instructions: .github/claude/security-instructions.md
+
+          # False-positive filtering tuning (optional)
+          # false-positive-filtering-instructions: .github/fp-filter.md
