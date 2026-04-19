@@ -3,7 +3,7 @@ name: Code Quality Review
 permissions:
   pull-requests: write
   contents: read
-  issues: read
+  issues: write
   id-token: write
 
 on:
@@ -154,6 +154,28 @@ jobs:
               - If there is no PR number (e.g. we are in the workflow_dispatch), just create the `code-review.md` artifact without attempting to comment.
               - Also upload the review content as an artifact named `code-review.md` for record-keeping and workflow integration.
 
+      - name: Ensure review artifact exists
+        if: always()
+        run: |
+          if [ ! -f code-review.md ]; then
+            {
+              echo "## Code Quality Review"
+              echo
+              echo "No \`code-review.md\` file was produced by the Claude review step."
+              echo
+              echo "Context:"
+              echo "- Event: \`${{ github.event_name }}\`"
+              echo "- Repository: \`${{ github.repository }}\`"
+              echo "- SHA: \`${{ github.sha }}\`"
+              echo "- PR number: \`${{ github.event.pull_request.number || 'n/a' }}\`"
+              echo
+              echo "Possible reasons:"
+              echo "- The run was started with \`workflow_dispatch\` and has no PR context."
+              echo "- The review action completed without writing a workspace file."
+              echo "- The action hit an internal error before artifact generation."
+            } > code-review.md
+          fi
+
       # Post the review comment using gh CLI to ensure it gets associated with the PR, and also write the same content to code-review.md for artifact upload.
       # If file writing fails, still post the comment.
       - name: Upload review as artifact
@@ -163,4 +185,4 @@ jobs:
           name: code-review-results
           path: code-review.md
           retention-days: 90
-          if-no-files-found: ignore
+          if-no-files-found: error
