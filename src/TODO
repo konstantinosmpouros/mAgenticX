@@ -9,7 +9,6 @@
 ## Security
 
 - Remove or heavily constrain the free-form SQL endpoint in `rag_service`; replace raw SQL execution with allowlisted read-only queries or a safe query layer.
-- Add internal service-to-service authentication between `dialogue_bridge`, `agents`, and `rag_service`.
 - Add refresh replay / refresh reuse detection to the session refresh flow.
 - Add edge rate limiting at the host Nginx / Cloudflare layer for authentication-sensitive endpoints.
 - Secure the inference process by implementing stronger rate limiting and abuse controls.
@@ -18,7 +17,7 @@
 - Add explicit size limits for persisted payload fields such as large message content & blobs.
 - Harden containers: run as non-root where possible, drop capabilities, enable `no-new-privileges`, use read-only filesystems where possible, and add CPU / memory limits.
 - Add browser security headers at the host/app proxy layer: CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, and `X-Content-Type-Options`.
-- Improve secret handling beyond broad env-var usage where practical, e.g. Docker secrets, mounted secret files, or Vault-issued short-lived credentials.
+- Improve secret handling: extend the `_FILE` Docker secrets pattern (already applied to `TRUSTED_PROXY_SECRET`) to the remaining secrets — `SESSION_TOKEN_SECRET`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` — so all secrets can be mounted as Docker secret files instead of plain env vars.
 
 ## New Features
 

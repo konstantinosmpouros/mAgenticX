@@ -17,13 +17,14 @@ services:
   rag_service: # 8001
     container_name: rag_service
     image: rag_service
-    build: 
+    build:
       context: ./rag_service
       dockerfile: Dockerfile
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
       - RAG_PORT=8000
+      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on:
       - vectordb
     restart: unless-stopped
@@ -42,6 +43,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_BASE_URL=http://rag_service:8001
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
+      - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
     depends_on:
       - rag_service
     restart: unless-stopped

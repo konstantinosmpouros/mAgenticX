@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from core.configs import configs
 from core.tls import get_httpx_verify
 from observability import get_context
+from utils.proxy import internal_service_headers
 from langgraph_agents.hr_policies_agent_v1.agents import HRAgents
 from langgraph_agents.hr_policies_agent_v1.prompt_templates import (
     non_hr_gen_template,
@@ -165,7 +166,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         
         async def fetch_single(query: str):
             request_id = get_context().get("request_id")
-            headers = {"X-Request-ID": request_id} if request_id else {}
+            headers = internal_service_headers(request_id)
             async with httpx.AsyncClient(verify=get_httpx_verify()) as client:
                 resp = await client.post(
                     ENDPOINT,

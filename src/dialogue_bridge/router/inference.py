@@ -12,6 +12,7 @@ from core.database import ConversationTable, UserTable
 from core.tls import get_httpx_verify
 from schemas import DictationResponse, InferenceStreamPayload
 from core.auth_session import require_csrf_protection
+from utils.proxy import internal_service_headers
 from utils import (
     AGENTS_SERVICE_URL,
     build_agent_stream_url,
@@ -96,9 +97,8 @@ async def startInferenceStream(
                             "tools": tools_config,
                         },
                     }
-                    upstream_headers = {"Accept": "text/event-stream"}
-                    if request_id:
-                        upstream_headers["X-Request-ID"] = request_id
+                    upstream_headers = internal_service_headers(request_id)
+                    upstream_headers["Accept"] = "text/event-stream"
                     upstream_started_at = time.perf_counter()
                     async with client.stream(
                         "POST",
@@ -211,7 +211,7 @@ async def transcribe_dictation(
     }
 
     request_id = get_context().get("request_id")
-    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
+    upstream_headers = internal_service_headers(request_id)
     timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
     try:
             async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:

@@ -11,7 +11,7 @@ import asyncio
 import io
 from typing import List
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, status
 from contextlib import asynccontextmanager
 from fastapi.responses import StreamingResponse
 
@@ -45,6 +45,7 @@ from utils import (
     mcp_session_context,
 )
 from utils.agents import AGENT_REGISTRY
+from utils.proxy import require_internal_caller
 
 
 configure_logging()
@@ -102,7 +103,7 @@ app.add_middleware(RequestLoggingMiddleware)
 # ------------------------------------------------------------------
 # Dictation Endpoint
 # ------------------------------------------------------------------
-@app.post("/dictate/transcribe", response_model=TranscriptionResponse, status_code=status.HTTP_200_OK)
+@app.post("/dictate/transcribe", response_model=TranscriptionResponse, status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
 async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionResponse:
     """
     Transcribe an uploaded audio file using OpenAI's Speech-to-Text capability.
@@ -181,7 +182,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
 # ------------------------------------------------------------------
 # Available Agent Endpoint
 # ------------------------------------------------------------------
-@app.get("/agents", response_model=List[AgentManifest], status_code=status.HTTP_200_OK)
+@app.get("/agents", response_model=List[AgentManifest], status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
 async def get_available_agents() -> List[AgentManifest]:
     """Return the discovered LangGraph agent manifests for downstream services."""
     manifests = [definition.manifest for definition in AGENT_REGISTRY.values()]
@@ -194,7 +195,7 @@ async def get_available_agents() -> List[AgentManifest]:
 # ------------------------------------------------------------------
 # Available Tool Endpoint
 # ------------------------------------------------------------------
-@app.get("/tools", response_model=List[ToolManifest], status_code=status.HTTP_200_OK)
+@app.get("/tools", response_model=List[ToolManifest], status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
 async def get_available_tools() -> List[ToolManifest]:
     """Return the live tool catalog exposed by the MCP server."""
     cached_manifests = get_cached_tool_manifests()
@@ -221,7 +222,7 @@ async def get_available_tools() -> List[ToolManifest]:
 # ------------------------------------------------------------------
 # Title Generation Endpoint
 # ------------------------------------------------------------------
-@app.post("/titles/generate", response_model=ConversationTitle, status_code=status.HTTP_200_OK)
+@app.post("/titles/generate", response_model=ConversationTitle, status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
 async def generate_conversation_title(req: TitleRequest) -> ConversationTitle:
     """Generate a short, descriptive title for a new conversation."""
     logger.info("title_request_received", "Conversation title request received", prompt_messages=len(req.user_input))
@@ -232,7 +233,7 @@ async def generate_conversation_title(req: TitleRequest) -> ConversationTitle:
 # ------------------------------------------------------------------
 # Agent Interaction Endpoint
 # ------------------------------------------------------------------
-@app.post("/agents/{agent_slug}/stream", status_code=status.HTTP_200_OK)
+@app.post("/agents/{agent_slug}/stream", status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
 async def stream_agent(agent_slug: str, req: Request):
     """Stream responses from the requested agent template."""
     context_data = req.config.get("context", {}) if isinstance(req.config, dict) else {}

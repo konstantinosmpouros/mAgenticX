@@ -11,6 +11,7 @@ from sqlalchemy.sql import func
 from core.configs import settings
 from core.tls import get_httpx_verify
 from core.database import AgentTable
+from utils.proxy import internal_service_headers
 
 
 logger = get_logger(__name__)
@@ -63,7 +64,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     manifests: Sequence[Dict[str, Any]] | None = None
     timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
     request_id = get_context().get("request_id")
-    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
+    upstream_headers = internal_service_headers(request_id)
     try:
         # Pull the latest agent manifests from the agents service.
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
@@ -146,7 +147,7 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
     """Proxy the agents service `/tools` endpoint without caching."""
     timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
     request_id = get_context().get("request_id")
-    upstream_headers = {"X-Request-ID": request_id} if request_id else {}
+    upstream_headers = internal_service_headers(request_id)
     try:
         # Forward the request to the MCP-backed agents service.
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:

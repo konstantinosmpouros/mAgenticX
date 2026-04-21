@@ -1,7 +1,7 @@
 import ipaddress
 import secrets
 
-from fastapi import Request
+from fastapi import HTTPException, Request, status
 from core.configs import configs
 
 ProxyNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
@@ -53,6 +53,20 @@ def is_trusted_proxy_request(request: Request) -> bool:
         presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
         return bool(presented) and secrets.compare_digest(presented, TRUSTED_PROXY_SECRET)
     return _remote_ip_is_trusted(request)
+
+
+def require_internal_caller(request: Request) -> None:
+    if not is_trusted_proxy_request(request):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+
+def internal_service_headers(request_id: str | None = None) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if request_id:
+        headers["X-Request-ID"] = request_id
+    if TRUSTED_PROXY_SECRET:
+        headers[TRUSTED_PROXY_HEADER_NAME] = TRUSTED_PROXY_SECRET
+    return headers
 
 
 def resolve_client_ip(request: Request) -> str | None:

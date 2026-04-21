@@ -55,6 +55,15 @@ def is_trusted_proxy_request(request: Request) -> bool:
     return _remote_ip_is_trusted(request)
 
 
+def internal_service_headers(request_id: str | None = None) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if request_id:
+        headers["X-Request-ID"] = request_id
+    if TRUSTED_PROXY_SECRET:
+        headers[TRUSTED_PROXY_HEADER_NAME] = TRUSTED_PROXY_SECRET
+    return headers
+
+
 def resolve_client_ip(request: Request) -> str | None:
     remote_ip = _remote_ip(request)
     if not is_trusted_proxy_request(request):

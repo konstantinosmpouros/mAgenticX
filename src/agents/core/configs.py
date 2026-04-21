@@ -24,6 +24,17 @@ def _env_optional_str(name: str) -> str | None:
     return cleaned or None
 
 
+def _read_secret(name: str, default: str = "") -> str:
+    from pathlib import Path
+    file_path = os.getenv(f"{name}_FILE")
+    if file_path:
+        try:
+            return Path(file_path).read_text().strip()
+        except OSError:
+            pass
+    return (os.getenv(name) or default).strip()
+
+
 def _env_int(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
@@ -257,7 +268,7 @@ def load_configs() -> AgentsConfigs:
         ),
         proxy=ProxyConfig(
             trusted_proxy_header_name=_env_str("TRUSTED_PROXY_HEADER_NAME", "X-Internal-Proxy-Secret"),
-            trusted_proxy_secret=_env_str("TRUSTED_PROXY_SECRET", ""),
+            trusted_proxy_secret=_read_secret("TRUSTED_PROXY_SECRET"),
             trusted_proxy_networks=_parse_proxy_networks(os.getenv("TRUSTED_PROXY_CIDRS", "")),
         ),
         logging=LoggingConfig(

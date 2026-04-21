@@ -34,6 +34,17 @@ def _optional_str(value: str | None) -> str | None:
     return resolved or None
 
 
+def _read_secret(name: str, default: str = "") -> str:
+    from pathlib import Path
+    file_path = os.getenv(f"{name}_FILE")
+    if file_path:
+        try:
+            return Path(file_path).read_text().strip()
+        except OSError:
+            pass
+    return (os.getenv(name) or default).strip()
+
+
 def _required_str(name: str) -> str:
     value = _optional_str(os.getenv(name))
     if value is None:
@@ -273,7 +284,7 @@ def load_settings() -> Settings:
         ),
         proxy=ProxySettings(
             header_name=os.getenv("TRUSTED_PROXY_HEADER_NAME", "X-Internal-Proxy-Secret"),
-            secret=os.getenv("TRUSTED_PROXY_SECRET", "").strip(),
+            secret=_read_secret("TRUSTED_PROXY_SECRET"),
             cidrs=proxy_cidrs,
             trusted_networks=_load_trusted_proxy_networks(proxy_cidrs),
         ),

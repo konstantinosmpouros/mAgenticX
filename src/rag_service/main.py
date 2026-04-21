@@ -6,7 +6,7 @@ import sys
 PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 
 import chromadb
 from langchain_chroma import Chroma
@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 from config import RAG_HOST, RAG_PORT, settings, embeddings_model
 from config import TABLES, db
+from proxy import require_internal_caller
 from schemas import Query, ExcelSQLQuery
 
 
@@ -43,7 +44,7 @@ app.add_middleware(RequestLoggingMiddleware)
 # --------------------------------------------------------------------------------------
 # RAG APIs
 # --------------------------------------------------------------------------------------
-@app.post("/retrieve/{collection_name}")
+@app.post("/retrieve/{collection_name}", dependencies=[Depends(require_internal_caller)])
 async def retrieve(request: Query, collection_name: str):
     """Retrieve documents from the specified collection using the provided query and k value."""
     logger.info("retrieval_started", "Vector retrieval started", collection_name=collection_name, k=request.k, query_length=len(request.query.strip()))
@@ -76,7 +77,7 @@ async def retrieve(request: Query, collection_name: str):
 # --------------------------------------------------------------------------------------
 # Excel db APIs
 # --------------------------------------------------------------------------------------
-@app.get("/excel/{table}/schema")
+@app.get("/excel/{table}/schema", dependencies=[Depends(require_internal_caller)])
 async def get_schema(table: str):
     """Return column names and DuckDB types so the agent can reason about them."""
     if table not in TABLES:
@@ -91,7 +92,7 @@ async def get_schema(table: str):
     ]
 
 
-@app.post("/excel/{table}/query/sql")
+@app.post("/excel/{table}/query/sql", dependencies=[Depends(require_internal_caller)])
 async def query_sql(body: ExcelSQLQuery, table: str):
     """Run arbitrary SQL and return result rows as JSON. The SQL *must* reference the table name provided in the path parameter."""
     logger.info("sql_query_started", "DuckDB SQL query started", table=table, sql_length=len(body.sql))
