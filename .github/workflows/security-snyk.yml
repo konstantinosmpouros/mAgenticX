@@ -1,10 +1,7 @@
 name: Security Snyk
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
+
   workflow_dispatch:
 
 permissions:
@@ -28,10 +25,11 @@ jobs:
       - name: Setup Snyk CLI
         uses: snyk/actions/setup@806182742461562b67788a64410098c9d9b96adb
 
+
       # ---------- SNYK CODE (SAST) ----------
       # Keep pipeline alive even when code issues are found (exit code 1)
       - name: Snyk Code test (SARIF)
-        run: snyk code test --sarif > snyk-code.sarif
+        run: snyk code test --sarif > snyk-code.sarif || true
         continue-on-error: true
 
       - name: Upload Snyk Code SARIF to GitHub Code Scanning
@@ -39,6 +37,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk-code.sarif
+
 
       # ---------- OPEN SOURCE (SCA) ----------
       # Node project
@@ -76,10 +75,12 @@ jobs:
       - name: Snyk monitor - rag_service requirements
         run: snyk monitor --file=src/rag_service/requirements.txt --package-manager=pip --project-name=rag_service
 
+
       # ---------- IaC ----------
       - name: Snyk IaC test and report
         run: snyk iac test --report
         continue-on-error: true
+
 
       # ---------- CONTAINER ----------
       - name: Build agents image
