@@ -1,25 +1,27 @@
-﻿import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useEffect, useMemo, useState, type ReactNode, type UIEvent } from "react";
+import { useTheme } from "next-themes";
 import {
-    User,
-    Settings,
-    Palette,
-    HelpCircle,
+    AppWindow,
     Archive,
+    ChevronDown,
+    ExternalLink,
+    HelpCircle,
     Keyboard,
     LogOut,
-    Sparkles,
     MoonStar,
-    ChevronDown,
+    Palette,
+    ShieldCheck,
+    Sparkles,
+    User,
     X,
-    ExternalLink,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "next-themes";
+
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     SHORTCUTS,
     detectShortcutPlatform,
@@ -54,6 +56,11 @@ type HelpCard = {
     href?: string;
     external?: boolean;
 };
+type InfoRow = {
+    label: string;
+    value: string;
+    hint?: string;
+};
 
 const MCP_ICON_SRCS = {
     grey: "/mcp-server-stroke-rounded (3).png",
@@ -64,6 +71,14 @@ const MCP_ICON_SRCS = {
 } as const;
 
 type McpIconVariant = keyof typeof MCP_ICON_SRCS;
+
+const MCP_VARIANTS = {
+    idleLight: "grey" as const,
+    idleDark: "darkGrey" as const,
+    hoverLight: "black" as const,
+    hoverDark: "white" as const,
+    active: "magenta" as const,
+};
 
 const McpIcon = ({
     size = 22,
@@ -82,6 +97,125 @@ const McpIcon = ({
         className={cn("object-contain", className)}
         draggable={false}
     />
+);
+
+const NA = "N/A";
+
+const safeText = (value?: string | null) =>
+    value && String(value).trim().length > 0 ? String(value).trim() : NA;
+
+const fmtDateTime = (value?: Date | string | null) => {
+    if (!value) return NA;
+    const date = typeof value === "string" ? new Date(value) : value;
+    return Number.isNaN(date.getTime()) ? NA : date.toLocaleString();
+};
+
+const fmtDate = (value?: Date | string | null) => {
+    if (!value) return NA;
+    const date = typeof value === "string" ? new Date(value) : value;
+    return Number.isNaN(date.getTime()) ? NA : date.toLocaleDateString();
+};
+
+const fmtBoolean = (value?: boolean) => {
+    if (typeof value !== "boolean") return NA;
+    return value ? "Enabled" : "Disabled";
+};
+
+const InfoCard = ({
+    eyebrow,
+    title,
+    description,
+    children,
+    className,
+}: {
+    eyebrow?: string;
+    title: string;
+    description?: string;
+    children: ReactNode;
+    className?: string;
+}) => (
+    <section className={cn("space-y-4", className)}>
+        <div className="space-y-1.5">
+            {eyebrow ? (
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                    {eyebrow}
+                </p>
+            ) : null}
+            <h3 className="text-base font-semibold text-foreground">{title}</h3>
+            {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+        </div>
+        <div className="mt-5">{children}</div>
+    </section>
+);
+
+const SoftPanel = ({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) => (
+    <div className={cn("rounded-[1.4rem] bg-muted/30", className)}>
+        {children}
+    </div>
+);
+
+const InfoRowsCard = ({
+    eyebrow,
+    title,
+    description,
+    rows,
+}: {
+    eyebrow?: string;
+    title: string;
+    description?: string;
+    rows: InfoRow[];
+}) => (
+    <InfoCard eyebrow={eyebrow} title={title} description={description}>
+        <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+            {rows.map((row) => (
+                <div
+                    key={row.label}
+                    className="grid gap-2 px-5 py-4 md:grid-cols-[minmax(0,10rem),1fr]"
+                >
+                    <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        {row.label}
+                    </div>
+                    <div className="min-w-0">
+                        <p
+                            className={cn(
+                                "break-words text-sm font-medium text-foreground",
+                                row.value === NA && "text-muted-foreground"
+                            )}
+                        >
+                            {row.value}
+                        </p>
+                        {row.hint ? (
+                            <p className="mt-1 text-xs text-muted-foreground">{row.hint}</p>
+                        ) : null}
+                    </div>
+                </div>
+            ))}
+        </SoftPanel>
+    </InfoCard>
+);
+
+const MetricCard = ({
+    label,
+    value,
+    hint,
+}: {
+    label: string;
+    value: string;
+    hint: string;
+}) => (
+    <SoftPanel className="px-4 py-3">
+        <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            {label}
+        </p>
+        <p className="mt-2 text-xl font-semibold tracking-tight text-foreground">{value}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+    </SoftPanel>
 );
 
 export default function ProfilePanel({
@@ -111,6 +245,8 @@ export default function ProfilePanel({
     const [shortcutPlatform, setShortcutPlatform] = useState<ShortcutPlatform>(() => detectShortcutPlatform());
     const { theme, setTheme } = useTheme();
 
+    const currentTheme = theme === "dark" ? "dark" : "light";
+
     const toolKey = (tool: ToolWithStatus) => {
         const prefix = tool.serverId && tool.serverId.length > 0 ? tool.serverId : "default";
         return `${prefix}::${tool.toolName}`;
@@ -119,12 +255,35 @@ export default function ProfilePanel({
     const preferencesDisabledKeys = useMemo(() => {
         const entries = userPreferences?.tools?.disabled ?? [];
         const keys = entries.map((item) => {
-            const name = (item as any).toolName ?? (item as any).tool_name ?? "";
+            const name = (item as { toolName?: string; tool_name?: string }).toolName
+                ?? (item as { toolName?: string; tool_name?: string }).tool_name
+                ?? "";
             const serverPrefix = item.serverId && item.serverId.length > 0 ? item.serverId : "default";
             return `${serverPrefix}::${name}`;
         });
         return new Set(keys);
     }, [userPreferences]);
+
+    const serverGroups = useMemo(
+        () =>
+            Object.entries(
+                availableTools.reduce<Record<string, ToolWithStatus[]>>((acc, tool) => {
+                    const serverKey = tool.serverId || "default";
+                    if (!acc[serverKey]) acc[serverKey] = [];
+                    acc[serverKey].push(tool);
+                    return acc;
+                }, {})
+            ),
+        [availableTools]
+    );
+
+    const enabledToolsCount = useMemo(
+        () =>
+            availableTools.filter((tool) =>
+                typeof tool.enabled === "boolean" ? tool.enabled : !preferencesDisabledKeys.has(toolKey(tool))
+            ).length,
+        [availableTools, preferencesDisabledKeys]
+    );
 
     useEffect(() => {
         setServerCollapsed((prev) => {
@@ -132,115 +291,157 @@ export default function ProfilePanel({
             availableTools.forEach((tool) => {
                 const serverKey = tool.serverId || "default";
                 if (!(serverKey in next)) {
-                    next[serverKey] = serverKey in prev ? prev[serverKey] : true;
+                    next[serverKey] = serverKey in prev ? prev[serverKey] : false;
                 }
             });
             return next;
         });
     }, [availableTools]);
 
-    const handleToggleServer = (tool: ToolMetadata) => {
-        onToggleToolPreference?.(tool);
-    };
-
     useEffect(() => {
         const handleResize = () => {
             if (typeof window === "undefined") return;
             setNavCollapsed(window.innerWidth < 960);
         };
+
         handleResize();
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
 
-
-
-    const NA = "N/A";
-
-    const safeText = (v?: string | null) =>
-        v && String(v).trim().length > 0 ? String(v).trim() : NA;
-
-    const fmtDateTime = (v?: Date | string | null) => {
-        if (!v) return NA;
-        const d = typeof v === "string" ? new Date(v) : v;
-        return isNaN(d.getTime()) ? NA : d.toLocaleString();
-    };
-
-    const fmtBoolean = (b?: boolean) => (typeof b === "boolean" ? (b ? "Yes" : "No") : NA);
-
+    const prefersAgentic =
+        typeof userPreferences?.prefersAgenticChat === "boolean" ? userPreferences.prefersAgenticChat : undefined;
     const displayName =
         safeText(user?.displayName) !== NA
             ? safeText(user?.displayName)
             : safeText(user?.fullName) !== NA
-            ? safeText(user?.fullName)
-            : safeText(user?.username);
-
+              ? safeText(user?.fullName)
+              : safeText(user?.username);
     const displayEmail = safeText(user?.email);
     const displayDepartment = safeText(user?.department);
     const displayRole = safeText(user?.roleTitle);
-
-    const displayLastLogin = fmtDateTime(user?.lastLoginAt);
-    const displayCreatedAt = fmtDateTime(user?.createdAt);
-    const displayUpdatedAt = fmtDateTime(user?.updatedAt);
-
-    const prefersAgentic = typeof userPreferences?.prefersAgenticChat === "boolean" ? userPreferences.prefersAgenticChat : undefined;
     const displayIsActive = fmtBoolean(user?.isActive);
     const displayPrefersAgentic = fmtBoolean(prefersAgentic);
+    const avatarInitial = (displayName !== NA ? displayName : "Profile").charAt(0).toUpperCase();
+
+    const latestArchivedConversation = useMemo(() => {
+        if (archivedConversations.length === 0) return null;
+
+        return archivedConversations.reduce<ConversationSummary | null>((latest, conversation) => {
+            const latestStamp = latest
+                ? new Date(latest.archivedAt ?? latest.updated_at).getTime()
+                : Number.NEGATIVE_INFINITY;
+            const currentStamp = new Date(conversation.archivedAt ?? conversation.updated_at).getTime();
+            return currentStamp > latestStamp ? conversation : latest;
+        }, null);
+    }, [archivedConversations]);
 
     const navItems = [
-        { id: "profile", label: "User Profile", icon: User },
-        { id: "mcp", label: "MCP Servers", icon: McpIcon },
-        { id: "archived", label: "Archived Chats", icon: Archive },
-        { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
-        { id: "appearance", label: "Appearance", icon: Palette },
-        { id: "settings", label: "Settings", icon: Settings },
-        { id: "help", label: "Help", icon: HelpCircle },
-    ];
+        { id: "profile", label: "Account", hint: "Identity and workspace" },
+        { id: "appearance", label: "Personalization", hint: "Theme and defaults" },
+        { id: "archived", label: "Data Controls", hint: "History and archive" },
+        { id: "mcp", label: "MCP Servers", hint: "MCP tools and servers" },
+        { id: "shortcuts", label: "Shortcuts", hint: "Keyboard commands" },
+        { id: "help", label: "Help", hint: "Docs and support" },
+    ] as const;
 
-    const profileFields = [
+    const normalizedActiveTab = navItems.some((item) => item.id === activeTab) ? activeTab : "profile";
+
+    const sectionMeta: Record<string, { eyebrow?: string; title: string; description: string }> = {
+        profile: {
+            title: "Account",
+            description: "Review your identity, workspace role, and recent account activity.",
+        },
+        appearance: {
+            title: "Personalization",
+            description: "Adjust how the workspace feels and which default experience is visible to you.",
+        },
+        archived: {
+            title: "Data Controls",
+            description: "Manage archived conversations and understand how history behaves in the workspace.",
+        },
+        mcp: {
+            title: "MCP Servers",
+            description: "Choose which MCP-powered tools stay available inside conversations.",
+        },
+        shortcuts: {
+            title: "Keyboard Shortcuts",
+            description: "Browse the same shortcut registry the UI runtime uses.",
+        },
+        help: {
+            title: "Help & Resources",
+            description: "Open product documentation and support entry points.",
+        },
+    };
+
+    const activeSection = sectionMeta[normalizedActiveTab];
+    const showActiveSectionEyebrow =
+        Boolean(activeSection.eyebrow)
+        && activeSection.eyebrow.trim().toLowerCase() !== activeSection.title.trim().toLowerCase();
+
+    const identityRows: InfoRow[] = [
         { label: "Full Name", value: safeText(user?.fullName) },
         { label: "Display Name", value: safeText(user?.displayName) },
         { label: "Username", value: safeText(user?.username) },
         { label: "Email", value: displayEmail },
+    ];
+
+    const workspaceRows: InfoRow[] = [
         { label: "Department", value: displayDepartment },
-        { label: "Role Title", value: displayRole },
-        { label: "Last Login", value: displayLastLogin },
-        { label: "Created At", value: displayCreatedAt },
-        { label: "Updated At", value: displayUpdatedAt },
-        { label: "Active Account", value: displayIsActive },
-        { label: "Prefers Agentic Chat", value: displayPrefersAgentic },
+        { label: "Role", value: displayRole },
+        { label: "Account Status", value: displayIsActive },
+        {
+            label: "Agentic Chat",
+            value: displayPrefersAgentic,
+            hint: "Derived from the stored user preferences profile.",
+        },
+    ];
+
+    const activityRows: InfoRow[] = [
+        { label: "Last Login", value: fmtDateTime(user?.lastLoginAt) },
+        { label: "Created", value: fmtDateTime(user?.createdAt) },
+        { label: "Updated", value: fmtDateTime(user?.updatedAt) },
         { label: "User ID", value: safeText(user?.id) },
-    ];
-
-    const themeOptions = [
-        { name: "Elegant", value: "light", icon: Sparkles },
-        { name: "Dark Magenta", value: "dark", icon: MoonStar },
-    ];
-
-    const settingsCards = [
-        { title: "Notifications", desc: "Manage your notification preferences" },
-        { title: "Privacy", desc: "Control your privacy settings" },
     ];
 
     const helpCards: HelpCard[] = [
         {
             title: "Architecture Docs",
-            desc: "Open the system architecture reference (services, flows, ports).",
+            desc: "Open the internal architecture page for services, flows, and deployment topology.",
             href: "/architecture",
             external: true,
         },
         {
-            title: "Contact Support",
-            desc: "Get help from our support team.",
+            title: "Support",
+            desc: "Reach the team for operational or product help when something blocks your workflow.",
         },
     ];
+
+    const themeOptions = [
+        {
+            name: "Light",
+            value: "light",
+            icon: Sparkles,
+            previewClassName:
+                "bg-[linear-gradient(135deg,hsl(0_0%_100%)_0%,hsl(240_4.8%_95.9%)_52%,hsl(216_50%_92%)_100%)]",
+            cardClassName: "border-white/70 bg-white/80",
+        },
+        {
+            name: "Dark",
+            value: "dark",
+            icon: MoonStar,
+            previewClassName:
+                "bg-[linear-gradient(135deg,hsl(240_6%_6%)_0%,hsl(240_8%_10%)_55%,hsl(216_100%_8%)_100%)]",
+            cardClassName: "border-white/10 bg-black/20",
+        },
+    ] as const;
 
     const shortcutSections = (["Workspace", "Chat", "Composer", "Dismiss"] as ShortcutCategory[]).map((category) => ({
         category,
         items: SHORTCUTS.filter((shortcut) => shortcut.category === category),
     }));
 
-    const handleArchivedScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const handleArchivedScroll = (event: UIEvent<HTMLDivElement>) => {
         if (!archivedConversationsHasMore || archivedConversationsLoading) {
             return;
         }
@@ -251,8 +452,6 @@ export default function ProfilePanel({
         }
     };
 
-    if (!open) return null;
-
     const handleHelpCardClick = (card: HelpCard) => {
         if (!card.href) return;
         const target = card.external ? "_blank" : "_self";
@@ -260,24 +459,28 @@ export default function ProfilePanel({
         window.open(card.href, target, features ?? undefined);
     };
 
+    if (!open) return null;
+
     return (
-        <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-8">
+        <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-6">
             <div
-                className="absolute inset-0 z-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                className="absolute inset-0 bg-black/65 backdrop-blur-sm transition-opacity"
                 onClick={onClose}
             />
-            <div className="relative z-10 w-full max-w-3xl">
-                <Card className="relative flex h-[min(38rem,82vh)] w-full overflow-hidden rounded-[20px] border border-border/60 bg-card text-foreground shadow-2xl animate-scale-in">
+
+            <div className="relative z-10 w-full max-w-5xl">
+                <Card className="relative flex h-[min(44rem,88vh)] w-full overflow-hidden rounded-[30px] border border-border/60 bg-card/95 text-foreground shadow-[0_32px_90px_-36px_rgba(15,23,42,0.65)] backdrop-blur-xl">
                     <Button
                         size="icon"
                         variant="ghost"
                         aria-label="Close profile panel"
                         onClick={onClose}
-                        className="absolute right-4 top-4 z-20 h-9 w-9 rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0 focus-visible:outline-none"
+                        className="absolute right-4 top-4 z-20 h-9 w-9 rounded-full text-muted-foreground transition hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0 focus-visible:outline-none"
                     >
                         <X size={18} />
                     </Button>
-                    <div className="relative z-10 flex h-full w-full">
+
+                    <div className="flex h-full w-full">
                         <aside
                             className={cn(
                                 "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-2.5 py-4 transition-[width,padding] duration-300 ease-in-out",
@@ -286,15 +489,13 @@ export default function ProfilePanel({
                         >
                             <ScrollArea className="h-full">
                                 <div className="flex h-full flex-col pt-6">
-                                <div
-                                    className={cn(
-                                        "relative mb-6 h-24 pb-1.5 transition-opacity duration-200",
-                                        navCollapsed ? "opacity-0 pointer-events-none" : "opacity-100"
-                                    )}
-                                >
-                                        <div
-                                        className="flex flex-col items-center gap-3 text-center"
+                                    <div
+                                        className={cn(
+                                            "relative mb-6 h-24 pb-1.5 transition-opacity duration-200",
+                                            navCollapsed ? "pointer-events-none opacity-0" : "opacity-100"
+                                        )}
                                     >
+                                        <div className="flex flex-col items-center gap-3 text-center">
                                             <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-white/10 via-transparent to-transparent shadow-[0_10px_30px_-18px_rgba(0,0,0,0.8)]">
                                                 <img
                                                     src={theme === "light" ? "/logo2.png" : "/logo2_white_magentaX.png"}
@@ -311,40 +512,54 @@ export default function ProfilePanel({
                                         </div>
                                     </div>
 
-                                <nav className="flex flex-1 flex-col items-start justify-start gap-0 pt-0">
-                                        {navItems.map((tab) => {
-                                            const Icon = tab.icon;
-                                            const isActive = activeTab === tab.id;
+                                    <nav className="flex flex-1 flex-col items-start justify-start gap-0 pt-0">
+                                        {navItems.map((item) => {
+                                            const isActive = normalizedActiveTab === item.id;
+                                            const isHovered = hoveredNavId === item.id;
                                             const iconSize = 18;
-                                            const isLightTheme = theme === "light";
-                                            const isHovered = hoveredNavId === tab.id;
-
+                                            const isLightTheme = currentTheme === "light";
                                             const mcpVariant: McpIconVariant =
-                                                tab.id === "mcp"
+                                                item.id === "mcp"
                                                     ? isActive
-                                                        ? "magenta"
+                                                        ? MCP_VARIANTS.active
                                                         : isHovered
-                                                            ? isLightTheme
-                                                                ? "black"
-                                                                : "white"
-                                                            : isLightTheme
-                                                                ? "grey"
-                                                                : "darkGrey"
-                                                    : "grey";
+                                                          ? isLightTheme
+                                                              ? MCP_VARIANTS.hoverLight
+                                                              : MCP_VARIANTS.hoverDark
+                                                          : isLightTheme
+                                                            ? MCP_VARIANTS.idleLight
+                                                            : MCP_VARIANTS.idleDark
+                                                    : MCP_VARIANTS.idleLight;
+
+                                            const iconNode =
+                                                item.id === "profile" ? (
+                                                    <User size={iconSize} />
+                                                ) : item.id === "appearance" ? (
+                                                    <Palette size={iconSize} />
+                                                ) : item.id === "archived" ? (
+                                                    <ShieldCheck size={iconSize} />
+                                                ) : item.id === "mcp" ? (
+                                                    <McpIcon size={20} variant={mcpVariant} />
+                                                ) : item.id === "shortcuts" ? (
+                                                    <Keyboard size={iconSize} />
+                                                ) : (
+                                                    <HelpCircle size={iconSize} />
+                                                );
 
                                             return (
-                                                <Tooltip key={tab.id} delayDuration={0}>
+                                                <Tooltip key={item.id} delayDuration={0}>
                                                     <TooltipTrigger asChild>
                                                         <button
-                                                            onClick={() => setActiveTab(tab.id)}
-                                                            onMouseEnter={() => setHoveredNavId(tab.id)}
-                                                            onMouseLeave={() => setHoveredNavId((prev) => (prev === tab.id ? null : prev))}
+                                                            type="button"
+                                                            onClick={() => setActiveTab(item.id)}
+                                                            onMouseEnter={() => setHoveredNavId(item.id)}
+                                                            onMouseLeave={() => setHoveredNavId((prev) => (prev === item.id ? null : prev))}
                                                             className={cn(
                                                                 "group relative grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
                                                                 navCollapsed && "grid-cols-[auto,0fr] justify-items-center",
                                                                 isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
                                                             )}
-                                                            aria-label={tab.label}
+                                                            aria-label={item.label}
                                                             style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
                                                         >
                                                             <div
@@ -355,11 +570,7 @@ export default function ProfilePanel({
                                                                         : "text-muted-foreground group-hover:text-foreground"
                                                                 )}
                                                             >
-                                                                {tab.id === "mcp" ? (
-                                                                    <McpIcon size={20} variant={mcpVariant} />
-                                                                ) : (
-                                                                    <Icon size={iconSize} />
-                                                                )}
+                                                                {iconNode}
                                                             </div>
                                                             <span
                                                                 className={cn(
@@ -367,18 +578,18 @@ export default function ProfilePanel({
                                                                     navCollapsed ? "opacity-0" : "opacity-100"
                                                                 )}
                                                             >
-                                                                {tab.label}
+                                                                {item.label}
                                                             </span>
                                                         </button>
                                                     </TooltipTrigger>
-                                                    {navCollapsed && (
+                                                    {navCollapsed ? (
                                                         <TooltipContent
                                                             side="right"
                                                             className="px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em]"
                                                         >
-                                                            {tab.label}
+                                                            {item.label}
                                                         </TooltipContent>
-                                                    )}
+                                                    ) : null}
                                                 </Tooltip>
                                             );
                                         })}
@@ -387,6 +598,7 @@ export default function ProfilePanel({
                                     <Tooltip delayDuration={0}>
                                         <TooltipTrigger asChild>
                                             <button
+                                                type="button"
                                                 onClick={onLogout}
                                                 className={cn(
                                                     "mt-auto grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
@@ -395,12 +607,7 @@ export default function ProfilePanel({
                                                 aria-label="Logout"
                                                 style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
                                             >
-                                                <div
-                                                    className={cn(
-                                                        "flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors",
-                                                        "text-muted-foreground group-hover:text-foreground"
-                                                    )}
-                                                >
+                                                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors text-muted-foreground group-hover:text-foreground">
                                                     <LogOut className="h-[18px] w-[18px]" />
                                                 </div>
                                                 <span
@@ -413,186 +620,479 @@ export default function ProfilePanel({
                                                 </span>
                                             </button>
                                         </TooltipTrigger>
-                                        {navCollapsed && (
+                                        {navCollapsed ? (
                                             <TooltipContent
                                                 side="right"
                                                 className="px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em]"
                                             >
                                                 Logout
                                             </TooltipContent>
-                                        )}
+                                        ) : null}
                                     </Tooltip>
                                 </div>
                             </ScrollArea>
                         </aside>
 
-                        <div className="relative flex-1 overflow-hidden">
+                        <div className="flex min-w-0 flex-1 flex-col">
+                            <div className="border-b border-border/60 px-6 py-5 sm:px-8">
+                                {showActiveSectionEyebrow ? (
+                                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                        {activeSection.eyebrow}
+                                    </p>
+                                ) : null}
+                                <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                    <div className="space-y-1">
+                                        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+                                            {activeSection.title}
+                                        </h2>
+                                        <p className="max-w-2xl text-sm text-muted-foreground">
+                                            {activeSection.description}
+                                        </p>
+                                    </div>
+                                    <div className="inline-flex items-center rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                                        Signed in as {displayName}
+                                    </div>
+                                </div>
+                            </div>
+
                             <ScrollArea className="h-full w-full">
-                                <div className="space-y-6 px-5 py-6 text-foreground sm:px-8">
-                                    {activeTab === "profile" && (
-                                        <div className="space-y-8 animate-fade-in">
-                                                <div className="space-y-3">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    Overview
-                                                </p>
-                                                <div className="rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm">
-                                                    <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-                                                        <div className="flex items-center gap-5">
-                                                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/50 bg-gradient-to-br from-white/5 via-transparent to-transparent text-muted-foreground">
-                                                                <User size={24} />
-                                                            </div>
-                                                            <div className="flex flex-col gap-1 text-left">
-                                                                <h3 className="text-base font-semibold leading-snug break-words whitespace-normal">{displayName}</h3>
-                                                                <p className="text-[0.7rem] text-muted-foreground break-words whitespace-normal">{displayEmail}</p>
-                                                                <span className="inline-flex items-center rounded-full bg-muted/60 px-2.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                <div className="space-y-6 px-6 py-6 sm:px-8">
+                                    {normalizedActiveTab === "profile" ? (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <section className="relative overflow-hidden rounded-[28px] bg-card/70 p-6">
+                                                <div className="absolute inset-0 bg-gradient-to-br from-background via-muted/40 to-primary/10" />
+                                                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+                                                <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-background/80 text-lg font-semibold text-primary">
+                                                            {user?.avatarUrl ? (
+                                                                <img
+                                                                    src={user.avatarUrl}
+                                                                    alt={displayName}
+                                                                    className="h-full w-full object-cover"
+                                                                />
+                                                            ) : (
+                                                                avatarInitial
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0 space-y-2">
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <h3 className="break-words text-xl font-semibold text-foreground">
+                                                                    {displayName}
+                                                                </h3>
+                                                                <span className="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                                                     {displayRole}
                                                                 </span>
+                                                                <span
+                                                                    className={cn(
+                                                                        "inline-flex items-center rounded-full px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em]",
+                                                                        user?.isActive
+                                                                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                                                            : "bg-muted text-muted-foreground"
+                                                                    )}
+                                                                >
+                                                                    {displayIsActive}
+                                                                </span>
                                                             </div>
+                                                            <p className="break-words text-sm text-muted-foreground">
+                                                                {displayEmail}
+                                                            </p>
+                                                            <p className="text-sm text-muted-foreground">
+                                                                {displayDepartment}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid gap-4 rounded-[1.4rem] bg-black/10 px-4 py-4 sm:grid-cols-3 lg:w-[22rem] dark:bg-white/[0.03]">
+                                                        <div className="space-y-1 sm:border-r sm:border-border/30 sm:pr-3">
+                                                            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                                Last Login
+                                                            </p>
+                                                            <p className="text-base font-semibold text-foreground">
+                                                                {fmtDate(user?.lastLoginAt)}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Most recent authenticated session
+                                                            </p>
+                                                        </div>
+                                                        <div className="space-y-1 sm:border-r sm:border-border/30 sm:px-1">
+                                                            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                                Workspace
+                                                            </p>
+                                                            <p className="text-base font-semibold text-foreground">
+                                                                {displayDepartment === NA ? "Unset" : displayDepartment}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Current team or department
+                                                            </p>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                                Mode
+                                                            </p>
+                                                            <p className="text-base font-semibold text-foreground">
+                                                                {displayPrefersAgentic}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Default agentic chat preference
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </div>
+                                            </section>
+
+                                            <div className="grid gap-6 xl:grid-cols-2">
+                                                <InfoRowsCard
+                                                    eyebrow="Identity"
+                                                    title="Profile"
+                                                    description="Core account information used across the interface."
+                                                    rows={identityRows}
+                                                />
+                                                <InfoRowsCard
+                                                    eyebrow="Workspace"
+                                                    title="Workspace & Access"
+                                                    description="Role, team, and current workspace defaults."
+                                                    rows={workspaceRows}
+                                                />
                                             </div>
 
-                                            <div className="space-y-3">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    Profile Details
-                                                </p>
-                                                <div className="rounded-2xl border border-border/60 bg-card/60 p-4 shadow-sm">
-                                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                                        {profileFields.map((field) => (
-                                                            <div
-                                                                key={field.label}
-                                                                className="rounded-xl border border-border/40 bg-background/40 p-3"
-                                                            >
-                                                                <span className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                                                                    {field.label}
-                                                                </span>
-                                                                <p
+                                            <InfoRowsCard
+                                                eyebrow="Activity"
+                                                title="Account Activity"
+                                                description="Audit-friendly timestamps and immutable identifiers."
+                                                rows={activityRows}
+                                            />
+                                        </div>
+                                    ) : null}
+
+                                    {normalizedActiveTab === "appearance" ? (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr),minmax(18rem,0.85fr)]">
+                                                <InfoCard
+                                                    eyebrow="Theme"
+                                                    title="Choose a theme"
+                                                    description="Keep the selection explicit and lightweight, similar to a settings-first chat product."
+                                                >
+                                                    <div className="grid gap-4 md:grid-cols-2">
+                                                        {themeOptions.map((themeOption) => {
+                                                            const Icon = themeOption.icon;
+                                                            const isActive = currentTheme === themeOption.value;
+
+                                                            return (
+                                                                <button
+                                                                    key={themeOption.value}
+                                                                    type="button"
+                                                                    onClick={() => setTheme(themeOption.value)}
                                                                     className={cn(
-                                                                        "mt-1 text-[0.78rem] font-semibold break-words whitespace-normal",
-                                                                        field.value === NA ? "text-muted-foreground" : "text-foreground"
+                                                                        "rounded-[1.5rem] p-4 text-left transition-colors",
+                                                                        isActive
+                                                                            ? "bg-primary/10"
+                                                                            : "bg-muted/30 hover:bg-muted/45"
                                                                     )}
                                                                 >
-                                                                    {field.value}
-                                                                </p>
-                                                            </div>
-                                                        ))}
+                                                                    <div
+                                                                        className={cn(
+                                                                            "h-28 rounded-[1.2rem] p-4",
+                                                                            themeOption.cardClassName
+                                                                        )}
+                                                                    >
+                                                                        <div className={cn("flex h-full flex-col justify-between", themeOption.previewClassName)}>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className="h-2.5 w-2.5 rounded-full bg-primary/70" />
+                                                                                <div className="h-2 w-16 rounded-full bg-black/10 dark:bg-white/10" />
+                                                                            </div>
+                                                                            <div className="grid gap-2">
+                                                                                <div className="h-3 rounded-full bg-black/10 dark:bg-white/10" />
+                                                                                <div className="h-3 w-4/5 rounded-full bg-black/10 dark:bg-white/10" />
+                                                                                <div className="h-8 w-28 rounded-2xl bg-primary/70" />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="mt-4 flex items-start justify-between gap-4">
+                                                                        <div>
+                                                                            <p className="text-sm font-semibold text-foreground">
+                                                                                {themeOption.name}
+                                                                            </p>
+                                                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                                                {isActive ? "Currently applied" : "Switch workspace theme"}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div
+                                                                            className={cn(
+                                                                                "flex h-10 w-10 items-center justify-center rounded-2xl bg-black/10 text-muted-foreground dark:bg-white/[0.04]",
+                                                                                isActive && "bg-primary/12 text-primary"
+                                                                            )}
+                                                                        >
+                                                                            <Icon size={18} />
+                                                                        </div>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
                                                     </div>
-                                                </div>
+                                                </InfoCard>
+
+                                                <InfoCard
+                                                    eyebrow="Defaults"
+                                                    title="Conversation defaults"
+                                                    description="Read-only defaults surfaced from stored preferences and active workspace state."
+                                                >
+                                                    <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+                                                        <div className="px-5 py-4">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-foreground">
+                                                                        Agentic chat
+                                                                    </p>
+                                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                                        Controls whether the user profile prefers the agentic chat experience.
+                                                                    </p>
+                                                                </div>
+                                                                <span className="inline-flex rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                    {displayPrefersAgentic}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="px-5 py-4">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-foreground">Current theme</p>
+                                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                                        Applied immediately for the active shell and modal surfaces.
+                                                                    </p>
+                                                                </div>
+                                                                <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-primary">
+                                                                    {currentTheme}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </SoftPanel>
+                                                </InfoCard>
                                             </div>
                                         </div>
-                                    )}
+                                    ) : null}
 
-                                    {activeTab === "mcp" && (
-                                            <div className="space-y-6 animate-fade-in">
-                                                <div className="space-y-2 border-b border-border/60 pb-4">
-                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                        Integration
-                                                    </p>
-                                                <h3 className="text-lg font-semibold">MCP Tools</h3>
-                                                    <p className="text-[0.7rem] text-muted-foreground">
-                                                        Review the live tool catalog exposed by the MCP server and decide which ones stay active.
-                                                    </p>
-                                                </div>
+                                    {normalizedActiveTab === "archived" ? (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="grid gap-4 lg:grid-cols-3">
+                                                <MetricCard
+                                                    label="Archived Chats"
+                                                    value={String(archivedConversations.length)}
+                                                    hint="Hidden from the sidebar, still restorable"
+                                                />
+                                                <MetricCard
+                                                    label="Latest Archive"
+                                                    value={fmtDate(latestArchivedConversation?.archivedAt ?? latestArchivedConversation?.updated_at)}
+                                                    hint="Most recent archived conversation date"
+                                                />
+                                                <MetricCard
+                                                    label="Behavior"
+                                                    value="Restore"
+                                                    hint="Archiving keeps conversation state intact"
+                                                />
+                                            </div>
 
-                                            <div className="space-y-3">
-                                                {availableTools.length === 0 ? (
-                                                    <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
-                                                        <p className="text-sm text-muted-foreground">
-                                                            No tools discovered yet. Ensure the MCP tools server is running and refresh after login.
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    Object.entries(
-                                                        availableTools.reduce<Record<string, ToolWithStatus[]>>((acc, tool) => {
-                                                            const serverKey = tool.serverId || "default";
-                                                            if (!acc[serverKey]) acc[serverKey] = [];
-                                                            acc[serverKey].push(tool);
-                                                            return acc;
-                                                        }, {})
-                                                    ).map(([serverKey, tools]) => {
-                                                        const collapsed = serverCollapsed[serverKey] ?? false;
-                                                        const serverLabel = serverKey === "default" ? "Unassigned Server" : serverKey;
-                                                        const serverDisplayName = serverLabel.toUpperCase();
-                                                        return (
-                                                            <div key={serverKey} className="px-3 py-1">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        setServerCollapsed((prev) => ({
-                                                                            ...prev,
-                                                                            [serverKey]: !collapsed,
-                                                                        }))
-                                                                    }
-                                                                    className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/20"
-                                                                >
-                                                                    <div className="flex flex-wrap items-baseline gap-3">
-                                                                        <p className="text-sm font-semibold text-foreground">{serverDisplayName}</p>
-                                                                        <p className="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                                                                            {tools.length} tool{tools.length === 1 ? "" : "s"}
-                                                                        </p>
+                                            <InfoCard
+                                                eyebrow="History"
+                                                title="Archived conversations"
+                                                description="Archive is a reversible history action. It removes clutter from the main sidebar without deleting the underlying conversation."
+                                            >
+                                                <ScrollArea className="h-[25rem]" onScroll={handleArchivedScroll}>
+                                                    <div className="space-y-3 p-4">
+                                                        {archivedConversations.length === 0 && !archivedConversationsLoading ? (
+                                                            <SoftPanel className="px-4 py-10 text-center">
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    No archived conversations yet.
+                                                                </p>
+                                                            </SoftPanel>
+                                                        ) : (
+                                                            archivedConversations.map((conversation) => (
+                                                                <SoftPanel key={conversation.id} className="p-4 transition hover:bg-muted/40">
+                                                                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => onSelectArchivedConversation?.(conversation)}
+                                                                            className="min-w-0 flex-1 rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                                        >
+                                                                            <div className="space-y-1.5">
+                                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                                    <p className="truncate text-sm font-semibold text-foreground">
+                                                                                        {conversation.title?.trim() || "Untitled conversation"}
+                                                                                    </p>
+                                                                                    <span className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                                        {conversation.agent.name}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {conversation.lastMessage ? (
+                                                                                    <p className="line-clamp-2 text-sm text-muted-foreground">
+                                                                                        {conversation.lastMessage}
+                                                                                    </p>
+                                                                                ) : null}
+                                                                            </div>
+                                                                        </button>
+
+                                                                        <div className="flex items-center gap-3 md:flex-col md:items-end">
+                                                                            <div className="text-left md:text-right">
+                                                                                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                                                                    Archived
+                                                                                </p>
+                                                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                                                    {fmtDate(conversation.archivedAt ?? conversation.updated_at)}
+                                                                                </p>
+                                                                            </div>
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                onClick={() => onUnarchiveConversation?.(conversation)}
+                                                                                className="h-9 rounded-xl border-0 bg-background/80 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.18em]"
+                                                                            >
+                                                                                Unarchive
+                                                                            </Button>
+                                                                        </div>
                                                                     </div>
-                                                                    <ChevronDown
-                                                                        size={16}
-                                                                        className={cn(
-                                                                            "text-muted-foreground transition-transform",
-                                                                            collapsed ? "-rotate-90" : "rotate-0"
-                                                                        )}
-                                                                    />
-                                                                </button>
-                                                                {!collapsed && (
-                                                                    <div className="mt-2 space-y-2">
-                                                                        {tools.map((tool: ToolWithStatus, idx) => {
-                                                                            const uniqueKey = toolKey(tool);
-                                                                            const enabled = typeof tool.enabled === "boolean" ? tool.enabled : !preferencesDisabledKeys.has(uniqueKey);
-                                                                            const parameterCount = Math.max(0, tool.parameterCount ?? 0);
-                                                                            const parameterLabel =
-                                                                                parameterCount === 0
-                                                                                    ? "0 parameters"
-                                                                                    : `${parameterCount} parameter${parameterCount > 1 ? "s" : ""}`;
-                                                                            const description = (tool.description || "").trim() || "No description provided.";
-                                                                            const maxDescriptionLength = 150;
-                                                                            const isTruncated = description.length > maxDescriptionLength;
-                                                                            const showFull = expandedDescriptions[uniqueKey] ?? false;
-                                                                            const displayText = showFull || !isTruncated ? description : description.slice(0, maxDescriptionLength);
-                                                                            const fadeTailCount = 20;
-                                                                            const headText = !showFull && isTruncated
-                                                                                ? displayText.slice(0, Math.max(0, displayText.length - fadeTailCount))
-                                                                                : displayText;
-                                                                            const tailText = !showFull && isTruncated
-                                                                                ? displayText.slice(Math.max(0, displayText.length - fadeTailCount))
-                                                                                : "";
-                                                                            const tailFadeStyle = {
-                                                                                WebkitMaskImage:
-                                                                                    "linear-gradient(90deg, #000 0%, #000 30%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.25) 80%, rgba(0,0,0,0) 90%, transparent 100%)",
-                                                                                maskImage:
-                                                                                    "linear-gradient(90deg, #000 0%, #000 30%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.25) 80%, rgba(0,0,0,0) 90%, transparent 100%)",
-                                                                            } as React.CSSProperties;
-                                                                            return (
-                                                                                <div key={uniqueKey} className="px-1 py-2">
-                                                                                    <div className="grid grid-cols-[auto,1fr,auto] gap-4">
-                                                                                        <div className="flex w-4 justify-center pt-2">
-                                                                                            <span
-                                                                                                className={cn(
-                                                                                                    "h-2.5 w-2.5 rounded-full transition-colors",
-                                                                                                    enabled ? "bg-emerald-400" : "bg-muted-foreground/40"
-                                                                                                )}
-                                                                                            />
-                                                                                        </div>
-                                                                                        <div className="flex-1 space-y-1.5">
-                                                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                                                <p className="text-sm font-semibold text-foreground">{tool.toolName}</p>
-                                                                                                <span className="text-[0.68rem] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                                                                                                    {parameterLabel}
-                                                                                                </span>
-                                                                                            </div>
-                                                                                            <div className="relative text-sm text-muted-foreground break-words whitespace-normal">
-                                                                                                <span>{headText}</span>
-                                                                                                {!showFull && isTruncated ? (
-                                                                                                    <span className="inline-flex items-center align-middle">
-                                                                                                        <span className="inline-block" style={tailFadeStyle}>
-                                                                                                            {tailText}
-                                                                                                        </span>
+                                                                </SoftPanel>
+                                                            ))
+                                                        )}
+
+                                                        {archivedConversationsLoading ? (
+                                                            <SoftPanel className="px-4 py-4 text-center">
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    Loading archived conversations...
+                                                                </p>
+                                                            </SoftPanel>
+                                                        ) : null}
+                                                    </div>
+                                                </ScrollArea>
+                                            </InfoCard>
+                                        </div>
+                                    ) : null}
+
+                                    {normalizedActiveTab === "mcp" ? (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="grid gap-4 lg:grid-cols-3">
+                                                <MetricCard
+                                                    label="Servers"
+                                                    value={String(serverGroups.length)}
+                                                    hint="Discovered MCP server groups"
+                                                />
+                                                <MetricCard
+                                                    label="Enabled Tools"
+                                                    value={String(enabledToolsCount)}
+                                                    hint="Currently allowed in conversation"
+                                                />
+                                                <MetricCard
+                                                    label="Disabled Tools"
+                                                    value={String(Math.max(availableTools.length - enabledToolsCount, 0))}
+                                                    hint="Hidden until re-enabled"
+                                                />
+                                            </div>
+
+                                            <InfoCard
+                                                eyebrow="Apps"
+                                                title="Manage MCP tools"
+                                                description="This mirrors the apps/connectors mental model: browse grouped integrations, inspect descriptions, and keep only the tools you want available."
+                                            >
+                                                <div className="space-y-4">
+                                                    {availableTools.length === 0 ? (
+                                                        <SoftPanel className="px-4 py-10 text-center">
+                                                            <p className="text-sm text-muted-foreground">
+                                                                No tools discovered yet. Make sure the MCP tools server is running and refresh after login.
+                                                            </p>
+                                                        </SoftPanel>
+                                                    ) : (
+                                                        serverGroups.map(([serverKey, tools]) => {
+                                                            const collapsed = serverCollapsed[serverKey] ?? false;
+                                                            const serverLabel = serverKey === "default" ? "Unassigned server" : serverKey;
+
+                                                            return (
+                                                                <SoftPanel key={serverKey} className="p-4">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setServerCollapsed((prev) => ({
+                                                                                ...prev,
+                                                                                [serverKey]: !collapsed,
+                                                                            }))
+                                                                        }
+                                                                        className="flex w-full items-center justify-between gap-4 rounded-2xl text-left"
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-background/75">
+                                                                                <McpIcon
+                                                                                    size={20}
+                                                                                    variant={currentTheme === "dark" ? "white" : "black"}
+                                                                                />
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-sm font-semibold text-foreground">
+                                                                                    {serverLabel}
+                                                                                </p>
+                                                                                <p className="text-sm text-muted-foreground">
+                                                                                    {tools.length} tool{tools.length === 1 ? "" : "s"}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <ChevronDown
+                                                                            size={18}
+                                                                            className={cn(
+                                                                                "text-muted-foreground transition-transform",
+                                                                                collapsed ? "-rotate-90" : "rotate-0"
+                                                                            )}
+                                                                        />
+                                                                    </button>
+
+                                                                    {!collapsed ? (
+                                                                        <div className="mt-4 divide-y divide-border/35 overflow-hidden rounded-[1.1rem] bg-black/10 dark:bg-white/[0.03]">
+                                                                            {tools.map((tool) => {
+                                                                                const uniqueKey = toolKey(tool);
+                                                                                const enabled =
+                                                                                    typeof tool.enabled === "boolean"
+                                                                                        ? tool.enabled
+                                                                                        : !preferencesDisabledKeys.has(uniqueKey);
+                                                                                const parameterCount = Math.max(0, tool.parameterCount ?? 0);
+                                                                                const parameterLabel =
+                                                                                    parameterCount === 0
+                                                                                        ? "0 parameters"
+                                                                                        : `${parameterCount} parameter${parameterCount > 1 ? "s" : ""}`;
+                                                                                const description =
+                                                                                    tool.description?.trim() || "No description provided.";
+                                                                                const maxDescriptionLength = 160;
+                                                                                const isTruncated =
+                                                                                    description.length > maxDescriptionLength;
+                                                                                const showFull = expandedDescriptions[uniqueKey] ?? false;
+                                                                                const displayText =
+                                                                                    showFull || !isTruncated
+                                                                                        ? description
+                                                                                        : description.slice(0, maxDescriptionLength);
+
+                                                                                return (
+                                                                                    <div
+                                                                                        key={uniqueKey}
+                                                                                        className="px-4 py-4"
+                                                                                    >
+                                                                                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                                                                            <div className="min-w-0 flex-1 space-y-2">
+                                                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                                                    <p className="text-sm font-semibold text-foreground">
+                                                                                                        {tool.toolName}
+                                                                                                    </p>
+                                                                                                    <span className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                                                        {parameterLabel}
+                                                                                                    </span>
+                                                                                                    <span
+                                                                                                        className={cn(
+                                                                                                            "inline-flex rounded-full px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em]",
+                                                                                                            enabled
+                                                                                                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                                                                                                : "bg-muted text-muted-foreground"
+                                                                                                        )}
+                                                                                                    >
+                                                                                                        {enabled ? "Enabled" : "Disabled"}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <p className="text-sm text-muted-foreground">
+                                                                                                    {displayText}
+                                                                                                    {!showFull && isTruncated ? (
                                                                                                         <button
                                                                                                             type="button"
                                                                                                             onClick={() =>
@@ -601,64 +1101,69 @@ export default function ProfilePanel({
                                                                                                                     [uniqueKey]: true,
                                                                                                                 }))
                                                                                                             }
-                                                                                                            className="ml-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-0"
+                                                                                                            className="ml-2 text-[0.72rem] font-semibold text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                                                                                                         >
                                                                                                             See more
                                                                                                         </button>
-                                                                                                    </span>
-                                                                                                ) : null}
+                                                                                                    ) : null}
+                                                                                                </p>
                                                                                             </div>
-                                                                                        </div>
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            role="switch"
-                                                                                            aria-checked={enabled}
-                                                                                            onClick={() => !preferencesSaving && handleToggleServer(tool)}
-                                                                                            aria-disabled={preferencesSaving}
-                                                                                            className={cn(
-                                                                                                "relative inline-flex h-6 w-11 items-center self-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                                                                                                enabled ? "border-primary/50 bg-primary/20" : "border-border/70 bg-muted/70",
-                                                                                                preferencesSaving && "opacity-60 cursor-not-allowed"
-                                                                                            )}
-                                                                                        >
-                                                                                            <span
-                                                                                                className={cn(
-                                                                                                    "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
-                                                                                                    enabled ? "translate-x-[1.4rem] bg-primary" : "translate-x-1 bg-muted-foreground/60"
-                                                                                                )}
-                                                                                            />
-                                                                                        </button>
-                                                                                    </div>
-                                                                                    {idx < tools.length - 1 && (
-                                                                                        <div className="pointer-events-none mx-auto mt-2 h-px w-[96%] rounded-full bg-gradient-to-r from-transparent via-border/60 to-transparent" />
-                                                                                    )}
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
 
-                                    {activeTab === "shortcuts" && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                role="switch"
+                                                                                                aria-checked={enabled}
+                                                                                                aria-disabled={preferencesSaving}
+                                                                                                onClick={() =>
+                                                                                                    !preferencesSaving && onToggleToolPreference?.(tool)
+                                                                                                }
+                                                                                                className={cn(
+                                                                                                    "relative inline-flex h-7 w-12 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                                                                                    enabled
+                                                                                                        ? "border-primary/40 bg-primary/20"
+                                                                                                        : "border-transparent bg-background/80",
+                                                                                                    preferencesSaving && "cursor-not-allowed opacity-60"
+                                                                                                )}
+                                                                                            >
+                                                                                                <span
+                                                                                                    className={cn(
+                                                                                                        "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
+                                                                                                        enabled ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                                                                                                    )}
+                                                                                                />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ) : null}
+                                                                </SoftPanel>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+                                            </InfoCard>
+                                        </div>
+                                    ) : null}
+
+                                    {normalizedActiveTab === "shortcuts" ? (
                                         <div className="space-y-6 animate-fade-in">
-                                            <div className="space-y-3 border-b border-border/60 pb-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    Keyboard
-                                                </p>
-                                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                                                    <div className="space-y-1.5">
-                                                        <h3 className="text-lg font-semibold">Keyboard Shortcuts</h3>
-                                                        <p className="max-w-xl text-[0.7rem] text-muted-foreground">
-                                                            This tab is rendered from the same shortcut registry used by the runtime keyboard handler. Global shortcuts use the shared app listener, while composer keys stay local to the input components.
+                                            <InfoCard
+                                                eyebrow="Platform"
+                                                title="Shortcut platform"
+                                                description="Swap the visible key labels without changing the underlying shortcut registry."
+                                            >
+                                                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                                    <SoftPanel className="flex-1 p-4">
+                                                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                                            Escape behavior
                                                         </p>
-                                                    </div>
-                                                    <div className="inline-flex rounded-xl border border-border/60 bg-muted/20 p-1">
+                                                        <p className="mt-2 text-sm text-foreground">
+                                                            `Esc` dismisses the top active app surface first: image preview, profile panel, agent picker, conversation action menus, sidebar rename or action menus, then inline message editing. It never stops inference or voice dictation.
+                                                        </p>
+                                                    </SoftPanel>
+                                                    <div className="inline-flex rounded-2xl bg-muted/30 p-1">
                                                         {[
                                                             { id: "mac" as const, label: "Mac" },
                                                             { id: "win" as const, label: "Windows/Linux" },
@@ -668,56 +1173,47 @@ export default function ProfilePanel({
                                                                 <button
                                                                     key={platform.id}
                                                                     type="button"
-                                                                    onClick={() => setShortcutPlatform(platform.id)}
-                                                                    className={cn(
-                                                                        "rounded-lg px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.18em] transition-colors",
-                                                                        isActive
-                                                                            ? "bg-primary/15 text-primary"
-                                                                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                                                                    )}
-                                                                >
-                                                                    {platform.label}
+                                                                onClick={() => setShortcutPlatform(platform.id)}
+                                                                className={cn(
+                                                                    "rounded-xl px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] transition-colors",
+                                                                    isActive
+                                                                        ? "bg-primary/15 text-primary"
+                                                                        : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                                                                )}
+                                                            >
+                                                                {platform.label}
                                                                 </button>
                                                             );
                                                         })}
                                                     </div>
                                                 </div>
-                                            </div>
+                                            </InfoCard>
 
-                                            <div className="rounded-2xl border border-border/60 bg-card/60 p-4 shadow-sm">
-                                                <div className="flex flex-col gap-2">
-                                                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                                                        Escape behavior
-                                                    </p>
-                                                    <p className="text-sm text-foreground">
-                                                        `Esc` dismisses the top active app surface first: image preview, profile panel, agent picker, conversation action menus, sidebar rename or action menus, then inline message editing. It never stops inference or voice dictation.
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-6">
+                                            <div className="space-y-5">
                                                 {shortcutSections.map(({ category, items }) => (
                                                     <section key={category} className="space-y-3">
                                                         <div className="space-y-1">
-                                                            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
+                                                            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                                                                 {category}
                                                             </p>
-                                                            <p className="text-[0.7rem] text-muted-foreground">
+                                                            <p className="text-sm text-muted-foreground">
                                                                 {category === "Workspace" && "Global workspace navigation and panel actions."}
                                                                 {category === "Chat" && "Conversation-level actions that affect the current chat shell."}
-                                                                {category === "Composer" && "Composer-local keys handled directly inside the message input."}
+                                                                {category === "Composer" && "Composer-local keys handled directly inside the input."}
                                                                 {category === "Dismiss" && "Context-aware closing and cancellation behavior."}
                                                             </p>
                                                         </div>
                                                         <div className="space-y-3">
                                                             {items.map((shortcut) => (
-                                                                <div
+                                                                <SoftPanel
                                                                     key={shortcut.id}
-                                                                    className="grid gap-3 rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm md:grid-cols-[minmax(0,1fr),auto]"
+                                                                    className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr),auto]"
                                                                 >
                                                                     <div className="space-y-1.5">
                                                                         <div className="flex flex-wrap items-center gap-2">
-                                                                            <p className="text-sm font-semibold text-foreground">{shortcut.title}</p>
+                                                                            <p className="text-sm font-semibold text-foreground">
+                                                                                {shortcut.title}
+                                                                            </p>
                                                                             <span className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                                                                 {shortcut.scope}
                                                                             </span>
@@ -725,233 +1221,122 @@ export default function ProfilePanel({
                                                                                 {shortcut.implementation}
                                                                             </span>
                                                                         </div>
-                                                                        <p className="text-[0.78rem] text-muted-foreground">{shortcut.description}</p>
-                                                                        {shortcut.availabilityNote && (
+                                                                        <p className="text-sm text-muted-foreground">
+                                                                            {shortcut.description}
+                                                                        </p>
+                                                                        {shortcut.availabilityNote ? (
                                                                             <p className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                                                                                 {shortcut.availabilityNote}
                                                                             </p>
-                                                                        )}
+                                                                        ) : null}
                                                                     </div>
                                                                     <div className="flex items-start md:items-center">
-                                                                        <div className="inline-flex min-w-[8rem] justify-center rounded-xl border border-border/60 bg-background/80 px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-foreground shadow-sm">
+                                                                        <div className="inline-flex min-w-[9rem] justify-center rounded-xl bg-background/80 px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-foreground">
                                                                             {getShortcutLabel(shortcut, shortcutPlatform)}
                                                                         </div>
                                                                     </div>
-                                                                </div>
+                                                                </SoftPanel>
                                                             ))}
                                                         </div>
                                                     </section>
                                                 ))}
                                             </div>
                                         </div>
-                                    )}
+                                    ) : null}
 
-                                    {activeTab === "archived" && (
+                                    {normalizedActiveTab === "help" ? (
                                         <div className="space-y-6 animate-fade-in">
-                                            <div className="space-y-2 border-b border-border/60 pb-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                    History
-                                                </p>
-                                                <h3 className="text-lg font-semibold">Archived Chats</h3>
-                                                <p className="text-[0.7rem] text-muted-foreground">
-                                                    Archived conversations stay out of the sidebar but can still be reopened from here.
-                                                </p>
-                                            </div>
-
-                                            <ScrollArea
-                                                className="h-[24rem] rounded-2xl border border-border/60 bg-card/50"
-                                                onScroll={handleArchivedScroll}
-                                            >
-                                                <div className="space-y-3 p-4">
-                                                    {archivedConversations.length === 0 && !archivedConversationsLoading ? (
-                                                        <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
-                                                            <p className="text-sm text-muted-foreground">
-                                                                No archived conversations yet.
-                                                            </p>
-                                                        </div>
-                                                    ) : (
-                                                        archivedConversations.map((conversation) => (
-                                                            <div
-                                                                key={conversation.id}
-                                                                className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm transition hover:border-border hover:bg-muted/40"
-                                                            >
-                                                                <div className="flex items-start justify-between gap-4">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => onSelectArchivedConversation?.(conversation)}
-                                                                        className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded-xl"
-                                                                    >
-                                                                        <div className="min-w-0 space-y-1.5">
-                                                                            <p className="truncate text-sm font-semibold text-foreground">
-                                                                                {conversation.title?.trim() || "Untitled conversation"}
-                                                                            </p>
-                                                                            <p className="text-[0.72rem] uppercase tracking-[0.18em] text-muted-foreground">
-                                                                                {conversation.agent.name}
-                                                                            </p>
-                                                                            {conversation.lastMessage && (
-                                                                                <p className="line-clamp-2 text-[0.78rem] text-muted-foreground">
-                                                                                    {conversation.lastMessage}
-                                                                                </p>
-                                                                            )}
-                                                                        </div>
-                                                                    </button>
-                                                                    <div className="flex-shrink-0 text-right">
-                                                                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                                                            Archived
-                                                                        </p>
-                                                                        <p className="mt-1 text-[0.72rem] text-muted-foreground">
-                                                                            {conversation.archivedAt ? conversation.archivedAt.toLocaleDateString() : new Date(conversation.updated_at).toLocaleDateString()}
-                                                                        </p>
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="outline"
-                                                                            size="sm"
-                                                                            onClick={() => onUnarchiveConversation?.(conversation)}
-                                                                            className="mt-3 h-8 rounded-lg px-3 text-[0.66rem] font-semibold uppercase tracking-[0.18em]"
-                                                                        >
-                                                                            Unarchive
-                                                                        </Button>
-                                                                    </div>
+                                            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(18rem,0.8fr)]">
+                                                <InfoCard
+                                                    eyebrow="Resources"
+                                                    title="Documentation"
+                                                    description="Keep the high-signal, high-frequency help actions visible and close to the workspace settings surface."
+                                                >
+                                                    <div className="grid gap-4 md:grid-cols-2">
+                                                        {helpCards.map((card) =>
+                                                            card.href ? (
+                                                                <button
+                                                                    key={card.title}
+                                                                    type="button"
+                                                                    onClick={() => handleHelpCardClick(card)}
+                                                                    className="relative rounded-[1.4rem] bg-muted/30 p-5 text-left transition hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                                    aria-label={`${card.title}${card.external ? " (opens in new tab)" : ""}`}
+                                                                >
+                                                                    <h3 className="text-sm font-semibold text-foreground">
+                                                                        {card.title}
+                                                                    </h3>
+                                                                    <p className="mt-2 text-sm text-muted-foreground">{card.desc}</p>
+                                                                    {card.external ? (
+                                                                        <span className="absolute right-4 top-4 text-muted-foreground">
+                                                                            <ExternalLink size={16} />
+                                                                        </span>
+                                                                    ) : null}
+                                                                </button>
+                                                            ) : (
+                                                                <div
+                                                                    key={card.title}
+                                                                    className="rounded-[1.4rem] bg-muted/30 p-5"
+                                                                >
+                                                                    <h3 className="text-sm font-semibold text-foreground">
+                                                                        {card.title}
+                                                                    </h3>
+                                                                    <p className="mt-2 text-sm text-muted-foreground">{card.desc}</p>
                                                                 </div>
-                                                            </div>
-                                                        ))
-                                                    )}
-
-                                                    {archivedConversationsLoading && (
-                                                        <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-4 text-center">
-                                                            <p className="text-sm text-muted-foreground">
-                                                                Loading archived conversations...
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </ScrollArea>
-                                        </div>
-                                    )}
-
-                                    {activeTab === "appearance" && (
-                                            <div className="space-y-6 animate-fade-in">
-                                                <div className="space-y-2 border-b border-border/60 pb-4">
-                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                        Personalization
-                                                    </p>
-                                                <h3 className="text-lg font-semibold">Appearance Settings</h3>
-                                                    <p className="text-[0.7rem] text-muted-foreground">
-                                                        Choose a theme that matches your workspace.
-                                                    </p>
-                                                </div>
-
-                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                                {themeOptions.map((themeOption) => {
-                                                    const Icon = themeOption.icon;
-                                                    const isActive = theme === themeOption.value;
-
-                                                    return (
-                                                        <button
-                                                            key={themeOption.value}
-                                                            onClick={() => setTheme(themeOption.value)}
-                                                            className={cn(
-                                                                "flex flex-col items-center gap-2 rounded-xl border px-5 py-5 text-center transition-colors",
-                                                                isActive
-                                                                    ? "border-primary/60 bg-primary/10 text-foreground"
-                                                                    : "border-border/60 bg-card hover:border-primary/40 hover:bg-muted/40"
-                                                            )}
-                                                        >
-                                                            <div
-                                                                className={cn(
-                                                                    "flex h-12 w-12 items-center justify-center rounded-xl border border-border/60 text-muted-foreground transition-colors",
-                                                                    isActive && "border-primary bg-primary/20 text-primary"
-                                                                )}
-                                                            >
-                                                                <Icon size={22} />
-                                                            </div>
-                                                            <span className="text-[0.78rem] font-semibold uppercase tracking-[0.22em]">
-                                                                {themeOption.name}
-                                                            </span>
-                                                            <span className="text-xs text-muted-foreground">
-                                                                {isActive ? "Active theme" : "Switch theme"}
-                                                            </span>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {activeTab === "settings" && (
-                                            <div className="space-y-6 animate-fade-in">
-                                                <div className="space-y-2 border-b border-border/60 pb-4">
-                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                        Configuration
-                                                    </p>
-                                                <h3 className="text-lg font-semibold">General Settings</h3>
-                                                    <p className="text-[0.7rem] text-muted-foreground">
-                                                        Configure your application preferences.
-                                                    </p>
-                                                </div>
-
-                                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                                {settingsCards.map((setting) => (
-                                                    <div
-                                                        key={setting.title}
-                                                        className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
-                                                    >
-                                                        <h4 className="text-[0.95rem] font-semibold">{setting.title}</h4>
-                                                        <p className="mt-2 text-[0.7rem] text-muted-foreground">{setting.desc}</p>
+                                                            )
+                                                        )}
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                                                </InfoCard>
 
-                                    {activeTab === "help" && (
-                                        <div className="space-y-6 animate-fade-in">
-                                                <div className="space-y-2 border-b border-border/60 pb-4">
-                                                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
-                                                        Guidance
-                                                    </p>
-                                                <h3 className="text-lg font-semibold">Help & Support</h3>
-                                                    <p className="text-[0.7rem] text-muted-foreground">
-                                                        Get assistance and learn more.
-                                                    </p>
-                                                </div>
-
-                                            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                                {helpCards.map((help) => {
-                                                    if (help.href) {
-                                                        return (
-                                                            <button
-                                                                type="button"
-                                                                key={help.title}
-                                                                onClick={() => handleHelpCardClick(help)}
-                                                                className="relative flex h-full flex-col gap-2 rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm transition hover:border-border hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                                                                aria-label={`${help.title} (opens in new tab)`}
-                                                            >
-                                                                <h4 className="text-base font-semibold">{help.title}</h4>
-                                                                <p className="text-[0.7rem] text-muted-foreground">{help.desc}</p>
-                                                                {help.external && (
-                                                                    <span className="pointer-events-none absolute bottom-4 right-4 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
-                                                                        <ExternalLink size={14} aria-hidden="true" />
-                                                                        <span className="sr-only">Opens in new tab</span>
-                                                                    </span>
-                                                                )}
-                                                            </button>
-                                                        );
-                                                    }
-
-                                                    return (
-                                                        <div
-                                                            key={help.title}
-                                                            className="rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm"
-                                                        >
-                                                            <h4 className="text-[0.95rem] font-semibold">{help.title}</h4>
-                                                            <p className="mt-2 text-[0.7rem] text-muted-foreground">{help.desc}</p>
+                                                <InfoCard
+                                                    eyebrow="At a glance"
+                                                    title="Workspace health"
+                                                    description="A compact status summary for the most visible settings surfaces."
+                                                >
+                                                    <SoftPanel className="divide-y divide-border/35 overflow-hidden">
+                                                        <div className="flex items-center gap-3 px-4 py-4">
+                                                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                                                <AppWindow size={18} />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-semibold text-foreground">
+                                                                    {enabledToolsCount} enabled tool{enabledToolsCount === 1 ? "" : "s"}
+                                                                </p>
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    MCP tools currently available in chat.
+                                                                </p>
+                                                            </div>
                                                         </div>
-                                                    );
-                                                })}
+                                                        <div className="flex items-center gap-3 px-4 py-4">
+                                                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                                                <Archive size={18} />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-semibold text-foreground">
+                                                                    {archivedConversations.length} archived conversation{archivedConversations.length === 1 ? "" : "s"}
+                                                                </p>
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    History kept out of the main sidebar.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3 px-4 py-4">
+                                                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                                                {currentTheme === "dark" ? <MoonStar size={18} /> : <Sparkles size={18} />}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-semibold text-foreground">
+                                                                    Theme: {currentTheme}
+                                                                </p>
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    Active shell appearance for the workspace.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </SoftPanel>
+                                                </InfoCard>
                                             </div>
                                         </div>
-                                    )}
+                                    ) : null}
                                 </div>
                             </ScrollArea>
                         </div>

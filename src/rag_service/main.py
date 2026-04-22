@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException
 
 import chromadb
 from langchain_chroma import Chroma
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 from observability import (
     RequestLoggingMiddleware,
@@ -110,6 +110,5 @@ async def query_sql(body: ExcelSQLQuery, table: str):
         "row_count": len(df),
         "data": df.to_dict(orient="records"),
     }
-
 
 

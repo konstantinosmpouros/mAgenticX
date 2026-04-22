@@ -1,14 +1,13 @@
-fastapi==0.115.5
+fastapi==0.135.3
 uvicorn==0.32.0
-langchain==0.3.25
-langchain-chroma==0.2.3
-chromadb==0.6.3
+langchain-chroma==1.1.0
+chromadb==1.5.6
 langchain-openai==1.1.14
 duckdb==1.3.1
 pydantic==2.11.1
 pandas==2.2.3
 openpyxl
-langchain-core>=1.2.22 # not directly required, pinned by Snyk to avoid a vulnerability
+langchain-core>=1.2.31 # aligned with the current langchain-openai requirement
 langchain-text-splitters>=1.1.2 # not directly required, pinned by Snyk to avoid a vulnerability
 langsmith>=0.7.31 # not directly required, pinned by Snyk to avoid a vulnerability
-starlette>=0.49.1 # not directly required, pinned by Snyk to avoid a vulnerability
+starlette==0.49.3 # pinned to a newer compatible release for FastAPI 0.135.x

@@ -6,11 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Flag, X } from "lucide-react";
 
 export const REPORT_REASONS = [
-  "Harmful / unsafe response",
-  "Incorrect / misleading",
-  "Policy violation",
-  "Bug / broken behavior",
-  "Spam / irrelevant",
+  "Unsafe",
+  "Wrong",
+  "Policy",
+  "Bug",
+  "Spam",
+  "Abuse",
+  "Privacy",
   "Other",
 ] as const;
 
@@ -20,6 +22,7 @@ type ReportConversationDialogProps = {
   onSubmit: (payload: { reason: string; details?: string; messageId?: string | null }) => Promise<void> | void;
   submitting?: boolean;
   messageId?: string | null;
+  messagePreview?: string | null;
   conversationTitle?: string | null;
 };
 
@@ -33,6 +36,7 @@ export default function ReportConversationDialog({
 }: ReportConversationDialogProps) {
   const [reason, setReason] = useState<string>("");
   const [details, setDetails] = useState("");
+  const isMessageReport = Boolean(messageId);
 
   useEffect(() => {
     if (!open) {
@@ -81,12 +85,12 @@ export default function ReportConversationDialog({
                   <p className="text-xs font-semibold uppercase tracking-[0.32em] text-muted-foreground">
                     Report
                   </p>
-                  <h3 className="text-lg font-semibold">Report conversation</h3>
+                  <h3 className="text-lg font-semibold">{isMessageReport ? "Report response" : "Report conversation"}</h3>
                 </div>
               </div>
               <p className="text-[0.78rem] text-muted-foreground">
-                {messageId
-                  ? "This report will be linked to a specific assistant message."
+                {isMessageReport
+                  ? "This report will be linked to one specific assistant response."
                   : "This report will be linked to the conversation as a whole."}
               </p>
               {conversationTitle ? (
@@ -103,7 +107,7 @@ export default function ReportConversationDialog({
                 </label>
                 <Select value={reason} onValueChange={setReason} disabled={submitting}>
                   <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/70">
-                    <SelectValue placeholder="Select a reason" />
+                    <SelectValue placeholder="Choose a reason" />
                   </SelectTrigger>
                   <SelectContent className="z-[70] rounded-xl border border-border/60 bg-background text-foreground shadow-lg">
                     {REPORT_REASONS.map((option) => (
@@ -122,7 +126,7 @@ export default function ReportConversationDialog({
                 <Textarea
                   value={details}
                   onChange={(event) => setDetails(event.target.value)}
-                  placeholder="Optional notes to help explain the issue."
+                  placeholder="Add any context that would help us review this faster."
                   disabled={submitting}
                   className="min-h-[8rem] rounded-xl border-border/60 bg-background/70"
                   maxLength={2000}

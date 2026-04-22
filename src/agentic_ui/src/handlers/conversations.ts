@@ -438,7 +438,13 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
           reportedAt: summary.reportedAt ?? prev.reportedAt ?? new Date(),
         };
       });
-      toast({ title: 'Report submitted', description: 'Thanks. We saved your report for review.', duration: 2400 });
+      toast({
+        title: payload.messageId ? 'Response reported' : 'Conversation reported',
+        description: payload.messageId
+          ? 'Thanks. We saved this response report for review.'
+          : 'Thanks. We saved this conversation report for review.',
+        duration: 2400,
+      });
       persistUIState();
       return true;
     } catch (error) {

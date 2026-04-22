@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_pagination import Page
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from observability import get_logger, logged_db_operation, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.database import ConversationReportTable, ConversationTable, MessageTable, get_db, UserTable
 from schemas import (
@@ -134,7 +134,7 @@ async def getConvsSummary(
         )
         .order_by(ConversationTable.updated_at.desc())
     )
-    page = await paginate(db, stmt)
+    page = await apaginate(db, stmt)
     logger.info("conversation_summary_list_fetched", "Conversation summary list fetched", total=page.total, page=page.page, size=page.size)
     return page
 
@@ -164,7 +164,7 @@ async def getArchivedConvsSummary(
         )
         .order_by(ConversationTable.archived_at.desc(), ConversationTable.updated_at.desc())
     )
-    page = await paginate(db, stmt)
+    page = await apaginate(db, stmt)
     logger.info("conversation_archived_summary_list_fetched", "Archived conversation summary list fetched", total=page.total, page=page.page, size=page.size)
     return page
 
@@ -250,7 +250,7 @@ async def archiveConversation(
     """Archive an existing conversation and return the refreshed summary."""
     set_context(user_id=user_id, conversation_id=conversation_id)
     current_conv.is_archived = True
-    current_conv.archived_at = datetime.utcnow()
+    current_conv.archived_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.commit()
     await db.refresh(
         current_conv,
@@ -360,7 +360,7 @@ async def reportConversation(
     db.add(report)
 
     current_conv.is_reported = True
-    current_conv.reported_at = datetime.utcnow()
+    current_conv.reported_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.commit()
     await db.refresh(
         current_conv,

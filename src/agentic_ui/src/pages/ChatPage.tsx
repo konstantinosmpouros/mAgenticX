@@ -136,6 +136,7 @@ export function ChatInterface() {
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [reportTargetConversationId, setReportTargetConversationId] = useState<string | null>(null);
   const [reportTargetMessageId, setReportTargetMessageId] = useState<string | null>(null);
+  const [reportTargetMessagePreview, setReportTargetMessagePreview] = useState<string | null>(null);
   const [reportConversationTitle, setReportConversationTitle] = useState<string | null>(null);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   
@@ -313,14 +314,16 @@ export function ChatInterface() {
     setIsReportDialogOpen(false);
     setReportTargetConversationId(null);
     setReportTargetMessageId(null);
+    setReportTargetMessagePreview(null);
     setReportConversationTitle(null);
     setIsSubmittingReport(false);
   }, []);
 
   const openReportDialog = useCallback(
-    (conversationId: string, options?: { messageId?: string | null; title?: string | null }) => {
+    (conversationId: string, options?: { messageId?: string | null; messagePreview?: string | null; title?: string | null }) => {
       setReportTargetConversationId(conversationId);
       setReportTargetMessageId(options?.messageId ?? null);
+      setReportTargetMessagePreview(options?.messagePreview ?? null);
       setReportConversationTitle(options?.title ?? null);
       setIsReportDialogOpen(true);
     },
@@ -712,6 +715,7 @@ export function ChatInterface() {
     }
     openReportDialog(currentConversation.id, {
       messageId: message.id,
+      messagePreview: message.content ?? null,
       title: currentConversation.title ?? null,
     });
   }, [currentConversation, openReportDialog]);
@@ -1034,6 +1038,7 @@ export function ChatInterface() {
                 onSubmit={handleSubmitConversationReport}
                 submitting={isSubmittingReport}
                 messageId={reportTargetMessageId}
+                messagePreview={reportTargetMessagePreview}
                 conversationTitle={reportConversationTitle}
               />
             

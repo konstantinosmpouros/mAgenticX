@@ -3,8 +3,7 @@ import base64
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
-from fastapi_pagination import Page
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination import Page, Params, create_page
 from observability import StreamMetrics, get_context, get_logger, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -183,6 +182,7 @@ async def downloadBlobStream(
 async def getImagesBatch(
     user_id: str,
     current_user: UserTable = Depends(validate_userId),
+    params: Params = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -210,7 +210,11 @@ async def getImagesBatch(
         .order_by(desc(AttachmentTable.created_at))
     )
 
-    pages = await paginate(db, stmt)
+    raw_params = params.to_raw_params()
+    total_query = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(total_query) or 0
+    result = await db.execute(stmt.limit(raw_params.limit).offset(raw_params.offset))
+    rows = result.all()
 
     items = [
         ImageOut(
@@ -221,10 +225,10 @@ async def getImagesBatch(
             created_at=r.created_at,
             dataB64=base64.b64encode(r.data).decode(),
         )
-        for r in pages.items
+        for r in rows
     ]
-    logger.info("images_page_fetched", "Fetched paginated user images", item_count=len(items), total=pages.total, page=pages.page, size=pages.size)
+    logger.info("images_page_fetched", "Fetched paginated user images", item_count=len(items), total=total, page=params.page, size=params.size)
 
-    return Page[ImageOut](items=items, total=pages.total, page=pages.page, size=pages.size)
+    return create_page(items, total=total, params=params)
 
 

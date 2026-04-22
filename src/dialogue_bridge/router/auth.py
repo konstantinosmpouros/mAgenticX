@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from observability import get_logger, set_context
@@ -86,7 +86,7 @@ async def authenticate(
             detail="Authentication failed.",
         ) from exc
 
-    login_time = datetime.utcnow()
+    login_time = datetime.now(timezone.utc).replace(tzinfo=None)
 
     user = await upsert_user_from_vault(
         db,
