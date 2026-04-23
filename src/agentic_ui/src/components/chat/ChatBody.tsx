@@ -17,6 +17,7 @@ type ChatBody = {
   expandedThinking: Record<string, boolean>;
   isImageFile: (attachment: AttachmentLike) => boolean;
   onDownloadAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
+  onPreviewAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
   onImageClick: (imageUrl: string) => void;
   onToggleThinking: (messageId: string) => void;
   copiedId: string | null;
@@ -57,6 +58,7 @@ export default function ChatBody({
   expandedThinking,
   isImageFile,
   onDownloadAttachment,
+  onPreviewAttachment,
   onImageClick,
   onToggleThinking,
   copiedId,
@@ -191,6 +193,7 @@ export default function ChatBody({
                     streamingMessageId={streamingMessageId}
                     isImageFile={isImageFile}
                     onDownloadAttachment={onDownloadAttachment}
+                    onPreviewAttachment={onPreviewAttachment}
                     onImageClick={onImageClick}
                     branchData={{
                       parentId,

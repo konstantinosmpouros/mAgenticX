@@ -51,6 +51,31 @@ server {
   set $bff ${BFF_BASE_URL};
 
   # Proxy API requests to backend service inside docker network
+  location ^~ /api/v1/attachments/preview/ {
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self';" always;
+
+    rewrite ^/api/(.*) /$1 break;
+    proxy_pass $bff;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $trusted_client_ip;
+    proxy_set_header X-Forwarded-For $trusted_forwarded_for;
+    proxy_set_header CF-Connecting-IP $trusted_cf_connecting_ip;
+    proxy_set_header X-Forwarded-Proto $trusted_forwarded_proto;
+    proxy_set_header X-Internal-Proxy-Secret ${TRUSTED_PROXY_SECRET};
+    proxy_set_header Range $http_range;
+    proxy_set_header If-Range $http_if_range;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    gzip off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+  }
+
   location /api/ {
     rewrite ^/api/(.*) /$1 break;
     proxy_pass $bff;

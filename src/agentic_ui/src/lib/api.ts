@@ -545,12 +545,12 @@ export async function downloadAttachment({
   filename,
 }: DownloadAttachmentParams): Promise<void> {
   const url = `${ATTACHMENTS_BASE_PATH}/download/${userId}/${conversationId}/${messageId}/${blobId}`;
-  const res = await fetch(url, withSessionRequest());
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to download attachment: ${res.status}`);
-  }
-  const blob = await res.blob();
+  const blob = await fetchAttachmentBlob({
+    userId,
+    conversationId,
+    messageId,
+    blobId,
+  });
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
@@ -561,6 +561,34 @@ export async function downloadAttachment({
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(objectUrl);
+}
+
+
+// Fetch for preview an attachment blob from the backend
+export async function fetchAttachmentBlob({
+  userId,
+  conversationId,
+  messageId,
+  blobId,
+}: Omit<DownloadAttachmentParams, "filename">): Promise<Blob> {
+  const url = `${ATTACHMENTS_BASE_PATH}/download/${userId}/${conversationId}/${messageId}/${blobId}`;
+  const res = await fetch(url, withSessionRequest());
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to download attachment: ${res.status}`);
+  }
+  return await res.blob();
+}
+
+
+export function getAttachmentPreviewUrl({
+  userId,
+  conversationId,
+  messageId,
+  blobId,
+}: Omit<DownloadAttachmentParams, "filename">): string {
+  const segments = [userId, conversationId, messageId, blobId].map((value) => encodeURIComponent(value));
+  return `${ATTACHMENTS_BASE_PATH}/preview/${segments.join("/")}`;
 }
 
 

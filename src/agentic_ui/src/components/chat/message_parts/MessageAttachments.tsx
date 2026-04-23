@@ -1,5 +1,4 @@
-import { Download, FileText } from "lucide-react";
-import { VscEye } from "react-icons/vsc";
+import { Download, Eye, FileText } from "lucide-react";
 import type { AttachmentIn, FileAttachment, MessageOut } from "@/lib/types";
 
 export type AttachmentLike =
@@ -13,6 +12,7 @@ type MessageAttachmentsProps = {
   message: MessageOut;
   isImageFile: (attachment: AttachmentLike) => boolean;
   onDownloadAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
+  onPreviewAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
   onImageClick: (imageUrl: string) => void;
 };
 
@@ -22,6 +22,7 @@ type AttachmentItem = {
   imageUrl: string;
   fileName: string;
   typeLabel: string;
+  isPdfPreviewable: boolean;
 };
 
 const normalizeAttachment = (
@@ -51,20 +52,23 @@ const normalizeAttachment = (
       isStructuredAttachment && "name" in attachment ? (attachment as any).name : "Unknown file";
   }
 
-  const typeLabel =
-    isStructuredAttachment && "mime" in attachment && (attachment as any).mime
-      ? (attachment as any).mime
-      : isImage
-        ? "Image"
-        : "File";
+  const mimeValue: string =
+    (isStructuredAttachment && ((attachment as any).mime || (attachment as any).mime_type)) || "";
 
-  return { attachment, isImage, imageUrl, fileName, typeLabel };
+  const typeLabel = mimeValue || (isImage ? "Image" : "File");
+
+  const loweredName = fileName.toLowerCase();
+  const loweredMime = mimeValue.toLowerCase();
+  const isPdfPreviewable = loweredMime === "application/pdf" || loweredName.endsWith(".pdf");
+
+  return { attachment, isImage, imageUrl, fileName, typeLabel, isPdfPreviewable };
 };
 
 export function MessageAttachments({
   message,
   isImageFile,
   onDownloadAttachment,
+  onPreviewAttachment,
   onImageClick,
 }: MessageAttachmentsProps) {
   if (!message.attachments?.length) {
@@ -86,8 +90,24 @@ export function MessageAttachments({
               {files.map((fileItem, index) => (
                 <div key={`file-${index}`} className="text-xs self-end">
                   <div
-                    className="group relative cursor-pointer bg-muted/20 hover:bg-muted/30 border border-border/30 rounded-2xl px-3 py-3 transition-all duration-200 hover:shadow-md w-64 md:w-80"
-                    onClick={() => onDownloadAttachment(fileItem.attachment, message)}
+                    role="button"
+                    tabIndex={0}
+                    className="group relative cursor-pointer bg-muted/20 hover:bg-muted/30 border border-border/30 rounded-2xl px-3 py-3 transition-all duration-200 hover:shadow-md w-64 md:w-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    onClick={() =>
+                      fileItem.isPdfPreviewable
+                        ? onPreviewAttachment(fileItem.attachment, message)
+                        : onDownloadAttachment(fileItem.attachment, message)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        if (fileItem.isPdfPreviewable) {
+                          onPreviewAttachment(fileItem.attachment, message);
+                        } else {
+                          onDownloadAttachment(fileItem.attachment, message);
+                        }
+                      }
+                    }}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-primary/90 text-primary-foreground flex items-center justify-center">
@@ -102,10 +122,31 @@ export function MessageAttachments({
                         </div>
                       </div>
                     </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <div className="bg-primary/90 text-primary-foreground rounded-full p-2 shadow-lg">
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+                      {fileItem.isPdfPreviewable ? (
+                        <button
+                          type="button"
+                          aria-label={`Preview ${fileItem.fileName}`}
+                          className="rounded-full border border-border/50 bg-background/95 p-2 text-primary shadow-md transition-all hover:scale-105 hover:bg-background"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onPreviewAttachment(fileItem.attachment, message);
+                          }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        aria-label={`Download ${fileItem.fileName}`}
+                        className="rounded-full border border-border/50 bg-background/95 p-2 text-foreground shadow-md transition-all hover:scale-105 hover:bg-background"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDownloadAttachment(fileItem.attachment, message);
+                        }}
+                      >
                         <Download size={16} />
-                      </div>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -127,7 +168,7 @@ export function MessageAttachments({
                       className="w-full h-28 md:h-32 object-cover rounded-xl border border-0 transition-all hover:scale-[1.02] hover:shadow-lg"
                     />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
-                      <VscEye size={16} className="text-white" />
+                      <Eye size={16} className="text-white" />
                     </div>
                   </div>
                 </div>

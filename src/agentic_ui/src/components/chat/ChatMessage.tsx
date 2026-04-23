@@ -44,6 +44,7 @@ type ChatMessageProps = {
   streamingMessageId?: string | null;
   isImageFile: (attachment: any) => boolean;
   onDownloadAttachment: (attachment: any, message: MessageOut) => void;
+  onPreviewAttachment: (attachment: any, message: MessageOut) => void;
   onImageClick: (url: string) => void;
   branchData: {
     parentId: string | null;
@@ -82,6 +83,7 @@ export function ChatMessage({
   streamingMessageId,
   isImageFile,
   onDownloadAttachment,
+  onPreviewAttachment,
   onImageClick,
   branchData,
 }: ChatMessageProps) {
@@ -142,6 +144,7 @@ export function ChatMessage({
           message={message}
           isImageFile={isImageFile}
           onDownloadAttachment={onDownloadAttachment}
+          onPreviewAttachment={onPreviewAttachment}
           onImageClick={onImageClick}
         />
       )}

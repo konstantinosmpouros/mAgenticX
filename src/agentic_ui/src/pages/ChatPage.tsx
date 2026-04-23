@@ -54,6 +54,7 @@ import { getConversationDetail } from "@/lib/api";
 // Chat Interface component
 import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
+import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
 import { PlanCard } from "@/components/chat/message_parts/agentic_parts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
@@ -62,6 +63,7 @@ import ChatBody from "@/components/chat/ChatBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 import { Loader } from "@/components/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/lib/uiStateStorage";
+import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
 
 const ROOT_BRANCH_KEY = "__root__";
 
@@ -129,6 +131,7 @@ export function ChatInterface() {
   
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedFilePreview, setSelectedFilePreview] = useState<AttachmentPreviewTarget | null>(null);
   const [isAgentPickerOpen, setIsAgentPickerOpen] = useState(false);
   const [isHeaderActionMenuOpen, setIsHeaderActionMenuOpen] = useState(false);
   const [isSidebarFloatingUiOpen, setIsSidebarFloatingUiOpen] = useState(false);
@@ -464,7 +467,20 @@ export function ChatInterface() {
   // Create UI handlers
   const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
 
+  const handleOpenFilePreview = useCallback((attachment: AttachmentLike, message: MessageOut) => {
+    setSelectedFilePreview({ attachment, message });
+  }, []);
+
+  const handleCloseFilePreview = useCallback(() => {
+    setSelectedFilePreview(null);
+  }, []);
+
   const dismissActiveUi = useCallback(() => {
+    if (selectedFilePreview) {
+      handleCloseFilePreview();
+      return true;
+    }
+
     if (selectedImage) {
       handleCloseImagePreview();
       return true;
@@ -527,11 +543,13 @@ export function ChatInterface() {
     dictationStatus,
     editingMessageId,
     handleCancelEditMessage,
+    handleCloseFilePreview,
     handleCloseImagePreview,
     isAgentPickerOpen,
     isHeaderActionMenuOpen,
     isReportDialogOpen,
     isSidebarFloatingUiOpen,
+    selectedFilePreview,
     selectedImage,
     showUserProfile,
   ]);
@@ -920,6 +938,7 @@ export function ChatInterface() {
                   expandedThinking={expandedThinking}
                   isImageFile={isImageFile}
                   onDownloadAttachment={handleFileDownload}
+                  onPreviewAttachment={handleOpenFilePreview}
                   onImageClick={handleImageClick}
                   onToggleThinking={toggleThinking}
                   copiedId={copiedId}
@@ -1045,6 +1064,14 @@ export function ChatInterface() {
                 messageId={reportTargetMessageId}
                 messagePreview={reportTargetMessagePreview}
                 conversationTitle={reportConversationTitle}
+              />
+
+              <AttachmentPreviewPanel
+                preview={selectedFilePreview}
+                userId={userId}
+                conversationId={currentConversation?.id ?? null}
+                onClose={handleCloseFilePreview}
+                onDownload={handleFileDownload}
               />
             
               {/* Image Preview Modal */}
