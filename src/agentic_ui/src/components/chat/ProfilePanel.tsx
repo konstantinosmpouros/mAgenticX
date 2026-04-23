@@ -291,7 +291,7 @@ export default function ProfilePanel({
             availableTools.forEach((tool) => {
                 const serverKey = tool.serverId || "default";
                 if (!(serverKey in next)) {
-                    next[serverKey] = serverKey in prev ? prev[serverKey] : false;
+                    next[serverKey] = serverKey in prev ? prev[serverKey] : true;
                 }
             });
             return next;
@@ -346,6 +346,19 @@ export default function ProfilePanel({
     ] as const;
 
     const normalizedActiveTab = navItems.some((item) => item.id === activeTab) ? activeTab : "profile";
+
+    useEffect(() => {
+        if (normalizedActiveTab !== "mcp") return;
+
+        setServerCollapsed(() => {
+            const next: Record<string, boolean> = {};
+            availableTools.forEach((tool) => {
+                const serverKey = tool.serverId || "default";
+                next[serverKey] = true;
+            });
+            return next;
+        });
+    }, [availableTools, normalizedActiveTab]);
 
     const sectionMeta: Record<string, { eyebrow?: string; title: string; description: string }> = {
         profile: {

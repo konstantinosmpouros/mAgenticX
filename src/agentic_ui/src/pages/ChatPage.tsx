@@ -57,7 +57,7 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import { PlanCard } from "@/components/chat/message_parts/agentic_parts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
-import ReportConversationDialog from "@/components/chat/ReportConversationDialog";
+import ReportConversationDialog from "@/components/chat/ReportPanel";
 import ChatBody from "@/components/chat/ChatBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 import { Loader } from "@/components/ui/shadcn-io/loader";
@@ -304,9 +304,14 @@ export function ChatInterface() {
   }, [dictationStatus]);
 
   const openAgentPicker = useCallback(() => {
-    setIsAgentPickerOpen(true);
-    requestAnimationFrame(() => {
-      agentTriggerRef.current?.focus();
+    setIsAgentPickerOpen((prevOpen) => {
+      const nextOpen = !prevOpen;
+      if (nextOpen) {
+        requestAnimationFrame(() => {
+          agentTriggerRef.current?.focus();
+        });
+      }
+      return nextOpen;
     });
   }, []);
 

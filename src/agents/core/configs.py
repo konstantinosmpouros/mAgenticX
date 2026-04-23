@@ -251,8 +251,8 @@ def load_configs() -> AgentsConfigs:
             version=app_version,
         ),
         api_keys=ApiKeysConfig(
-            openai=_env_optional_str("OPENAI_API_KEY"),
-            anthropic=_env_optional_str("ANTHROPIC_API_KEY"),
+            openai=_read_secret("OPENAI_API_KEY") or None,
+            anthropic=_read_secret("ANTHROPIC_API_KEY") or None,
         ),
         rag=RagConfig(
             base_url=_env_str("RAG_BASE_URL", "https://rag_service:8001"),

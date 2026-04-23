@@ -5,6 +5,16 @@ from pathlib import Path
 from chromadb.config import Settings
 from langchain_openai import OpenAIEmbeddings
 
+
+def _read_secret(name: str, default: str = "") -> str:
+    file_path = os.getenv(f"{name}_FILE")
+    if file_path:
+        try:
+            return Path(file_path).read_text().strip()
+        except OSError:
+            pass
+    return (os.getenv(name) or default).strip()
+
 import duckdb
 import pandas as pd
 from observability import get_logger
@@ -50,7 +60,7 @@ if not TABLES:
 # --------------------------------------------------------------------------------------
 RAG_HOST = os.getenv("RAG_HOST", "vectordb")
 RAG_PORT = os.getenv("RAG_PORT", "8000")
-embeddings_model = OpenAIEmbeddings(model='text-embedding-3-large', api_key=os.getenv("OPENAI_API_KEY"))
+embeddings_model = OpenAIEmbeddings(model='text-embedding-3-large', api_key=_read_secret("OPENAI_API_KEY") or None)
 settings = Settings(
     chroma_api_impl="rest",
     chroma_server_host=RAG_HOST,

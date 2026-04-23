@@ -23,6 +23,9 @@ services:
     image: konstantinosmpouros/rag_service:v1.2.0
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8001"]
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_HOST=vectordb
@@ -52,6 +55,9 @@ services:
     image: konstantinosmpouros/agents:v1.12.0
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8003"]
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_BASE_URL=https://rag_service:8001
@@ -107,6 +113,9 @@ services:
     image: konstantinosmpouros/dialogue_bridge:v2.5.0
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8002"]
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db?ssl=verify-full
       - VAULT_URL=https://vault:8004
@@ -138,6 +147,8 @@ services:
     image: konstantinosmpouros/agentic_ui:v0.6.2
     entrypoint: ["/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
+    security_opt:
+      - no-new-privileges:true
     environment:
       - BFF_BASE_URL=https://dialogue_bridge:8002
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}

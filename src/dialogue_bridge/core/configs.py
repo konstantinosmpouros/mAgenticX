@@ -217,7 +217,7 @@ def load_settings() -> Settings:
     default_access_cookie = "__Host-mx_session" if session_secure and session_domain is None else "mx_session"
     default_refresh_cookie = "__Host-mx_refresh" if session_secure and session_domain is None else "mx_refresh"
     default_csrf_cookie = "__Host-mx_csrf" if session_secure and session_domain is None else "mx_csrf"
-    session_token_secret = _optional_str(os.getenv("SESSION_TOKEN_SECRET")) or secrets.token_hex(32)
+    session_token_secret = _read_secret("SESSION_TOKEN_SECRET") or secrets.token_hex(32)
 
     # Load trusted proxy CIDRs and networks
     proxy_cidrs = os.getenv("TRUSTED_PROXY_CIDRS", "")
