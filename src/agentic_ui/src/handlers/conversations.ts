@@ -1,5 +1,5 @@
 import { Building2 } from 'lucide-react';
-import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, reportConversation, getArchivedConversations } from '@/lib/api';
+import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, reportConversation, getArchivedConversations, forkConversation } from '@/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Agent, ConversationDetail, ConversationReportPayload, ConversationSummary, MessageOut } from '@/lib/types';
 
@@ -88,6 +88,7 @@ type ConversationsCtx = {
   setIsClearing: (v: boolean) => void;
   setSelectedAgent: (v: string) => void;
   setCurrentConversation: Dispatch<SetStateAction<ConversationDetail | null>>;
+  setBranchSelections?: Dispatch<SetStateAction<Record<string, number>>>;
   setIsPrivateMode: (v: boolean) => void;
   setExpandedThinking: (v: Record<string, boolean>) => void;
   setAttachments: (v: File[] | ((prev: File[]) => File[])) => void;
@@ -143,6 +144,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setIsClearing,
     setSelectedAgent,
     setCurrentConversation,
+    setBranchSelections,
     setIsPrivateMode,
     setExpandedThinking,
     setAttachments,
@@ -228,6 +230,44 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
         persistUIState();
       }
     }, CLEAR_DELAY_MS);
+  };
+
+
+  const handleForkConversation = async (message: MessageOut) => {
+    if (!userId || !currentConversation?.id) {
+      toast({ title: 'No conversation selected', description: 'Open a conversation before forking.', duration: 2000 });
+      return;
+    }
+    if (message.sender !== 'ai') {
+      toast({ title: 'Unable to fork', description: 'Only AI messages can start a fork.', variant: 'destructive', duration: 2500 });
+      return;
+    }
+
+    try {
+      setLoadingConversation(true);
+      const summary = await forkConversation(userId, currentConversation.id, message.id);
+      setConversations(prev => sortConversationSummaries([summary, ...prev.filter(c => c.id !== summary.id)]));
+
+      const detail = await getConversationDetail(userId, summary.id);
+      setSelectedAgent(detail.agent?.id || "");
+      setCurrentConversation(detail);
+      setIsPrivateMode(detail.isPrivate || false);
+      setBranchSelections?.({});
+      setCurrentMessage('');
+      setAttachments([]);
+      toast({ title: 'Conversation forked', duration: 2000 });
+      persistUIState();
+    } catch (error) {
+      console.error('Failed to fork conversation:', error);
+      toast({
+        title: 'Failed to fork conversation',
+        description: error instanceof Error ? error.message : 'Please try again in a moment.',
+        variant: 'destructive',
+        duration: 3000,
+      });
+    } finally {
+      setLoadingConversation(false);
+    }
   };
 
 
@@ -534,6 +574,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleUnarchiveCurrentConversation,
     submitConversationReport,
     handleOpenSearch,
+    handleForkConversation,
     loadArchivedConversationPage,
     refreshArchivedConversations,
     handleLoadMoreArchivedConversations,

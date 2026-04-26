@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from core.database import ConversationReportTable, ConversationTable, MessageTable, get_db, UserTable
 from schemas import (
     ConversationDetail,
+    ConversationForkIn,
     ConversationIn,
     ConversationReportIn,
     ConversationSummary,
@@ -19,6 +20,8 @@ from schemas import (
 from core.auth_session import require_csrf_protection
 from utils import (
     _preview,
+    build_message_lineage,
+    clone_branch_to_conversation,
     generate_conversation_title,
     get_agent_by_id,
     init_conv,
@@ -56,7 +59,7 @@ async def createConversation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
 
     resolved_title = (payload.title or "").strip() if payload.title else None
-    
+
     # Auto-generate a title when none was provided
     if not resolved_title:
         generated = await generate_conversation_title(payload.firstMessage)
@@ -67,7 +70,7 @@ async def createConversation(
             fallback_source = "preview" if preview_title else ("agent_name" if agent.name else "default")
             resolved_title = preview_title or agent.name or "New conversation"
             logger.info("title_generation_fallback_used", "Conversation title fallback was used", agent_id=agent.id, fallback_source=fallback_source)
-    
+
     # Create conversation + first message atomically
     async with logged_db_operation(
         logger=logger,
@@ -92,20 +95,70 @@ async def createConversation(
         )
         await db.commit()
         operation.add(conversation_id=conv.id)
-    
+
     # Reload with nested attachments->blob so images get base64 injected by AttachmentOut
     conv_full = await validate_convId_full(user_id, conv.id, db)
-    
+
     # Build both DTOs from the same ORM instance
     detail = ConversationDetail.model_validate(conv_full)
     summary = ConversationSummary.model_validate(conv_full)
-    
+
     # Log conversation creation with relevant metadata and the first message details, for better observability of conversation creation and initial engagement
     logger.info("conversation_created", "Conversation created", **operation.snapshot())
     first_msg = conv_full.messages[0] if conv_full.messages else None
     logger.info("first_message_created", "First message persisted", message_id=first_msg.id if first_msg else None, sender=first_msg.sender if first_msg else None, attachment_count=len(first_msg.attachments) if first_msg else 0)
 
     return CreateConversationResponse(detail=detail, summary=summary)
+
+
+@router.post(
+    "/{user_id}/{conversation_id}/fork",
+    response_model=ConversationSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Fork a conversation branch into a new conversation",
+)
+async def forkConversation(
+    user_id: str,
+    conversation_id: str,
+    payload: ConversationForkIn,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId_full),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clone the branch ending at the selected AI message into a new conversation."""
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
+    branch = build_message_lineage(current_conv.messages, payload.messageId)
+
+    async with logged_db_operation(
+        logger=logger,
+        db=db,
+        success_event=None,
+        failure_event="conversation_fork_failed",
+        success_message="Conversation forked",
+        failure_message="Conversation fork failed",
+        source_conversation_id=conversation_id,
+        forked_message_id=payload.messageId,
+        branch_message_count=len(branch),
+    ) as operation:
+        forked_conv = await clone_branch_to_conversation(
+            db=db,
+            source_conv=current_conv,
+            branch=branch,
+            forked_message_id=payload.messageId,
+        )
+        await db.commit()
+        operation.add(forked_conversation_id=forked_conv.id)
+
+    stmt = (
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(ConversationTable.id == forked_conv.id)
+    )
+    result = await db.execute(stmt)
+    forked_full = result.scalar_one()
+    logger.info("conversation_forked", "Conversation forked", **operation.snapshot())
+    return ConversationSummary.model_validate(forked_full)
 
 
 @router.get(

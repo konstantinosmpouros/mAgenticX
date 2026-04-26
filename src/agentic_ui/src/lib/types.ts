@@ -104,6 +104,8 @@ export type UserPreferences = {
 export type ConversationSummary = {
     id: string;
     agent: Agent;
+    forkedParentId?: string | null;
+    forkedMessageId?: string | null;
     title?: string;
     isPrivate: boolean;
     isArchived?: boolean;
@@ -119,6 +121,8 @@ export type ConversationSummary = {
 export type ConversationDetail = {
     id: string;
     agent: Agent;
+    forkedParentId?: string | null;
+    forkedMessageId?: string | null;
     title?: string;
     isPrivate: boolean;
     isArchived?: boolean;

@@ -33,6 +33,7 @@ type ChatMessageProps = {
   conversationIsReported?: boolean;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onRetryMessage?: (message: MessageOut) => void;
+  onForkMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
   onFlashUserActionBar: (messageId: string) => void;
   onRequestEdit?: (message: MessageOut) => void;
@@ -72,6 +73,7 @@ export function ChatMessage({
   conversationIsReported = false,
   toast,
   onRetryMessage,
+  onForkMessage,
   isStreaming,
   onFlashUserActionBar,
   onRequestEdit,
@@ -243,6 +245,7 @@ export function ChatMessage({
                     conversationIsReported={conversationIsReported}
                     toast={toast}
                     onRetryMessage={onRetryMessage}
+                    onForkMessage={onForkMessage}
                     isStreaming={isStreaming}
                     branchControls={branchData}
                     agentName={currentAgent?.name ?? "Unknown agent"}

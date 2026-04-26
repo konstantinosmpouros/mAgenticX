@@ -418,6 +418,38 @@ export async function createConversation(
 }
 
 
+// Fork the current branch ending at the selected AI message.
+export async function forkConversation(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+): Promise<ConversationSummary> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/fork`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({ messageId }),
+  }, { csrf: true }));
+
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to fork conversation: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return transformConversationSummary(data);
+}
+
+
 // Add a message to an existing conversation
 export async function addMessageToConversation(
   userId: string,

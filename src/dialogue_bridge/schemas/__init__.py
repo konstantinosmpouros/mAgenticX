@@ -175,6 +175,8 @@ class ConversationSummary(BaseModel):
     
     id: str
     agent: AgentPublic = Field(..., validation_alias="agent")
+    forkedParentId: Optional[str] = Field(None, validation_alias="forked_parent_id")
+    forkedMessageId: Optional[str] = Field(None, validation_alias="forked_message_id")
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")
     isArchived: bool = Field(False, validation_alias="is_archived")
@@ -249,6 +251,8 @@ class ConversationDetail(BaseModel):
     
     id: str
     agent: AgentPublic = Field(..., validation_alias="agent")
+    forkedParentId: Optional[str] = Field(None, validation_alias="forked_parent_id")
+    forkedMessageId: Optional[str] = Field(None, validation_alias="forked_message_id")
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")
     isArchived: bool = Field(False, validation_alias="is_archived")
@@ -351,6 +355,10 @@ class ConversationIn(BaseModel):
     isPrivate: bool = Field(False, description="Optional privacy flag")
     title: Optional[str] = Field(None, description="Optional custom title")
     firstMessage: MessageIn
+
+class ConversationForkIn(BaseModel):
+    """Fork a conversation branch ending at a selected AI message."""
+    messageId: str
 
 class CreateConversationResponse(BaseModel):
     """Response when creating a conversation: summary + full detail."""

@@ -3,6 +3,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Copy, Check, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
 import { LuFlag } from "react-icons/lu";
 import { BsArrowRepeat } from "react-icons/bs";
+import { BiGitRepoForked } from "react-icons/bi";
 import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/lib/types";
 import { BranchControls } from "./BranchControls";
@@ -34,6 +35,7 @@ type AIActionBarProps = BaseActionBarProps & {
   onDislike: (message: MessageOut) => void;
   onReportMessage?: (message: MessageOut) => void;
   onRetryMessage?: (message: MessageOut) => void;
+  onForkMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
   agentName?: string;
   AgentIcon?: LucideIcon;
@@ -73,7 +75,7 @@ const CopyButton = ({
             h-8 w-8 text-muted-foreground
             hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
             active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-            focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
+            focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
             focus:ring-0 focus-visible:ring-0 transition-colors
           "
           onMouseDown={(event) => event.preventDefault()}
@@ -113,6 +115,7 @@ export const AIActionBar = ({
   onDislike,
   onReportMessage,
   onRetryMessage,
+  onForkMessage,
   isStreaming,
   branchControls,
   agentName,
@@ -212,7 +215,7 @@ export const AIActionBar = ({
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
+                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                 onMouseDown={(event) => event.preventDefault()}
@@ -243,7 +246,7 @@ export const AIActionBar = ({
                 h-8 w-8 text-muted-foreground
                 hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                 active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
+                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
                 focus:ring-0 focus-visible:ring-0 transition-colors
               "
               onMouseDown={(event) => event.preventDefault()}
@@ -260,6 +263,37 @@ export const AIActionBar = ({
             className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
           >
             <p>Try again</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+
+      <div className="mt-1">
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="
+                h-8 w-8 text-muted-foreground
+                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                focus:ring-0 focus-visible:ring-0 transition-colors
+              "
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onForkMessage?.(message)}
+              disabled={!onForkMessage || isStreaming}
+              aria-label="Fork conversation"
+            >
+              <BiGitRepoForked className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="center"
+            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+          >
+            <p>Fork conversation</p>
           </TooltipContent>
         </Tooltip>
       </div>
@@ -313,7 +347,7 @@ export const UserActionBar = ({
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none 
+                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                 onMouseDown={(event) => event.preventDefault()}

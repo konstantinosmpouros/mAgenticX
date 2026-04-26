@@ -48,6 +48,7 @@ type ChatBody = {
   onSubmitEdit?: () => void;
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onRetryMessage?: (message: MessageOut) => void;
+  onForkMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
 };
 
@@ -89,6 +90,7 @@ export default function ChatBody({
   onSubmitEdit,
   toast,
   onRetryMessage,
+  onForkMessage,
   isStreaming,
 }: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -182,6 +184,7 @@ export default function ChatBody({
                     conversationIsReported={conversationIsReported}
                     toast={toast}
                     onRetryMessage={onRetryMessage}
+                    onForkMessage={onForkMessage}
                     isStreaming={isStreaming}
                     onFlashUserActionBar={onFlashUserActionBar}
                     onRequestEdit={onRequestEdit}

@@ -1,7 +1,9 @@
 import base64
+from copy import deepcopy
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import (
@@ -97,3 +99,112 @@ def _preview(text: Optional[str]) -> Optional[str]:
     # Collapse whitespace/newlines so previews stay compact in the UI.
     s = text.strip().replace("\r", " ").replace("\n", " ")
     return s[:MAX_PREVIEW_LEN]
+
+
+def build_message_lineage(messages: list[MessageTable], target_message_id: str) -> list[MessageTable]:
+    lookup = {message.id: message for message in messages}
+    target = lookup.get(target_message_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fork target message does not belong to this conversation.",
+        )
+    if target.sender != "ai":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only AI messages can be used as a fork target.",
+        )
+    if not target.content and not target.attachments:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot fork from an unfinished AI message.",
+        )
+
+    lineage: list[MessageTable] = []
+    current: MessageTable | None = target
+    seen: set[str] = set()
+    while current is not None:
+        if current.id in seen:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Conversation branch is cyclic.")
+        seen.add(current.id)
+        lineage.append(current)
+
+        parent_id = current.parent_message_id
+        if not parent_id:
+            break
+        current = lookup.get(parent_id)
+        if current is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Conversation branch is incomplete.")
+
+    lineage.reverse()
+    return lineage
+
+
+async def clone_branch_to_conversation(
+    *,
+    db: AsyncSession,
+    source_conv: ConversationTable,
+    branch: list[MessageTable],
+    forked_message_id: str,
+) -> ConversationTable:
+    target_message = branch[-1]
+    fallback_attachment_name = target_message.attachments[0].file_name if target_message.attachments else None
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    forked_conv = ConversationTable(
+        user_id=source_conv.user_id,
+        agent_id=source_conv.agent_id,
+        forked_parent_id=source_conv.id,
+        forked_message_id=forked_message_id,
+        agent_name=source_conv.agent_name,
+        title=source_conv.title,
+        is_private=source_conv.is_private,
+        is_archived=False,
+        is_reported=False,
+        archived_at=None,
+        reported_at=None,
+        last_message_preview=_preview(target_message.content) or fallback_attachment_name,
+        last_message_at=now,
+        updated_at=now,
+    )
+    db.add(forked_conv)
+    await db.flush()
+
+    message_id_map: dict[str, str] = {}
+    for source_message in branch:
+        cloned_message = MessageTable(
+            conversation_id=forked_conv.id,
+            parent_message_id=message_id_map.get(source_message.parent_message_id),
+            sender=source_message.sender,
+            type=source_message.type,
+            content=source_message.content,
+            liked=source_message.liked,
+            reasoning_steps=deepcopy(source_message.reasoning_steps),
+            reasoning_time_seconds=source_message.reasoning_time_seconds,
+            is_error=source_message.is_error,
+            error_message=source_message.error_message,
+            raw_events=deepcopy(source_message.raw_events),
+            plan=deepcopy(source_message.plan),
+            subagents=deepcopy(source_message.subagents),
+            created_at=source_message.created_at,
+            updated_at=source_message.updated_at,
+        )
+        db.add(cloned_message)
+        await db.flush()
+        message_id_map[source_message.id] = cloned_message.id
+
+        for source_attachment in source_message.attachments:
+            source_blob = source_attachment.blob
+            cloned_blob = BlobTable(data=source_blob.data) if source_blob is not None else None
+            cloned_attachment = AttachmentTable(
+                message_id=cloned_message.id,
+                file_name=source_attachment.file_name,
+                mime_type=source_attachment.mime_type,
+                size_bytes=source_attachment.size_bytes,
+                blob=cloned_blob,
+                created_at=source_attachment.created_at,
+                updated_at=source_attachment.updated_at,
+            )
+            db.add(cloned_attachment)
+
+    return forked_conv

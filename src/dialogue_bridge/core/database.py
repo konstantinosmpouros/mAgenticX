@@ -159,6 +159,8 @@ class ConversationTable(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     agent_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    forked_parent_id = Column(String, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
+    forked_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
     
     agent_name = Column(String, nullable=True)
     title = Column(String, nullable=True)
@@ -182,6 +184,7 @@ class ConversationTable(Base):
         back_populates="conversation",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        foreign_keys="MessageTable.conversation_id",
         order_by="MessageTable.created_at.asc()",
     )
     report = relationship(
@@ -229,7 +232,7 @@ class MessageTable(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     
-    conversation = relationship("ConversationTable", back_populates="messages")
+    conversation = relationship("ConversationTable", back_populates="messages", foreign_keys=[conversation_id])
     attachments = relationship(
         "AttachmentTable",
         back_populates="message",
@@ -363,5 +366,4 @@ async def upsert_user_from_vault(
         user.last_login_at = metadata["last_login_at"]
 
     return user
-
 

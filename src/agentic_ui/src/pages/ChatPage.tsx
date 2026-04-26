@@ -667,6 +667,7 @@ export function ChatInterface() {
     handleUnarchiveCurrentConversation,
     submitConversationReport,
     handleOpenSearch,
+    handleForkConversation,
     refreshArchivedConversations,
     handleLoadMoreArchivedConversations,
   } = createConversationHandlers({
@@ -680,6 +681,7 @@ export function ChatInterface() {
     setIsClearing,
     setSelectedAgent,
     setCurrentConversation,
+    setBranchSelections,
     setIsPrivateMode,
     setExpandedThinking,
     setAttachments,
@@ -969,6 +971,7 @@ export function ChatInterface() {
                   onSubmitEdit={submitEditFromState}
                   toast={toastWrapper}
                   onRetryMessage={handleRetryAiMessage}
+                  onForkMessage={handleForkConversation}
                   isStreaming={isSendingMessage}
                 />
               </div>

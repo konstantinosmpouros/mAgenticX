@@ -7,7 +7,13 @@ from utils.agents import (
     prime_agent_cache,
     sync_agents_with_service,
 )
-from utils.conversations import _preview, init_conv, init_message
+from utils.conversations import (
+    _preview,
+    build_message_lineage,
+    clone_branch_to_conversation,
+    init_conv,
+    init_message,
+)
 from utils.inference import prepare_inference_history, serialise_message_with_images_for_agent, validate_and_order_message_path
 from utils.titles import generate_conversation_title
 from utils.validators import validate_convId, validate_convId_full, validate_userId
@@ -29,5 +35,7 @@ __all__ = [
     "validate_userId",
     "init_conv",
     "init_message",
+    "build_message_lineage",
+    "clone_branch_to_conversation",
     "_preview",
 ]
