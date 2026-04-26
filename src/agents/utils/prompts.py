@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 
 # --------------------------------------------------------------------------------------
-# Content schemas (extensible: add audio, video, etc. later)
+# Content schemas (extensible: add files, audio, video, etc. later)
 # --------------------------------------------------------------------------------------
 class TextPart(BaseModel):
     """Text content part."""
@@ -28,16 +28,6 @@ class ImageURLPart(BaseModel):
 
 
 SupportedPart = Union[TextPart, ImageURLPart]
-
-
-def make_merge_with_template(system_template: ChatPromptTemplate):
-    """Return a callable that prepends the given system template before user input."""
-    def _merge(user_input: UserInputT) -> List[BaseMessage]:
-        user_msgs: List[BaseMessage] = normalise_user_input(user_input)
-        merged = ChatPromptTemplate.from_messages(system_template.messages + user_msgs)
-        return merged.format_messages()
-
-    return _merge
 
 
 def _coerce_part(part: Mapping[str, Any]) -> SupportedPart:
@@ -182,6 +172,16 @@ def normalise_user_input(
         "user_input must be ChatPromptTemplate | list[BaseMessage] | list[dict]; "
         f"got element type {type(first)!r}"
     )
+
+
+def make_merge_with_template(system_template: ChatPromptTemplate):
+    """Return a callable that prepends the given system template before user input."""
+    def _merge(user_input: UserInputT) -> List[BaseMessage]:
+        user_msgs: List[BaseMessage] = normalise_user_input(user_input)
+        merged = ChatPromptTemplate.from_messages(system_template.messages + user_msgs)
+        return merged.format_messages()
+
+    return _merge
 
 
 __all__ = [

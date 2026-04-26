@@ -417,7 +417,7 @@ class ImageOut(BaseModel):
 # TITLE DTO
 #-------------------------------------------
 class TitleOut(BaseModel):
-    title: str
+    titles: List[str]
 
 class ConversationTitleUpdate(BaseModel):
     """Payload to update the title of an existing conversation."""

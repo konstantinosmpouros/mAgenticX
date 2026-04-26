@@ -27,6 +27,7 @@
 ## Agents
 
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
+- Add end-to-end non-image attachment support in inference, including deep-agent passthrough and LangGraph input normalization/parsing for file parts.
 
 ## Agentic UI
 

@@ -16,8 +16,8 @@ class TitleRequest(BaseModel):
 
 
 class ConversationTitle(BaseModel):
-    """Structured LLM response carrying only the generated title."""
-    title: str
+    """Structured LLM response carrying multiple generated title candidates."""
+    titles: List[str]
 
 
 class TranscriptionResponse(BaseModel):

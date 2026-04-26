@@ -250,7 +250,7 @@ Behavior:
 
 - validates the user scope
 - validates the target agent from the cached agent list
-- generates a title through the `agents` title endpoint when none is provided
+- generates multiple title candidates through the `agents` title endpoint when none is provided and picks one at random
 - falls back to message preview, agent name, or `"New conversation"` if title generation fails
 - creates the conversation and first message atomically
 
@@ -620,7 +620,7 @@ src/dialogue_bridge/
 │   ├── agents.py                  Agent sync and upstream catalog helpers
 │   ├── conversations.py           Conversation/message/blob persistence helpers
 │   ├── inference.py               Branch resolution and agent payload serialization
-│   ├── titles.py                  Upstream title generation helper
+│   ├── titles.py                  Upstream title generation helper and random candidate selector
 │   ├── validators.py              Ownership validators
 │   ├── proxy.py                   Trusted proxy IP resolution
 │   └── rate_limit.py              SlowAPI setup

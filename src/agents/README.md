@@ -54,7 +54,7 @@ flowchart LR
 ### Adjacent utility APIs
 
 - `POST /dictate/transcribe` transcribes an uploaded audio file with OpenAI STT.
-- `POST /titles/generate` generates a short title for a conversation from the first user message.
+- `POST /titles/generate` generates multiple short title candidates for a conversation from the first user message.
 
 ## 4. Runtime Architecture
 
@@ -192,7 +192,7 @@ System messages supplied by clients are stripped during normalization because ea
 | `/tools` | `GET` | Returns cached or live MCP tool manifests |
 | `/agents/{agent_slug}/stream` | `POST` | Streams AG-UI SSE for a selected agent |
 | `/dictate/transcribe` | `POST` | Transcribes uploaded audio with OpenAI STT |
-| `/titles/generate` | `POST` | Generates a short conversation title |
+| `/titles/generate` | `POST` | Generates multiple short conversation title candidates |
 
 ### 5.4 Returned stream format
 

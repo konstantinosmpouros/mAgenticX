@@ -1,3 +1,4 @@
+import random
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -13,6 +14,7 @@ logger = get_logger(__name__)
 _TITLE_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/titles/generate"
 _TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 _TITLE_MAX_LEN = 120
+_TITLE_MIN_CANDIDATES = 3
 
 
 def _message_to_chain_payload(message: MessageIn) -> List[Dict[str, Any]]:
@@ -58,7 +60,8 @@ def _message_to_chain_payload(message: MessageIn) -> List[Dict[str, Any]]:
 
 async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     """
-    Call the agents service to obtain a generated conversation title.
+    Call the agents service to obtain generated conversation title candidates,
+    then pick one at random for persistence.
     Returns None when the upstream call fails or the response is invalid.
     """
     payload = {"user_input": _message_to_chain_payload(message)}
@@ -91,12 +94,40 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
         )
         return None
 
-    raw_title = (result.title or "").strip()
-    title = raw_title
-    if not title:
+    titles: List[str] = []
+    seen: set[str] = set()
+    truncated = False
+    for raw_title in result.titles or []:
+        title = (raw_title or "").strip()
+        if not title:
+            continue
+        if len(title) > _TITLE_MAX_LEN:
+            title = title[:_TITLE_MAX_LEN].rstrip()
+            truncated = True
+        key = title.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        titles.append(title)
+
+    if len(titles) < _TITLE_MIN_CANDIDATES:
+        logger.warning(
+            "title_generation_insufficient_candidates",
+            "Conversation title generation returned too few usable candidates",
+            upstream_service="agents",
+            candidate_count=len(titles),
+            failure_reason="insufficient_candidates",
+        )
         return None
-    truncated = len(title) > _TITLE_MAX_LEN
-    if len(title) > _TITLE_MAX_LEN:
-        title = title[:_TITLE_MAX_LEN].rstrip()
-    logger.info("title_generation_succeeded", "Conversation title generated successfully", title_length=len(title), truncated=truncated)
+
+    selected_index = random.randrange(len(titles))
+    title = titles[selected_index]
+    logger.info(
+        "title_generation_succeeded",
+        "Conversation title generated successfully",
+        title_length=len(title),
+        truncated=truncated,
+        candidate_count=len(titles),
+        selected_index=selected_index,
+    )
     return title or None
