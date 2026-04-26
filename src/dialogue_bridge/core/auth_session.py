@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from core.configs import settings
 from core.database import SessionTable, UserTable, get_db
-from utils.proxy import resolve_client_ip
+from core.proxy import resolve_client_ip
 
 logger = get_logger(__name__)
 

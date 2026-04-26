@@ -45,7 +45,7 @@ from utils import (
     mcp_session_context,
 )
 from utils.agents import AGENT_REGISTRY
-from utils.proxy import require_internal_caller
+from core.proxy import require_internal_caller
 
 
 configure_logging()

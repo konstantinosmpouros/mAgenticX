@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from core.configs import configs
 from core.tls import get_httpx_verify
 from observability import get_context
-from utils.proxy import internal_service_headers
+from core.proxy import internal_service_headers
 from langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
 from langgraph_agents.orthodox_agent_v1.prompt_templates import (
     nonreligious_gen_template,

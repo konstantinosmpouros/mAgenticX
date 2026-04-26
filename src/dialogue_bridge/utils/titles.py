@@ -7,7 +7,7 @@ from schemas import MessageIn, TitleOut
 from observability import get_context, get_logger
 from core.tls import get_httpx_verify
 from utils.agents import AGENTS_SERVICE_URL
-from utils.proxy import internal_service_headers
+from core.proxy import internal_service_headers
 
 logger = get_logger(__name__)
 

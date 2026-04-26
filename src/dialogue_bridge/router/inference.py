@@ -12,7 +12,7 @@ from core.database import ConversationTable, UserTable
 from core.tls import get_httpx_verify
 from schemas import DictationResponse, InferenceStreamPayload
 from core.auth_session import require_csrf_protection
-from utils.proxy import internal_service_headers
+from core.proxy import internal_service_headers
 from utils import (
     AGENTS_SERVICE_URL,
     build_agent_stream_url,

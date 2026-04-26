@@ -11,7 +11,7 @@ from sqlalchemy.sql import func
 from core.configs import settings
 from core.tls import get_httpx_verify
 from core.database import AgentTable
-from utils.proxy import internal_service_headers
+from core.proxy import internal_service_headers
 
 
 logger = get_logger(__name__)

@@ -2,7 +2,7 @@ from fastapi import Request
 from slowapi import Limiter
 
 from core.configs import settings
-from utils.proxy import resolve_client_ip
+from core.proxy import resolve_client_ip
 
 
 AUTH_RATE_LIMIT_MAX_ATTEMPTS = settings.rate_limit.auth_max_attempts

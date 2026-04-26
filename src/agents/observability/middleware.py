@@ -11,7 +11,7 @@ from observability.context import clear_context, set_context
 from observability.events import log_event
 from observability.operations import elapsed_ms
 from observability.redaction import sanitize_for_logging
-from utils.proxy import resolve_client_ip
+from core.proxy import resolve_client_ip
 
 
 logger = logging.getLogger("agents.request")
