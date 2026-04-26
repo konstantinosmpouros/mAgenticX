@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import (
     AgentTable,
     AttachmentTable,
+    b64_encode,
     BlobTable,
     ConversationTable,
     MessageTable,
@@ -208,3 +209,51 @@ async def clone_branch_to_conversation(
             db.add(cloned_attachment)
 
     return forked_conv
+
+
+def build_share_snapshot(source_conv: ConversationTable, branch: list[MessageTable]) -> dict:
+    return {
+        "title": source_conv.title,
+        "agent": {
+            "id": source_conv.agent.id,
+            "name": source_conv.agent.name,
+            "description": source_conv.agent.description,
+            "icon": source_conv.agent.icon,
+            "version": source_conv.agent.version,
+            "isActive": source_conv.agent.is_active,
+        },
+        "messages": [_message_to_share_snapshot(message) for message in branch],
+    }
+
+
+def _message_to_share_snapshot(message: MessageTable) -> dict:
+    return {
+        "id": message.id,
+        "parentMessageId": message.parent_message_id,
+        "content": message.content,
+        "sender": message.sender,
+        "type": message.type,
+        "liked": message.liked,
+        "created_at": message.created_at.isoformat() if message.created_at else None,
+        "updated_at": message.updated_at.isoformat() if message.updated_at else None,
+        "attachments": [_attachment_to_share_snapshot(attachment) for attachment in message.attachments],
+        "thinking": deepcopy(message.reasoning_steps),
+        "thinkingTime": message.reasoning_time_seconds,
+        "error": message.is_error,
+        "errorMessage": message.error_message,
+        "rawEvents": deepcopy(message.raw_events) or [],
+        "plan": deepcopy(message.plan),
+        "subagents": deepcopy(message.subagents),
+    }
+
+
+def _attachment_to_share_snapshot(attachment: AttachmentTable) -> dict:
+    blob_data = attachment.blob.data if attachment.blob is not None else None
+    return {
+        "id": attachment.id,
+        "name": attachment.file_name,
+        "mime": attachment.mime_type,
+        "size": attachment.size_bytes,
+        "timestamp": attachment.created_at.isoformat() if attachment.created_at else None,
+        "data": b64_encode(blob_data) if blob_data else None,
+    }

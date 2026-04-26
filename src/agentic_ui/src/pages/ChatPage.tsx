@@ -6,7 +6,7 @@ import { Building2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
-import type { 
+import type {
   ThinkingState, Agent,
   MessageOut,
   ConversationDetail,
@@ -17,7 +17,7 @@ import type {
   UserPreferences } from "@/lib/types";
 import type { PlanSnapshot } from "@/lib/agui";
 import { createPreferencesHandlers } from "@/handlers/preferences";
-import { 
+import {
   useAutoScrollEffect,
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
@@ -34,7 +34,7 @@ import {
 } from "@/hooks/useSessionEffects";
 
 // Handlers (modularized)
-import { 
+import {
   createAttachmentHandlers,
   createInferenceHandlers,
   createConversationHandlers,
@@ -59,6 +59,7 @@ import { PlanCard } from "@/components/chat/message_parts/agentic_parts";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ReportConversationDialog from "@/components/chat/ReportPanel";
+import ShareConversationDialog from "@/components/chat/SharePanel";
 import ChatBody from "@/components/chat/ChatBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 import { Loader } from "@/components/ui/shadcn-io/loader";
@@ -71,14 +72,14 @@ const ROOT_BRANCH_KEY = "__root__";
 export function ChatInterface() {
   // Initial session check
   const { initialUserId, initialUserProfile, initialLoggedIn } = useInitialSessionState();
-  
+
   // Main state variables
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [currentMessage, setCurrentMessage] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [isPrivateMode, setIsPrivateMode] = useState(false);
-  
+
   // Main variables use for storing info from the db and present it constantly
   const [agents, setAgents] = useState<Agent[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolMetadata[]>([]);
@@ -87,7 +88,7 @@ export function ChatInterface() {
   const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState<boolean>(false);
-  
+
   // Conversation list pagination state (persist across sidebar open/close)
   const [convPage, setConvPage] = useState<number>(1);
   const [convHasMore, setConvHasMore] = useState<boolean>(true);
@@ -98,17 +99,17 @@ export function ChatInterface() {
   const [archivedConvHasMore, setArchivedConvHasMore] = useState<boolean>(true);
   const [archivedConvIsLoading, setArchivedConvIsLoading] = useState<boolean>(false);
   const ARCHIVED_CONV_PAGE_SIZE = 10;
-  
+
   // Thinking variables (will be changed)
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
-  
+
   const [userProfile, setUserProfile] = useState<UserProfile | null>(initialUserProfile);
   // Login and authentication variables
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
   const [userId, setUserId] = useState<string | null>(initialUserId);
   const [authResolved, setAuthResolved] = useState(false);
-  
+
   // Boolean variables for navigation
   const [isClearing, setIsClearing] = useState(false);
   const [isAgentSwitching, setIsAgentSwitching] = useState(false);
@@ -116,7 +117,7 @@ export function ChatInterface() {
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const { headerHasDivider, handleHeaderScrollState } = useHeaderDividerEffect();
-  
+
   // UI components
   const [activeProfileTab, setActiveProfileTab] = useState('profile');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -125,10 +126,10 @@ export function ChatInterface() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
-  
+
   // Copy to clipboard state
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  
+
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedFilePreview, setSelectedFilePreview] = useState<AttachmentPreviewTarget | null>(null);
@@ -137,12 +138,16 @@ export function ChatInterface() {
   const [isSidebarFloatingUiOpen, setIsSidebarFloatingUiOpen] = useState(false);
   const [sidebarDismissFloatingUiSignal, setSidebarDismissFloatingUiSignal] = useState(0);
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [shareDialogUrl, setShareDialogUrl] = useState<string | null>(null);
+  const [shareTargetMessage, setShareTargetMessage] = useState<MessageOut | null>(null);
+  const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+  const [isShareCopyPulse, setIsShareCopyPulse] = useState(false);
   const [reportTargetConversationId, setReportTargetConversationId] = useState<string | null>(null);
   const [reportTargetMessageId, setReportTargetMessageId] = useState<string | null>(null);
   const [reportTargetMessagePreview, setReportTargetMessagePreview] = useState<string | null>(null);
   const [reportConversationTitle, setReportConversationTitle] = useState<string | null>(null);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
-  
+
   // Sticky user action bar
   const [stickyUserBarId, setStickyUserBarId] = useState<string | null>(null);
   const { flashUserActionBar } = useStickyUserBarEffect({ setStickyUserBarId });
@@ -327,6 +332,27 @@ export function ChatInterface() {
     setIsSubmittingReport(false);
   }, []);
 
+  const closeShareDialog = useCallback(() => {
+    setShareDialogUrl(null);
+    setShareTargetMessage(null);
+    setIsCreatingShareLink(false);
+    setIsShareCopyPulse(false);
+  }, []);
+
+  const copyShareDialogUrl = useCallback(() => {
+    if (!shareDialogUrl) return;
+    void navigator.clipboard?.writeText(shareDialogUrl);
+    setIsShareCopyPulse(true);
+    toastWrapper({ title: "Share link copied", duration: 1800 });
+  }, [shareDialogUrl]);
+
+  const openShareDialog = useCallback((message: MessageOut) => {
+    setShareDialogUrl(null);
+    setShareTargetMessage(message);
+    setIsCreatingShareLink(false);
+    setIsShareCopyPulse(false);
+  }, []);
+
   const openReportDialog = useCallback(
     (conversationId: string, options?: { messageId?: string | null; messagePreview?: string | null; title?: string | null }) => {
       setReportTargetConversationId(conversationId);
@@ -454,7 +480,7 @@ export function ChatInterface() {
     persistUIState: requestPersist,
     toast: toastWrapper,
   });
-  
+
   // Create attachment handlers
   const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl, handleFileDownload } = createAttachmentHandlers({
     attachments,
@@ -463,7 +489,7 @@ export function ChatInterface() {
     userId,
     currentConversation,
   });
-  
+
   // Create UI handlers
   const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
 
@@ -493,6 +519,11 @@ export function ChatInterface() {
 
     if (isReportDialogOpen) {
       closeReportDialog();
+      return true;
+    }
+
+    if (shareTargetMessage) {
+      closeShareDialog();
       return true;
     }
 
@@ -539,6 +570,7 @@ export function ChatInterface() {
   }, [
     cancelDictation,
     closeReportDialog,
+    closeShareDialog,
     closeProfilePanel,
     dictationStatus,
     editingMessageId,
@@ -551,15 +583,16 @@ export function ChatInterface() {
     isSidebarFloatingUiOpen,
     selectedFilePreview,
     selectedImage,
+    shareTargetMessage,
     showUserProfile,
   ]);
-  
+
   // AI transition dot (between DB persistence and thinking start)
   const [showAiTransition, setShowAiTransition] = useState(false);
   useEffect(() => {
     if (thinkingState?.isActive) setShowAiTransition(false);
   }, [thinkingState?.isActive]);
-  
+
   // Create AI transition handlers
   const { AiTransitionIndicator } = createAiTransitionHandlers({
     showAiTransition,
@@ -650,7 +683,7 @@ export function ChatInterface() {
     onPlanSnapshot: handlePlanSnapshot,
     resetActivePlan,
   });
-  
+
   // Conversation handlers
   const {
     handleConversationSelect,
@@ -668,6 +701,7 @@ export function ChatInterface() {
     submitConversationReport,
     handleOpenSearch,
     handleForkConversation,
+    handleShareConversation,
     refreshArchivedConversations,
     handleLoadMoreArchivedConversations,
   } = createConversationHandlers({
@@ -703,8 +737,25 @@ export function ChatInterface() {
     archivedConvIsLoading,
     setArchivedConvIsLoading,
     archivedPageSize: ARCHIVED_CONV_PAGE_SIZE,
+    onShareCreated: (shareUrl) => {
+      setShareDialogUrl(shareUrl);
+      setIsShareCopyPulse(true);
+    },
     persistUIState: requestPersist,
   });
+
+  const handleCreateShareLink = useCallback(async () => {
+    if (!shareTargetMessage || isCreatingShareLink) return;
+    setIsCreatingShareLink(true);
+    await handleShareConversation(shareTargetMessage);
+    setIsCreatingShareLink(false);
+  }, [handleShareConversation, isCreatingShareLink, shareTargetMessage]);
+
+  useEffect(() => {
+    if (!isShareCopyPulse) return;
+    const timeout = window.setTimeout(() => setIsShareCopyPulse(false), 1100);
+    return () => window.clearTimeout(timeout);
+  }, [isShareCopyPulse]);
 
   useEffect(() => {
     if (!showUserProfile || activeProfileTab !== "archived") {
@@ -756,7 +807,7 @@ export function ChatInterface() {
       closeReportDialog();
     }
   }, [closeReportDialog, reportTargetConversationId, submitConversationReport]);
-  
+
   // Agent change handler
   const { handleAgentChange } = createAgentHandlers({
     isAgentSwitching,
@@ -765,7 +816,7 @@ export function ChatInterface() {
     clearChatAndStopThinking,
     persistUIState: requestPersist,
   });
-  
+
   // Handle thinking toggle
   const toggleThinking = (messageId: string) => {
     setExpandedThinking(prev => ({
@@ -773,7 +824,7 @@ export function ChatInterface() {
       [messageId]: !prev[messageId]
     }));
   };
-  
+
   // Auth handler
   const { handleLogout } = createAuthHandlers({
     setIsLoggedIn,
@@ -817,7 +868,7 @@ export function ChatInterface() {
       navigate("/login", { replace: true });
     }
   }, [authResolved, isLoggedIn, userId, navigate]);
-  
+
   // Feedback handlers
   const { handleLike, handleDislike } = createFeedbackHandlers({
     userId,
@@ -825,7 +876,7 @@ export function ChatInterface() {
     setConversationMessages,
     toast: toastWrapper,
   });
-  
+
   // Centered composer layout for input area
   const isMessagesEmpty = (currentConversation?.messages?.length ?? 0) === 0;
   const {
@@ -838,7 +889,7 @@ export function ChatInterface() {
     currentMessage,
     attachmentsCount: attachments.length,
   });
-  
+
   // Determine current agent and its icon
   const conversationAgent = currentConversation?.agent ?? null;
   const selectedAgentFromList = agents.find(a => a.id === selectedAgent) ?? null;
@@ -849,7 +900,7 @@ export function ChatInterface() {
   const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
   const showPlanningCard = isSendingMessage && Boolean(activePlan);
   const canTogglePrivateMode = (currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode;
-  
+
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -930,7 +981,7 @@ export function ChatInterface() {
                 onReportConversation={handleReportCurrentConversation}
                 onDeleteConversation={handleDeleteCurrentConversation}
               />
-            
+
               {/* Chat Messages Container*/}
               <div className="flex flex-1 min-h-0 overflow-hidden">
                 <ChatBody
@@ -972,10 +1023,11 @@ export function ChatInterface() {
                   toast={toastWrapper}
                   onRetryMessage={handleRetryAiMessage}
                   onForkMessage={handleForkConversation}
+                  onShareMessage={openShareDialog}
                   isStreaming={isSendingMessage}
                 />
               </div>
-            
+
               {/* Input Area */}
               <ChatInputBar
                 // Centered empty state
@@ -985,7 +1037,7 @@ export function ChatInterface() {
                     ? "absolute left-1/2 top-[35%] -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
                     : "sticky bottom-0 left-0 right-0 z-30 p-6"
                 }
-                
+
                 // pass through your existing state/handlers/refs
                 attachments={attachments}
                 isPrivateMode={isPrivateMode}
@@ -1011,7 +1063,7 @@ export function ChatInterface() {
                 dictationStatus={dictationStatus}
                 dictationRequestSignal={dictationRequestSignal}
                 dictationCancelSignal={dictationCancelSignal}
-                
+
                 // UI deps
                 AgentIcon={AgentIcon}
                 Tooltip={Tooltip}
@@ -1069,6 +1121,17 @@ export function ChatInterface() {
                 conversationTitle={reportConversationTitle}
               />
 
+              <ShareConversationDialog
+                open={Boolean(shareTargetMessage)}
+                title={currentConversation?.title}
+                message={shareTargetMessage}
+                creating={isCreatingShareLink}
+                linkCreated={Boolean(shareDialogUrl)}
+                copied={isShareCopyPulse}
+                onClose={closeShareDialog}
+                onCreateLink={shareDialogUrl ? copyShareDialogUrl : handleCreateShareLink}
+              />
+
               <AttachmentPreviewPanel
                 preview={selectedFilePreview}
                 userId={userId}
@@ -1076,7 +1139,7 @@ export function ChatInterface() {
                 onClose={handleCloseFilePreview}
                 onDownload={handleFileDownload}
               />
-            
+
               {/* Image Preview Modal */}
               {selectedImage && (
                 <div

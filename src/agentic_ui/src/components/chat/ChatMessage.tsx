@@ -34,6 +34,8 @@ type ChatMessageProps = {
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
+  onShareMessage?: (message: MessageOut) => void;
+  readOnly?: boolean;
   isStreaming?: boolean;
   onFlashUserActionBar: (messageId: string) => void;
   onRequestEdit?: (message: MessageOut) => void;
@@ -74,6 +76,8 @@ export function ChatMessage({
   toast,
   onRetryMessage,
   onForkMessage,
+  onShareMessage,
+  readOnly = false,
   isStreaming,
   onFlashUserActionBar,
   onRequestEdit,
@@ -246,6 +250,8 @@ export function ChatMessage({
                     toast={toast}
                     onRetryMessage={onRetryMessage}
                     onForkMessage={onForkMessage}
+                    onShareMessage={onShareMessage}
+                    readOnly={readOnly}
                     isStreaming={isStreaming}
                     branchControls={branchData}
                     agentName={currentAgent?.name ?? "Unknown agent"}
@@ -279,7 +285,7 @@ export function ChatMessage({
             onCopy={onCopy}
             onFlashUserActionBar={onFlashUserActionBar}
             toast={toast}
-            onRequestEdit={onRequestEdit}
+            onRequestEdit={readOnly ? undefined : onRequestEdit}
             branchControls={branchData}
             className={`mt-2 ${userActionVisibilityClass}`}
           />

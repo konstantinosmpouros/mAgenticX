@@ -49,6 +49,8 @@ type ChatBody = {
   toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
+  onShareMessage?: (message: MessageOut) => void;
+  readOnly?: boolean;
   isStreaming?: boolean;
 };
 
@@ -91,6 +93,8 @@ export default function ChatBody({
   toast,
   onRetryMessage,
   onForkMessage,
+  onShareMessage,
+  readOnly = false,
   isStreaming,
 }: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -146,19 +150,19 @@ export default function ChatBody({
           {!loadingConversation &&
             messages.map((message) => {
               const isEditingMessage = editingMessageId === message.id;
-              
+
               const userActionVisibilityClass = `transition-opacity ${
                 stickyUserBarId === message.id
                   ? "opacity-100 pointer-events-auto"
                   : "opacity-0 group-hover/message:opacity-100 hover:opacity-100 pointer-events-none group-hover/message:pointer-events-auto hover:pointer-events-auto"
               }`;
-              
+
               const parentId = message.parentMessageId ?? null;
-              
+
               const branchOptions = parentId
                 ? branchChildrenMap[parentId]
                 : branchChildrenMap[branchRootKey];
-              
+
               const branchSelection =
                 parentId
                   ? branchSelections[parentId] ?? 0
@@ -185,6 +189,8 @@ export default function ChatBody({
                     toast={toast}
                     onRetryMessage={onRetryMessage}
                     onForkMessage={onForkMessage}
+                    onShareMessage={onShareMessage}
+                    readOnly={readOnly}
                     isStreaming={isStreaming}
                     onFlashUserActionBar={onFlashUserActionBar}
                     onRequestEdit={onRequestEdit}
@@ -218,7 +224,6 @@ export default function ChatBody({
     </div>
   );
 }
-
 
 
 

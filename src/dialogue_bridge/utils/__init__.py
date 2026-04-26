@@ -10,6 +10,7 @@ from utils.agents import (
 from utils.conversations import (
     _preview,
     build_message_lineage,
+    build_share_snapshot,
     clone_branch_to_conversation,
     init_conv,
     init_message,
@@ -36,6 +37,7 @@ __all__ = [
     "init_conv",
     "init_message",
     "build_message_lineage",
+    "build_share_snapshot",
     "clone_branch_to_conversation",
     "_preview",
 ]

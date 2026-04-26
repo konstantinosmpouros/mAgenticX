@@ -140,6 +140,24 @@ export type ConversationReportPayload = {
     messageId?: string | null;
 };
 
+export type ConversationShareResponse = {
+    id: string;
+    token: string;
+    shareUrl: string;
+    conversationId: string;
+    messageId: string;
+    title?: string | null;
+    createdAt: Date;
+};
+
+export type SharedConversationDetail = {
+    token: string;
+    title?: string | null;
+    agent: Agent;
+    messages: MessageOut[];
+    createdAt: Date;
+};
+
 // Backend message type from API response
 export type MessageOut = {
     id: string;
@@ -168,7 +186,7 @@ export type AttachmentOut = {
     size?: number;
     timestamp: Date;
     blobId?: string;
-    data?: string; // Base64 encoded image data for images
+    data?: string; // Base64 encoded data for images and public share downloads
 };
 
 
@@ -225,7 +243,7 @@ export type CreateConversationResponse = {
     summary: ConversationSummary;
 };
 
-// Response from addMessageToConversation API  
+// Response from addMessageToConversation API
 export type UpdateConversationResponse = {
     message: MessageOut;
     summary: ConversationSummary;

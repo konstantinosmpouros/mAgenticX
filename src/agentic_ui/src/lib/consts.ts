@@ -7,6 +7,7 @@ import type {
   ConversationDetail,
   ConversationSummary,
   MessageOut,
+  SharedConversationDetail,
 } from "./types";
 
 /**
@@ -164,3 +165,15 @@ export const transformConversationDetail = (
     messages: (detail.messages || []).map(transformMessage),
   };
 };
+
+
+// Transform public shared conversation snapshot.
+export const transformSharedConversationDetail = (
+  detail: Record<string, any>,
+): SharedConversationDetail => ({
+  token: detail.token ?? "",
+  title: detail.title ?? null,
+  agent: transformAgent(detail.agent),
+  messages: (detail.messages || []).map(transformMessage),
+  createdAt: toDate(detail.createdAt ?? detail.created_at),
+});

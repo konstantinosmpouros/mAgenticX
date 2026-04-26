@@ -59,7 +59,7 @@ class DictationResponse(BaseModel):
 #-------------------------------------------
 class AgentFull(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    
+
     id: str
     slug: str
     name: str
@@ -72,7 +72,7 @@ class AgentFull(BaseModel):
 
 class AgentPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    
+
     id: str
     name: str
     description: str
@@ -172,7 +172,7 @@ class ConversationSummary(BaseModel):
     Used for export and presentation in the UI sidebar (conversation history).
     """
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    
+
     id: str
     agent: AgentPublic = Field(..., validation_alias="agent")
     forkedParentId: Optional[str] = Field(None, validation_alias="forked_parent_id")
@@ -195,20 +195,20 @@ class BlobOut(BaseModel):
 class AttachmentOut(BaseModel):
     """Schema to expose all the info for an Attachment"""
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    
+
     id: str
     name: str = Field(..., validation_alias="file_name")
     mime: str = Field(..., validation_alias="mime_type")
     size: Optional[int] = Field(None, validation_alias="size_bytes")
     timestamp: datetime = Field(..., validation_alias="created_at")
-    
+
     # keep ORM relation for computation but don't serialize it
     blob: Optional[BlobOut] = Field(None, validation_alias="blob", exclude=True)
     blobId: Optional[str] = Field(None, validation_alias="blob_id")
-    
+
     # Only for the raw base64 data (image)
     data: Optional[str] = None
-    
+
     @model_validator(mode="after")
     def _inject_image_b64(self):
         if self.mime and self.mime.startswith("image/") and self.blob and self.blob.data:
@@ -219,7 +219,7 @@ class AttachmentOut(BaseModel):
 class MessageOut(BaseModel):
     """Schema to expose all the info for a Message"""
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    
+
     id: str
     parentMessageId: Optional[str] = Field(None, validation_alias="parent_message_id")
     content: Optional[str] = None
@@ -248,7 +248,7 @@ class ConversationDetail(BaseModel):
     Used for export and presentation in the UI.
     """
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-    
+
     id: str
     agent: AgentPublic = Field(..., validation_alias="agent")
     forkedParentId: Optional[str] = Field(None, validation_alias="forked_parent_id")
@@ -359,6 +359,28 @@ class ConversationIn(BaseModel):
 class ConversationForkIn(BaseModel):
     """Fork a conversation branch ending at a selected AI message."""
     messageId: str
+
+class ConversationShareIn(BaseModel):
+    """Create a read-only share snapshot ending at a selected AI message."""
+    messageId: str
+
+class ConversationShareResponse(BaseModel):
+    """Owner response for a created share link."""
+    id: str
+    token: str
+    shareUrl: str
+    conversationId: str
+    messageId: str
+    title: Optional[str] = None
+    createdAt: datetime
+
+class SharedConversationDetail(BaseModel):
+    """Public read-only shared conversation snapshot."""
+    token: str
+    title: Optional[str] = None
+    agent: AgentPublic
+    messages: List[MessageOut] = Field(default_factory=list)
+    createdAt: datetime
 
 class CreateConversationResponse(BaseModel):
     """Response when creating a conversation: summary + full detail."""

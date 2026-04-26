@@ -9,9 +9,11 @@ import type {
   MessageOut,
   ConversationIn,
   ConversationReportPayload,
+  ConversationShareResponse,
   CreateConversationResponse,
   MessageIn,
   MessageUpdate,
+  SharedConversationDetail,
   UpdateConversationResponse,
   DownloadAttachmentParams,
   ToolMetadata,
@@ -25,6 +27,7 @@ import {
   emitUnauthorized,
   transformConversationDetail,
   transformConversationSummary,
+  transformSharedConversationDetail,
   transformMessage,
 } from "./consts";
 
@@ -37,6 +40,7 @@ const CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/conversations`;
 const MESSAGES_BASE_PATH = `${API_BASE_PATH}/messages`;
 const ATTACHMENTS_BASE_PATH = `${API_BASE_PATH}/attachments`;
 const INFERENCE_BASE_PATH = `${API_BASE_PATH}/inference`;
+const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;
 
 
 
@@ -447,6 +451,63 @@ export async function forkConversation(
 
   const data = await res.json();
   return transformConversationSummary(data);
+}
+
+
+// Create a public read-only share snapshot ending at the selected AI message.
+export async function shareConversation(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+): Promise<ConversationShareResponse> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({ messageId }),
+  }, { csrf: true }));
+
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to share conversation: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    id: data.id,
+    token: data.token,
+    shareUrl: data.shareUrl,
+    conversationId: data.conversationId,
+    messageId: data.messageId,
+    title: data.title ?? null,
+    createdAt: new Date(data.createdAt),
+  };
+}
+
+
+// Fetch a public read-only shared conversation snapshot.
+export async function getSharedConversation(token: string): Promise<SharedConversationDetail> {
+  const res = await fetch(`${SHARED_CONVERSATIONS_BASE_PATH}/${encodeURIComponent(token)}`, {
+    headers: {
+      "Accept": "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch shared conversation: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return transformSharedConversationDetail(data);
 }
 
 

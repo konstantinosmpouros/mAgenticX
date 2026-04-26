@@ -1,9 +1,11 @@
 ﻿import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Copy, Check, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
+import { Copy, Check, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { LuFlag } from "react-icons/lu";
 import { BsArrowRepeat } from "react-icons/bs";
 import { BiGitRepoForked } from "react-icons/bi";
+import { HiOutlineUpload } from "react-icons/hi";
 import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/lib/types";
 import { BranchControls } from "./BranchControls";
@@ -36,7 +38,9 @@ type AIActionBarProps = BaseActionBarProps & {
   onReportMessage?: (message: MessageOut) => void;
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
+  onShareMessage?: (message: MessageOut) => void;
   isStreaming?: boolean;
+  readOnly?: boolean;
   agentName?: string;
   AgentIcon?: LucideIcon;
   timestampLabel?: string;
@@ -107,6 +111,9 @@ const CopyButton = ({
   );
 };
 
+const moreMenuItemClass =
+  "flex cursor-pointer select-none items-center gap-2 rounded-md px-2.5 py-2 text-sm text-foreground outline-none transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-45";
+
 export const AIActionBar = ({
   message,
   copiedId,
@@ -116,7 +123,9 @@ export const AIActionBar = ({
   onReportMessage,
   onRetryMessage,
   onForkMessage,
+  onShareMessage,
   isStreaming,
+  readOnly = false,
   branchControls,
   agentName,
   AgentIcon,
@@ -144,7 +153,7 @@ export const AIActionBar = ({
         />
       </div>
 
-      {message.liked !== false && (
+      {!readOnly && message.liked !== false && (
         <div className="mt-1">
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
@@ -174,7 +183,7 @@ export const AIActionBar = ({
         </div>
       )}
 
-      {message.liked !== true && (
+      {!readOnly && message.liked !== true && (
         <div className="mt-1">
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
@@ -204,7 +213,7 @@ export const AIActionBar = ({
         </div>
       )}
 
-      {!conversationIsReported && onReportMessage && (
+      {!readOnly && (
         <div className="mt-1">
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
@@ -219,10 +228,11 @@ export const AIActionBar = ({
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onReportMessage(message)}
-                aria-label="Report message"
+                onClick={() => onShareMessage?.(message)}
+                disabled={!onShareMessage || isStreaming}
+                aria-label="Share conversation"
               >
-                <LuFlag className="h-4 w-4" />
+                <HiOutlineUpload className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent
@@ -230,73 +240,88 @@ export const AIActionBar = ({
               align="center"
               className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
             >
-              <p>Report</p>
+              <p>Share</p>
             </TooltipContent>
           </Tooltip>
         </div>
       )}
 
-      <div className="mt-1">
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="
-                h-8 w-8 text-muted-foreground
-                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
-                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
-                focus:ring-0 focus-visible:ring-0 transition-colors
-              "
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onRetryMessage?.(message)}
-              disabled={!onRetryMessage || isStreaming}
-              aria-label="Retry response"
-            >
-              <BsArrowRepeat className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent
-            side="bottom"
-            align="center"
-            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-          >
-            <p>Try again</p>
-          </TooltipContent>
-        </Tooltip>
-      </div>
+      {!readOnly && (
+        <div className="mt-1">
+          <DropdownMenu.Root>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <DropdownMenu.Trigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="
+                      h-8 w-8 text-muted-foreground
+                      hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                      active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                      focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                      focus:ring-0 focus-visible:ring-0 transition-colors
+                      data-[state=open]:bg-[hsl(var(--hover-surface-strong))]
+                    "
+                    onMouseDown={(event) => event.preventDefault()}
+                    aria-label="More message actions"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenu.Trigger>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="center"
+                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+              >
+                <p>More</p>
+              </TooltipContent>
+            </Tooltip>
 
-      <div className="mt-1">
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="
-                h-8 w-8 text-muted-foreground
-                hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
-                active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
-                focus:ring-0 focus-visible:ring-0 transition-colors
-              "
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onForkMessage?.(message)}
-              disabled={!onForkMessage || isStreaming}
-              aria-label="Fork conversation"
-            >
-              <BiGitRepoForked className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent
-            side="bottom"
-            align="center"
-            className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-          >
-            <p>Fork conversation</p>
-          </TooltipContent>
-        </Tooltip>
-      </div>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="start"
+                side="top"
+                sideOffset={8}
+                collisionPadding={10}
+                className="z-[70] min-w-[12rem] rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-scale-in"
+              >
+                <DropdownMenu.Item
+                  className={moreMenuItemClass}
+                  disabled={!onRetryMessage || isStreaming}
+                  onSelect={() => onRetryMessage?.(message)}
+                >
+                  <BsArrowRepeat className="h-4 w-4" />
+                  <span>Try again</span>
+                </DropdownMenu.Item>
+
+                <DropdownMenu.Item
+                  className={moreMenuItemClass}
+                  disabled={!onForkMessage || isStreaming}
+                  onSelect={() => onForkMessage?.(message)}
+                >
+                  <BiGitRepoForked className="h-4 w-4" />
+                  <span>Fork conversation</span>
+                </DropdownMenu.Item>
+
+                {!conversationIsReported && onReportMessage && (
+                  <>
+                    <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                    <DropdownMenu.Item
+                      className={moreMenuItemClass}
+                      onSelect={() => onReportMessage(message)}
+                    >
+                      <LuFlag className="h-4 w-4" />
+                      <span>Report</span>
+                    </DropdownMenu.Item>
+                  </>
+                )}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        </div>
+      )}
     </div>
 
     <div className="flex items-center">

@@ -8,6 +8,7 @@ import { ChatInterface } from "./pages/ChatPage";
 import NotFound from "./pages/NotFound";
 import Architecture from "./pages/Architecture";
 import Login from "./pages/Login";
+import SharedConversationPage from "./pages/SharedConvPage";
 import Test from "./pages/Test";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<ChatInterface />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/share/:token" element={<SharedConversationPage />} />
           <Route path="/architecture" element={<Architecture />} />
           <Route path="/test" element={<Test />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

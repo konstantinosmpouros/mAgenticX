@@ -80,7 +80,7 @@ async def get_db() -> AsyncSession: # type: ignore
 # -------------------------------------------------------------------------------
 class AgentTable(Base):
     __tablename__ = "agents"
-    
+
     id = Column(String, primary_key=True, default=gen_uuid)
     slug = Column(String, nullable=False, unique=True)
     name = Column(String, nullable=False)
@@ -90,7 +90,7 @@ class AgentTable(Base):
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     conversations = relationship(
         "ConversationTable",
         back_populates="agent",
@@ -101,11 +101,11 @@ class AgentTable(Base):
 
 class UserTable(Base):
     __tablename__ = "users"
-    
+
     id = Column(String, primary_key=True, default=gen_uuid)
     username = Column(String, unique=True, index=True, nullable=False)
     vault_user_id = Column(String, unique=True, index=True, nullable=False)
-    
+
     email = Column(String, unique=True, index=True, nullable=True)
     display_name = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
@@ -130,7 +130,7 @@ class UserTable(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    
+
     # one-to-many back-reference
     conversations = relationship(
         "ConversationTable",
@@ -155,13 +155,13 @@ class UserPreferencesTable(Base):
 
 class ConversationTable(Base):
     __tablename__ = "conversations"
-    
+
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     agent_id = Column(String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
     forked_parent_id = Column(String, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
     forked_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     agent_name = Column(String, nullable=True)
     title = Column(String, nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="false")
@@ -169,14 +169,14 @@ class ConversationTable(Base):
     archived_at = Column(DateTime, nullable=True)
     is_reported = Column(Boolean, nullable=False, server_default="false")
     reported_at = Column(DateTime, nullable=True)
-    
+
     # for fast conversation list rendering
     last_message_preview = Column(String, server_default="", nullable=True)
     last_message_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     user = relationship("UserTable", back_populates="conversations")
     agent = relationship("AgentTable", back_populates="conversations")
     messages = relationship(
@@ -202,22 +202,22 @@ MessageTypeEnum = Enum("text", "file", "image", "audio", "tool", name="message_t
 
 class MessageTable(Base):
     __tablename__ = "messages"
-    
+
     id = Column(String, primary_key=True, default=gen_uuid)
     conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     parent_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     sender = Column(MessageSenderEnum, nullable=False)
     type = Column(MessageTypeEnum, nullable=False, server_default="text")
     content = Column(Text, nullable=True)                  # may be NULL for pure file messages
-    
+
     # User feedback: nullable boolean => None (no feedback), True (like), False (dislike)
     liked = Column(Boolean, nullable=True)
-    
+
     # Agent "thinking" UX
     reasoning_steps = Column(JSON, nullable=True)          # array[str]
     reasoning_time_seconds = Column(Integer, nullable=True)
-    
+
     # error info
     is_error = Column(Boolean, nullable=False, server_default="false")
     error_message = Column(Text, nullable=True)
@@ -228,10 +228,10 @@ class MessageTable(Base):
     # Agent plan and subagent state snapshots
     plan = Column(JSON, nullable=True)                 # last PlanSnapshot state
     subagents = Column(JSON, nullable=True)            # subagent events keyed by task_id
-    
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     conversation = relationship("ConversationTable", back_populates="messages", foreign_keys=[conversation_id])
     attachments = relationship(
         "AttachmentTable",
@@ -259,34 +259,50 @@ class ConversationReportTable(Base):
     conversation = relationship("ConversationTable", back_populates="report")
 
 
+class ConversationShareTable(Base):
+    __tablename__ = "conversation_shares"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    token = Column(String, nullable=False, unique=True, index=True)
+    conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    snapshot_until_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String, nullable=True)
+    snapshot_json = Column(JSON, nullable=False)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class AttachmentTable(Base):
     __tablename__ = "attachments"
-    
+
     id = Column(String, primary_key=True, default=gen_uuid)
     message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # what the user sees
     file_name = Column(String, nullable=False)
     mime_type = Column(String, nullable=False)
     size_bytes = Column(Integer, nullable=True)
-    
+
     # Blob file
     blob_id = Column(String, ForeignKey("blobs.id", ondelete="CASCADE"), nullable=True, index=True)
-    
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     message = relationship("MessageTable", back_populates="attachments")
     blob = relationship("BlobTable", back_populates="attachment", cascade="all, delete-orphan", uselist=False, single_parent=True)
 
 
 class BlobTable(Base):
     __tablename__ = "blobs"
-    
+
     id = Column(String, primary_key=True, default=gen_uuid)
     data = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    
+
     # Back-reference for the 1:1 relationship
     attachment = relationship("AttachmentTable", back_populates="blob", uselist=False)
 
@@ -366,4 +382,3 @@ async def upsert_user_from_vault(
         user.last_login_at = metadata["last_login_at"]
 
     return user
-

@@ -1,5 +1,5 @@
 import { Building2 } from 'lucide-react';
-import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, reportConversation, getArchivedConversations, forkConversation } from '@/lib/api';
+import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, reportConversation, getArchivedConversations, forkConversation, shareConversation } from '@/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Agent, ConversationDetail, ConversationReportPayload, ConversationSummary, MessageOut } from '@/lib/types';
 
@@ -96,6 +96,7 @@ type ConversationsCtx = {
   setThinkingState?: (v: any) => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onSearch?: () => void;
+  onShareCreated?: (shareUrl: string) => void;
   persistUIState: () => void;
 };
 
@@ -267,6 +268,39 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       });
     } finally {
       setLoadingConversation(false);
+    }
+  };
+
+
+  const handleShareConversation = async (message: MessageOut) => {
+    if (!userId || !currentConversation?.id) {
+      toast({ title: 'No conversation selected', description: 'Open a conversation before sharing.', duration: 2000 });
+      return;
+    }
+    if (message.sender !== 'ai') {
+      toast({ title: 'Unable to share', description: 'Only AI messages can create a share link.', variant: 'destructive', duration: 2500 });
+      return;
+    }
+
+    try {
+      const share = await shareConversation(userId, currentConversation.id, message.id);
+      const absoluteUrl =
+        typeof window !== 'undefined'
+          ? new URL(share.shareUrl, window.location.origin).toString()
+          : share.shareUrl;
+      ctx.onShareCreated?.(absoluteUrl);
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(absoluteUrl);
+      }
+      toast({ title: 'Share link ready', description: 'The read-only link was copied to your clipboard.', duration: 2600 });
+    } catch (error) {
+      console.error('Failed to share conversation:', error);
+      toast({
+        title: 'Failed to share conversation',
+        description: error instanceof Error ? error.message : 'Please try again in a moment.',
+        variant: 'destructive',
+        duration: 3000,
+      });
     }
   };
 
@@ -575,9 +609,9 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     submitConversationReport,
     handleOpenSearch,
     handleForkConversation,
+    handleShareConversation,
     loadArchivedConversationPage,
     refreshArchivedConversations,
     handleLoadMoreArchivedConversations,
   };
 }
-

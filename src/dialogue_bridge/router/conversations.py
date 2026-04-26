@@ -1,3 +1,5 @@
+from secrets import token_urlsafe
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import apaginate
@@ -7,12 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 
-from core.database import ConversationReportTable, ConversationTable, MessageTable, get_db, UserTable
+from core.database import ConversationReportTable, ConversationShareTable, ConversationTable, MessageTable, get_db, UserTable
 from schemas import (
     ConversationDetail,
     ConversationForkIn,
     ConversationIn,
     ConversationReportIn,
+    ConversationShareIn,
+    ConversationShareResponse,
     ConversationSummary,
     CreateConversationResponse,
     ConversationTitleUpdate,
@@ -21,6 +25,7 @@ from core.auth_session import require_csrf_protection
 from utils import (
     _preview,
     build_message_lineage,
+    build_share_snapshot,
     clone_branch_to_conversation,
     generate_conversation_title,
     get_agent_by_id,
@@ -159,6 +164,99 @@ async def forkConversation(
     forked_full = result.scalar_one()
     logger.info("conversation_forked", "Conversation forked", **operation.snapshot())
     return ConversationSummary.model_validate(forked_full)
+
+
+@router.post(
+    "/{user_id}/{conversation_id}/share",
+    response_model=ConversationShareResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a read-only share snapshot for a conversation branch",
+)
+async def shareConversation(
+    user_id: str,
+    conversation_id: str,
+    payload: ConversationShareIn,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId_full),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a public read-only snapshot link ending at the selected AI message."""
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
+    branch = build_message_lineage(current_conv.messages, payload.messageId)
+    snapshot = build_share_snapshot(current_conv, branch)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    async with logged_db_operation(
+        logger=logger,
+        db=db,
+        success_event=None,
+        failure_event="conversation_share_failed",
+        success_message="Conversation share created",
+        failure_message="Conversation share failed",
+        source_conversation_id=conversation_id,
+        shared_message_id=payload.messageId,
+        branch_message_count=len(branch),
+    ) as operation:
+        share = ConversationShareTable(
+            token=token_urlsafe(32),
+            conversation_id=conversation_id,
+            owner_user_id=current_user.id,
+            snapshot_until_message_id=payload.messageId,
+            title=current_conv.title,
+            snapshot_json=snapshot,
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(share)
+        await db.commit()
+        operation.add(share_id=share.id)
+
+    logger.info("conversation_share_created", "Conversation share created", **operation.snapshot())
+    return ConversationShareResponse(
+        id=share.id,
+        token=share.token,
+        shareUrl=f"/share/{share.token}",
+        conversationId=conversation_id,
+        messageId=payload.messageId,
+        title=current_conv.title,
+        createdAt=share.created_at,
+    )
+
+
+@router.delete(
+    "/{user_id}/{conversation_id}/share/{share_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke a conversation share link",
+)
+async def revokeConversationShare(
+    user_id: str,
+    conversation_id: str,
+    share_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    """Revoke a share link owned by the authenticated conversation owner."""
+    set_context(user_id=user_id, conversation_id=conversation_id)
+    result = await db.execute(
+        select(ConversationShareTable).where(
+            ConversationShareTable.id == share_id,
+            ConversationShareTable.conversation_id == current_conv.id,
+            ConversationShareTable.owner_user_id == current_user.id,
+        )
+    )
+    share = result.scalar_one_or_none()
+    if share is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link not found.")
+
+    share.is_active = False
+    share.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    await db.commit()
+    logger.info("conversation_share_revoked", "Conversation share revoked", share_id=share_id)
+    return
 
 
 @router.get(
