@@ -460,7 +460,7 @@ export async function shareConversation(
   userId: string,
   conversationId: string,
   messageId: string,
-  mode: ConversationShareMode = "branch",
+  mode: ConversationShareMode = "full",
 ): Promise<ConversationShareResponse> {
   const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share`, withSessionRequest({
     method: "POST",
@@ -511,6 +511,40 @@ export async function getSharedConversation(token: string): Promise<SharedConver
 
   const data = await res.json();
   return transformSharedConversationDetail(data);
+}
+
+
+// Continue a public shared conversation by creating an owned conversation for the signed-in user.
+export async function continueSharedConversation(
+  token: string,
+  firstMessage: MessageIn,
+): Promise<CreateConversationResponse> {
+  const res = await fetch(`${SHARED_CONVERSATIONS_BASE_PATH}/${encodeURIComponent(token)}/continue`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({ firstMessage }),
+  }, { csrf: true }));
+
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to continue shared conversation: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return {
+    detail: transformConversationDetail(data.detail),
+    summary: transformConversationSummary(data.summary),
+  };
 }
 
 

@@ -185,6 +185,8 @@ async def shareConversation(
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
     branch = build_message_lineage(current_conv.messages, payload.messageId)
     snapshot_messages = branch
+    if payload.mode == "full":
+        snapshot_messages = list(current_conv.messages)
     if payload.mode == "message":
         target = branch[-1]
         snapshot_messages = branch[-2:] if len(branch) >= 2 and branch[-2].sender == "user" else [target]

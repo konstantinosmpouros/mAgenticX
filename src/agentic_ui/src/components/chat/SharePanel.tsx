@@ -66,7 +66,19 @@ export default function ShareConversationDialog({
           </div>
 
           <div className="px-5 py-5 md:px-7">
-            <div className="mb-4 grid grid-cols-2 rounded-full border border-white/[0.12] bg-white/[0.04] p-1 text-sm font-medium text-white/70">
+            <div className="mb-4 grid grid-cols-3 rounded-full border border-white/[0.12] bg-white/[0.04] p-1 text-xs font-medium text-white/70 sm:text-sm">
+              <button
+                type="button"
+                disabled={creating}
+                onClick={() => shareMode !== "full" && onShareModeChange("full")}
+                className={`rounded-full px-3 py-2 transition ${
+                  shareMode === "full"
+                    ? "bg-white text-black shadow-sm"
+                    : "hover:bg-white/[0.08] hover:text-white"
+                }`}
+              >
+                Full conversation
+              </button>
               <button
                 type="button"
                 disabled={creating}
@@ -77,7 +89,7 @@ export default function ShareConversationDialog({
                     : "hover:bg-white/[0.08] hover:text-white"
                 }`}
               >
-                Thread up to here
+                Up to response
               </button>
               <button
                 type="button"

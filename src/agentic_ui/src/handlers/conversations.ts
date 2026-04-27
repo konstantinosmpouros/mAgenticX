@@ -272,7 +272,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   };
 
 
-  const handleShareConversation = async (message: MessageOut, mode: ConversationShareMode = 'branch') => {
+  const handleShareConversation = async (message: MessageOut, mode: ConversationShareMode = 'full') => {
     if (!userId || !currentConversation?.id) {
       toast({ title: 'No conversation selected', description: 'Open a conversation before sharing.', duration: 2000 });
       return;
@@ -294,9 +294,12 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       }
       toast({
         title: 'Share link ready',
-        description: mode === 'message'
-          ? 'The selected response link was copied to your clipboard.'
-          : 'The read-only thread link was copied to your clipboard.',
+        description:
+          mode === 'message'
+            ? 'The selected response link was copied to your clipboard.'
+            : mode === 'branch'
+              ? 'The thread-up-to-response link was copied to your clipboard.'
+              : 'The full conversation link was copied to your clipboard.',
         duration: 2600,
       });
     } catch (error) {

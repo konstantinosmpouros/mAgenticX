@@ -1,29 +1,33 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Building2, CalendarDays, Home, ShieldCheck, X } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Building2, CalendarDays, Home, Send, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import ChatBody from "@/components/chat/ChatBody";
-import { getSharedConversation } from "@/lib/api";
+import { continueSharedConversation, getSharedConversation } from "@/lib/api";
 import type { MessageOut, SharedConversationDetail } from "@/lib/types";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
 import { useToast } from "@/hooks/use-toast";
+import { isSessionValid, loadSession, updateSession } from "@/lib/authStorage";
+import { ChatInterface } from "./ChatPage";
 
 const b64ToBlob = (data: string, mime: string) => {
   const bytes = atob(data);
-  const chunks: Uint8Array[] = [];
+  const chunks: BlobPart[] = [];
   for (let offset = 0; offset < bytes.length; offset += 1024) {
     const slice = bytes.slice(offset, offset + 1024);
-    const numbers = new Array(slice.length);
+    const numbers = new Uint8Array(slice.length);
     for (let i = 0; i < slice.length; i += 1) {
       numbers[i] = slice.charCodeAt(i);
     }
-    chunks.push(new Uint8Array(numbers));
+    chunks.push(numbers);
   }
   return new Blob(chunks, { type: mime || "application/octet-stream" });
 };
 
 export default function SharedConversationPage() {
   const { token = "" } = useParams();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [detail, setDetail] = useState<SharedConversationDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +35,8 @@ export default function SharedConversationPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [continuing, setContinuing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -106,9 +112,49 @@ export default function SharedConversationPage() {
     setExpandedThinking((prev) => ({ ...prev, [messageId]: !prev[messageId] }));
   };
 
+  const handleContinueSharedConversation = async () => {
+    const content = replyDraft.trim();
+    if (!content || continuing) return;
+
+    const session = loadSession();
+    if (!isSessionValid(session)) {
+      toast({ title: "Sign in to continue", description: "Create your own copy of this shared conversation after signing in.", duration: 2600 });
+      navigate("/login");
+      return;
+    }
+
+    setContinuing(true);
+    try {
+      const response = await continueSharedConversation(token, {
+        sender: "user",
+        type: "text",
+        content,
+        parentMessageId: null,
+      });
+      updateSession({ lastConversationId: response.detail.id });
+      toast({ title: "Conversation added", description: "This shared conversation is now in your workspace.", duration: 2200 });
+      navigate("/");
+    } catch (err) {
+      console.error("Failed to continue shared conversation:", err);
+      toast({
+        title: "Could not continue conversation",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+        duration: 3000,
+      });
+    } finally {
+      setContinuing(false);
+    }
+  };
+
   const AgentIcon = detail?.agent.icon ?? Building2;
   const pageTitle = detail?.title || "Shared conversation";
-  const shareLabel = detail?.shareMode === "message" ? "Shared response" : "Read-only share";
+  const shareLabel =
+    detail?.shareMode === "message"
+      ? "Shared response"
+      : detail?.shareMode === "branch"
+        ? "Shared thread"
+        : "Shared conversation";
   const sharedDate = detail?.createdAt
     ? detail.createdAt.toLocaleDateString([], {
         month: "short",
@@ -116,6 +162,15 @@ export default function SharedConversationPage() {
         year: "numeric",
       })
     : null;
+
+  if (!loading && detail?.shareMode === "full" && isSessionValid(loadSession())) {
+    return (
+      <ChatInterface
+        sharedConversationToken={token}
+        initialSharedConversation={detail}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-svh max-h-svh flex-col overflow-hidden bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(240_7%_8%)_58%,hsl(220_13%_9%)_100%)] text-foreground">
@@ -244,6 +299,36 @@ export default function SharedConversationPage() {
           </div>
         )}
       </main>
+
+      {!loading && detail && !error && detail.shareMode === "full" ? (
+        <section className="shrink-0 border-t border-white/10 bg-background/90 px-4 py-3 backdrop-blur-xl md:px-6">
+          <div className="mx-auto flex w-full max-w-6xl items-end gap-2">
+            <Textarea
+              value={replyDraft}
+              onChange={(event) => setReplyDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleContinueSharedConversation();
+                }
+              }}
+              disabled={continuing}
+              placeholder="Continue this conversation in your workspace..."
+              className="min-h-11 max-h-32 resize-none rounded-xl border-white/10 bg-card/70 px-4 py-3 text-sm shadow-sm"
+            />
+            <Button
+              type="button"
+              onClick={() => void handleContinueSharedConversation()}
+              disabled={!replyDraft.trim() || continuing}
+              className="h-11 shrink-0 rounded-xl px-4"
+              aria-label="Continue shared conversation"
+            >
+              <Send className="h-4 w-4" />
+              <span className="hidden sm:inline">{continuing ? "Creating..." : "Continue"}</span>
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {selectedImage && (
         <div

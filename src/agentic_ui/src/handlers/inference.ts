@@ -1,4 +1,4 @@
-import { createConversation, addMessageToConversation, transcribeDictation } from '@/lib/api';
+import { createConversation, addMessageToConversation, continueSharedConversation, transcribeDictation } from '@/lib/api';
 import type { PlanSnapshot } from '@/lib/agui';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
@@ -6,6 +6,7 @@ import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, 
 import { streamAguiRun } from './agui';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import type { DictationStatus } from '@/components/chat/ChatInputBar';
+import { updateSession } from '@/lib/authStorage';
 
 // Inference handlers own every flow that starts an agent run:
 // send, edit-submit, retry, stop-streaming, and speech-to-text input.
@@ -23,6 +24,7 @@ type InferenceCtx = {
   currentMessage: string;
   isSendingMessage?: boolean;
   enabledTools?: ToolPreference[];
+  sharedConversationToken?: string;
   
   // setters
   setMessages: (updater: (prev: MessageOut[]) => MessageOut[]) => void | ((v: MessageOut[]) => void);
@@ -132,6 +134,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     textareaRef,
     streamAbortRef,
     enabledTools,
+    sharedConversationToken,
     persistUIState,
     onPlanSnapshot,
     resetActivePlan,
@@ -292,6 +295,69 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           setShowAiTransition,
           signal: streamAbortRef.current.signal,
           enabledTools,
+          persistUIState,
+          onPlanSnapshot,
+        });
+      }
+
+      // Full shared conversation: first reply imports the share into the user's workspace.
+      else if (sharedConversationToken && currentConversation?.id === `shared:${sharedConversationToken}`) {
+        const messagePayload: MessageIn = {
+          parentMessageId: null,
+          sender: 'user',
+          type: attachments.length > 0 ? 'file' : 'text',
+          content: currentMessage || undefined,
+          attachments: apiAttachments,
+        };
+
+        const response = await continueSharedConversation(sharedConversationToken, messagePayload);
+        setCurrentConversation(response.detail);
+        updateSession({ lastConversationId: response.detail.id });
+        setMessages(() => response.detail.messages);
+        setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
+        persistUIState?.();
+        if (setShowAiTransition) setShowAiTransition(true);
+
+        const detailMessages = response.detail.messages || [];
+        const replyParentMessageId = detailMessages.length ? detailMessages[detailMessages.length - 1]?.id : undefined;
+        if (!replyParentMessageId) {
+          throw new Error('Conversation missing imported reply id.');
+        }
+
+        const placeholderPayload: MessageIn = {
+          sender: 'ai',
+          type: 'text',
+          parentMessageId: replyParentMessageId,
+          content: '',
+        };
+        const placeholderResp = await addMessageToConversation(userId!, response.detail.id, placeholderPayload);
+        setMessages(prev => [...prev, placeholderResp.message]);
+        setCurrentConversation(prev =>
+          prev ? { ...prev, updated_at: new Date(placeholderResp.summary.updated_at) } : prev
+        );
+        setConversations(prev =>
+          sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
+        );
+        persistUIState?.();
+
+        const branchPath = [...detailMessages.map((m) => m.id), placeholderResp.message.id];
+
+        if (streamAbortRef.current) streamAbortRef.current.abort();
+        streamAbortRef.current = new AbortController();
+        await streamAguiRun({
+          userId: userId!,
+          conversationId: response.detail.id,
+          replyParentMessageId,
+          uiBranchPath: branchPath,
+          prefillMessageId: placeholderResp.message.id,
+          setMessages,
+          setThinkingState,
+          setCurrentConversation,
+          setConversations,
+          toast,
+          setShowAiTransition,
+          enabledTools,
+          signal: streamAbortRef.current.signal,
           persistUIState,
           onPlanSnapshot,
         });

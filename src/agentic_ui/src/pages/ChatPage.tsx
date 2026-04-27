@@ -13,6 +13,7 @@ import type {
   ConversationSummary,
   ConversationReportPayload,
   ConversationShareMode,
+  SharedConversationDetail,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
@@ -69,8 +70,15 @@ import type { AttachmentLike } from "@/components/chat/message_parts/MessageAtta
 
 const ROOT_BRANCH_KEY = "__root__";
 
+type ChatInterfaceProps = {
+  sharedConversationToken?: string;
+  initialSharedConversation?: SharedConversationDetail | null;
+};
 
-export function ChatInterface() {
+export function ChatInterface({
+  sharedConversationToken,
+  initialSharedConversation,
+}: ChatInterfaceProps = {}) {
   // Initial session check
   const { initialUserId, initialUserProfile, initialLoggedIn } = useInitialSessionState();
 
@@ -141,7 +149,7 @@ export function ChatInterface() {
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [shareDialogUrl, setShareDialogUrl] = useState<string | null>(null);
   const [shareTargetMessage, setShareTargetMessage] = useState<MessageOut | null>(null);
-  const [shareMode, setShareMode] = useState<ConversationShareMode>("branch");
+  const [shareMode, setShareMode] = useState<ConversationShareMode>("full");
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const [isShareCopyPulse, setIsShareCopyPulse] = useState(false);
   const [reportTargetConversationId, setReportTargetConversationId] = useState<string | null>(null);
@@ -233,6 +241,25 @@ export function ChatInterface() {
   useEffect(() => {
     setBranchSelections({});
   }, [currentConversation?.id]);
+
+  const hydratedSharedTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sharedConversationToken || !initialSharedConversation || !authResolved || !isLoggedIn || !userId) return;
+    if (hydratedSharedTokenRef.current === sharedConversationToken) return;
+
+    hydratedSharedTokenRef.current = sharedConversationToken;
+    setSelectedAgent(initialSharedConversation.agent.id);
+    setIsPrivateMode(false);
+    setCurrentConversation({
+      id: `shared:${sharedConversationToken}`,
+      agent: initialSharedConversation.agent,
+      title: initialSharedConversation.title || "Shared conversation",
+      isPrivate: false,
+      created_at: initialSharedConversation.createdAt,
+      updated_at: initialSharedConversation.createdAt,
+      messages: initialSharedConversation.messages,
+    });
+  }, [authResolved, initialSharedConversation, isLoggedIn, sharedConversationToken, userId]);
 
   // Branching handlers
   const {
@@ -337,7 +364,7 @@ export function ChatInterface() {
   const closeShareDialog = useCallback(() => {
     setShareDialogUrl(null);
     setShareTargetMessage(null);
-    setShareMode("branch");
+    setShareMode("full");
     setIsCreatingShareLink(false);
     setIsShareCopyPulse(false);
   }, []);
@@ -352,7 +379,7 @@ export function ChatInterface() {
   const openShareDialog = useCallback((message: MessageOut) => {
     setShareDialogUrl(null);
     setShareTargetMessage(message);
-    setShareMode("branch");
+    setShareMode("full");
     setIsCreatingShareLink(false);
     setIsShareCopyPulse(false);
   }, []);
@@ -437,7 +464,7 @@ export function ChatInterface() {
   // Hydrate last conversation effect
   const hydratedConversationRef = useRef(false);
   useEffect(() => {
-    if (!authResolved || !isLoggedIn || !userId) {
+    if (!authResolved || !isLoggedIn || !userId || sharedConversationToken) {
       hydratedConversationRef.current = false;
       return;
     }
@@ -689,6 +716,7 @@ export function ChatInterface() {
     textareaRef,
     streamAbortRef,
     enabledTools: enabledToolsForRequest,
+    sharedConversationToken,
     persistUIState: requestPersist,
     onPlanSnapshot: handlePlanSnapshot,
     resetActivePlan,

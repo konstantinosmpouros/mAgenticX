@@ -29,7 +29,7 @@ from router import (
     conversations_router,
     messages_router,
     attachments_router,
-    shared_conversations_router,
+    shared_conv_router,
 )
 
 configure_logging()
@@ -118,7 +118,7 @@ app.include_router(
     tags=["Attachments"],
 )
 app.include_router(
-    shared_conversations_router,
+    shared_conv_router,
     prefix=f"/v1/shared-conversations",
     tags=["Shared Conversations"],
 )

@@ -140,7 +140,7 @@ export type ConversationReportPayload = {
     messageId?: string | null;
 };
 
-export type ConversationShareMode = "branch" | "message";
+export type ConversationShareMode = "full" | "branch" | "message";
 
 export type ConversationShareResponse = {
     id: string;

@@ -363,7 +363,11 @@ class ConversationForkIn(BaseModel):
 class ConversationShareIn(BaseModel):
     """Create a read-only share snapshot ending at a selected AI message."""
     messageId: str
-    mode: Literal["branch", "message"] = "branch"
+    mode: Literal["full", "branch", "message"] = "branch"
+
+class ContinueSharedConversationIn(BaseModel):
+    """Create the caller's own conversation from a public share plus their first reply."""
+    firstMessage: MessageIn
 
 class ConversationShareResponse(BaseModel):
     """Owner response for a created share link."""
@@ -372,7 +376,7 @@ class ConversationShareResponse(BaseModel):
     shareUrl: str
     conversationId: str
     messageId: str
-    shareMode: Literal["branch", "message"] = "branch"
+    shareMode: Literal["full", "branch", "message"] = "branch"
     title: Optional[str] = None
     createdAt: datetime
 
@@ -380,7 +384,7 @@ class SharedConversationDetail(BaseModel):
     """Public read-only shared conversation snapshot."""
     token: str
     title: Optional[str] = None
-    shareMode: Literal["branch", "message"] = "branch"
+    shareMode: Literal["full", "branch", "message"] = "branch"
     agent: AgentPublic
     messages: List[MessageOut] = Field(default_factory=list)
     createdAt: datetime
