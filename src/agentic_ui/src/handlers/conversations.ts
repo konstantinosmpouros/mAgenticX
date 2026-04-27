@@ -1,7 +1,7 @@
 import { Building2 } from 'lucide-react';
 import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, reportConversation, getArchivedConversations, forkConversation, shareConversation } from '@/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Agent, ConversationDetail, ConversationReportPayload, ConversationSummary, MessageOut } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationReportPayload, ConversationShareMode, ConversationSummary, MessageOut } from '@/lib/types';
 
 // Conversation handlers own chat navigation and sidebar state:
 // selecting threads, clearing the current chat, pagination, and row-level mutations.
@@ -272,7 +272,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   };
 
 
-  const handleShareConversation = async (message: MessageOut) => {
+  const handleShareConversation = async (message: MessageOut, mode: ConversationShareMode = 'branch') => {
     if (!userId || !currentConversation?.id) {
       toast({ title: 'No conversation selected', description: 'Open a conversation before sharing.', duration: 2000 });
       return;
@@ -283,7 +283,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
 
     try {
-      const share = await shareConversation(userId, currentConversation.id, message.id);
+      const share = await shareConversation(userId, currentConversation.id, message.id, mode);
       const absoluteUrl =
         typeof window !== 'undefined'
           ? new URL(share.shareUrl, window.location.origin).toString()
@@ -292,7 +292,13 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(absoluteUrl);
       }
-      toast({ title: 'Share link ready', description: 'The read-only link was copied to your clipboard.', duration: 2600 });
+      toast({
+        title: 'Share link ready',
+        description: mode === 'message'
+          ? 'The selected response link was copied to your clipboard.'
+          : 'The read-only thread link was copied to your clipboard.',
+        duration: 2600,
+      });
     } catch (error) {
       console.error('Failed to share conversation:', error);
       toast({

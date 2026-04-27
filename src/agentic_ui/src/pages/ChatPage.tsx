@@ -12,6 +12,7 @@ import type {
   ConversationDetail,
   ConversationSummary,
   ConversationReportPayload,
+  ConversationShareMode,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
@@ -140,6 +141,7 @@ export function ChatInterface() {
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [shareDialogUrl, setShareDialogUrl] = useState<string | null>(null);
   const [shareTargetMessage, setShareTargetMessage] = useState<MessageOut | null>(null);
+  const [shareMode, setShareMode] = useState<ConversationShareMode>("branch");
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const [isShareCopyPulse, setIsShareCopyPulse] = useState(false);
   const [reportTargetConversationId, setReportTargetConversationId] = useState<string | null>(null);
@@ -335,6 +337,7 @@ export function ChatInterface() {
   const closeShareDialog = useCallback(() => {
     setShareDialogUrl(null);
     setShareTargetMessage(null);
+    setShareMode("branch");
     setIsCreatingShareLink(false);
     setIsShareCopyPulse(false);
   }, []);
@@ -349,7 +352,14 @@ export function ChatInterface() {
   const openShareDialog = useCallback((message: MessageOut) => {
     setShareDialogUrl(null);
     setShareTargetMessage(message);
+    setShareMode("branch");
     setIsCreatingShareLink(false);
+    setIsShareCopyPulse(false);
+  }, []);
+
+  const handleShareModeChange = useCallback((mode: ConversationShareMode) => {
+    setShareMode(mode);
+    setShareDialogUrl(null);
     setIsShareCopyPulse(false);
   }, []);
 
@@ -747,9 +757,9 @@ export function ChatInterface() {
   const handleCreateShareLink = useCallback(async () => {
     if (!shareTargetMessage || isCreatingShareLink) return;
     setIsCreatingShareLink(true);
-    await handleShareConversation(shareTargetMessage);
+    await handleShareConversation(shareTargetMessage, shareMode);
     setIsCreatingShareLink(false);
-  }, [handleShareConversation, isCreatingShareLink, shareTargetMessage]);
+  }, [handleShareConversation, isCreatingShareLink, shareMode, shareTargetMessage]);
 
   useEffect(() => {
     if (!isShareCopyPulse) return;
@@ -1128,6 +1138,8 @@ export function ChatInterface() {
                 creating={isCreatingShareLink}
                 linkCreated={Boolean(shareDialogUrl)}
                 copied={isShareCopyPulse}
+                shareMode={shareMode}
+                onShareModeChange={handleShareModeChange}
                 onClose={closeShareDialog}
                 onCreateLink={shareDialogUrl ? copyShareDialogUrl : handleCreateShareLink}
               />

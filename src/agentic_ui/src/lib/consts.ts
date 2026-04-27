@@ -173,6 +173,7 @@ export const transformSharedConversationDetail = (
 ): SharedConversationDetail => ({
   token: detail.token ?? "",
   title: detail.title ?? null,
+  shareMode: detail.shareMode ?? detail.share_mode ?? "branch",
   agent: transformAgent(detail.agent),
   messages: (detail.messages || []).map(transformMessage),
   createdAt: toDate(detail.createdAt ?? detail.created_at),

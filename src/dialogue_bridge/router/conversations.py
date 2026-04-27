@@ -184,7 +184,12 @@ async def shareConversation(
     """Create a public read-only snapshot link ending at the selected AI message."""
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
     branch = build_message_lineage(current_conv.messages, payload.messageId)
-    snapshot = build_share_snapshot(current_conv, branch)
+    snapshot_messages = branch
+    if payload.mode == "message":
+        target = branch[-1]
+        snapshot_messages = branch[-2:] if len(branch) >= 2 and branch[-2].sender == "user" else [target]
+    snapshot = build_share_snapshot(current_conv, snapshot_messages)
+    snapshot["shareMode"] = payload.mode
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     async with logged_db_operation(
@@ -196,7 +201,9 @@ async def shareConversation(
         failure_message="Conversation share failed",
         source_conversation_id=conversation_id,
         shared_message_id=payload.messageId,
+        share_mode=payload.mode,
         branch_message_count=len(branch),
+        snapshot_message_count=len(snapshot_messages),
     ) as operation:
         share = ConversationShareTable(
             token=token_urlsafe(32),
@@ -220,6 +227,7 @@ async def shareConversation(
         shareUrl=f"/share/{share.token}",
         conversationId=conversation_id,
         messageId=payload.messageId,
+        shareMode=payload.mode,
         title=current_conv.title,
         createdAt=share.created_at,
     )

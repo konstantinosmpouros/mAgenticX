@@ -19,6 +19,14 @@
 
 ## New Features
 
+- Projects / Workspaces: group related conversations, files, agents, tools, preferences, and instructions into persistent workspaces for long-running work.
+- Project-scoped memory: remember useful preferences, decisions, terminology, and context inside a specific project without mixing it into unrelated work.
+- Deep Research mode: run longer multi-step research workflows with source citations, confidence notes, step traces, and exportable reports.
+- Scheduled Tasks: let users create one-off or recurring agent jobs that run later, complete while the user is offline, and notify them with results.
+- Artifacts / Canvas: add an editable side workspace for generated reports, markdown docs, code, tables, diagrams, JSON configs, and other reusable outputs.
+- Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
+- Voice mode: start with dictation and spoken responses, then evolve toward real-time conversational voice agents. Use this as icon ```import { RiVoiceprintLine } from "react-icons/ri";```.
+- Shared pages 2.0: support polished report-style shares, selected-message shares, expiration, password protection, forking shared conversations, and PDF/Markdown export.
 - Place some suggestions below the input container and if the user write something then remove them. Make this suggestions configurable from the fronted and personalized per user according to the latest conversations and memory we have from him (must come after the long-term memory). Dont use an llm but use embeddings and similarity search to find the latest topics discussed with the user by using a number of predefined questions/queries.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic, procedural).
 - Voice mode [react element](https://elements.ai-sdk.dev/components/persona).
@@ -28,14 +36,6 @@
 
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
 - Add end-to-end non-image attachment support in inference, including deep-agent passthrough and LangGraph input normalization/parsing for file parts.
-
-## Agentic UI
-
-- Check what is this and how it can simplify the [react code](https://www.shadcn.io/hooks/use-boolean)
-- Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one.
-- This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-- Create more features like the grok sidebar.
-- Refactor the profile panel and redesign it with a more polished AI-company style visual language and interaction model.
 
 ## RAG Service
 

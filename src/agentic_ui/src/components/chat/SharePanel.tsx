@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Check, Copy, Link2, Loader2, X } from "lucide-react";
-import type { MessageOut } from "@/lib/types";
+import type { ConversationShareMode, MessageOut } from "@/lib/types";
 import { MessageContent } from "./message_parts/MessageContent";
 
 type ShareConversationDialogProps = {
@@ -11,6 +11,8 @@ type ShareConversationDialogProps = {
   creating?: boolean;
   linkCreated?: boolean;
   copied?: boolean;
+  shareMode: ConversationShareMode;
+  onShareModeChange: (mode: ConversationShareMode) => void;
   onClose: () => void;
   onCreateLink: () => void;
 };
@@ -22,6 +24,8 @@ export default function ShareConversationDialog({
   creating = false,
   linkCreated = false,
   copied = false,
+  shareMode,
+  onShareModeChange,
   onClose,
   onCreateLink,
 }: ShareConversationDialogProps) {
@@ -62,6 +66,33 @@ export default function ShareConversationDialog({
           </div>
 
           <div className="px-5 py-5 md:px-7">
+            <div className="mb-4 grid grid-cols-2 rounded-full border border-white/[0.12] bg-white/[0.04] p-1 text-sm font-medium text-white/70">
+              <button
+                type="button"
+                disabled={creating}
+                onClick={() => shareMode !== "branch" && onShareModeChange("branch")}
+                className={`rounded-full px-3 py-2 transition ${
+                  shareMode === "branch"
+                    ? "bg-white text-black shadow-sm"
+                    : "hover:bg-white/[0.08] hover:text-white"
+                }`}
+              >
+                Thread up to here
+              </button>
+              <button
+                type="button"
+                disabled={creating}
+                onClick={() => shareMode !== "message" && onShareModeChange("message")}
+                className={`rounded-full px-3 py-2 transition ${
+                  shareMode === "message"
+                    ? "bg-white text-black shadow-sm"
+                    : "hover:bg-white/[0.08] hover:text-white"
+                }`}
+              >
+                This response only
+              </button>
+            </div>
+
             <div className="min-h-[15.5rem] rounded-[1.25rem] border border-white/[0.12] bg-[#353535] p-5 text-[1rem] leading-7 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] md:min-h-[17rem] md:p-6">
               <div className="max-h-[12.5rem] overflow-hidden text-white/95 [mask-image:linear-gradient(to_bottom,black_76%,transparent_100%)] md:max-h-[14rem]">
                 <MessageContent message={message} isEditing={false} />

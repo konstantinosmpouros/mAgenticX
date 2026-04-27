@@ -214,6 +214,7 @@ async def clone_branch_to_conversation(
 def build_share_snapshot(source_conv: ConversationTable, branch: list[MessageTable]) -> dict:
     return {
         "title": source_conv.title,
+        "shareMode": "branch",
         "agent": {
             "id": source_conv.agent.id,
             "name": source_conv.agent.name,

@@ -3,7 +3,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Copy, Check, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { LuFlag } from "react-icons/lu";
-import { BsArrowRepeat } from "react-icons/bs";
+import { PiArrowsCounterClockwise } from "react-icons/pi";
 import { BiGitRepoForked } from "react-icons/bi";
 import { HiOutlineUpload } from "react-icons/hi";
 import type { LucideIcon } from "lucide-react";
@@ -226,13 +226,14 @@ export const AIActionBar = ({
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
                   focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
+                  [&_svg]:!size-[18px]
                 "
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => onShareMessage?.(message)}
                 disabled={!onShareMessage || isStreaming}
                 aria-label="Share conversation"
               >
-                <HiOutlineUpload className="h-4 w-4" />
+                <HiOutlineUpload className="size-[18px]" />
               </Button>
             </TooltipTrigger>
             <TooltipContent
@@ -292,7 +293,7 @@ export const AIActionBar = ({
                   disabled={!onRetryMessage || isStreaming}
                   onSelect={() => onRetryMessage?.(message)}
                 >
-                  <BsArrowRepeat className="h-4 w-4" />
+                  <PiArrowsCounterClockwise className="h-4 w-4" />
                   <span>Try again</span>
                 </DropdownMenu.Item>
 

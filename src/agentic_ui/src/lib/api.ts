@@ -10,6 +10,7 @@ import type {
   ConversationIn,
   ConversationReportPayload,
   ConversationShareResponse,
+  ConversationShareMode,
   CreateConversationResponse,
   MessageIn,
   MessageUpdate,
@@ -459,6 +460,7 @@ export async function shareConversation(
   userId: string,
   conversationId: string,
   messageId: string,
+  mode: ConversationShareMode = "branch",
 ): Promise<ConversationShareResponse> {
   const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share`, withSessionRequest({
     method: "POST",
@@ -466,7 +468,7 @@ export async function shareConversation(
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
-    body: JSON.stringify({ messageId }),
+    body: JSON.stringify({ messageId, mode }),
   }, { csrf: true }));
 
   if (!res.ok) {
@@ -488,6 +490,7 @@ export async function shareConversation(
     shareUrl: data.shareUrl,
     conversationId: data.conversationId,
     messageId: data.messageId,
+    shareMode: data.shareMode ?? data.share_mode ?? mode,
     title: data.title ?? null,
     createdAt: new Date(data.createdAt),
   };

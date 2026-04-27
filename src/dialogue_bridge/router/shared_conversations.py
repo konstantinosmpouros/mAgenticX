@@ -39,6 +39,7 @@ async def getSharedConversation(
     return SharedConversationDetail(
         token=share.token,
         title=snapshot.get("title") or share.title,
+        shareMode=snapshot.get("shareMode") or "branch",
         agent=snapshot.get("agent") or {},
         messages=snapshot.get("messages") or [],
         createdAt=share.created_at,

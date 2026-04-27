@@ -140,12 +140,15 @@ export type ConversationReportPayload = {
     messageId?: string | null;
 };
 
+export type ConversationShareMode = "branch" | "message";
+
 export type ConversationShareResponse = {
     id: string;
     token: string;
     shareUrl: string;
     conversationId: string;
     messageId: string;
+    shareMode: ConversationShareMode;
     title?: string | null;
     createdAt: Date;
 };
@@ -153,6 +156,7 @@ export type ConversationShareResponse = {
 export type SharedConversationDetail = {
     token: string;
     title?: string | null;
+    shareMode: ConversationShareMode;
     agent: Agent;
     messages: MessageOut[];
     createdAt: Date;
