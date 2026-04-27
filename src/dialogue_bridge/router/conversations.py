@@ -1,6 +1,6 @@
 from secrets import token_urlsafe
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from observability import get_logger, logged_db_operation, set_context
@@ -16,6 +16,7 @@ from schemas import (
     ConversationIn,
     ConversationReportIn,
     ConversationShareIn,
+    ConversationShareListItem,
     ConversationShareResponse,
     ConversationSummary,
     CreateConversationResponse,
@@ -34,6 +35,7 @@ from utils import (
     validate_convId_full,
     validate_userId,
 )
+from utils.shared_conv import build_share_list_item, resolve_share_expires_at
 
 
 router = APIRouter()
@@ -193,6 +195,7 @@ async def shareConversation(
     snapshot = build_share_snapshot(current_conv, snapshot_messages)
     snapshot["shareMode"] = payload.mode
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+    expires_at = resolve_share_expires_at(payload.expiresAt, now)
 
     async with logged_db_operation(
         logger=logger,
@@ -215,6 +218,7 @@ async def shareConversation(
             title=current_conv.title,
             snapshot_json=snapshot,
             is_active=True,
+            expires_at=expires_at,
             created_at=now,
             updated_at=now,
         )
@@ -231,6 +235,9 @@ async def shareConversation(
         messageId=payload.messageId,
         shareMode=payload.mode,
         title=current_conv.title,
+        isActive=share.is_active,
+        revokedAt=share.revoked_at,
+        expiresAt=share.expires_at,
         createdAt=share.created_at,
     )
 
@@ -328,6 +335,40 @@ async def getArchivedConvsSummary(
     page = await apaginate(db, stmt)
     logger.info("conversation_archived_summary_list_fetched", "Archived conversation summary list fetched", total=page.total, page=page.page, size=page.size)
     return page
+
+
+@router.get(
+    "/{user_id}/shares",
+    response_model=list[ConversationShareListItem],
+    status_code=status.HTTP_200_OK,
+    summary="Get paginated shared conversation links for the user",
+)
+async def getConversationShares(
+    user_id: str,
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=50),
+    current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return share links owned by the authenticated user."""
+    set_context(user_id=user_id)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = await db.execute(
+        select(ConversationShareTable)
+        .where(ConversationShareTable.owner_user_id == current_user.id)
+        .order_by(ConversationShareTable.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    shares = result.scalars().all()
+    logger.info(
+        "conversation_share_list_fetched",
+        "Conversation share list fetched",
+        count=len(shares),
+        page=page,
+        size=size,
+    )
+    return [build_share_list_item(share, now) for share in shares]
 
 
 @router.get(

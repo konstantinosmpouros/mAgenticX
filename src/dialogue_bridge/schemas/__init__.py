@@ -364,6 +364,17 @@ class ConversationShareIn(BaseModel):
     """Create a read-only share snapshot ending at a selected AI message."""
     messageId: str
     mode: Literal["full", "branch", "message"] = "branch"
+    expiresAt: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def _validate_expiration(self):
+        if self.expiresAt is None:
+            return self
+        expires_at = self.expiresAt.replace(tzinfo=None)
+        if expires_at <= datetime.utcnow():
+            raise ValueError("Share expiration must be in the future.")
+        self.expiresAt = expires_at
+        return self
 
 class ContinueSharedConversationIn(BaseModel):
     """Create the caller's own conversation from a public share plus their first reply."""
@@ -378,6 +389,24 @@ class ConversationShareResponse(BaseModel):
     messageId: str
     shareMode: Literal["full", "branch", "message"] = "branch"
     title: Optional[str] = None
+    isActive: bool = True
+    revokedAt: Optional[datetime] = None
+    expiresAt: Optional[datetime] = None
+    createdAt: datetime
+
+class ConversationShareListItem(BaseModel):
+    """Owner-facing shared conversation link record."""
+    id: str
+    token: str
+    shareUrl: str
+    conversationId: str
+    messageId: Optional[str] = None
+    shareMode: Literal["full", "branch", "message"] = "branch"
+    title: Optional[str] = None
+    isActive: bool
+    status: Literal["active", "expired", "revoked"]
+    revokedAt: Optional[datetime] = None
+    expiresAt: Optional[datetime] = None
     createdAt: datetime
 
 class SharedConversationDetail(BaseModel):
@@ -387,6 +416,7 @@ class SharedConversationDetail(BaseModel):
     shareMode: Literal["full", "branch", "message"] = "branch"
     agent: AgentPublic
     messages: List[MessageOut] = Field(default_factory=list)
+    expiresAt: Optional[datetime] = None
     createdAt: datetime
 
 class CreateConversationResponse(BaseModel):
@@ -517,6 +547,12 @@ __all__ = [
     "AttachmentIn",
     "MessageIn",
     "ConversationIn",
+    "ConversationForkIn",
+    "ConversationShareIn",
+    "ContinueSharedConversationIn",
+    "ConversationShareResponse",
+    "ConversationShareListItem",
+    "SharedConversationDetail",
     "CreateConversationResponse",
     "InferenceStreamPayload",
     "UpdateConversationResponse",

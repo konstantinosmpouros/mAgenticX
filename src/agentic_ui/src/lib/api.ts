@@ -9,6 +9,7 @@ import type {
   MessageOut,
   ConversationIn,
   ConversationReportPayload,
+  ConversationShareListItem,
   ConversationShareResponse,
   ConversationShareMode,
   CreateConversationResponse,
@@ -461,6 +462,7 @@ export async function shareConversation(
   conversationId: string,
   messageId: string,
   mode: ConversationShareMode = "full",
+  expiresAt?: Date | null,
 ): Promise<ConversationShareResponse> {
   const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share`, withSessionRequest({
     method: "POST",
@@ -468,7 +470,11 @@ export async function shareConversation(
       "Content-Type": "application/json",
       "Accept": "application/json",
     },
-    body: JSON.stringify({ messageId, mode }),
+    body: JSON.stringify({
+      messageId,
+      mode,
+      ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}),
+    }),
   }, { csrf: true }));
 
   if (!res.ok) {
@@ -492,8 +498,65 @@ export async function shareConversation(
     messageId: data.messageId,
     shareMode: data.shareMode ?? data.share_mode ?? mode,
     title: data.title ?? null,
-    createdAt: new Date(data.createdAt),
+    isActive: Boolean(data.isActive ?? data.is_active ?? true),
+    revokedAt: data.revokedAt ?? data.revoked_at ? new Date(data.revokedAt ?? data.revoked_at) : null,
+    expiresAt: data.expiresAt ?? data.expires_at ? new Date(data.expiresAt ?? data.expires_at) : null,
+    createdAt: new Date(data.createdAt ?? data.created_at),
   };
+}
+
+
+export async function getSharedConversationLinks(
+  userId: string,
+  page: number = 1,
+  size: number = 10,
+): Promise<ConversationShareListItem[]> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/shares?page=${page}&size=${size}`, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch shared conversations: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!Array.isArray(data)) return [];
+  return data.map((item: any) => ({
+    id: item.id,
+    token: item.token,
+    shareUrl: item.shareUrl ?? item.share_url ?? `/share/${item.token}`,
+    conversationId: item.conversationId ?? item.conversation_id,
+    messageId: item.messageId ?? item.message_id ?? null,
+    shareMode: item.shareMode ?? item.share_mode ?? "branch",
+    title: item.title ?? null,
+    isActive: Boolean(item.isActive ?? item.is_active),
+    status: item.status ?? "active",
+    revokedAt: item.revokedAt ?? item.revoked_at ? new Date(item.revokedAt ?? item.revoked_at) : null,
+    expiresAt: item.expiresAt ?? item.expires_at ? new Date(item.expiresAt ?? item.expires_at) : null,
+    createdAt: new Date(item.createdAt ?? item.created_at),
+  }));
+}
+
+
+export async function revokeSharedConversationLink(
+  userId: string,
+  conversationId: string,
+  shareId: string,
+): Promise<void> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share/${shareId}`, withSessionRequest({
+    method: "DELETE",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to revoke shared conversation: ${res.status}`);
+  }
 }
 
 
@@ -506,7 +569,9 @@ export async function getSharedConversation(token: string): Promise<SharedConver
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to fetch shared conversation: ${res.status}`);
+    const error = new Error(`Failed to fetch shared conversation: ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
 
   const data = await res.json();

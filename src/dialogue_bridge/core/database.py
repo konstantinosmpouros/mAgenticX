@@ -271,6 +271,7 @@ class ConversationShareTable(Base):
     snapshot_json = Column(JSON, nullable=False)
     is_active = Column(Boolean, nullable=False, server_default="true")
     revoked_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

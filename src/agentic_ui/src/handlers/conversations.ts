@@ -272,7 +272,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
   };
 
 
-  const handleShareConversation = async (message: MessageOut, mode: ConversationShareMode = 'full') => {
+  const handleShareConversation = async (message: MessageOut, mode: ConversationShareMode = 'full', expiresAt?: Date | null) => {
     if (!userId || !currentConversation?.id) {
       toast({ title: 'No conversation selected', description: 'Open a conversation before sharing.', duration: 2000 });
       return;
@@ -283,7 +283,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
 
     try {
-      const share = await shareConversation(userId, currentConversation.id, message.id, mode);
+      const share = await shareConversation(userId, currentConversation.id, message.id, mode, expiresAt);
       const absoluteUrl =
         typeof window !== 'undefined'
           ? new URL(share.shareUrl, window.location.origin).toString()

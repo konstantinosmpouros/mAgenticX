@@ -150,6 +150,26 @@ export type ConversationShareResponse = {
     messageId: string;
     shareMode: ConversationShareMode;
     title?: string | null;
+    isActive: boolean;
+    revokedAt?: Date | null;
+    expiresAt?: Date | null;
+    createdAt: Date;
+};
+
+export type ConversationShareStatus = "active" | "expired" | "revoked";
+
+export type ConversationShareListItem = {
+    id: string;
+    token: string;
+    shareUrl: string;
+    conversationId: string;
+    messageId?: string | null;
+    shareMode: ConversationShareMode;
+    title?: string | null;
+    isActive: boolean;
+    status: ConversationShareStatus;
+    revokedAt?: Date | null;
+    expiresAt?: Date | null;
     createdAt: Date;
 };
 
@@ -159,6 +179,7 @@ export type SharedConversationDetail = {
     shareMode: ConversationShareMode;
     agent: Agent;
     messages: MessageOut[];
+    expiresAt?: Date | null;
     createdAt: Date;
 };
 

@@ -12,6 +12,7 @@ import type {
   ConversationDetail,
   ConversationSummary,
   ConversationReportPayload,
+  ConversationShareListItem,
   ConversationShareMode,
   SharedConversationDetail,
   UserProfile,
@@ -48,6 +49,7 @@ import {
   createFeedbackHandlers,
   createMessageEditHandlers,
   createRetryHandlers,
+  createSharedConversationHandlers,
   useBranchingHandlers
 } from "@/handlers";
 import { loadSession } from "@/lib/authStorage";
@@ -69,6 +71,11 @@ import { clearUISnapshot } from "@/lib/uiStateStorage";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
 
 const ROOT_BRANCH_KEY = "__root__";
+const defaultShareExpiresAt = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  return date;
+};
 
 type ChatInterfaceProps = {
   sharedConversationToken?: string;
@@ -108,6 +115,11 @@ export function ChatInterface({
   const [archivedConvHasMore, setArchivedConvHasMore] = useState<boolean>(true);
   const [archivedConvIsLoading, setArchivedConvIsLoading] = useState<boolean>(false);
   const ARCHIVED_CONV_PAGE_SIZE = 10;
+  const [sharedConversations, setSharedConversations] = useState<ConversationShareListItem[]>([]);
+  const [sharedConvPage, setSharedConvPage] = useState<number>(1);
+  const [sharedConvHasMore, setSharedConvHasMore] = useState<boolean>(true);
+  const [sharedConvIsLoading, setSharedConvIsLoading] = useState<boolean>(false);
+  const SHARED_CONV_PAGE_SIZE = 10;
 
   // Thinking variables (will be changed)
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
@@ -150,6 +162,7 @@ export function ChatInterface({
   const [shareDialogUrl, setShareDialogUrl] = useState<string | null>(null);
   const [shareTargetMessage, setShareTargetMessage] = useState<MessageOut | null>(null);
   const [shareMode, setShareMode] = useState<ConversationShareMode>("full");
+  const [shareExpiresAt, setShareExpiresAt] = useState<Date | null>(() => defaultShareExpiresAt());
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const [isShareCopyPulse, setIsShareCopyPulse] = useState(false);
   const [reportTargetConversationId, setReportTargetConversationId] = useState<string | null>(null);
@@ -365,6 +378,7 @@ export function ChatInterface({
     setShareDialogUrl(null);
     setShareTargetMessage(null);
     setShareMode("full");
+    setShareExpiresAt(defaultShareExpiresAt());
     setIsCreatingShareLink(false);
     setIsShareCopyPulse(false);
   }, []);
@@ -380,12 +394,19 @@ export function ChatInterface({
     setShareDialogUrl(null);
     setShareTargetMessage(message);
     setShareMode("full");
+    setShareExpiresAt(defaultShareExpiresAt());
     setIsCreatingShareLink(false);
     setIsShareCopyPulse(false);
   }, []);
 
   const handleShareModeChange = useCallback((mode: ConversationShareMode) => {
     setShareMode(mode);
+    setShareDialogUrl(null);
+    setIsShareCopyPulse(false);
+  }, []);
+
+  const handleShareExpiresAtChange = useCallback((value: Date | null) => {
+    setShareExpiresAt(value);
     setShareDialogUrl(null);
     setIsShareCopyPulse(false);
   }, []);
@@ -592,6 +613,7 @@ export function ChatInterface({
     if (typeof document !== "undefined") {
       const expandedTrigger = document.querySelector<HTMLElement>('[aria-expanded="true"]');
       if (expandedTrigger) {
+        window.dispatchEvent(new Event("magenticx:close-ai-action-menus"));
         expandedTrigger.blur();
         return true;
       }
@@ -785,9 +807,9 @@ export function ChatInterface({
   const handleCreateShareLink = useCallback(async () => {
     if (!shareTargetMessage || isCreatingShareLink) return;
     setIsCreatingShareLink(true);
-    await handleShareConversation(shareTargetMessage, shareMode);
+    await handleShareConversation(shareTargetMessage, shareMode, shareExpiresAt);
     setIsCreatingShareLink(false);
-  }, [handleShareConversation, isCreatingShareLink, shareMode, shareTargetMessage]);
+  }, [handleShareConversation, isCreatingShareLink, shareExpiresAt, shareMode, shareTargetMessage]);
 
   useEffect(() => {
     if (!isShareCopyPulse) return;
@@ -795,12 +817,40 @@ export function ChatInterface({
     return () => window.clearTimeout(timeout);
   }, [isShareCopyPulse]);
 
+  const {
+    refreshSharedConversations,
+    handleLoadMoreSharedConversations,
+    handleOpenSharedConversation,
+    handleRevokeSharedConversation,
+  } = createSharedConversationHandlers({
+    userId,
+    sharedConversationsPage: sharedConvPage,
+    sharedConversationsHasMore: sharedConvHasMore,
+    sharedConversationsLoading: sharedConvIsLoading,
+    pageSize: SHARED_CONV_PAGE_SIZE,
+    setSharedConversations,
+    setSharedConversationsPage: setSharedConvPage,
+    setSharedConversationsHasMore: setSharedConvHasMore,
+    setSharedConversationsLoading: setSharedConvIsLoading,
+    closeProfilePanel,
+    setLoadingConversation,
+    setSelectedAgent,
+    setCurrentConversation,
+    setIsPrivateMode,
+    setExpandedThinking,
+    setAttachments,
+    setCurrentMessage,
+    toast: toastWrapper,
+    persistUIState: requestPersist,
+  });
+
   useEffect(() => {
     if (!showUserProfile || activeProfileTab !== "archived") {
       return;
     }
 
     void refreshArchivedConversations();
+    void refreshSharedConversations();
   }, [activeProfileTab, showUserProfile, userId]);
 
   const handleOpenArchivedConversation = useCallback(async (conversation: ConversationSummary) => {
@@ -1145,6 +1195,12 @@ export function ChatInterface({
                 onLoadMoreArchivedConversations={handleLoadMoreArchivedConversations}
                 onSelectArchivedConversation={handleOpenArchivedConversation}
                 onUnarchiveConversation={(conversation) => void handleUnarchiveConversation(conversation.id)}
+                sharedConversations={sharedConversations}
+                sharedConversationsLoading={sharedConvIsLoading}
+                sharedConversationsHasMore={sharedConvHasMore}
+                onLoadMoreSharedConversations={handleLoadMoreSharedConversations}
+                onSelectSharedConversation={handleOpenSharedConversation}
+                onRevokeSharedConversation={handleRevokeSharedConversation}
                 onToggleToolPreference={handleToggleToolPreference}
                 preferencesSaving={isSavingPreferences}
               />
@@ -1167,7 +1223,9 @@ export function ChatInterface({
                 linkCreated={Boolean(shareDialogUrl)}
                 copied={isShareCopyPulse}
                 shareMode={shareMode}
+                expiresAt={shareExpiresAt}
                 onShareModeChange={handleShareModeChange}
+                onExpiresAtChange={handleShareExpiresAtChange}
                 onClose={closeShareDialog}
                 onCreateLink={shareDialogUrl ? copyShareDialogUrl : handleCreateShareLink}
               />

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -16,8 +16,17 @@ from core.database import (
     UserTable,
     b64_decode,
 )
-from schemas import ContinueSharedConversationIn, ConversationDetail, ConversationSummary, CreateConversationResponse
+from schemas import (
+    ContinueSharedConversationIn,
+    ConversationDetail,
+    ConversationShareListItem,
+    ConversationSummary,
+    CreateConversationResponse,
+)
 from utils.conversations import _preview, init_message
+
+DEFAULT_SHARE_TTL_DAYS = 30
+MAX_SHARE_TTL_DAYS = 365
 
 
 def parse_snapshot_datetime(value: str | None) -> datetime | None:
@@ -33,12 +42,62 @@ def share_not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shared conversation not found.")
 
 
+def resolve_share_expires_at(expires_at: datetime | None, now: datetime | None = None) -> datetime:
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    resolved = expires_at or (now + timedelta(days=DEFAULT_SHARE_TTL_DAYS))
+    resolved = resolved.replace(tzinfo=None)
+    max_expires_at = now + timedelta(days=MAX_SHARE_TTL_DAYS)
+    if resolved > max_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Share expiration cannot be more than {MAX_SHARE_TTL_DAYS} days from now.",
+        )
+    return resolved
+
+
+def share_status(share: ConversationShareTable, now: datetime | None = None) -> str:
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    if not share.is_active or share.revoked_at is not None:
+        return "revoked"
+    if share.expires_at is not None and share.expires_at <= now:
+        return "expired"
+    return "active"
+
+
+def share_mode(share: ConversationShareTable) -> str:
+    snapshot = share.snapshot_json if isinstance(share.snapshot_json, dict) else {}
+    mode = snapshot.get("shareMode")
+    return mode if mode in {"full", "branch", "message"} else "branch"
+
+
+def build_share_list_item(share: ConversationShareTable, now: datetime | None = None) -> ConversationShareListItem:
+    return ConversationShareListItem(
+        id=share.id,
+        token=share.token,
+        shareUrl=f"/share/{share.token}",
+        conversationId=share.conversation_id,
+        messageId=share.snapshot_until_message_id,
+        shareMode=share_mode(share),
+        title=share.title,
+        isActive=bool(share.is_active),
+        status=share_status(share, now),
+        revokedAt=share.revoked_at,
+        expiresAt=share.expires_at,
+        createdAt=share.created_at,
+    )
+
+
 async def load_active_share(token: str, db: AsyncSession) -> ConversationShareTable:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     result = await db.execute(
         select(ConversationShareTable).where(
             ConversationShareTable.token == token,
             ConversationShareTable.is_active == True,
             ConversationShareTable.revoked_at.is_(None),
+            (
+                (ConversationShareTable.expires_at.is_(None))
+                | (ConversationShareTable.expires_at > now)
+            ),
         )
     )
     share = result.scalar_one_or_none()

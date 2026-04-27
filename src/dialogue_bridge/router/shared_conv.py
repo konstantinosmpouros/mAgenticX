@@ -33,6 +33,7 @@ async def getSharedConversation(
         shareMode=snapshot.get("shareMode") or "branch",
         agent=snapshot.get("agent") or {},
         messages=snapshot.get("messages") or [],
+        expiresAt=share.expires_at,
         createdAt=share.created_at,
     )
 

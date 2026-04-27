@@ -52,6 +52,10 @@ export default function SharedConversationPage() {
       .catch((err) => {
         if (cancelled) return;
         console.error("Failed to load shared conversation:", err);
+        if ((err as { status?: number }).status === 404) {
+          navigate("/404", { replace: true });
+          return;
+        }
         setError("This shared conversation is unavailable.");
       })
       .finally(() => {
@@ -61,7 +65,7 @@ export default function SharedConversationPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [navigate, token]);
 
   const handleCopy = (content: string, messageId: string) => {
     void navigator.clipboard?.writeText(content);

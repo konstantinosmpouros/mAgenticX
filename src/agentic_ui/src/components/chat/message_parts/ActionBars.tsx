@@ -2,6 +2,7 @@
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Copy, Check, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useEffect, useState } from "react";
 import { LuFlag } from "react-icons/lu";
 import { PiArrowsCounterClockwise } from "react-icons/pi";
 import { BiGitRepoForked } from "react-icons/bi";
@@ -113,6 +114,7 @@ const CopyButton = ({
 
 const moreMenuItemClass =
   "flex cursor-pointer select-none items-center gap-2 rounded-md px-2.5 py-2 text-sm text-foreground outline-none transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-45";
+const CLOSE_AI_ACTION_MENUS_EVENT = "magenticx:close-ai-action-menus";
 
 export const AIActionBar = ({
   message,
@@ -131,7 +133,28 @@ export const AIActionBar = ({
   AgentIcon,
   timestampLabel,
   conversationIsReported = false,
-}: AIActionBarProps) => (
+}: AIActionBarProps) => {
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMoreMenuOpen(false);
+      }
+    };
+    const handleCloseMenus = () => setMoreMenuOpen(false);
+
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener(CLOSE_AI_ACTION_MENUS_EVENT, handleCloseMenus);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener(CLOSE_AI_ACTION_MENUS_EVENT, handleCloseMenus);
+    };
+  }, [moreMenuOpen]);
+
+  return (
   <div className="flex flex-wrap items-center justify-end gap-2">
     {(timestampLabel || agentName) && (
       <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
@@ -249,7 +272,7 @@ export const AIActionBar = ({
 
       {!readOnly && (
         <div className="mt-1">
-          <DropdownMenu.Root>
+          <DropdownMenu.Root open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <DropdownMenu.Trigger asChild>
@@ -335,7 +358,8 @@ export const AIActionBar = ({
       />
     </div>
   </div>
-);
+  );
+};
 
 export const UserActionBar = ({
   message,
