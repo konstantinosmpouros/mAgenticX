@@ -33,6 +33,7 @@ async def get_user_preferences(
     payload: dict = {
         "tools": row.tools if isinstance(row.tools, dict) else {},
         "prefers_agentic_chat": bool(row.prefers_agentic_chat),
+        "suggestions_enabled": bool(row.suggestions_enabled),
     }
     logger.info("preferences_loaded", "Loaded user preferences")
     return UserPreferences.model_validate(payload)
@@ -55,15 +56,17 @@ async def upsert_user_preferences(
     if existing:
         existing.tools = payload.tools.model_dump(mode="json", by_alias=True)
         existing.prefers_agentic_chat = bool(payload.prefersAgenticChat)
+        existing.suggestions_enabled = bool(payload.suggestionsEnabled)
     else:
         db.add(
             UserPreferencesTable(
                 user_id=user_id,
                 tools=payload.tools.model_dump(mode="json", by_alias=True),
                 prefers_agentic_chat=bool(payload.prefersAgenticChat),
+                suggestions_enabled=bool(payload.suggestionsEnabled),
             )
         )
 
     await db.commit()
-    logger.info("preferences_updated", "Updated user preferences", disabled_tools=len(payload.tools.disabled), prefers_agentic_chat=bool(payload.prefersAgenticChat))
+    logger.info("preferences_updated", "Updated user preferences", disabled_tools=len(payload.tools.disabled), prefers_agentic_chat=bool(payload.prefersAgenticChat), suggestions_enabled=bool(payload.suggestionsEnabled))
     return payload

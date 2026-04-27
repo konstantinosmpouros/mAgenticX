@@ -6,12 +6,12 @@ import httpx
 from schemas import MessageIn, TitleOut
 from observability import get_context, get_logger
 from core.tls import get_httpx_verify
-from utils.agents import AGENTS_SERVICE_URL
+from core.configs import settings
 from core.proxy import internal_service_headers
 
 logger = get_logger(__name__)
 
-_TITLE_ENDPOINT = f"{AGENTS_SERVICE_URL.rstrip('/')}/titles/generate"
+_TITLE_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/titles/generate"
 _TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 _TITLE_MAX_LEN = 120
 _TITLE_MIN_CANDIDATES = 3

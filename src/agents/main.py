@@ -33,12 +33,15 @@ from schemas import (
     Request,
     TitleRequest,
     ConversationTitle,
+    SuggestionsRequest,
+    ConversationSuggestions,
     TranscriptionResponse,
     AgentManifest,
     ToolManifest,
 )
 from utils import (
     generate_title,
+    generate_suggestions,
     list_mcp_tools,
     MCPToolsClientError,
     get_cached_tool_manifests,
@@ -227,6 +230,16 @@ async def generate_conversation_title(req: TitleRequest) -> ConversationTitle:
     """Generate a short, descriptive title for a new conversation."""
     logger.info("title_request_received", "Conversation title request received", prompt_messages=len(req.user_input))
     return await generate_title(req)
+
+
+# ------------------------------------------------------------------
+# Suggestion Generation Endpoint
+# ------------------------------------------------------------------
+@app.post("/suggestions/generate", response_model=ConversationSuggestions, status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
+async def generate_conversation_suggestions(req: SuggestionsRequest) -> ConversationSuggestions:
+    """Generate personalized starter suggestions for a new conversation."""
+    logger.info("suggestion_request_received", "Conversation suggestion request received", prompt_messages=len(req.user_input))
+    return await generate_suggestions(req)
 
 
 

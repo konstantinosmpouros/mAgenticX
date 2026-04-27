@@ -160,6 +160,7 @@ class AgentRegistryConfig:
 @dataclass(frozen=True)
 class RuntimeModelsConfig:
     title: str
+    suggestions: str
     dictation: str
 
 
@@ -285,6 +286,7 @@ def load_configs() -> AgentsConfigs:
         ),
         runtime_models=RuntimeModelsConfig(
             title=_env_str("TITLE_MODEL", "openai:gpt-4o-2024-08-06"),
+            suggestions=_env_str("SUGGESTIONS_MODEL", "openai:gpt-4o-2024-08-06"),
             dictation=_env_str("OPENAI_STT_MODEL", "gpt-4o-transcribe"),
         ),
         workflows=WorkflowConfigs(

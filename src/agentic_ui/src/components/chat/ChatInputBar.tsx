@@ -9,6 +9,7 @@ import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/components/ui/shadcn-io/loader";
+import { Suggestion, Suggestions } from "@/components/ui/ai-elements/suggestion";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
 
@@ -56,6 +57,8 @@ type ChatInputBarProps = {
     dictationRequestSignal?: number;
     dictationCancelSignal?: number;
     topAccessory?: React.ReactNode;
+    starterSuggestions?: string[];
+    onStarterSuggestionSelect?: (suggestion: string) => void;
 };
 
 // Random welcome quotes (use {agent} to inject the agent's name)
@@ -108,6 +111,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
         dictationRequestSignal,
         dictationCancelSignal,
         topAccessory,
+        starterSuggestions = [],
+        onStarterSuggestionSelect,
     } = props;
 
     
@@ -744,6 +749,40 @@ export function ChatInputBar(props: ChatInputBarProps) {
                     className="hidden"
                     onChange={(e) => { handleFileUpload(e); e.currentTarget.value = ''; }}
                 />
+                <AnimatePresence initial={false}>
+                    {starterSuggestions.length > 0 ? (
+                        <motion.div
+                            key="starter-suggestions"
+                            initial={{ opacity: 0, y: prefersReducedMotion ? 0 : -4, filter: "blur(6px)" }}
+                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                            exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4, filter: "blur(6px)" }}
+                            transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                            className="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-10"
+                        >
+                            <Suggestions wrap className="px-1">
+                                {starterSuggestions.map((suggestion, index) => (
+                                    <motion.div
+                                        key={suggestion}
+                                        initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 8, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: prefersReducedMotion ? 0 : 6, scale: 0.98 }}
+                                        transition={{
+                                            duration: 0.36,
+                                            delay: prefersReducedMotion ? 0 : index * 0.045,
+                                            ease: [0.22, 1, 0.36, 1],
+                                        }}
+                                    >
+                                        <Suggestion
+                                            suggestion={suggestion}
+                                            onClick={onStarterSuggestionSelect}
+                                            className="border-border/60 bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors duration-200 hover:bg-[hsl(var(--hover-surface))] hover:text-foreground"
+                                        />
+                                    </motion.div>
+                                ))}
+                            </Suggestions>
+                        </motion.div>
+                    ) : null}
+                </AnimatePresence>
             </div>
         </div>
     );

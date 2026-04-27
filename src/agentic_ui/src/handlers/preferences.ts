@@ -10,6 +10,7 @@ export type PreferencesHandlers = {
   enabledToolsForRequest: ToolPreference[];
   resolvedPreferences: UserPreferences;
   handleToggleToolPreference: (tool: ToolMetadata) => Promise<void>;
+  handleToggleSuggestionsEnabled: () => Promise<void>;
 };
 
 type PreferencesCtx = {
@@ -37,7 +38,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
 
   const defaultPreferences: UserPreferences = useMemo(
     // Keep downstream code simple by always resolving a complete preference object.
-    () => ({ tools: { disabled: [] }, prefersAgenticChat: false }),
+    () => ({ tools: { disabled: [] }, prefersAgenticChat: false, suggestionsEnabled: true }),
     []
   );
   const resolvedPreferences = userPreferences ?? defaultPreferences;
@@ -101,6 +102,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
         }),
       },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
     };
     setUserPreferences(nextPrefs);
     setIsSavingPreferences(true);
@@ -121,10 +123,40 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
     }
   };
 
+  const handleToggleSuggestionsEnabled = async () => {
+    if (!userId) {
+      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
+    const prevPrefs = resolvedPreferences;
+    const nextPrefs: UserPreferences = {
+      tools: resolvedPreferences.tools ?? { disabled: [] },
+      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false),
+    };
+    setUserPreferences(nextPrefs);
+    setIsSavingPreferences(true);
+    try {
+      const saved = await updateUserPreferences(userId, nextPrefs);
+      setUserPreferences(saved);
+      persistUIState();
+    } catch (error) {
+      setUserPreferences(prevPrefs);
+      toast({
+        title: 'Could not update preferences',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
   return {
     toolsWithStatus,
     enabledToolsForRequest,
     resolvedPreferences,
     handleToggleToolPreference,
+    handleToggleSuggestionsEnabled,
   };
 }

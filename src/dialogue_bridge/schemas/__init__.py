@@ -160,6 +160,11 @@ class UserPreferences(BaseModel):
         validation_alias=AliasChoices("prefers_agentic_chat", "prefersAgenticChat"),
         serialization_alias="prefersAgenticChat",
     )
+    suggestionsEnabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("suggestions_enabled", "suggestionsEnabled"),
+        serialization_alias="suggestionsEnabled",
+    )
 
 
 
@@ -486,6 +491,11 @@ class ImageOut(BaseModel):
 class TitleOut(BaseModel):
     titles: List[str]
 
+
+class SuggestionsOut(BaseModel):
+    suggestions: List[str]
+
+
 class ConversationTitleUpdate(BaseModel):
     """Payload to update the title of an existing conversation."""
     title: str
@@ -559,6 +569,7 @@ __all__ = [
     "MessageUpdate",
     "ImageOut",
     "TitleOut",
+    "SuggestionsOut",
     "ConversationTitleUpdate",
     "ConversationReportIn",
 ]

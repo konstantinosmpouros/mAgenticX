@@ -202,8 +202,12 @@ export async function getUserPreferences(userId: string) {
     typeof data?.prefersAgenticChat === "boolean"
       ? data.prefersAgenticChat
       : false;
+  const suggestionsEnabled =
+    typeof data?.suggestionsEnabled === "boolean"
+      ? data.suggestionsEnabled
+      : true;
 
-  return { tools: { disabled: tools }, prefersAgenticChat };
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled };
 }
 
 
@@ -224,7 +228,28 @@ export async function updateUserPreferences(userId: string, prefs: any) {
     typeof data?.prefersAgenticChat === "boolean"
       ? data.prefersAgenticChat
       : false;
-  return { tools: { disabled: tools }, prefersAgenticChat };
+  const suggestionsEnabled =
+    typeof data?.suggestionsEnabled === "boolean"
+      ? data.suggestionsEnabled
+      : true;
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled };
+}
+
+
+// Fetch personalized starter suggestions for a new conversation
+export async function getConversationSuggestions(userId: string, agentId?: string | null): Promise<string[]> {
+  const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : "";
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/suggestions${query}`, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch conversation suggestions: ${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data?.suggestions)
+    ? data.suggestions.filter((suggestion: unknown): suggestion is string => typeof suggestion === "string" && suggestion.trim().length > 0)
+    : [];
 }
 
 

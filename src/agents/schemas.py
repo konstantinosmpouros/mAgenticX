@@ -20,6 +20,16 @@ class ConversationTitle(BaseModel):
     titles: List[str]
 
 
+class SuggestionsRequest(BaseModel):
+    """Structured payload for generating personalized new-chat suggestions."""
+    user_input: List[Dict[str, Any]]
+
+
+class ConversationSuggestions(BaseModel):
+    """Structured LLM response carrying generated new-chat suggestions."""
+    suggestions: List[str]
+
+
 class TranscriptionResponse(BaseModel):
     text: str
 

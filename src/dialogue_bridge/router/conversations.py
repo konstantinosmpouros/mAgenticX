@@ -28,6 +28,7 @@ from utils import (
     build_message_lineage,
     build_share_snapshot,
     clone_branch_to_conversation,
+    generate_conversation_suggestions,
     generate_conversation_title,
     get_agent_by_id,
     init_conv,
@@ -369,6 +370,55 @@ async def getConversationShares(
         size=size,
     )
     return [build_share_list_item(share, now) for share in shares]
+
+
+@router.get(
+    "/{user_id}/suggestions",
+    response_model=dict[str, list[str]],
+    status_code=status.HTTP_200_OK,
+    summary="Generate personalized starter suggestions for a new chat",
+)
+async def getConversationSuggestions(
+    user_id: str,
+    agentId: str | None = Query(None),
+    current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate starter suggestions from recent non-private conversation context."""
+    set_context(user_id=user_id)
+    agent = await get_agent_by_id(agentId) if agentId else None
+
+    result = await db.execute(
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(
+            ConversationTable.user_id == current_user.id,
+            ConversationTable.is_private == False,
+        )
+        .order_by(ConversationTable.updated_at.desc())
+        .limit(8)
+    )
+    conversations = result.scalars().all()
+    recent_conversations = [
+        {
+            "title": conversation.title,
+            "last_message": conversation.last_message_preview,
+            "agent_name": conversation.agent.name if conversation.agent else conversation.agent_name,
+        }
+        for conversation in conversations
+    ]
+    suggestions = await generate_conversation_suggestions(
+        agent_name=agent.name if agent else None,
+        agent_description=agent.description if agent else None,
+        recent_conversations=recent_conversations,
+    )
+    logger.info(
+        "conversation_suggestions_fetched",
+        "Conversation suggestions fetched",
+        candidate_count=len(suggestions),
+        recent_conversation_count=len(recent_conversations),
+    )
+    return {"suggestions": suggestions}
 
 
 @router.get(

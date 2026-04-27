@@ -53,7 +53,7 @@ import {
   useBranchingHandlers
 } from "@/handlers";
 import { loadSession } from "@/lib/authStorage";
-import { getConversationDetail } from "@/lib/api";
+import { getConversationDetail, getConversationSuggestions } from "@/lib/api";
 
 // Chat Interface component
 import ChatHeader from "@/components/chat/ChatHeader";
@@ -75,6 +75,12 @@ const defaultShareExpiresAt = () => {
   const date = new Date();
   date.setDate(date.getDate() + 30);
   return date;
+};
+
+const pickVisibleSuggestions = (suggestions: string[]) => {
+  const unique = Array.from(new Set(suggestions.map((item) => item.trim()).filter(Boolean)));
+  const count = Math.min(unique.length, 4 + Math.floor(Math.random() * 3));
+  return [...unique].sort(() => Math.random() - 0.5).slice(0, count);
 };
 
 type ChatInterfaceProps = {
@@ -104,6 +110,7 @@ export function ChatInterface({
   const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState<boolean>(false);
+  const [starterSuggestions, setStarterSuggestions] = useState<string[]>([]);
 
   // Conversation list pagination state (persist across sidebar open/close)
   const [convPage, setConvPage] = useState<number>(1);
@@ -239,6 +246,7 @@ export function ChatInterface({
     enabledToolsForRequest,
     resolvedPreferences,
     handleToggleToolPreference,
+    handleToggleSuggestionsEnabled,
   } = createPreferencesHandlers({
     userId,
     availableTools,
@@ -988,6 +996,51 @@ export function ChatInterface({
   const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
   const showPlanningCard = isSendingMessage && Boolean(activePlan);
   const canTogglePrivateMode = (currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode;
+  const canShowStarterSuggestions =
+    !currentConversation &&
+    currentMessage.trim().length === 0 &&
+    resolvedPreferences.suggestionsEnabled !== false &&
+    starterSuggestions.length > 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      !userId ||
+      currentConversation ||
+      currentMessage.trim().length > 0 ||
+      resolvedPreferences.suggestionsEnabled === false
+    ) {
+      setStarterSuggestions([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    getConversationSuggestions(userId, selectedAgent || currentAgent?.id || null)
+      .then((suggestions) => {
+        if (cancelled) return;
+        setStarterSuggestions(pickVisibleSuggestions(suggestions));
+      })
+      .catch(() => {
+        if (!cancelled) setStarterSuggestions([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    userId,
+    selectedAgent,
+    currentAgent?.id,
+    currentConversation,
+    currentMessage,
+    resolvedPreferences.suggestionsEnabled,
+  ]);
+
+  const handleStarterSuggestionSelect = useCallback((suggestion: string) => {
+    setCurrentMessage(suggestion);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
 
   // Main Chat Interface
   if (!authResolved) {
@@ -1171,6 +1224,8 @@ export function ChatInterface({
                     />
                   ) : null
                 }
+                starterSuggestions={canShowStarterSuggestions ? starterSuggestions : []}
+                onStarterSuggestionSelect={handleStarterSuggestionSelect}
               />
 
             {loadingConversation && (
@@ -1202,6 +1257,7 @@ export function ChatInterface({
                 onSelectSharedConversation={handleOpenSharedConversation}
                 onRevokeSharedConversation={handleRevokeSharedConversation}
                 onToggleToolPreference={handleToggleToolPreference}
+                onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
                 preferencesSaving={isSavingPreferences}
               />
 

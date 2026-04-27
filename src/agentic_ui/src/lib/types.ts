@@ -93,6 +93,7 @@ export type UserPreferences = {
         disabled?: ToolPreference[];
     };
     prefersAgenticChat?: boolean;
+    suggestionsEnabled?: boolean;
 };
 
 

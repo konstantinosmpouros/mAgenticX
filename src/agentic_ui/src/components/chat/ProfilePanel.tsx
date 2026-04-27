@@ -56,6 +56,7 @@ type ProfilePanelProps = {
     onSelectSharedConversation?: (share: ConversationShareListItem) => void;
     onRevokeSharedConversation?: (share: ConversationShareListItem) => void;
     onToggleToolPreference?: (tool: ToolMetadata) => void;
+    onToggleSuggestionsEnabled?: () => void;
     preferencesSaving?: boolean;
 };
 
@@ -250,6 +251,7 @@ export default function ProfilePanel({
     onSelectSharedConversation,
     onRevokeSharedConversation,
     onToggleToolPreference,
+    onToggleSuggestionsEnabled,
     preferencesSaving = false,
 }: ProfilePanelProps) {
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
@@ -339,6 +341,8 @@ export default function ProfilePanel({
     const displayRole = safeText(user?.roleTitle);
     const displayIsActive = fmtBoolean(user?.isActive);
     const displayPrefersAgentic = fmtBoolean(prefersAgentic);
+    const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
+    const displaySuggestions = suggestionsEnabled ? "Enabled" : "Disabled";
     const avatarInitial = (displayName !== NA ? displayName : "Profile").charAt(0).toUpperCase();
 
     const latestArchivedConversation = useMemo(() => {
@@ -930,6 +934,44 @@ export default function ProfilePanel({
                                                                 <span className="inline-flex rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                                                     {displayPrefersAgentic}
                                                                 </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="px-5 py-4">
+                                                            <div className="flex items-start justify-between gap-4">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-semibold text-foreground">
+                                                                        Conversation suggestions
+                                                                    </p>
+                                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                                        Show personalized starter prompts below the composer on new chats.
+                                                                    </p>
+                                                                </div>
+                                                                <div className="flex shrink-0 items-center gap-3">
+                                                                    <span className="hidden rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:inline-flex">
+                                                                        {displaySuggestions}
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        role="switch"
+                                                                        aria-checked={suggestionsEnabled}
+                                                                        aria-disabled={preferencesSaving}
+                                                                        onClick={() => !preferencesSaving && onToggleSuggestionsEnabled?.()}
+                                                                        className={cn(
+                                                                            "relative inline-flex h-7 w-12 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                                                            suggestionsEnabled
+                                                                                ? "border-primary/40 bg-primary/20"
+                                                                                : "border-transparent bg-background/80",
+                                                                            preferencesSaving && "cursor-not-allowed opacity-60"
+                                                                        )}
+                                                                    >
+                                                                        <span
+                                                                            className={cn(
+                                                                                "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
+                                                                                suggestionsEnabled ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                                                                            )}
+                                                                        />
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                         <div className="px-5 py-4">
