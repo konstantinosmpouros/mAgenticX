@@ -23,8 +23,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, normalizeReadAloudVoice } from "@/lib/utils";
+import { READ_ALOUD_VOICES, type ReadAloudVoice } from "@/lib/consts";
 import { ConversationShareListItem, ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
 import {
     SHORTCUTS,
@@ -57,6 +59,7 @@ type ProfilePanelProps = {
     onRevokeSharedConversation?: (share: ConversationShareListItem) => void;
     onToggleToolPreference?: (tool: ToolMetadata) => void;
     onToggleSuggestionsEnabled?: () => void;
+    onSelectReadAloudVoice?: (voice: ReadAloudVoice) => void;
     preferencesSaving?: boolean;
 };
 
@@ -183,11 +186,11 @@ const InfoRowsCard = ({
     rows: InfoRow[];
 }) => (
     <InfoCard eyebrow={eyebrow} title={title} description={description}>
-        <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+        <SoftPanel className="max-w-full divide-y divide-border/40 overflow-hidden">
             {rows.map((row) => (
                 <div
                     key={row.label}
-                    className="grid gap-2 px-5 py-4 md:grid-cols-[minmax(0,10rem),1fr]"
+                    className="grid min-w-0 gap-2 px-5 py-4 max-[420px]:px-4 md:grid-cols-[minmax(0,10rem),1fr]"
                 >
                     <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         {row.label}
@@ -195,7 +198,7 @@ const InfoRowsCard = ({
                     <div className="min-w-0">
                         <p
                             className={cn(
-                                "break-words text-sm font-medium text-foreground",
+                                "break-words text-sm font-medium text-foreground [overflow-wrap:anywhere]",
                                 row.value === NA && "text-muted-foreground"
                             )}
                         >
@@ -252,9 +255,12 @@ export default function ProfilePanel({
     onRevokeSharedConversation,
     onToggleToolPreference,
     onToggleSuggestionsEnabled,
+    onSelectReadAloudVoice,
     preferencesSaving = false,
 }: ProfilePanelProps) {
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
+    const [openNavTooltipId, setOpenNavTooltipId] = useState<string | null>(null);
+    const navTooltipClickSuppressedUntilRef = useRef(0);
     const [serverCollapsed, setServerCollapsed] = useState<Record<string, boolean>>({});
     const [navCollapsed, setNavCollapsed] = useState<boolean>(() =>
         typeof window !== "undefined" ? window.innerWidth < 960 : false
@@ -320,6 +326,8 @@ export default function ProfilePanel({
     useEffect(() => {
         const handleResize = () => {
             if (typeof window === "undefined") return;
+            setHoveredNavId(null);
+            setOpenNavTooltipId(null);
             setNavCollapsed(window.innerWidth < 960);
         };
 
@@ -327,6 +335,11 @@ export default function ProfilePanel({
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
+
+    useEffect(() => {
+        setHoveredNavId(null);
+        setOpenNavTooltipId(null);
+    }, [navCollapsed]);
 
     const prefersAgentic =
         typeof userPreferences?.prefersAgenticChat === "boolean" ? userPreferences.prefersAgenticChat : undefined;
@@ -342,7 +355,7 @@ export default function ProfilePanel({
     const displayIsActive = fmtBoolean(user?.isActive);
     const displayPrefersAgentic = fmtBoolean(prefersAgentic);
     const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
-    const displaySuggestions = suggestionsEnabled ? "Enabled" : "Disabled";
+    const readAloudVoice = normalizeReadAloudVoice(userPreferences?.readAloudVoice);
     const avatarInitial = (displayName !== NA ? displayName : "Profile").charAt(0).toUpperCase();
 
     const latestArchivedConversation = useMemo(() => {
@@ -526,6 +539,11 @@ export default function ProfilePanel({
     `;
 
     const sharedTooltipClass = "!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md";
+    const suppressCollapsedNavTooltip = () => {
+        navTooltipClickSuppressedUntilRef.current = Date.now() + 350;
+        setOpenNavTooltipId(null);
+    };
+    const canOpenCollapsedNavTooltip = () => Date.now() > navTooltipClickSuppressedUntilRef.current;
     const dataControlListClass = cn(
         "max-h-[22rem] overflow-y-auto rounded-[1.35rem]",
         "[scrollbar-width:thin] [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent]",
@@ -568,7 +586,7 @@ export default function ProfilePanel({
                         <aside
                             className={cn(
                                 "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-2.5 py-4 transition-[width,padding] duration-300 ease-in-out",
-                                navCollapsed ? "w-16 px-2" : "w-48"
+                                navCollapsed ? "w-16 px-0" : "w-56"
                             )}
                         >
                             <ScrollArea className="h-full">
@@ -596,7 +614,10 @@ export default function ProfilePanel({
                                         </div>
                                     </div>
 
-                                    <nav className="flex flex-1 flex-col items-start justify-start gap-0 pt-0">
+                                    <nav className={cn(
+                                        "flex flex-1 flex-col justify-start gap-1 pt-0",
+                                        navCollapsed ? "items-center" : "items-start"
+                                    )}>
                                         {navItems.map((item) => {
                                             const isActive = normalizedActiveTab === item.id;
                                             const isHovered = hoveredNavId === item.id;
@@ -631,20 +652,46 @@ export default function ProfilePanel({
                                                 );
 
                                             return (
-                                                <Tooltip key={item.id} delayDuration={0}>
+                                                <Tooltip
+                                                    key={item.id}
+                                                    delayDuration={0}
+                                                    open={navCollapsed ? openNavTooltipId === item.id : false}
+                                                    onOpenChange={(nextOpen) => {
+                                                        if (!navCollapsed) return;
+                                                        if (nextOpen && !canOpenCollapsedNavTooltip()) return;
+                                                        setOpenNavTooltipId(nextOpen ? item.id : null);
+                                                    }}
+                                                >
                                                     <TooltipTrigger asChild>
                                                         <button
                                                             type="button"
-                                                            onClick={() => setActiveTab(item.id)}
-                                                            onMouseEnter={() => setHoveredNavId(item.id)}
-                                                            onMouseLeave={() => setHoveredNavId((prev) => (prev === item.id ? null : prev))}
+                                                            onPointerDown={() => {
+                                                                if (navCollapsed) suppressCollapsedNavTooltip();
+                                                            }}
+                                                            onClick={() => {
+                                                                if (navCollapsed) suppressCollapsedNavTooltip();
+                                                                setActiveTab(item.id);
+                                                            }}
+                                                            onMouseEnter={() => {
+                                                                setHoveredNavId(item.id);
+                                                                if (navCollapsed && canOpenCollapsedNavTooltip()) {
+                                                                    setOpenNavTooltipId(item.id);
+                                                                }
+                                                            }}
+                                                            onMouseLeave={() => {
+                                                                setHoveredNavId((prev) => (prev === item.id ? null : prev));
+                                                                setOpenNavTooltipId((prev) => (prev === item.id ? null : prev));
+                                                            }}
+                                                            onBlur={() => {
+                                                                setHoveredNavId((prev) => (prev === item.id ? null : prev));
+                                                                setOpenNavTooltipId((prev) => (prev === item.id ? null : prev));
+                                                            }}
                                                             className={cn(
-                                                                "group relative grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
-                                                                navCollapsed && "grid-cols-[auto,0fr] justify-items-center",
+                                                                "group relative grid grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                                navCollapsed ? "flex h-10 w-10 flex-none items-center justify-center p-0" : "h-11 w-full",
                                                                 isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
                                                             )}
                                                             aria-label={item.label}
-                                                            style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
                                                         >
                                                             <div
                                                                 className={cn(
@@ -656,20 +703,18 @@ export default function ProfilePanel({
                                                             >
                                                                 {iconNode}
                                                             </div>
-                                                            <span
-                                                                className={cn(
-                                                                    "overflow-hidden text-[0.7rem] font-semibold uppercase tracking-[0.22em] transition-opacity duration-200 ease-in-out",
-                                                                    navCollapsed ? "opacity-0" : "opacity-100"
-                                                                )}
-                                                            >
-                                                                {item.label}
-                                                            </span>
+                                                            {!navCollapsed ? (
+                                                                <span className="min-w-0 whitespace-nowrap text-[0.68rem] font-semibold uppercase tracking-[0.14em] opacity-100 transition-opacity duration-200 ease-in-out">
+                                                                    {item.label}
+                                                                </span>
+                                                            ) : null}
                                                         </button>
                                                     </TooltipTrigger>
                                                     {navCollapsed ? (
                                                         <TooltipContent
                                                             side="right"
-                                                            className="px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em]"
+                                                            sideOffset={10}
+                                                            className="z-[80] whitespace-nowrap px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]"
                                                         >
                                                             {item.label}
                                                         </TooltipContent>
@@ -679,35 +724,57 @@ export default function ProfilePanel({
                                         })}
                                     </nav>
 
-                                    <Tooltip delayDuration={0}>
+                                    <Tooltip
+                                        delayDuration={0}
+                                        open={navCollapsed ? openNavTooltipId === "logout" : false}
+                                        onOpenChange={(nextOpen) => {
+                                            if (!navCollapsed) return;
+                                            if (nextOpen && !canOpenCollapsedNavTooltip()) return;
+                                            setOpenNavTooltipId(nextOpen ? "logout" : null);
+                                        }}
+                                    >
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                onClick={onLogout}
+                                                onPointerDown={() => {
+                                                    if (navCollapsed) suppressCollapsedNavTooltip();
+                                                }}
+                                                onClick={() => {
+                                                    if (navCollapsed) suppressCollapsedNavTooltip();
+                                                    onLogout();
+                                                }}
+                                                onMouseEnter={() => {
+                                                    if (navCollapsed && canOpenCollapsedNavTooltip()) {
+                                                        setOpenNavTooltipId("logout");
+                                                    }
+                                                }}
+                                                onMouseLeave={() => {
+                                                    setOpenNavTooltipId((prev) => (prev === "logout" ? null : prev));
+                                                }}
+                                                onBlur={() => {
+                                                    setOpenNavTooltipId((prev) => (prev === "logout" ? null : prev));
+                                                }}
                                                 className={cn(
-                                                    "mt-auto grid w-full grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
-                                                    navCollapsed && "grid-cols-[auto,0fr] justify-items-center"
+                                                    "mt-auto grid grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                    navCollapsed ? "flex h-10 w-10 flex-none items-center justify-center self-center p-0" : "h-11 w-full"
                                                 )}
                                                 aria-label="Logout"
-                                                style={navCollapsed ? { height: "2.5rem" } : { height: "2.75rem" }}
                                             >
                                                 <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors text-muted-foreground group-hover:text-foreground">
                                                     <LogOut className="h-[18px] w-[18px]" />
                                                 </div>
-                                                <span
-                                                    className={cn(
-                                                        "overflow-hidden text-[0.7rem] font-semibold uppercase tracking-[0.22em] transition-all duration-200 ease-in-out",
-                                                        navCollapsed ? "w-0 max-w-0 overflow-hidden opacity-0" : "opacity-100"
-                                                    )}
-                                                >
-                                                    Logout
-                                                </span>
+                                                {!navCollapsed ? (
+                                                    <span className="min-w-0 whitespace-nowrap text-[0.68rem] font-semibold uppercase tracking-[0.14em] opacity-100 transition-opacity duration-200 ease-in-out">
+                                                        Logout
+                                                    </span>
+                                                ) : null}
                                             </button>
                                         </TooltipTrigger>
                                         {navCollapsed ? (
                                             <TooltipContent
                                                 side="right"
-                                                className="px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em]"
+                                                sideOffset={10}
+                                                className="z-[80] whitespace-nowrap px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]"
                                             >
                                                 Logout
                                             </TooltipContent>
@@ -742,12 +809,12 @@ export default function ProfilePanel({
                             <ScrollArea className="h-full w-full">
                                 <div className="space-y-6 px-6 py-6 sm:px-8">
                                     {normalizedActiveTab === "profile" ? (
-                                        <div className="space-y-6 animate-fade-in">
-                                            <section className="relative overflow-hidden rounded-[28px] bg-card/70 p-6">
+                                        <div className="min-w-0 max-w-full space-y-6 overflow-hidden animate-fade-in">
+                                            <section className="relative min-w-0 max-w-full overflow-hidden rounded-[28px] bg-card/70 p-4 sm:p-6">
                                                 <div className="absolute inset-0 bg-gradient-to-br from-background via-muted/40 to-primary/10" />
                                                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
-                                                <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                                                    <div className="flex items-center gap-4">
+                                                <div className="relative flex min-w-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                                                    <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
                                                         <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] bg-background/80 text-lg font-semibold text-primary">
                                                             {user?.avatarUrl ? (
                                                                 <img
@@ -761,10 +828,10 @@ export default function ProfilePanel({
                                                         </div>
                                                         <div className="min-w-0 space-y-2">
                                                             <div className="flex flex-wrap items-center gap-2">
-                                                                <h3 className="break-words text-xl font-semibold text-foreground">
+                                                                <h3 className="min-w-0 break-words text-xl font-semibold text-foreground [overflow-wrap:anywhere]">
                                                                     {displayName}
                                                                 </h3>
-                                                                <span className="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                                                <span className="inline-flex max-w-full items-center rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                                                     {displayRole}
                                                                 </span>
                                                                 <span
@@ -775,26 +842,26 @@ export default function ProfilePanel({
                                                                             : "bg-muted text-muted-foreground"
                                                                     )}
                                                                 >
-                                                                    {displayIsActive}
+                                                                {displayIsActive}
                                                                 </span>
                                                             </div>
-                                                            <p className="break-words text-sm text-muted-foreground">
+                                                            <p className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
                                                                 {displayEmail}
                                                             </p>
-                                                            <p className="text-sm text-muted-foreground">
+                                                            <p className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
                                                                 {displayDepartment}
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    <div className="grid gap-4 rounded-[1.4rem] bg-black/10 px-4 py-4 sm:grid-cols-3 lg:w-[22rem] dark:bg-white/[0.03]">
+                                                    <div className="grid min-w-0 max-w-full gap-4 rounded-[1.4rem] bg-black/10 px-4 py-4 sm:grid-cols-3 lg:w-[22rem] dark:bg-white/[0.03]">
                                                         <div className="space-y-1 sm:border-r sm:border-border/30 sm:pr-3">
                                                             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                                                                 Last Login
                                                             </p>
-                                                            <p className="text-base font-semibold text-foreground">
+                                                            <p className="break-words text-base font-semibold text-foreground [overflow-wrap:anywhere]">
                                                                 {fmtDate(user?.lastLoginAt)}
                                                             </p>
-                                                            <p className="text-xs text-muted-foreground">
+                                                            <p className="break-words text-xs text-muted-foreground">
                                                                 Most recent authenticated session
                                                             </p>
                                                         </div>
@@ -802,10 +869,10 @@ export default function ProfilePanel({
                                                             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                                                                 Workspace
                                                             </p>
-                                                            <p className="text-base font-semibold text-foreground">
+                                                            <p className="break-words text-base font-semibold text-foreground [overflow-wrap:anywhere]">
                                                                 {displayDepartment === NA ? "Unset" : displayDepartment}
                                                             </p>
-                                                            <p className="text-xs text-muted-foreground">
+                                                            <p className="break-words text-xs text-muted-foreground">
                                                                 Current team or department
                                                             </p>
                                                         </div>
@@ -813,10 +880,10 @@ export default function ProfilePanel({
                                                             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                                                                 Mode
                                                             </p>
-                                                            <p className="text-base font-semibold text-foreground">
+                                                            <p className="break-words text-base font-semibold text-foreground [overflow-wrap:anywhere]">
                                                                 {displayPrefersAgentic}
                                                             </p>
-                                                            <p className="text-xs text-muted-foreground">
+                                                            <p className="break-words text-xs text-muted-foreground">
                                                                 Default agentic chat preference
                                                             </p>
                                                         </div>
@@ -947,9 +1014,6 @@ export default function ProfilePanel({
                                                                     </p>
                                                                 </div>
                                                                 <div className="flex shrink-0 items-center gap-3">
-                                                                    <span className="hidden rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:inline-flex">
-                                                                        {displaySuggestions}
-                                                                    </span>
                                                                     <button
                                                                         type="button"
                                                                         role="switch"
@@ -975,16 +1039,38 @@ export default function ProfilePanel({
                                                             </div>
                                                         </div>
                                                         <div className="px-5 py-4">
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div>
-                                                                    <p className="text-sm font-semibold text-foreground">Current theme</p>
+                                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-semibold text-foreground">
+                                                                        Read aloud voice
+                                                                    </p>
                                                                     <p className="mt-1 text-sm text-muted-foreground">
-                                                                        Applied immediately for the active shell and modal surfaces.
+                                                                        Voice used when an AI response is played as audio.
                                                                     </p>
                                                                 </div>
-                                                                <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-primary">
-                                                                    {currentTheme}
-                                                                </span>
+                                                                <Select
+                                                                    value={readAloudVoice}
+                                                                    disabled={preferencesSaving}
+                                                                    onValueChange={(value) =>
+                                                                        onSelectReadAloudVoice?.(normalizeReadAloudVoice(value))
+                                                                    }
+                                                                >
+                                                                    <SelectTrigger className="h-11 w-full rounded-xl border-border/60 bg-background/60 text-sm font-semibold focus-visible:ring-primary/60 focus-visible:ring-offset-0 sm:w-56">
+                                                                        <SelectValue placeholder="Select voice" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent className="z-[90] max-h-72 rounded-xl border-border/70 bg-background text-foreground">
+                                                                        {READ_ALOUD_VOICES.map((voice) => (
+                                                                            <SelectItem key={voice.id} value={voice.id} className="rounded-lg">
+                                                                                <span className="flex min-w-0 items-center gap-2">
+                                                                                    <span className="font-semibold">{voice.label}</span>
+                                                                                    <span className="text-xs text-muted-foreground">
+                                                                                        {voice.description}
+                                                                                    </span>
+                                                                                </span>
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
                                                             </div>
                                                         </div>
                                                     </SoftPanel>

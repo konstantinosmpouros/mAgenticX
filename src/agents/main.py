@@ -35,6 +35,7 @@ from schemas import (
     ConversationTitle,
     SuggestionsRequest,
     ConversationSuggestions,
+    ReadAloudRequest,
     TranscriptionResponse,
     AgentManifest,
     ToolManifest,
@@ -42,6 +43,7 @@ from schemas import (
 from utils import (
     generate_title,
     generate_suggestions,
+    generate_read_aloud_audio,
     list_mcp_tools,
     MCPToolsClientError,
     get_cached_tool_manifests,
@@ -240,6 +242,24 @@ async def generate_conversation_suggestions(req: SuggestionsRequest) -> Conversa
     """Generate personalized starter suggestions for a new conversation."""
     logger.info("suggestion_request_received", "Conversation suggestion request received", prompt_messages=len(req.user_input))
     return await generate_suggestions(req)
+
+
+# ------------------------------------------------------------------
+# Read-Aloud Speech Generation Endpoint
+# ------------------------------------------------------------------
+@app.post("/speech/read-aloud", status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
+async def generate_read_aloud_speech(req: ReadAloudRequest):
+    """Generate spoken audio for an AI response."""
+    audio = await generate_read_aloud_audio(req)
+    audio_format = configs.runtime_models.read_aloud_format
+    media_type = "audio/mpeg" if audio_format == "mp3" else f"audio/{audio_format}"
+    return StreamingResponse(
+        io.BytesIO(audio),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="read-aloud.{audio_format}"',
+        },
+    )
 
 
 

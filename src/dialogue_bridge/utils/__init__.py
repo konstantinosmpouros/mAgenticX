@@ -18,6 +18,7 @@ from utils.conversations import (
 from utils.inference import prepare_inference_history, serialise_message_with_images_for_agent, validate_and_order_message_path
 from utils.titles import generate_conversation_title
 from utils.suggestions import generate_conversation_suggestions
+from utils.speech import generate_read_aloud_audio, normalize_read_aloud_voice
 from utils.validators import validate_convId, validate_convId_full, validate_userId
 
 __all__ = [
@@ -26,6 +27,8 @@ __all__ = [
     "fetch_tools_from_agents_service",
     "generate_conversation_title",
     "generate_conversation_suggestions",
+    "generate_read_aloud_audio",
+    "normalize_read_aloud_voice",
     "get_agent_by_id",
     "get_cached_agents",
     "prime_agent_cache",

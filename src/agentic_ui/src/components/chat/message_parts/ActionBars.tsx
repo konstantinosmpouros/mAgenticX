@@ -7,6 +7,8 @@ import { LuFlag } from "react-icons/lu";
 import { PiArrowsCounterClockwise } from "react-icons/pi";
 import { BiGitRepoForked } from "react-icons/bi";
 import { HiOutlineUpload } from "react-icons/hi";
+import { HiOutlineSpeakerWave } from "react-icons/hi2";
+import { BsStopCircleFill } from "react-icons/bs";
 import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/lib/types";
 import { BranchControls } from "./BranchControls";
@@ -40,6 +42,8 @@ type AIActionBarProps = BaseActionBarProps & {
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
   onShareMessage?: (message: MessageOut) => void;
+  onReadAloud?: (message: MessageOut) => void;
+  speakingMessageId?: string | null;
   isStreaming?: boolean;
   readOnly?: boolean;
   agentName?: string;
@@ -126,6 +130,8 @@ export const AIActionBar = ({
   onRetryMessage,
   onForkMessage,
   onShareMessage,
+  onReadAloud,
+  speakingMessageId,
   isStreaming,
   readOnly = false,
   branchControls,
@@ -135,6 +141,7 @@ export const AIActionBar = ({
   conversationIsReported = false,
 }: AIActionBarProps) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const isSpeaking = speakingMessageId === message.id;
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -327,6 +334,22 @@ export const AIActionBar = ({
                 >
                   <BiGitRepoForked className="h-4 w-4" />
                   <span>Fork conversation</span>
+                </DropdownMenu.Item>
+
+                <DropdownMenu.Item
+                  className={moreMenuItemClass}
+                  disabled={!onReadAloud || isStreaming}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    onReadAloud?.(message);
+                  }}
+                >
+                  {isSpeaking ? (
+                    <BsStopCircleFill className="h-4 w-4 text-[#de8bff]" />
+                  ) : (
+                    <HiOutlineSpeakerWave className="h-4 w-4" />
+                  )}
+                  <span>{isSpeaking ? "Stop reading" : "Read aloud"}</span>
                 </DropdownMenu.Item>
 
                 {!conversationIsReported && onReportMessage && (

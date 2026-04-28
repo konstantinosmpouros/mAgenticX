@@ -1,12 +1,15 @@
 from datetime import datetime
 
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from observability import get_logger, logged_db_operation, set_context
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import AttachmentTable, ConversationTable, MessageTable, get_db, UserTable
+from core.database import AttachmentTable, ConversationTable, MessageTable, UserPreferencesTable, get_db, UserTable
 from schemas import (
     ConversationSummary,
     MessageIn,
@@ -17,7 +20,9 @@ from schemas import (
 from core.auth_session import require_csrf_protection
 from utils import (
     _preview,
+    generate_read_aloud_audio,
     init_message,
+    normalize_read_aloud_voice,
     validate_convId,
     validate_userId,
 )
@@ -160,6 +165,57 @@ async def updateMessageInConversation(
     message_out = MessageOut.model_validate(msg)
     logger.info("message_updated", "AI message updated", **operation.snapshot())
     return UpdateConversationResponse(message=message_out, summary=summary)
+
+
+@router.post(
+    "/{user_id}/{conversation_id}/{message_id}/read-aloud",
+    status_code=status.HTTP_200_OK,
+    summary="Generate read-aloud audio for an AI message",
+)
+async def readMessageAloud(
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+):
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
+    stmt = select(MessageTable).where(
+        MessageTable.id == message_id,
+        MessageTable.conversation_id == conversation_id,
+    )
+    res = await db.execute(stmt)
+    msg = res.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found.")
+    if msg.sender != "ai":
+        raise HTTPException(status_code=400, detail="Only AI messages can be read aloud.")
+
+    preferences_res = await db.execute(
+        select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id)
+    )
+    preferences = preferences_res.scalar_one_or_none()
+    read_aloud_voice = normalize_read_aloud_voice(preferences.read_aloud_voice if preferences else None)
+
+    audio, content_type = await generate_read_aloud_audio(msg.content or "", read_aloud_voice)
+    logger.info(
+        "message_read_aloud_generated",
+        "Read-aloud audio generated for message",
+        audio_bytes=len(audio),
+        content_type=content_type,
+        read_aloud_voice=read_aloud_voice,
+    )
+    extension = "mp3" if content_type == "audio/mpeg" else content_type.split("/")[-1]
+    return StreamingResponse(
+        io.BytesIO(audio),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="read-aloud-{message_id}.{extension}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post(

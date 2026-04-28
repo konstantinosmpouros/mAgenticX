@@ -2,10 +2,17 @@ import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { AGUIEvent } from "@/lib/agui";
 import type { AttachmentIn, AuthResponse, FileAttachment } from "./types";
-import { withCredentials } from "./consts";
+import { DEFAULT_READ_ALOUD_VOICE, READ_ALOUD_VOICES, withCredentials, type ReadAloudVoice } from "./consts";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+export function normalizeReadAloudVoice(value: unknown): ReadAloudVoice {
+  const voice = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return READ_ALOUD_VOICES.some((option) => option.id === voice)
+    ? (voice as ReadAloudVoice)
+    : DEFAULT_READ_ALOUD_VOICE;
 }
 
 const CSRF_COOKIE_CANDIDATES = ["__Host-mx_csrf", "mx_csrf"];

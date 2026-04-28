@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional, Type
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dataclasses import dataclass
 
 
@@ -28,6 +28,12 @@ class SuggestionsRequest(BaseModel):
 class ConversationSuggestions(BaseModel):
     """Structured LLM response carrying generated new-chat suggestions."""
     suggestions: List[str]
+
+
+class ReadAloudRequest(BaseModel):
+    """Structured payload for generating spoken audio from AI response text."""
+    text: str
+    voice: Optional[str] = Field(default=None, min_length=1)
 
 
 class TranscriptionResponse(BaseModel):

@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { PlanSnapshot } from "@/lib/agui";
+import type { ReadAloudVoice } from "@/lib/consts";
 
 
 // ------------------------------------------------------
@@ -94,6 +95,7 @@ export type UserPreferences = {
     };
     prefersAgenticChat?: boolean;
     suggestionsEnabled?: boolean;
+    readAloudVoice?: ReadAloudVoice;
 };
 
 

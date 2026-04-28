@@ -23,7 +23,7 @@ import type {
 } from "./types";
 import type { AGUIEvent } from "@/lib/agui";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
-import { normalizeAuthResponse, parseSSE, withSessionRequest } from "./utils";
+import { normalizeAuthResponse, normalizeReadAloudVoice, parseSSE, withSessionRequest } from "./utils";
 import {
   mapIcon,
   emitUnauthorized,
@@ -206,8 +206,9 @@ export async function getUserPreferences(userId: string) {
     typeof data?.suggestionsEnabled === "boolean"
       ? data.suggestionsEnabled
       : true;
+  const readAloudVoice = normalizeReadAloudVoice(data?.readAloudVoice);
 
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled };
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, readAloudVoice };
 }
 
 
@@ -232,7 +233,8 @@ export async function updateUserPreferences(userId: string, prefs: any) {
     typeof data?.suggestionsEnabled === "boolean"
       ? data.suggestionsEnabled
       : true;
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled };
+  const readAloudVoice = normalizeReadAloudVoice(data?.readAloudVoice);
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, readAloudVoice };
 }
 
 
@@ -753,6 +755,24 @@ export async function dislikeMessage(
   }
   const m = await res.json();
   return transformMessage(m);
+}
+
+
+// Generate read-aloud audio for an AI message
+export async function generateMessageReadAloudAudio(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+): Promise<Blob> {
+  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/read-aloud`, withSessionRequest({
+    method: "POST",
+    headers: { "Accept": "audio/mpeg,audio/*" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to generate read-aloud audio: ${res.status}`);
+  }
+  return await res.blob();
 }
 
 

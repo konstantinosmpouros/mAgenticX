@@ -165,6 +165,12 @@ class UpstreamSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class SpeechSettings:
+    default_read_aloud_voice: str
+    supported_read_aloud_voices: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
 class ProxySettings:
     header_name: str
     secret: str
@@ -203,6 +209,7 @@ class Settings:
     session: SessionSettings
     vault: VaultSettings
     upstream: UpstreamSettings
+    speech: SpeechSettings
     tls: TlsSettings
     proxy: ProxySettings
     rate_limit: RateLimitSettings
@@ -278,6 +285,15 @@ def load_settings() -> Settings:
         ),
         upstream=UpstreamSettings(
             agents_service_url=os.getenv("AGENTS_SERVICE_URL", "https://agents:8003"),
+        ),
+        speech=SpeechSettings(
+            default_read_aloud_voice=os.getenv("READ_ALOUD_DEFAULT_VOICE", "alloy").strip().lower() or "alloy",
+            supported_read_aloud_voices=frozenset(
+                _load_csv_items_or_default(
+                    os.getenv("READ_ALOUD_SUPPORTED_VOICES"),
+                    ("alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"),
+                )
+            ),
         ),
         tls=TlsSettings(
             ca_cert_path=_optional_str(os.getenv("INTERNAL_CA_CERT_PATH")),

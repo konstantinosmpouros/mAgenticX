@@ -50,6 +50,8 @@ type ChatBody = {
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
   onShareMessage?: (message: MessageOut) => void;
+  onReadAloud?: (message: MessageOut) => void;
+  speakingMessageId?: string | null;
   readOnly?: boolean;
   isStreaming?: boolean;
 };
@@ -94,6 +96,8 @@ export default function ChatBody({
   onRetryMessage,
   onForkMessage,
   onShareMessage,
+  onReadAloud,
+  speakingMessageId,
   readOnly = false,
   isStreaming,
 }: ChatBody) {
@@ -190,6 +194,8 @@ export default function ChatBody({
                     onRetryMessage={onRetryMessage}
                     onForkMessage={onForkMessage}
                     onShareMessage={onShareMessage}
+                    onReadAloud={onReadAloud}
+                    speakingMessageId={speakingMessageId}
                     readOnly={readOnly}
                     isStreaming={isStreaming}
                     onFlashUserActionBar={onFlashUserActionBar}
@@ -224,7 +230,6 @@ export default function ChatBody({
     </div>
   );
 }
-
 
 
 

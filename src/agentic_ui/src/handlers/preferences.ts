@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { updateUserPreferences } from '@/lib/api';
 import type { ToolMetadata, ToolPreference, UserPreferences } from '@/lib/types';
+import { DEFAULT_READ_ALOUD_VOICE, type ReadAloudVoice } from '@/lib/consts';
+import { normalizeReadAloudVoice } from '@/lib/utils';
 
 // Preferences handlers derive the tool toggle model shown in settings and persist changes optimistically.
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
@@ -11,6 +13,7 @@ export type PreferencesHandlers = {
   resolvedPreferences: UserPreferences;
   handleToggleToolPreference: (tool: ToolMetadata) => Promise<void>;
   handleToggleSuggestionsEnabled: () => Promise<void>;
+  handleSelectReadAloudVoice: (voice: ReadAloudVoice) => Promise<void>;
 };
 
 type PreferencesCtx = {
@@ -38,10 +41,15 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
 
   const defaultPreferences: UserPreferences = useMemo(
     // Keep downstream code simple by always resolving a complete preference object.
-    () => ({ tools: { disabled: [] }, prefersAgenticChat: false, suggestionsEnabled: true }),
+    () => ({ tools: { disabled: [] }, prefersAgenticChat: false, suggestionsEnabled: true, readAloudVoice: DEFAULT_READ_ALOUD_VOICE }),
     []
   );
-  const resolvedPreferences = userPreferences ?? defaultPreferences;
+  const resolvedPreferences = {
+    ...defaultPreferences,
+    ...(userPreferences ?? {}),
+    tools: userPreferences?.tools ?? defaultPreferences.tools,
+    readAloudVoice: normalizeReadAloudVoice(userPreferences?.readAloudVoice),
+  };
 
   const toolKey = (serverId: string | undefined, toolName: string) => `${serverId || 'default'}::${toolName}`;
 
@@ -103,6 +111,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
       },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      readAloudVoice: normalizeReadAloudVoice(resolvedPreferences.readAloudVoice),
     };
     setUserPreferences(nextPrefs);
     setIsSavingPreferences(true);
@@ -133,6 +142,7 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false),
+      readAloudVoice: normalizeReadAloudVoice(resolvedPreferences.readAloudVoice),
     };
     setUserPreferences(nextPrefs);
     setIsSavingPreferences(true);
@@ -152,11 +162,45 @@ export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandl
     }
   };
 
+  const handleSelectReadAloudVoice = async (voice: ReadAloudVoice) => {
+    if (!userId) {
+      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
+    const nextVoice = normalizeReadAloudVoice(voice);
+    if (nextVoice === normalizeReadAloudVoice(resolvedPreferences.readAloudVoice)) return;
+
+    const prevPrefs = resolvedPreferences;
+    const nextPrefs: UserPreferences = {
+      tools: resolvedPreferences.tools ?? { disabled: [] },
+      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      readAloudVoice: nextVoice,
+    };
+    setUserPreferences(nextPrefs);
+    setIsSavingPreferences(true);
+    try {
+      const saved = await updateUserPreferences(userId, nextPrefs);
+      setUserPreferences(saved);
+      persistUIState();
+    } catch (error) {
+      setUserPreferences(prevPrefs);
+      toast({
+        title: 'Could not update voice',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
   return {
     toolsWithStatus,
     enabledToolsForRequest,
     resolvedPreferences,
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
+    handleSelectReadAloudVoice,
   };
 }

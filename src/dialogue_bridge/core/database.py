@@ -149,6 +149,7 @@ class UserPreferencesTable(Base):
     tools = Column(JSON, nullable=False, default=dict)
     prefers_agentic_chat = Column(Boolean, nullable=False, server_default="false")
     suggestions_enabled = Column(Boolean, nullable=False, server_default="true")
+    read_aloud_voice = Column(String, nullable=False, server_default="alloy")
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("UserTable", back_populates="preferences")

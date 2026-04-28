@@ -47,6 +47,7 @@ import {
   createAiTransitionHandlers,
   createConversationMessageSetter,
   createFeedbackHandlers,
+  createReadAloudHandlers,
   createMessageEditHandlers,
   createRetryHandlers,
   createSharedConversationHandlers,
@@ -157,6 +158,7 @@ export function ChatInterface({
 
   // Copy to clipboard state
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -247,6 +249,7 @@ export function ChatInterface({
     resolvedPreferences,
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
+    handleSelectReadAloudVoice,
   } = createPreferencesHandlers({
     userId,
     availableTools,
@@ -558,6 +561,14 @@ export function ChatInterface({
 
   // Create UI handlers
   const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
+  const { handleReadAloud, stopReadAloud } = createReadAloudHandlers({
+    userId,
+    conversationId: currentConversation?.id ?? null,
+    setSpeakingMessageId,
+    toast: toastWrapper,
+  });
+
+  useEffect(() => () => stopReadAloud(), []);
 
   const handleOpenFilePreview = useCallback((attachment: AttachmentLike, message: MessageOut) => {
     setSelectedFilePreview({ attachment, message });
@@ -1165,6 +1176,8 @@ export function ChatInterface({
                   onRetryMessage={handleRetryAiMessage}
                   onForkMessage={handleForkConversation}
                   onShareMessage={openShareDialog}
+                  onReadAloud={handleReadAloud}
+                  speakingMessageId={speakingMessageId}
                   isStreaming={isSendingMessage}
                 />
               </div>
@@ -1258,6 +1271,7 @@ export function ChatInterface({
                 onRevokeSharedConversation={handleRevokeSharedConversation}
                 onToggleToolPreference={handleToggleToolPreference}
                 onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
+                onSelectReadAloudVoice={handleSelectReadAloudVoice}
                 preferencesSaving={isSavingPreferences}
               />
 

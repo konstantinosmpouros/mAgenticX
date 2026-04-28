@@ -1,7 +1,11 @@
 import { useMemo, useCallback } from 'react';
 import type { FC, Dispatch, SetStateAction } from 'react';
 import type { MessageOut, ConversationDetail, ThinkingState } from "@/lib/types";
-import { likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage } from "@/lib/api";
+import {
+  likeMessage as apiLikeMessage,
+  dislikeMessage as apiDislikeMessage,
+  generateMessageReadAloudAudio,
+} from "@/lib/api";
 
 // Message handlers cover chat actions that stay within the current UI shell
 // and do not start a brand new inference pipeline.
@@ -11,6 +15,7 @@ import { likeMessage as apiLikeMessage, dislikeMessage as apiDislikeMessage } fr
 // Feedback Handlers
 // ------------------------------------------------------------------------------
 type SetConversationMessages = (updater: (prev: MessageOut[]) => MessageOut[]) => void;
+type ToastHandler = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 
 export const createFeedbackHandlers = ({
   userId,
@@ -21,7 +26,7 @@ export const createFeedbackHandlers = ({
   userId: string | null;
   currentConversation: ConversationDetail | null;
   setConversationMessages: SetConversationMessages;
-  toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast?: ToastHandler;
 }) => {
   const handleLike = async (message: MessageOut) => {
     if (!userId || !currentConversation) return;
@@ -59,6 +64,133 @@ export const createFeedbackHandlers = ({
 
   return { handleLike, handleDislike };
 };
+
+
+
+// ------------------------------------------------------------------------------
+// Read-aloud Handlers
+// ------------------------------------------------------------------------------
+type ReadAloudHandlersCtx = {
+  userId: string | null;
+  conversationId?: string | null;
+  setSpeakingMessageId: (messageId: string | null) => void;
+  toast?: ToastHandler;
+};
+
+let activeSpeechMessageId: string | null = null;
+let activeAudio: HTMLAudioElement | null = null;
+let activeAudioUrl: string | null = null;
+let readAloudRequestId = 0;
+
+export function createReadAloudHandlers(ctx: ReadAloudHandlersCtx) {
+  const { userId, conversationId, setSpeakingMessageId, toast } = ctx;
+
+  const setActiveSpeechMessage = (messageId: string | null) => {
+    activeSpeechMessageId = messageId;
+    setSpeakingMessageId(messageId);
+  };
+
+  const clearActiveAudio = () => {
+    activeAudio?.pause();
+    activeAudio = null;
+    if (activeAudioUrl) {
+      URL.revokeObjectURL(activeAudioUrl);
+      activeAudioUrl = null;
+    }
+  };
+
+  const stopReadAloud = () => {
+    readAloudRequestId += 1;
+    clearActiveAudio();
+    setActiveSpeechMessage(null);
+  };
+
+  const handleReadAloud = async (message: MessageOut) => {
+    if (!userId || !conversationId) {
+      toast?.({
+        title: "Read aloud is unavailable",
+        description: "Open a saved conversation before reading responses aloud.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (activeSpeechMessageId === message.id) {
+      stopReadAloud();
+      return;
+    }
+
+    if (!(message.content ?? "").trim()) {
+      toast?.({
+        title: "Nothing to read",
+        description: "This response does not contain readable text.",
+      });
+      return;
+    }
+
+    const requestId = readAloudRequestId + 1;
+    readAloudRequestId = requestId;
+    clearActiveAudio();
+    setActiveSpeechMessage(message.id);
+
+    let audioBlob: Blob;
+    try {
+      audioBlob = await generateMessageReadAloudAudio(userId, conversationId, message.id);
+    } catch (error) {
+      if (readAloudRequestId === requestId) {
+        clearActiveAudio();
+        setActiveSpeechMessage(null);
+        toast?.({
+          title: "Read aloud failed",
+          description: "Audio could not be generated for this response.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    try {
+      if (readAloudRequestId !== requestId) return;
+
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      activeAudioUrl = audioUrl;
+      activeAudio = audio;
+
+      audio.onended = () => {
+        if (readAloudRequestId === requestId && activeSpeechMessageId === message.id) {
+          clearActiveAudio();
+          setActiveSpeechMessage(null);
+        }
+      };
+      audio.onerror = () => {
+        if (readAloudRequestId === requestId && activeSpeechMessageId === message.id) {
+          clearActiveAudio();
+          setActiveSpeechMessage(null);
+          toast?.({
+            title: "Read aloud failed",
+            description: "The generated audio could not be played.",
+            variant: "destructive",
+          });
+        }
+      };
+
+      await audio.play();
+    } catch (error) {
+      if (readAloudRequestId === requestId) {
+        clearActiveAudio();
+        setActiveSpeechMessage(null);
+        toast?.({
+          title: "Read aloud failed",
+          description: "The generated audio could not be played.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  return { handleReadAloud, stopReadAloud };
+}
 
 
 

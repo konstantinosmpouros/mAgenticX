@@ -36,6 +36,26 @@ export const emitUnauthorized = (): void => {
   window.dispatchEvent(new CustomEvent("mx:unauthorized"));
 };
 
+export const READ_ALOUD_VOICES = [
+  { id: "alloy", label: "Alloy", description: "Balanced" },
+  { id: "ash", label: "Ash", description: "Clear" },
+  { id: "ballad", label: "Ballad", description: "Warm" },
+  { id: "coral", label: "Coral", description: "Bright" },
+  { id: "echo", label: "Echo", description: "Deep" },
+  { id: "fable", label: "Fable", description: "Story-like" },
+  { id: "nova", label: "Nova", description: "Energetic" },
+  { id: "onyx", label: "Onyx", description: "Grounded" },
+  { id: "sage", label: "Sage", description: "Calm" },
+  { id: "shimmer", label: "Shimmer", description: "Light" },
+  { id: "verse", label: "Verse", description: "Expressive" },
+  { id: "marin", label: "Marin", description: "Natural" },
+  { id: "cedar", label: "Cedar", description: "Rich" },
+] as const;
+
+export type ReadAloudVoice = (typeof READ_ALOUD_VOICES)[number]["id"];
+
+export const DEFAULT_READ_ALOUD_VOICE: ReadAloudVoice = "alloy";
+
 
 const toDate = (value: any): Date => (value ? new Date(value) : new Date());
 

@@ -35,6 +35,8 @@ type ChatMessageProps = {
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
   onShareMessage?: (message: MessageOut) => void;
+  onReadAloud?: (message: MessageOut) => void;
+  speakingMessageId?: string | null;
   readOnly?: boolean;
   isStreaming?: boolean;
   onFlashUserActionBar: (messageId: string) => void;
@@ -77,6 +79,8 @@ export function ChatMessage({
   onRetryMessage,
   onForkMessage,
   onShareMessage,
+  onReadAloud,
+  speakingMessageId,
   readOnly = false,
   isStreaming,
   onFlashUserActionBar,
@@ -251,6 +255,8 @@ export function ChatMessage({
                     onRetryMessage={onRetryMessage}
                     onForkMessage={onForkMessage}
                     onShareMessage={onShareMessage}
+                    onReadAloud={onReadAloud}
+                    speakingMessageId={speakingMessageId}
                     readOnly={readOnly}
                     isStreaming={isStreaming}
                     branchControls={branchData}

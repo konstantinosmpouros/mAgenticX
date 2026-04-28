@@ -165,6 +165,11 @@ class UserPreferences(BaseModel):
         validation_alias=AliasChoices("suggestions_enabled", "suggestionsEnabled"),
         serialization_alias="suggestionsEnabled",
     )
+    readAloudVoice: str = Field(
+        default="alloy",
+        validation_alias=AliasChoices("read_aloud_voice", "readAloudVoice"),
+        serialization_alias="readAloudVoice",
+    )
 
 
 
