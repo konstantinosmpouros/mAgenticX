@@ -42,6 +42,7 @@ const CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/conversations`;
 const MESSAGES_BASE_PATH = `${API_BASE_PATH}/messages`;
 const ATTACHMENTS_BASE_PATH = `${API_BASE_PATH}/attachments`;
 const INFERENCE_BASE_PATH = `${API_BASE_PATH}/inference`;
+const SPEECH_BASE_PATH = `${API_BASE_PATH}/speech`;
 const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;
 
 
@@ -764,7 +765,7 @@ export async function generateMessageReadAloudAudio(
   conversationId: string,
   messageId: string,
 ): Promise<Blob> {
-  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/read-aloud`, withSessionRequest({
+  const res = await fetch(`${SPEECH_BASE_PATH}/read-aloud/${userId}/${conversationId}/${messageId}`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "audio/mpeg,audio/*" },
   }, { csrf: true }));
@@ -842,7 +843,7 @@ export async function transcribeDictation(
   const safeName = filename || "dictation.webm";
   formData.append("audio", audio, safeName);
 
-  const res = await fetch(`${INFERENCE_BASE_PATH}/dictation/${userId}`, withSessionRequest({
+  const res = await fetch(`${SPEECH_BASE_PATH}/dictation/${userId}`, withSessionRequest({
     method: "POST",
     headers: { "Accept": "application/json" },
     body: formData,

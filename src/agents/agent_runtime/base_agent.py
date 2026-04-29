@@ -1,8 +1,7 @@
-import json
 from uuid import uuid4
-import traceback
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Literal
 
+from core.error_handling import agent_stream_error_handler
 from observability import get_logger
 from utils import (
     build_tool_cache_key,
@@ -234,17 +233,5 @@ class BaseAgent:
     # ---------------------------------------------------------------------
     @classmethod
     def _encode_run_error(cls, exc: BaseException) -> bytes:
-        """Log the full traceback to stdout and return a clean SSE RUN_ERROR frame."""
-        tb = traceback.format_exc()
-        logger.error(
-            "agent_run_error",
-            "Agent run failed",
-            exc_info=True,
-            agent_slug=cls.name,
-            exception_type=type(exc).__name__,
-            traceback_summary=tb.strip() if tb and tb.strip() != "NoneType: None" else None,
-        )
-
-        user_message = f"{type(exc).__name__}: {exc}"
-        err = {"type": "RUN_ERROR", "message": user_message}
-        return ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
+        """Log the traceback and return a clean SSE RUN_ERROR frame."""
+        return agent_stream_error_handler.encode_run_error(logger, exc, agent_slug=cls.name)

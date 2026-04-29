@@ -51,6 +51,7 @@ from utils import (
 )
 from utils.agents import AGENT_REGISTRY
 from core.proxy import require_internal_caller
+from core.error_handling import provider_error_handler
 
 
 configure_logging()
@@ -125,7 +126,12 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
     try:
         audio_bytes = await file.read()
     except Exception as exc:
-        logger.warning("dictation_read_failed", "Failed to read dictation upload", error=str(exc), failure_reason="upload_read_failed")
+        logger.warning(
+            "dictation_read_failed",
+            "Failed to read dictation upload",
+            exc_info=True,
+            failure_reason="upload_read_failed",
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to read the uploaded audio file.",
@@ -150,18 +156,16 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
             file=audio_stream,
         )
     except Exception as exc:
-        logger.warning(
-            "dictation_provider_failed",
-            "OpenAI transcription request failed",
+        provider_error_handler.raise_provider_error(
+            logger,
+            exc,
+            event="dictation_provider_failed",
+            message="OpenAI transcription request failed",
+            public_detail="Transcription is temporarily unavailable. Please try again.",
             provider="openai",
+            operation="dictation",
             model=stt_model,
-            error=str(exc),
-            failure_reason="provider_request_failed",
         )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Transcription provider request failed.",
-        ) from exc
     
     text = getattr(transcription, "text", None)
     if text is None and isinstance(transcription, dict):
@@ -177,7 +181,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="OpenAI transcription response did not include text.",
+            detail="Transcription returned an invalid response. Please try again.",
         )
     logger.info("dictation_transcribed", "Dictation transcribed successfully", provider="openai", model=stt_model, transcript_length=len(text))
     return TranscriptionResponse(text=text)
@@ -211,7 +215,12 @@ async def get_available_tools() -> List[ToolManifest]:
     try:
         await list_mcp_tools()
     except MCPToolsClientError as exc:
-        logger.warning("tools_refresh_failed", "Failed to refresh MCP tool manifests", error=str(exc), failure_reason="gateway_unavailable")
+        logger.warning(
+            "tools_refresh_failed",
+            "Failed to refresh MCP tool manifests",
+            exc_info=True,
+            failure_reason="gateway_unavailable",
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Tool catalog is temporarily unavailable.",
@@ -291,7 +300,7 @@ async def stream_agent(agent_slug: str, req: Request):
         if definition is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Unknown agent '{agent_slug}'.",
+                detail="Unknown agent.",
             )
         # Initialise the agent
         agent_logger.info("agent_initialization_started", "Agent initialization started")
@@ -299,7 +308,12 @@ async def stream_agent(agent_slug: str, req: Request):
     except HTTPException:
         raise
     except Exception as exc:
-        agent_logger.warning("agent_initialization_failed", "Failed to initialise the requested agent", error=str(exc), failure_reason="agent_init_failed")
+        agent_logger.warning(
+            "agent_initialization_failed",
+            "Failed to initialise the requested agent",
+            exc_info=True,
+            failure_reason="agent_init_failed",
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to initialise the requested agent.",
@@ -324,7 +338,7 @@ async def stream_agent(agent_slug: str, req: Request):
             agent_logger.info("agent_stream_cancelled", "Agent stream execution cancelled", context=request_context)
             return
         except Exception as exc:
-            agent_logger.error("agent_stream_failed", "Agent stream execution failed", context=request_context, error=str(exc))
+            agent_logger.error("agent_stream_failed", "Agent stream execution failed", context=request_context, exc_info=True)
             yield agent._encode_run_error(exc)
     
     return StreamingResponse(event_stream(), media_type="text/event-stream")

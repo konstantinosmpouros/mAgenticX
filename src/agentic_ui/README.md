@@ -193,8 +193,10 @@ Main endpoint groups:
 - Attachments
   - `/attachments/download/{userId}/{conversationId}/{messageId}/{blobId}`
 - Inference
-  - `/inference/dictation/{userId}`
   - `/inference/stream/{userId}/{conversationId}`
+- Speech
+  - `/speech/dictation/{userId}`
+  - `/speech/read-aloud/{userId}/{conversationId}/{messageId}`
 
 ## AG-UI Streaming Model
 

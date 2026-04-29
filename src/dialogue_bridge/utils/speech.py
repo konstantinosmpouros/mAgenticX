@@ -4,12 +4,16 @@ import httpx
 from fastapi import HTTPException, status
 
 from core.configs import settings
+from core.error_handling import upstream_error_handler
 from core.proxy import internal_service_headers
 from core.tls import get_httpx_verify
 from observability import get_context, get_logger
+from schemas import DictationResponse
 
 logger = get_logger(__name__)
 
+_DICTATION_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/dictate/transcribe"
+_DICTATION_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 _READ_ALOUD_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/speech/read-aloud"
 _READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 
@@ -17,6 +21,91 @@ _READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=
 def normalize_read_aloud_voice(voice: str | None) -> str:
     selected = (voice or settings.speech.default_read_aloud_voice).strip().lower()
     return selected if selected in settings.speech.supported_read_aloud_voices else settings.speech.default_read_aloud_voice
+
+
+async def transcribe_dictation_audio(
+    audio_bytes: bytes,
+    *,
+    filename: str | None = None,
+    content_type: str | None = None,
+) -> DictationResponse:
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded audio file is empty.",
+        )
+
+    resolved_content_type = content_type or "application/octet-stream"
+    files = {
+        "file": (filename or "dictation.wav", audio_bytes, resolved_content_type),
+    }
+
+    request_id = get_context().get("request_id")
+    upstream_headers = internal_service_headers(request_id)
+    try:
+        async with httpx.AsyncClient(timeout=_DICTATION_TIMEOUT, verify=get_httpx_verify()) as client:
+            response = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.post(_DICTATION_ENDPOINT, files=files, headers=upstream_headers),
+                upstream_service="agents",
+                operation="dictation",
+            )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.raise_http_error(
+            logger,
+            exc,
+            event="dictation_upstream_http_error",
+            message="Speech-to-text service returned an HTTP error",
+            public_detail="Speech-to-text service could not process the audio. Please try again.",
+            upstream_service="agents",
+            operation="dictation",
+        )
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger,
+            exc,
+            event="dictation_upstream_unreachable",
+            message="Failed to reach speech-to-text service",
+            public_detail="Speech-to-text service is temporarily unavailable. Please try again shortly.",
+            upstream_service="agents",
+            operation="dictation",
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            exc,
+            event="dictation_invalid_json",
+            message="STT service returned non-JSON response",
+            public_detail="Speech-to-text service returned an unexpected response. Please try again.",
+            upstream_service="agents",
+            operation="dictation",
+        )
+
+    try:
+        result = DictationResponse.model_validate(payload)
+    except Exception as exc:
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            exc,
+            event="dictation_invalid_payload",
+            message="Speech-to-text service returned an invalid payload",
+            public_detail="Speech-to-text service returned an unexpected response. Please try again.",
+            upstream_service="agents",
+            operation="dictation",
+        )
+
+    logger.info(
+        "dictation_transcribed",
+        "Speech-to-text transcription completed",
+        content_type=resolved_content_type,
+        upload_bytes=len(audio_bytes),
+        transcript_length=len(result.text),
+    )
+    return result
 
 
 async def generate_read_aloud_audio(text: str, voice: str | None = None) -> tuple[bytes, str]:
@@ -30,49 +119,47 @@ async def generate_read_aloud_audio(text: str, voice: str | None = None) -> tupl
     request_id = get_context().get("request_id")
     try:
         async with httpx.AsyncClient(timeout=_READ_ALOUD_TIMEOUT, verify=get_httpx_verify()) as client:
-            response = await client.post(
-                _READ_ALOUD_ENDPOINT,
-                json=payload,
-                headers=internal_service_headers(request_id),
+            response = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.post(
+                    _READ_ALOUD_ENDPOINT,
+                    json=payload,
+                    headers=internal_service_headers(request_id),
+                ),
+                upstream_service="agents",
+                operation="read_aloud",
             )
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        logger.warning(
-            "read_aloud_upstream_failed",
-            "Read-aloud upstream request failed",
+        upstream_error_handler.raise_http_error(
+            logger,
+            exc,
+            event="read_aloud_upstream_failed",
+            message="Read-aloud upstream request failed",
+            public_detail="Read-aloud generation failed. Please try again.",
             upstream_service="agents",
-            status_code=exc.response.status_code,
-            error=str(exc),
-            failure_reason="upstream_status",
+            operation="read_aloud",
         )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Read-aloud generation failed.",
-        ) from exc
-    except httpx.HTTPError as exc:
-        logger.warning(
-            "read_aloud_upstream_unavailable",
-            "Read-aloud upstream request could not be completed",
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger,
+            exc,
+            event="read_aloud_upstream_unavailable",
+            message="Read-aloud upstream request could not be completed",
+            public_detail="Read-aloud service is temporarily unavailable. Please try again shortly.",
             upstream_service="agents",
-            error=str(exc),
-            failure_reason="upstream_error",
+            operation="read_aloud",
         )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Read-aloud service is unavailable.",
-        ) from exc
 
     audio = response.content
     if not audio:
-        logger.warning(
-            "read_aloud_empty_audio",
-            "Read-aloud upstream returned empty audio",
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            event="read_aloud_empty_audio",
+            message="Read-aloud upstream returned empty audio",
+            public_detail="Read-aloud service returned an unexpected response. Please try again.",
             upstream_service="agents",
-            failure_reason="empty_audio",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Read-aloud service returned empty audio.",
+            operation="read_aloud",
         )
 
     content_type = response.headers.get("content-type", "audio/mpeg").split(";")[0].strip() or "audio/mpeg"

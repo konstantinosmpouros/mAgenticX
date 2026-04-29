@@ -30,6 +30,7 @@ from router import (
     messages_router,
     attachments_router,
     shared_conv_router,
+    speech_router,
 )
 
 configure_logging()
@@ -91,6 +92,11 @@ app.include_router(
     inference_router,
     prefix=f"/v1/inference",
     tags=["Inference"],
+)
+app.include_router(
+    speech_router,
+    prefix=f"/v1/speech",
+    tags=["Speech"],
 )
 app.include_router(
     catalog_router,

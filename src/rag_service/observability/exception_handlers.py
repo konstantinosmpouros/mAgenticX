@@ -1,33 +1,24 @@
-from __future__ import annotations
-
-import logging
-
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.exception_handlers import request_validation_exception_handler
-from starlette.responses import JSONResponse
 
+from core.error_handling import RagServiceExceptionHandler
 from observability.events import get_logger
 
 
 logger = get_logger("rag_service.exceptions")
+rag_exception_handler = RagServiceExceptionHandler(logger)
 
 
 async def _http_exception_handler(request: Request, exc: HTTPException):
-    level = logging.WARNING if exc.status_code < 500 else logging.ERROR
-    logger.log(level, "http_exception", status_code=exc.status_code, detail=exc.detail if exc.status_code >= 500 else None)
-    return await http_exception_handler(request, exc)
+    return await rag_exception_handler.handle_http_exception(request, exc)
 
 
 async def _validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.warning("request_validation_failed", errors=exc.errors(include_input=False))
-    return await request_validation_exception_handler(request, exc)
+    return await rag_exception_handler.handle_validation_exception(request, exc)
 
 
 async def _unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("unhandled_exception", exception_type=exc.__class__.__name__)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error."})
+    return await rag_exception_handler.handle_unhandled_exception(request, exc)
 
 
 def register_exception_handlers(app: FastAPI) -> None:

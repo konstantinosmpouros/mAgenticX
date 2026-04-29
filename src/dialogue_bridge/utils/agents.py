@@ -12,6 +12,7 @@ from core.configs import settings
 from core.tls import get_httpx_verify
 from core.database import AgentTable
 from core.proxy import internal_service_headers
+from core.error_handling import upstream_error_handler
 
 
 logger = get_logger(__name__)
@@ -46,7 +47,16 @@ def build_agent_stream_url(agent: AgentTable) -> str:
     
     slug = getattr(agent, "slug", None)
     if not slug:
-        raise HTTPException(status_code=500, detail="Agent slug not available for this conversation")
+        logger.error(
+            "agent_stream_url_missing_slug",
+            "Agent stream URL could not be built because slug is missing",
+            agent_id=getattr(agent, "id", None),
+            failure_reason="agent_slug_missing",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Agent configuration is incomplete. Please try another agent or try again later.",
+        )
     return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{slug}/stream"
 
 
@@ -68,16 +78,59 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     try:
         # Pull the latest agent manifests from the agents service.
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
-            resp = await client.get(_AGENTS_DISCOVERY_ENDPOINT, headers=upstream_headers)
+            resp = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.get(_AGENTS_DISCOVERY_ENDPOINT, headers=upstream_headers),
+                upstream_service="agents",
+                operation="agent_sync",
+            )
             resp.raise_for_status()
-            data = resp.json()
-            if isinstance(data, list):
-                manifests = data
-            else:
-                logger.warning("agents_sync_invalid_payload", "Agents service returned an unexpected discovery payload", upstream_service="agents", payload_type=type(data).__name__)
-    except httpx.HTTPError as exc:
-        logger.warning("agents_sync_failed", "Failed to refresh agents from service", upstream_service="agents", error=str(exc), failure_reason="upstream_error")
-        raise HTTPException(503, "Agents service unreachable for agent synchronization.") from exc
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.raise_http_error(
+            logger,
+            exc,
+            event="agents_sync_failed",
+            message="Agents service returned an HTTP error during agent synchronization",
+            public_detail="Agent service could not refresh the available agents. Please try again.",
+            upstream_service="agents",
+            operation="agent_sync",
+        )
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger,
+            exc,
+            event="agents_sync_unreachable",
+            message="Failed to reach agents service during agent synchronization",
+            public_detail="Agent service is temporarily unavailable. Please try again shortly.",
+            upstream_service="agents",
+            operation="agent_sync",
+        )
+
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            exc,
+            event="agents_sync_invalid_json",
+            message="Agents service returned invalid JSON during agent synchronization",
+            public_detail="Agent service returned an unexpected response. Please try again.",
+            upstream_service="agents",
+            operation="agent_sync",
+        )
+
+    if isinstance(data, list):
+        manifests = data
+    else:
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            event="agents_sync_invalid_payload",
+            message="Agents service returned an unexpected discovery payload",
+            public_detail="Agent service returned an unexpected response. Please try again.",
+            upstream_service="agents",
+            operation="agent_sync",
+            payload_type=type(data).__name__,
+        )
 
     manifest_ids: set[str] = set()
     for manifest in manifests or []:
@@ -151,31 +204,58 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
     try:
         # Forward the request to the MCP-backed agents service.
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
-            resp = await client.get(_AGENTS_TOOLS_ENDPOINT, headers=upstream_headers)
+            resp = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.get(_AGENTS_TOOLS_ENDPOINT, headers=upstream_headers),
+                upstream_service="agents",
+                operation="tools_fetch",
+            )
             resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.warning("tools_fetch_failed", "Failed to fetch tools from agents service", upstream_service="agents", error=str(exc), failure_reason="upstream_error")
-        raise HTTPException(
-            status_code=503,
-            detail="Agents service unreachable for tools synchronization.",
-        ) from exc
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.raise_http_error(
+            logger,
+            exc,
+            event="tools_fetch_failed",
+            message="Agents service returned an HTTP error while fetching tools",
+            public_detail="Tool catalog could not be refreshed. Please try again.",
+            upstream_service="agents",
+            operation="tools_fetch",
+        )
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger,
+            exc,
+            event="tools_fetch_unreachable",
+            message="Failed to reach agents service while fetching tools",
+            public_detail="Tool catalog is temporarily unavailable. Please try again shortly.",
+            upstream_service="agents",
+            operation="tools_fetch",
+        )
 
     try:
         # Parse JSON payload before validating schema shape.
         payload = resp.json()
     except ValueError as exc:
-        logger.warning("tools_fetch_invalid_payload", "Agents service returned invalid JSON for tools", upstream_service="agents", error=str(exc), failure_reason="invalid_json")
-        raise HTTPException(
-            status_code=502,
-            detail="Agents service returned invalid JSON for tools.",
-        ) from exc
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            exc,
+            event="tools_fetch_invalid_json",
+            message="Agents service returned invalid JSON for tools",
+            public_detail="Tool catalog returned an unexpected response. Please try again.",
+            upstream_service="agents",
+            operation="tools_fetch",
+        )
 
     if not isinstance(payload, list):
         # The UI expects a list of manifests; enforce here for better errors.
-        logger.warning("tools_fetch_invalid_payload", "Agents service returned an unexpected tools payload", upstream_service="agents", payload_type=type(payload).__name__, failure_reason="unexpected_payload_type")
-        raise HTTPException(
-            status_code=502,
-            detail="Agents service returned an unexpected tools payload.",
+        upstream_error_handler.raise_invalid_response(
+            logger,
+            event="tools_fetch_invalid_payload",
+            message="Agents service returned an unexpected tools payload",
+            public_detail="Tool catalog returned an unexpected response. Please try again.",
+            upstream_service="agents",
+            operation="tools_fetch",
+            payload_type=type(payload).__name__,
         )
 
     return payload

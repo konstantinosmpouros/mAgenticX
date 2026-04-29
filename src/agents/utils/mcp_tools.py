@@ -167,11 +167,11 @@ async def _fetch_tools_from_gateway() -> List[types.Tool]:
         logger.warning(
             "mcp_tools_fetch_failed",
             "Failed to fetch tools from MCP gateway",
+            exc_info=True,
             upstream_service="mcp_gateway",
-            error=str(exc),
             failure_reason="gateway_error",
         )
-        raise MCPToolsClientError(f"Failed to list tools from MCP server: {exc}") from exc
+        raise MCPToolsClientError("Failed to list tools from MCP server.") from exc
 
 
 async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:

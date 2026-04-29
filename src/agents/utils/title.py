@@ -4,6 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
 from core.configs import configs
+from core.error_handling import provider_error_handler
 from observability import get_logger
 from utils import make_merge_with_template
 from schemas import TitleRequest, ConversationTitle
@@ -58,11 +59,16 @@ async def generate_title(req: TitleRequest) -> ConversationTitle:
     try:
         result = await _title_chain.ainvoke(req.user_input)
     except Exception as exc:
-        logger.warning("title_generation_failed", "Failed to generate conversation title", error=str(exc), failure_reason="model_invoke_failed")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to generate title: {exc}",
-        ) from exc
+        provider_error_handler.raise_provider_error(
+            logger,
+            exc,
+            event="title_generation_failed",
+            message="Failed to generate conversation title",
+            public_detail="Title generation is temporarily unavailable. Please try again.",
+            provider="model",
+            operation="generate_title",
+            model=configs.runtime_models.title,
+        )
 
     titles = _normalize_title_candidates(result.titles)
     if len(titles) < _TITLE_MIN_CANDIDATES:
@@ -75,7 +81,7 @@ async def generate_title(req: TitleRequest) -> ConversationTitle:
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The title model returned too few usable title candidates.",
+            detail="Title generation returned an invalid response. Please try again.",
         )
     logger.info(
         "title_generation_completed",

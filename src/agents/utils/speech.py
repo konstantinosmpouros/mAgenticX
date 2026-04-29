@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from openai import OpenAI
 
 from core.configs import configs
+from core.error_handling import provider_error_handler
 from observability import get_logger
 from schemas import ReadAloudRequest
 
@@ -63,19 +64,17 @@ async def generate_read_aloud_audio(req: ReadAloudRequest) -> bytes:
         )
         audio = await asyncio.to_thread(_generate_speech_sync, text, voice)
     except Exception as exc:
-        logger.warning(
-            "read_aloud_provider_failed",
-            "OpenAI read-aloud request failed",
+        provider_error_handler.raise_provider_error(
+            logger,
+            exc,
+            event="read_aloud_provider_failed",
+            message="OpenAI read-aloud request failed",
+            public_detail="Read-aloud is temporarily unavailable. Please try again.",
             provider="openai",
+            operation="read_aloud",
             model=configs.runtime_models.read_aloud,
             voice=voice,
-            error=str(exc),
-            failure_reason="provider_request_failed",
         )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Read-aloud provider request failed.",
-        ) from exc
 
     if not audio:
         logger.error(
@@ -87,7 +86,7 @@ async def generate_read_aloud_audio(req: ReadAloudRequest) -> bytes:
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Read-aloud provider returned empty audio.",
+            detail="Read-aloud returned an invalid response. Please try again.",
         )
 
     logger.info(

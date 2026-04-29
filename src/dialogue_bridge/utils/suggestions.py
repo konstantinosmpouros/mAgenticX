@@ -7,6 +7,7 @@ from core.tls import get_httpx_verify
 from observability import get_context, get_logger
 from schemas import SuggestionsOut
 from core.configs import settings
+from core.error_handling import upstream_error_handler
 
 logger = get_logger(__name__)
 
@@ -68,27 +69,44 @@ async def generate_conversation_suggestions(
     upstream_headers = internal_service_headers(request_id)
     try:
         async with httpx.AsyncClient(timeout=_SUGGESTIONS_TIMEOUT, verify=get_httpx_verify()) as client:
-            response = await client.post(_SUGGESTIONS_ENDPOINT, json=payload, headers=upstream_headers)
+            response = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.post(_SUGGESTIONS_ENDPOINT, json=payload, headers=upstream_headers),
+                upstream_service="agents",
+                operation="suggestion_generation",
+            )
             response.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.warning(
-            "suggestion_generation_failed",
-            "Conversation suggestion generation failed",
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.log_http_error(
+            logger,
+            exc,
+            event="suggestion_generation_failed",
+            message="Conversation suggestion generation returned an HTTP error",
             upstream_service="agents",
-            error=str(exc),
-            failure_reason="upstream_error",
+            operation="suggestion_generation",
+        )
+        return []
+    except httpx.RequestError as exc:
+        upstream_error_handler.log_request_error(
+            logger,
+            exc,
+            event="suggestion_generation_unreachable",
+            message="Conversation suggestion generation service could not be reached",
+            upstream_service="agents",
+            operation="suggestion_generation",
         )
         return []
 
     try:
         result = SuggestionsOut.model_validate(response.json())
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning(
-            "suggestion_generation_invalid_payload",
-            "Conversation suggestion generation returned an invalid payload",
+        upstream_error_handler.log_invalid_response(
+            logger,
+            exc,
+            event="suggestion_generation_invalid_payload",
+            message="Conversation suggestion generation returned an invalid payload",
             upstream_service="agents",
-            error=str(exc),
-            failure_reason="invalid_payload",
+            operation="suggestion_generation",
         )
         return []
 

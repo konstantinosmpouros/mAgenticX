@@ -3,7 +3,6 @@
 ## General
 
 - Consider using a centralized logging solution like ELK or Datadog or loki with Grafana for better observability.
-- Implement a more robust error handling strategy across services, with consistent error responses and retry logic where appropriate.
 - Add more comprehensive unit and integration tests, especially for critical components like the RAG service and agents along with stress test.
 
 ## Security
@@ -25,10 +24,10 @@
 - Scheduled Tasks: let users create one-off or recurring agent jobs that run later, complete while the user is offline, and notify them with results.
 - Artifacts / Canvas: add an editable side workspace for generated reports, markdown docs, code, tables, diagrams, JSON configs, and other reusable outputs.
 - Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-- Voice mode: evolve toward real-time conversational voice agents. Use this as icon ```import { RiVoiceprintLine } from "react-icons/ri";```.
+- Voice mode: evolve toward real-time conversational voice agents. Use this as icon ```import { RiVoiceprintLine } from "react-icons/ri";```. The concept is if the user hasnt writen any message instead of a send icon to have the voice mode where we can use the [react element](https://elements.ai-sdk.dev/components/persona) to have a voice conversation with the agent. This will require some changes in the UI and the backend to support real-time audio streaming and processing.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic, procedural).
-- Voice mode [react element](https://elements.ai-sdk.dev/components/persona).
 - Document preview and interaction (e.g., for PDFs, word documents, excels etc.) in the chat interface.
+- Check how to make the streaming detached from the concept of api calls so we can like change tab and the streaming should continue for that message of the conversation like how the ai companies are doing it. if l change page or conversation the streaming should continue for that message and not get interrupted. This will require some changes in the frontend to decouple the streaming from the current conversation view and make it more global.
 
 ## Agents
 
@@ -38,3 +37,7 @@
 ## RAG Service
 
 - Instead of a ChromaDB consider adding pgvector in the database and use it for the retrieval, this will reduce the complexity of the system and the number of components to maintain. Also it will provide an easier way to keep the data consistent and avoid issues with synchronization between the database and the vector store.
+
+## Agentic UI
+
+- The side bar components need a bit of padding in order in the collapse and expand to not behave strange. Also if inside the buttons the icon and label must be moved a bit right in order not to move at all when expand and collapse.

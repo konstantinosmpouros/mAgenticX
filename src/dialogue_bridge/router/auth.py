@@ -47,9 +47,14 @@ async def authenticate(
     Authenticate the user against Vault and issue bridge-managed session cookies.
     """
     if _vault_authenticator is None:
+        logger.error(
+            "auth_service_not_configured",
+            "Authentication service is not configured",
+            failure_reason="auth_service_not_configured",
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication service is not configured.",
+            detail="Authentication service is temporarily unavailable. Please try again later.",
         )
 
     try:
@@ -83,7 +88,7 @@ async def authenticate(
         logger.exception("auth_unexpected_error", "Unexpected error during authentication", failure_reason="unexpected_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication failed.",
+            detail="Sign in failed. Please try again.",
         ) from exc
 
     login_time = datetime.now(timezone.utc).replace(tzinfo=None)

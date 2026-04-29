@@ -8,6 +8,7 @@ from observability import get_context, get_logger
 from core.tls import get_httpx_verify
 from core.configs import settings
 from core.proxy import internal_service_headers
+from core.error_handling import upstream_error_handler
 
 logger = get_logger(__name__)
 
@@ -69,15 +70,31 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     upstream_headers = internal_service_headers(request_id)
     try:
         async with httpx.AsyncClient(timeout=_TITLE_TIMEOUT, verify=get_httpx_verify()) as client:
-            response = await client.post(_TITLE_ENDPOINT, json=payload, headers=upstream_headers)
+            response = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.post(_TITLE_ENDPOINT, json=payload, headers=upstream_headers),
+                upstream_service="agents",
+                operation="title_generation",
+            )
             response.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.warning(
-            "title_generation_failed",
-            "Conversation title generation failed",
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.log_http_error(
+            logger,
+            exc,
+            event="title_generation_failed",
+            message="Conversation title generation returned an HTTP error",
             upstream_service="agents",
-            error=str(exc),
-            failure_reason="upstream_error",
+            operation="title_generation",
+        )
+        return None
+    except httpx.RequestError as exc:
+        upstream_error_handler.log_request_error(
+            logger,
+            exc,
+            event="title_generation_unreachable",
+            message="Conversation title generation service could not be reached",
+            upstream_service="agents",
+            operation="title_generation",
         )
         return None
 
@@ -85,12 +102,13 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
         data = response.json()
         result = TitleOut.model_validate(data)
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning(
-            "title_generation_invalid_payload",
-            "Conversation title generation returned an invalid payload",
+        upstream_error_handler.log_invalid_response(
+            logger,
+            exc,
+            event="title_generation_invalid_payload",
+            message="Conversation title generation returned an invalid payload",
             upstream_service="agents",
-            error=str(exc),
-            failure_reason="invalid_payload",
+            operation="title_generation",
         )
         return None
 

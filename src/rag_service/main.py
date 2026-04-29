@@ -24,7 +24,8 @@ logger = get_logger(__name__)
 
 from config import RAG_HOST, RAG_PORT, settings, embeddings_model
 from config import TABLES, db
-from proxy import require_internal_caller
+from core.error_handling import rag_operation_error_handler
+from core.proxy import require_internal_caller
 from schemas import Query, ExcelSQLQuery
 
 
@@ -60,7 +61,18 @@ async def retrieve(request: Query, collection_name: str):
     )
     
     retriever = vectordb.as_retriever(search_kwargs={"k": request.k})
-    docs: list[Document] = await retriever.ainvoke(request.query)
+    try:
+        docs: list[Document] = await retriever.ainvoke(request.query)
+    except Exception as exc:
+        rag_operation_error_handler.raise_dependency_error(
+            logger,
+            exc,
+            event="retrieval_failed",
+            message="Vector retrieval failed",
+            public_detail="Document retrieval is temporarily unavailable. Please try again.",
+            collection_name=collection_name,
+            k=request.k,
+        )
     if not docs:
         logger.warning("retrieval_no_results", "Vector retrieval returned no documents", collection_name=collection_name, k=request.k)
         raise HTTPException(status_code=404, detail="No documents found")
@@ -82,7 +94,7 @@ async def get_schema(table: str):
     """Return column names and DuckDB types so the agent can reason about them."""
     if table not in TABLES:
         logger.warning("schema_table_not_found", "Schema requested for unknown table", table=table)
-        raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
+        raise HTTPException(status_code=404, detail="Table not found.")
 
     description = db.execute(f"DESCRIBE {table}").fetchall()
     logger.info("schema_served", "DuckDB schema served", table=table, column_count=len(description))
@@ -98,17 +110,21 @@ async def query_sql(body: ExcelSQLQuery, table: str):
     logger.info("sql_query_started", "DuckDB SQL query started", table=table, sql_length=len(body.sql))
     if not table in TABLES.keys():
         logger.warning("sql_table_not_found", "SQL query requested for unknown table", table=table)
-        raise HTTPException(status_code=404, detail=f"Table '{table}' not found. Available tables: {list(TABLES)}")
+        raise HTTPException(status_code=404, detail="Table not found.")
     try:
         df = db.execute(body.sql).fetch_df()
     except Exception as exc:
-        logger.warning("sql_query_failed", "DuckDB SQL query failed", table=table, error=str(exc))
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        rag_operation_error_handler.raise_bad_request(
+            logger,
+            exc,
+            event="sql_query_failed",
+            message="DuckDB SQL query failed",
+            public_detail="The SQL query could not be completed. Please check the query and try again.",
+            table=table,
+        )
 
     logger.info("sql_query_completed", "DuckDB SQL query completed", table=table, row_count=len(df), column_count=len(df.columns))
     return {
         "row_count": len(df),
         "data": df.to_dict(orient="records"),
     }
-
-

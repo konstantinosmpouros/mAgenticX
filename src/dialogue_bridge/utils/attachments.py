@@ -1,7 +1,7 @@
 import asyncio
 from urllib.parse import quote
 
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from observability import StreamMetrics, get_context, get_logger, set_context
 from sqlalchemy import func, select
@@ -72,7 +72,18 @@ async def stream_blob_response(
         raise HTTPException(status_code=400, detail="Only PDFs are served by this preview endpoint.")
 
     if file_size is None:
-        raise HTTPException(status_code=500, detail="Unable to determine blob size.")
+        logger.error(
+            "blob_size_unavailable",
+            "Blob size could not be determined before streaming",
+            context=request_context,
+            blob_id=blob_id,
+            disposition=disposition,
+            failure_reason="blob_size_unavailable",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The attachment could not be prepared for download. Please try again.",
+        )
 
     base_headers = {
         "Accept-Ranges": "bytes",

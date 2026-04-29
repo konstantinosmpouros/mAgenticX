@@ -4,6 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
 from core.configs import configs
+from core.error_handling import provider_error_handler
 from observability import get_logger
 from schemas import ConversationSuggestions, SuggestionsRequest
 from utils import make_merge_with_template
@@ -59,11 +60,16 @@ async def generate_suggestions(req: SuggestionsRequest) -> ConversationSuggestio
     try:
         result = await _suggestions_chain.ainvoke(req.user_input)
     except Exception as exc:
-        logger.warning("suggestion_generation_failed", "Failed to generate suggestions", error=str(exc), failure_reason="model_invoke_failed")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to generate suggestions: {exc}",
-        ) from exc
+        provider_error_handler.raise_provider_error(
+            logger,
+            exc,
+            event="suggestion_generation_failed",
+            message="Failed to generate suggestions",
+            public_detail="Suggestion generation is temporarily unavailable. Please try again.",
+            provider="model",
+            operation="generate_suggestions",
+            model=configs.runtime_models.suggestions,
+        )
 
     suggestions = _normalize_suggestions(result.suggestions)
     if len(suggestions) < _SUGGESTION_COUNT:
@@ -76,7 +82,7 @@ async def generate_suggestions(req: SuggestionsRequest) -> ConversationSuggestio
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="The suggestion model returned too few usable candidates.",
+            detail="Suggestion generation returned an invalid response. Please try again.",
         )
 
     logger.info(

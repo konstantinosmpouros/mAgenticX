@@ -96,6 +96,7 @@ flowchart TD
 | --- | --- |
 | auth | `/v1/auth` |
 | inference | `/v1/inference` |
+| speech | `/v1/speech` |
 | catalog | `/v1/catalog` |
 | preferences | `/v1/preferences` |
 | conversations | `/v1/conversations` |
@@ -499,9 +500,15 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | Endpoint | Method |
 | --- | --- |
 | `/v1/inference/stream/{user_id}/{conversation_id}` | `POST` |
-| `/v1/inference/dictation/{user_id}` | `POST` |
 
-### 14.7 Attachments
+### 14.7 Speech
+
+| Endpoint | Method |
+| --- | --- |
+| `/v1/speech/dictation/{user_id}` | `POST` |
+| `/v1/speech/read-aloud/{user_id}/{conversation_id}/{message_id}` | `POST` |
+
+### 14.8 Attachments
 
 | Endpoint | Method |
 | --- | --- |
@@ -613,7 +620,8 @@ src/dialogue_bridge/
 │   ├── preferences.py             User preferences
 │   ├── conversations.py           Conversation CRUD
 │   ├── messages.py                Message create/update/reactions
-│   ├── inference.py               SSE proxy and dictation proxy
+│   ├── inference.py               SSE proxy
+│   ├── speech.py                  Speech and dictation endpoints
 │   └── attachments.py             Blob streaming and image pagination
 ├── schemas/                       Pydantic request/response models
 ├── utils/
@@ -700,6 +708,7 @@ Configured environment there includes:
 - `core/auth_session.py`: sessions, cookies, CSRF, and auth dependencies
 - `core/auth_client.py`: Vault authentication
 - `core/database.py`: ORM schema
-- `router/inference.py`: SSE proxying and dictation proxy
+- `router/inference.py`: SSE proxying
+- `router/speech.py`: speech and dictation endpoints
 - `utils/inference.py`: branch resolution and multimodal serialization
 - `utils/agents.py`: agent cache and tools proxy helpers
