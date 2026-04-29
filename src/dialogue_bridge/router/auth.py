@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import UserTable, get_db, upsert_user_from_vault
 from schemas import AuthRequest, AuthResponse
-from utils.rate_limit import AUTHENTICATE_LIMIT, limiter
+from core.rate_limit import AUTHENTICATE_LIMIT, limiter
 from core.auth_session import (
     build_auth_response,
     clear_session_cookies,

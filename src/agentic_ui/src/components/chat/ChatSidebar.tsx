@@ -311,7 +311,7 @@ export default function ChatSidebar({
               onClick={handleTitleClickInternal}
               className={cn(
                 "group items-center gap-3 rounded-lg bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
-                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:!w-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:self-start"
               )}
             >
               <div
@@ -354,7 +354,7 @@ export default function ChatSidebar({
               onClick={handleNewChatClick}
               className={cn(
                 "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
-                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
               )}
               tooltip="Start a new chat"
             >
@@ -375,12 +375,12 @@ export default function ChatSidebar({
               onClick={handleSearchClick}
               className={cn(
                 "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
-                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start group-data-[collapsible=icon]:ml-0.5"
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
               )}
               tooltip="Search"
             >
               <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <Search className="h-[1.125rem] w-[1.125rem]" />
+                <Search className="!h-5 !w-5" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">Search</span>
             </SidebarMenuButton>

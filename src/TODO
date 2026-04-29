@@ -25,7 +25,7 @@
 - Scheduled Tasks: let users create one-off or recurring agent jobs that run later, complete while the user is offline, and notify them with results.
 - Artifacts / Canvas: add an editable side workspace for generated reports, markdown docs, code, tables, diagrams, JSON configs, and other reusable outputs.
 - Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-- Voice mode: start with spoken responses like text-to-speech for the ai responses from the ai action bar and use ```import { HiOutlineSpeakerWave } from "react-icons/hi2";```, then evolve toward real-time conversational voice agents. Use this as icon ```import { RiVoiceprintLine } from "react-icons/ri";```.
+- Voice mode: evolve toward real-time conversational voice agents. Use this as icon ```import { RiVoiceprintLine } from "react-icons/ri";```.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic, procedural).
 - Voice mode [react element](https://elements.ai-sdk.dev/components/persona).
 - Document preview and interaction (e.g., for PDFs, word documents, excels etc.) in the chat interface.

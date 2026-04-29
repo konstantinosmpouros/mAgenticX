@@ -11,14 +11,12 @@ from observability import get_context, get_logger
 logger = get_logger(__name__)
 
 _READ_ALOUD_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/speech/read-aloud"
+_READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 
 
 def normalize_read_aloud_voice(voice: str | None) -> str:
     selected = (voice or settings.speech.default_read_aloud_voice).strip().lower()
     return selected if selected in settings.speech.supported_read_aloud_voices else settings.speech.default_read_aloud_voice
-
-
-_READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 
 
 async def generate_read_aloud_audio(text: str, voice: str | None = None) -> tuple[bytes, str]:
