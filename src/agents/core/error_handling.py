@@ -37,7 +37,7 @@ class AgentServiceExceptionHandler:
             errors=exc.errors(include_input=False),
         )
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": "Invalid request. Please check the submitted fields and try again."},
         )
 

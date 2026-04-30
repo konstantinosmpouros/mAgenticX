@@ -352,8 +352,9 @@ The agent runtime emits a structured event stream consumed by the UI. Events are
 | [tests/agents/](tests/agents/) | Agent runtime + LangGraph integration |
 | [tests/dialogue_bridge/](tests/dialogue_bridge/) | Routers, schemas, auth, conversation logic |
 | [tests/rag_service/](tests/rag_service/) | Retrieval, SQL, Chroma integration |
-| [tests/e2e/](tests/e2e/) | End-to-end flows (create → stream → branch) |
-| [tests/helpers/](tests/helpers/) | Shared fixtures & utilities |
+| [tests/mcp_gateway/](tests/mcp_gateway/) | MCP gateway compose/config contracts |
+| [tests/agentic_ui/](tests/agentic_ui/) | Frontend API/static contract coverage |
+| [tests/integration/](tests/integration/) | Backend integration flows (create → stream → finalize, archive/delete, report/share) |
 
 ### 13.2 CI workflows — [.github/workflows/](.github/workflows/)
 

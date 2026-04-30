@@ -301,7 +301,7 @@ export default function ChatSidebar({
       onMouseLeave={handleSidebarMouseLeave}
     >
       <SidebarHeader
-        className={cn("gap-3 py-4 pl-2 pr-3", isCollapsed && "pr-2")}
+        className={cn("gap-3 py-4 pl-2 pr-3", isCollapsed && "gap-4 pl-3 pr-1 pt-5")}
       >
         <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
@@ -353,7 +353,7 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleNewChatClick}
               className={cn(
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
               )}
               tooltip="Start a new chat"
@@ -374,7 +374,7 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleSearchClick}
               className={cn(
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-3 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
               )}
               tooltip="Search"

@@ -35,13 +35,17 @@ class DialogueBridgeExceptionHandler:
 
 
     async def handle_validation_exception(self, request: Request, exc: RequestValidationError) -> JSONResponse:
+        try:
+            errors = exc.errors(include_input=False)
+        except TypeError:
+            errors = exc.errors()
         self._logger.warning(
             "request_validation_failed",
             "Request validation failed",
-            errors=exc.errors(include_input=False),
+            errors=errors,
         )
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": "Invalid request. Please check the submitted fields and try again."},
         )
 

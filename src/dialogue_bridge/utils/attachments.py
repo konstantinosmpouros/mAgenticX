@@ -41,7 +41,7 @@ async def stream_blob_response(
             AttachmentTable.file_name,
             func.coalesce(
                 AttachmentTable.size_bytes,
-                func.octet_length(BlobTable.data)
+                func.length(BlobTable.data)
             ).label("blob_size"),
         )
         .select_from(BlobTable)

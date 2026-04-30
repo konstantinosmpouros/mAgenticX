@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import os
+import re
 import sys
 
 PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
@@ -27,6 +28,30 @@ from config import TABLES, db
 from core.error_handling import rag_operation_error_handler
 from core.proxy import require_internal_caller
 from schemas import Query, ExcelSQLQuery
+
+
+_FORBIDDEN_SQL_TOKENS = re.compile(
+    r"\b(insert|update|delete|drop|create|alter|truncate|copy|attach|detach|pragma|vacuum|call|execute)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_read_only_sql(sql: str, table: str) -> str:
+    cleaned = (sql or "").strip()
+    cleaned = cleaned[:-1].strip() if cleaned.endswith(";") else cleaned
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="SQL query is required.")
+    if ";" in cleaned:
+        raise HTTPException(status_code=400, detail="Only a single read-only SQL statement is allowed.")
+
+    first_token = cleaned.split(None, 1)[0].lower()
+    if first_token not in {"select", "with"}:
+        raise HTTPException(status_code=400, detail="Only read-only SELECT queries are allowed.")
+    if _FORBIDDEN_SQL_TOKENS.search(cleaned):
+        raise HTTPException(status_code=400, detail="Only read-only SELECT queries are allowed.")
+    if not re.search(rf"\b{re.escape(table)}\b", cleaned, re.IGNORECASE):
+        raise HTTPException(status_code=400, detail="SQL query must reference the requested table.")
+    return cleaned
 
 
 @asynccontextmanager
@@ -111,8 +136,9 @@ async def query_sql(body: ExcelSQLQuery, table: str):
     if not table in TABLES.keys():
         logger.warning("sql_table_not_found", "SQL query requested for unknown table", table=table)
         raise HTTPException(status_code=404, detail="Table not found.")
+    sql = _validate_read_only_sql(body.sql, table)
     try:
-        df = db.execute(body.sql).fetch_df()
+        df = db.execute(sql).fetch_df()
     except Exception as exc:
         rag_operation_error_handler.raise_bad_request(
             logger,

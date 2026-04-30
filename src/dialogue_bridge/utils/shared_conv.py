@@ -49,7 +49,7 @@ def resolve_share_expires_at(expires_at: datetime | None, now: datetime | None =
     max_expires_at = now + timedelta(days=MAX_SHARE_TTL_DAYS)
     if resolved > max_expires_at:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Share expiration cannot be more than {MAX_SHARE_TTL_DAYS} days from now.",
         )
     return resolved

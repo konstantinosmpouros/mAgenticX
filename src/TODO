@@ -3,11 +3,9 @@
 ## General
 
 - Consider using a centralized logging solution like ELK or Datadog or loki with Grafana for better observability.
-- Add more comprehensive unit and integration tests, especially for critical components like the RAG service and agents along with stress test.
 
 ## Security
 
-- Remove or heavily constrain the free-form SQL endpoint in `rag_service`; replace raw SQL execution with allowlisted read-only queries or a safe query layer.
 - Add refresh replay / refresh reuse detection to the session refresh flow.
 - Add edge rate limiting at the host Nginx / Cloudflare layer for authentication-sensitive endpoints.
 - Secure the inference process by implementing stronger rate limiting and abuse controls.
@@ -40,4 +38,4 @@
 
 ## Agentic UI
 
-- The side bar components need a bit of padding in order in the collapse and expand to not behave strange. Also if inside the buttons the icon and label must be moved a bit right in order not to move at all when expand and collapse.
+- Add a share button in the chat header left of the three dot button but this should open the share panel in only full conv share mode. Like there must not be other choice. So like a flag so hide the choices and just share the full conversation. This will make it easier for the users to share their conversations without worrying about the different sharing options and it will also encourage them to share more complete and context-rich conversations.
