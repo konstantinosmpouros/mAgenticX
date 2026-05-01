@@ -6,6 +6,7 @@ type ShortcutHandlersCtx = {
   focusComposer: () => void;
   openAttachments: () => void;
   startDictation: () => void;
+  triggerVoiceMode: () => void;
   openAgentPicker: () => void;
   togglePrivateMode: () => void;
   openProfilePanel: (tab?: string) => void;
@@ -34,6 +35,7 @@ export function createShortcutHandlers(ctx: ShortcutHandlersCtx): ShortcutAction
     "composer.focus": ctx.focusComposer,
     "attachments.open": ctx.openAttachments,
     "dictation.start": ctx.startDictation,
+    "voice.mode": ctx.triggerVoiceMode,
     "agentPicker.open": ctx.openAgentPicker,
     "private.toggle": ctx.togglePrivateMode,
     "profile.open": () => ctx.openProfilePanel(),

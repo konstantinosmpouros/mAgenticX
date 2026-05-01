@@ -4,6 +4,8 @@ import { Plus, FileText, Check, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
+// import { RiVoiceprintLine } from "react-icons/ri";
+import { PiWaveformBold } from "react-icons/pi";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
@@ -49,6 +51,7 @@ type ChatInputBarProps = {
 
     // Optional extras available in your page
     toast?: (opts: { title: string; description?: string; duration?: number }) => void;
+    onVoiceMode?: () => void;
     currentAgent?: { name?: string; description?: string } | null;
     Textarea: any;
     onDictationSubmit?: (audioBlob: Blob) => void;
@@ -103,6 +106,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
         TooltipTrigger,
         TooltipContent,
         toast,
+        onVoiceMode,
         currentAgent,
         Textarea,
         onDictationSubmit,
@@ -624,7 +628,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         onClick={() => fileInputRef.current?.click()}
                                         aria-label="Attach files"
                                     >
-                                        <Plus size={20} className="text-muted-foreground active:text-white" />
+                                        <Plus size={24} className="text-muted-foreground active:text-white" />
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent
@@ -667,13 +671,15 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <StarBorder
                                                 as="button"
-                                                innerClassName="bg-gradient-primary text-primary-foreground flex items-center justify-center border-0 rounded-full"
+                                                innerClassName="w-11 h-11"
                                                 className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
                                                 color="hsl(var(--primary))"
                                                 thickness={2}
                                                 onClick={() => {
                                                     if (isStreaming) {
                                                         handleStopStreaming?.();
+                                                    } else if (!currentMessage.trim() && attachments.length === 0) {
+                                                        onVoiceMode?.();
                                                     } else {
                                                         handleSendMessage();
                                                     }
@@ -681,12 +687,15 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                                 disabled={
                                                     isInDictationMode ||
                                                     isDictationSubmitting ||
-                                                    (isStreaming
-                                                        ? false
-                                                        : ((!currentMessage.trim() && attachments.length === 0) || !!thinkingActive))
+                                                    (!isStreaming && !!thinkingActive)
                                                 }
                                             >
-                                                {isStreaming ? <FaStop size={16} /> : <HiArrowUp size={16} />}
+                                                {isStreaming
+                                                    ? <FaStop size={18} />
+                                                    : (!currentMessage.trim() && attachments.length === 0)
+                                                        ? <PiWaveformBold size={22} />
+                                                        : <HiArrowUp size={18} />
+                                                }
                                             </StarBorder>
                                         </TooltipTrigger>
                                     </Tooltip>

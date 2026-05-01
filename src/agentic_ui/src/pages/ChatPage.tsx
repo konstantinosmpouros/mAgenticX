@@ -54,7 +54,8 @@ import {
   createShareConversationHandlers,
   createSharedConversationHandlers,
   defaultShareExpiresAt,
-  useBranchingHandlers
+  useBranchingHandlers,
+  createVoiceModeHandlers,
 } from "@/handlers";
 import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail, getConversationSuggestions } from "@/lib/api";
@@ -351,6 +352,8 @@ export function ChatInterface({
     }
     setDictationRequestSignal((prev) => prev + 1);
   }, [dictationStatus, isSendingMessage]);
+
+  const { handleVoiceMode } = createVoiceModeHandlers({ toast: toastWrapper });
 
   const cancelDictation = useCallback(() => {
     if (dictationStatus === "idle" || dictationStatus === "submitting") {
@@ -1015,6 +1018,7 @@ export function ChatInterface({
           focusComposer,
           openAttachments,
           startDictation,
+          triggerVoiceMode: handleVoiceMode,
           openAgentPicker,
           togglePrivateMode: handleTogglePrivateMode,
           openProfilePanel,
@@ -1034,6 +1038,7 @@ export function ChatInterface({
           onTitleClick={handleTitleClick}
           onNewChat={handleNewChat}
           onOpenSearch={handleOpenSearch}
+          onVoiceMode={handleVoiceMode}
           onOpenUserProfile={() => openProfilePanel()}
           agents={agents}
           userProfile={userProfile}
@@ -1071,6 +1076,8 @@ export function ChatInterface({
                 onDeleteConversation={handleDeleteCurrentConversation}
                 onShareConversation={openFullConversationShareDialog}
                 canShareConversation={canShareFullConversation}
+                onNewChat={handleNewChat}
+                isStreaming={isSendingMessage}
               />
 
               {/* Chat Messages Container*/}
@@ -1156,6 +1163,7 @@ export function ChatInterface({
                 dictationStatus={dictationStatus}
                 dictationRequestSignal={dictationRequestSignal}
                 dictationCancelSignal={dictationCancelSignal}
+                onVoiceMode={handleVoiceMode}
 
                 // UI deps
                 AgentIcon={AgentIcon}

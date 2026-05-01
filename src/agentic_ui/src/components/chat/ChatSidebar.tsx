@@ -11,6 +11,7 @@ import {
   Pencil,
   ArrowRight,
 } from "lucide-react";
+import { PiWaveformBold } from "react-icons/pi";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTheme } from "next-themes";
 import { Loader } from "@/components/ui/shadcn-io/loader";
@@ -49,6 +50,7 @@ type ChatSidebarProps = {
   onTitleClick: () => void;
   onNewChat: () => void;
   onOpenSearch: () => void;
+  onVoiceMode?: () => void;
   onOpenUserProfile: () => void;
   agents: Agent[];
   userProfile: UserProfile | null;
@@ -99,6 +101,7 @@ export default function ChatSidebar({
   onTitleClick,
   onNewChat,
   onOpenSearch,
+  onVoiceMode,
   onOpenUserProfile,
   agents,
   userProfile,
@@ -161,6 +164,13 @@ export default function ChatSidebar({
       setOpenMobile(false);
     }
   }, [onOpenSearch, isMobile, setOpenMobile]);
+
+  const handleVoiceModeClick = React.useCallback(() => {
+    onVoiceMode?.();
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [onVoiceMode, isMobile, setOpenMobile]);
 
   const handleOpenProfile = React.useCallback(() => {
     onOpenUserProfile();
@@ -351,12 +361,28 @@ export default function ChatSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
+              onClick={handleSearchClick}
+              className={cn(
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
+              )}
+              tooltip="Search"
+            >
+              <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
+                <Search className="!h-5 !w-5" />
+              </div>
+              <span className="text-md group-data-[collapsible=icon]:hidden">Search</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
               onClick={handleNewChatClick}
               className={cn(
                 "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
               )}
-              tooltip="Start a new chat"
+              tooltip="New chat"
             >
               <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
                 <img
@@ -372,17 +398,17 @@ export default function ChatSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              onClick={handleSearchClick}
+              onClick={handleVoiceModeClick}
               className={cn(
                 "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                 "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
               )}
-              tooltip="Search"
+              tooltip="Voice mode"
             >
               <div className="grid size-9 flex-shrink-0 place-items-center rounded-lg">
-                <Search className="!h-5 !w-5" />
+                <PiWaveformBold className="!h-5 !w-5" />
               </div>
-              <span className="text-md group-data-[collapsible=icon]:hidden">Search</span>
+              <span className="text-md group-data-[collapsible=icon]:hidden">Voice mode</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

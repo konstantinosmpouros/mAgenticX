@@ -6,6 +6,7 @@ import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { HiOutlineUpload } from "react-icons/hi";
+import { useTheme } from "next-themes";
 
 type ChatHeaderProps = {
     agents: Agent[];
@@ -30,6 +31,8 @@ type ChatHeaderProps = {
     onDeleteConversation?: () => void;
     onShareConversation?: () => void;
     canShareConversation?: boolean;
+    onNewChat?: () => void;
+    isStreaming?: boolean;
 };
 
 export default function ChatHeader({
@@ -55,7 +58,12 @@ export default function ChatHeader({
     onDeleteConversation,
     onShareConversation,
     canShareConversation = false,
+    onNewChat,
+    isStreaming = false,
 }: ChatHeaderProps) {
+    const { resolvedTheme } = useTheme();
+    const newChatIconSrc = resolvedTheme === "dark" ? "/edit.png" : "/edit2.png";
+
     const displayAgents = React.useMemo(() => {
         if (inactiveAgent && !agents.some((agent) => agent.id === inactiveAgent.id)) {
             return [...agents, inactiveAgent];
@@ -76,7 +84,7 @@ export default function ChatHeader({
             <div className="flex w-full items-center gap-1.5 md:gap-3">
                 <SidebarTrigger
                     aria-label="Toggle sidebar"
-                    className="inline-flex h-10 w-10 rounded-lg bg-transparent text-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+                    className="inline-flex h-10 w-10 rounded-xl bg-transparent text-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:ring-2 focus-visible:ring-ring md:hidden [&_svg]:size-5"
                 />
                 <div className="flex items-center gap-2">
                     <Select
@@ -88,7 +96,7 @@ export default function ChatHeader({
                         <SelectTrigger
                             ref={agentTriggerRef}
                             onMouseDown={(e) => e.preventDefault()}
-                            className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] justify-start gap-2 px-3 h-11"
+                            className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] justify-start gap-2 px-3 h-11 rounded-xl"
                         >
                             <SelectValue placeholder="Select an agent">
                                 <div className="flex items-center">
@@ -151,7 +159,7 @@ export default function ChatHeader({
                     )}
                 </div>
 
-                <div className="ml-auto flex items-center gap-1.5 md:gap-3">
+                <div className="ml-auto flex items-center gap-0.5 md:gap-1">
                     {showPrivateToggle && (
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
@@ -177,6 +185,24 @@ export default function ChatHeader({
                     )}
                     {showConversationActions && (
                         <>
+                            {onNewChat && (
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            onClick={onNewChat}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            className="md:hidden inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
+                                            aria-label="New chat"
+                                        >
+                                            <img src={newChatIconSrc} alt="New chat" className="h-7 w-7 object-contain" draggable={false} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" align="center" className="md:hidden">
+                                        <p>New chat</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            )}
                             {onShareConversation && (
                                 <Tooltip delayDuration={0}>
                                     <TooltipTrigger asChild>
@@ -184,19 +210,20 @@ export default function ChatHeader({
                                             type="button"
                                             onClick={onShareConversation}
                                             onMouseDown={(e) => e.preventDefault()}
-                                            disabled={!canShareConversation}
-                                            className="inline-flex items-center gap-2 rounded-xl p-2 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+                                            disabled={!canShareConversation || isStreaming}
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl h-10 w-10 md:w-auto md:px-3 text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
                                             aria-label="Share full conversation"
                                         >
                                             <HiOutlineUpload className="h-5 w-5" aria-hidden="true" />
-                                            <span>Share</span>
+                                            <span className="hidden md:inline">Share</span>
                                         </button>
                                     </TooltipTrigger>
                                     <TooltipContent
                                         side="bottom"
                                         align="center"
+                                        className="md:hidden"
                                     >
-                                        <p>{canShareConversation ? "Share full conversation" : "Add an AI response before sharing"}</p>
+                                        <p>Share</p>
                                     </TooltipContent>
                                 </Tooltip>
                             )}
@@ -208,7 +235,7 @@ export default function ChatHeader({
                                 <button
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
-                                    className="rounded-xl p-2 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
+                                    className="inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
                                     aria-label="Conversation actions"
                                 >
                                     <MoreHorizontal size={18} />

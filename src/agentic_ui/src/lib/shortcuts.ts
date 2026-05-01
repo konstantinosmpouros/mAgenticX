@@ -11,7 +11,8 @@ export type ShortcutId =
   | "shortcuts.open"
   | "ui.escape"
   | "composer.send"
-  | "composer.newline";
+  | "composer.newline"
+  | "voice.mode";
 
 export type ShortcutPlatform = "mac" | "win";
 
@@ -255,6 +256,29 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     labels: {
       mac: "Esc",
       win: "Esc",
+    },
+  },
+  {
+    id: "voice.mode",
+    title: "Voice mode",
+    description: "Activate the voice mode button in the composer.",
+    category: "Chat",
+    scope: "Global",
+    implementation: "global",
+    allowInEditable: true,
+    combos: {
+      mac: [
+        { key: "+", meta: true, alt: true },
+        { key: "+", meta: true, alt: true, shift: true },
+      ],
+      win: [
+        { key: "+", ctrl: true, alt: true },
+        { key: "+", ctrl: true, alt: true, shift: true },
+      ],
+    },
+    labels: {
+      mac: "Cmd+Alt++",
+      win: "Ctrl+Alt++",
     },
   },
   {

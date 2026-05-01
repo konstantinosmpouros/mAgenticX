@@ -10,3 +10,4 @@ export * from './preferences';
 export * from './shortcuts';
 export * from './share';
 export * from './report';
+export * from './voice';
