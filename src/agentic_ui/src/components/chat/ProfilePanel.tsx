@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { useTheme } from "next-themes";
 import {
     AppWindow,
@@ -23,11 +23,25 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+    VoiceSelector,
+    VoiceSelectorAttributes,
+    VoiceSelectorContent,
+    VoiceSelectorDescription,
+    VoiceSelectorEmpty,
+    VoiceSelectorGroup,
+    VoiceSelectorInput,
+    VoiceSelectorItem,
+    VoiceSelectorList,
+    VoiceSelectorName,
+    VoiceSelectorPreview,
+    VoiceSelectorTrigger,
+} from "@/components/ui/ai-elements/voice-selector";
 import { cn, normalizeReadAloudVoice } from "@/lib/utils";
 import { READ_ALOUD_VOICES, type ReadAloudVoice } from "@/lib/consts";
 import { ConversationShareListItem, ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
+import { generateReadAloudPreviewAudio } from "@/lib/api";
 import {
     SHORTCUTS,
     detectShortcutPlatform,
@@ -111,6 +125,39 @@ const McpIcon = ({
         className={cn("object-contain", className)}
         draggable={false}
     />
+);
+
+const VoiceGenderIcon = ({
+    gender,
+    className,
+}: {
+    gender: "female" | "male";
+    className?: string;
+}) => (
+    <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+    >
+        {gender === "female" ? (
+            <>
+                <circle cx="12" cy="8" r="4.5" />
+                <path d="M12 12.5v8" />
+                <path d="M8.5 17h7" />
+            </>
+        ) : (
+            <>
+                <circle cx="9" cy="15" r="4.5" />
+                <path d="M12.25 11.75 19 5" />
+                <path d="M15 5h4v4" />
+            </>
+        )}
+    </svg>
 );
 
 const NA = "N/A";
@@ -268,6 +315,11 @@ export default function ProfilePanel({
     const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
     const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
     const [shortcutPlatform, setShortcutPlatform] = useState<ShortcutPlatform>(() => detectShortcutPlatform());
+    const [voiceSelectorOpen, setVoiceSelectorOpen] = useState(false);
+    const [previewLoadingVoice, setPreviewLoadingVoice] = useState<ReadAloudVoice | null>(null);
+    const [previewPlayingVoice, setPreviewPlayingVoice] = useState<ReadAloudVoice | null>(null);
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+    const previewAudioUrlRef = useRef<string | null>(null);
     const { theme, setTheme } = useTheme();
 
     const currentTheme = theme === "dark" ? "dark" : "light";
@@ -356,7 +408,49 @@ export default function ProfilePanel({
     const displayPrefersAgentic = fmtBoolean(prefersAgentic);
     const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
     const readAloudVoice = normalizeReadAloudVoice(userPreferences?.readAloudVoice);
+    const selectedReadAloudVoice =
+        READ_ALOUD_VOICES.find((voice) => voice.id === readAloudVoice) ?? READ_ALOUD_VOICES[0];
     const avatarInitial = (displayName !== NA ? displayName : "Profile").charAt(0).toUpperCase();
+
+    const clearVoicePreview = useCallback(() => {
+        previewAudioRef.current?.pause();
+        previewAudioRef.current = null;
+        if (previewAudioUrlRef.current) {
+            URL.revokeObjectURL(previewAudioUrlRef.current);
+            previewAudioUrlRef.current = null;
+        }
+        setPreviewPlayingVoice(null);
+    }, []);
+
+    useEffect(() => () => clearVoicePreview(), [clearVoicePreview]);
+
+    const handlePreviewReadAloudVoice = async (voice: ReadAloudVoice) => {
+        if (!user?.id) return;
+        if (previewPlayingVoice === voice) {
+            clearVoicePreview();
+            return;
+        }
+
+        clearVoicePreview();
+        setPreviewLoadingVoice(voice);
+
+        try {
+            const audioBlob = await generateReadAloudPreviewAudio(user.id, voice, "Hey! I am your AI speaker.");
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            previewAudioUrlRef.current = audioUrl;
+            previewAudioRef.current = audio;
+            audio.onended = clearVoicePreview;
+            audio.onerror = clearVoicePreview;
+            setPreviewPlayingVoice(voice);
+            await audio.play();
+        } catch (error) {
+            console.error("Failed to preview read-aloud voice:", error);
+            clearVoicePreview();
+        } finally {
+            setPreviewLoadingVoice(null);
+        }
+    };
 
     const latestArchivedConversation = useMemo(() => {
         if (archivedConversations.length === 0) return null;
@@ -1048,29 +1142,96 @@ export default function ProfilePanel({
                                                                         Voice used when an AI response is played as audio.
                                                                     </p>
                                                                 </div>
-                                                                <Select
+                                                                <VoiceSelector
                                                                     value={readAloudVoice}
-                                                                    disabled={preferencesSaving}
-                                                                    onValueChange={(value) =>
-                                                                        onSelectReadAloudVoice?.(normalizeReadAloudVoice(value))
-                                                                    }
+                                                                    open={voiceSelectorOpen}
+                                                                    onOpenChange={setVoiceSelectorOpen}
                                                                 >
-                                                                    <SelectTrigger className="h-11 w-full rounded-xl border-border/60 bg-background/60 text-sm font-semibold focus-visible:ring-primary/60 focus-visible:ring-offset-0 sm:w-56">
-                                                                        <SelectValue placeholder="Select voice" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent className="z-[90] max-h-72 rounded-xl border-border/70 bg-background text-foreground">
-                                                                        {READ_ALOUD_VOICES.map((voice) => (
-                                                                            <SelectItem key={voice.id} value={voice.id} className="rounded-lg">
-                                                                                <span className="flex min-w-0 items-center gap-2">
-                                                                                    <span className="font-semibold">{voice.label}</span>
-                                                                                    <span className="text-xs text-muted-foreground">
-                                                                                        {voice.description}
-                                                                                    </span>
+                                                                    <VoiceSelectorTrigger asChild>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={preferencesSaving}
+                                                                            className={cn(
+                                                                                "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-56",
+                                                                                voiceSelectorOpen && "bg-background/80"
+                                                                            )}
+                                                                        >
+                                                                            <span className="min-w-0">
+                                                                                <span className="block truncate font-semibold text-foreground">
+                                                                                    {selectedReadAloudVoice.label}
                                                                                 </span>
-                                                                            </SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
+                                                                                <span className="block truncate text-xs text-muted-foreground">
+                                                                                    {selectedReadAloudVoice.description}
+                                                                                </span>
+                                                                            </span>
+                                                                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                                                                <Sparkles size={13} />
+                                                                            </span>
+                                                                        </button>
+                                                                    </VoiceSelectorTrigger>
+                                                                    <VoiceSelectorContent
+                                                                        title="Read aloud voice"
+                                                                        className="z-[90] max-w-md overflow-hidden rounded-2xl border border-border/70 bg-background p-0 shadow-2xl"
+                                                                    >
+                                                                        <VoiceSelectorInput placeholder="Search voices..." />
+                                                                        <VoiceSelectorList className="max-h-[22rem]">
+                                                                            <VoiceSelectorEmpty>No voice found.</VoiceSelectorEmpty>
+                                                                            <VoiceSelectorGroup heading="Read aloud voices">
+                                                                                {READ_ALOUD_VOICES.map((voice) => {
+                                                                                    const isSelected = voice.id === readAloudVoice;
+
+                                                                                    return (
+                                                                                        <VoiceSelectorItem
+                                                                                            key={voice.id}
+                                                                                            value={`${voice.label} ${voice.description}`}
+                                                                                            onSelect={() => {
+                                                                                                setVoiceSelectorOpen(false);
+                                                                                                onSelectReadAloudVoice?.(normalizeReadAloudVoice(voice.id));
+                                                                                            }}
+                                                                                            className={cn(
+                                                                                                "items-center gap-3 rounded-xl px-3 py-3",
+                                                                                                isSelected && "bg-primary/10"
+                                                                                            )}
+                                                                                        >
+                                                                                            <VoiceSelectorPreview
+                                                                                                loading={previewLoadingVoice === voice.id}
+                                                                                                playing={previewPlayingVoice === voice.id}
+                                                                                                onPlay={() => handlePreviewReadAloudVoice(voice.id)}
+                                                                                                className={cn(
+                                                                                                    "size-6 shrink-0 rounded-lg border",
+                                                                                                    isSelected
+                                                                                                        ? "border-primary/40 bg-primary/15 text-primary hover:bg-primary/20"
+                                                                                                        : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                                                                                                )}
+                                                                                            />
+                                                                                            <span className="min-w-0 flex-1">
+                                                                                                <span className="flex min-w-0 items-center gap-2">
+                                                                                                    <VoiceSelectorName>{voice.label}</VoiceSelectorName>
+                                                                                                    <VoiceSelectorAttributes className="ml-auto shrink-0 gap-2">
+                                                                                                        <VoiceSelectorDescription className="whitespace-nowrap">
+                                                                                                            {voice.description}
+                                                                                                        </VoiceSelectorDescription>
+                                                                                                    </VoiceSelectorAttributes>
+                                                                                                    <span
+                                                                                                        className={cn(
+                                                                                                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+                                                                                                            isSelected
+                                                                                                                ? "bg-primary/20 text-primary"
+                                                                                                                : "bg-muted/60 text-muted-foreground"
+                                                                                                        )}
+                                                                                                        title={voice.gender === "female" ? "Female voice" : "Male voice"}
+                                                                                                    >
+                                                                                                        <VoiceGenderIcon gender={voice.gender} className="h-3.5 w-3.5" />
+                                                                                                    </span>
+                                                                                                </span>
+                                                                                            </span>
+                                                                                        </VoiceSelectorItem>
+                                                                                    );
+                                                                                })}
+                                                                            </VoiceSelectorGroup>
+                                                                        </VoiceSelectorList>
+                                                                    </VoiceSelectorContent>
+                                                                </VoiceSelector>
                                                             </div>
                                                         </div>
                                                     </SoftPanel>

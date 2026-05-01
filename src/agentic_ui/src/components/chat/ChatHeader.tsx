@@ -5,6 +5,7 @@ import type { Agent } from "@/lib/types";
 import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { HiOutlineUpload } from "react-icons/hi";
 
 type ChatHeaderProps = {
     agents: Agent[];
@@ -27,6 +28,8 @@ type ChatHeaderProps = {
     onUnarchiveConversation?: () => void;
     onReportConversation?: () => void;
     onDeleteConversation?: () => void;
+    onShareConversation?: () => void;
+    canShareConversation?: boolean;
 };
 
 export default function ChatHeader({
@@ -50,6 +53,8 @@ export default function ChatHeader({
     onUnarchiveConversation,
     onReportConversation,
     onDeleteConversation,
+    onShareConversation,
+    canShareConversation = false,
 }: ChatHeaderProps) {
     const displayAgents = React.useMemo(() => {
         if (inactiveAgent && !agents.some((agent) => agent.id === inactiveAgent.id)) {
@@ -171,10 +176,34 @@ export default function ChatHeader({
                         </Tooltip>
                     )}
                     {showConversationActions && (
-                        <DropdownMenu.Root
-                            open={conversationActionsOpen}
-                            onOpenChange={onConversationActionsOpenChange}
-                        >
+                        <>
+                            {onShareConversation && (
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            onClick={onShareConversation}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            disabled={!canShareConversation}
+                                            className="inline-flex items-center gap-2 rounded-xl p-2 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+                                            aria-label="Share full conversation"
+                                        >
+                                            <HiOutlineUpload className="h-5 w-5" aria-hidden="true" />
+                                            <span>Share</span>
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                        side="bottom"
+                                        align="center"
+                                    >
+                                        <p>{canShareConversation ? "Share full conversation" : "Add an AI response before sharing"}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            )}
+                            <DropdownMenu.Root
+                                open={conversationActionsOpen}
+                                onOpenChange={onConversationActionsOpenChange}
+                            >
                             <DropdownMenu.Trigger asChild>
                                 <button
                                     type="button"
@@ -234,6 +263,7 @@ export default function ChatHeader({
                                 </DropdownMenu.Content>
                             </DropdownMenu.Portal>
                         </DropdownMenu.Root>
+                        </>
                     )}
                 </div>
             </div>

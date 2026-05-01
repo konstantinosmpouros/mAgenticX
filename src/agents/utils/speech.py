@@ -15,11 +15,6 @@ logger = get_logger(__name__)
 _OPENAI_CLIENT = OpenAI(api_key=configs.api_keys.openai) if configs.api_keys.openai else OpenAI()
 
 
-def _normalize_text(text: str) -> str:
-    max_chars = max(1, configs.runtime_models.read_aloud_max_chars)
-    return (text or "").strip()[:max_chars]
-
-
 def _normalize_voice(voice: str | None) -> str:
     selected = (voice or configs.runtime_models.read_aloud_voice or "alloy").strip().lower()
     return selected or "alloy"
@@ -44,7 +39,7 @@ def _generate_speech_sync(text: str, voice: str) -> bytes:
 
 
 async def generate_read_aloud_audio(req: ReadAloudRequest) -> bytes:
-    text = _normalize_text(req.text)
+    text = req.text
     voice = _normalize_voice(req.voice)
     if not text:
         raise HTTPException(

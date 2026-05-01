@@ -69,47 +69,7 @@ SelectScrollDownButton.displayName =
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => {
-  const viewportRef = React.useRef<HTMLDivElement>(null)
-  const [canScrollUp, setCanScrollUp] = React.useState(false)
-  const [canScrollDown, setCanScrollDown] = React.useState(false)
-  const rafRef = React.useRef<number | null>(null)
-
-  const updateScrollState = () => {
-    const el = viewportRef.current
-    if (!el) return
-    setCanScrollUp(el.scrollTop > 2)
-    setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 2)
-  }
-
-  // Check on mount (after Radix renders the viewport)
-  React.useLayoutEffect(() => {
-    updateScrollState()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const startScroll = (dir: "up" | "down") => {
-    const pxPerFrame = dir === "up" ? -1.4 : 1.4
-    const tick = () => {
-      const el = viewportRef.current
-      if (el) {
-        el.scrollTop += pxPerFrame
-        updateScrollState()
-      }
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
-  }
-
-  const stopScroll = () => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-    }
-  }
-
-  React.useEffect(() => () => stopScroll(), [])
-
-  return (
+>(({ className, children, position = "popper", ...props }, ref) => (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         ref={ref}
@@ -122,23 +82,7 @@ const SelectContent = React.forwardRef<
         position={position}
         {...props}
       >
-        {/* Slow scroll up button — replaces Radix's 30ms auto-scroll */}
-        <div
-          aria-hidden
-          className={cn(
-            "flex shrink-0 cursor-default items-center justify-center py-1.5 transition-opacity duration-150",
-            canScrollUp ? "opacity-100" : "pointer-events-none opacity-0"
-          )}
-          onPointerDown={() => startScroll("up")}
-          onPointerUp={stopScroll}
-          onPointerLeave={stopScroll}
-        >
-          <ChevronUp className="h-4 w-4 text-muted-foreground" />
-        </div>
-
         <SelectPrimitive.Viewport
-          ref={viewportRef}
-          onScroll={updateScrollState}
           className={cn(
             "flex-1 overflow-y-auto p-1",
             position === "popper" &&
@@ -147,24 +91,9 @@ const SelectContent = React.forwardRef<
         >
           {children}
         </SelectPrimitive.Viewport>
-
-        {/* Slow scroll down button */}
-        <div
-          aria-hidden
-          className={cn(
-            "flex shrink-0 cursor-default items-center justify-center py-1.5 transition-opacity duration-150",
-            canScrollDown ? "opacity-100" : "pointer-events-none opacity-0"
-          )}
-          onPointerDown={() => startScroll("down")}
-          onPointerUp={stopScroll}
-          onPointerLeave={stopScroll}
-        >
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        </div>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
-  )
-})
+  ))
 SelectContent.displayName = SelectPrimitive.Content.displayName
 
 const SelectLabel = React.forwardRef<

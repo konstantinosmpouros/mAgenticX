@@ -1,7 +1,7 @@
 import { Building2 } from 'lucide-react';
-import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, reportConversation, getArchivedConversations, forkConversation, shareConversation } from '@/lib/api';
+import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, getArchivedConversations, forkConversation } from '@/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Agent, ConversationDetail, ConversationReportPayload, ConversationShareMode, ConversationSummary, MessageOut } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationSummary, MessageOut } from '@/lib/types';
 
 // Conversation handlers own chat navigation and sidebar state:
 // selecting threads, clearing the current chat, pagination, and row-level mutations.
@@ -96,7 +96,6 @@ type ConversationsCtx = {
   setThinkingState?: (v: any) => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onSearch?: () => void;
-  onShareCreated?: (shareUrl: string) => void;
   persistUIState: () => void;
 };
 
@@ -112,11 +111,6 @@ const sortConversationSummaries = (items: ConversationSummary[]) =>
   [...items].sort(
     (a, b) => getConversationUpdatedTime(b.updated_at) - getConversationUpdatedTime(a.updated_at)
   );
-
-const mergeConversationSummary = (
-  items: ConversationSummary[],
-  summary: ConversationSummary,
-) => items.map((conversation) => (conversation.id === summary.id ? { ...conversation, ...summary } : conversation));
 
 export function createConversationHandlers(ctx: ConversationsCtx) {
   const {
@@ -268,48 +262,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       });
     } finally {
       setLoadingConversation(false);
-    }
-  };
-
-
-  const handleShareConversation = async (message: MessageOut, mode: ConversationShareMode = 'full', expiresAt?: Date | null) => {
-    if (!userId || !currentConversation?.id) {
-      toast({ title: 'No conversation selected', description: 'Open a conversation before sharing.', duration: 2000 });
-      return;
-    }
-    if (message.sender !== 'ai') {
-      toast({ title: 'Unable to share', description: 'Only AI messages can create a share link.', variant: 'destructive', duration: 2500 });
-      return;
-    }
-
-    try {
-      const share = await shareConversation(userId, currentConversation.id, message.id, mode, expiresAt);
-      const absoluteUrl =
-        typeof window !== 'undefined'
-          ? new URL(share.shareUrl, window.location.origin).toString()
-          : share.shareUrl;
-      ctx.onShareCreated?.(absoluteUrl);
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(absoluteUrl);
-      }
-      toast({
-        title: 'Share link ready',
-        description:
-          mode === 'message'
-            ? 'The selected response link was copied to your clipboard.'
-            : mode === 'branch'
-              ? 'The thread-up-to-response link was copied to your clipboard.'
-              : 'The full conversation link was copied to your clipboard.',
-        duration: 2600,
-      });
-    } catch (error) {
-      console.error('Failed to share conversation:', error);
-      toast({
-        title: 'Failed to share conversation',
-        description: error instanceof Error ? error.message : 'Please try again in a moment.',
-        variant: 'destructive',
-        duration: 3000,
-      });
     }
   };
 
@@ -494,50 +446,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     void handleUnarchiveConversation(currentConversation?.id);
   };
 
-  const submitConversationReport = async (
-    conversationId: string,
-    payload: ConversationReportPayload,
-  ) => {
-    if (!conversationId) {
-      toast({ title: 'No conversation selected', description: 'Select a conversation to report first.', duration: 2000 });
-      return false;
-    }
-    if (!userId) {
-      toast({ title: 'Not signed in', description: 'You need to be signed in to report conversations.', duration: 2000 });
-      return false;
-    }
-    try {
-      const summary = await reportConversation(userId, conversationId, payload);
-      setConversations((prev) => mergeConversationSummary(prev, summary));
-      setArchivedConversations((prev) => mergeConversationSummary(prev, summary));
-      setCurrentConversation((prev) => {
-        if (!prev || prev.id !== summary.id) return prev;
-        return {
-          ...prev,
-          title: summary.title ?? prev.title,
-          updated_at: new Date(summary.updated_at),
-          agent: summary.agent ?? prev.agent,
-          isReported: true,
-          reportedAt: summary.reportedAt ?? prev.reportedAt ?? new Date(),
-        };
-      });
-      toast({
-        title: payload.messageId ? 'Response reported' : 'Conversation reported',
-        description: payload.messageId
-          ? 'Thanks. We saved this response report for review.'
-          : 'Thanks. We saved this conversation report for review.',
-        duration: 2400,
-      });
-      persistUIState();
-      return true;
-    } catch (error) {
-      console.error('Failed to report conversation:', error);
-      toast({ title: 'Failed to submit report', description: 'There was an error submitting the report. Please try again.', variant: 'destructive', duration: 3000 });
-      return false;
-    }
-  };
-
-
   const handleOpenSearch = () => {
     if (ctx.onSearch) {
       ctx.onSearch();
@@ -615,10 +523,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     handleUnarchiveConversation,
     handleArchiveCurrentConversation,
     handleUnarchiveCurrentConversation,
-    submitConversationReport,
     handleOpenSearch,
     handleForkConversation,
-    handleShareConversation,
     loadArchivedConversationPage,
     refreshArchivedConversations,
     handleLoadMoreArchivedConversations,

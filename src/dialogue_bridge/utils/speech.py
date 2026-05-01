@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
+
 import httpx
 from fastapi import HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from core.configs import settings
 from core.error_handling import upstream_error_handler
@@ -21,6 +24,17 @@ _READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=
 def normalize_read_aloud_voice(voice: str | None) -> str:
     selected = (voice or settings.speech.default_read_aloud_voice).strip().lower()
     return selected if selected in settings.speech.supported_read_aloud_voices else settings.speech.default_read_aloud_voice
+
+
+def read_aloud_response(audio: bytes, content_type: str, filename: str) -> StreamingResponse:
+    return StreamingResponse(
+        io.BytesIO(audio),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 async def transcribe_dictation_audio(

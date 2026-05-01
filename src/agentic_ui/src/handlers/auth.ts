@@ -2,7 +2,6 @@ import type { ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
 import { authenticate, getAgents, getConversations, getTools, getUserPreferences, logoutSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
-import { clearUISnapshot } from '@/lib/uiStateStorage';
 
 // Auth handlers bridge API auth with local session persistence and a full chat-shell reset.
 type AuthCtx = {

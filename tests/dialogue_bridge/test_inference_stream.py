@@ -136,3 +136,22 @@ async def test_dictation_route_rejects_invalid_upstream_payload(client, seeded_u
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Speech-to-text service returned an invalid response."
+
+
+async def test_read_aloud_preview_route_streams_sample_audio(client, seeded_user, monkeypatch):
+    async def fake_generate_read_aloud_audio(text, voice):
+        assert text == "Hey! I am your AI speaker."
+        assert voice == "nova"
+        return b"preview-audio", "audio/mpeg"
+
+    monkeypatch.setattr(speech_router, "generate_read_aloud_audio", fake_generate_read_aloud_audio)
+
+    response = await client.post(
+        f"/v1/speech/read-aloud-preview/{seeded_user.id}",
+        json={"voice": "nova", "text": "Hey! I am your AI speaker."},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"preview-audio"
+    assert response.headers["content-type"].startswith("audio/")
+    assert "read-aloud-preview-nova" in response.headers["content-disposition"]

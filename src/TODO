@@ -35,7 +35,3 @@
 ## RAG Service
 
 - Instead of a ChromaDB consider adding pgvector in the database and use it for the retrieval, this will reduce the complexity of the system and the number of components to maintain. Also it will provide an easier way to keep the data consistent and avoid issues with synchronization between the database and the vector store.
-
-## Agentic UI
-
-- Add a share button in the chat header left of the three dot button but this should open the share panel in only full conv share mode. Like there must not be other choice. So like a flag so hide the choices and just share the full conversation. This will make it easier for the users to share their conversations without worrying about the different sharing options and it will also encourage them to share more complete and context-rich conversations.

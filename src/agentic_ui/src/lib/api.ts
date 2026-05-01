@@ -31,6 +31,7 @@ import {
   transformConversationSummary,
   transformSharedConversationDetail,
   transformMessage,
+  type ReadAloudVoice,
 } from "./consts";
 
 
@@ -772,6 +773,28 @@ export async function generateMessageReadAloudAudio(
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to generate read-aloud audio: ${res.status}`);
+  }
+  return await res.blob();
+}
+
+
+// Generate a short read-aloud preview for a selected voice
+export async function generateReadAloudPreviewAudio(
+  userId: string,
+  voice: ReadAloudVoice,
+  text = "Hey! I am your AI speaker.",
+): Promise<Blob> {
+  const res = await fetch(`${SPEECH_BASE_PATH}/read-aloud-preview/${userId}`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Accept": "audio/mpeg,audio/*",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ voice: normalizeReadAloudVoice(voice), text }),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to generate read-aloud preview: ${res.status}`);
   }
   return await res.blob();
 }

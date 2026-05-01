@@ -18,7 +18,12 @@ from utils.conversations import (
 from utils.inference import prepare_inference_history, serialise_message_with_images_for_agent, validate_and_order_message_path
 from utils.titles import generate_conversation_title
 from utils.suggestions import generate_conversation_suggestions
-from utils.speech import generate_read_aloud_audio, normalize_read_aloud_voice, transcribe_dictation_audio
+from utils.speech import (
+    generate_read_aloud_audio,
+    normalize_read_aloud_voice,
+    read_aloud_response,
+    transcribe_dictation_audio,
+)
 from utils.validators import validate_convId, validate_convId_full, validate_userId
 
 __all__ = [
@@ -29,6 +34,7 @@ __all__ = [
     "generate_conversation_suggestions",
     "generate_read_aloud_audio",
     "normalize_read_aloud_voice",
+    "read_aloud_response",
     "transcribe_dictation_audio",
     "get_agent_by_id",
     "get_cached_agents",

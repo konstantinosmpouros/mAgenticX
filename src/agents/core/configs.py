@@ -165,7 +165,6 @@ class RuntimeModelsConfig:
     read_aloud: str
     read_aloud_voice: str
     read_aloud_format: str
-    read_aloud_max_chars: int
 
 
 @dataclass(frozen=True)
@@ -295,7 +294,6 @@ def load_configs() -> AgentsConfigs:
             read_aloud=_env_str("READ_ALOUD_MODEL", "gpt-4o-mini-tts"),
             read_aloud_voice=_env_str("READ_ALOUD_VOICE", "alloy"),
             read_aloud_format=_env_str("READ_ALOUD_FORMAT", "mp3"),
-            read_aloud_max_chars=_env_int("READ_ALOUD_MAX_CHARS", 4096),
         ),
         workflows=WorkflowConfigs(
             hr=HRWorkflowConfig(

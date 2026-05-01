@@ -37,19 +37,19 @@ export const emitUnauthorized = (): void => {
 };
 
 export const READ_ALOUD_VOICES = [
-  { id: "alloy", label: "Alloy", description: "Balanced" },
-  { id: "ash", label: "Ash", description: "Clear" },
-  { id: "ballad", label: "Ballad", description: "Warm" },
-  { id: "coral", label: "Coral", description: "Bright" },
-  { id: "echo", label: "Echo", description: "Deep" },
-  { id: "fable", label: "Fable", description: "Story-like" },
-  { id: "nova", label: "Nova", description: "Energetic" },
-  { id: "onyx", label: "Onyx", description: "Grounded" },
-  { id: "sage", label: "Sage", description: "Calm" },
-  { id: "shimmer", label: "Shimmer", description: "Light" },
-  { id: "verse", label: "Verse", description: "Expressive" },
-  { id: "marin", label: "Marin", description: "Natural" },
-  { id: "cedar", label: "Cedar", description: "Rich" },
+  { id: "alloy", label: "Alloy", description: "Balanced", gender: "male", genderSymbol: "♂" },
+  { id: "ash", label: "Ash", description: "Clear", gender: "male", genderSymbol: "♂" },
+  { id: "ballad", label: "Ballad", description: "Warm", gender: "male", genderSymbol: "♂" },
+  { id: "cedar", label: "Cedar", description: "Rich", gender: "male", genderSymbol: "♂" },
+  { id: "coral", label: "Coral", description: "Bright", gender: "female", genderSymbol: "♀" },
+  { id: "echo", label: "Echo", description: "Deep", gender: "male", genderSymbol: "♂" },
+  { id: "fable", label: "Fable", description: "Story-like", gender: "male", genderSymbol: "♂" },
+  { id: "marin", label: "Marin", description: "Natural", gender: "female", genderSymbol: "♀" },
+  { id: "nova", label: "Nova", description: "Energetic", gender: "female", genderSymbol: "♀" },
+  { id: "onyx", label: "Onyx", description: "Grounded", gender: "male", genderSymbol: "♂" },
+  { id: "sage", label: "Sage", description: "Calm", gender: "female", genderSymbol: "♀" },
+  { id: "shimmer", label: "Shimmer", description: "Light", gender: "female", genderSymbol: "♀" },
+  { id: "verse", label: "Verse", description: "Expressive", gender: "female", genderSymbol: "♀" },
 ] as const;
 
 export type ReadAloudVoice = (typeof READ_ALOUD_VOICES)[number]["id"];

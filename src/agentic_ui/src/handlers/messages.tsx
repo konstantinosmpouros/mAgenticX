@@ -12,6 +12,75 @@ import {
 
 
 // ------------------------------------------------------------------------------
+// Message Edit UI Handlers
+// ------------------------------------------------------------------------------
+type ConfirmEditMessageArgs = {
+  editingMessageId: string | null;
+  editingDraft: string;
+  setEditingMessageId: Dispatch<SetStateAction<string | null>>;
+  setEditingDraft: Dispatch<SetStateAction<string>>;
+  setEditingBusy: Dispatch<SetStateAction<boolean>>;
+};
+
+type MessageEditUiHandlersCtx = {
+  editingMessageId: string | null;
+  editingDraft: string;
+  setEditingMessageId: Dispatch<SetStateAction<string | null>>;
+  setEditingDraft: Dispatch<SetStateAction<string>>;
+  setEditingBusy: Dispatch<SetStateAction<boolean>>;
+  setStickyUserBarId: Dispatch<SetStateAction<string | null>>;
+  handleConfirmEditMessage: (args: ConfirmEditMessageArgs) => Promise<void> | void;
+};
+
+export function createMessageEditUiHandlers(ctx: MessageEditUiHandlersCtx) {
+  const {
+    editingMessageId,
+    editingDraft,
+    setEditingMessageId,
+    setEditingDraft,
+    setEditingBusy,
+    setStickyUserBarId,
+    handleConfirmEditMessage,
+  } = ctx;
+
+  const handleEditDraftChange = (value: string) => {
+    setEditingDraft(value);
+  };
+
+  const handleRequestEditMessage = (message: MessageOut) => {
+    if (message.sender !== "user") return;
+    setEditingMessageId(message.id);
+    setEditingDraft(message.content ?? "");
+    setEditingBusy(false);
+    setStickyUserBarId(message.id);
+  };
+
+  const handleCancelEditMessage = () => {
+    setEditingMessageId(null);
+    setEditingDraft("");
+    setEditingBusy(false);
+    setStickyUserBarId(null);
+  };
+
+  const submitEditFromState = () =>
+    handleConfirmEditMessage({
+      editingMessageId,
+      editingDraft,
+      setEditingMessageId,
+      setEditingDraft,
+      setEditingBusy,
+    });
+
+  return {
+    handleEditDraftChange,
+    handleRequestEditMessage,
+    handleCancelEditMessage,
+    submitEditFromState,
+  };
+}
+
+
+// ------------------------------------------------------------------------------
 // Feedback Handlers
 // ------------------------------------------------------------------------------
 type SetConversationMessages = (updater: (prev: MessageOut[]) => MessageOut[]) => void;

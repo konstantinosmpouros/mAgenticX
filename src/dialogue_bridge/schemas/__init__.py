@@ -172,6 +172,12 @@ class UserPreferences(BaseModel):
     )
 
 
+class ReadAloudPreviewRequest(BaseModel):
+    """Payload for previewing a read-aloud voice from profile settings."""
+    voice: str = Field(default="alloy", min_length=1)
+    text: str = Field(default="Hey! I am your AI speaker.", min_length=1, max_length=120)
+
+
 
 #-------------------------------------------
 # CONVERSATION EXPORT DTO

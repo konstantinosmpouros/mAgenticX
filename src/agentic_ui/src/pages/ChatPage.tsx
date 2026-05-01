@@ -11,7 +11,6 @@ import type {
   MessageOut,
   ConversationDetail,
   ConversationSummary,
-  ConversationReportPayload,
   ConversationShareListItem,
   ConversationShareMode,
   SharedConversationDetail,
@@ -49,8 +48,12 @@ import {
   createFeedbackHandlers,
   createReadAloudHandlers,
   createMessageEditHandlers,
+  createMessageEditUiHandlers,
   createRetryHandlers,
+  createReportHandlers,
+  createShareConversationHandlers,
   createSharedConversationHandlers,
+  defaultShareExpiresAt,
   useBranchingHandlers
 } from "@/handlers";
 import { loadSession } from "@/lib/authStorage";
@@ -72,12 +75,6 @@ import { clearUISnapshot } from "@/lib/uiStateStorage";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
 
 const ROOT_BRANCH_KEY = "__root__";
-const defaultShareExpiresAt = () => {
-  const date = new Date();
-  date.setDate(date.getDate() + 30);
-  return date;
-};
-
 const pickVisibleSuggestions = (suggestions: string[]) => {
   const unique = Array.from(new Set(suggestions.map((item) => item.trim()).filter(Boolean)));
   const count = Math.min(unique.length, 4 + Math.floor(Math.random() * 3));
@@ -132,6 +129,7 @@ export function ChatInterface({
   // Thinking variables (will be changed)
   const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
+  const [showAiTransition, setShowAiTransition] = useState(false);
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(initialUserProfile);
   // Login and authentication variables
@@ -154,6 +152,7 @@ export function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const agentTriggerRef = useRef<HTMLButtonElement>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
 
   // Copy to clipboard state
@@ -171,6 +170,7 @@ export function ChatInterface({
   const [shareDialogUrl, setShareDialogUrl] = useState<string | null>(null);
   const [shareTargetMessage, setShareTargetMessage] = useState<MessageOut | null>(null);
   const [shareMode, setShareMode] = useState<ConversationShareMode>("full");
+  const [shareForceFullConversation, setShareForceFullConversation] = useState(false);
   const [shareExpiresAt, setShareExpiresAt] = useState<Date | null>(() => defaultShareExpiresAt());
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
   const [isShareCopyPulse, setIsShareCopyPulse] = useState(false);
@@ -194,14 +194,14 @@ export function ChatInterface({
   const navigate = useNavigate();
 
   // Create toast wrapper for handlers
-  const toastWrapper = (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
+  const toastWrapper = useCallback((opts: { title: string; description?: string; variant?: string; duration?: number }) => {
     toast({
       title: opts.title,
       description: opts.description,
       variant: (opts.variant === 'error' ? 'destructive' : opts.variant) as 'default' | 'destructive' | undefined,
       duration: opts.duration,
     });
-  };
+  }, [toast]);
 
   const { requestPersist } = useUISnapshotPersistence({
     userId,
@@ -324,11 +324,6 @@ export function ChatInterface({
     setCurrentConversation,
   });
 
-  // Message editing handlers
-  const handleEditDraftChange = (value: string) => {
-    setEditingDraft(value);
-  };
-
   const openProfilePanel = useCallback(
     (tab: string = "profile") => {
       setActiveProfileTab(tab);
@@ -376,79 +371,61 @@ export function ChatInterface({
     });
   }, []);
 
-  const closeReportDialog = useCallback(() => {
-    setIsReportDialogOpen(false);
-    setReportTargetConversationId(null);
-    setReportTargetMessageId(null);
-    setReportTargetMessagePreview(null);
-    setReportConversationTitle(null);
-    setIsSubmittingReport(false);
-  }, []);
+  const {
+    closeReportDialog,
+    handleReportConversationFromSidebar,
+    handleReportCurrentConversation,
+    handleReportAiMessage,
+    handleSubmitConversationReport,
+  } = createReportHandlers({
+    userId,
+    conversations,
+    currentConversation,
+    reportTargetConversationId,
+    setConversations,
+    setArchivedConversations,
+    setCurrentConversation,
+    setIsReportDialogOpen,
+    setReportTargetConversationId,
+    setReportTargetMessageId,
+    setReportTargetMessagePreview,
+    setReportConversationTitle,
+    setIsSubmittingReport,
+    toast: toastWrapper,
+    persistUIState: requestPersist,
+  });
 
-  const closeShareDialog = useCallback(() => {
-    setShareDialogUrl(null);
-    setShareTargetMessage(null);
-    setShareMode("full");
-    setShareExpiresAt(defaultShareExpiresAt());
-    setIsCreatingShareLink(false);
-    setIsShareCopyPulse(false);
-  }, []);
-
-  const copyShareDialogUrl = useCallback(() => {
-    if (!shareDialogUrl) return;
-    void navigator.clipboard?.writeText(shareDialogUrl);
-    setIsShareCopyPulse(true);
-    toastWrapper({ title: "Share link copied", duration: 1800 });
-  }, [shareDialogUrl]);
-
-  const openShareDialog = useCallback((message: MessageOut) => {
-    setShareDialogUrl(null);
-    setShareTargetMessage(message);
-    setShareMode("full");
-    setShareExpiresAt(defaultShareExpiresAt());
-    setIsCreatingShareLink(false);
-    setIsShareCopyPulse(false);
-  }, []);
-
-  const handleShareModeChange = useCallback((mode: ConversationShareMode) => {
-    setShareMode(mode);
-    setShareDialogUrl(null);
-    setIsShareCopyPulse(false);
-  }, []);
-
-  const handleShareExpiresAtChange = useCallback((value: Date | null) => {
-    setShareExpiresAt(value);
-    setShareDialogUrl(null);
-    setIsShareCopyPulse(false);
-  }, []);
-
-  const openReportDialog = useCallback(
-    (conversationId: string, options?: { messageId?: string | null; messagePreview?: string | null; title?: string | null }) => {
-      setReportTargetConversationId(conversationId);
-      setReportTargetMessageId(options?.messageId ?? null);
-      setReportTargetMessagePreview(options?.messagePreview ?? null);
-      setReportConversationTitle(options?.title ?? null);
-      setIsReportDialogOpen(true);
+  const {
+    closeShareDialog,
+    copyShareDialogUrl,
+    openShareDialog,
+    openFullConversationShareDialog,
+    handleShareModeChange,
+    handleShareExpiresAtChange,
+    handleCreateShareLink,
+  } = createShareConversationHandlers({
+    userId,
+    currentConversation,
+    activeMessages,
+    shareDialogUrl,
+    shareTargetMessage,
+    shareMode,
+    shareForceFullConversation,
+    shareExpiresAt,
+    isCreatingShareLink,
+    setShareDialogUrl,
+    setShareTargetMessage,
+    setShareMode,
+    setShareForceFullConversation,
+    setShareExpiresAt,
+    setIsCreatingShareLink,
+    setIsShareCopyPulse,
+    toast: toastWrapper,
+    onShareCreated: (shareUrl) => {
+      setShareDialogUrl(shareUrl);
+      setIsShareCopyPulse(true);
     },
-    [],
-  );
-
-  // Request to edit a message
-  const handleRequestEditMessage = (message: MessageOut) => {
-    if (message.sender !== "user") return;
-    setEditingMessageId(message.id);
-    setEditingDraft(message.content ?? "");
-    setEditingBusy(false);
-    setStickyUserBarId(message.id);
-  };
-
-  // Cancel editing a message
-  const handleCancelEditMessage = () => {
-    setEditingMessageId(null);
-    setEditingDraft("");
-    setEditingBusy(false);
-    setStickyUserBarId(null);
-  };
+  });
 
   const resetActivePlan = useCallback(() => {
     setActivePlanSnapshots([]);
@@ -458,6 +435,41 @@ export function ChatInterface({
   const handlePlanSnapshot = useCallback((snapshot: PlanSnapshot) => {
     setActivePlanSnapshots((prev) => [...prev, snapshot]);
   }, []);
+
+  // Message edit handlers
+  const { handleConfirmEditMessage } = createMessageEditHandlers({
+    userId,
+    currentConversation,
+    setConversationMessages,
+    setCurrentConversation,
+    setConversations,
+    toast: toastWrapper,
+    setThinkingState,
+    setShowAiTransition,
+    streamAbortRef,
+    rootBranchKey: ROOT_BRANCH_KEY,
+    setBranchSelections,
+    setIsSendingMessage,
+    enabledTools: enabledToolsForRequest,
+    persistUIState: requestPersist,
+    onPlanSnapshot: handlePlanSnapshot,
+    resetActivePlan,
+  });
+
+  const {
+    handleEditDraftChange,
+    handleRequestEditMessage,
+    handleCancelEditMessage,
+    submitEditFromState,
+  } = createMessageEditUiHandlers({
+    editingMessageId,
+    editingDraft,
+    setEditingMessageId,
+    setEditingDraft,
+    setEditingBusy,
+    setStickyUserBarId,
+    handleConfirmEditMessage,
+  });
 
   // Effects
   useEnsureDefaultAgentEffect({
@@ -666,7 +678,6 @@ export function ChatInterface({
   ]);
 
   // AI transition dot (between DB persistence and thinking start)
-  const [showAiTransition, setShowAiTransition] = useState(false);
   useEffect(() => {
     if (thinkingState?.isActive) setShowAiTransition(false);
   }, [thinkingState?.isActive]);
@@ -676,29 +687,6 @@ export function ChatInterface({
     showAiTransition,
     thinkingState,
     activeBranchPath,
-  });
-
-  // Abort controller for streaming
-  const streamAbortRef = useRef<AbortController | null>(null);
-
-  // Message edit handlers
-  const { handleConfirmEditMessage } = createMessageEditHandlers({
-    userId,
-    currentConversation,
-    setConversationMessages,
-    setCurrentConversation,
-    setConversations,
-    toast: toastWrapper,
-    setThinkingState,
-    setShowAiTransition,
-    streamAbortRef,
-    rootBranchKey: ROOT_BRANCH_KEY,
-    setBranchSelections,
-    setIsSendingMessage,
-    enabledTools: enabledToolsForRequest,
-    persistUIState: requestPersist,
-    onPlanSnapshot: handlePlanSnapshot,
-    resetActivePlan,
   });
 
   // Retry handlers
@@ -720,16 +708,6 @@ export function ChatInterface({
     onPlanSnapshot: handlePlanSnapshot,
     resetActivePlan,
   });
-
-  // Submit edit from state
-  const submitEditFromState = () =>
-    handleConfirmEditMessage({
-      editingMessageId,
-      editingDraft,
-      setEditingMessageId,
-      setEditingDraft,
-      setEditingBusy,
-    });
 
   // Inference handler
   const { handleSendMessage, handleStopStreaming, handleDictationSubmit, handleDictationStatusChange } = createInferenceHandlers({
@@ -777,10 +755,8 @@ export function ChatInterface({
     handleUnarchiveConversation,
     handleArchiveCurrentConversation,
     handleUnarchiveCurrentConversation,
-    submitConversationReport,
     handleOpenSearch,
     handleForkConversation,
-    handleShareConversation,
     refreshArchivedConversations,
     handleLoadMoreArchivedConversations,
   } = createConversationHandlers({
@@ -816,19 +792,8 @@ export function ChatInterface({
     archivedConvIsLoading,
     setArchivedConvIsLoading,
     archivedPageSize: ARCHIVED_CONV_PAGE_SIZE,
-    onShareCreated: (shareUrl) => {
-      setShareDialogUrl(shareUrl);
-      setIsShareCopyPulse(true);
-    },
     persistUIState: requestPersist,
   });
-
-  const handleCreateShareLink = useCallback(async () => {
-    if (!shareTargetMessage || isCreatingShareLink) return;
-    setIsCreatingShareLink(true);
-    await handleShareConversation(shareTargetMessage, shareMode, shareExpiresAt);
-    setIsCreatingShareLink(false);
-  }, [handleShareConversation, isCreatingShareLink, shareExpiresAt, shareMode, shareTargetMessage]);
 
   useEffect(() => {
     if (!isShareCopyPulse) return;
@@ -876,44 +841,6 @@ export function ChatInterface({
     closeProfilePanel();
     await handleConversationSelect(conversation);
   }, [closeProfilePanel, handleConversationSelect]);
-
-  const handleReportConversationFromSidebar = useCallback((conversationId: string) => {
-    const conversation = conversations.find((item) => item.id === conversationId);
-    if (!conversation || conversation.isReported) {
-      return;
-    }
-    openReportDialog(conversationId, { title: conversation.title ?? null });
-  }, [conversations, openReportDialog]);
-
-  const handleReportCurrentConversation = useCallback(() => {
-    if (!currentConversation?.id || currentConversation.isReported) {
-      return;
-    }
-    openReportDialog(currentConversation.id, { title: currentConversation.title ?? null });
-  }, [currentConversation, openReportDialog]);
-
-  const handleReportAiMessage = useCallback((message: MessageOut) => {
-    if (!currentConversation?.id || currentConversation.isReported) {
-      return;
-    }
-    openReportDialog(currentConversation.id, {
-      messageId: message.id,
-      messagePreview: message.content ?? null,
-      title: currentConversation.title ?? null,
-    });
-  }, [currentConversation, openReportDialog]);
-
-  const handleSubmitConversationReport = useCallback(async (payload: ConversationReportPayload) => {
-    if (!reportTargetConversationId) {
-      return;
-    }
-    setIsSubmittingReport(true);
-    const success = await submitConversationReport(reportTargetConversationId, payload);
-    setIsSubmittingReport(false);
-    if (success) {
-      closeReportDialog();
-    }
-  }, [closeReportDialog, reportTargetConversationId, submitConversationReport]);
 
   // Agent change handler
   const { handleAgentChange } = createAgentHandlers({
@@ -1006,6 +933,12 @@ export function ChatInterface({
   const AgentIcon = currentAgent?.icon || Building2;
   const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
   const showPlanningCard = isSendingMessage && Boolean(activePlan);
+  const canShareCurrentConversation = Boolean(currentConversation?.id && !currentConversation.id.startsWith("shared:"));
+  const canShareFullConversation = canShareCurrentConversation && activeMessages.some((message) => (
+    message.sender === "ai" &&
+    !String(message.id).startsWith("temp-") &&
+    (Boolean(message.content?.trim()) || (message.attachments?.length ?? 0) > 0)
+  ));
   const canTogglePrivateMode = (currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode;
   const canShowStarterSuggestions =
     !currentConversation &&
@@ -1013,10 +946,13 @@ export function ChatInterface({
     resolvedPreferences.suggestionsEnabled !== false &&
     starterSuggestions.length > 0;
 
+  const preferencesLoaded = userPreferences !== null;
+
   useEffect(() => {
     let cancelled = false;
     if (
       !userId ||
+      !preferencesLoaded ||
       currentConversation ||
       currentMessage.trim().length > 0 ||
       resolvedPreferences.suggestionsEnabled === false
@@ -1041,6 +977,7 @@ export function ChatInterface({
     };
   }, [
     userId,
+    preferencesLoaded,
     selectedAgent,
     currentAgent?.id,
     currentConversation,
@@ -1132,6 +1069,8 @@ export function ChatInterface({
                 onUnarchiveConversation={handleUnarchiveCurrentConversation}
                 onReportConversation={handleReportCurrentConversation}
                 onDeleteConversation={handleDeleteCurrentConversation}
+                onShareConversation={openFullConversationShareDialog}
+                canShareConversation={canShareFullConversation}
               />
 
               {/* Chat Messages Container*/}
@@ -1293,6 +1232,7 @@ export function ChatInterface({
                 linkCreated={Boolean(shareDialogUrl)}
                 copied={isShareCopyPulse}
                 shareMode={shareMode}
+                forceFullConversation={shareForceFullConversation}
                 expiresAt={shareExpiresAt}
                 onShareModeChange={handleShareModeChange}
                 onExpiresAtChange={handleShareExpiresAtChange}

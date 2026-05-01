@@ -12,6 +12,7 @@ type ShareConversationDialogProps = {
   linkCreated?: boolean;
   copied?: boolean;
   shareMode: ConversationShareMode;
+  forceFullConversation?: boolean;
   expiresAt: Date | null;
   onShareModeChange: (mode: ConversationShareMode) => void;
   onExpiresAtChange: (value: Date | null) => void;
@@ -27,6 +28,7 @@ export default function ShareConversationDialog({
   linkCreated = false,
   copied = false,
   shareMode,
+  forceFullConversation = false,
   expiresAt,
   onShareModeChange,
   onExpiresAtChange,
@@ -96,23 +98,25 @@ export default function ShareConversationDialog({
           </div>
 
           <div className="px-5 py-5 md:px-7">
-            <div className="mb-4 grid grid-cols-3 gap-1 rounded-2xl border border-white/[0.12] bg-white/[0.045] p-1.5 text-xs font-semibold text-white/62 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:text-sm">
-              {modeOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  disabled={creating}
-                  onClick={() => shareMode !== option.value && onShareModeChange(option.value)}
-                  className={`h-10 rounded-xl px-2 transition disabled:pointer-events-none disabled:opacity-50 ${
-                    shareMode === option.value
-                      ? "bg-white text-black shadow-[0_8px_24px_rgba(0,0,0,0.28)]"
-                      : "hover:bg-white/[0.08] hover:text-white"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            {!forceFullConversation && (
+              <div className="mb-4 grid grid-cols-3 gap-1 rounded-2xl border border-white/[0.12] bg-white/[0.045] p-1.5 text-xs font-semibold text-white/62 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:text-sm">
+                {modeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={creating}
+                    onClick={() => shareMode !== option.value && onShareModeChange(option.value)}
+                    className={`h-10 rounded-xl px-2 transition disabled:pointer-events-none disabled:opacity-50 ${
+                      shareMode === option.value
+                        ? "bg-white text-black shadow-[0_8px_24px_rgba(0,0,0,0.28)]"
+                        : "hover:bg-white/[0.08] hover:text-white"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="mb-4 rounded-2xl border border-white/[0.12] bg-white/[0.045] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">

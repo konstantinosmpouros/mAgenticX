@@ -1,17 +1,15 @@
-import io
-
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
 from observability import get_logger, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth_session import require_csrf_protection
 from core.database import ConversationTable, MessageTable, UserPreferencesTable, UserTable, get_db
-from schemas import DictationResponse
+from schemas import DictationResponse, ReadAloudPreviewRequest
 from utils import (
     generate_read_aloud_audio,
     normalize_read_aloud_voice,
+    read_aloud_response,
     transcribe_dictation_audio,
     validate_convId,
     validate_userId,
@@ -102,11 +100,29 @@ async def readMessageAloud(
         read_aloud_voice=read_aloud_voice,
     )
     extension = "mp3" if content_type == "audio/mpeg" else content_type.split("/")[-1]
-    return StreamingResponse(
-        io.BytesIO(audio),
-        media_type=content_type,
-        headers={
-            "Content-Disposition": f'inline; filename="read-aloud-{message_id}.{extension}"',
-            "Cache-Control": "no-store",
-        },
+    return read_aloud_response(audio, content_type, f"read-aloud-{message_id}.{extension}")
+
+
+@router.post(
+    "/read-aloud-preview/{user_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Generate a short read-aloud voice preview",
+)
+async def previewReadAloudVoice(
+    user_id: str,
+    payload: ReadAloudPreviewRequest,
+    _current_user: UserTable = Depends(validate_userId),
+    _: None = Depends(require_csrf_protection),
+):
+    set_context(user_id=user_id)
+    read_aloud_voice = normalize_read_aloud_voice(payload.voice)
+    audio, content_type = await generate_read_aloud_audio(payload.text, read_aloud_voice)
+    logger.info(
+        "read_aloud_preview_generated",
+        "Read-aloud preview audio generated",
+        audio_bytes=len(audio),
+        content_type=content_type,
+        read_aloud_voice=read_aloud_voice,
     )
+    extension = "mp3" if content_type == "audio/mpeg" else content_type.split("/")[-1]
+    return read_aloud_response(audio, content_type, f"read-aloud-preview-{read_aloud_voice}.{extension}")
