@@ -25,6 +25,7 @@
 - Voice mode: UI entrypoint done (RiVoiceprintLine icon on empty input → "coming soon" toast). Full implementation requires real-time audio streaming in UI and backend.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic, procedural).
 - Check how to make the streaming detached from the concept of api calls so we can like change tab and the streaming should continue for that message of the conversation like how the ai companies are doing it. if l change page or conversation the streaming should continue for that message and not get interrupted. This will require some changes in the frontend to decouple the streaming from the current conversation view and make it more global.
+- Implement the search functionality in the sidebar to allow users to search through their conversations, files, messages, and agents. This will require indexing the relevant data and creating a search interface in the UI.
 
 ## Agents
 
