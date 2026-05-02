@@ -70,6 +70,43 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
         assert "{ csrf: true }" in block, function_name
 
 
+def test_attachment_preview_registry_covers_requested_formats():
+    registry_source = (
+        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "registry.ts"
+    ).read_text(encoding="utf-8")
+    api_source = (UI_ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
+
+    for expected in [
+        '"pdf"',
+        '"docx"',
+        '"xlsx"',
+        '"presentation"',
+        '"markdown"',
+        '"json"',
+        '"csv"',
+        '"code"',
+        '"text"',
+        '"unsupported"',
+        '["doc", "xls"]',
+    ]:
+        assert expected in registry_source
+
+    assert "fetchAttachmentPreviewBlob" in api_source
+    assert "getAttachmentPreviewUrl" in api_source
+    assert "getAttachmentDerivedPreviewUrl" in api_source
+
+
+def test_frontend_upload_utils_infer_missing_browser_mime_types():
+    utils_source = (UI_ROOT / "src" / "lib" / "utils.ts").read_text(encoding="utf-8")
+
+    assert "resolveUploadMimeType" in utils_source
+    assert 'md: "text/markdown"' in utils_source
+    assert 'docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"' in utils_source
+    assert 'xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"' in utils_source
+    assert 'pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"' in utils_source
+    assert 'return "application/octet-stream";' in utils_source
+
+
 def test_frontend_transformers_handle_backend_aliases_for_shared_features():
     consts_source = (UI_ROOT / "src" / "lib" / "consts.ts").read_text(encoding="utf-8")
     types_source = (UI_ROOT / "src" / "lib" / "types.ts").read_text(encoding="utf-8")

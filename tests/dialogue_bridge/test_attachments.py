@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable
+from utils.attachments import is_presentation_previewable
 
 
 async def _seed_attachment(
@@ -135,7 +136,7 @@ async def test_download_blob_stream_rejects_invalid_ranges(
     assert response.headers["content-range"] == "bytes */16"
 
 
-async def test_preview_blob_inline_allows_pdfs_only(
+async def test_preview_blob_inline_allows_non_image_blobs(
     client,
     seeded_user,
     seeded_agent,
@@ -168,8 +169,10 @@ async def test_preview_blob_inline_allows_pdfs_only(
     assert pdf_response.status_code == 200
     assert pdf_response.headers["content-type"].startswith("application/pdf")
     assert pdf_response.headers["cache-control"] == "private, max-age=300"
-    assert txt_response.status_code == 400
-    assert txt_response.json()["detail"] == "Only PDFs are served by this preview endpoint."
+    assert txt_response.status_code == 200
+    assert txt_response.content == b"plain text"
+    assert txt_response.headers["content-type"].startswith("text/plain")
+    assert txt_response.headers["cache-control"] == "private, max-age=300"
 
 
 async def test_download_blob_stream_rejects_images_and_missing_blobs(
@@ -198,3 +201,70 @@ async def test_download_blob_stream_rejects_images_and_missing_blobs(
     assert image_response.json()["detail"] == "Images are not served by this endpoint."
     assert missing_response.status_code == 404
     assert missing_response.json()["detail"] == "Blob not found or not accessible."
+
+
+async def test_preview_blob_derived_converts_powerpoint_to_inline_pdf(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+    monkeypatch,
+):
+    attachment = await _seed_attachment(
+        db_session_factory=db_session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="deck.pptx",
+        mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        data=b"pptx bytes",
+    )
+
+    async def fake_convert(**_: object) -> tuple[bytes, str]:
+        return b"%PDF derived preview", "deck.pdf"
+
+    monkeypatch.setattr("router.attachments.convert_attachment_to_pdf_preview", fake_convert)
+
+    response = await client.get(
+        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF derived preview"
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert response.headers["cache-control"] == "private, max-age=300"
+    assert "inline" in response.headers["content-disposition"]
+    assert "deck.pdf" in response.headers["content-disposition"]
+
+
+async def test_preview_blob_derived_rejects_non_presentations(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+):
+    attachment = await _seed_attachment(
+        db_session_factory=db_session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="notes.txt",
+        mime_type="text/plain",
+        data=b"plain text",
+    )
+
+    response = await client.get(
+        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
+
+
+def test_is_presentation_previewable_matches_supported_powerpoint_formats():
+    assert is_presentation_previewable("deck.pptx", "")
+    assert is_presentation_previewable("legacy.ppt", "")
+    assert is_presentation_previewable("", "application/vnd.ms-powerpoint")
+    assert is_presentation_previewable(
+        "",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    )
+    assert not is_presentation_previewable("notes.txt", "text/plain")

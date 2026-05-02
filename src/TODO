@@ -24,7 +24,6 @@
 - Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
 - Voice mode: UI entrypoint done (RiVoiceprintLine icon on empty input → "coming soon" toast). Full implementation requires real-time audio streaming in UI and backend.
 - Implement a long-term memory service that keep memories from all agents (e.g., episodic, procedural).
-- Document preview and interaction (e.g., for PDFs, word documents, excels etc.) in the chat interface.
 - Check how to make the streaming detached from the concept of api calls so we can like change tab and the streaming should continue for that message of the conversation like how the ai companies are doing it. if l change page or conversation the streaming should continue for that message and not get interrupted. This will require some changes in the frontend to decouple the streaming from the current conversation view and make it more global.
 
 ## Agents

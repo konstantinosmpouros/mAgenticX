@@ -1,10 +1,28 @@
 import * as React from "react";
-import { Download, FileType2, Loader2, X, XCircle } from "lucide-react";
+import { Download, X } from "lucide-react";
 
-import { getAttachmentPreviewUrl } from "@/lib/api";
-import type { AttachmentOut, DownloadAttachmentParams, MessageOut } from "@/lib/types";
+import {
+  fetchAttachmentDerivedPreviewBlob,
+  fetchAttachmentPreviewBlob,
+  getAttachmentPreviewUrl,
+} from "@/lib/api";
+import type { AttachmentOut, MessageOut } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import {
+  classifyAttachmentPreview,
+  CodeTextPreview,
+  CsvPreview,
+  DocxPreview,
+  ExcelPreview,
+  formatBytes,
+  JsonPreview,
+  MarkdownPreview,
+  PdfPreview,
+  PreviewLoading,
+  PreviewMessage,
+  type AttachmentPreviewDescriptor,
+  type AttachmentPreviewMeta,
+} from "@/components/chat/attachment_preview";
 
 type AttachmentLike = AttachmentOut | Record<string, unknown> | File | string;
 
@@ -21,28 +39,30 @@ type AttachmentPreviewPanelProps = {
   onDownload: (attachment: AttachmentLike, message: MessageOut) => void;
 };
 
-type PreviewKind = "pdf" | "unsupported";
-
 type PreviewState =
-  | { status: "idle"; kind: PreviewKind; name: string; mime: string; previewUrl?: string }
-  | { status: "loading"; kind: PreviewKind; name: string; mime: string; previewUrl?: string }
-  | { status: "error"; kind: PreviewKind; name: string; mime: string; error: string; previewUrl?: string }
-  | { status: "ready"; kind: PreviewKind; name: string; mime: string; previewUrl?: string };
-
-function extractAttachmentMeta(attachment: AttachmentLike) {
-  if (typeof attachment === "string") {
-    return {
-      name: attachment,
-      mime: "",
-      blobId: undefined,
+  | { status: "idle"; meta: AttachmentPreviewMeta; descriptor: AttachmentPreviewDescriptor }
+  | { status: "loading"; meta: AttachmentPreviewMeta; descriptor: AttachmentPreviewDescriptor; previewUrl?: string }
+  | { status: "error"; meta: AttachmentPreviewMeta; descriptor: AttachmentPreviewDescriptor; error: string }
+  | {
+      status: "ready";
+      meta: AttachmentPreviewMeta;
+      descriptor: AttachmentPreviewDescriptor;
+      previewUrl?: string;
+      blob?: Blob;
+      text?: string;
     };
+
+function extractAttachmentMeta(attachment: AttachmentLike): AttachmentPreviewMeta {
+  if (typeof attachment === "string") {
+    return { name: attachment, mime: "" };
   }
 
   if (attachment instanceof File) {
     return {
       name: attachment.name,
       mime: attachment.type ?? "",
-      blobId: undefined,
+      size: attachment.size,
+      file: attachment,
     };
   }
 
@@ -53,19 +73,64 @@ function extractAttachmentMeta(attachment: AttachmentLike) {
     mime_type?: string;
     blobId?: string;
     blob_id?: string;
+    size?: number;
+    size_bytes?: number;
+    file?: File;
   };
 
   return {
-    name: candidate.name ?? candidate.file_name ?? "Unknown file",
-    mime: candidate.mime ?? candidate.mime_type ?? "",
+    name: candidate.name ?? candidate.file_name ?? candidate.file?.name ?? "Unknown file",
+    mime: candidate.mime ?? candidate.mime_type ?? candidate.file?.type ?? "",
     blobId: candidate.blobId ?? candidate.blob_id,
+    size: candidate.size ?? candidate.size_bytes ?? candidate.file?.size,
+    file: candidate.file,
   };
 }
 
-function inferPreviewKind(name: string, mime: string): PreviewKind {
-  const loweredName = name.toLowerCase();
-  const loweredMime = mime.toLowerCase();
-  return loweredMime === "application/pdf" || loweredName.endsWith(".pdf") ? "pdf" : "unsupported";
+function shouldReadText(descriptor: AttachmentPreviewDescriptor) {
+  return ["markdown", "json", "csv", "code", "text"].includes(descriptor.kind);
+}
+
+function renderReadyState(state: Extract<PreviewState, { status: "ready" }>) {
+  const { descriptor, meta, previewUrl, blob, text } = state;
+
+  if (!descriptor.previewable) {
+    return null;
+  }
+
+  if (descriptor.kind === "pdf" && previewUrl) {
+    return <PdfPreview name={meta.name} url={previewUrl} />;
+  }
+
+  if (descriptor.kind === "docx" && blob) {
+    return <DocxPreview blob={blob} />;
+  }
+
+  if (descriptor.kind === "xlsx" && blob) {
+    return <ExcelPreview blob={blob} />;
+  }
+
+  if (descriptor.kind === "presentation" && previewUrl) {
+    return <PdfPreview name={meta.name} url={previewUrl} />;
+  }
+
+  if (descriptor.kind === "markdown" && text != null) {
+    return <MarkdownPreview content={text} />;
+  }
+
+  if (descriptor.kind === "json" && text != null) {
+    return <JsonPreview content={text} />;
+  }
+
+  if (descriptor.kind === "csv" && text != null) {
+    return <CsvPreview content={text} />;
+  }
+
+  if ((descriptor.kind === "code" || descriptor.kind === "text") && text != null) {
+    return <CodeTextPreview content={text} language={descriptor.language} />;
+  }
+
+  return null;
 }
 
 export default function AttachmentPreviewPanel({
@@ -80,17 +145,15 @@ export default function AttachmentPreviewPanel({
     () => (preview ? extractAttachmentMeta(preview.attachment) : null),
     [preview]
   );
-  const previewKind = React.useMemo(
-    () => inferPreviewKind(meta?.name ?? "", meta?.mime ?? ""),
-    [meta?.mime, meta?.name]
+  const descriptor = React.useMemo(
+    () => classifyAttachmentPreview(meta ?? { name: "", mime: "" }),
+    [meta]
   );
   const [state, setState] = React.useState<PreviewState>({
     status: "idle",
-    kind: "unsupported",
-    name: "",
-    mime: "",
+    meta: { name: "", mime: "" },
+    descriptor,
   });
-  const [iframeLoaded, setIframeLoaded] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -105,71 +168,139 @@ export default function AttachmentPreviewPanel({
 
   React.useEffect(() => {
     if (!preview || !meta) {
-      setState({
-        status: "idle",
-        kind: "unsupported",
-        name: "",
-        mime: "",
-      });
+      setState({ status: "idle", meta: { name: "", mime: "" }, descriptor });
       return;
     }
 
-    const nextBase = {
-      kind: previewKind,
-      name: meta.name,
-      mime: meta.mime,
-    } as const;
+    let cancelled = false;
+    let objectUrl: string | undefined;
 
-    if (previewKind === "unsupported") {
-      setState({
-        status: "ready",
-        ...nextBase,
-      });
-      return;
-    }
+    const loadPreview = async () => {
+      if (!descriptor.previewable) {
+        setState({ status: "ready", meta, descriptor });
+        return;
+      }
 
-    if (!userId || !conversationId || !meta.blobId) {
-      setState({
-        status: "error",
-        ...nextBase,
-        error: "Preview is unavailable for this attachment.",
-      });
-      return;
-    }
+      if (descriptor.kind === "pdf") {
+        if (meta.file) {
+          objectUrl = URL.createObjectURL(meta.file);
+          setState({ status: "ready", meta, descriptor, previewUrl: objectUrl });
+          return;
+        }
 
-    const previewUrl = getAttachmentPreviewUrl({
-      userId,
-      conversationId,
-      messageId: preview.message.id,
-      blobId: meta.blobId,
-    });
+        if (!userId || !conversationId || !meta.blobId) {
+          setState({
+            status: "error",
+            meta,
+            descriptor,
+            error: "Preview is unavailable for this attachment.",
+          });
+          return;
+        }
 
-    setState({
-      status: "loading",
-      ...nextBase,
-      previewUrl,
-    });
+        setState({
+          status: "ready",
+          meta,
+          descriptor,
+          previewUrl: getAttachmentPreviewUrl({
+            userId,
+            conversationId,
+            messageId: preview.message.id,
+            blobId: meta.blobId,
+          }),
+        });
+        return;
+      }
 
-    const frameId = window.requestAnimationFrame(() => {
-      setState({
-        status: "ready",
-        ...nextBase,
-        previewUrl,
-      });
-    });
+      if (descriptor.kind === "presentation") {
+        if (meta.file) {
+          setState({
+            status: "error",
+            meta,
+            descriptor,
+            error: "Preview is unavailable for local PowerPoint files until they are uploaded.",
+          });
+          return;
+        }
 
-    return () => window.cancelAnimationFrame(frameId);
-  }, [conversationId, meta, preview, previewKind, userId]);
+        if (!userId || !conversationId || !meta.blobId) {
+          setState({
+            status: "error",
+            meta,
+            descriptor,
+            error: "Preview is unavailable for this attachment.",
+          });
+          return;
+        }
 
-  React.useEffect(() => {
-    setIframeLoaded(false);
-  }, [state.previewUrl]);
+        setState({ status: "loading", meta, descriptor });
+        try {
+          const previewBlob = await fetchAttachmentDerivedPreviewBlob({
+            userId,
+            conversationId,
+            messageId: preview.message.id,
+            blobId: meta.blobId,
+          });
+          objectUrl = URL.createObjectURL(previewBlob);
+          if (!cancelled) {
+            setState({ status: "ready", meta, descriptor, previewUrl: objectUrl, blob: previewBlob });
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setState({
+              status: "error",
+              meta,
+              descriptor,
+              error: error instanceof Error ? error.message : "Preview failed.",
+            });
+          }
+        }
+        return;
+      }
 
-  if (!open) {
+      setState({ status: "loading", meta, descriptor });
+
+      try {
+        if (!meta.file && (!userId || !conversationId || !meta.blobId)) {
+          throw new Error("Preview is unavailable for this attachment.");
+        }
+        const blob = meta.file ?? await fetchAttachmentPreviewBlob({
+          userId: userId as string,
+          conversationId: conversationId as string,
+          messageId: preview.message.id,
+          blobId: meta.blobId as string,
+        });
+        const text = shouldReadText(descriptor) ? await blob.text() : undefined;
+        if (!cancelled) {
+          setState({ status: "ready", meta, descriptor, blob, text });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setState({
+            status: "error",
+            meta,
+            descriptor,
+            error: error instanceof Error ? error.message : "Preview failed.",
+          });
+        }
+      }
+    };
+
+    void loadPreview();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [conversationId, descriptor, meta, preview, userId]);
+
+  if (!open || !preview || !meta) {
     return null;
   }
 
-  const canRenderPdf = state.status !== "error" && state.kind === "pdf" && Boolean(state.previewUrl);
+  const handleDownload = () => onDownload(preview.attachment, preview.message);
+  const readyContent = state.status === "ready" ? renderReadyState(state) : null;
+  const subtitle = [descriptor.label, meta.mime, formatBytes(meta.size)].filter(Boolean).join(" · ");
 
   return (
     <div
@@ -182,85 +313,61 @@ export default function AttachmentPreviewPanel({
       >
         <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-5">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-medium text-white sm:text-[1.2rem]">{meta?.name ?? "Preview"}</h2>
+            <h2 className="truncate text-base font-medium text-white sm:text-[1.2rem]">{meta.name}</h2>
+            {subtitle ? <p className="mt-1 truncate text-xs text-white/45">{subtitle}</p> : null}
           </div>
-          <button
-            type="button"
-            aria-label="Close preview"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/8 hover:text-white"
-            onClick={onClose}
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-9 gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 text-white/70 hover:bg-white/[0.08] hover:text-white"
+              onClick={handleDownload}
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </Button>
+            <button
+              type="button"
+              aria-label="Close preview"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/8 hover:text-white"
+              onClick={onClose}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        <div className="min-h-0 flex-1 bg-[#1f1f1f] p-3 sm:p-4">
+        <div className="relative min-h-0 flex-1 bg-[#1f1f1f] p-3 sm:p-4">
+          {state.status === "loading" ? <PreviewLoading /> : null}
+
           {state.status === "error" ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="max-w-lg rounded-[1.5rem] border border-white/10 bg-[#262626] px-6 py-7 text-center shadow-sm">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
-                  <XCircle className="h-6 w-6" />
-                </div>
-                <h3 className="text-lg font-semibold text-white">Preview unavailable</h3>
-                <p className="mt-2 text-sm text-white/60">{state.error}</p>
-                {preview ? (
-                  <Button
-                    type="button"
-                    className="mt-5 gap-2"
-                    onClick={() => onDownload(preview.attachment, preview.message)}
-                  >
-                    <Download className="h-4 w-4" />
-                    Download original file
-                  </Button>
-                ) : null}
-              </div>
-            </div>
+            <PreviewMessage
+              title="Preview unavailable"
+              description={state.error}
+              tone="error"
+              onDownload={handleDownload}
+            />
           ) : null}
 
-          {canRenderPdf ? (
-            <div className="relative h-full overflow-hidden rounded-[1.4rem] border border-white/10 bg-[#2d2d2d]">
-              {!iframeLoaded ? (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#222]/70 backdrop-blur-sm">
-                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                    <span className="text-sm text-white">Opening PDF preview...</span>
-                  </div>
-                </div>
-              ) : null}
-
-              <iframe
-                key={state.previewUrl}
-                title={meta?.name ?? "PDF preview"}
-                src={state.previewUrl}
-                className={cn("h-full w-full border-0 bg-[#2d2d2d]", !iframeLoaded && "opacity-0")}
-                onLoad={() => setIframeLoaded(true)}
-              />
-            </div>
+          {state.status === "ready" && !descriptor.previewable ? (
+            <PreviewMessage
+              title="Preview unavailable"
+              description={descriptor.reason ?? "Download this file to open it in its native application."}
+              onDownload={handleDownload}
+            />
           ) : null}
 
-          {state.status === "ready" && state.kind === "unsupported" ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="max-w-lg rounded-[1.5rem] border border-white/10 bg-[#262626] px-6 py-7 text-center shadow-sm">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.06] text-white/75">
-                  <FileType2 className="h-6 w-6" />
-                </div>
-                <h3 className="text-lg font-semibold text-white">Preview is available only for PDFs</h3>
-                <p className="mt-2 text-sm text-white/60">
-                  This file stays unchanged. Download it to open it in its native application.
-                </p>
-                {preview ? (
-                  <Button
-                    type="button"
-                    className="mt-5 gap-2"
-                    onClick={() => onDownload(preview.attachment, preview.message)}
-                  >
-                    <Download className="h-4 w-4" />
-                    Download original file
-                  </Button>
-                ) : null}
-              </div>
-            </div>
+          {state.status === "ready" && descriptor.previewable && !readyContent ? (
+            <PreviewMessage
+              title="Preview unavailable"
+              description="This file could not be rendered in the browser."
+              tone="error"
+              onDownload={handleDownload}
+            />
           ) : null}
+
+          {readyContent}
         </div>
       </div>
     </div>

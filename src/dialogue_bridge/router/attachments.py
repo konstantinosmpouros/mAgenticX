@@ -1,6 +1,6 @@
 import base64
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Response, status
 from fastapi_pagination import Page, Params, create_page
 from observability import get_logger, set_context
 from sqlalchemy import desc, func, select
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable, get_db, UserTable
 from schemas import ImageOut
 from utils import validate_userId
-from utils.attachments import stream_blob_response
+from utils.attachments import convert_attachment_to_pdf_preview, encode_disposition, stream_blob_response
 
 
 router = APIRouter()
@@ -46,7 +46,7 @@ async def downloadBlobStream(
 
 @router.get(
     "/preview/{user_id}/{conversation_id}/{message_id}/{blob_id}",
-    summary="Stream a PDF inline for in-app preview with HTTP byte-range support",
+    summary="Stream a non-image blob inline for in-app preview with HTTP byte-range support",
 )
 async def previewBlobInline(
     user_id: str,
@@ -65,7 +65,36 @@ async def previewBlobInline(
         range_header=range_header,
         db=db,
         disposition="inline",
-        require_pdf=True,
+    )
+
+
+@router.get(
+    "/preview-derived/{user_id}/{conversation_id}/{message_id}/{blob_id}",
+    summary="Convert a PowerPoint attachment to inline PDF for secure in-app preview",
+)
+async def previewBlobDerivedInline(
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    blob_id: str,
+    _current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    pdf_bytes, preview_name = await convert_attachment_to_pdf_preview(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        blob_id=blob_id,
+        db=db,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "Content-Disposition": encode_disposition(preview_name, "inline"),
+            "Content-Length": str(len(pdf_bytes)),
+        },
     )
 
 

@@ -64,7 +64,7 @@ import { getConversationDetail, getConversationSuggestions } from "@/lib/api";
 import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
-import { PlanCard } from "@/components/chat/message_parts/agentic_parts";
+import { PlanCard } from "@/components/chat/message_parts/PlanningContainer";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ReportConversationDialog from "@/components/chat/ReportPanel";

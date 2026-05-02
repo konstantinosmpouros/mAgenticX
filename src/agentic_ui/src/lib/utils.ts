@@ -44,17 +44,80 @@ export function withSessionRequest(init: RequestInit = {}, opts: { csrf?: boolea
   });
 }
 
-export function normalizeAuthResponse(data: any): AuthResponse {
-  if (data && typeof data === "object" && data.user) {
-    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = data.user as any;
-    data.user = {
+type AuthResponseUserRecord = {
+  prefersAgenticChat?: unknown;
+  prefers_agentic_chat?: unknown;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  lastLoginAt?: string | Date;
+  [key: string]: unknown;
+};
+
+type AuthResponseRecord = {
+  user?: AuthResponseUserRecord;
+  [key: string]: unknown;
+};
+
+function isAuthResponseRecord(value: unknown): value is AuthResponseRecord {
+  return typeof value === "object" && value !== null;
+}
+
+export function normalizeAuthResponse(data: unknown): AuthResponse {
+  const normalized = isAuthResponseRecord(data) ? ({ ...data } as AuthResponseRecord) : data;
+  if (isAuthResponseRecord(normalized) && normalized.user) {
+    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = normalized.user;
+    normalized.user = {
       ...rest,
       createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
       updatedAt: rest.updatedAt ? new Date(rest.updatedAt) : new Date(),
       lastLoginAt: rest.lastLoginAt ? new Date(rest.lastLoginAt) : undefined,
     };
   }
-  return data as AuthResponse;
+  return normalized as AuthResponse;
+}
+
+const FALLBACK_MIME_BY_EXTENSION: Record<string, string> = {
+  txt: "text/plain",
+  text: "text/plain",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  json: "application/json",
+  csv: "text/csv",
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xlsm: "application/vnd.ms-excel.sheet.macroEnabled.12",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xml: "application/xml",
+  yml: "application/yaml",
+  yaml: "application/yaml",
+  html: "text/html",
+  htm: "text/html",
+  js: "text/javascript",
+  mjs: "text/javascript",
+  cjs: "text/javascript",
+  ts: "text/plain",
+  tsx: "text/plain",
+  jsx: "text/plain",
+  py: "text/x-python",
+  css: "text/css",
+  sql: "application/sql",
+  sh: "application/x-sh",
+};
+
+export function resolveUploadMimeType(file: File): string {
+  const browserMime = file.type?.trim();
+  if (browserMime) return browserMime;
+
+  const extension = file.name.split(".").pop()?.trim().toLowerCase();
+  if (extension && FALLBACK_MIME_BY_EXTENSION[extension]) {
+    return FALLBACK_MIME_BY_EXTENSION[extension];
+  }
+
+  return "application/octet-stream";
 }
 
 // Convert File to base64 AttachmentIn format
@@ -67,7 +130,7 @@ export async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
       const dataB64 = base64String.split(',')[1];
       resolve({
         name: file.name,
-        mime: file.type,
+        mime: resolveUploadMimeType(file),
         dataB64,
         size: file.size
       });
