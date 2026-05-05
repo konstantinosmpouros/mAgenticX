@@ -264,15 +264,15 @@ export async function updateUserPreferences(userId: string, prefs: any) {
 }
 
 
-// Fetch personalized starter suggestions for a new conversation
-export async function getConversationSuggestions(userId: string, agentId?: string | null): Promise<string[]> {
+// Fetch personalized starter suggestions for a new chat.
+export async function getSuggestions(userId: string, agentId?: string | null): Promise<string[]> {
   const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : "";
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/suggestions${query}`, withSessionRequest({
+  const res = await fetch(`${CATALOG_BASE_PATH}/${userId}/suggestions${query}`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch conversation suggestions: ${res.status}`);
+    throw new Error(`Failed to fetch suggestions: ${res.status}`);
   }
   const data = await res.json();
   return Array.isArray(data?.suggestions)
@@ -556,6 +556,60 @@ export async function shareConversation(
     expiresAt: data.expiresAt ?? data.expires_at ? new Date(data.expiresAt ?? data.expires_at) : null,
     createdAt: new Date(data.createdAt ?? data.created_at),
   };
+}
+
+const getFilenameFromDisposition = (disposition: string | null, fallback: string) => {
+  if (!disposition) return fallback;
+  const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1].replace(/"/g, ""));
+    } catch {
+      return utfMatch[1].replace(/"/g, "");
+    }
+  }
+  const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1] || fallback;
+};
+
+
+// Download a transient PDF export for a conversation share scope.
+export async function downloadConversationPdfExport(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  mode: ConversationShareMode = "full",
+): Promise<void> {
+  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share/export-pdf`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/pdf",
+    },
+    body: JSON.stringify({ messageId, mode }),
+  }, { csrf: true }));
+
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to export PDF: ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = getFilenameFromDisposition(res.headers.get("Content-Disposition"), "conversation.pdf");
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 

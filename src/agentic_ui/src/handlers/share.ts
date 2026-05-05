@@ -1,4 +1,4 @@
-import { getConversationDetail, getSharedConversationLinks, revokeSharedConversationLink, shareConversation } from "@/lib/api";
+import { downloadConversationPdfExport, getConversationDetail, getSharedConversationLinks, revokeSharedConversationLink, shareConversation } from "@/lib/api";
 import type { ConversationDetail, ConversationShareListItem, ConversationShareMode, MessageOut } from "@/lib/types";
 import type { Dispatch, SetStateAction } from "react";
 
@@ -20,12 +20,14 @@ type ShareConversationHandlersCtx = {
   shareForceFullConversation: boolean;
   shareExpiresAt: Date | null;
   isCreatingShareLink: boolean;
+  isExportingSharePdf: boolean;
   setShareDialogUrl: Dispatch<SetStateAction<string | null>>;
   setShareTargetMessage: Dispatch<SetStateAction<MessageOut | null>>;
   setShareMode: Dispatch<SetStateAction<ConversationShareMode>>;
   setShareForceFullConversation: Dispatch<SetStateAction<boolean>>;
   setShareExpiresAt: Dispatch<SetStateAction<Date | null>>;
   setIsCreatingShareLink: Dispatch<SetStateAction<boolean>>;
+  setIsExportingSharePdf: Dispatch<SetStateAction<boolean>>;
   setIsShareCopyPulse: Dispatch<SetStateAction<boolean>>;
   toast: ToastHandler;
   onShareCreated?: (shareUrl: string) => void;
@@ -42,12 +44,14 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     shareForceFullConversation,
     shareExpiresAt,
     isCreatingShareLink,
+    isExportingSharePdf,
     setShareDialogUrl,
     setShareTargetMessage,
     setShareMode,
     setShareForceFullConversation,
     setShareExpiresAt,
     setIsCreatingShareLink,
+    setIsExportingSharePdf,
     setIsShareCopyPulse,
     toast,
     onShareCreated,
@@ -101,6 +105,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     setShareForceFullConversation(false);
     setShareExpiresAt(defaultShareExpiresAt());
     setIsCreatingShareLink(false);
+    setIsExportingSharePdf(false);
     setIsShareCopyPulse(false);
   };
 
@@ -118,6 +123,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     setShareForceFullConversation(false);
     setShareExpiresAt(defaultShareExpiresAt());
     setIsCreatingShareLink(false);
+    setIsExportingSharePdf(false);
     setIsShareCopyPulse(false);
   };
 
@@ -156,6 +162,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     setShareForceFullConversation(true);
     setShareExpiresAt(defaultShareExpiresAt());
     setIsCreatingShareLink(false);
+    setIsExportingSharePdf(false);
     setIsShareCopyPulse(false);
   };
 
@@ -183,6 +190,41 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     setIsCreatingShareLink(false);
   };
 
+  const handleDownloadSharePdf = async () => {
+    if (!userId || !currentConversation?.id || !shareTargetMessage || isExportingSharePdf) {
+      return;
+    }
+    setIsExportingSharePdf(true);
+    try {
+      await downloadConversationPdfExport(
+        userId,
+        currentConversation.id,
+        shareTargetMessage.id,
+        shareForceFullConversation ? "full" : shareMode,
+      );
+      toast({
+        title: "PDF export ready",
+        description:
+          shareForceFullConversation || shareMode === "full"
+            ? "The full conversation PDF has been downloaded."
+            : shareMode === "branch"
+              ? "The conversation up to this response has been downloaded."
+              : "The selected response PDF has been downloaded.",
+        duration: 2400,
+      });
+    } catch (error) {
+      console.error("Failed to export conversation PDF:", error);
+      toast({
+        title: "PDF export failed",
+        description: error instanceof Error ? error.message : "Please try again in a moment.",
+        variant: "destructive",
+        duration: 3000,
+      });
+    } finally {
+      setIsExportingSharePdf(false);
+    }
+  };
+
   return {
     handleShareConversation,
     closeShareDialog,
@@ -192,6 +234,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     handleShareModeChange,
     handleShareExpiresAtChange,
     handleCreateShareLink,
+    handleDownloadSharePdf,
   };
 }
 

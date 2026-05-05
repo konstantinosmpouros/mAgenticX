@@ -1,4 +1,5 @@
 .env
+.codex
 .vscode/*
 .virtual_documents/*
 .idea/*

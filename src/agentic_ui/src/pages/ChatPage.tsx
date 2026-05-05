@@ -61,7 +61,7 @@ import {
   buildDefaultConversationSearchResults,
 } from "@/handlers";
 import { loadSession } from "@/lib/authStorage";
-import { getConversationDetail, getConversationSuggestions } from "@/lib/api";
+import { getConversationDetail, getSuggestions } from "@/lib/api";
 
 // Chat Interface component
 import ChatHeader from "@/components/chat/ChatHeader";
@@ -196,6 +196,7 @@ export function ChatInterface({
   const [shareForceFullConversation, setShareForceFullConversation] = useState(false);
   const [shareExpiresAt, setShareExpiresAt] = useState<Date | null>(() => defaultShareExpiresAt());
   const [isCreatingShareLink, setIsCreatingShareLink] = useState(false);
+  const [isExportingSharePdf, setIsExportingSharePdf] = useState(false);
   const [isShareCopyPulse, setIsShareCopyPulse] = useState(false);
   const [reportTargetConversationId, setReportTargetConversationId] = useState<string | null>(null);
   const [reportTargetMessageId, setReportTargetMessageId] = useState<string | null>(null);
@@ -447,6 +448,7 @@ export function ChatInterface({
     handleShareModeChange,
     handleShareExpiresAtChange,
     handleCreateShareLink,
+    handleDownloadSharePdf,
   } = createShareConversationHandlers({
     userId,
     currentConversation,
@@ -457,12 +459,14 @@ export function ChatInterface({
     shareForceFullConversation,
     shareExpiresAt,
     isCreatingShareLink,
+    isExportingSharePdf,
     setShareDialogUrl,
     setShareTargetMessage,
     setShareMode,
     setShareForceFullConversation,
     setShareExpiresAt,
     setIsCreatingShareLink,
+    setIsExportingSharePdf,
     setIsShareCopyPulse,
     toast: toastWrapper,
     onShareCreated: (shareUrl) => {
@@ -1023,7 +1027,7 @@ export function ChatInterface({
       };
     }
 
-    getConversationSuggestions(userId, selectedAgent || currentAgent?.id || null)
+    getSuggestions(userId, selectedAgent || currentAgent?.id || null)
       .then((suggestions) => {
         if (cancelled) return;
         setStarterSuggestions(pickVisibleSuggestions(suggestions));
@@ -1305,6 +1309,7 @@ export function ChatInterface({
                 title={currentConversation?.title}
                 message={shareTargetMessage}
                 creating={isCreatingShareLink}
+                exportingPdf={isExportingSharePdf}
                 linkCreated={Boolean(shareDialogUrl)}
                 copied={isShareCopyPulse}
                 shareMode={shareMode}
@@ -1314,6 +1319,7 @@ export function ChatInterface({
                 onExpiresAtChange={handleShareExpiresAtChange}
                 onClose={closeShareDialog}
                 onCreateLink={shareDialogUrl ? copyShareDialogUrl : handleCreateShareLink}
+                onDownloadPdf={handleDownloadSharePdf}
               />
 
               <AttachmentPreviewPanel

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { CalendarDays, Check, Copy, Link2, Loader2, LockKeyhole, X } from "lucide-react";
+import { CalendarDays, Check, Copy, Download, Link2, Loader2, LockKeyhole, X } from "lucide-react";
 import type { ConversationShareMode, MessageOut } from "@/lib/types";
 import { MessageContent } from "./message_parts/MessageContent";
 
@@ -9,6 +9,7 @@ type ShareConversationDialogProps = {
   title?: string | null;
   message: MessageOut | null;
   creating?: boolean;
+  exportingPdf?: boolean;
   linkCreated?: boolean;
   copied?: boolean;
   shareMode: ConversationShareMode;
@@ -18,6 +19,7 @@ type ShareConversationDialogProps = {
   onExpiresAtChange: (value: Date | null) => void;
   onClose: () => void;
   onCreateLink: () => void;
+  onDownloadPdf: () => void;
 };
 
 export default function ShareConversationDialog({
@@ -25,6 +27,7 @@ export default function ShareConversationDialog({
   title,
   message,
   creating = false,
+  exportingPdf = false,
   linkCreated = false,
   copied = false,
   shareMode,
@@ -34,6 +37,7 @@ export default function ShareConversationDialog({
   onExpiresAtChange,
   onClose,
   onCreateLink,
+  onDownloadPdf,
 }: ShareConversationDialogProps) {
   if (!open || !message) return null;
 
@@ -174,27 +178,43 @@ export default function ShareConversationDialog({
           </div>
 
           <div className="flex items-center justify-between gap-4 px-5 pb-6 md:px-7 md:pb-7">
-            <Button
-              type="button"
-              onClick={onCreateLink}
-              disabled={creating}
-              className={`h-11 min-w-[8.75rem] rounded-full px-5 text-sm font-semibold shadow-lg transition-all duration-300 active:scale-95 ${
-                copied
-                  ? "scale-[1.04] bg-emerald-500 text-white shadow-emerald-500/25 hover:bg-emerald-500"
-                  : "bg-white text-black shadow-white/10 hover:scale-[1.03] hover:bg-white/90"
-              }`}
-            >
-              {creating ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : copied ? (
-                <Check className="h-4 w-4" />
-              ) : linkCreated ? (
-                <Copy className="h-4 w-4" />
-              ) : (
-                <Link2 className="h-4 w-4" />
-              )}
-              {buttonText}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={onCreateLink}
+                disabled={creating || exportingPdf}
+                className={`h-11 min-w-[8.75rem] rounded-full px-5 text-sm font-semibold shadow-lg transition-all duration-300 active:scale-95 ${
+                  copied
+                    ? "scale-[1.04] bg-emerald-500 text-white shadow-emerald-500/25 hover:bg-emerald-500"
+                    : "bg-white text-black shadow-white/10 hover:scale-[1.03] hover:bg-white/90"
+                }`}
+              >
+                {creating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : copied ? (
+                  <Check className="h-4 w-4" />
+                ) : linkCreated ? (
+                  <Copy className="h-4 w-4" />
+                ) : (
+                  <Link2 className="h-4 w-4" />
+                )}
+                {buttonText}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onDownloadPdf}
+                disabled={creating || exportingPdf}
+                className="h-11 rounded-full border-white/[0.14] bg-white/[0.06] px-5 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.03] hover:bg-white/[0.1] hover:text-white active:scale-95"
+              >
+                {exportingPdf ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {exportingPdf ? "Exporting..." : "Download PDF"}
+              </Button>
+            </div>
 
             <img
               src="/logo2_white_magentaX.png"

@@ -11,6 +11,9 @@ RUN apt-get update \
         build-essential \
         libreoffice-impress \
         fonts-dejavu-core \
+        fonts-noto-core \
+        fonts-noto-cjk \
+        fonts-noto-extra \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

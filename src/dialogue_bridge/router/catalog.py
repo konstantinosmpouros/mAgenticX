@@ -1,14 +1,19 @@
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
-from observability import get_logger
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from observability import get_logger, set_context
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from core.database import get_db, UserTable
+from core.database import ConversationTable, get_db, UserTable
 from schemas import AgentPublic, ToolManifest
 from utils import (
     fetch_tools_from_agents_service,
+    generate_conversation_suggestions,
+    get_agent_by_id,
     get_cached_agents,
     sync_agents_with_service,
+    validate_userId,
 )
 from core.auth_session import require_current_user
 
@@ -38,3 +43,52 @@ async def get_available_tools(_: UserTable = Depends(require_current_user)):
     payload = await fetch_tools_from_agents_service()
     logger.info("tools_fetched", "Fetched tools from agents service", count=len(payload))
     return [ToolManifest.model_validate(item) for item in payload]
+
+
+@router.get(
+    "/{user_id}/suggestions",
+    response_model=dict[str, list[str]],
+    status_code=status.HTTP_200_OK,
+    summary="Generate personalized starter suggestions for a new chat",
+)
+async def getSuggestions(
+    user_id: str,
+    agentId: str | None = Query(None),
+    current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate starter suggestions from recent non-private user context."""
+    set_context(user_id=user_id)
+    agent = await get_agent_by_id(agentId) if agentId else None
+
+    result = await db.execute(
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(
+            ConversationTable.user_id == current_user.id,
+            ConversationTable.is_private == False,
+        )
+        .order_by(ConversationTable.updated_at.desc())
+        .limit(8)
+    )
+    conversations = result.scalars().all()
+    recent_conversations = [
+        {
+            "title": conversation.title,
+            "last_message": conversation.last_message_preview,
+            "agent_name": conversation.agent.name if conversation.agent else conversation.agent_name,
+        }
+        for conversation in conversations
+    ]
+    suggestions = await generate_conversation_suggestions(
+        agent_name=agent.name if agent else None,
+        agent_description=agent.description if agent else None,
+        recent_conversations=recent_conversations,
+    )
+    logger.info(
+        "suggestions_fetched",
+        "Suggestions fetched",
+        candidate_count=len(suggestions),
+        recent_conversation_count=len(recent_conversations),
+    )
+    return {"suggestions": suggestions}

@@ -404,6 +404,11 @@ class ConversationShareIn(BaseModel):
         self.expiresAt = expires_at
         return self
 
+class ConversationPdfExportIn(BaseModel):
+    """Export a conversation scope as a transient PDF attachment."""
+    messageId: str
+    mode: Literal["full", "branch", "message"] = "full"
+
 class ContinueSharedConversationIn(BaseModel):
     """Create the caller's own conversation from a public share plus their first reply."""
     firstMessage: MessageIn
@@ -582,6 +587,7 @@ __all__ = [
     "ConversationIn",
     "ConversationForkIn",
     "ConversationShareIn",
+    "ConversationPdfExportIn",
     "ContinueSharedConversationIn",
     "ConversationShareResponse",
     "ConversationShareListItem",

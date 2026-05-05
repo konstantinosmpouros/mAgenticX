@@ -1,6 +1,6 @@
 from secrets import token_urlsafe
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from observability import get_logger, logged_db_operation, set_context
@@ -14,6 +14,7 @@ from schemas import (
     ConversationDetail,
     ConversationForkIn,
     ConversationIn,
+    ConversationPdfExportIn,
     ConversationReportIn,
     ConversationShareIn,
     ConversationShareListItem,
@@ -23,12 +24,12 @@ from schemas import (
     ConversationTitleUpdate,
 )
 from core.auth_session import require_csrf_protection
+from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_export_messages
 from utils import (
     _preview,
     build_message_lineage,
     build_share_snapshot,
     clone_branch_to_conversation,
-    generate_conversation_suggestions,
     generate_conversation_title,
     get_agent_by_id,
     init_conv,
@@ -243,6 +244,46 @@ async def shareConversation(
     )
 
 
+@router.post(
+    "/{user_id}/{conversation_id}/share/export-pdf",
+    summary="Create a transient PDF export for a conversation share scope",
+)
+async def exportConversationPdf(
+    user_id: str,
+    conversation_id: str,
+    payload: ConversationPdfExportIn,
+    current_user: UserTable = Depends(validate_userId),
+    current_conv: ConversationTable = Depends(validate_convId_full),
+    _: None = Depends(require_csrf_protection),
+):
+    """Return a generated PDF for the requested share scope without persisting it."""
+    set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
+    messages = select_export_messages(current_conv, payload.messageId, payload.mode)
+    if not messages:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found in conversation.")
+
+    pdf_bytes = render_conversation_pdf(current_conv, messages, payload.mode)
+    filename = conversation_pdf_filename(current_conv, payload.mode)
+    logger.info(
+        "conversation_pdf_exported",
+        "Conversation PDF export generated",
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+        export_mode=payload.mode,
+        message_count=len(messages),
+        pdf_size=len(pdf_bytes),
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.delete(
     "/{user_id}/{conversation_id}/share/{share_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -370,55 +411,6 @@ async def getConversationShares(
         size=size,
     )
     return [build_share_list_item(share, now) for share in shares]
-
-
-@router.get(
-    "/{user_id}/suggestions",
-    response_model=dict[str, list[str]],
-    status_code=status.HTTP_200_OK,
-    summary="Generate personalized starter suggestions for a new chat",
-)
-async def getConversationSuggestions(
-    user_id: str,
-    agentId: str | None = Query(None),
-    current_user: UserTable = Depends(validate_userId),
-    db: AsyncSession = Depends(get_db),
-):
-    """Generate starter suggestions from recent non-private conversation context."""
-    set_context(user_id=user_id)
-    agent = await get_agent_by_id(agentId) if agentId else None
-
-    result = await db.execute(
-        select(ConversationTable)
-        .options(selectinload(ConversationTable.agent))
-        .where(
-            ConversationTable.user_id == current_user.id,
-            ConversationTable.is_private == False,
-        )
-        .order_by(ConversationTable.updated_at.desc())
-        .limit(8)
-    )
-    conversations = result.scalars().all()
-    recent_conversations = [
-        {
-            "title": conversation.title,
-            "last_message": conversation.last_message_preview,
-            "agent_name": conversation.agent.name if conversation.agent else conversation.agent_name,
-        }
-        for conversation in conversations
-    ]
-    suggestions = await generate_conversation_suggestions(
-        agent_name=agent.name if agent else None,
-        agent_description=agent.description if agent else None,
-        recent_conversations=recent_conversations,
-    )
-    logger.info(
-        "conversation_suggestions_fetched",
-        "Conversation suggestions fetched",
-        candidate_count=len(suggestions),
-        recent_conversation_count=len(recent_conversations),
-    )
-    return {"suggestions": suggestions}
 
 
 @router.get(

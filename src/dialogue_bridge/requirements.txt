@@ -8,6 +8,7 @@ aiosqlite==0.21.0
 pydantic==2.11.7
 python-jose[cryptography]==3.5.0
 python-multipart==0.0.26
+fonttools==4.60.1
 slowapi==0.1.9
 tzdata==2025.2
 pyasn1>=0.6.3 # not directly required, pinned by Snyk to avoid a vulnerability
