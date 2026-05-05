@@ -81,6 +81,18 @@ class AgentPublic(BaseModel):
     isActive: bool = Field(..., validation_alias="is_active")
 
 
+class WorkspaceSearchResult(BaseModel):
+    """Flat search result consumed by the sidebar search panel."""
+    kind: Literal["conversation", "message", "file", "agent"]
+    id: str
+    conversationId: Optional[str] = None
+    agentId: Optional[str] = None
+    title: str
+    subtitle: Optional[str] = None
+    snippet: Optional[str] = None
+    updatedAt: Optional[datetime] = None
+
+
 
 # -------------------------------------------
 # MCP TOOLS DTO

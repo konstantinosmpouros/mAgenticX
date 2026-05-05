@@ -56,6 +56,9 @@ import {
   defaultShareExpiresAt,
   useBranchingHandlers,
   createVoiceModeHandlers,
+  createSearchResultHandlers,
+  useWorkspaceSearch,
+  buildDefaultConversationSearchResults,
 } from "@/handlers";
 import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail, getConversationSuggestions } from "@/lib/api";
@@ -71,6 +74,7 @@ import ReportConversationDialog from "@/components/chat/ReportPanel";
 import ShareConversationDialog from "@/components/chat/SharePanel";
 import ChatBody from "@/components/chat/ChatBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
+import SearchPanel from "@/components/chat/SearchPanel";
 import { Loader } from "@/components/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/lib/uiStateStorage";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
@@ -80,6 +84,24 @@ const pickVisibleSuggestions = (suggestions: string[]) => {
   const unique = Array.from(new Set(suggestions.map((item) => item.trim()).filter(Boolean)));
   const count = Math.min(unique.length, 4 + Math.floor(Math.random() * 3));
   return [...unique].sort(() => Math.random() - 0.5).slice(0, count);
+};
+
+const previewText = (value?: string | null, maxLength: number = 72) => {
+  const cleaned = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3)}...` : cleaned;
+};
+
+const resolveConversationTitle = (conversation: ConversationDetail | null) => {
+  if (!conversation) return "";
+  const title = previewText(conversation.title, 90);
+  if (title) return title;
+  const messagePreview = previewText(
+    conversation.messages?.find((message) => previewText(message.content))?.content,
+    90,
+  );
+  if (messagePreview) return messagePreview;
+  return previewText(conversation.agent?.name, 90) || "Untitled chat";
 };
 
 type ChatInterfaceProps = {
@@ -216,6 +238,25 @@ export function ChatInterface({
     conversations,
     userPreferences,
   });
+
+  const {
+    isSearchOpen,
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    searchLoading,
+    searchError,
+    openSearchPanel,
+    closeSearchPanel,
+  } = useWorkspaceSearch({
+    userId,
+    onOpen: () => setSidebarDismissFloatingUiSignal((value) => value + 1),
+  });
+
+  useEffect(() => {
+    const title = resolveConversationTitle(currentConversation);
+    document.title = title ? `${title} | mAgenticX` : "mAgenticX";
+  }, [currentConversation]);
 
   // Active profile tab handler
   const handleSetActiveProfileTab = useCallback(
@@ -594,6 +635,11 @@ export function ChatInterface({
   }, []);
 
   const dismissActiveUi = useCallback(() => {
+    if (isSearchOpen) {
+      closeSearchPanel();
+      return true;
+    }
+
     if (selectedFilePreview) {
       handleCloseFilePreview();
       return true;
@@ -662,6 +708,7 @@ export function ChatInterface({
     return false;
   }, [
     cancelDictation,
+    closeSearchPanel,
     closeReportDialog,
     closeShareDialog,
     closeProfilePanel,
@@ -673,6 +720,7 @@ export function ChatInterface({
     isAgentPickerOpen,
     isHeaderActionMenuOpen,
     isReportDialogOpen,
+    isSearchOpen,
     isSidebarFloatingUiOpen,
     selectedFilePreview,
     selectedImage,
@@ -795,6 +843,7 @@ export function ChatInterface({
     archivedConvIsLoading,
     setArchivedConvIsLoading,
     archivedPageSize: ARCHIVED_CONV_PAGE_SIZE,
+    onSearch: openSearchPanel,
     persistUIState: requestPersist,
   });
 
@@ -853,6 +902,14 @@ export function ChatInterface({
     clearChatAndStopThinking,
     persistUIState: requestPersist,
   });
+
+  const { handleSearchResultSelect } = createSearchResultHandlers({
+    agents,
+    onAgentSelect: handleAgentChange,
+    onConversationSelect: (conversation) => void handleConversationSelect(conversation),
+    onCloseSearch: closeSearchPanel,
+  });
+  const defaultSearchResults = buildDefaultConversationSearchResults(conversations);
 
   // Handle thinking toggle
   const toggleThinking = (messageId: string) => {
@@ -1048,6 +1105,17 @@ export function ChatInterface({
           isInitialLoading={conversationsLoading}
           hasMore={convHasMore}
           sidebarInteractionHook={useSidebarInteractionEffect}
+        />
+        <SearchPanel
+          open={isSearchOpen}
+          query={searchQuery}
+          results={searchResults}
+          defaultResults={defaultSearchResults}
+          loading={searchLoading}
+          error={searchError}
+          onQueryChange={setSearchQuery}
+          onClose={closeSearchPanel}
+          onSelectResult={handleSearchResultSelect}
         />
         <SidebarInset className="bg-transparent">
           <TooltipProvider>

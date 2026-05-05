@@ -31,6 +31,7 @@ from router import (
     attachments_router,
     shared_conv_router,
     speech_router,
+    search_router,
 )
 
 configure_logging()
@@ -127,4 +128,9 @@ app.include_router(
     shared_conv_router,
     prefix=f"/v1/shared-conversations",
     tags=["Shared Conversations"],
+)
+app.include_router(
+    search_router,
+    prefix=f"/v1/search",
+    tags=["Search"],
 )

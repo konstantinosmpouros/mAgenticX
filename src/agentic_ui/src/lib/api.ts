@@ -20,6 +20,7 @@ import type {
   DownloadAttachmentParams,
   ToolMetadata,
   ToolPreference,
+  WorkspaceSearchResult,
 } from "./types";
 import type { AGUIEvent } from "@/lib/agui";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
@@ -45,6 +46,7 @@ const ATTACHMENTS_BASE_PATH = `${API_BASE_PATH}/attachments`;
 const INFERENCE_BASE_PATH = `${API_BASE_PATH}/inference`;
 const SPEECH_BASE_PATH = `${API_BASE_PATH}/speech`;
 const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;
+const SEARCH_BASE_PATH = `${API_BASE_PATH}/search`;
 
 
 
@@ -186,6 +188,28 @@ export async function getTools(): Promise<ToolMetadata[]> {
     description: typeof tool?.description === "string" ? tool.description : "",
     parameterCount: Number.isFinite(tool?.parameter_count) ? Math.max(0, Number(tool.parameter_count)) : 0,
   }));
+}
+
+
+// Search the signed-in user's active workspace data.
+export async function searchWorkspace(
+  userId: string,
+  query: string,
+  limit: number = 20,
+): Promise<WorkspaceSearchResult[]> {
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+  });
+  const res = await fetch(`${SEARCH_BASE_PATH}/${userId}?${params.toString()}`, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to search workspace: ${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data as WorkspaceSearchResult[] : [];
 }
 
 

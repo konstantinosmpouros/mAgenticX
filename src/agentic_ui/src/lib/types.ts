@@ -186,6 +186,19 @@ export type SharedConversationDetail = {
     createdAt: Date;
 };
 
+export type WorkspaceSearchResultKind = "conversation" | "message" | "file" | "agent";
+
+export type WorkspaceSearchResult = {
+    kind: WorkspaceSearchResultKind;
+    id: string;
+    conversationId?: string | null;
+    agentId?: string | null;
+    title: string;
+    subtitle?: string | null;
+    snippet?: string | null;
+    updatedAt?: string | Date | null;
+};
+
 // Backend message type from API response
 export type MessageOut = {
     id: string;
