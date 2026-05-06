@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 
 from openai import OpenAI
 
-from core.configs import configs
+from core.settings import settings
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from observability import (
@@ -56,7 +56,7 @@ from core.error_handling import provider_error_handler
 
 configure_logging()
 logger = get_logger(__name__)
-_OPENAI_CLIENT = OpenAI(api_key=configs.api_keys.openai) if configs.api_keys.openai else OpenAI()
+_OPENAI_CLIENT = OpenAI(api_key=settings.api_keys.openai.get_secret_value()) if settings.api_keys.openai else OpenAI()
 
 
 def _make_loop_exception_handler(old_handler=None):
@@ -114,7 +114,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
     """
     Transcribe an uploaded audio file using OpenAI's Speech-to-Text capability.
     """
-    stt_model = configs.runtime_models.dictation
+    stt_model = settings.runtime_models.dictation
     logger.info("dictation_request_received", "Dictation request received")
     
     if not file.filename:
@@ -260,7 +260,7 @@ async def generate_conversation_suggestions(req: SuggestionsRequest) -> Conversa
 async def generate_read_aloud_speech(req: ReadAloudRequest):
     """Generate spoken audio for an AI response."""
     audio = await generate_read_aloud_audio(req)
-    audio_format = configs.runtime_models.read_aloud_format
+    audio_format = settings.runtime_models.read_aloud_format
     media_type = "audio/mpeg" if audio_format == "mp3" else f"audio/{audio_format}"
     return StreamingResponse(
         io.BytesIO(audio),

@@ -5,12 +5,12 @@ import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from core.configs import configs
+from core.settings import settings
 from observability.redaction import sanitize_for_logging
 
 
 def _resolve_timezone():
-    configured = configs.logging.timezone
+    configured = settings.logging.timezone
     if configured:
         try:
             return ZoneInfo(configured)

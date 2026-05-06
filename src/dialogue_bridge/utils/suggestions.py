@@ -6,7 +6,7 @@ from core.proxy import internal_service_headers
 from core.tls import get_httpx_verify
 from observability import get_context, get_logger
 from schemas import SuggestionsOut
-from core.configs import settings
+from core.settings import settings
 from core.error_handling import upstream_error_handler
 
 logger = get_logger(__name__)

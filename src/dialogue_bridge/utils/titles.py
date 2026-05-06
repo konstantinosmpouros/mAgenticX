@@ -6,7 +6,7 @@ import httpx
 from schemas import MessageIn, TitleOut
 from observability import get_context, get_logger
 from core.tls import get_httpx_verify
-from core.configs import settings
+from core.settings import settings
 from core.proxy import internal_service_headers
 from core.error_handling import upstream_error_handler
 

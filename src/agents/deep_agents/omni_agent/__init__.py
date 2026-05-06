@@ -4,7 +4,7 @@ from deepagents import create_deep_agent, SubAgent
 from deepagents.backends import FilesystemBackend
 
 from agent_runtime import DeepAgent
-from core.configs import configs
+from core.settings import settings
 from deep_agents.omni_agent.system_prompts import RESEARCHER_SYSTEM_PROMPT, WRITER_SYSTEM_PROMPT
 
 class OmniAgent(DeepAgent):
@@ -37,7 +37,7 @@ class OmniAgent(DeepAgent):
     # Sub-agents
     # ------------------------------------------------------------------
     def register_subagents(self) -> list[SubAgent]:
-        omni = configs.deep_agents.omni
+        omni = settings.deep_agents.omni
         return [
             SubAgent(
                 model=omni.researcher_model,
@@ -65,7 +65,7 @@ class OmniAgent(DeepAgent):
     # Main agent
     # ------------------------------------------------------------------
     def register_agent(self) -> Any:
-        omni = configs.deep_agents.omni
+        omni = settings.deep_agents.omni
         return create_deep_agent(
             model=omni.main_model,
             name=self.name,

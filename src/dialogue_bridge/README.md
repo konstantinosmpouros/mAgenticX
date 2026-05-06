@@ -557,7 +557,7 @@ CORS settings are configurable through env vars, with defaults aimed at local Ag
 
 ## 16. Configuration
 
-Configuration is loaded from `core/configs.py`.
+Configuration is loaded from `core/settings.py` (pydantic-settings; secrets use `SecretStr`).
 
 ### 16.1 Required variables
 
@@ -602,7 +602,7 @@ Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current
 
 ### 16.5 CORS variables
 
-Defaults allow local origins around ports `8080` and `8050`. See `core/configs.py` for the authoritative list and override behavior.
+Defaults allow local origins around ports `8080` and `8050`. See `core/settings.py` for the authoritative list and override behavior.
 
 ## 17. Directory Map
 
@@ -610,7 +610,7 @@ Defaults allow local origins around ports `8080` and `8050`. See `core/configs.p
 src/dialogue_bridge/
 ├── main.py                        FastAPI app bootstrap and router wiring
 ├── core/
-│   ├── configs.py                 Environment-driven settings
+│   ├── settings.py                Environment-driven settings (pydantic-settings)
 │   ├── database.py                ORM models and session factory
 │   ├── auth_client.py             Vault userpass client
 │   └── auth_session.py            Session, cookie, CSRF, and auth dependencies

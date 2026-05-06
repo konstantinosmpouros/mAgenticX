@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
-from core.configs import settings
+from core.settings import settings
 from core.tls import get_httpx_verify
 from core.database import AgentTable
 from core.proxy import internal_service_headers

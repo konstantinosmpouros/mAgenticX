@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
+
+from core.settings import settings
 
 
 def _timestamp() -> str:
@@ -59,6 +60,6 @@ class ConsoleFormatter(logging.Formatter):
 
 
 def build_formatter() -> logging.Formatter:
-    if os.getenv("LOG_FORMAT", "console").strip().lower() == "json":
+    if settings.app.log_format.strip().lower() == "json":
         return JsonFormatter()
     return ConsoleFormatter()

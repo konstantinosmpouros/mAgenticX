@@ -6,7 +6,7 @@ import httpx
 from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from core.configs import settings
+from core.settings import settings
 from core.error_handling import upstream_error_handler
 from core.proxy import internal_service_headers
 from core.tls import get_httpx_verify

@@ -1,7 +1,7 @@
 from fastapi import Request
 from slowapi import Limiter
 
-from core.configs import settings
+from core.settings import settings
 from core.proxy import resolve_client_ip
 
 

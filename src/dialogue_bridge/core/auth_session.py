@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from core.configs import settings
+from core.settings import settings
 from core.database import SessionTable, UserTable, get_db
 from core.proxy import resolve_client_ip
 
@@ -29,7 +29,7 @@ ACCESS_TTL_SECONDS = settings.session.access_ttl_seconds
 REFRESH_TTL_SECONDS = settings.session.refresh_ttl_seconds
 SESSION_MAX_PER_USER = settings.session.max_per_user
 
-_TOKEN_SECRET = settings.session.token_secret
+_TOKEN_SECRET = settings.session.token_secret  # SecretStr; unwrap only inside hashing helpers below
 
 
 class SessionAuthenticationError(Exception):
@@ -51,14 +51,16 @@ def utcnow() -> datetime:
 
 
 def _hash_token(token: str) -> str:
-    digest = hmac.new(_TOKEN_SECRET.encode("utf-8"), token.encode("utf-8"), hashlib.sha256)
+    key = _TOKEN_SECRET.get_secret_value().encode("utf-8")
+    digest = hmac.new(key, token.encode("utf-8"), hashlib.sha256)
     return digest.hexdigest()
 
 
 def _hash_optional_metadata(value: str | None) -> str | None:
     if not value:
         return None
-    return hmac.new(_TOKEN_SECRET.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+    key = _TOKEN_SECRET.get_secret_value().encode("utf-8")
+    return hmac.new(key, value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _extract_client_ip(request: Request | None) -> str | None:

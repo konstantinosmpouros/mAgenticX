@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import logging
 
-from core.configs import configs
+from core.settings import settings
 from observability.context import get_context
 from observability.redaction import sanitize_context_value
 
 
-_SERVICE_NAME = configs.app.service_name
-_APP_ENV = configs.app.env
-_APP_VERSION = configs.app.version
+_SERVICE_NAME = settings.app.service_name
+_APP_ENV = settings.app.env
+_APP_VERSION = settings.app.version
 
 
 class RequestContextFilter(logging.Filter):

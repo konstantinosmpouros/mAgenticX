@@ -5,7 +5,7 @@ import mcp
 from mcp import types
 from mcp.client.sse import sse_client
 
-from core.configs import configs
+from core.settings import settings
 from observability import get_logger
 from schemas import ToolManifest
 
@@ -150,7 +150,7 @@ def get_tool_cache_key(tool: types.Tool) -> str:
 
 async def _fetch_tools_from_gateway() -> List[types.Tool]:
     """Call the MCP gateway and return the raw tools list (for manifest building)."""
-    endpoint = configs.mcp.mcp_gateway_url
+    endpoint = settings.mcp.mcp_gateway_url
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 
@@ -179,12 +179,12 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
     Return MCP tools for discovery. Cache manifests for UI; return tools for
     callers that need raw definitions (not callable LangChain tools).
     """
-    if configs.mcp.manifest_cache_enabled and _MCP_TOOL_MANIFEST_CACHE and not force_refresh:
+    if settings.mcp.manifest_cache_enabled and _MCP_TOOL_MANIFEST_CACHE and not force_refresh:
         logger.info("mcp_tools_cache_hit", "Using cached MCP tool manifests", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
         return []
     
     tools = await _fetch_tools_from_gateway()
-    if configs.mcp.manifest_cache_enabled:
+    if settings.mcp.manifest_cache_enabled:
         _prime_manifest_cache(tools)
         logger.info("mcp_tools_cache_refreshed", "MCP tool manifest cache refreshed", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
     
@@ -194,7 +194,7 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
 @asynccontextmanager
 async def mcp_session_context():
     """Yield an initialized MCP session, keeping the connection open for the caller."""
-    endpoint = configs.mcp.mcp_gateway_url
+    endpoint = settings.mcp.mcp_gateway_url
     if not endpoint:
         raise MCPToolsClientError("MCP tools endpoint is not configured.")
 

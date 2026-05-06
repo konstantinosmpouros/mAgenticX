@@ -7,7 +7,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
-from core.configs import configs
+from core.settings import settings
 from core.tls import get_httpx_verify
 from observability import get_context
 from core.proxy import internal_service_headers
@@ -21,9 +21,9 @@ from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 
-ENDPOINT = configs.rag.retrieve_url(configs.workflows.orthodox.collection_name)
-REQUEST_TIMEOUT_SECONDS = configs.rag.request_timeout_seconds
-RETRIEVE_TOP_K = configs.workflows.orthodox.retrieve_top_k
+ENDPOINT = settings.rag.retrieve_url(settings.workflows.orthodox.collection_name)
+REQUEST_TIMEOUT_SECONDS = settings.rag.request_timeout_seconds
+RETRIEVE_TOP_K = settings.workflows.orthodox.retrieve_top_k
 
 
 class OrthodoxV1_State(BaseModel):

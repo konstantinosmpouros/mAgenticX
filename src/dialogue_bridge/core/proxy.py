@@ -2,13 +2,12 @@ import ipaddress
 import secrets
 
 from fastapi import Request
-from core.configs import settings
+from core.settings import settings
 
 ProxyNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
 TRUSTED_PROXY_HEADER_NAME = settings.proxy.header_name
-TRUSTED_PROXY_SECRET = settings.proxy.secret
 TRUSTED_PROXY_NETWORKS = settings.proxy.trusted_networks
 
 
@@ -49,9 +48,10 @@ def _remote_ip_is_trusted(request: Request) -> bool:
 
 
 def is_trusted_proxy_request(request: Request) -> bool:
-    if TRUSTED_PROXY_SECRET:
+    expected = settings.proxy.secret.get_secret_value()
+    if expected:
         presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
-        return bool(presented) and secrets.compare_digest(presented, TRUSTED_PROXY_SECRET)
+        return bool(presented) and secrets.compare_digest(presented, expected)
     return _remote_ip_is_trusted(request)
 
 
@@ -59,8 +59,9 @@ def internal_service_headers(request_id: str | None = None) -> dict[str, str]:
     headers: dict[str, str] = {}
     if request_id:
         headers["X-Request-ID"] = request_id
-    if TRUSTED_PROXY_SECRET:
-        headers[TRUSTED_PROXY_HEADER_NAME] = TRUSTED_PROXY_SECRET
+    secret = settings.proxy.secret.get_secret_value()
+    if secret:
+        headers[TRUSTED_PROXY_HEADER_NAME] = secret
     return headers
 
 

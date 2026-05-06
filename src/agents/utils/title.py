@@ -3,7 +3,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
-from core.configs import configs
+from core.settings import settings
 from core.error_handling import provider_error_handler
 from observability import get_logger
 from utils import make_merge_with_template
@@ -27,7 +27,7 @@ TITLE_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
 
 _title_prompt_merge = RunnableLambda(make_merge_with_template(TITLE_PROMPT_TEMPLATE))
 _title_chain = _title_prompt_merge | init_chat_model(
-    configs.runtime_models.title,
+    settings.runtime_models.title,
     temperature=1,
     max_tokens=128,
 ).with_structured_output(ConversationTitle)
@@ -67,7 +67,7 @@ async def generate_title(req: TitleRequest) -> ConversationTitle:
             public_detail="Title generation is temporarily unavailable. Please try again.",
             provider="model",
             operation="generate_title",
-            model=configs.runtime_models.title,
+            model=settings.runtime_models.title,
         )
 
     titles = _normalize_title_candidates(result.titles)

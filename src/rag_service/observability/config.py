@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 
 from observability.filters import RequestContextFilter
 from observability.formatters import build_formatter
+from core.settings import settings
 
 
 def _log_level() -> int:
-    return getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+    return getattr(logging, settings.app.log_level.upper(), logging.INFO)
 
 
 def configure_logging() -> None:

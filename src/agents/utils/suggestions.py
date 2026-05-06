@@ -3,7 +3,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
-from core.configs import configs
+from core.settings import settings
 from core.error_handling import provider_error_handler
 from observability import get_logger
 from schemas import ConversationSuggestions, SuggestionsRequest
@@ -27,7 +27,7 @@ SUGGESTIONS_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
 
 _suggestions_prompt_merge = RunnableLambda(make_merge_with_template(SUGGESTIONS_PROMPT_TEMPLATE))
 _suggestions_chain = _suggestions_prompt_merge | init_chat_model(
-    configs.runtime_models.suggestions,
+    settings.runtime_models.suggestions,
     temperature=0.8,
     max_tokens=320,
 ).with_structured_output(ConversationSuggestions)
@@ -68,7 +68,7 @@ async def generate_suggestions(req: SuggestionsRequest) -> ConversationSuggestio
             public_detail="Suggestion generation is temporarily unavailable. Please try again.",
             provider="model",
             operation="generate_suggestions",
-            model=configs.runtime_models.suggestions,
+            model=settings.runtime_models.suggestions,
         )
 
     suggestions = _normalize_suggestions(result.suggestions)

@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
-from core.configs import settings
+from core.settings import settings
 from core.database import Base, engine
 from observability import (
     RequestLoggingMiddleware,

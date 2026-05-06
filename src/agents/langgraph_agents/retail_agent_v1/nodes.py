@@ -6,7 +6,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
-from core.configs import configs
+from core.settings import settings
 from core.tls import get_httpx_verify
 from observability import get_context
 from core.proxy import internal_service_headers
@@ -20,12 +20,12 @@ from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 
-TABLE = configs.workflows.retail.table_name
-SCHEMA_ENDPOINT = configs.rag.excel_schema_url(TABLE)
-QUERY_ENDPOINT = configs.rag.excel_query_url(TABLE)
-SCHEMA_TIMEOUT_SECONDS = configs.workflows.retail.schema_timeout_seconds
-QUERY_CONNECT_TIMEOUT_SECONDS = configs.workflows.retail.query_connect_timeout_seconds
-QUERY_TIMEOUT_SECONDS = configs.workflows.retail.query_timeout_seconds
+TABLE = settings.workflows.retail.table_name
+SCHEMA_ENDPOINT = settings.rag.excel_schema_url(TABLE)
+QUERY_ENDPOINT = settings.rag.excel_query_url(TABLE)
+SCHEMA_TIMEOUT_SECONDS = settings.workflows.retail.schema_timeout_seconds
+QUERY_CONNECT_TIMEOUT_SECONDS = settings.workflows.retail.query_connect_timeout_seconds
+QUERY_TIMEOUT_SECONDS = settings.workflows.retail.query_timeout_seconds
 
 class RetailV1_State(BaseModel):
     """Data model representing the state of a retail agent process in version 1."""

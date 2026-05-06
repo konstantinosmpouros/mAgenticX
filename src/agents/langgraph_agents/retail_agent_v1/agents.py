@@ -5,7 +5,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent as react_agent
 
-from core.configs import configs
+from core.settings import settings
 from utils import make_merge_with_template
 from langgraph_agents.retail_agent_v1.structured_outputs import (
     AnalysisOutput,
@@ -40,7 +40,7 @@ def build_retail_agents(*, tools: Sequence[Any] | None = None) -> RetailAgents:
         Optional sequence of LangChain tool instances selected at runtime. If
         omitted or empty, the full default retail toolset is used.
     """
-    workflow = configs.workflows.retail
+    workflow = settings.workflows.retail
     # Build runnable chains
     merge_runnable = RunnableLambda(make_merge_with_template(analyzer_template))
     analysis_agent = merge_runnable | init_chat_model(workflow.analysis_model).with_structured_output(AnalysisOutput)

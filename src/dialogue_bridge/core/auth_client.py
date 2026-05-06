@@ -3,7 +3,7 @@ from typing import Optional
 
 import httpx
 
-from core.configs import VaultSettings, settings as service_settings
+from core.settings import VaultSettings, settings as service_settings
 from core.tls import get_httpx_verify
 
 

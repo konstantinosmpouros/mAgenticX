@@ -434,7 +434,7 @@ Otherwise, the direct socket IP is used.
 
 ## 11. Configuration
 
-Configuration is loaded from environment variables in `core/configs.py`.
+Configuration is loaded from environment variables in `core/settings.py` (pydantic-settings; secrets use `SecretStr`).
 
 ### 11.1 Core service settings
 
@@ -475,7 +475,7 @@ The service also supports many workflow tuning variables. The naming is consiste
 - `RETAIL_*` for source table naming, SQL timeouts, and model choices
 - `OMNI_*` for deep-agent model choices
 
-For the authoritative list, read `src/agents/core/configs.py`.
+For the authoritative list, read `src/agents/core/settings.py`.
 
 ## 12. Directory Map
 
@@ -484,7 +484,7 @@ src/agents/
 ├── main.py                         FastAPI entrypoint and routes
 ├── schemas.py                      Request/response schemas and agent definitions
 ├── core/
-│   └── configs.py                  Environment-driven configuration
+│   └── settings.py                 Environment-driven settings (pydantic-settings)
 ├── agent_runtime/
 │   ├── base_agent.py               Shared runtime contract
 │   ├── langgraph_agent.py          LangGraph runtime wrapper
@@ -615,4 +615,4 @@ These are implementation facts worth knowing before extending the service:
 - `agent_runtime/langgraph_agent.py`: graph build and LangGraph streaming
 - `agent_runtime/deep_agent.py`: deep-agent build lifecycle and streaming
 - `protocols/agui/normalizer.py`: the key translation layer from runtime chunks to UI events
-- `core/configs.py`: authoritative environment variable map
+- `core/settings.py`: authoritative environment variable map

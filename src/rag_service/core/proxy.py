@@ -1,40 +1,24 @@
 import ipaddress
-import os
 import secrets
-from pathlib import Path
 
 from fastapi import HTTPException, Request, status
 
+from core.settings import settings
 
-def _read_secret(name: str, default: str = "") -> str:
-    file_path = os.getenv(f"{name}_FILE")
-    if file_path:
-        try:
-            return Path(file_path).read_text().strip()
-        except OSError:
-            pass
-    return (os.getenv(name) or default).strip()
+TRUSTED_PROXY_HEADER_NAME = settings.proxy.trusted_proxy_header_name
+TRUSTED_PROXY_NETWORKS = settings.proxy.trusted_proxy_networks
 
 
-TRUSTED_PROXY_HEADER_NAME = os.getenv("TRUSTED_PROXY_HEADER_NAME", "X-Internal-Proxy-Secret")
-TRUSTED_PROXY_SECRET = _read_secret("TRUSTED_PROXY_SECRET")
-_TRUSTED_PROXY_CIDRS = os.getenv("TRUSTED_PROXY_CIDRS", "")
-
-
-def _parse_trusted_networks() -> tuple:
-    networks = []
-    for item in _TRUSTED_PROXY_CIDRS.split(","):
-        candidate = item.strip()
-        if not candidate:
-            continue
-        try:
-            networks.append(ipaddress.ip_network(candidate, strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
-
-
-TRUSTED_PROXY_NETWORKS = _parse_trusted_networks()
+def _normalize_ip(value: str | None) -> str | None:
+    if not value:
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return None
 
 
 def _remote_ip_is_trusted(request: Request) -> bool:
@@ -48,9 +32,10 @@ def _remote_ip_is_trusted(request: Request) -> bool:
 
 
 def is_trusted_proxy_request(request: Request) -> bool:
-    if TRUSTED_PROXY_SECRET:
+    expected = settings.proxy.trusted_proxy_secret.get_secret_value()
+    if expected:
         presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
-        return bool(presented) and secrets.compare_digest(presented, TRUSTED_PROXY_SECRET)
+        return bool(presented) and secrets.compare_digest(presented, expected)
     return _remote_ip_is_trusted(request)
 
 

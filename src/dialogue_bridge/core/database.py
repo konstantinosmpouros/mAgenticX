@@ -23,7 +23,7 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
 )
-from core.configs import settings
+from core.settings import settings
 
 
 def gen_uuid() -> str: return str(uuid4())
@@ -46,7 +46,7 @@ def _build_pg_ssl_context() -> _ssl.SSLContext | None:
 _pg_ssl_context = _build_pg_ssl_context()
 
 engine = create_async_engine(
-    settings.database.url,
+    settings.database.url.get_secret_value(),
     echo=settings.database.echo,
     pool_pre_ping=settings.database.pool_pre_ping,
     pool_recycle=settings.database.pool_recycle,

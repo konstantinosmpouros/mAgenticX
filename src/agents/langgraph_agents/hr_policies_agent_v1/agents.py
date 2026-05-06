@@ -5,7 +5,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent as react_agent
 
-from core.configs import configs
+from core.settings import settings
 from utils import make_merge_with_template
 from langgraph_agents.hr_policies_agent_v1.structured_outputs import (
     AnalyzerOutput,
@@ -38,7 +38,7 @@ class HRAgents:
 
 def build_hr_agents(*, tools: Sequence[Any] | None = None) -> HRAgents:
     """Construct all runnable components for the HR Policies workflow."""
-    workflow = configs.workflows.hr
+    workflow = settings.workflows.hr
     
     merge_runnable = RunnableLambda(make_merge_with_template(analyzer_template))
     analysis_agent = merge_runnable | init_chat_model(workflow.analysis_model).with_structured_output(AnalyzerOutput)

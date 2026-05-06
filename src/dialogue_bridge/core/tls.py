@@ -6,7 +6,7 @@ httpx falls back to the system default trust store.
 """
 from __future__ import annotations
 
-from core.configs import settings
+from core.settings import settings
 
 
 def get_httpx_verify() -> str | bool:

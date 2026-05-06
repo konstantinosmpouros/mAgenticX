@@ -7,7 +7,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel, Field
 
-from core.configs import configs
+from core.settings import settings
 from core.tls import get_httpx_verify
 from observability import get_context
 from core.proxy import internal_service_headers
@@ -21,9 +21,9 @@ from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 
-ENDPOINT = configs.rag.retrieve_url(configs.workflows.hr.collection_name)
-REQUEST_TIMEOUT_SECONDS = configs.rag.request_timeout_seconds
-RETRIEVE_TOP_K = configs.workflows.hr.retrieve_top_k
+ENDPOINT = settings.rag.retrieve_url(settings.workflows.hr.collection_name)
+REQUEST_TIMEOUT_SECONDS = settings.rag.request_timeout_seconds
+RETRIEVE_TOP_K = settings.workflows.hr.retrieve_top_k
 
 class HRPoliciesV1_State(BaseModel):
     messages: Any

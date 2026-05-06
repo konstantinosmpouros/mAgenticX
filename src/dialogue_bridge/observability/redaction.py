@@ -4,7 +4,7 @@ import hashlib
 import hmac
 from typing import Any
 
-from core.configs import settings
+from core.settings import settings
 
 _SENSITIVE_FIELD_TOKENS = (
     "password",
@@ -20,7 +20,6 @@ _DROP_FIELD_NAMES = {"username", "title", "file_name", "filename", "message_cont
 _HASHED_CONTEXT_FIELDS = {"client_ip", "session_id"}
 _HASHED_FIELD_NAMES = {"client_ip", "session_id"}
 _MAX_STRING_LENGTH = 256
-_REDACTION_SECRET = settings.logging.redaction_secret.encode("utf-8")
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -40,7 +39,8 @@ def _truncate_string(value: str) -> str:
 
 
 def _stable_hash(value: Any) -> str:
-    digest = hmac.new(_REDACTION_SECRET, str(value).encode("utf-8"), hashlib.sha256).hexdigest()
+    key = settings.logging.redaction_secret.get_secret_value().encode("utf-8")
+    digest = hmac.new(key, str(value).encode("utf-8"), hashlib.sha256).hexdigest()
     return f"h:{digest[:16]}"
 
 

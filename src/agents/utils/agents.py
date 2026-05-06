@@ -4,7 +4,7 @@ from typing import Dict, Set
 import langgraph_agents
 import deep_agents
 from agent_runtime import LangGraphAgent, DeepAgent
-from core.configs import configs
+from core.settings import settings
 from observability import get_logger
 from schemas import AgentDefinition
 
@@ -18,7 +18,7 @@ def _normalize_slug(slug: str) -> str:
 def _discover_agents() -> Dict[str, AgentDefinition]:
     """Inspect langgraph_agents and deep_agents exports and register available agent templates."""
     registry: Dict[str, AgentDefinition] = {}
-    disabled_slugs: Set[str] = set(configs.registry.disabled_agent_slugs)
+    disabled_slugs: Set[str] = set(settings.registry.disabled_agent_slugs)
 
     sources = [
         (langgraph_agents, LangGraphAgent),

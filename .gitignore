@@ -3,6 +3,7 @@
 .vscode/*
 .virtual_documents/*
 .idea/*
+plan/
 
 **/__pycache__/
 **/agent_venv/

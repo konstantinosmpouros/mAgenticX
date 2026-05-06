@@ -23,8 +23,9 @@ from observability import (
 configure_logging()
 logger = get_logger(__name__)
 
-from config import RAG_HOST, RAG_PORT, settings, embeddings_model
+from config import chroma_settings, embeddings_model
 from config import TABLES, db
+from core.settings import settings
 from core.error_handling import rag_operation_error_handler
 from core.proxy import require_internal_caller
 from schemas import Query, ExcelSQLQuery
@@ -75,9 +76,9 @@ async def retrieve(request: Query, collection_name: str):
     """Retrieve documents from the specified collection using the provided query and k value."""
     logger.info("retrieval_started", "Vector retrieval started", collection_name=collection_name, k=request.k, query_length=len(request.query.strip()))
     client = chromadb.HttpClient(
-        host=RAG_HOST,
-        port=int(RAG_PORT),
-        settings=settings
+        host=settings.rag.host,
+        port=settings.rag.port,
+        settings=chroma_settings,
     )
     vectordb = Chroma(
         client=client,

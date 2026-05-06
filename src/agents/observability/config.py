@@ -7,7 +7,7 @@ import queue
 import sys
 from logging.handlers import QueueHandler, QueueListener
 
-from core.configs import configs
+from core.settings import settings
 from observability.filters import RequestContextFilter
 from observability.formatters import ConsoleFormatter, JsonFormatter
 
@@ -16,13 +16,13 @@ _ATEXIT_REGISTERED = False
 
 
 def _log_level() -> int:
-    level_name = configs.logging.level
+    level_name = settings.logging.level
     return getattr(logging, level_name, logging.INFO)
 
 
 def _build_sink_handler() -> logging.Handler:
     handler = logging.StreamHandler(sys.stdout)
-    log_format = configs.logging.format
+    log_format = settings.logging.format
     if log_format == "json":
         handler.setFormatter(JsonFormatter())
     else:
