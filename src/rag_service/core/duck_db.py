@@ -1,23 +1,16 @@
 import re
 from pathlib import Path
 
-from chromadb.config import Settings as ChromaSettings
-from langchain_openai import OpenAIEmbeddings
-
 import duckdb
 import pandas as pd
 from observability import get_logger
-from core.settings import settings
 
 logger = get_logger(__name__)
 
-# --------------------------------------------------------------------------------------
-# Excel db setup
-# --------------------------------------------------------------------------------------
 DATA_DIR = Path("data")
 
 db = duckdb.connect(database=":memory:")
-TABLES: dict[str, dict] = {}  # table_name -> metadata (file path, columns)
+TABLES: dict[str, dict] = {}
 
 if not DATA_DIR.exists():
     raise FileNotFoundError(f"DATA_DIR '{DATA_DIR}' does not exist – create it and add Excel files.")
@@ -41,19 +34,3 @@ for file_path in DATA_DIR.iterdir():
 
 if not TABLES:
     raise RuntimeError("No Excel workbooks were successfully loaded from 'data/'.")
-
-
-# --------------------------------------------------------------------------------------
-# RAG setup
-# --------------------------------------------------------------------------------------
-_openai_key = settings.api_keys.openai
-embeddings_model = OpenAIEmbeddings(
-    model="text-embedding-3-large",
-    api_key=_openai_key.get_secret_value() if _openai_key else None,
-)
-
-chroma_settings = ChromaSettings(
-    chroma_api_impl="rest",
-    chroma_server_host=settings.rag.host,
-    chroma_server_http_port=str(settings.rag.port),
-)

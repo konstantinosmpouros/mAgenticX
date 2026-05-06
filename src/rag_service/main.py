@@ -23,8 +23,8 @@ from observability import (
 configure_logging()
 logger = get_logger(__name__)
 
-from config import chroma_settings, embeddings_model
-from config import TABLES, db
+from core.chroma import chroma_settings, embeddings_model
+from core.duck_db import TABLES, db
 from core.settings import settings
 from core.error_handling import rag_operation_error_handler
 from core.proxy import require_internal_caller
