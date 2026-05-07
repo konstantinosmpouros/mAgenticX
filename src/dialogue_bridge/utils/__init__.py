@@ -24,6 +24,15 @@ from utils.speech import (
     read_aloud_response,
     transcribe_dictation_audio,
 )
+from utils.voice import (
+    build_voice_instructions,
+    create_realtime_session_with_agents,
+    load_owned_voice_conversation,
+    load_realtime_agent,
+    normalize_realtime_voice,
+    preferred_realtime_voice,
+    recent_history_for_voice_instructions,
+)
 from utils.validators import validate_convId, validate_convId_full, validate_userId
 
 __all__ = [
@@ -34,6 +43,13 @@ __all__ = [
     "generate_conversation_suggestions",
     "generate_read_aloud_audio",
     "normalize_read_aloud_voice",
+    "create_realtime_session_with_agents",
+    "build_voice_instructions",
+    "load_owned_voice_conversation",
+    "load_realtime_agent",
+    "normalize_realtime_voice",
+    "preferred_realtime_voice",
+    "recent_history_for_voice_instructions",
     "read_aloud_response",
     "transcribe_dictation_audio",
     "get_agent_by_id",

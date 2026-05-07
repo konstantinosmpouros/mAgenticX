@@ -9,8 +9,10 @@ sys.path.append(str(PACKAGE_ROOT))
 
 import asyncio
 import io
+import json
 from typing import List
 
+import httpx
 from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, status
 from contextlib import asynccontextmanager
 from fastapi.responses import StreamingResponse
@@ -36,6 +38,8 @@ from schemas import (
     SuggestionsRequest,
     ConversationSuggestions,
     ReadAloudRequest,
+    RealtimeSessionRequest,
+    RealtimeSessionResponse,
     TranscriptionResponse,
     AgentManifest,
     ToolManifest,
@@ -57,6 +61,13 @@ from core.error_handling import provider_error_handler
 configure_logging()
 logger = get_logger(__name__)
 _OPENAI_CLIENT = OpenAI(api_key=settings.api_keys.openai.get_secret_value()) if settings.api_keys.openai else OpenAI()
+
+_REALTIME_VOICES = {"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}
+
+
+def _normalize_realtime_voice(voice: str | None) -> str:
+    selected = (voice or settings.runtime_models.read_aloud_voice or "alloy").strip().lower()
+    return selected if selected in _REALTIME_VOICES else "alloy"
 
 
 def _make_loop_exception_handler(old_handler=None):
@@ -269,6 +280,80 @@ async def generate_read_aloud_speech(req: ReadAloudRequest):
             "Content-Disposition": f'inline; filename="read-aloud.{audio_format}"',
         },
     )
+
+
+# ------------------------------------------------------------------
+# Realtime Voice Session Endpoint
+# ------------------------------------------------------------------
+@app.post("/realtime/session", response_model=RealtimeSessionResponse, status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
+async def create_realtime_session(req: RealtimeSessionRequest) -> RealtimeSessionResponse:
+    """Create an OpenAI Realtime WebRTC session from an SDP offer."""
+    api_key = settings.api_keys.openai.get_secret_value() if settings.api_keys.openai else None
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Realtime voice is not configured.",
+        )
+
+    model = (req.model or settings.runtime_models.realtime).strip()
+    voice = _normalize_realtime_voice(req.voice)
+    session_config = {
+        "type": "realtime",
+        "model": model,
+        "instructions": req.instructions,
+        "audio": {
+            "input": {
+                "turn_detection": {"type": "server_vad"},
+                "transcription": {"model": settings.runtime_models.dictation},
+            },
+            "output": {"voice": voice},
+        },
+    }
+    multipart_fields = {
+        "sdp": (None, req.sdp),
+        "session": (None, json.dumps(session_config)),
+    }
+    timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=15.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/realtime/calls",
+                headers={"Authorization": f"Bearer {api_key}"},
+                files=multipart_fields,
+            )
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        upstream_body = exc.response.text[:1000]
+        try:
+            upstream_body = json.dumps(exc.response.json(), separators=(",", ":"))[:1000]
+        except ValueError:
+            pass
+        provider_error_handler.raise_provider_error(
+            logger,
+            exc,
+            event="realtime_session_provider_http_error",
+            message="OpenAI Realtime session request failed",
+            public_detail="Realtime voice is temporarily unavailable. Please try again.",
+            provider="openai",
+            operation="realtime_session",
+            model=model,
+            upstream_status_code=exc.response.status_code,
+            upstream_response_body=upstream_body,
+        )
+    except httpx.RequestError as exc:
+        provider_error_handler.raise_provider_error(
+            logger,
+            exc,
+            event="realtime_session_provider_unreachable",
+            message="OpenAI Realtime session request could not be completed",
+            public_detail="Realtime voice is temporarily unavailable. Please try again.",
+            provider="openai",
+            operation="realtime_session",
+            model=model,
+        )
+
+    logger.info("realtime_session_created", "Realtime voice session created", provider="openai", model=model, voice=voice)
+    return RealtimeSessionResponse(sdp=response.text, model=model, voice=voice)
 
 
 

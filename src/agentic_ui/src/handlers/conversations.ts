@@ -65,6 +65,7 @@ type ConversationsCtx = {
   setConversations: Dispatch<SetStateAction<ConversationSummary[]>>;
   currentConversation: ConversationDetail | null;
   handleStopStreaming?: () => void;
+  closeVoiceMode?: () => void | Promise<void>;
   agents: Agent[];
   setInactiveAgentFallback: (agent: Agent | null) => void;
 
@@ -118,6 +119,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setConversations,
     currentConversation,
     handleStopStreaming,
+    closeVoiceMode,
     agents,
     setInactiveAgentFallback,
     convPage,
@@ -151,6 +153,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   const clearChatAndStopThinking = (options?: { preserveAgent?: boolean }) => {
     // Reuse one reset path so "new chat", delete-current, and title click behave identically.
+    void closeVoiceMode?.();
     handleStopStreaming?.();
     setIsClearing(true);
     const defaultAgentId =

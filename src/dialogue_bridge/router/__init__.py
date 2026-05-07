@@ -8,6 +8,7 @@ from router.attachments import router as attachments_router
 from router.shared_conv import router as shared_conv_router
 from router.speech import router as speech_router
 from router.search import router as search_router
+from router.voice import router as voice_router
 
 __all__ = [
     "auth_router",
@@ -19,5 +20,6 @@ __all__ = [
     "attachments_router",
     "shared_conv_router",
     "speech_router",
+    "voice_router",
     "search_router",
 ]

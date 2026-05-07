@@ -31,6 +31,7 @@ from router import (
     attachments_router,
     shared_conv_router,
     speech_router,
+    voice_router,
     search_router,
 )
 
@@ -98,6 +99,11 @@ app.include_router(
     speech_router,
     prefix=f"/v1/speech",
     tags=["Speech"],
+)
+app.include_router(
+    voice_router,
+    prefix=f"/v1/voice",
+    tags=["Voice"],
 )
 app.include_router(
     catalog_router,

@@ -35,8 +35,7 @@ def _purge_modules_under_paths(*roots: str | Path) -> None:
 def _load_rag_service(monkeypatch, tmp_path):
     _purge_modules_under_paths(ROOT / "src" / "dialogue_bridge", ROOT / "src" / "rag_service", ROOT / "src" / "agents")
 
-    if str(SERVICE_ROOT) not in sys.path:
-        sys.path.insert(0, str(SERVICE_ROOT))
+    monkeypatch.syspath_prepend(str(SERVICE_ROOT))
 
     monkeypatch.setenv("TRUSTED_PROXY_SECRET", "rag-test-secret")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
@@ -62,10 +61,10 @@ def _load_rag_service(monkeypatch, tmp_path):
         ),
     )
 
-    config_module = importlib.import_module("config")
+    settings_module = importlib.import_module("core.settings")
     main_module = importlib.import_module("main")
     proxy_module = importlib.import_module("core.proxy")
-    return SimpleNamespace(config=config_module, main=main_module, proxy=proxy_module)
+    return SimpleNamespace(settings=settings_module, main=main_module, proxy=proxy_module)
 
 
 @pytest.fixture
@@ -75,7 +74,7 @@ def rag_service(monkeypatch, tmp_path):
 
 @pytest.fixture
 def internal_headers(rag_service):
-    return {rag_service.proxy.TRUSTED_PROXY_HEADER_NAME: rag_service.proxy.TRUSTED_PROXY_SECRET}
+    return {rag_service.proxy.TRUSTED_PROXY_HEADER_NAME: rag_service.proxy.settings.proxy.trusted_proxy_secret.get_secret_value()}
 
 
 @pytest_asyncio.fixture

@@ -24,7 +24,7 @@ from schemas import (
     ConversationTitleUpdate,
 )
 from core.auth_session import require_csrf_protection
-from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_export_messages
+from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_export_messages, select_scoped_messages
 from utils import (
     _preview,
     build_message_lineage,
@@ -188,12 +188,9 @@ async def shareConversation(
     """Create a public read-only snapshot link ending at the selected AI message."""
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
     branch = build_message_lineage(current_conv.messages, payload.messageId)
-    snapshot_messages = branch
-    if payload.mode == "full":
-        snapshot_messages = list(current_conv.messages)
-    if payload.mode == "message":
-        target = branch[-1]
-        snapshot_messages = branch[-2:] if len(branch) >= 2 and branch[-2].sender == "user" else [target]
+    snapshot_messages = select_scoped_messages(current_conv, payload.messageId, payload.mode, payload.branchPath)
+    if not snapshot_messages:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found in conversation.")
     snapshot = build_share_snapshot(current_conv, snapshot_messages)
     snapshot["shareMode"] = payload.mode
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -258,7 +255,7 @@ async def exportConversationPdf(
 ):
     """Return a generated PDF for the requested share scope without persisting it."""
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=payload.messageId)
-    messages = select_export_messages(current_conv, payload.messageId, payload.mode)
+    messages = select_export_messages(current_conv, payload.messageId, payload.mode, payload.branchPath)
     if not messages:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found in conversation.")
 

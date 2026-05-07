@@ -231,6 +231,7 @@ class RuntimeModelsSettings(BaseSettings):
     read_aloud: str = Field("gpt-4o-mini-tts", validation_alias="READ_ALOUD_MODEL")
     read_aloud_voice: str = Field("alloy", validation_alias="READ_ALOUD_VOICE")
     read_aloud_format: str = Field("mp3", validation_alias="READ_ALOUD_FORMAT")
+    realtime: str = Field("gpt-realtime", validation_alias="OPENAI_REALTIME_MODEL")
 
 
 class HRWorkflowSettings(BaseSettings):

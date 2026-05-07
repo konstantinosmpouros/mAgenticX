@@ -1,14 +1,15 @@
 type VoiceModeCtx = {
   toast: (opts: { title: string; description?: string; duration?: number }) => void;
+  onStartVoiceMode?: () => void | Promise<void>;
 };
 
 export function createVoiceModeHandlers(ctx: VoiceModeCtx) {
   const handleVoiceMode = () => {
-    ctx.toast({
-      title: "Voice mode coming soon",
-      description: "Real-time voice conversations will be available in a future update.",
-      duration: 3000,
-    });
+    if (ctx.onStartVoiceMode) {
+      void ctx.onStartVoiceMode();
+      return;
+    }
+    ctx.toast({ title: "Voice mode unavailable", description: "The voice session controller is not ready.", duration: 3000 });
   };
 
   return { handleVoiceMode };

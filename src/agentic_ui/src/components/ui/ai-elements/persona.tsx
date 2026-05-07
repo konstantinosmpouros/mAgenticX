@@ -46,6 +46,7 @@ interface PersonaProps {
   onStop?: RiveParameters["onStop"];
   className?: string;
   variant?: keyof typeof sources;
+  theme?: "light" | "dark";
 }
 
 // The state machine name is always 'default' for Elements AI visuals
@@ -102,10 +103,17 @@ const getCurrentTheme = (): "light" | "dark" => {
   return "light";
 };
 
-const useTheme = (enabled: boolean) => {
-  const [theme, setTheme] = useState<"light" | "dark">(getCurrentTheme);
+const useTheme = (enabled: boolean, forcedTheme?: "light" | "dark") => {
+  const [theme, setTheme] = useState<"light" | "dark">(
+    forcedTheme ?? getCurrentTheme
+  );
 
   useEffect(() => {
+    if (forcedTheme) {
+      setTheme(forcedTheme);
+      return;
+    }
+
     // Skip if not enabled (avoids unnecessary observers for non-dynamic-color variants)
     if (!enabled) {
       return;
@@ -138,7 +146,7 @@ const useTheme = (enabled: boolean) => {
         mql.removeEventListener("change", handleMediaChange);
       }
     };
-  }, [enabled]);
+  }, [enabled, forcedTheme]);
 
   return theme;
 };
@@ -146,12 +154,13 @@ const useTheme = (enabled: boolean) => {
 interface PersonaWithModelProps {
   rive: ReturnType<typeof useRive>["rive"];
   source: (typeof sources)[keyof typeof sources];
+  theme?: "light" | "dark";
   children: React.ReactNode;
 }
 
 const PersonaWithModel = memo(
-  ({ rive, source, children }: PersonaWithModelProps) => {
-    const theme = useTheme(source.dynamicColor);
+  ({ rive, source, theme: forcedTheme, children }: PersonaWithModelProps) => {
+    const theme = useTheme(source.dynamicColor, forcedTheme);
     const viewModel = useViewModel(rive, { useDefault: true });
     const viewModelInstance = useViewModelInstance(viewModel, {
       rive,
@@ -198,6 +207,7 @@ export const Persona: FC<PersonaProps> = memo(
     onPlay,
     onStop,
     className,
+    theme,
   }) => {
     const source = sources[variant];
 
@@ -296,7 +306,7 @@ export const Persona: FC<PersonaProps> = memo(
     const Component = source.hasModel ? PersonaWithModel : PersonaWithoutModel;
 
     return (
-      <Component rive={rive} source={source}>
+      <Component rive={rive} source={source} theme={theme}>
         <RiveComponent className={cn("size-16 shrink-0", className)} />
       </Component>
     );

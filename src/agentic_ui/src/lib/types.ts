@@ -98,6 +98,30 @@ export type UserPreferences = {
     readAloudVoice?: ReadAloudVoice;
 };
 
+export type VoiceModeStatus = "closed" | "connecting" | "listening" | "thinking" | "speaking" | "muted" | "error";
+
+export type RealtimeVoiceSessionRequest = {
+    agentId: string;
+    conversationId?: string | null;
+    sdp: string;
+    voice?: ReadAloudVoice;
+};
+
+export type RealtimeVoiceSessionResponse = {
+    sdp: string;
+    model: string;
+    voice: string;
+};
+
+export type RealtimeVoiceConversationEventRequest = {
+    conversationId: string;
+    role: "user" | "assistant";
+    transcript: string;
+    itemId?: string | null;
+    responseId?: string | null;
+    rawEvent?: Record<string, any> | null;
+};
+
 
 
 // ------------------------------------------------------

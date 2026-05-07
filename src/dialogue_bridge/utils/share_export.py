@@ -28,16 +28,49 @@ _DARK_MAGENTA = (122, 31, 92)
 _LOGO_PATH = Path(__file__).resolve().parent / "assets" / "logo.png"
 
 
-def select_export_messages(conversation: ConversationTable, message_id: str, mode: PdfExportMode) -> list[MessageTable]:
+def _messages_from_branch_path(messages: Iterable[MessageTable], branch_path: list[str] | None) -> list[MessageTable]:
+    if not branch_path:
+        return []
+
+    by_id = {message.id: message for message in messages}
+    selected: list[MessageTable] = []
+    expected_parent_id: str | None = None
+    for message_id in branch_path:
+        message = by_id.get(message_id)
+        if message is None or message.parent_message_id != expected_parent_id:
+            return []
+        selected.append(message)
+        expected_parent_id = message.id
+    return selected
+
+
+def select_scoped_messages(
+    conversation: ConversationTable,
+    message_id: str,
+    mode: PdfExportMode,
+    branch_path: list[str] | None = None,
+) -> list[MessageTable]:
     branch = build_message_lineage(conversation.messages, message_id)
     if not branch:
         return []
     if mode == "full":
-        return list(conversation.messages)
+        visible_branch = _messages_from_branch_path(conversation.messages, branch_path)
+        if visible_branch and message_id in {message.id for message in visible_branch}:
+            return visible_branch
+        return branch
     if mode == "message":
         target = branch[-1]
         return branch[-2:] if len(branch) >= 2 and branch[-2].sender == "user" else [target]
     return branch
+
+
+def select_export_messages(
+    conversation: ConversationTable,
+    message_id: str,
+    mode: PdfExportMode,
+    branch_path: list[str] | None = None,
+) -> list[MessageTable]:
+    return select_scoped_messages(conversation, message_id, mode, branch_path)
 
 
 def conversation_pdf_filename(conversation: ConversationTable, mode: PdfExportMode) -> str:

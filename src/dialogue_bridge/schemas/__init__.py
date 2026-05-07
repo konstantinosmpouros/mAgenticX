@@ -53,7 +53,6 @@ class DictationResponse(BaseModel):
     text: str
 
 
-
 #-------------------------------------------
 # AGENTS DTO
 #-------------------------------------------
@@ -392,7 +391,18 @@ class ConversationShareIn(BaseModel):
     """Create a read-only share snapshot ending at a selected AI message."""
     messageId: str
     mode: Literal["full", "branch", "message"] = "branch"
+    branchPath: Optional[list[str]] = None
     expiresAt: Optional[datetime] = None
+
+    @field_validator("branchPath", mode="before")
+    @classmethod
+    def _normalize_branch_path(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            return None
+        normalized = [str(item).strip() for item in value if str(item).strip()]
+        return normalized or None
 
     @model_validator(mode="after")
     def _validate_expiration(self):
@@ -408,6 +418,17 @@ class ConversationPdfExportIn(BaseModel):
     """Export a conversation scope as a transient PDF attachment."""
     messageId: str
     mode: Literal["full", "branch", "message"] = "full"
+    branchPath: Optional[list[str]] = None
+
+    @field_validator("branchPath", mode="before")
+    @classmethod
+    def _normalize_branch_path(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            return None
+        normalized = [str(item).strip() for item in value if str(item).strip()]
+        return normalized or None
 
 class ContinueSharedConversationIn(BaseModel):
     """Create the caller's own conversation from a public share plus their first reply."""
@@ -455,6 +476,39 @@ class SharedConversationDetail(BaseModel):
 class CreateConversationResponse(BaseModel):
     """Response when creating a conversation: summary + full detail."""
     detail: ConversationDetail
+    summary: ConversationSummary
+
+
+class RealtimeVoiceSessionIn(BaseModel):
+    """Browser SDP offer plus conversation context for a realtime voice session."""
+    agentId: str
+    conversationId: Optional[str] = None
+    sdp: str = Field(..., min_length=1)
+    voice: Optional[str] = None
+
+
+class RealtimeVoiceSessionOut(BaseModel):
+    """SDP answer and conversation context for a realtime voice session."""
+    sdp: str
+    model: str
+    voice: str
+
+
+class RealtimeVoiceConversationEventIn(BaseModel):
+    """Persist a completed realtime voice transcript turn into the conversation."""
+    conversationId: str
+    role: Literal["user", "assistant"]
+    transcript: str = Field(..., min_length=1)
+    itemId: Optional[str] = None
+    responseId: Optional[str] = None
+    rawEvent: Optional[dict] = None
+
+
+class RealtimeVoiceEndIn(BaseModel):
+    conversationId: str
+
+
+class RealtimeVoiceEndOut(BaseModel):
     summary: ConversationSummary
 
 
@@ -593,6 +647,11 @@ __all__ = [
     "ConversationShareListItem",
     "SharedConversationDetail",
     "CreateConversationResponse",
+    "RealtimeVoiceSessionIn",
+    "RealtimeVoiceSessionOut",
+    "RealtimeVoiceConversationEventIn",
+    "RealtimeVoiceEndIn",
+    "RealtimeVoiceEndOut",
     "InferenceStreamPayload",
     "UpdateConversationResponse",
     "MessageUpdate",

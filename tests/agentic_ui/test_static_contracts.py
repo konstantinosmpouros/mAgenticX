@@ -30,6 +30,7 @@ def test_frontend_api_uses_bridge_v1_route_prefixes():
         'const ATTACHMENTS_BASE_PATH = `${API_BASE_PATH}/attachments`;',
         'const INFERENCE_BASE_PATH = `${API_BASE_PATH}/inference`;',
         'const SPEECH_BASE_PATH = `${API_BASE_PATH}/speech`;',
+        'const VOICE_BASE_PATH = `${API_BASE_PATH}/voice`;',
         'const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;',
     ]
 
@@ -60,6 +61,9 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
         "dislikeMessage",
         "generateMessageReadAloudAudio",
         "transcribeDictation",
+        "createRealtimeVoiceSession",
+        "persistRealtimeVoiceConversationEvent",
+        "endRealtimeVoiceSession",
         "streamInference",
     ]
 

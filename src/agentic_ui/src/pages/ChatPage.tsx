@@ -18,7 +18,7 @@ import type {
   ToolMetadata,
   UserPreferences } from "@/lib/types";
 import type { PlanSnapshot } from "@/lib/agui";
-import { createPreferencesHandlers } from "@/handlers/preferences";
+import { usePreferencesHandlers } from "@/handlers/preferences";
 import {
   useAutoScrollEffect,
   useEnsureDefaultAgentEffect,
@@ -27,6 +27,7 @@ import {
   useStickyUserBarEffect,
   useSidebarInteractionEffect,
 } from "@/hooks/useChatEffects";
+import { useChatVoiceMode } from "@/hooks/useChatVoiceMode";
 import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
@@ -55,7 +56,6 @@ import {
   createSharedConversationHandlers,
   defaultShareExpiresAt,
   useBranchingHandlers,
-  createVoiceModeHandlers,
   createSearchResultHandlers,
   useWorkspaceSearch,
   buildDefaultConversationSearchResults,
@@ -73,6 +73,7 @@ import ProfilePanel from "@/components/chat/ProfilePanel";
 import ReportConversationDialog from "@/components/chat/ReportPanel";
 import ShareConversationDialog from "@/components/chat/SharePanel";
 import ChatBody from "@/components/chat/ChatBody";
+import VoiceModeBody from "@/components/chat/VoiceModeBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 import SearchPanel from "@/components/chat/SearchPanel";
 import { Loader } from "@/components/ui/shadcn-io/loader";
@@ -108,6 +109,8 @@ type ChatInterfaceProps = {
   sharedConversationToken?: string;
   initialSharedConversation?: SharedConversationDetail | null;
 };
+
+type ConversationBodyMode = "chat" | "voice";
 
 export function ChatInterface({
   sharedConversationToken,
@@ -293,7 +296,7 @@ export function ChatInterface({
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
     handleSelectReadAloudVoice,
-  } = createPreferencesHandlers({
+  } = usePreferencesHandlers({
     userId,
     availableTools,
     userPreferences,
@@ -395,7 +398,48 @@ export function ChatInterface({
     setDictationRequestSignal((prev) => prev + 1);
   }, [dictationStatus, isSendingMessage]);
 
-  const { handleVoiceMode } = createVoiceModeHandlers({ toast: toastWrapper });
+  const { voiceSession, handleVoiceMode } = useChatVoiceMode({
+    toast: toastWrapper,
+    userId,
+    selectedAgent,
+    readAloudVoice: resolvedPreferences.readAloudVoice,
+  });
+  const activeBodyMode: ConversationBodyMode = voiceSession.isActive ? "voice" : "chat";
+  const [bodyTransition, setBodyTransition] = useState<{
+    current: ConversationBodyMode;
+    exiting: ConversationBodyMode | null;
+  }>(() => ({
+    current: activeBodyMode,
+    exiting: null,
+  }));
+
+  useEffect(() => {
+    setBodyTransition((previous) => {
+      if (previous.current === activeBodyMode) {
+        return previous;
+      }
+
+      return {
+        current: activeBodyMode,
+        exiting: previous.current,
+      };
+    });
+  }, [activeBodyMode]);
+
+  useEffect(() => {
+    if (!bodyTransition.exiting) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setBodyTransition((previous) => ({
+        ...previous,
+        exiting: null,
+      }));
+    }, 560);
+
+    return () => window.clearTimeout(timeout);
+  }, [bodyTransition.current, bodyTransition.exiting]);
 
   const cancelDictation = useCallback(() => {
     if (dictationStatus === "idle" || dictationStatus === "submitting") {
@@ -453,6 +497,7 @@ export function ChatInterface({
     userId,
     currentConversation,
     activeMessages,
+    activeBranchPath,
     shareDialogUrl,
     shareTargetMessage,
     shareMode,
@@ -819,6 +864,7 @@ export function ChatInterface({
     setConversations,
     currentConversation,
     handleStopStreaming,
+    closeVoiceMode: voiceSession.close,
     agents,
     setInactiveAgentFallback,
     setLoadingConversation,
@@ -1054,6 +1100,66 @@ export function ChatInterface({
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
+  const renderConversationBody = (mode: ConversationBodyMode) => {
+    if (mode === "voice") {
+      return (
+        <VoiceModeBody
+          status={voiceSession.status}
+          muted={voiceSession.muted}
+          currentAgent={currentAgent}
+          errorMessage={voiceSession.errorMessage}
+        />
+      );
+    }
+
+    return (
+      <ChatBody
+        messages={activeMessages}
+        loadingConversation={loadingConversation}
+        isClearing={isClearing}
+        expandedThinking={expandedThinking}
+        isImageFile={isImageFile}
+        onDownloadAttachment={handleFileDownload}
+        onPreviewAttachment={handleOpenFilePreview}
+        onImageClick={handleImageClick}
+        onToggleThinking={toggleThinking}
+        copiedId={copiedId}
+        onCopy={handleCopy}
+        onLike={handleLike}
+        onDislike={handleDislike}
+        onReportMessage={handleReportAiMessage}
+        conversationIsReported={Boolean(currentConversation?.isReported)}
+        stickyUserBarId={stickyUserBarId}
+        onFlashUserActionBar={flashUserActionBar}
+        AiTransitionIndicator={AiTransitionIndicator}
+        thinkingState={thinkingState}
+        messagesEndRef={messagesEndRef}
+        AgentIcon={AgentIcon}
+        currentAgent={currentAgent ?? undefined}
+        onScrolledPastTop={handleHeaderScrollState}
+        branchChildrenMap={branchChildrenMap}
+        branchSelections={branchSelections}
+        onSelectBranch={handleBranchSelectionChange}
+        branchRootKey={ROOT_BRANCH_KEY}
+        activeBranchPath={activeBranchPath}
+        editingMessageId={editingMessageId}
+        editingDraft={editingDraft}
+        editingBusy={editingBusy}
+        onRequestEdit={handleRequestEditMessage}
+        onChangeEditDraft={handleEditDraftChange}
+        onCancelEdit={handleCancelEditMessage}
+        onSubmitEdit={submitEditFromState}
+        toast={toastWrapper}
+        onRetryMessage={handleRetryAiMessage}
+        onForkMessage={handleForkConversation}
+        onShareMessage={openShareDialog}
+        onReadAloud={handleReadAloud}
+        speakingMessageId={speakingMessageId}
+        isStreaming={isSendingMessage}
+      />
+    );
+  };
+
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -1153,59 +1259,29 @@ export function ChatInterface({
               />
 
               {/* Chat Messages Container*/}
-              <div className="flex flex-1 min-h-0 overflow-hidden">
-                <ChatBody
-                  messages={activeMessages}
-                  loadingConversation={loadingConversation}
-                  isClearing={isClearing}
-                  expandedThinking={expandedThinking}
-                  isImageFile={isImageFile}
-                  onDownloadAttachment={handleFileDownload}
-                  onPreviewAttachment={handleOpenFilePreview}
-                  onImageClick={handleImageClick}
-                  onToggleThinking={toggleThinking}
-                  copiedId={copiedId}
-                  onCopy={handleCopy}
-                  onLike={handleLike}
-                  onDislike={handleDislike}
-                  onReportMessage={handleReportAiMessage}
-                  conversationIsReported={Boolean(currentConversation?.isReported)}
-                  stickyUserBarId={stickyUserBarId}
-                  onFlashUserActionBar={flashUserActionBar}
-                  AiTransitionIndicator={AiTransitionIndicator}
-                  thinkingState={thinkingState}
-                  messagesEndRef={messagesEndRef}
-                  AgentIcon={AgentIcon}
-                  currentAgent={currentAgent ?? undefined}
-                  onScrolledPastTop={handleHeaderScrollState}
-                  branchChildrenMap={branchChildrenMap}
-                  branchSelections={branchSelections}
-                  onSelectBranch={handleBranchSelectionChange}
-                  branchRootKey={ROOT_BRANCH_KEY}
-                  activeBranchPath={activeBranchPath}
-                  editingMessageId={editingMessageId}
-                  editingDraft={editingDraft}
-                  editingBusy={editingBusy}
-                  onRequestEdit={handleRequestEditMessage}
-                  onChangeEditDraft={handleEditDraftChange}
-                  onCancelEdit={handleCancelEditMessage}
-                  onSubmitEdit={submitEditFromState}
-                  toast={toastWrapper}
-                  onRetryMessage={handleRetryAiMessage}
-                  onForkMessage={handleForkConversation}
-                  onShareMessage={openShareDialog}
-                  onReadAloud={handleReadAloud}
-                  speakingMessageId={speakingMessageId}
-                  isStreaming={isSendingMessage}
-                />
+              <div className="voice-chat-transition-shell relative flex flex-1 min-h-0 overflow-hidden">
+                {bodyTransition.exiting ? (
+                  <div
+                    className={`voice-chat-panel voice-chat-panel-${bodyTransition.exiting} voice-chat-panel-exit`}
+                    aria-hidden="true"
+                  >
+                    {renderConversationBody(bodyTransition.exiting)}
+                  </div>
+                ) : null}
+                <div className={`voice-chat-panel voice-chat-panel-${bodyTransition.current} voice-chat-panel-enter`}>
+                  {renderConversationBody(bodyTransition.current)}
+                </div>
               </div>
 
               {/* Input Area */}
               <ChatInputBar
+                mode={voiceSession.isActive ? "voice" : "chat"}
                 // Centered empty state
                 isMessagesEmpty={isMessagesEmpty}
                 positionClass={
-                  isMessagesEmpty
+                  voiceSession.isActive
+                    ? "sticky bottom-0 left-0 right-0 z-30 p-6"
+                    : isMessagesEmpty
                     ? "absolute left-1/2 top-[35%] -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
                     : "sticky bottom-0 left-0 right-0 z-30 p-6"
                 }
@@ -1236,6 +1312,11 @@ export function ChatInterface({
                 dictationRequestSignal={dictationRequestSignal}
                 dictationCancelSignal={dictationCancelSignal}
                 onVoiceMode={handleVoiceMode}
+                voiceStatus={voiceSession.status}
+                voiceMuted={voiceSession.muted}
+                onCloseVoiceMode={voiceSession.close}
+                onToggleVoiceMute={voiceSession.toggleMute}
+                onVoiceTextSubmit={voiceSession.sendText}
 
                 // UI deps
                 AgentIcon={AgentIcon}

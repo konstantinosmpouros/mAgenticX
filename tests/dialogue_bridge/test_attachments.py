@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable
+from router import attachments as attachments_router
 from utils.attachments import is_presentation_previewable
 
 
@@ -222,7 +223,7 @@ async def test_preview_blob_derived_converts_powerpoint_to_inline_pdf(
     async def fake_convert(**_: object) -> tuple[bytes, str]:
         return b"%PDF derived preview", "deck.pdf"
 
-    monkeypatch.setattr("router.attachments.convert_attachment_to_pdf_preview", fake_convert)
+    monkeypatch.setattr(attachments_router, "convert_attachment_to_pdf_preview", fake_convert)
 
     response = await client.get(
         f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"

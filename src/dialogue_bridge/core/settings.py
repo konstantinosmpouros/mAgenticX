@@ -161,6 +161,31 @@ class SpeechSettings(BaseSettings):
         return frozenset(items) if items else v
 
 
+class VoiceSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    realtime_model: str = Field("gpt-realtime", validation_alias="OPENAI_REALTIME_MODEL")
+    default_realtime_voice: str = Field("alloy", validation_alias="REALTIME_DEFAULT_VOICE")
+    supported_realtime_voices: frozenset[str] = Field(
+        default=frozenset({"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}),
+        validation_alias="REALTIME_SUPPORTED_VOICES",
+    )
+
+    @field_validator("default_realtime_voice", mode="after")
+    @classmethod
+    def _normalize_voice(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        return normalized or "alloy"
+
+    @field_validator("supported_realtime_voices", mode="before")
+    @classmethod
+    def _parse_voices(cls, v: object) -> object:
+        if isinstance(v, frozenset):
+            return v
+        items = _split_csv(v)
+        return frozenset(items) if items else v
+
+
 class ProxySettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -283,6 +308,7 @@ class Settings(BaseSettings):
     vault: VaultSettings = Field(default_factory=VaultSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     speech: SpeechSettings = Field(default_factory=SpeechSettings)
+    voice: VoiceSettings = Field(default_factory=VoiceSettings)
     tls: TlsSettings = Field(default_factory=TlsSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)

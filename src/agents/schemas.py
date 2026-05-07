@@ -40,6 +40,21 @@ class TranscriptionResponse(BaseModel):
     text: str
 
 
+class RealtimeSessionRequest(BaseModel):
+    """SDP offer and session configuration for OpenAI Realtime WebRTC."""
+    sdp: str = Field(..., min_length=1)
+    model: Optional[str] = Field(default=None, min_length=1)
+    voice: Optional[str] = Field(default=None, min_length=1)
+    instructions: str = Field(default="", max_length=20000)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RealtimeSessionResponse(BaseModel):
+    sdp: str
+    model: str
+    voice: str
+
+
 class AgentManifest(BaseModel):
     id: str
     slug: str

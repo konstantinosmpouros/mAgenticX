@@ -15,6 +15,9 @@ import type {
   CreateConversationResponse,
   MessageIn,
   MessageUpdate,
+  RealtimeVoiceConversationEventRequest,
+  RealtimeVoiceSessionRequest,
+  RealtimeVoiceSessionResponse,
   SharedConversationDetail,
   UpdateConversationResponse,
   DownloadAttachmentParams,
@@ -45,6 +48,7 @@ const MESSAGES_BASE_PATH = `${API_BASE_PATH}/messages`;
 const ATTACHMENTS_BASE_PATH = `${API_BASE_PATH}/attachments`;
 const INFERENCE_BASE_PATH = `${API_BASE_PATH}/inference`;
 const SPEECH_BASE_PATH = `${API_BASE_PATH}/speech`;
+const VOICE_BASE_PATH = `${API_BASE_PATH}/voice`;
 const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;
 const SEARCH_BASE_PATH = `${API_BASE_PATH}/search`;
 
@@ -516,6 +520,7 @@ export async function shareConversation(
   messageId: string,
   mode: ConversationShareMode = "full",
   expiresAt?: Date | null,
+  branchPath?: string[],
 ): Promise<ConversationShareResponse> {
   const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share`, withSessionRequest({
     method: "POST",
@@ -526,6 +531,7 @@ export async function shareConversation(
     body: JSON.stringify({
       messageId,
       mode,
+      ...(branchPath?.length ? { branchPath } : {}),
       ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}),
     }),
   }, { csrf: true }));
@@ -579,6 +585,7 @@ export async function downloadConversationPdfExport(
   conversationId: string,
   messageId: string,
   mode: ConversationShareMode = "full",
+  branchPath?: string[],
 ): Promise<void> {
   const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share/export-pdf`, withSessionRequest({
     method: "POST",
@@ -586,7 +593,11 @@ export async function downloadConversationPdfExport(
       "Content-Type": "application/json",
       "Accept": "application/pdf",
     },
-    body: JSON.stringify({ messageId, mode }),
+    body: JSON.stringify({
+      messageId,
+      mode,
+      ...(branchPath?.length ? { branchPath } : {}),
+    }),
   }, { csrf: true }));
 
   if (!res.ok) {
@@ -1008,6 +1019,80 @@ export async function transcribeDictation(
   return data.text;
 }
 
+export async function createRealtimeVoiceSession(
+  userId: string,
+  payload: RealtimeVoiceSessionRequest,
+): Promise<RealtimeVoiceSessionResponse> {
+  const res = await fetch(`${VOICE_BASE_PATH}/realtime/${userId}/session`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to create realtime voice session: ${res.status}`);
+  }
+  const data = await res.json();
+  return {
+    sdp: data.sdp,
+    model: data.model,
+    voice: data.voice,
+  };
+}
+
+export async function persistRealtimeVoiceConversationEvent(
+  userId: string,
+  payload: RealtimeVoiceConversationEventRequest,
+): Promise<UpdateConversationResponse> {
+  const res = await fetch(`${VOICE_BASE_PATH}/realtime/${userId}/conversation-event`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to persist realtime voice transcript: ${res.status}`);
+  }
+  const data = await res.json();
+  return {
+    message: transformMessage(data.message),
+    summary: transformConversationSummary(data.summary),
+  };
+}
+
+export async function endRealtimeVoiceSession(
+  userId: string,
+  conversationId: string,
+): Promise<ConversationSummary> {
+  const res = await fetch(`${VOICE_BASE_PATH}/realtime/${userId}/end`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify({ conversationId }),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to end realtime voice session: ${res.status}`);
+  }
+  const data = await res.json();
+  return transformConversationSummary(data.summary);
+}
+
 
 // Start streaming inference by requesting the bridge SSE endpoint
 export async function streamInference(
@@ -1069,7 +1154,7 @@ export async function streamInference(
   const textDecoder = new TextDecoder();
   let buffer = "";
   const cancelReader = () => {
-    try { reader.cancel(); } catch {}
+    try { reader.cancel(); } catch { /* ignore */ }
   };
   signal?.addEventListener("abort", cancelReader, { once: true });
   try {
@@ -1090,6 +1175,6 @@ export async function streamInference(
     }
   } finally {
     signal?.removeEventListener?.("abort", cancelReader as any);
-    try { reader.releaseLock(); } catch {}
+    try { reader.releaseLock(); } catch { /* ignore */ }
   }
 }

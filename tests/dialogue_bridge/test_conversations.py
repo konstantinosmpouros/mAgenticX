@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from core.database import ConversationReportTable, ConversationTable, MessageTable
+from router import catalog as catalog_router
 from router import conversations as conversation_router
 
 
@@ -44,6 +45,52 @@ async def _seed_branch(db_session_factory, seeded_user, seeded_agent):
             "conversation_id": conversation.id,
             "user_message_id": user_message.id,
             "ai_message_id": ai_message.id,
+        }
+
+
+async def _seed_sibling_branches(db_session_factory, seeded_user, seeded_agent):
+    async with db_session_factory() as session:
+        conversation = ConversationTable(
+            user_id=seeded_user.id,
+            agent_id=seeded_agent.id,
+            agent_name=seeded_agent.name,
+            title="Conversation with branches",
+            last_message_preview="Visible answer",
+        )
+        session.add(conversation)
+        await session.flush()
+
+        user_message = MessageTable(
+            conversation_id=conversation.id,
+            sender="user",
+            type="text",
+            content="Question",
+        )
+        session.add(user_message)
+        await session.flush()
+
+        visible_ai = MessageTable(
+            conversation_id=conversation.id,
+            parent_message_id=user_message.id,
+            sender="ai",
+            type="text",
+            content="Visible answer",
+        )
+        sibling_ai = MessageTable(
+            conversation_id=conversation.id,
+            parent_message_id=user_message.id,
+            sender="ai",
+            type="text",
+            content="Hidden sibling answer",
+        )
+        session.add_all([visible_ai, sibling_ai])
+        await session.commit()
+
+        return {
+            "conversation_id": conversation.id,
+            "user_message_id": user_message.id,
+            "visible_ai_id": visible_ai.id,
+            "sibling_ai_id": sibling_ai.id,
         }
 
 
@@ -372,6 +419,31 @@ async def test_share_conversation_creates_public_snapshot_and_can_be_revoked(
     assert public_after_revoke.status_code == 404
 
 
+async def test_full_share_exports_only_visible_branch_path(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+):
+    branch = await _seed_sibling_branches(db_session_factory, seeded_user, seeded_agent)
+
+    share_response = await client.post(
+        f"/v1/conversations/{seeded_user.id}/{branch['conversation_id']}/share",
+        json={
+            "messageId": branch["visible_ai_id"],
+            "mode": "full",
+            "branchPath": [branch["user_message_id"], branch["visible_ai_id"]],
+        },
+    )
+    assert share_response.status_code == 201
+    public_response = await client.get(f"/v1/shared-conversations/{share_response.json()['token']}")
+
+    assert public_response.status_code == 200
+    contents = [message["content"] for message in public_response.json()["messages"]]
+    assert contents == ["Question", "Visible answer"]
+    assert "Hidden sibling answer" not in contents
+
+
 async def test_conversation_suggestions_use_recent_non_private_context(
     client,
     seeded_user,
@@ -393,14 +465,10 @@ async def test_conversation_suggestions_use_recent_non_private_context(
         captured.update(kwargs)
         return ["Review revenue", "Compare regions"]
 
-    monkeypatch.setattr(conversation_router, "get_agent_by_id", fake_get_agent_by_id)
-    monkeypatch.setattr(
-        conversation_router,
-        "generate_conversation_suggestions",
-        fake_generate_conversation_suggestions,
-    )
+    monkeypatch.setattr(catalog_router, "get_agent_by_id", fake_get_agent_by_id)
+    monkeypatch.setattr(catalog_router, "generate_conversation_suggestions", fake_generate_conversation_suggestions)
 
-    response = await client.get(f"/v1/conversations/{seeded_user.id}/suggestions?agentId={seeded_agent.id}")
+    response = await client.get(f"/v1/catalog/{seeded_user.id}/suggestions?agentId={seeded_agent.id}")
 
     assert response.status_code == 200
     assert response.json() == {"suggestions": ["Review revenue", "Compare regions"]}

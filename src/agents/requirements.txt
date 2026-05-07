@@ -11,6 +11,7 @@ PyPDF2==3.0.1
 pytrends==4.9.2
 fastapi==0.135.3
 uvicorn==0.32.0
+httpx==0.28.1
 ag-ui-protocol==0.1.14
 python-multipart==0.0.26
 mcp==1.23.0

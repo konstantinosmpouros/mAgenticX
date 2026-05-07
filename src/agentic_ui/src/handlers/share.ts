@@ -14,6 +14,7 @@ type ShareConversationHandlersCtx = {
   userId: string | null;
   currentConversation: ConversationDetail | null;
   activeMessages: MessageOut[];
+  activeBranchPath?: string[];
   shareDialogUrl: string | null;
   shareTargetMessage: MessageOut | null;
   shareMode: ConversationShareMode;
@@ -38,6 +39,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     userId,
     currentConversation,
     activeMessages,
+    activeBranchPath,
     shareDialogUrl,
     shareTargetMessage,
     shareMode,
@@ -68,7 +70,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     }
 
     try {
-      const share = await shareConversation(userId, currentConversation.id, message.id, mode, expiresAt);
+      const share = await shareConversation(userId, currentConversation.id, message.id, mode, expiresAt, activeBranchPath);
       const absoluteUrl =
         typeof window !== "undefined"
           ? new URL(share.shareUrl, window.location.origin).toString()
@@ -201,6 +203,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
         currentConversation.id,
         shareTargetMessage.id,
         shareForceFullConversation ? "full" : shareMode,
+        activeBranchPath,
       );
       toast({
         title: "PDF export ready",

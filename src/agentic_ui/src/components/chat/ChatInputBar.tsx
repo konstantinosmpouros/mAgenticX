@@ -1,6 +1,6 @@
 ﻿import React from "react";
 import type { LucideIcon } from 'lucide-react';
-import { Plus, FileText, Check, X } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Plus, FileText, Check, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
@@ -14,10 +14,12 @@ import { Loader } from "@/components/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/components/ui/ai-elements/suggestion";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
+export type ChatInputMode = "chat" | "voice";
 
 type ChatInputBarProps = {
     /** Replace "top-1/2 -translate-y-1/2" with anything you want */
     positionClass?: string;
+    mode?: ChatInputMode;
 
     // State/controls from your page
     attachments: any[];
@@ -52,6 +54,11 @@ type ChatInputBarProps = {
     // Optional extras available in your page
     toast?: (opts: { title: string; description?: string; duration?: number }) => void;
     onVoiceMode?: () => void;
+    voiceStatus?: string;
+    voiceMuted?: boolean;
+    onCloseVoiceMode?: () => void;
+    onToggleVoiceMute?: () => void;
+    onVoiceTextSubmit?: (text: string) => void;
     currentAgent?: { name?: string; description?: string } | null;
     Textarea: any;
     onDictationSubmit?: (audioBlob: Blob) => void;
@@ -81,6 +88,7 @@ const WELCOME_QUOTES: string[] = [
 export function ChatInputBar(props: ChatInputBarProps) {
     const {
         positionClass = "top-1/2 -translate-y-1/2",
+        mode = "chat",
         isMessagesEmpty = false,
         attachments,
         isPrivateMode,
@@ -107,6 +115,11 @@ export function ChatInputBar(props: ChatInputBarProps) {
         TooltipContent,
         toast,
         onVoiceMode,
+        voiceStatus,
+        voiceMuted = false,
+        onCloseVoiceMode,
+        onToggleVoiceMute,
+        onVoiceTextSubmit,
         currentAgent,
         Textarea,
         onDictationSubmit,
@@ -441,6 +454,91 @@ export function ChatInputBar(props: ChatInputBarProps) {
     const confirmButtonDisabled =
         (!isRecordingInProgress && !recordedBlob) ||
         isDictationSubmitting;
+
+    if (mode === "voice") {
+        const canSubmitVoiceText = currentMessage.trim().length > 0;
+        return (
+            <div
+                ref={containerRef}
+                className={`${positionClass} dark voice-composer-transition voice-composer-transition-voice`}
+                style={emptyWrapperStyle}
+            >
+                <div className="relative mx-auto max-w-3xl pointer-events-auto">
+                    <div className="relative z-20 rounded-[2rem] border border-border/70 bg-background px-3 py-3 shadow-lg">
+                        <div className="flex items-center gap-2">
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        onClick={onCloseVoiceMode}
+                                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive transition-smooth hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+                                        aria-label="Close voice mode"
+                                    >
+                                        <PhoneOff size={18} />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" align="center">
+                                    <p>Close voice mode</p>
+                                </TooltipContent>
+                            </Tooltip>
+
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        onClick={onToggleVoiceMute}
+                                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/70 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                        aria-label={voiceMuted ? "Unmute microphone" : "Mute microphone"}
+                                    >
+                                        {voiceMuted ? <MicOff size={19} /> : <Mic size={19} />}
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" align="center">
+                                    <p>{voiceMuted ? "Unmute microphone" : "Mute microphone"}</p>
+                                </TooltipContent>
+                            </Tooltip>
+
+                            <div className="min-w-0 flex-1">
+                                <Textarea
+                                    ref={(textarea: any) => {
+                                        (textareaRef as any).current = textarea;
+                                    }}
+                                    value={currentMessage}
+                                    onChange={(e: any) => setCurrentMessage(e.target.value)}
+                                    placeholder={voiceStatus === "connecting" ? "Connecting voice..." : "Type to the voice session..."}
+                                    onKeyDown={(e: any) => {
+                                        if (e.key === "Enter" && !e.shiftKey && canSubmitVoiceText) {
+                                            e.preventDefault();
+                                            onVoiceTextSubmit?.(currentMessage);
+                                            setCurrentMessage("");
+                                        }
+                                    }}
+                                    className="max-h-24 min-h-[44px] w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+                                    rows={1}
+                                />
+                            </div>
+
+                            <StarBorder
+                                as="button"
+                                innerClassName="w-11 h-11"
+                                className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
+                                color="hsl(var(--primary))"
+                                thickness={2}
+                                onClick={() => {
+                                    if (!canSubmitVoiceText) return;
+                                    onVoiceTextSubmit?.(currentMessage);
+                                    setCurrentMessage("");
+                                }}
+                                disabled={!canSubmitVoiceText}
+                            >
+                                <HiArrowUp size={18} />
+                            </StarBorder>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
     
     const quoteVariants = {
         initial: { opacity: 0, y: prefersReducedMotion ? 0 : 8 },
@@ -452,7 +550,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
         <div
             ref={containerRef}
             /* Force dark token scope so the input stays dark even in light theme */
-            className={`${positionClass} dark`}
+            className={`${positionClass} dark voice-composer-transition voice-composer-transition-chat`}
             style={emptyWrapperStyle}
         >
             {isMessagesEmpty && (

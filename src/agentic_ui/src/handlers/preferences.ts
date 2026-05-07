@@ -27,13 +27,12 @@ type PreferencesCtx = {
   persistUIState: () => void;
 };
 
-export function createPreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers {
+export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers {
   const {
     userId,
     availableTools,
     userPreferences,
     setUserPreferences,
-    isSavingPreferences,
     setIsSavingPreferences,
     toast,
     persistUIState,

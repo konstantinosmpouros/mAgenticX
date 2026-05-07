@@ -34,8 +34,7 @@ def _purge_modules_under_paths(*roots: str | Path) -> None:
 def _load_agents_service(monkeypatch):
     _purge_modules_under_paths(ROOT / "src" / "dialogue_bridge", ROOT / "src" / "rag_service", ROOT / "src" / "agents")
 
-    if str(SERVICE_ROOT) not in sys.path:
-        sys.path.insert(0, str(SERVICE_ROOT))
+    monkeypatch.syspath_prepend(str(SERVICE_ROOT))
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.setenv("TRUSTED_PROXY_SECRET", "agents-test-secret")
@@ -66,7 +65,7 @@ def agents_service(monkeypatch):
 @pytest.fixture
 def internal_headers(agents_service):
     return {
-        agents_service.main.configs.proxy.trusted_proxy_header_name: agents_service.main.configs.proxy.trusted_proxy_secret
+        agents_service.main.settings.proxy.trusted_proxy_header_name: agents_service.main.settings.proxy.trusted_proxy_secret.get_secret_value()
     }
 
 
