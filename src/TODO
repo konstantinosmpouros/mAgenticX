@@ -36,7 +36,13 @@
 
 - Instead of a ChromaDB consider adding pgvector in the database and use it for the retrieval, this will reduce the complexity of the system and the number of components to maintain. Also it will provide an easier way to keep the data consistent and avoid issues with synchronization between the database and the vector store.
 
+## Agentic UI
+
+- Use [shadcn/ui](https://www.shadcn.io/components) for a more polished and consistent design across the app. This will also help with accessibility and responsiveness.
+- Chart can be visualized with [shadcn/charts](https://www.shadcn.io/charts) and the agent can have a custom tool like the todo tool in order to represent the chart and create a custom AGUI event for the interaction with the chart.
+- I think the best way to implement an agentic UI is to have all the agui event for every message (raw event list) and then upon read a past message to have a parser that will parse the raw event list and create the final UI for that message, this way we can have a more flexible and powerful way to create the UI for each message and also we can have a better control over the state of the UI and the interactions with it. This will also allow us to have a better way to handle the streaming of the messages and the interactions with the UI without having to worry about the state of the UI at any given time.
+
 ## Bugs
 
 - The ai-elements response has a problem with the url and with the mermaid bg l in the dark mode, need to fix it.
-- When open a conv, then new chat, and then voice mode the input bar moves in the left. Also the transition of the voice mode is not smooth when switching from chat to voice or voice to chat or voice to new chat or new chat to voice, need to fix it.
+- When changing to voice mode the transition in bad.

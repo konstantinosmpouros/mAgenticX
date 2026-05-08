@@ -137,30 +137,6 @@ class UpstreamSettings(BaseSettings):
     agents_service_url: str = Field("https://agents:8003", validation_alias="AGENTS_SERVICE_URL")
 
 
-class SpeechSettings(BaseSettings):
-    model_config = _BASE_MODEL_CONFIG
-
-    default_read_aloud_voice: str = Field("alloy", validation_alias="READ_ALOUD_DEFAULT_VOICE")
-    supported_read_aloud_voices: frozenset[str] = Field(
-        default=frozenset({"alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"}),
-        validation_alias="READ_ALOUD_SUPPORTED_VOICES",
-    )
-
-    @field_validator("default_read_aloud_voice", mode="after")
-    @classmethod
-    def _normalize_voice(cls, v: str) -> str:
-        normalized = v.strip().lower()
-        return normalized or "alloy"
-
-    @field_validator("supported_read_aloud_voices", mode="before")
-    @classmethod
-    def _parse_voices(cls, v: object) -> object:
-        if isinstance(v, frozenset):
-            return v
-        items = _split_csv(v)
-        return frozenset(items) if items else v
-
-
 class VoiceSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -307,7 +283,6 @@ class Settings(BaseSettings):
     session: SessionSettings = Field(default_factory=SessionSettings)
     vault: VaultSettings = Field(default_factory=VaultSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
-    speech: SpeechSettings = Field(default_factory=SpeechSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     tls: TlsSettings = Field(default_factory=TlsSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)

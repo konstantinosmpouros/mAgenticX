@@ -8,7 +8,7 @@ from core.database import ConversationTable, MessageTable, UserPreferencesTable,
 from schemas import DictationResponse, ReadAloudPreviewRequest
 from utils import (
     generate_read_aloud_audio,
-    normalize_read_aloud_voice,
+    normalize_realtime_voice,
     read_aloud_response,
     transcribe_dictation_audio,
     validate_convId,
@@ -89,15 +89,15 @@ async def readMessageAloud(
         select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id)
     )
     preferences = preferences_res.scalar_one_or_none()
-    read_aloud_voice = normalize_read_aloud_voice(preferences.read_aloud_voice if preferences else None)
+    voice = normalize_realtime_voice(preferences.voice_mode_voice if preferences else None)
 
-    audio, content_type = await generate_read_aloud_audio(msg.content or "", read_aloud_voice)
+    audio, content_type = await generate_read_aloud_audio(msg.content or "", voice)
     logger.info(
         "message_read_aloud_generated",
         "Read-aloud audio generated for message",
         audio_bytes=len(audio),
         content_type=content_type,
-        read_aloud_voice=read_aloud_voice,
+        voice_mode_voice=voice,
     )
     extension = "mp3" if content_type == "audio/mpeg" else content_type.split("/")[-1]
     return read_aloud_response(audio, content_type, f"read-aloud-{message_id}.{extension}")
@@ -115,14 +115,14 @@ async def previewReadAloudVoice(
     _: None = Depends(require_csrf_protection),
 ):
     set_context(user_id=user_id)
-    read_aloud_voice = normalize_read_aloud_voice(payload.voice)
-    audio, content_type = await generate_read_aloud_audio(payload.text, read_aloud_voice)
+    voice = normalize_realtime_voice(payload.voice)
+    audio, content_type = await generate_read_aloud_audio(payload.text, voice)
     logger.info(
         "read_aloud_preview_generated",
         "Read-aloud preview audio generated",
         audio_bytes=len(audio),
         content_type=content_type,
-        read_aloud_voice=read_aloud_voice,
+        voice_mode_voice=voice,
     )
     extension = "mp3" if content_type == "audio/mpeg" else content_type.split("/")[-1]
-    return read_aloud_response(audio, content_type, f"read-aloud-preview-{read_aloud_voice}.{extension}")
+    return read_aloud_response(audio, content_type, f"read-aloud-preview-{voice}.{extension}")

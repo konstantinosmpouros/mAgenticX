@@ -9,7 +9,8 @@ async def test_get_user_preferences_defaults_when_no_row_exists(client, seeded_u
         "tools": {"disabled": []},
         "prefersAgenticChat": False,
         "suggestionsEnabled": True,
-        "readAloudVoice": "alloy",
+        "voiceModeVoice": "alloy",
+        "voiceModeLanguage": "english",
     }
 
 
@@ -28,7 +29,8 @@ async def test_put_user_preferences_deduplicates_disabled_tools(client, seeded_u
             },
             "prefersAgenticChat": True,
             "suggestionsEnabled": False,
-            "readAloudVoice": "unsupported-voice",
+            "voiceModeVoice": "unsupported-realtime-voice",
+            "voiceModeLanguage": "unsupported-language",
         },
     )
 
@@ -42,7 +44,8 @@ async def test_put_user_preferences_deduplicates_disabled_tools(client, seeded_u
         },
         "prefersAgenticChat": True,
         "suggestionsEnabled": False,
-        "readAloudVoice": "alloy",
+        "voiceModeVoice": "alloy",
+        "voiceModeLanguage": "english",
     }
 
     follow_up = await client.get(f"/v1/preferences/{seeded_user.id}")

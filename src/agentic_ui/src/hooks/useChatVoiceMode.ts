@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { ReadAloudVoice } from "@/lib/consts";
+import type { RealtimeVoice, VoiceModeLanguage } from "@/lib/consts";
 import { createVoiceModeHandlers } from "@/handlers/voice";
 import { useRealtimeVoiceSession } from "@/hooks/useRealtimeVoiceSession";
 
@@ -9,14 +9,16 @@ type UseChatVoiceModeArgs = {
   toast: ToastFn;
   userId: string | null;
   selectedAgent: string;
-  readAloudVoice?: ReadAloudVoice;
+  voiceModeVoice?: RealtimeVoice;
+  voiceModeLanguage?: VoiceModeLanguage;
 };
 
 export function useChatVoiceMode({
   toast,
   userId,
   selectedAgent,
-  readAloudVoice,
+  voiceModeVoice,
+  voiceModeLanguage,
 }: UseChatVoiceModeArgs) {
   const voiceSession = useRealtimeVoiceSession({ toast });
 
@@ -33,9 +35,10 @@ export function useChatVoiceMode({
     await voiceSession.start({
       userId,
       selectedAgent,
-      voice: readAloudVoice,
+      voice: voiceModeVoice,
+      language: voiceModeLanguage,
     });
-  }, [readAloudVoice, selectedAgent, toast, userId, voiceSession]);
+  }, [selectedAgent, toast, userId, voiceModeLanguage, voiceModeVoice, voiceSession]);
 
   const { handleVoiceMode } = createVoiceModeHandlers({ toast, onStartVoiceMode: handleStartVoiceMode });
 

@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from core.database import UserPreferencesTable
 from router import voice as voice_router
 
 
-async def test_realtime_voice_session_creates_empty_conversation(client, seeded_user, seeded_agent, monkeypatch):
+async def test_realtime_voice_session_creates_empty_conversation(client, seeded_user, seeded_agent, session_factory, monkeypatch):
     captured: dict = {}
+
+    async with session_factory() as session:
+        session.add(
+            UserPreferencesTable(
+                user_id=seeded_user.id,
+                tools={"disabled": []},
+                voice_mode_voice="cedar",
+                voice_mode_language="greek",
+            )
+        )
+        await session.commit()
 
     async def fake_create_realtime_session_with_agents(**kwargs):
         captured.update(kwargs)
@@ -17,18 +29,21 @@ async def test_realtime_voice_session_creates_empty_conversation(client, seeded_
         json={
             "agentId": seeded_agent.id,
             "sdp": "offer-sdp",
-            "voice": "alloy",
         },
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["sdp"] == "answer-sdp"
+    assert payload["voice"] == "cedar"
     assert captured["sdp"] == "offer-sdp"
+    assert captured["voice"] == "cedar"
     assert captured["metadata"]["user_id"] == seeded_user.id
     assert captured["metadata"]["conversation_id"] is None
     assert captured["metadata"]["agent_id"] == seeded_agent.id
+    assert captured["metadata"]["voice_mode_language"] == "greek"
     assert "live voice conversation" in captured["instructions"]
+    assert "Use Greek as the default language for this live voice conversation." in captured["instructions"]
 
 
 async def test_realtime_voice_event_persists_transcript(client, seeded_user, conversation_factory):

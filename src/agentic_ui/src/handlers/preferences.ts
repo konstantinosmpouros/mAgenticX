@@ -1,8 +1,13 @@
 import { useMemo } from 'react';
 import { updateUserPreferences } from '@/lib/api';
 import type { ToolMetadata, ToolPreference, UserPreferences } from '@/lib/types';
-import { DEFAULT_READ_ALOUD_VOICE, type ReadAloudVoice } from '@/lib/consts';
-import { normalizeReadAloudVoice } from '@/lib/utils';
+import {
+  DEFAULT_REALTIME_VOICE,
+  DEFAULT_VOICE_MODE_LANGUAGE,
+  type RealtimeVoice,
+  type VoiceModeLanguage,
+} from '@/lib/consts';
+import { normalizeRealtimeVoice, normalizeVoiceModeLanguage } from '@/lib/utils';
 
 // Preferences handlers derive the tool toggle model shown in settings and persist changes optimistically.
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
@@ -13,7 +18,8 @@ export type PreferencesHandlers = {
   resolvedPreferences: UserPreferences;
   handleToggleToolPreference: (tool: ToolMetadata) => Promise<void>;
   handleToggleSuggestionsEnabled: () => Promise<void>;
-  handleSelectReadAloudVoice: (voice: ReadAloudVoice) => Promise<void>;
+  handleSelectVoiceModeVoice: (voice: RealtimeVoice) => Promise<void>;
+  handleSelectVoiceModeLanguage: (language: VoiceModeLanguage) => Promise<void>;
 };
 
 type PreferencesCtx = {
@@ -40,14 +46,21 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
 
   const defaultPreferences: UserPreferences = useMemo(
     // Keep downstream code simple by always resolving a complete preference object.
-    () => ({ tools: { disabled: [] }, prefersAgenticChat: false, suggestionsEnabled: true, readAloudVoice: DEFAULT_READ_ALOUD_VOICE }),
+    () => ({
+      tools: { disabled: [] },
+      prefersAgenticChat: false,
+      suggestionsEnabled: true,
+      voiceModeVoice: DEFAULT_REALTIME_VOICE,
+      voiceModeLanguage: DEFAULT_VOICE_MODE_LANGUAGE,
+    }),
     []
   );
   const resolvedPreferences = {
     ...defaultPreferences,
     ...(userPreferences ?? {}),
     tools: userPreferences?.tools ?? defaultPreferences.tools,
-    readAloudVoice: normalizeReadAloudVoice(userPreferences?.readAloudVoice),
+    voiceModeVoice: normalizeRealtimeVoice(userPreferences?.voiceModeVoice),
+    voiceModeLanguage: normalizeVoiceModeLanguage(userPreferences?.voiceModeLanguage),
   };
 
   const toolKey = (serverId: string | undefined, toolName: string) => `${serverId || 'default'}::${toolName}`;
@@ -110,7 +123,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      readAloudVoice: normalizeReadAloudVoice(resolvedPreferences.readAloudVoice),
+      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
+      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
     };
     setUserPreferences(nextPrefs);
     setIsSavingPreferences(true);
@@ -141,7 +155,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false),
-      readAloudVoice: normalizeReadAloudVoice(resolvedPreferences.readAloudVoice),
+      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
+      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
     };
     setUserPreferences(nextPrefs);
     setIsSavingPreferences(true);
@@ -161,20 +176,21 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     }
   };
 
-  const handleSelectReadAloudVoice = async (voice: ReadAloudVoice) => {
+  const handleSelectVoiceModeVoice = async (voice: RealtimeVoice) => {
     if (!userId) {
       toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
       return;
     }
-    const nextVoice = normalizeReadAloudVoice(voice);
-    if (nextVoice === normalizeReadAloudVoice(resolvedPreferences.readAloudVoice)) return;
+    const nextVoice = normalizeRealtimeVoice(voice);
+    if (nextVoice === normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice)) return;
 
     const prevPrefs = resolvedPreferences;
     const nextPrefs: UserPreferences = {
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      readAloudVoice: nextVoice,
+      voiceModeVoice: nextVoice,
+      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
     };
     setUserPreferences(nextPrefs);
     setIsSavingPreferences(true);
@@ -185,7 +201,41 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     } catch (error) {
       setUserPreferences(prevPrefs);
       toast({
-        title: 'Could not update voice',
+        title: 'Could not update voice mode voice',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
+  const handleSelectVoiceModeLanguage = async (language: VoiceModeLanguage) => {
+    if (!userId) {
+      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
+    const nextLanguage = normalizeVoiceModeLanguage(language);
+    if (nextLanguage === normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage)) return;
+
+    const prevPrefs = resolvedPreferences;
+    const nextPrefs: UserPreferences = {
+      tools: resolvedPreferences.tools ?? { disabled: [] },
+      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
+      voiceModeLanguage: nextLanguage,
+    };
+    setUserPreferences(nextPrefs);
+    setIsSavingPreferences(true);
+    try {
+      const saved = await updateUserPreferences(userId, nextPrefs);
+      setUserPreferences(saved);
+      persistUIState();
+    } catch (error) {
+      setUserPreferences(prevPrefs);
+      toast({
+        title: 'Could not update voice mode language',
         description: error instanceof Error ? error.message : 'Please try again.',
         variant: 'destructive',
       });
@@ -200,6 +250,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     resolvedPreferences,
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
-    handleSelectReadAloudVoice,
+    handleSelectVoiceModeVoice,
+    handleSelectVoiceModeLanguage,
   };
 }

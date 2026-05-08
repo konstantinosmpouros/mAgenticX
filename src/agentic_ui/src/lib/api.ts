@@ -27,7 +27,13 @@ import type {
 } from "./types";
 import type { AGUIEvent } from "@/lib/agui";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
-import { normalizeAuthResponse, normalizeReadAloudVoice, parseSSE, withSessionRequest } from "./utils";
+import {
+  normalizeAuthResponse,
+  normalizeRealtimeVoice,
+  normalizeVoiceModeLanguage,
+  parseSSE,
+  withSessionRequest,
+} from "./utils";
 import {
   mapIcon,
   emitUnauthorized,
@@ -35,7 +41,7 @@ import {
   transformConversationSummary,
   transformSharedConversationDetail,
   transformMessage,
-  type ReadAloudVoice,
+  type RealtimeVoice,
 } from "./consts";
 
 
@@ -236,9 +242,10 @@ export async function getUserPreferences(userId: string) {
     typeof data?.suggestionsEnabled === "boolean"
       ? data.suggestionsEnabled
       : true;
-  const readAloudVoice = normalizeReadAloudVoice(data?.readAloudVoice);
+  const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
+  const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
 
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, readAloudVoice };
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, voiceModeVoice, voiceModeLanguage };
 }
 
 
@@ -263,8 +270,9 @@ export async function updateUserPreferences(userId: string, prefs: any) {
     typeof data?.suggestionsEnabled === "boolean"
       ? data.suggestionsEnabled
       : true;
-  const readAloudVoice = normalizeReadAloudVoice(data?.readAloudVoice);
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, readAloudVoice };
+  const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
+  const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, voiceModeVoice, voiceModeLanguage };
 }
 
 
@@ -870,7 +878,7 @@ export async function generateMessageReadAloudAudio(
 // Generate a short read-aloud preview for a selected voice
 export async function generateReadAloudPreviewAudio(
   userId: string,
-  voice: ReadAloudVoice,
+  voice: RealtimeVoice,
   text = "Hey! I am your AI speaker.",
 ): Promise<Blob> {
   const res = await fetch(`${SPEECH_BASE_PATH}/read-aloud-preview/${userId}`, withSessionRequest({
@@ -879,7 +887,7 @@ export async function generateReadAloudPreviewAudio(
       "Accept": "audio/mpeg,audio/*",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ voice: normalizeReadAloudVoice(voice), text }),
+    body: JSON.stringify({ voice: normalizeRealtimeVoice(voice), text }),
   }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();

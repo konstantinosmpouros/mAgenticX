@@ -176,10 +176,15 @@ class UserPreferences(BaseModel):
         validation_alias=AliasChoices("suggestions_enabled", "suggestionsEnabled"),
         serialization_alias="suggestionsEnabled",
     )
-    readAloudVoice: str = Field(
+    voiceModeVoice: str = Field(
         default="alloy",
-        validation_alias=AliasChoices("read_aloud_voice", "readAloudVoice"),
-        serialization_alias="readAloudVoice",
+        validation_alias=AliasChoices("voice_mode_voice", "voiceModeVoice"),
+        serialization_alias="voiceModeVoice",
+    )
+    voiceModeLanguage: str = Field(
+        default="english",
+        validation_alias=AliasChoices("voice_mode_language", "voiceModeLanguage"),
+        serialization_alias="voiceModeLanguage",
     )
 
 
@@ -485,6 +490,7 @@ class RealtimeVoiceSessionIn(BaseModel):
     conversationId: Optional[str] = None
     sdp: str = Field(..., min_length=1)
     voice: Optional[str] = None
+    language: Optional[str] = None
 
 
 class RealtimeVoiceSessionOut(BaseModel):

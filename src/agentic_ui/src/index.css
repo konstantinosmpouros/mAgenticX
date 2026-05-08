@@ -842,6 +842,58 @@ All colors MUST be HSL.
   cursor: default;
 }
 
+.chat-markdown a:not(.chat-markdown-footnote-ref),
+.chat-markdown-link {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: hsl(var(--primary));
+  font-weight: inherit;
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+  text-decoration-color: hsl(var(--primary) / 0.55);
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.chat-markdown a:not(.chat-markdown-footnote-ref):hover,
+.chat-markdown-link:hover {
+  color: hsl(var(--primary));
+  text-decoration-color: hsl(var(--primary) / 0.85);
+}
+
+.chat-markdown a:not(.chat-markdown-footnote-ref):focus-visible,
+.chat-markdown-link:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.7);
+  outline-offset: 2px;
+}
+
+.chat-markdown [data-streamdown="mermaid-block"] {
+  overflow: hidden;
+  background: #ffffff;
+  border-color: rgb(203 213 225);
+  color: #111827;
+}
+
+.chat-markdown [aria-label="Mermaid chart"] {
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  padding: 0.75rem;
+}
+
+.chat-markdown [aria-label="Mermaid chart"] svg {
+  display: block;
+  max-width: 100%;
+  min-width: min(100%, 34rem);
+  height: auto;
+  background: #ffffff !important;
+}
+
+.chat-markdown [aria-label="Mermaid chart"] svg,
+.chat-markdown [aria-label="Mermaid chart"] svg * {
+  color: #111827;
+}
+
 .chat-markdown section[data-footnotes] {
   margin-top: 1rem;
   padding-top: 0.75rem;

@@ -38,8 +38,13 @@ import {
     VoiceSelectorPreview,
     VoiceSelectorTrigger,
 } from "@/components/ui/ai-elements/voice-selector";
-import { cn, normalizeReadAloudVoice } from "@/lib/utils";
-import { READ_ALOUD_VOICES, type ReadAloudVoice } from "@/lib/consts";
+import { cn, normalizeRealtimeVoice, normalizeVoiceModeLanguage } from "@/lib/utils";
+import {
+    REALTIME_VOICES,
+    VOICE_MODE_LANGUAGES,
+    type RealtimeVoice,
+    type VoiceModeLanguage,
+} from "@/lib/consts";
 import { ConversationShareListItem, ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
 import { generateReadAloudPreviewAudio } from "@/lib/api";
 import {
@@ -73,7 +78,8 @@ type ProfilePanelProps = {
     onRevokeSharedConversation?: (share: ConversationShareListItem) => void;
     onToggleToolPreference?: (tool: ToolMetadata) => void;
     onToggleSuggestionsEnabled?: () => void;
-    onSelectReadAloudVoice?: (voice: ReadAloudVoice) => void;
+    onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
+    onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
     preferencesSaving?: boolean;
 };
 
@@ -302,7 +308,8 @@ export default function ProfilePanel({
     onRevokeSharedConversation,
     onToggleToolPreference,
     onToggleSuggestionsEnabled,
-    onSelectReadAloudVoice,
+    onSelectVoiceModeVoice,
+    onSelectVoiceModeLanguage,
     preferencesSaving = false,
 }: ProfilePanelProps) {
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
@@ -316,8 +323,8 @@ export default function ProfilePanel({
     const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
     const [shortcutPlatform, setShortcutPlatform] = useState<ShortcutPlatform>(() => detectShortcutPlatform());
     const [voiceSelectorOpen, setVoiceSelectorOpen] = useState(false);
-    const [previewLoadingVoice, setPreviewLoadingVoice] = useState<ReadAloudVoice | null>(null);
-    const [previewPlayingVoice, setPreviewPlayingVoice] = useState<ReadAloudVoice | null>(null);
+    const [previewLoadingVoice, setPreviewLoadingVoice] = useState<RealtimeVoice | null>(null);
+    const [previewPlayingVoice, setPreviewPlayingVoice] = useState<RealtimeVoice | null>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const previewAudioUrlRef = useRef<string | null>(null);
     const { theme, setTheme } = useTheme();
@@ -407,9 +414,10 @@ export default function ProfilePanel({
     const displayIsActive = fmtBoolean(user?.isActive);
     const displayPrefersAgentic = fmtBoolean(prefersAgentic);
     const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
-    const readAloudVoice = normalizeReadAloudVoice(userPreferences?.readAloudVoice);
-    const selectedReadAloudVoice =
-        READ_ALOUD_VOICES.find((voice) => voice.id === readAloudVoice) ?? READ_ALOUD_VOICES[0];
+    const voiceModeVoice = normalizeRealtimeVoice(userPreferences?.voiceModeVoice);
+    const selectedVoiceModeVoice =
+        REALTIME_VOICES.find((voice) => voice.id === voiceModeVoice) ?? REALTIME_VOICES[0];
+    const voiceModeLanguage = normalizeVoiceModeLanguage(userPreferences?.voiceModeLanguage);
     const avatarInitial = (displayName !== NA ? displayName : "Profile").charAt(0).toUpperCase();
 
     const clearVoicePreview = useCallback(() => {
@@ -424,7 +432,7 @@ export default function ProfilePanel({
 
     useEffect(() => () => clearVoicePreview(), [clearVoicePreview]);
 
-    const handlePreviewReadAloudVoice = async (voice: ReadAloudVoice) => {
+    const handlePreviewVoice = async (voice: RealtimeVoice) => {
         if (!user?.id) return;
         if (previewPlayingVoice === voice) {
             clearVoicePreview();
@@ -1136,14 +1144,14 @@ export default function ProfilePanel({
                                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                                                                 <div className="min-w-0">
                                                                     <p className="text-sm font-semibold text-foreground">
-                                                                        Read aloud voice
+                                                                        Voice mode
                                                                     </p>
                                                                     <p className="mt-1 text-sm text-muted-foreground">
-                                                                        Voice used when an AI response is played as audio.
+                                                                        Voice used for live voice mode and read aloud.
                                                                     </p>
                                                                 </div>
                                                                 <VoiceSelector
-                                                                    value={readAloudVoice}
+                                                                    value={voiceModeVoice}
                                                                     open={voiceSelectorOpen}
                                                                     onOpenChange={setVoiceSelectorOpen}
                                                                 >
@@ -1158,10 +1166,10 @@ export default function ProfilePanel({
                                                                         >
                                                                             <span className="min-w-0">
                                                                                 <span className="block truncate font-semibold text-foreground">
-                                                                                    {selectedReadAloudVoice.label}
+                                                                                    {selectedVoiceModeVoice.label}
                                                                                 </span>
                                                                                 <span className="block truncate text-xs text-muted-foreground">
-                                                                                    {selectedReadAloudVoice.description}
+                                                                                    {selectedVoiceModeVoice.description}
                                                                                 </span>
                                                                             </span>
                                                                             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -1170,15 +1178,15 @@ export default function ProfilePanel({
                                                                         </button>
                                                                     </VoiceSelectorTrigger>
                                                                     <VoiceSelectorContent
-                                                                        title="Read aloud voice"
+                                                                        title="Voice mode"
                                                                         className="z-[90] max-w-md overflow-hidden rounded-2xl border border-border/70 bg-background p-0 shadow-2xl"
                                                                     >
                                                                         <VoiceSelectorInput placeholder="Search voices..." />
                                                                         <VoiceSelectorList className="max-h-[22rem]">
                                                                             <VoiceSelectorEmpty>No voice found.</VoiceSelectorEmpty>
-                                                                            <VoiceSelectorGroup heading="Read aloud voices">
-                                                                                {READ_ALOUD_VOICES.map((voice) => {
-                                                                                    const isSelected = voice.id === readAloudVoice;
+                                                                            <VoiceSelectorGroup heading="Voices">
+                                                                                {REALTIME_VOICES.map((voice) => {
+                                                                                    const isSelected = voice.id === voiceModeVoice;
 
                                                                                     return (
                                                                                         <VoiceSelectorItem
@@ -1186,7 +1194,7 @@ export default function ProfilePanel({
                                                                                             value={`${voice.label} ${voice.description}`}
                                                                                             onSelect={() => {
                                                                                                 setVoiceSelectorOpen(false);
-                                                                                                onSelectReadAloudVoice?.(normalizeReadAloudVoice(voice.id));
+                                                                                                onSelectVoiceModeVoice?.(normalizeRealtimeVoice(voice.id));
                                                                                             }}
                                                                                             className={cn(
                                                                                                 "items-center gap-3 rounded-xl px-3 py-3",
@@ -1196,7 +1204,7 @@ export default function ProfilePanel({
                                                                                             <VoiceSelectorPreview
                                                                                                 loading={previewLoadingVoice === voice.id}
                                                                                                 playing={previewPlayingVoice === voice.id}
-                                                                                                onPlay={() => handlePreviewReadAloudVoice(voice.id)}
+                                                                                                onPlay={() => handlePreviewVoice(voice.id)}
                                                                                                 className={cn(
                                                                                                     "size-6 shrink-0 rounded-lg border",
                                                                                                     isSelected
@@ -1232,6 +1240,39 @@ export default function ProfilePanel({
                                                                         </VoiceSelectorList>
                                                                     </VoiceSelectorContent>
                                                                 </VoiceSelector>
+                                                            </div>
+                                                        </div>
+                                                        <div className="px-5 py-4">
+                                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-semibold text-foreground">
+                                                                        Voice mode language
+                                                                    </p>
+                                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                                        Default response language for live voice conversations.
+                                                                    </p>
+                                                                </div>
+                                                                <div className="inline-flex h-10 w-full rounded-xl border border-border/60 bg-background/60 p-1 sm:w-auto">
+                                                                    {VOICE_MODE_LANGUAGES.map((language) => {
+                                                                        const isSelected = language.id === voiceModeLanguage;
+                                                                        return (
+                                                                            <button
+                                                                                key={language.id}
+                                                                                type="button"
+                                                                                disabled={preferencesSaving}
+                                                                                onClick={() => onSelectVoiceModeLanguage?.(normalizeVoiceModeLanguage(language.id))}
+                                                                                className={cn(
+                                                                                    "min-w-24 flex-1 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none",
+                                                                                    isSelected
+                                                                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                                                                        : "text-muted-foreground hover:bg-background/80 hover:text-foreground"
+                                                                                )}
+                                                                            >
+                                                                                {language.label}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </SoftPanel>

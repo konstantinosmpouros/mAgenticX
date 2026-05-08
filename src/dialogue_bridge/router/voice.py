@@ -28,6 +28,7 @@ from utils import (
     load_owned_voice_conversation,
     load_realtime_agent,
     preferred_realtime_voice,
+    preferred_voice_mode_language,
     validate_userId,
 )
 
@@ -57,19 +58,21 @@ async def createRealtimeVoiceSession(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected agent does not match this conversation.")
 
     voice = await preferred_realtime_voice(db, user_id, payload.voice)
+    language = await preferred_voice_mode_language(db, user_id, payload.language)
     model = settings.voice.realtime_model
     upstream = await create_realtime_session_with_agents(
         sdp=payload.sdp,
         model=model,
         voice=voice,
-        instructions=build_voice_instructions(agent, conversation),
+        instructions=build_voice_instructions(agent, conversation, language),
         metadata={
             "user_id": user_id,
             "conversation_id": conversation.id if conversation else None,
             "agent_id": agent.id,
+            "voice_mode_language": language,
         },
     )
-    logger.info("realtime_voice_session_created", "Realtime voice session created", conversation_id=conversation.id if conversation else None, agent_id=agent.id, model=model, voice=voice)
+    logger.info("realtime_voice_session_created", "Realtime voice session created", conversation_id=conversation.id if conversation else None, agent_id=agent.id, model=model, voice=voice, voice_mode_language=language)
     return RealtimeVoiceSessionOut(
         sdp=upstream["sdp"],
         model=str(upstream.get("model") or model),

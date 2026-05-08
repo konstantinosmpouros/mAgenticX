@@ -2,7 +2,18 @@ import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { AGUIEvent } from "@/lib/agui";
 import type { AttachmentIn, AuthResponse, FileAttachment } from "./types";
-import { DEFAULT_READ_ALOUD_VOICE, READ_ALOUD_VOICES, withCredentials, type ReadAloudVoice } from "./consts";
+import {
+  DEFAULT_READ_ALOUD_VOICE,
+  DEFAULT_REALTIME_VOICE,
+  DEFAULT_VOICE_MODE_LANGUAGE,
+  READ_ALOUD_VOICES,
+  REALTIME_VOICES,
+  VOICE_MODE_LANGUAGES,
+  withCredentials,
+  type ReadAloudVoice,
+  type RealtimeVoice,
+  type VoiceModeLanguage,
+} from "./consts";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -13,6 +24,20 @@ export function normalizeReadAloudVoice(value: unknown): ReadAloudVoice {
   return READ_ALOUD_VOICES.some((option) => option.id === voice)
     ? (voice as ReadAloudVoice)
     : DEFAULT_READ_ALOUD_VOICE;
+}
+
+export function normalizeRealtimeVoice(value: unknown): RealtimeVoice {
+  const voice = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return REALTIME_VOICES.some((option) => option.id === voice)
+    ? (voice as RealtimeVoice)
+    : DEFAULT_REALTIME_VOICE;
+}
+
+export function normalizeVoiceModeLanguage(value: unknown): VoiceModeLanguage {
+  const language = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return VOICE_MODE_LANGUAGES.some((option) => option.id === language)
+    ? (language as VoiceModeLanguage)
+    : DEFAULT_VOICE_MODE_LANGUAGE;
 }
 
 const CSRF_COOKIE_CANDIDATES = ["__Host-mx_csrf", "mx_csrf"];

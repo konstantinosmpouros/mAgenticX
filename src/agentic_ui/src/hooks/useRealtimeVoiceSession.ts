@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReadAloudVoice } from "@/lib/consts";
+import type { RealtimeVoice, VoiceModeLanguage } from "@/lib/consts";
 import type { VoiceModeStatus } from "@/lib/types";
 import {
   createRealtimeVoiceSession,
@@ -10,7 +10,8 @@ type ToastFn = (opts: { title: string; description?: string; variant?: string; d
 type StartVoiceSessionArgs = {
   userId: string;
   selectedAgent: string;
-  voice?: ReadAloudVoice;
+  voice?: RealtimeVoice;
+  language?: VoiceModeLanguage;
 };
 
 type UseRealtimeVoiceSessionArgs = {
@@ -78,7 +79,7 @@ export function useRealtimeVoiceSession({
   );
 
   const start = useCallback(
-    async ({ userId, selectedAgent, voice }: StartVoiceSessionArgs) => {
+    async ({ userId, selectedAgent, voice, language }: StartVoiceSessionArgs) => {
       if (!userId || !selectedAgent || status !== "closed") return;
       setStatus("connecting");
       setErrorMessage(null);
@@ -122,6 +123,7 @@ export function useRealtimeVoiceSession({
           agentId: selectedAgent,
           sdp: offer.sdp,
           voice,
+          language,
         });
         await pc.setRemoteDescription({ type: "answer", sdp: session.sdp });
       } catch (error) {

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth_session import require_csrf_protection
 from core.database import UserPreferencesTable, UserTable, get_db
 from schemas import UserPreferences
-from utils import normalize_read_aloud_voice, validate_userId
+from utils import normalize_realtime_voice, normalize_voice_mode_language, validate_userId
 
 
 router = APIRouter()
@@ -34,7 +34,8 @@ async def get_user_preferences(
         "tools": row.tools if isinstance(row.tools, dict) else {},
         "prefers_agentic_chat": bool(row.prefers_agentic_chat),
         "suggestions_enabled": bool(row.suggestions_enabled),
-        "read_aloud_voice": normalize_read_aloud_voice(row.read_aloud_voice),
+        "voice_mode_voice": normalize_realtime_voice(row.voice_mode_voice),
+        "voice_mode_language": normalize_voice_mode_language(row.voice_mode_language),
     }
     logger.info("preferences_loaded", "Loaded user preferences")
     return UserPreferences.model_validate(payload)
@@ -54,12 +55,14 @@ async def upsert_user_preferences(
     set_context(user_id=user_id)
     result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
     existing: UserPreferencesTable | None = result.scalar_one_or_none()
-    read_aloud_voice = normalize_read_aloud_voice(payload.readAloudVoice)
+    voice_mode_voice = normalize_realtime_voice(payload.voiceModeVoice)
+    voice_mode_language = normalize_voice_mode_language(payload.voiceModeLanguage)
     if existing:
         existing.tools = payload.tools.model_dump(mode="json", by_alias=True)
         existing.prefers_agentic_chat = bool(payload.prefersAgenticChat)
         existing.suggestions_enabled = bool(payload.suggestionsEnabled)
-        existing.read_aloud_voice = read_aloud_voice
+        existing.voice_mode_voice = voice_mode_voice
+        existing.voice_mode_language = voice_mode_language
     else:
         db.add(
             UserPreferencesTable(
@@ -67,15 +70,25 @@ async def upsert_user_preferences(
                 tools=payload.tools.model_dump(mode="json", by_alias=True),
                 prefers_agentic_chat=bool(payload.prefersAgenticChat),
                 suggestions_enabled=bool(payload.suggestionsEnabled),
-                read_aloud_voice=read_aloud_voice,
+                voice_mode_voice=voice_mode_voice,
+                voice_mode_language=voice_mode_language,
             )
         )
 
     await db.commit()
-    logger.info("preferences_updated", "Updated user preferences", disabled_tools=len(payload.tools.disabled), prefers_agentic_chat=bool(payload.prefersAgenticChat), suggestions_enabled=bool(payload.suggestionsEnabled), read_aloud_voice=read_aloud_voice)
+    logger.info(
+        "preferences_updated",
+        "Updated user preferences",
+        disabled_tools=len(payload.tools.disabled),
+        prefers_agentic_chat=bool(payload.prefersAgenticChat),
+        suggestions_enabled=bool(payload.suggestionsEnabled),
+        voice_mode_voice=voice_mode_voice,
+        voice_mode_language=voice_mode_language,
+    )
     return UserPreferences(
         tools=payload.tools,
         prefersAgenticChat=bool(payload.prefersAgenticChat),
         suggestionsEnabled=bool(payload.suggestionsEnabled),
-        readAloudVoice=read_aloud_voice,
+        voiceModeVoice=voice_mode_voice,
+        voiceModeLanguage=voice_mode_language,
     )

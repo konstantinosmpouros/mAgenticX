@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { PlanSnapshot } from "@/lib/agui";
-import type { ReadAloudVoice } from "@/lib/consts";
+import type { RealtimeVoice, VoiceModeLanguage } from "@/lib/consts";
 
 
 // ------------------------------------------------------
@@ -95,7 +95,8 @@ export type UserPreferences = {
     };
     prefersAgenticChat?: boolean;
     suggestionsEnabled?: boolean;
-    readAloudVoice?: ReadAloudVoice;
+    voiceModeVoice?: RealtimeVoice;
+    voiceModeLanguage?: VoiceModeLanguage;
 };
 
 export type VoiceModeStatus = "closed" | "connecting" | "listening" | "thinking" | "speaking" | "muted" | "error";
@@ -104,7 +105,8 @@ export type RealtimeVoiceSessionRequest = {
     agentId: string;
     conversationId?: string | null;
     sdp: string;
-    voice?: ReadAloudVoice;
+    voice?: RealtimeVoice;
+    language?: VoiceModeLanguage;
 };
 
 export type RealtimeVoiceSessionResponse = {

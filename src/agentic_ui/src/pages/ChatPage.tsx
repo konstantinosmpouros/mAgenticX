@@ -295,7 +295,8 @@ export function ChatInterface({
     resolvedPreferences,
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
-    handleSelectReadAloudVoice,
+    handleSelectVoiceModeVoice,
+    handleSelectVoiceModeLanguage,
   } = usePreferencesHandlers({
     userId,
     availableTools,
@@ -402,9 +403,22 @@ export function ChatInterface({
     toast: toastWrapper,
     userId,
     selectedAgent,
-    readAloudVoice: resolvedPreferences.readAloudVoice,
+    voiceModeVoice: resolvedPreferences.voiceModeVoice,
+    voiceModeLanguage: resolvedPreferences.voiceModeLanguage,
   });
   const activeBodyMode: ConversationBodyMode = voiceSession.isActive ? "voice" : "chat";
+
+  // Lags behind voiceSession.isActive by the input-bar exit duration (180 ms) so the
+  // positionClass/emptyWrapperStyle don't snap to a new position while the bar is fading out.
+  const [settledVoiceActive, setSettledVoiceActive] = useState(() => voiceSession.isActive);
+  useEffect(() => {
+    if (voiceSession.isActive) {
+      setSettledVoiceActive(true);
+      return;
+    }
+    const timeout = window.setTimeout(() => setSettledVoiceActive(false), 180);
+    return () => window.clearTimeout(timeout);
+  }, [voiceSession.isActive]);
   const [bodyTransition, setBodyTransition] = useState<{
     current: ConversationBodyMode;
     exiting: ConversationBodyMode | null;
@@ -1279,7 +1293,7 @@ export function ChatInterface({
                 // Centered empty state
                 isMessagesEmpty={isMessagesEmpty}
                 positionClass={
-                  voiceSession.isActive
+                  settledVoiceActive
                     ? "sticky bottom-0 left-0 right-0 z-30 p-6"
                     : isMessagesEmpty
                     ? "absolute left-1/2 top-[35%] -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
@@ -1304,7 +1318,7 @@ export function ChatInterface({
                 fileInputRef={fileInputRef}
                 textareaRef={textareaRef}
                 containerRef={composerContainerRef}
-                emptyWrapperStyle={emptyWrapperStyle}
+                emptyWrapperStyle={settledVoiceActive ? undefined : emptyWrapperStyle}
                 textareaMaxHeight={textareaMaxHeight}
                 onDictationSubmit={handleDictationSubmit}
                 onDictationStatusChange={handleDictationStatusChange}
@@ -1371,7 +1385,8 @@ export function ChatInterface({
                 onRevokeSharedConversation={handleRevokeSharedConversation}
                 onToggleToolPreference={handleToggleToolPreference}
                 onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
-                onSelectReadAloudVoice={handleSelectReadAloudVoice}
+                onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
+                onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
                 preferencesSaving={isSavingPreferences}
               />
 

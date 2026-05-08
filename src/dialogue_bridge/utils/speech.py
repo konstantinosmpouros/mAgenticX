@@ -21,11 +21,6 @@ _READ_ALOUD_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/spee
 _READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 
 
-def normalize_read_aloud_voice(voice: str | None) -> str:
-    selected = (voice or settings.speech.default_read_aloud_voice).strip().lower()
-    return selected if selected in settings.speech.supported_read_aloud_voices else settings.speech.default_read_aloud_voice
-
-
 def read_aloud_response(audio: bytes, content_type: str, filename: str) -> StreamingResponse:
     return StreamingResponse(
         io.BytesIO(audio),

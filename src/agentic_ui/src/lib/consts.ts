@@ -56,6 +56,32 @@ export type ReadAloudVoice = (typeof READ_ALOUD_VOICES)[number]["id"];
 
 export const DEFAULT_READ_ALOUD_VOICE: ReadAloudVoice = "alloy";
 
+export const REALTIME_VOICES = [
+  { id: "alloy", label: "Alloy", description: "Balanced", gender: "male", genderSymbol: "♂" },
+  { id: "ash", label: "Ash", description: "Clear", gender: "male", genderSymbol: "♂" },
+  { id: "ballad", label: "Ballad", description: "Warm", gender: "male", genderSymbol: "♂" },
+  { id: "cedar", label: "Cedar", description: "Rich", gender: "male", genderSymbol: "♂" },
+  { id: "coral", label: "Coral", description: "Bright", gender: "female", genderSymbol: "♀" },
+  { id: "echo", label: "Echo", description: "Deep", gender: "male", genderSymbol: "♂" },
+  { id: "marin", label: "Marin", description: "Natural", gender: "female", genderSymbol: "♀" },
+  { id: "sage", label: "Sage", description: "Calm", gender: "female", genderSymbol: "♀" },
+  { id: "shimmer", label: "Shimmer", description: "Light", gender: "female", genderSymbol: "♀" },
+  { id: "verse", label: "Verse", description: "Expressive", gender: "female", genderSymbol: "♀" },
+] as const;
+
+export type RealtimeVoice = (typeof REALTIME_VOICES)[number]["id"];
+
+export const DEFAULT_REALTIME_VOICE: RealtimeVoice = "alloy";
+
+export const VOICE_MODE_LANGUAGES = [
+  { id: "english", label: "English" },
+  { id: "greek", label: "Greek" },
+] as const;
+
+export type VoiceModeLanguage = (typeof VOICE_MODE_LANGUAGES)[number]["id"];
+
+export const DEFAULT_VOICE_MODE_LANGUAGE: VoiceModeLanguage = "english";
+
 
 const toDate = (value: any): Date => (value ? new Date(value) : new Date());
 

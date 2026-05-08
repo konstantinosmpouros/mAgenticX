@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import type { LucideIcon } from 'lucide-react';
 import { Mic, MicOff, PhoneOff, Plus, FileText, Check, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
@@ -81,7 +81,7 @@ const WELCOME_QUOTES: string[] = [
     "New chat — new ideas.",
     "I can draft, analyze, or plan — your call.",
     "Need a summary, a plan, or code? Say the word.",
-    "Let’s turn a rough idea into something real.",
+    "Let's turn a rough idea into something real.",
     "Small step or big build — we can tackle it together.",
 ];
 
@@ -109,7 +109,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
         containerRef,
         emptyWrapperStyle,
         textareaMaxHeight,
-        AgentIcon,
         Tooltip,
         TooltipTrigger,
         TooltipContent,
@@ -132,18 +131,18 @@ export function ChatInputBar(props: ChatInputBarProps) {
         onStarterSuggestionSelect,
     } = props;
 
-    
+
     // Pick a starting quote whenever agent changes or the empty-state toggles on
     const [quoteIndex, setQuoteIndex] = React.useState<number>(() =>
         Math.floor(Math.random() * WELCOME_QUOTES.length)
     );
-    
+
     // Reset the starting quote when agent changes OR when the empty-state appears
     React.useEffect(() => {
         if (!isMessagesEmpty) return;
         setQuoteIndex(Math.floor(Math.random() * WELCOME_QUOTES.length));
     }, [currentAgent?.name, isMessagesEmpty]);
-    
+
     // Rotate to a different random quote every 5s while empty-state is visible
     React.useEffect(() => {
         if (!isMessagesEmpty) return;
@@ -160,7 +159,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
         }, 8000);
         return () => clearInterval(id);
     }, [isMessagesEmpty]);
-    
+
     // Final string with agent name injected
     const welcomeQuote = WELCOME_QUOTES[quoteIndex].replace(
         "{agent}",
@@ -212,7 +211,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, [updateAttachmentFade]);
-    
+
     const prefersReducedMotion = useReducedMotion();
 
     const submitAfterStopRef = React.useRef(false);
@@ -455,442 +454,444 @@ export function ChatInputBar(props: ChatInputBarProps) {
         (!isRecordingInProgress && !recordedBlob) ||
         isDictationSubmitting;
 
-    if (mode === "voice") {
-        const canSubmitVoiceText = currentMessage.trim().length > 0;
-        return (
-            <div
-                ref={containerRef}
-                className={`${positionClass} dark voice-composer-transition voice-composer-transition-voice`}
-                style={emptyWrapperStyle}
-            >
-                <div className="relative mx-auto max-w-3xl pointer-events-auto">
-                    <div className="relative z-20 rounded-[2rem] border border-border/70 bg-background px-3 py-3 shadow-lg">
-                        <div className="flex items-center gap-2">
-                            <Tooltip delayDuration={0}>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        type="button"
-                                        onClick={onCloseVoiceMode}
-                                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive transition-smooth hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
-                                        aria-label="Close voice mode"
-                                    >
-                                        <PhoneOff size={18} />
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" align="center">
-                                    <p>Close voice mode</p>
-                                </TooltipContent>
-                            </Tooltip>
+    const canSubmitVoiceText = currentMessage.trim().length > 0;
+    const rm = prefersReducedMotion ?? false;
 
-                            <Tooltip delayDuration={0}>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        type="button"
-                                        onClick={onToggleVoiceMute}
-                                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/70 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                                        aria-label={voiceMuted ? "Unmute microphone" : "Mute microphone"}
-                                    >
-                                        {voiceMuted ? <MicOff size={19} /> : <Mic size={19} />}
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" align="center">
-                                    <p>{voiceMuted ? "Unmute microphone" : "Mute microphone"}</p>
-                                </TooltipContent>
-                            </Tooltip>
-
-                            <div className="min-w-0 flex-1">
-                                <Textarea
-                                    ref={(textarea: any) => {
-                                        (textareaRef as any).current = textarea;
-                                    }}
-                                    value={currentMessage}
-                                    onChange={(e: any) => setCurrentMessage(e.target.value)}
-                                    placeholder={voiceStatus === "connecting" ? "Connecting voice..." : "Type to the voice session..."}
-                                    onKeyDown={(e: any) => {
-                                        if (e.key === "Enter" && !e.shiftKey && canSubmitVoiceText) {
-                                            e.preventDefault();
-                                            onVoiceTextSubmit?.(currentMessage);
-                                            setCurrentMessage("");
-                                        }
-                                    }}
-                                    className="max-h-24 min-h-[44px] w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
-                                    rows={1}
-                                />
-                            </div>
-
-                            <StarBorder
-                                as="button"
-                                innerClassName="w-11 h-11"
-                                className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
-                                color="hsl(var(--primary))"
-                                thickness={2}
-                                onClick={() => {
-                                    if (!canSubmitVoiceText) return;
-                                    onVoiceTextSubmit?.(currentMessage);
-                                    setCurrentMessage("");
-                                }}
-                                disabled={!canSubmitVoiceText}
-                            >
-                                <HiArrowUp size={18} />
-                            </StarBorder>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-    
-    const quoteVariants = {
-        initial: { opacity: 0, y: prefersReducedMotion ? 0 : 8 },
-        animate: { opacity: 1, y: 0 },
-        exit: { opacity: 0, y: prefersReducedMotion ? 0 : -8 },
-    };
-    
     return (
         <div
             ref={containerRef}
             /* Force dark token scope so the input stays dark even in light theme */
-            className={`${positionClass} dark voice-composer-transition voice-composer-transition-chat`}
-            style={emptyWrapperStyle}
+            className={`${positionClass} dark`}
+            style={mode === "chat" ? emptyWrapperStyle : undefined}
         >
-            {isMessagesEmpty && (
-                <div className="text-center py-16">
-                    {/* <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4 md:mb-6 shadow-elegant">
-                        <AgentIcon size={40} className="hidden md:block text-primary-foreground" />
-                    </div> */}
-                    
-                    {/* Random welcome quote */}
-                    <div className="min-h-[2.75rem] md:min-h-[3rem]">
-                        <AnimatePresence mode="wait" initial={false}>
-                            <motion.div
-                                key={quoteIndex} // key causes exit/enter on change
-                                variants={{
-                                    exit: { opacity: 0, y: prefersReducedMotion ? 0 : -8 }
-                                }}
-                                exit="exit"
-                                transition={{ duration: 0.35, ease: "easeOut" }}
-                                initial={false}
-                                className="text-xl md:text-2xl font-bold mb-2 md:mb-3"
-                            >
-                                <SplitText
-                                    text={welcomeQuote}
-                                    tag="h2"
-                                    useScrollTrigger={false}
-                                    from={{ opacity: 0, y: prefersReducedMotion ? 0 : 8 }}
-                                    to={{ opacity: 1, y: 0 }}
-                                    duration={1}
-                                    delay={25}
-                                    splitType="chars"
-                                />
-                            </motion.div>
-                        </AnimatePresence>
-                    </div>
-                    
-                    {/* Optional: keep agent description as a softer subline if present */}
-                    {currentAgent?.description && (
-                    <p className="text-muted-foreground text-sm md:text-lg max-w-md mx-auto">
-                        {currentAgent.description}
-                    </p>
-                    )}
-                </div>
-            )}
-            
-            <div className="relative mx-auto max-w-3xl pointer-events-auto">
-                {topAccessory}
-                {/* Floating Input Container */}
-                <div
-                    className={`relative z-20 bg-background rounded-[2rem] shadow-lg px-3 pt-3 pb-1 ${
-                        isPrivateMode ? "border-2 border-primary/50" : "border"
-                    }`}
-                >
-                    <div className="flex flex-col">
-                        <div
-                            className={`transition-all duration-200 overflow-hidden ${attachments.length ? "mb-4 opacity-100" : "mb-0 opacity-0"}`}
-                        >
-                            {attachments.length > 0 && (
-                                <div className="relative overflow-hidden rounded-2xl">
-                                    <div
-                                        ref={attachmentStripRef}
-                                        onScroll={updateAttachmentFade}
-                                        className="attachment-strip-scroll overflow-x-auto px-2 pr-7 pb-1"
-                                    >
-                                        <div className="flex min-w-max flex-nowrap items-center gap-2">
-                                        {orderedAttachments.map(({ file, index, isImage }) => {
-                                            return (
-                                                <div
-                                                    key={index}
-                                                    className={`relative shrink-0 overflow-hidden rounded-2xl border border-border bg-secondary/70 shadow-card ${
-                                                        isImage
-                                                            ? "flex items-center p-1.5"
-                                                            : "flex items-center gap-2.5 px-3 py-2.5 max-w-[14rem] md:max-w-[16rem]"
-                                                    }`}
-                                                >
-                                                    {isImage ? (
-                                                        <div className="flex items-center">
-                                                            <img
-                                                                src={getImageUrl(file)}
-                                                                alt="Preview"
-                                                                className="h-14 w-14 rounded-xl object-cover cursor-pointer"
-                                                                onClick={() => handleImageClick(getImageUrl(file))}
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                                                <FileText size={16} className="text-primary" />
-                                                            </div>
-                                                            <div className="min-w-0 flex-1 pr-5">
-                                                                <span className="block truncate text-sm font-medium">{file.name}</span>
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                    <button
-                                                        onClick={() => removeAttachment(index)}
-                                                        className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/90 text-destructive shadow-sm ring-1 ring-border/70 backdrop-blur transition-smooth hover:text-destructive/80"
-                                                        aria-label="Remove attachment"
-                                                    >
-                                                        <X size={12} strokeWidth={2.5} className="pointer-events-none" />
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                        </div>
-                                    </div>
-                                    {attachmentFade.left && (
-                                        <div className="pointer-events-none absolute inset-y-0 left-0 w-5 rounded-l-2xl bg-gradient-to-r from-background via-background/88 to-transparent" />
-                                    )}
-                                    {attachmentFade.right && (
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 w-5 rounded-r-2xl bg-gradient-to-l from-background via-background/88 to-transparent" />
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Text Input Area */}
-                        <div className="w-full">
-                            {dictationStatus === "idle" ? (
-                                <Textarea
-                                    ref={(textarea: any) => {
-                                        (textareaRef as any).current = textarea;
-                                    }}
-                                    value={currentMessage}
-                                    onChange={(e: any) => setCurrentMessage(e.target.value)}
-                                    onPaste={handlePaste}
-                                    placeholder={`Message ${agentDisplayName}...`}
-                                    onKeyDown={(e: any) => {
-                                        const shouldSubmit =
-                                            e.key === "Enter" &&
-                                            !e.shiftKey &&
-                                            !thinkingActive &&
-                                            !isStreaming &&
-                                            (currentMessage.trim() || attachments.length > 0);
-                                        if (
-                                            shouldSubmit
-                                        ) {
-                                            e.preventDefault();
-                                            handleSendMessage();
-                                        }
-                                    }}
-                                    className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground w-full"
-                                    rows={1}
-                                    style={{ height: "auto", maxHeight: textareaMaxHeight }}
-                                />
-                            ) : (
-                                <div className="px-3 pt-1 pb-2">
-                                    <VoiceVisualizer
-                                        controls={visualizerControls}
-                                        isDefaultUIShown={false}
-                                        isControlPanelShown={false}
-                                        isAudioProcessingTextShown={false}
-                                        height={49}
-                                        backgroundColor="transparent"
-                                        mainBarColor="rgba(255,255,255,0.85)"
-                                        secondaryBarColor="rgba(255,255,255,0.25)"
-                                        barWidth={1}
-                                        gap={2}
-                                        rounded={5}
-                                        canvasContainerClassName="w-full h-12 [&>canvas]:scale-y-[2.55] [&>canvas]:origin-center"
-                                        mainContainerClassName="w-full"
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center justify-between gap-3">
-                            <Tooltip delayDuration={0}>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        aria-label="Attach files"
-                                    >
-                                        <Plus size={24} className="text-muted-foreground active:text-white" />
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent
-                                    side="top"
-                                    align="center"
-                                >
-                                    <p>Attach files & photos</p>
-                                </TooltipContent>
-                            </Tooltip>
-
-                            {dictationStatus === "idle" ? (
+            <AnimatePresence mode="wait">
+                {mode === "voice" ? (
+                    <motion.div
+                        key="voice-bar"
+                        initial={{ opacity: 0, y: rm ? 0 : 12, scale: rm ? 1 : 0.985, filter: rm ? "blur(0px)" : "blur(6px)" }}
+                        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
+                        exit={{ opacity: 0, y: rm ? 0 : 6, scale: rm ? 1 : 0.99, filter: rm ? "blur(0px)" : "blur(4px)", transition: { duration: 0.18, ease: "easeIn" } }}
+                        style={{ transformOrigin: "center bottom" }}
+                    >
+                        <div className="relative mx-auto max-w-3xl pointer-events-auto">
+                            <div className="relative z-20 rounded-[2rem] border border-border/70 bg-background px-3 py-3 shadow-lg">
                                 <div className="flex items-center gap-2">
                                     <Tooltip delayDuration={0}>
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                onClick={handleDictationRequest}
-                                                disabled={isDictationBusy || isStreaming || isInDictationMode}
-                                                aria-label="Start voice dictation"
+                                                onClick={onCloseVoiceMode}
+                                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive transition-smooth hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+                                                aria-label="Close voice mode"
                                             >
-                                                <VscMicFilled size={21} className="text-muted-foreground active:text-white" />
+                                                <PhoneOff size={18} />
                                             </button>
                                         </TooltipTrigger>
-                                        <TooltipContent
-                                            side="top"
-                                            align="center"
-                                        >
-                                            <p>
-                                                {isDictationSubmitting
-                                                    ? "Transcribing..."
-                                                    : isDictationProcessing
-                                                        ? "Preparing microphone..."
-                                                        : "Dictate"}
-                                            </p>
+                                        <TooltipContent side="top" align="center">
+                                            <p>Close voice mode</p>
                                         </TooltipContent>
                                     </Tooltip>
 
                                     <Tooltip delayDuration={0}>
                                         <TooltipTrigger asChild>
-                                            <StarBorder
-                                                as="button"
-                                                innerClassName="w-11 h-11"
-                                                className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
-                                                color="hsl(var(--primary))"
-                                                thickness={2}
-                                                onClick={() => {
-                                                    if (isStreaming) {
-                                                        handleStopStreaming?.();
-                                                    } else if (!currentMessage.trim() && attachments.length === 0) {
-                                                        onVoiceMode?.();
-                                                    } else {
+                                            <button
+                                                type="button"
+                                                onClick={onToggleVoiceMute}
+                                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/70 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                                                aria-label={voiceMuted ? "Unmute microphone" : "Mute microphone"}
+                                            >
+                                                {voiceMuted ? <MicOff size={19} /> : <Mic size={19} />}
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center">
+                                            <p>{voiceMuted ? "Unmute microphone" : "Mute microphone"}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+
+                                    <div className="min-w-0 flex-1">
+                                        <Textarea
+                                            ref={(textarea: any) => {
+                                                (textareaRef as any).current = textarea;
+                                            }}
+                                            value={currentMessage}
+                                            onChange={(e: any) => setCurrentMessage(e.target.value)}
+                                            placeholder={voiceStatus === "connecting" ? "Connecting voice..." : "Type to the voice session..."}
+                                            onKeyDown={(e: any) => {
+                                                if (e.key === "Enter" && !e.shiftKey && canSubmitVoiceText) {
+                                                    e.preventDefault();
+                                                    onVoiceTextSubmit?.(currentMessage);
+                                                    setCurrentMessage("");
+                                                }
+                                            }}
+                                            className="max-h-24 min-h-[44px] w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+                                            rows={1}
+                                        />
+                                    </div>
+
+                                    <StarBorder
+                                        as="button"
+                                        innerClassName="w-11 h-11"
+                                        className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
+                                        color="hsl(var(--primary))"
+                                        thickness={2}
+                                        onClick={() => {
+                                            if (!canSubmitVoiceText) return;
+                                            onVoiceTextSubmit?.(currentMessage);
+                                            setCurrentMessage("");
+                                        }}
+                                        disabled={!canSubmitVoiceText}
+                                    >
+                                        <HiArrowUp size={18} />
+                                    </StarBorder>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="chat-bar"
+                        initial={{ opacity: 0, y: rm ? 0 : 10, scale: rm ? 1 : 0.99, filter: rm ? "blur(0px)" : "blur(5px)" }}
+                        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
+                        exit={{ opacity: 0, y: rm ? 0 : 6, scale: rm ? 1 : 0.99, filter: rm ? "blur(0px)" : "blur(4px)", transition: { duration: 0.18, ease: "easeIn" } }}
+                        style={{ transformOrigin: "center bottom" }}
+                    >
+                        {isMessagesEmpty && (
+                            <div className="text-center py-16">
+                                {/* Random welcome quote */}
+                                <div className="min-h-[2.75rem] md:min-h-[3rem]">
+                                    <AnimatePresence mode="wait" initial={false}>
+                                        <motion.div
+                                            key={quoteIndex}
+                                            variants={{
+                                                exit: { opacity: 0, y: prefersReducedMotion ? 0 : -8 }
+                                            }}
+                                            exit="exit"
+                                            transition={{ duration: 0.35, ease: "easeOut" }}
+                                            initial={false}
+                                            className="text-xl md:text-2xl font-bold mb-2 md:mb-3"
+                                        >
+                                            <SplitText
+                                                text={welcomeQuote}
+                                                tag="h2"
+                                                useScrollTrigger={false}
+                                                from={{ opacity: 0, y: prefersReducedMotion ? 0 : 8 }}
+                                                to={{ opacity: 1, y: 0 }}
+                                                duration={1}
+                                                delay={25}
+                                                splitType="chars"
+                                            />
+                                        </motion.div>
+                                    </AnimatePresence>
+                                </div>
+
+                                {/* Optional: keep agent description as a softer subline if present */}
+                                {currentAgent?.description && (
+                                <p className="text-muted-foreground text-sm md:text-lg max-w-md mx-auto">
+                                    {currentAgent.description}
+                                </p>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="relative mx-auto max-w-3xl pointer-events-auto">
+                            {topAccessory}
+                            {/* Floating Input Container */}
+                            <div
+                                className={`relative z-20 bg-background rounded-[2rem] shadow-lg px-3 pt-3 pb-1 ${
+                                    isPrivateMode ? "border-2 border-primary/50" : "border"
+                                }`}
+                            >
+                                <div className="flex flex-col">
+                                    <div
+                                        className={`transition-all duration-200 overflow-hidden ${attachments.length ? "mb-4 opacity-100" : "mb-0 opacity-0"}`}
+                                    >
+                                        {attachments.length > 0 && (
+                                            <div className="relative overflow-hidden rounded-2xl">
+                                                <div
+                                                    ref={attachmentStripRef}
+                                                    onScroll={updateAttachmentFade}
+                                                    className="attachment-strip-scroll overflow-x-auto px-2 pr-7 pb-1"
+                                                >
+                                                    <div className="flex min-w-max flex-nowrap items-center gap-2">
+                                                    {orderedAttachments.map(({ file, index, isImage }) => {
+                                                        return (
+                                                            <div
+                                                                key={index}
+                                                                className={`relative shrink-0 overflow-hidden rounded-2xl border border-border bg-secondary/70 shadow-card ${
+                                                                    isImage
+                                                                        ? "flex items-center p-1.5"
+                                                                        : "flex items-center gap-2.5 px-3 py-2.5 max-w-[14rem] md:max-w-[16rem]"
+                                                                }`}
+                                                            >
+                                                                {isImage ? (
+                                                                    <div className="flex items-center">
+                                                                        <img
+                                                                            src={getImageUrl(file)}
+                                                                            alt="Preview"
+                                                                            className="h-14 w-14 rounded-xl object-cover cursor-pointer"
+                                                                            onClick={() => handleImageClick(getImageUrl(file))}
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <>
+                                                                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                                                            <FileText size={16} className="text-primary" />
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1 pr-5">
+                                                                            <span className="block truncate text-sm font-medium">{file.name}</span>
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => removeAttachment(index)}
+                                                                    className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/90 text-destructive shadow-sm ring-1 ring-border/70 backdrop-blur transition-smooth hover:text-destructive/80"
+                                                                    aria-label="Remove attachment"
+                                                                >
+                                                                    <X size={12} strokeWidth={2.5} className="pointer-events-none" />
+                                                                </button>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    </div>
+                                                </div>
+                                                {attachmentFade.left && (
+                                                    <div className="pointer-events-none absolute inset-y-0 left-0 w-5 rounded-l-2xl bg-gradient-to-r from-background via-background/88 to-transparent" />
+                                                )}
+                                                {attachmentFade.right && (
+                                                    <div className="pointer-events-none absolute inset-y-0 right-0 w-5 rounded-r-2xl bg-gradient-to-l from-background via-background/88 to-transparent" />
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Text Input Area */}
+                                    <div className="w-full">
+                                        {dictationStatus === "idle" ? (
+                                            <Textarea
+                                                ref={(textarea: any) => {
+                                                    (textareaRef as any).current = textarea;
+                                                }}
+                                                value={currentMessage}
+                                                onChange={(e: any) => setCurrentMessage(e.target.value)}
+                                                onPaste={handlePaste}
+                                                placeholder={`Message ${agentDisplayName}...`}
+                                                onKeyDown={(e: any) => {
+                                                    const shouldSubmit =
+                                                        e.key === "Enter" &&
+                                                        !e.shiftKey &&
+                                                        !thinkingActive &&
+                                                        !isStreaming &&
+                                                        (currentMessage.trim() || attachments.length > 0);
+                                                    if (
+                                                        shouldSubmit
+                                                    ) {
+                                                        e.preventDefault();
                                                         handleSendMessage();
                                                     }
                                                 }}
-                                                disabled={
-                                                    isInDictationMode ||
-                                                    isDictationSubmitting ||
-                                                    (!isStreaming && !!thinkingActive)
-                                                }
+                                                className="bg-transparent border-0 focus:ring-0 focus:outline-none min-h-[48px] text-base px-4 py-3 resize-none overflow-y-auto text-foreground placeholder:text-muted-foreground w-full"
+                                                rows={1}
+                                                style={{ height: "auto", maxHeight: textareaMaxHeight }}
+                                            />
+                                        ) : (
+                                            <div className="px-3 pt-1 pb-2">
+                                                <VoiceVisualizer
+                                                    controls={visualizerControls}
+                                                    isDefaultUIShown={false}
+                                                    isControlPanelShown={false}
+                                                    isAudioProcessingTextShown={false}
+                                                    height={49}
+                                                    backgroundColor="transparent"
+                                                    mainBarColor="rgba(255,255,255,0.85)"
+                                                    secondaryBarColor="rgba(255,255,255,0.25)"
+                                                    barWidth={1}
+                                                    gap={2}
+                                                    rounded={5}
+                                                    canvasContainerClassName="w-full h-12 [&>canvas]:scale-y-[2.55] [&>canvas]:origin-center"
+                                                    mainContainerClassName="w-full"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex items-center justify-between gap-3">
+                                        <Tooltip delayDuration={0}>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    aria-label="Attach files"
+                                                >
+                                                    <Plus size={24} className="text-muted-foreground active:text-white" />
+                                                </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent
+                                                side="top"
+                                                align="center"
                                             >
-                                                {isStreaming
-                                                    ? <FaStop size={18} />
-                                                    : (!currentMessage.trim() && attachments.length === 0)
-                                                        ? <PiWaveformBold size={22} />
-                                                        : <HiArrowUp size={18} />
-                                                }
-                                            </StarBorder>
-                                        </TooltipTrigger>
-                                    </Tooltip>
+                                                <p>Attach files & photos</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+
+                                        {dictationStatus === "idle" ? (
+                                            <div className="flex items-center gap-2">
+                                                <Tooltip delayDuration={0}>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            onClick={handleDictationRequest}
+                                                            disabled={isDictationBusy || isStreaming || isInDictationMode}
+                                                            aria-label="Start voice dictation"
+                                                        >
+                                                            <VscMicFilled size={21} className="text-muted-foreground active:text-white" />
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent
+                                                        side="top"
+                                                        align="center"
+                                                    >
+                                                        <p>
+                                                            {isDictationSubmitting
+                                                                ? "Transcribing..."
+                                                                : isDictationProcessing
+                                                                    ? "Preparing microphone..."
+                                                                    : "Dictate"}
+                                                        </p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+
+                                                <Tooltip delayDuration={0}>
+                                                    <TooltipTrigger asChild>
+                                                        <StarBorder
+                                                            as="button"
+                                                            innerClassName="w-11 h-11"
+                                                            className="shadow-elegant active:scale-110 hover:opacity-90 transition-smooth"
+                                                            color="hsl(var(--primary))"
+                                                            thickness={2}
+                                                            onClick={() => {
+                                                                if (isStreaming) {
+                                                                    handleStopStreaming?.();
+                                                                } else if (!currentMessage.trim() && attachments.length === 0) {
+                                                                    onVoiceMode?.();
+                                                                } else {
+                                                                    handleSendMessage();
+                                                                }
+                                                            }}
+                                                            disabled={
+                                                                isInDictationMode ||
+                                                                isDictationSubmitting ||
+                                                                (!isStreaming && !!thinkingActive)
+                                                            }
+                                                        >
+                                                            {isStreaming
+                                                                ? <FaStop size={18} />
+                                                                : (!currentMessage.trim() && attachments.length === 0)
+                                                                    ? <PiWaveformBold size={22} />
+                                                                    : <HiArrowUp size={18} />
+                                                            }
+                                                        </StarBorder>
+                                                    </TooltipTrigger>
+                                                </Tooltip>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <Tooltip delayDuration={0}>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            onClick={handleCancelDictation}
+                                                            disabled={isCancelDisabled}
+                                                            aria-label="Cancel voice dictation"
+                                                        >
+                                                            <X size={18} />
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent
+                                                        side="top"
+                                                        align="center"
+                                                    >
+                                                        <p>Discard recording</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                                <Tooltip delayDuration={0}>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="w-10 h-10 rounded-full border border-primary/60 bg-primary/15 text-primary flex items-center justify-center transition-smooth hover:bg-primary/25 active:bg-primary/35 focus-visible:bg-primary/25 active:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            onClick={handleConfirmDictation}
+                                                            disabled={confirmButtonDisabled}
+                                                            aria-label="Use recording"
+                                                        >
+                                                            {isDictationSubmitting ? (
+                                                                <Loader size={18} className="text-primary" />
+                                                            ) : (
+                                                                <Check size={18} />
+                                                            )}
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent
+                                                        side="top"
+                                                        align="center"
+                                                    >
+                                                        <p>Use recording</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <Tooltip delayDuration={0}>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                onClick={handleCancelDictation}
-                                                disabled={isCancelDisabled}
-                                                aria-label="Cancel voice dictation"
-                                            >
-                                                <X size={18} />
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent
-                                            side="top"
-                                            align="center"
-                                        >
-                                            <p>Discard recording</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                    <Tooltip delayDuration={0}>
-                                        <TooltipTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="w-10 h-10 rounded-full border border-primary/60 bg-primary/15 text-primary flex items-center justify-center transition-smooth hover:bg-primary/25 active:bg-primary/35 focus-visible:bg-primary/25 active:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                onClick={handleConfirmDictation}
-                                                disabled={confirmButtonDisabled}
-                                                aria-label="Use recording"
-                                            >
-                                                {isDictationSubmitting ? (
-                                                    <Loader size={18} className="text-primary" />
-                                                ) : (
-                                                    <Check size={18} />
-                                                )}
-                                            </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent
-                                            side="top"
-                                            align="center"
-                                        >
-                                            <p>Use recording</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="*/*"
-                    className="hidden"
-                    onChange={(e) => { handleFileUpload(e); e.currentTarget.value = ''; }}
-                />
-                <AnimatePresence initial={false}>
-                    {starterSuggestions.length > 0 ? (
-                        <motion.div
-                            key="starter-suggestions"
-                            initial={{ opacity: 0, y: prefersReducedMotion ? 0 : -4, filter: "blur(6px)" }}
-                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                            exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4, filter: "blur(6px)" }}
-                            transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-                            className="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-10"
-                        >
-                            <Suggestions wrap className="px-1">
-                                {starterSuggestions.map((suggestion, index) => (
+                            </div>
+
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                accept="*/*"
+                                className="hidden"
+                                onChange={(e) => { handleFileUpload(e); e.currentTarget.value = ''; }}
+                            />
+                            <AnimatePresence initial={false}>
+                                {starterSuggestions.length > 0 ? (
                                     <motion.div
-                                        key={suggestion}
-                                        initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 8, scale: 0.98 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: prefersReducedMotion ? 0 : 6, scale: 0.98 }}
-                                        transition={{
-                                            duration: 0.36,
-                                            delay: prefersReducedMotion ? 0 : index * 0.045,
-                                            ease: [0.22, 1, 0.36, 1],
-                                        }}
+                                        key="starter-suggestions"
+                                        initial={{ opacity: 0, y: prefersReducedMotion ? 0 : -4, filter: "blur(6px)" }}
+                                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                                        exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4, filter: "blur(6px)" }}
+                                        transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                                        className="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-10"
                                     >
-                                        <Suggestion
-                                            suggestion={suggestion}
-                                            onClick={onStarterSuggestionSelect}
-                                            className="border-border/60 bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors duration-200 hover:bg-[hsl(var(--hover-surface))] hover:text-foreground"
-                                        />
+                                        <Suggestions wrap className="px-1">
+                                            {starterSuggestions.map((suggestion, index) => (
+                                                <motion.div
+                                                    key={suggestion}
+                                                    initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 8, scale: 0.98 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    exit={{ opacity: 0, y: prefersReducedMotion ? 0 : 6, scale: 0.98 }}
+                                                    transition={{
+                                                        duration: 0.36,
+                                                        delay: prefersReducedMotion ? 0 : index * 0.045,
+                                                        ease: [0.22, 1, 0.36, 1],
+                                                    }}
+                                                >
+                                                    <Suggestion
+                                                        suggestion={suggestion}
+                                                        onClick={onStarterSuggestionSelect}
+                                                        className="border-border/60 bg-background/80 text-muted-foreground shadow-sm backdrop-blur transition-colors duration-200 hover:bg-[hsl(var(--hover-surface))] hover:text-foreground"
+                                                    />
+                                                </motion.div>
+                                            ))}
+                                        </Suggestions>
                                     </motion.div>
-                                ))}
-                            </Suggestions>
-                        </motion.div>
-                    ) : null}
-                </AnimatePresence>
-            </div>
+                                ) : null}
+                            </AnimatePresence>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

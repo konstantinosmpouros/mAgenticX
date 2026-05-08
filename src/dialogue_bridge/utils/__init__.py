@@ -20,7 +20,6 @@ from utils.titles import generate_conversation_title
 from utils.suggestions import generate_conversation_suggestions
 from utils.speech import (
     generate_read_aloud_audio,
-    normalize_read_aloud_voice,
     read_aloud_response,
     transcribe_dictation_audio,
 )
@@ -30,7 +29,9 @@ from utils.voice import (
     load_owned_voice_conversation,
     load_realtime_agent,
     normalize_realtime_voice,
+    normalize_voice_mode_language,
     preferred_realtime_voice,
+    preferred_voice_mode_language,
     recent_history_for_voice_instructions,
 )
 from utils.validators import validate_convId, validate_convId_full, validate_userId
@@ -42,13 +43,14 @@ __all__ = [
     "generate_conversation_title",
     "generate_conversation_suggestions",
     "generate_read_aloud_audio",
-    "normalize_read_aloud_voice",
     "create_realtime_session_with_agents",
     "build_voice_instructions",
     "load_owned_voice_conversation",
     "load_realtime_agent",
     "normalize_realtime_voice",
+    "normalize_voice_mode_language",
     "preferred_realtime_voice",
+    "preferred_voice_mode_language",
     "recent_history_for_voice_instructions",
     "read_aloud_response",
     "transcribe_dictation_audio",

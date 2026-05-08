@@ -9,7 +9,6 @@ from core.error_handling import upstream_error_handler
 from core.proxy import internal_service_headers
 from core.settings import settings
 from core.tls import get_httpx_verify
-from utils.speech import normalize_read_aloud_voice
 from utils.validators import validate_convId_full
 
 
@@ -21,6 +20,11 @@ _REALTIME_SESSION_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')
 def normalize_realtime_voice(voice: str | None) -> str:
     selected = (voice or settings.voice.default_realtime_voice).strip().lower()
     return selected if selected in settings.voice.supported_realtime_voices else settings.voice.default_realtime_voice
+
+
+def normalize_voice_mode_language(language: str | None) -> str:
+    selected = (language or "english").strip().lower()
+    return selected if selected in {"english", "greek"} else "english"
 
 
 async def load_realtime_agent(db: AsyncSession, agent_id: str) -> AgentTable:
@@ -47,12 +51,22 @@ def recent_history_for_voice_instructions(conversation: ConversationTable) -> st
     return "\n".join(lines)
 
 
-def build_voice_instructions(agent: AgentTable, conversation: ConversationTable | None = None) -> str:
+def build_voice_instructions(
+    agent: AgentTable,
+    conversation: ConversationTable | None = None,
+    language: str | None = None,
+) -> str:
     recent_history = recent_history_for_voice_instructions(conversation) if conversation else ""
+    language_instruction = {
+        "english": "Use English as the default language for this live voice conversation.",
+        "greek": "Use Greek as the default language for this live voice conversation.",
+    }[normalize_voice_mode_language(language)]
     parts = [
         f"You are {agent.name}.",
         agent.description,
         "You are speaking in a live voice conversation. Keep responses concise, natural, and interruptible.",
+        language_instruction,
+        "If the user explicitly switches language, follow that instead.",
         "Do not describe UI state. Answer as a helpful assistant.",
     ]
     if recent_history:
@@ -65,8 +79,15 @@ async def preferred_realtime_voice(db: AsyncSession, user_id: str, requested_voi
         return normalize_realtime_voice(requested_voice)
     result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
     preferences = result.scalar_one_or_none()
-    read_aloud_voice = normalize_read_aloud_voice(preferences.read_aloud_voice if preferences else None)
-    return normalize_realtime_voice(read_aloud_voice)
+    return normalize_realtime_voice(preferences.voice_mode_voice if preferences else None)
+
+
+async def preferred_voice_mode_language(db: AsyncSession, user_id: str, requested_language: str | None) -> str:
+    if requested_language:
+        return normalize_voice_mode_language(requested_language)
+    result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
+    preferences = result.scalar_one_or_none()
+    return normalize_voice_mode_language(preferences.voice_mode_language if preferences else None)
 
 
 async def create_realtime_session_with_agents(
