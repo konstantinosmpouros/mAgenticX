@@ -5,7 +5,6 @@ import {
   ChainOfThoughtContent,
   ChainOfThoughtStep,
 } from "@/components/ui/ai-elements/chain-of-thought";
-import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
 import { Wrench, CheckCircle2 } from "lucide-react";
 import type { MessageOut } from "@/lib/types";
@@ -115,18 +114,7 @@ export function CoT({
       onOpenChange={handleOpenChange}
     >
       <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground hover:text-foreground">
-        {durationLabel ? (
-          `Thought for ${durationLabel}`
-        ) : (
-          <ShimmeringText
-            text="Reasoning..."
-            duration={1.1}
-            pause={1.4}
-            color="hsl(var(--muted-foreground))"
-            shimmeringColor="#2b2d36"
-            className="text-sm md:text-[0.95rem] font-medium"
-          />
-        )}
+        {durationLabel ? `Thought for ${durationLabel}` : "Reasoning"}
       </ChainOfThoughtHeader>
       <ChainOfThoughtContent className="[&>div:last-child>div:first-child>div:last-child]:hidden">
         {buildCoTSteps(message.thinking, {

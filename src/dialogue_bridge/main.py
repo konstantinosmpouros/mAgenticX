@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
 from core.settings import settings
 from core.database import Base, engine
+from utils.inference_runs import cleanup_orphaned_inference_runs
 from observability import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     logger.info("service_startup", "Dialogue bridge startup initiated")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await cleanup_orphaned_inference_runs()
     logger.info("database_schema_ready", "Database schema is ready")
     yield
     logger.info("service_shutdown", "Dialogue bridge shutdown completed")

@@ -5,6 +5,7 @@ import type {
   Agent,
   AgentPublic,
   ConversationDetail,
+  InferenceRun,
   ConversationSummary,
   MessageOut,
   SharedConversationDetail,
@@ -87,7 +88,7 @@ const toDate = (value: any): Date => (value ? new Date(value) : new Date());
 
 
 // Transform functions to map backend data to frontend types
-export const transformAgent = (
+const transformAgent = (
   agent: AgentPublic | Record<string, any> | undefined,
   fallback?: Partial<AgentPublic>,
 ): Agent => {
@@ -125,7 +126,7 @@ export const transformAgent = (
 
 
 // Transform attachment object from backend to frontend type
-export const transformAttachment = (attachment: Record<string, any>) => ({
+const transformAttachment = (attachment: Record<string, any>) => ({
   id: attachment?.id,
   name: attachment?.name ?? attachment?.file_name ?? "",
   mime: attachment?.mime ?? attachment?.mime_type ?? "",
@@ -178,6 +179,8 @@ export const transformConversationSummary = (
     archivedAt: archivedAt ? toDate(archivedAt) : null,
     isReported: Boolean(summary.isReported ?? summary.is_reported),
     reportedAt: reportedAt ? toDate(reportedAt) : null,
+    activeRunId: summary.activeRunId ?? summary.active_run_id ?? summary.active_inference_run_id ?? null,
+    isStreaming: Boolean(summary.isStreaming ?? summary.is_streaming ?? summary.activeRunId ?? summary.active_inference_run_id),
     lastMessage: summary.lastMessage ?? undefined,
     created_at: summary.created_at ?? "",
     updated_at: summary.updated_at ?? "",
@@ -206,11 +209,34 @@ export const transformConversationDetail = (
     archivedAt: archivedAt ? toDate(archivedAt) : null,
     isReported: Boolean(detail.isReported ?? detail.is_reported),
     reportedAt: reportedAt ? toDate(reportedAt) : null,
+    activeRunId: detail.activeRunId ?? detail.active_run_id ?? detail.active_inference_run_id ?? null,
+    isStreaming: Boolean(detail.isStreaming ?? detail.is_streaming ?? detail.activeRunId ?? detail.active_inference_run_id),
     created_at: toDate(detail.created_at),
     updated_at: toDate(detail.updated_at),
     messages: (detail.messages || []).map(transformMessage),
   };
 };
+
+export const transformInferenceRun = (run: Record<string, any>): InferenceRun => ({
+  id: run.id,
+  userId: run.userId ?? run.user_id ?? "",
+  conversationId: run.conversationId ?? run.conversation_id ?? "",
+  assistantMessageId: run.assistantMessageId ?? run.assistant_message_id ?? "",
+  parentMessageId: run.parentMessageId ?? run.parent_message_id ?? null,
+  status: run.status ?? "running",
+  messagePath: Array.isArray(run.messagePath ?? run.message_path) ? (run.messagePath ?? run.message_path) : [],
+  enabledTools: Array.isArray(run.enabledTools ?? run.enabled_tools) ? (run.enabledTools ?? run.enabled_tools) : [],
+  content: run.content ?? null,
+  thinking: Array.isArray(run.thinking) ? run.thinking : null,
+  rawEvents: Array.isArray(run.rawEvents ?? run.raw_events) ? (run.rawEvents ?? run.raw_events) : [],
+  plan: run.plan ?? null,
+  subagents: run.subagents ?? null,
+  errorMessage: run.errorMessage ?? run.error_message ?? null,
+  startedAt: toDate(run.startedAt ?? run.started_at),
+  completedAt: run.completedAt ?? run.completed_at ? toDate(run.completedAt ?? run.completed_at) : null,
+  cancelRequestedAt: run.cancelRequestedAt ?? run.cancel_requested_at ? toDate(run.cancelRequestedAt ?? run.cancel_requested_at) : null,
+  updatedAt: toDate(run.updatedAt ?? run.updated_at),
+});
 
 
 // Transform public shared conversation snapshot.

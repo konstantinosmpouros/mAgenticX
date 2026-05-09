@@ -64,15 +64,6 @@ def select_scoped_messages(
     return branch
 
 
-def select_export_messages(
-    conversation: ConversationTable,
-    message_id: str,
-    mode: PdfExportMode,
-    branch_path: list[str] | None = None,
-) -> list[MessageTable]:
-    return select_scoped_messages(conversation, message_id, mode, branch_path)
-
-
 def conversation_pdf_filename(conversation: ConversationTable, mode: PdfExportMode) -> str:
     title = conversation.title or conversation.agent_name or "conversation"
     safe_title = re.sub(r"[^A-Za-z0-9._-]+", "-", title).strip("-._")[:80]

@@ -21,6 +21,10 @@ import type {
   SharedConversationDetail,
   UpdateConversationResponse,
   DownloadAttachmentParams,
+  InferenceRun,
+  InferenceRunEvent,
+  InferenceRunStartRequest,
+  InferenceRunStartResponse,
   ToolMetadata,
   ToolPreference,
   WorkspaceSearchResult,
@@ -41,6 +45,7 @@ import {
   transformConversationSummary,
   transformSharedConversationDetail,
   transformMessage,
+  transformInferenceRun,
   type RealtimeVoice,
 } from "./consts";
 
@@ -1102,7 +1107,161 @@ export async function endRealtimeVoiceSession(
 }
 
 
-// Start streaming inference by requesting the bridge SSE endpoint
+const serializeToolPreferences = (enabledTools?: ToolPreference[]) =>
+  Array.isArray(enabledTools) && enabledTools.length > 0
+    ? enabledTools.map((item) => ({
+        server_id:
+          typeof (item as any).server_id === "string"
+            ? (item as any).server_id
+            : typeof item.serverId === "string"
+              ? item.serverId
+              : "",
+        tool_name:
+          typeof (item as any).tool_name === "string"
+            ? (item as any).tool_name
+            : typeof item.toolName === "string"
+              ? item.toolName
+              : "",
+      }))
+    : undefined;
+
+const transformInferenceRunEvent = (event: Record<string, any>): InferenceRunEvent => ({
+  type: event.type,
+  run: transformInferenceRun(event.run ?? {}),
+  message: event.message ? transformMessage(event.message) : null,
+  summary: event.summary ? transformConversationSummary(event.summary) : null,
+});
+
+export async function startInferenceRun(
+  userId: string,
+  conversationId: string,
+  payload: InferenceRunStartRequest,
+): Promise<InferenceRunStartResponse> {
+  const body: Record<string, unknown> = {
+    parentMessageId: payload.parentMessageId,
+  };
+  if (payload.messagePath?.length) {
+    body.messagePath = payload.messagePath;
+  }
+  const enabledTools = serializeToolPreferences(payload.enabledTools);
+  if (enabledTools) {
+    body.enabledTools = enabledTools;
+  }
+  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${conversationId}`, withSessionRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(body),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore body parse issues
+    }
+    const error = new Error(detail || `Failed to start inference run: ${res.status}`);
+    (error as any).status = res.status;
+    (error as any).detail = detail;
+    throw error;
+  }
+  const data = await res.json();
+  return {
+    run: transformInferenceRun(data.run),
+    message: transformMessage(data.message),
+    summary: transformConversationSummary(data.summary),
+  };
+}
+
+export async function getActiveInferenceRuns(userId: string): Promise<InferenceRun[]> {
+  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}?status=active`, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch active inference runs: ${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data.map(transformInferenceRun) : [];
+}
+
+export async function cancelInferenceRun(userId: string, runId: string): Promise<InferenceRun> {
+  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/cancel`, withSessionRequest({
+    method: "POST",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to cancel inference run: ${res.status}`);
+  }
+  return transformInferenceRun(await res.json());
+}
+
+export async function observeInferenceRun(
+  userId: string,
+  runId: string,
+  onEvent: (event: InferenceRunEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/stream`, withSessionRequest({
+    method: "GET",
+    headers: { "Accept": "text/event-stream" },
+    signal,
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to observe inference run: ${res.status}`);
+  }
+  if (!res.body) {
+    throw new Error(`Failed to observe inference run: ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const textDecoder = new TextDecoder();
+  let buffer = "";
+  const flush = (value: string) => {
+    buffer += value;
+    const parts = buffer.split(/\n\n/);
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const data = part
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim())
+        .join("\n");
+      if (!data) continue;
+      try {
+        onEvent(transformInferenceRunEvent(JSON.parse(data)));
+      } catch {
+        // ignore malformed observer frames
+      }
+    }
+  };
+  const cancelReader = () => {
+    try { reader.cancel(); } catch { /* ignore */ }
+  };
+  signal?.addEventListener("abort", cancelReader, { once: true });
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      const { value, done } = await reader.read();
+      if (done) break;
+      flush(textDecoder.decode(value, { stream: true }));
+    }
+    flush(textDecoder.decode(new Uint8Array(), { stream: false }) + "\n\n");
+  } finally {
+    signal?.removeEventListener?.("abort", cancelReader as any);
+    try { reader.releaseLock(); } catch { /* ignore */ }
+  }
+}
+
+// Start streaming inference by requesting the legacy bridge SSE endpoint
 export async function streamInference(
   userId: string,
   conversationId: string,
@@ -1116,20 +1275,7 @@ export async function streamInference(
     payload.messagePath = messagePath;
   }
   if (Array.isArray(enabledTools) && enabledTools.length > 0) {
-    payload.enabledTools = enabledTools.map((item) => ({
-      server_id:
-        typeof (item as any).server_id === "string"
-          ? (item as any).server_id
-          : typeof item.serverId === "string"
-            ? item.serverId
-            : "",
-      tool_name:
-        typeof (item as any).tool_name === "string"
-          ? (item as any).tool_name
-          : typeof item.toolName === "string"
-            ? item.toolName
-            : "",
-    }));
+    payload.enabledTools = serializeToolPreferences(enabledTools);
   }
   const headers: Record<string, string> = { "Accept": "text/event-stream" };
   if (Object.keys(payload).length > 0) headers["Content-Type"] = "application/json";

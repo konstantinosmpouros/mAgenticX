@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices, field_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices, field_validator, computed_field
 import base64
 from typing import List, Optional, Literal
 from datetime import datetime
@@ -215,9 +215,15 @@ class ConversationSummary(BaseModel):
     archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
     isReported: bool = Field(False, validation_alias="is_reported")
     reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
+    activeRunId: Optional[str] = Field(None, validation_alias="active_inference_run_id")
     lastMessage: Optional[str] = Field(None, validation_alias="last_message_preview")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
+
+    @computed_field
+    @property
+    def isStreaming(self) -> bool:
+        return bool(self.activeRunId)
 
 class BlobOut(BaseModel):
     """Schema to expose a Blob"""
@@ -291,9 +297,15 @@ class ConversationDetail(BaseModel):
     archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
     isReported: bool = Field(False, validation_alias="is_reported")
     reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
+    activeRunId: Optional[str] = Field(None, validation_alias="active_inference_run_id")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def isStreaming(self) -> bool:
+        return bool(self.activeRunId)
 
 
 
@@ -528,6 +540,53 @@ class InferenceStreamPayload(BaseModel):
     enabledTools: list[ToolPreference] | None = Field(default=None, validation_alias="enabledTools")
 
 
+class InferenceRunStartPayload(InferenceStreamPayload):
+    """Payload to create a backend-owned inference run."""
+    parentMessageId: str = Field(..., min_length=1)
+
+
+class InferenceRunOut(BaseModel):
+    """Backend-owned inference run visible to the frontend run manager."""
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: str
+    userId: str = Field(..., validation_alias="user_id")
+    conversationId: str = Field(..., validation_alias="conversation_id")
+    assistantMessageId: str = Field(..., validation_alias="assistant_message_id")
+    parentMessageId: Optional[str] = Field(None, validation_alias="parent_message_id")
+    status: str
+    messagePath: list[str] = Field(default_factory=list, validation_alias="message_path")
+    enabledTools: list[dict] = Field(default_factory=list, validation_alias="enabled_tools")
+    content: Optional[str] = None
+    thinking: Optional[list[str]] = None
+    rawEvents: list[dict] = Field(default_factory=list, validation_alias="raw_events")
+    plan: Optional[dict] = None
+    subagents: Optional[dict] = None
+    errorMessage: Optional[str] = Field(None, validation_alias="error_message")
+    startedAt: datetime = Field(..., validation_alias="started_at")
+    completedAt: Optional[datetime] = Field(None, validation_alias="completed_at")
+    cancelRequestedAt: Optional[datetime] = Field(None, validation_alias="cancel_requested_at")
+    updatedAt: datetime = Field(..., validation_alias="updated_at")
+
+    @field_validator("messagePath", "enabledTools", "rawEvents", mode="before")
+    @classmethod
+    def _coerce_json_lists(cls, value):
+        return value if isinstance(value, list) else []
+
+
+class InferenceRunStartResponse(BaseModel):
+    run: InferenceRunOut
+    message: MessageOut
+    summary: ConversationSummary
+
+
+class InferenceRunEvent(BaseModel):
+    type: Literal["snapshot", "update", "terminal"]
+    run: InferenceRunOut
+    message: Optional[MessageOut] = None
+    summary: Optional[ConversationSummary] = None
+
+
 
 #-------------------------------------------
 # CONVERSATION UPDATE DTO
@@ -659,6 +718,10 @@ __all__ = [
     "RealtimeVoiceEndIn",
     "RealtimeVoiceEndOut",
     "InferenceStreamPayload",
+    "InferenceRunStartPayload",
+    "InferenceRunOut",
+    "InferenceRunStartResponse",
+    "InferenceRunEvent",
     "UpdateConversationResponse",
     "MessageUpdate",
     "ImageOut",

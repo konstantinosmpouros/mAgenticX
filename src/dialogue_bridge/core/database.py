@@ -21,6 +21,8 @@ from sqlalchemy import (
     JSON,
     Enum,
     LargeBinary,
+    Index,
+    text,
     UniqueConstraint,
 )
 from core.settings import settings
@@ -172,6 +174,7 @@ class ConversationTable(Base):
     archived_at = Column(DateTime, nullable=True)
     is_reported = Column(Boolean, nullable=False, server_default="false")
     reported_at = Column(DateTime, nullable=True)
+    active_inference_run_id = Column(String, ForeignKey("inference_runs.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # for fast conversation list rendering
     last_message_preview = Column(String, server_default="", nullable=True)
@@ -196,6 +199,11 @@ class ConversationTable(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
+    )
+    active_inference_run = relationship(
+        "InferenceRunTable",
+        foreign_keys=[active_inference_run_id],
+        post_update=True,
     )
 
 
@@ -243,6 +251,43 @@ class MessageTable(Base):
         passive_deletes=True,
         order_by="AttachmentTable.created_at.asc()",
     )
+
+
+class InferenceRunTable(Base):
+    __tablename__ = "inference_runs"
+    __table_args__ = (
+        Index(
+            "uq_inference_runs_one_active_per_conversation",
+            "conversation_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running', 'cancelling')"),
+            sqlite_where=text("status IN ('queued', 'running', 'cancelling')"),
+        ),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    assistant_message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String, nullable=False, server_default="queued", index=True)
+    message_path = Column(JSON, nullable=True)
+    enabled_tools = Column(JSON, nullable=True)
+    content = Column(Text, nullable=True)
+    thinking = Column(JSON, nullable=True)
+    raw_events = Column(JSON, nullable=True)
+    plan = Column(JSON, nullable=True)
+    subagents = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    cancel_requested_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("UserTable")
+    conversation = relationship("ConversationTable", foreign_keys=[conversation_id])
+    assistant_message = relationship("MessageTable", foreign_keys=[assistant_message_id])
+    parent_message = relationship("MessageTable", foreign_keys=[parent_message_id])
 
 
 class ConversationReportTable(Base):

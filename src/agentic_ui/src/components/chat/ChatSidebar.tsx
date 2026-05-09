@@ -533,7 +533,18 @@ export default function ChatSidebar({
                           )}
                         </SidebarMenuButton>
                         {!isRenaming && (
-                          <DropdownMenu.Root
+                          conversation.isStreaming ? (
+                            <SidebarMenuAction
+                              aria-label="Conversation is streaming"
+                              onClick={(event) => event.stopPropagation()}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
+                            >
+                              <Loader size={14} />
+                            </SidebarMenuAction>
+                          ) : (
+                            <DropdownMenu.Root
                             open={openActionMenuId === conversation.id}
                             onOpenChange={(isOpen) => {
                               setOpenActionMenuId(isOpen ? conversation.id : null);
@@ -609,6 +620,7 @@ export default function ChatSidebar({
                               </DropdownMenu.Content>
                             </DropdownMenu.Portal>
                           </DropdownMenu.Root>
+                          )
                         )}
                       </SidebarMenuItem>
                     );

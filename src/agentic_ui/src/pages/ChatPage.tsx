@@ -20,7 +20,6 @@ import type {
 import type { PlanSnapshot } from "@/lib/agui";
 import { usePreferencesHandlers } from "@/handlers/preferences";
 import {
-  useAutoScrollEffect,
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
   useCenteredComposerLayout,
@@ -28,6 +27,7 @@ import {
   useSidebarInteractionEffect,
 } from "@/hooks/useChatEffects";
 import { useChatVoiceMode } from "@/hooks/useChatVoiceMode";
+import { useInferenceRuns } from "@/hooks/useInferenceRuns";
 import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
@@ -230,6 +230,29 @@ export function ChatInterface({
     });
   }, [toast]);
 
+  const {
+    beginRun: beginInferenceRun,
+    stopRun: stopInferenceRun,
+    getRunForConversation,
+    isConversationStreaming,
+  } = useInferenceRuns({
+    userId,
+    currentConversationId: currentConversation?.id ?? null,
+    currentActiveRunId: currentConversation?.activeRunId ?? null,
+    setConversations,
+    setCurrentConversation,
+    setThinkingState,
+    setShowAiTransition,
+    toast: toastWrapper,
+  });
+
+  const activeConversationRun = getRunForConversation(currentConversation?.id ?? null);
+  const isCurrentConversationStreaming = isConversationStreaming(currentConversation?.id ?? null) || Boolean(currentConversation?.activeRunId);
+  const isCurrentConversationBusy = isSendingMessage || isCurrentConversationStreaming;
+  const stopActiveInferenceRun = useCallback(() => {
+    void stopInferenceRun(activeConversationRun?.id ?? currentConversation?.activeRunId ?? null);
+  }, [activeConversationRun?.id, currentConversation?.activeRunId, stopInferenceRun]);
+
   const { requestPersist } = useUISnapshotPersistence({
     userId,
     selectedAgent,
@@ -393,11 +416,11 @@ export function ChatInterface({
   }, []);
 
   const startDictation = useCallback(() => {
-    if (isSendingMessage || dictationStatus !== "idle") {
+    if (isCurrentConversationBusy || dictationStatus !== "idle") {
       return;
     }
     setDictationRequestSignal((prev) => prev + 1);
-  }, [dictationStatus, isSendingMessage]);
+  }, [dictationStatus, isCurrentConversationBusy]);
 
   const { voiceSession, handleVoiceMode } = useChatVoiceMode({
     toast: toastWrapper,
@@ -558,6 +581,7 @@ export function ChatInterface({
     setBranchSelections,
     setIsSendingMessage,
     enabledTools: enabledToolsForRequest,
+    beginInferenceRun,
     persistUIState: requestPersist,
     onPlanSnapshot: handlePlanSnapshot,
     resetActivePlan,
@@ -602,9 +626,6 @@ export function ChatInterface({
       setInactiveAgentFallback(null);
     }
   }, [currentConversation, agents]);
-
-  // Auto-scroll effect
-  useAutoScrollEffect(currentConversation?.messages ?? [], thinkingState, messagesEndRef, isSendingMessage);
 
   // Session auto-refresh effect
   useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
@@ -818,6 +839,7 @@ export function ChatInterface({
     setBranchSelections,
     setIsSendingMessage,
     enabledTools: enabledToolsForRequest,
+    beginInferenceRun,
     persistUIState: requestPersist,
     onPlanSnapshot: handlePlanSnapshot,
     resetActivePlan,
@@ -833,7 +855,7 @@ export function ChatInterface({
     agents,
     currentConversation,
     currentMessage,
-    isSendingMessage,
+    isSendingMessage: isCurrentConversationBusy,
     setMessages: setConversationMessages,
     setCurrentMessage,
     setAttachments,
@@ -849,6 +871,8 @@ export function ChatInterface({
     textareaRef,
     streamAbortRef,
     enabledTools: enabledToolsForRequest,
+    beginInferenceRun,
+    stopActiveInferenceRun,
     sharedConversationToken,
     persistUIState: requestPersist,
     onPlanSnapshot: handlePlanSnapshot,
@@ -877,7 +901,7 @@ export function ChatInterface({
     userId,
     setConversations,
     currentConversation,
-    handleStopStreaming,
+    handleStopStreaming: undefined,
     closeVoiceMode: voiceSession.close,
     agents,
     setInactiveAgentFallback,
@@ -1056,7 +1080,7 @@ export function ChatInterface({
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   const AgentIcon = currentAgent?.icon || Building2;
   const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
-  const showPlanningCard = isSendingMessage && Boolean(activePlan);
+  const showPlanningCard = isCurrentConversationBusy && Boolean(activePlan);
   const canShareCurrentConversation = Boolean(currentConversation?.id && !currentConversation.id.startsWith("shared:"));
   const canShareFullConversation = canShareCurrentConversation && activeMessages.some((message) => (
     message.sender === "ai" &&
@@ -1169,7 +1193,8 @@ export function ChatInterface({
         onShareMessage={openShareDialog}
         onReadAloud={handleReadAloud}
         speakingMessageId={speakingMessageId}
-        isStreaming={isSendingMessage}
+        isStreaming={isCurrentConversationBusy}
+        scrollResetKey={currentConversation?.id ?? null}
       />
     );
   };
@@ -1269,7 +1294,7 @@ export function ChatInterface({
                 onShareConversation={openFullConversationShareDialog}
                 canShareConversation={canShareFullConversation}
                 onNewChat={handleNewChat}
-                isStreaming={isSendingMessage}
+                isStreaming={isCurrentConversationBusy}
               />
 
               {/* Chat Messages Container*/}
@@ -1303,8 +1328,8 @@ export function ChatInterface({
                 // pass through your existing state/handlers/refs
                 attachments={attachments}
                 isPrivateMode={isPrivateMode}
-                thinkingActive={thinkingState?.isActive}
-                isStreaming={isSendingMessage}
+                thinkingActive={isCurrentConversationBusy && thinkingState?.isActive}
+                isStreaming={isCurrentConversationBusy}
                 currentMessage={currentMessage}
                 setCurrentMessage={setCurrentMessage}
                 handlePaste={handlePaste}

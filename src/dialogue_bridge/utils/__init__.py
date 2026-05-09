@@ -1,10 +1,8 @@
 from utils.agents import (
-    AGENTS_SERVICE_URL,
     build_agent_stream_url,
     fetch_tools_from_agents_service,
     get_agent_by_id,
     get_cached_agents,
-    prime_agent_cache,
     sync_agents_with_service,
 )
 from utils.conversations import (
@@ -15,7 +13,7 @@ from utils.conversations import (
     init_conv,
     init_message,
 )
-from utils.inference import prepare_inference_history, serialise_message_with_images_for_agent, validate_and_order_message_path
+from utils.inference import prepare_inference_history
 from utils.titles import generate_conversation_title
 from utils.suggestions import generate_conversation_suggestions
 from utils.speech import (
@@ -37,7 +35,6 @@ from utils.voice import (
 from utils.validators import validate_convId, validate_convId_full, validate_userId
 
 __all__ = [
-    "AGENTS_SERVICE_URL",
     "build_agent_stream_url",
     "fetch_tools_from_agents_service",
     "generate_conversation_title",
@@ -56,11 +53,8 @@ __all__ = [
     "transcribe_dictation_audio",
     "get_agent_by_id",
     "get_cached_agents",
-    "prime_agent_cache",
-    "prepare_inference_history",
-    "serialise_message_with_images_for_agent",
     "sync_agents_with_service",
-    "validate_and_order_message_path",
+    "prepare_inference_history",
     "validate_convId",
     "validate_convId_full",
     "validate_userId",

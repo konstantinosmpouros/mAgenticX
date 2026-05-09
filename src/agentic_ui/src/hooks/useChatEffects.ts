@@ -159,10 +159,13 @@ type CenteredComposerLayoutArgs = {
   attachmentsCount: number;
 };
 
-const DEFAULT_TEXTAREA_MAX = 168;
+const DEFAULT_TEXTAREA_MAX = 280;
 const FLOATING_MAX_RATIO = 0.68;
 const MIN_TEXTAREA_HEIGHT = 48;
 const FLOATING_ANCHOR_RATIO = 0.35;
+const MOBILE_TEXTAREA_MAX_RATIO = 0.42;
+const DESKTOP_TEXTAREA_MAX_RATIO = 0.5;
+const DESKTOP_TEXTAREA_MIN_WIDTH = 768;
 
 export function useCenteredComposerLayout({
   isMessagesEmpty,
@@ -173,9 +176,13 @@ export function useCenteredComposerLayout({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [centerAnchorOffset, setCenterAnchorOffset] = useState<number | null>(null);
   const [floatingMaxHeight, setFloatingMaxHeight] = useState<number>(DEFAULT_TEXTAREA_MAX);
+  const [viewportMaxHeight, setViewportMaxHeight] = useState<number>(DEFAULT_TEXTAREA_MAX);
 
   const textareaMaxHeight = isMessagesEmpty ? floatingMaxHeight : DEFAULT_TEXTAREA_MAX;
-  const effectiveTextareaMax = Math.max(textareaMaxHeight, MIN_TEXTAREA_HEIGHT);
+  const effectiveTextareaMax = Math.max(
+    Math.min(textareaMaxHeight, viewportMaxHeight),
+    MIN_TEXTAREA_HEIGHT,
+  );
 
   const emptyWrapperStyle = useMemo<CSSProperties | undefined>(() => {
     if (!isMessagesEmpty || centerAnchorOffset === null) return undefined;
@@ -234,6 +241,28 @@ export function useCenteredComposerLayout({
       resizeObserver?.disconnect();
     };
   }, [isMessagesEmpty]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const computeViewportMaxHeight = () => {
+      const viewportRatio =
+        window.innerWidth >= DESKTOP_TEXTAREA_MIN_WIDTH
+          ? DESKTOP_TEXTAREA_MAX_RATIO
+          : MOBILE_TEXTAREA_MAX_RATIO;
+
+      setViewportMaxHeight(
+        Math.max(MIN_TEXTAREA_HEIGHT, window.innerHeight * viewportRatio),
+      );
+    };
+
+    computeViewportMaxHeight();
+    window.addEventListener('resize', computeViewportMaxHeight);
+
+    return () => {
+      window.removeEventListener('resize', computeViewportMaxHeight);
+    };
+  }, []);
 
   useEffect(() => {
     const textarea = textareaRef.current;

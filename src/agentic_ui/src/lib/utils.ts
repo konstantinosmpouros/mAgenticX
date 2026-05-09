@@ -3,27 +3,17 @@ import { twMerge } from "tailwind-merge"
 import type { AGUIEvent } from "@/lib/agui";
 import type { AttachmentIn, AuthResponse, FileAttachment } from "./types";
 import {
-  DEFAULT_READ_ALOUD_VOICE,
   DEFAULT_REALTIME_VOICE,
   DEFAULT_VOICE_MODE_LANGUAGE,
-  READ_ALOUD_VOICES,
   REALTIME_VOICES,
   VOICE_MODE_LANGUAGES,
   withCredentials,
-  type ReadAloudVoice,
   type RealtimeVoice,
   type VoiceModeLanguage,
 } from "./consts";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
-}
-
-export function normalizeReadAloudVoice(value: unknown): ReadAloudVoice {
-  const voice = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return READ_ALOUD_VOICES.some((option) => option.id === voice)
-    ? (voice as ReadAloudVoice)
-    : DEFAULT_READ_ALOUD_VOICE;
 }
 
 export function normalizeRealtimeVoice(value: unknown): RealtimeVoice {
@@ -42,7 +32,7 @@ export function normalizeVoiceModeLanguage(value: unknown): VoiceModeLanguage {
 
 const CSRF_COOKIE_CANDIDATES = ["__Host-mx_csrf", "mx_csrf"];
 
-export function getCookieValue(name: string): string | null {
+function getCookieValue(name: string): string | null {
   if (typeof document === "undefined") return null;
   const escaped = name.replace(/[-[\]/{}()*+?.\\^$|]/g, "\\$&");
   const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
@@ -133,7 +123,7 @@ const FALLBACK_MIME_BY_EXTENSION: Record<string, string> = {
   sh: "application/x-sh",
 };
 
-export function resolveUploadMimeType(file: File): string {
+function resolveUploadMimeType(file: File): string {
   const browserMime = file.type?.trim();
   if (browserMime) return browserMime;
 
@@ -146,7 +136,7 @@ export function resolveUploadMimeType(file: File): string {
 }
 
 // Convert File to base64 AttachmentIn format
-export async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
+async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {

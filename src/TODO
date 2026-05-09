@@ -22,8 +22,7 @@
 - Deep Research mode: run longer multi-step research workflows with source citations, confidence notes, step traces, and exportable reports.
 - Scheduled Tasks: let users create one-off or recurring agent jobs that run later, complete while the user is offline, and notify them with results.
 - Artifacts / Canvas: add an editable side workspace for generated reports, markdown docs, code, tables, diagrams, JSON configs, and other reusable outputs.
-- Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-- Check how to make the streaming detached from the concept of api calls so we can like change tab and the streaming should continue for that message of the conversation like how the ai companies are doing it. if l change page or conversation the streaming should continue for that message and not get interrupted. This will require some changes in the frontend to decouple the streaming from the current conversation view and make it more global.
+- Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool). Also cause we are detached from the ui in the runtime we need to modify the planning card to be per conversation that is actively streaming and not in general.
 
 ## Agents
 

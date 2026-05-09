@@ -130,7 +130,7 @@ export function ChatMessage({
     ? Math.min(Math.max(thinkingState.currentThoughtIndex ?? -1, -1), (thinkingState.thoughts?.length ?? 0) - 1)
     : -1;
   const showLiveCoT = isStreamingTarget && Boolean(liveThoughts?.length);
-  const showStoredCoT = isAi && Array.isArray(message.thinking) && message.thinking.length > 0;
+  const showStoredCoT = isAi && !isStreamingTarget && Array.isArray(message.thinking) && message.thinking.length > 0;
   const showAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
   const isStreamingThisMessage = Boolean(
     isAi && isStreaming && streamingMessageId && streamingMessageId === message.id

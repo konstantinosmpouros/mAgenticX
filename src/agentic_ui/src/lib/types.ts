@@ -141,6 +141,8 @@ export type ConversationSummary = {
     archivedAt?: Date | null;
     isReported?: boolean;
     reportedAt?: Date | null;
+    activeRunId?: string | null;
+    isStreaming?: boolean;
     lastMessage?: string;
     created_at: string;
     updated_at: string;
@@ -158,6 +160,8 @@ export type ConversationDetail = {
     archivedAt?: Date | null;
     isReported?: boolean;
     reportedAt?: Date | null;
+    activeRunId?: string | null;
+    isStreaming?: boolean;
     created_at: Date;
     updated_at: Date;
     messages: MessageOut[];
@@ -314,6 +318,48 @@ export type CreateConversationResponse = {
 export type UpdateConversationResponse = {
     message: MessageOut;
     summary: ConversationSummary;
+};
+
+export type InferenceRunStatus = "queued" | "running" | "cancelling" | "completed" | "cancelled" | "failed";
+
+export type InferenceRun = {
+    id: string;
+    userId: string;
+    conversationId: string;
+    assistantMessageId: string;
+    parentMessageId?: string | null;
+    status: InferenceRunStatus | string;
+    messagePath: string[];
+    enabledTools?: ToolPreference[];
+    content?: string | null;
+    thinking?: string[] | null;
+    rawEvents?: Record<string, any>[];
+    plan?: Record<string, any> | null;
+    subagents?: Record<string, any> | null;
+    errorMessage?: string | null;
+    startedAt: Date;
+    completedAt?: Date | null;
+    cancelRequestedAt?: Date | null;
+    updatedAt: Date;
+};
+
+export type InferenceRunStartRequest = {
+    parentMessageId: string;
+    messagePath?: string[];
+    enabledTools?: ToolPreference[];
+};
+
+export type InferenceRunStartResponse = {
+    run: InferenceRun;
+    message: MessageOut;
+    summary: ConversationSummary;
+};
+
+export type InferenceRunEvent = {
+    type: "snapshot" | "update" | "terminal";
+    run: InferenceRun;
+    message?: MessageOut | null;
+    summary?: ConversationSummary | null;
 };
 
 // Parameters required to download an attachment from the backend

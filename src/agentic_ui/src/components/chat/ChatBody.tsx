@@ -1,14 +1,20 @@
 import React from "react";
 import type { ComponentType } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
   Agent,
   MessageOut,
   ThinkingState,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
+
+const AUTO_FOLLOW_DISTANCE = 96;
+const JUMP_BUTTON_DISTANCE = 160;
+const USER_SCROLL_UP_DELTA = 14;
 
 type ChatBody = {
   messages: MessageOut[];
@@ -54,6 +60,7 @@ type ChatBody = {
   speakingMessageId?: string | null;
   readOnly?: boolean;
   isStreaming?: boolean;
+  scrollResetKey?: string | null;
 };
 
 export default function ChatBody({
@@ -100,8 +107,14 @@ export default function ChatBody({
   speakingMessageId,
   readOnly = false,
   isStreaming,
+  scrollResetKey,
 }: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
+  const previousScrollTopRef = React.useRef(0);
+  const programmaticScrollUntilRef = React.useRef(0);
+  const scrollFrameRef = React.useRef<number | null>(null);
+  const [isPinnedToBottom, setIsPinnedToBottom] = React.useState(true);
+  const [showJumpToBottom, setShowJumpToBottom] = React.useState(false);
   const streamingMessageId = React.useMemo(() => {
     if (thinkingState?.branchPath && thinkingState.branchPath.length > 0) {
       return thinkingState.branchPath[thinkingState.branchPath.length - 1];
@@ -109,12 +122,99 @@ export default function ChatBody({
     return null;
   }, [thinkingState?.branchPath]);
 
+  const getDistanceFromBottom = React.useCallback((viewport: HTMLDivElement) => {
+    return Math.max(0, viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight);
+  }, []);
+
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "auto") => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    programmaticScrollUntilRef.current = window.performance.now() + 350;
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior,
+    });
+    previousScrollTopRef.current = viewport.scrollTop;
+    setShowJumpToBottom(false);
+  }, []);
+
+  const scheduleScrollToBottom = React.useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+      scrollFrameRef.current = window.requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        scrollToBottom(behavior);
+      });
+    },
+    [scrollToBottom]
+  );
+
+  React.useEffect(() => {
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    setIsPinnedToBottom(true);
+    setShowJumpToBottom(false);
+    scheduleScrollToBottom("auto");
+  }, [scrollResetKey, scheduleScrollToBottom]);
+
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const distance = getDistanceFromBottom(viewport);
+    const shouldFollow = isStreaming && (isPinnedToBottom || distance <= AUTO_FOLLOW_DISTANCE);
+    if (!shouldFollow) {
+      setShowJumpToBottom(distance > JUMP_BUTTON_DISTANCE);
+      return;
+    }
+
+    setIsPinnedToBottom(true);
+    scheduleScrollToBottom("auto");
+  }, [messages, thinkingState, isStreaming, isPinnedToBottom, getDistanceFromBottom, scheduleScrollToBottom]);
+
+  const handleJumpToBottom = React.useCallback(() => {
+    setIsPinnedToBottom(true);
+    scrollToBottom("smooth");
+  }, [scrollToBottom]);
+
+  const handleWheel = React.useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      if (isStreaming && event.deltaY < -USER_SCROLL_UP_DELTA) {
+        setIsPinnedToBottom(false);
+      }
+    },
+    [isStreaming]
+  );
+
   const handleScroll = React.useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
-      const scrolled = event.currentTarget.scrollTop > 4;
+      const viewport = event.currentTarget;
+      const scrolled = viewport.scrollTop > 4;
+      const distance = getDistanceFromBottom(viewport);
+      const isNearBottom = distance <= AUTO_FOLLOW_DISTANCE;
+      const isProgrammaticScroll = window.performance.now() < programmaticScrollUntilRef.current;
+      const movedUp = previousScrollTopRef.current - viewport.scrollTop > USER_SCROLL_UP_DELTA;
+
       onScrolledPastTop?.(scrolled);
+      setShowJumpToBottom(distance > JUMP_BUTTON_DISTANCE);
+
+      if (isNearBottom) {
+        setIsPinnedToBottom(true);
+      } else if (isStreaming && movedUp && !isProgrammaticScroll) {
+        setIsPinnedToBottom(false);
+      }
+
+      previousScrollTopRef.current = viewport.scrollTop;
     },
-    [onScrolledPastTop]
+    [getDistanceFromBottom, isStreaming, onScrolledPastTop]
   );
 
   React.useEffect(() => {
@@ -126,7 +226,7 @@ export default function ChatBody({
 
   return (
     <div className="flex-1 overflow-hidden relative">
-      <ScrollArea className="h-full" onScroll={handleScroll} viewportRef={viewportRef}>
+      <ScrollArea className="h-full" onScroll={handleScroll} onWheel={handleWheel} viewportRef={viewportRef}>
         <div
           className={`w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth ${
             isClearing ? 'messages-clearing' : ''
@@ -227,11 +327,25 @@ export default function ChatBody({
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
+      <button
+        type="button"
+        aria-label="Jump to latest message"
+        title="Jump to latest message"
+        onClick={handleJumpToBottom}
+        className={cn(
+          "absolute bottom-4 left-1/2 z-20 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full",
+          "border border-border/70 bg-background/85 text-foreground shadow-lg shadow-black/20 backdrop-blur-md",
+          "transition-[opacity,transform,background-color,color] duration-500 ease-out hover:bg-background/92 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          showJumpToBottom
+            ? "translate-y-0 scale-100 opacity-100"
+            : "pointer-events-none translate-y-4 scale-90 opacity-0"
+        )}
+      >
+        <ArrowDown className="h-5 w-5" aria-hidden="true" />
+      </button>
     </div>
   );
 }
-
-
 
 
 

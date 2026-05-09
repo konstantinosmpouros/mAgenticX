@@ -2,8 +2,7 @@ import { createConversation, addMessageToConversation, continueSharedConversatio
 import type { PlanSnapshot } from '@/lib/agui';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
-import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, ToolPreference } from '@/lib/types';
-import { streamAguiRun } from './agui';
+import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, ToolPreference, InferenceRunStartResponse } from '@/lib/types';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import type { DictationStatus } from '@/components/chat/ChatInputBar';
 import { updateSession } from '@/lib/authStorage';
@@ -49,6 +48,11 @@ type InferenceCtx = {
   persistUIState?: () => void;
   onPlanSnapshot?: (plan: PlanSnapshot) => void;
   resetActivePlan?: () => void;
+  beginInferenceRun: (
+    conversationId: string,
+    request: { parentMessageId: string; messagePath: string[]; enabledTools?: ToolPreference[] },
+  ) => Promise<InferenceRunStartResponse>;
+  stopActiveInferenceRun?: () => void | Promise<void>;
 };
 
 // Edit flow dependencies for turning a user message edit into a fresh branch.
@@ -69,6 +73,10 @@ type MessageEditHandlersCtx = {
   persistUIState?: () => void;
   onPlanSnapshot?: (plan: PlanSnapshot) => void;
   resetActivePlan?: () => void;
+  beginInferenceRun: (
+    conversationId: string,
+    request: { parentMessageId: string; messagePath: string[]; enabledTools?: ToolPreference[] },
+  ) => Promise<InferenceRunStartResponse>;
 };
 
 // Retry flow dependencies for starting a fresh AI sibling under the same parent prompt.
@@ -89,6 +97,10 @@ type RetryHandlersCtx = {
   persistUIState?: () => void;
   onPlanSnapshot?: (plan: PlanSnapshot) => void;
   resetActivePlan?: () => void;
+  beginInferenceRun: (
+    conversationId: string,
+    request: { parentMessageId: string; messagePath: string[]; enabledTools?: ToolPreference[] },
+  ) => Promise<InferenceRunStartResponse>;
 };
 
 // Resolve the lineage from the root message to a specific node.
@@ -138,6 +150,8 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     persistUIState,
     onPlanSnapshot,
     resetActivePlan,
+    beginInferenceRun,
+    stopActiveInferenceRun,
   } = ctx;
 
 
@@ -259,44 +273,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           throw new Error('Conversation missing first message id.');
         }
 
-        // Create a persisted AI placeholder first so the stream can progressively update the real target row.
-        const placeholderPayload: MessageIn = {
-          sender: 'ai',
-          type: 'text',
+        await beginInferenceRun(response.detail.id, {
           parentMessageId: replyParentMessageId,
-          content: '',
-        };
-        const placeholderResp = await addMessageToConversation(userId!, response.detail.id, placeholderPayload);
-        setMessages(prev => [...prev, placeholderResp.message]);
-        setCurrentConversation(prev =>
-          prev ? { ...prev, updated_at: new Date(placeholderResp.summary.updated_at) } : prev
-        );
-        setConversations(prev =>
-          sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
-        );
-        persistUIState?.();
-        // The branch path includes the just-created user row and the staged AI placeholder.
-        const branchPath = [...detailMessages.map((m) => m.id), placeholderResp.message.id];
-
-        // Abort any stale controller before creating the stream tied to this send.
-        if (streamAbortRef.current) streamAbortRef.current.abort();
-        streamAbortRef.current = new AbortController();
-        await streamAguiRun({
-          userId: userId!,
-          conversationId: response.detail.id,
-          replyParentMessageId,
-          uiBranchPath: branchPath,
-          prefillMessageId: placeholderResp.message.id,
-          setMessages,
-          setThinkingState,
-          setCurrentConversation,
-          setConversations,
-          toast,
-          setShowAiTransition,
-          signal: streamAbortRef.current.signal,
+          messagePath: detailMessages.map((m) => m.id),
           enabledTools,
-          persistUIState,
-          onPlanSnapshot,
         });
       }
 
@@ -324,42 +304,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           throw new Error('Conversation missing imported reply id.');
         }
 
-        const placeholderPayload: MessageIn = {
-          sender: 'ai',
-          type: 'text',
+        await beginInferenceRun(response.detail.id, {
           parentMessageId: replyParentMessageId,
-          content: '',
-        };
-        const placeholderResp = await addMessageToConversation(userId!, response.detail.id, placeholderPayload);
-        setMessages(prev => [...prev, placeholderResp.message]);
-        setCurrentConversation(prev =>
-          prev ? { ...prev, updated_at: new Date(placeholderResp.summary.updated_at) } : prev
-        );
-        setConversations(prev =>
-          sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
-        );
-        persistUIState?.();
-
-        const branchPath = [...detailMessages.map((m) => m.id), placeholderResp.message.id];
-
-        if (streamAbortRef.current) streamAbortRef.current.abort();
-        streamAbortRef.current = new AbortController();
-        await streamAguiRun({
-          userId: userId!,
-          conversationId: response.detail.id,
-          replyParentMessageId,
-          uiBranchPath: branchPath,
-          prefillMessageId: placeholderResp.message.id,
-          setMessages,
-          setThinkingState,
-          setCurrentConversation,
-          setConversations,
-          toast,
-          setShowAiTransition,
+          messagePath: detailMessages.map((m) => m.id),
           enabledTools,
-          signal: streamAbortRef.current.signal,
-          persistUIState,
-          onPlanSnapshot,
         });
       }
 
@@ -390,43 +338,10 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         if (setShowAiTransition) setShowAiTransition(true);
         const replyParentMessageId = response.message.id;
 
-        // As with new conversations, stream into a persisted placeholder instead of a purely local row.
-        const placeholderPayload: MessageIn = {
-          sender: 'ai',
-          type: 'text',
+        await beginInferenceRun(currentConversation!.id, {
           parentMessageId: replyParentMessageId,
-          content: '',
-        };
-        const placeholderResp = await addMessageToConversation(userId!, currentConversation!.id, placeholderPayload);
-        setMessages(prev => [...prev, placeholderResp.message]);
-        setCurrentConversation(prev =>
-          prev ? { ...prev, updated_at: new Date(placeholderResp.summary.updated_at) } : prev
-        );
-        setConversations(prev =>
-          sortByUpdatedAtDesc(prev.map(conv => (conv.id === placeholderResp.summary.id ? placeholderResp.summary : conv)))
-        );
-        persistUIState?.();
-        // Append the new user message and AI placeholder to the current visible branch path.
-        const branchPath = [...activePathIds, response.message.id, placeholderResp.message.id];
-
-        if (streamAbortRef.current) streamAbortRef.current.abort();
-        streamAbortRef.current = new AbortController();
-        await streamAguiRun({
-          userId: userId!,
-          conversationId: currentConversation!.id,
-          replyParentMessageId,
-          uiBranchPath: branchPath,
-          prefillMessageId: placeholderResp.message.id,
-          setMessages,
-          setThinkingState,
-          setCurrentConversation,
-          setConversations,
-          toast,
-          setShowAiTransition,
+          messagePath: [...activePathIds, response.message.id],
           enabledTools,
-          signal: streamAbortRef.current.signal,
-          persistUIState,
-          onPlanSnapshot,
         });
       }
     } catch (error) {
@@ -447,17 +362,11 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
 
   // Handler to abort ongoing streaming
   const handleStopStreaming = () => {
-    const controller = streamAbortRef.current;
-    if (controller) {
-      // Aborting the controller stops both the SSE stream and any UI waiting state tied to it.
-      controller.abort();
-      streamAbortRef.current = null;
-      setIsSendingMessage(false);
-      // Mark the thinking state as finished so the UI does not remain stuck in a live reasoning posture.
-      setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
-      if (setShowAiTransition) setShowAiTransition(false);
-      resetActivePlan?.();
-    }
+    void stopActiveInferenceRun?.();
+    setIsSendingMessage(false);
+    setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
+    if (setShowAiTransition) setShowAiTransition(false);
+    resetActivePlan?.();
   };
 
 
@@ -540,6 +449,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     persistUIState,
     onPlanSnapshot,
     resetActivePlan,
+    beginInferenceRun,
   } = ctx;
 
 
@@ -627,47 +537,13 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
 
       if (setShowAiTransition) setShowAiTransition(true);
 
-      if (streamAbortRef.current) {
-        streamAbortRef.current.abort();
-      }
-      streamAbortRef.current = new AbortController();
       const baseMessages = [...allMessages, newMessage];
       // Build the exact branch lineage the streamed AI reply should appear under.
       const parentPath = buildPathToMessage(baseMessages, parentId);
-      const aiPlaceholderPayload: MessageIn = {
-        sender: 'ai',
-        type: 'text',
+      await beginInferenceRun(currentConversation.id, {
         parentMessageId: newMessage.id,
-        content: '',
-      };
-      const aiPlaceholderResp = await addMessageToConversation(userId, currentConversation.id, aiPlaceholderPayload);
-      setConversationMessages((prev) => [...prev, aiPlaceholderResp.message]);
-      setCurrentConversation((prev: ConversationDetail | null) =>
-        prev ? { ...prev, updated_at: new Date(aiPlaceholderResp.summary.updated_at) } : prev,
-      );
-      setConversations((prev) =>
-        sortByUpdatedAtDesc(prev.map((conv) => (conv.id === aiPlaceholderResp.summary.id ? aiPlaceholderResp.summary : conv))),
-      );
-      persistUIState?.();
-      const branchMessagePath = [...parentPath, newMessage.id, aiPlaceholderResp.message.id];
-
-      // Stream the AI reply directly into the staged placeholder for this edited branch.
-      await streamAguiRun({
-        userId,
-        conversationId: currentConversation.id,
-        replyParentMessageId: newMessage.id,
-        uiBranchPath: branchMessagePath,
-        prefillMessageId: aiPlaceholderResp.message.id,
+        messagePath: [...parentPath, newMessage.id],
         enabledTools,
-        setMessages: setConversationMessages,
-        setThinkingState,
-        setCurrentConversation,
-        setConversations,
-        toast,
-        setShowAiTransition,
-        signal: streamAbortRef.current.signal,
-        persistUIState,
-        onPlanSnapshot,
       });
     } catch (error) {
       console.error('Failed to submit edited message', error);
@@ -745,6 +621,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     persistUIState,
     onPlanSnapshot,
     resetActivePlan,
+    beginInferenceRun,
   } = ctx;
 
   const handleRetryAiMessage = async (message: MessageOut) => {
@@ -784,54 +661,17 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     try {
       resetActivePlan?.();
       setIsSendingMessage?.(true);
-      // Stage a new persisted AI placeholder that the retry stream will update in place.
-      const aiPlaceholderPayload: MessageIn = {
-        sender: 'ai',
-        type: 'text',
+      if (setShowAiTransition) setShowAiTransition(true);
+      const parentPath = buildPathToMessage(allMessages, parentId);
+      await beginInferenceRun(currentConversation.id, {
         parentMessageId: parentId,
-        content: '',
-      };
-      const aiPlaceholderResp = await addMessageToConversation(userId, currentConversation.id, aiPlaceholderPayload);
-      setConversationMessages((prev) => [...prev, aiPlaceholderResp.message]);
-      setCurrentConversation((prev: ConversationDetail | null) =>
-        prev ? { ...prev, updated_at: new Date(aiPlaceholderResp.summary.updated_at) } : prev,
-      );
-      setConversations((prev) =>
-        sortByUpdatedAtDesc(prev.map((conv) => (conv.id === aiPlaceholderResp.summary.id ? aiPlaceholderResp.summary : conv))),
-      );
-      persistUIState?.();
-      // Select the new AI sibling so the UI immediately points at the branch being retried.
+        messagePath: parentPath,
+        enabledTools,
+      });
       setBranchSelections((prev) => ({
         ...prev,
         [parentKey]: siblingCount,
       }));
-      if (setShowAiTransition) setShowAiTransition(true);
-      if (streamAbortRef.current) {
-        streamAbortRef.current.abort();
-      }
-      streamAbortRef.current = new AbortController();
-      const parentPath = buildPathToMessage(allMessages, parentId);
-      const uiBranchPath = [...parentPath, aiPlaceholderResp.message.id];
-
-      // `serverBranchPath` mirrors the UI path here so the backend and frontend stay on the same retry branch.
-      await streamAguiRun({
-        userId,
-        conversationId: currentConversation.id,
-        replyParentMessageId: parentId,
-        uiBranchPath,
-        serverBranchPath: uiBranchPath,
-        setMessages: setConversationMessages,
-        setThinkingState,
-        setCurrentConversation,
-        setConversations,
-        toast,
-        setShowAiTransition,
-        signal: streamAbortRef.current.signal,
-        prefillMessageId: aiPlaceholderResp.message.id,
-        enabledTools,
-        persistUIState,
-        onPlanSnapshot,
-      });
     } catch (error) {
       console.error('Failed to retry AI message', error);
       toast({

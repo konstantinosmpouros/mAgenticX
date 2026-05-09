@@ -72,3 +72,4 @@ def configure_logging() -> None:
 
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("fontTools").setLevel(logging.WARNING)
