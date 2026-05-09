@@ -3,7 +3,7 @@ from typing import Any
 from deepagents import create_deep_agent, SubAgent
 from deepagents.backends import FilesystemBackend
 
-from agent_runtime import DeepAgent
+from runtime import DeepAgent
 from core.settings import settings
 from deep_agents.omni_agent.system_prompts import RESEARCHER_SYSTEM_PROMPT, WRITER_SYSTEM_PROMPT
 

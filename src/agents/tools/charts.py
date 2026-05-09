@@ -1,0 +1,1 @@
+# Here will be placed the custom tools for charts, such as creating a chart from data, updating a chart, etc.

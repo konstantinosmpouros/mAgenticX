@@ -1,6 +1,6 @@
 import json
 from typing import Any, List, Optional, Tuple, Dict
-from protocols.agui.emitter import AGUIEmitter
+from runtime.protocols.agui.emitter import AGUIEmitter
 
 
 _ALLOWED_MODES = {"messages", "updates"}

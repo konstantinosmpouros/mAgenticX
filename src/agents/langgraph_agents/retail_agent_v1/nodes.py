@@ -15,7 +15,7 @@ from langgraph_agents.retail_agent_v1.prompt_templates import (
     schema_help_template,
     answer_gen_template,
 )
-from protocols.agui import AGUIEmitter
+from runtime.protocols.agui import AGUIEmitter
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer

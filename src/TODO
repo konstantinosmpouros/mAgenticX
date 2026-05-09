@@ -23,8 +23,6 @@
 - Scheduled Tasks: let users create one-off or recurring agent jobs that run later, complete while the user is offline, and notify them with results.
 - Artifacts / Canvas: add an editable side workspace for generated reports, markdown docs, code, tables, diagrams, JSON configs, and other reusable outputs.
 - Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool).
-- Voice mode: Place in the profile panel a voice selector for the voice mode too. Also check how to make the voice mode have a default language the english or greek.
-- Implement a long-term memory service that keep memories from all agents (e.g., episodic, procedural).
 - Check how to make the streaming detached from the concept of api calls so we can like change tab and the streaming should continue for that message of the conversation like how the ai companies are doing it. if l change page or conversation the streaming should continue for that message and not get interrupted. This will require some changes in the frontend to decouple the streaming from the current conversation view and make it more global.
 
 ## Agents
@@ -44,5 +42,4 @@
 
 ## Bugs
 
-- The ai-elements response has a problem with the url and with the mermaid bg l in the dark mode, need to fix it.
 - When changing to voice mode the transition in bad.

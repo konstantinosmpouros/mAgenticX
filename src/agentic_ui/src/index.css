@@ -874,6 +874,19 @@ All colors MUST be HSL.
   color: #111827;
 }
 
+.chat-markdown [data-streamdown="mermaid-block"] button {
+  color: #475569;
+}
+
+.chat-markdown [data-streamdown="mermaid-block"] button:hover {
+  color: #0f172a;
+}
+
+.chat-markdown [data-streamdown="mermaid-block"] button:focus-visible {
+  outline: 2px solid rgb(15 23 42 / 0.35);
+  outline-offset: 2px;
+}
+
 .chat-markdown [aria-label="Mermaid chart"] {
   overflow-x: auto;
   border-radius: 0.5rem;

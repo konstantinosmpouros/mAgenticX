@@ -143,7 +143,7 @@ class VoiceSettings(BaseSettings):
     realtime_model: str = Field("gpt-realtime", validation_alias="OPENAI_REALTIME_MODEL")
     default_realtime_voice: str = Field("alloy", validation_alias="REALTIME_DEFAULT_VOICE")
     supported_realtime_voices: frozenset[str] = Field(
-        default=frozenset({"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}),
+        default=frozenset({"alloy", "ash", "ballad", "coral", "echo", "nova", "sage", "shimmer", "verse", "marin", "cedar"}),
         validation_alias="REALTIME_SUPPORTED_VOICES",
     )
 

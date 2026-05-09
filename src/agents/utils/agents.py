@@ -3,7 +3,7 @@ from typing import Dict, Set
 
 import langgraph_agents
 import deep_agents
-from agent_runtime import LangGraphAgent, DeepAgent
+from runtime import LangGraphAgent, DeepAgent
 from core.settings import settings
 from observability import get_logger
 from schemas import AgentDefinition

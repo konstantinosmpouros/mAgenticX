@@ -6,8 +6,8 @@ from pydantic import BaseModel
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
 
-from protocols.agui import AGUIEmitter, AGUIStreamNormalizer
-from agent_runtime.base_agent import BaseAgent
+from runtime.protocols.agui import AGUIEmitter, AGUIStreamNormalizer
+from runtime.base_agent import BaseAgent
 from observability import get_logger
 
 logger = get_logger(__name__)

@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 
-from agent_runtime import LangGraphAgent
+from runtime import LangGraphAgent
 from langgraph_agents.hr_policies_agent_v1.agents import build_hr_agents
 from langgraph_agents.hr_policies_agent_v1.nodes import (
     HRPoliciesV1_State,

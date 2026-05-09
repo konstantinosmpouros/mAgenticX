@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph
 
-from agent_runtime import LangGraphAgent
+from runtime import LangGraphAgent
 from langgraph_agents.retail_agent_v1.agents import build_retail_agents
 from langgraph_agents.retail_agent_v1.nodes import RetailV1_State, build_retail_nodes
 from langgraph.graph import START, END
