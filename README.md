@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="src/agentic_ui/public/logo2.png" alt="mAgenticX logo" width="120" />
+    <img src="src/agentic_ui/public/logo2.png" alt="mAgenticX logo" width="120" />
 </p>
 
 <h1 align="center">mAgenticX</h1>
 
 <p align="center">
-  A multi-service agentic platform for authenticated chat, streamed reasoning traces, retrieval, tool use, and branch-aware conversations.
+    A production-shaped agentic platform — multi-agent orchestration, retrieval, tool use, and a full chat workspace with observable reasoning.
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#architecture-at-a-glance">Architecture</a> •
-  <a href="#services">Services</a> •
-  <a href="#documentation-hub">Docs</a>
+    <a href="#quick-start">Quick Start</a> •
+    <a href="#architecture-at-a-glance">Architecture</a> •
+    <a href="#services">Services</a> •
+    <a href="#documentation-hub">Docs</a>
 </p>
 
 ```mermaid
@@ -108,28 +108,30 @@ flowchart LR
 
 ### Authenticated Chat Flow
 
-The browser talks only to the dialogue bridge. The bridge authenticates against Vault, manages the application session, persists conversation state, and proxies inference streams to the selected agent.
+The browser talks only to the dialogue bridge. The bridge authenticates against Vault, manages the application session, persists conversation state, and owns the inference run as a persistent server-side asyncio task. The browser can disconnect and reconnect freely without interrupting the run.
 
 ```mermaid
 sequenceDiagram
     participant U as User
     participant UI as Agentic UI
     participant B as Dialogue Bridge
-    participant V as Vault
     participant P as Postgres
     participant A as Agents
 
     U->>UI: Sign in and open chat
     UI->>B: /api/v1/auth/login
-    B->>V: userpass auth
-    V-->>B: authenticated Vault session
     B-->>UI: session + refresh cookies
-    UI->>B: /api/v1/inference/stream
-    B->>P: load conversation state
-    B->>A: forward normalized request
-    A-->>B: AG-UI SSE stream
-    B-->>UI: streamed SSE frames
-    UI->>B: persist final assistant message
+    UI->>B: POST /api/v1/inference/runs/{userId}/{conversationId}
+    B->>P: create inference_run row + AI placeholder message
+    B-->>UI: run_id + initial snapshot
+    B->>B: spawn background asyncio task (detached)
+    UI->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
+    B-->>UI: DB snapshot on connect, then live in-memory events
+    B->>A: POST /agents/{slug}/stream (inside background task)
+    A-->>B: AG-UI SSE frames
+    B->>B: accumulate in InferenceRunRuntime (no DB writes during stream)
+    B-->>UI: publish lightweight events to all observers
+    B->>P: single DB write at run completion (content, events, status)
 ```
 
 ### Retrieval and Tooling Flow
@@ -160,19 +162,24 @@ flowchart TD
 
 ### Browser Rendering Flow
 
-The UI does not just append streamed text. It normalizes AG-UI event frames into visible assistant text, tool traces, plan snapshots, thinking progress, and sub-agent artifacts.
+The UI does not just append streamed text. It receives events from the run observer SSE endpoint and normalizes them into visible assistant text, tool traces, plan snapshots, thinking progress, and sub-agent artifacts. The run continues on the server even if the browser disconnects; reconnecting replays a DB snapshot and then resumes live events.
 
 ```mermaid
 flowchart LR
-    SSE["SSE frames"]
-    Parse["AG-UI parse"]
+    Observer["Run observer SSE\n(/inference/runs/.../stream)"]
+    Snapshot["DB snapshot on connect"]
+    Live["Live in-memory events"]
+    Parse["applyRunEvent(...)"]
     Text["Assistant text"]
     Tools["Tool activity"]
     Plan["Plan snapshots"]
     Sub["Sub-agent state"]
-    Persist["Persisted final message"]
+    Persist["Single DB write at completion"]
 
-    SSE --> Parse
+    Observer --> Snapshot
+    Observer --> Live
+    Snapshot --> Parse
+    Live --> Parse
     Parse --> Text
     Parse --> Tools
     Parse --> Plan
@@ -286,13 +293,117 @@ For service-by-service development, use the implementation READMEs:
 
 ## Screens and Diagrams
 
-| Network and request flow | Platform overview |
-| --- | --- |
-| ![Network flow](docs/Screenshot%202025-10-31%20014810.png) | See the Mermaid platform overview at the top of this README |
+### Network and Request Flow
 
-| Chat lifecycle | Authentication |
-| --- | --- |
-| ![Chat lifecycle](docs/Screenshot%202025-10-31%20014930.png) | ![Authentication](docs/Screenshot%202025-10-31%20014954.png) |
+```mermaid
+flowchart TD
+    Browser["Browser"] -->|"HTTP :8050"| Nginx["nginx — agentic_ui"]
+    Nginx -->|"/ → static SPA assets"| SPA["React SPA"]
+    Nginx -->|"/api/ → proxy_pass :8002"| Bridge["dialogue_bridge :8002"]
+    Bridge -->|"TLS :8003"| Agents["agents :8003"]
+    Bridge -->|"asyncpg :5432"| PG["chat_postgres"]
+    Bridge -->|"HTTPS :8004"| Vault["vault :8004"]
+    Agents -->|"HTTP :8001"| RAG["rag_service :8001"]
+    Agents -->|"SSE :8005"| MCP["mcp_gateway :8005"]
+    RAG -->|"HTTP :8000"| Chroma["vectordb :8000"]
+    Agents & RAG -->|"HTTPS"| OpenAI["OpenAI API"]
+```
+
+### Platform Overview
+
+```mermaid
+flowchart TB
+    subgraph Users["Users"]
+        Admin["Admin"]
+        Browser["End user browser"]
+    end
+
+    subgraph Platform["mAgenticX Platform"]
+        UI["agentic_ui\n(served by nginx)"]
+        Bridge["dialogue_bridge\n(FastAPI BFF)"]
+        Agents["agents\n(LangGraph workflows)"]
+        MCP["mcp_gateway\n(MCP tool catalog SSE)"]
+        RAG["rag_service\n(retrieval and analytics)"]
+    end
+
+    subgraph Stores["Managed stores & services"]
+        PG["chat_postgres\n(conversations and blobs)"]
+        Vault["HashiCorp Vault\n(auth and JWT)"]
+        Chroma["vectordb Chroma\n(vector collections)"]
+        OpenAI["OpenAI API\n(LLMs and embeddings)"]
+    end
+
+    Admin -->|"configure UI"| UI
+    Browser -->|"HTTP SSE via 8050"| UI
+    UI -->|"REST SSE via /api"| Bridge
+    Bridge -->|"Proxy SSE and tools"| Agents
+    Agents -->|"Tool catalog SSE"| MCP
+    Bridge -->|"Persist conversations"| PG
+    Bridge -->|"JWT exchange"| Vault
+    Agents -->|"Document and analytics tools"| RAG
+    RAG -->|"Vector REST"| Chroma
+    RAG -->|"Embeddings"| OpenAI
+    Admin -->|"DB tooling"| PG
+    Admin -->|"Vault CLI UI"| Vault
+```
+
+### Chat Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Agentic UI
+    participant B as Dialogue Bridge
+    participant P as Postgres
+    participant A as Agents
+
+    U->>UI: Send message
+    UI->>B: POST /runs/{userId}/{conversationId}
+    B->>P: create inference_run row + AI message placeholder
+    B-->>UI: run_id + initial snapshot
+    B->>B: spawn detached asyncio task
+    UI->>B: GET /runs/{userId}/{run_id}/stream (SSE observer)
+    B-->>UI: DB snapshot on connect, then live events per chunk
+    B->>A: POST /agents/{slug}/stream (inside background task)
+    A-->>B: AG-UI SSE frames
+    B-->>UI: lightweight events published to all observers
+    B->>P: single DB write at run completion
+    U->>UI: disconnect / refresh
+    Note over B,A: run continues server-side uninterrupted
+    UI->>B: reconnect → GET /runs/{userId}/{run_id}/stream
+    B-->>UI: fresh DB snapshot + resume live events
+```
+
+### Authentication
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant Bridge as Dialogue Bridge
+    participant Vault as HashiCorp Vault
+    participant PG as Postgres
+
+    B->>Bridge: POST /login {username, password}
+    Bridge->>Vault: POST /v1/auth/userpass/login/{username}
+    Vault-->>Bridge: Vault client_token
+    Bridge->>PG: upsert user row, create session row (hashed tokens)
+    Bridge-->>B: HttpOnly cookies — session, refresh, CSRF value
+
+    Note over B,Bridge: Every authenticated request
+    B->>Bridge: request + X-CSRF-Token header + session cookie
+    Bridge->>Bridge: verify access JWT + CSRF double-submit
+    Bridge-->>B: response
+
+    Note over B,Bridge: Token refresh
+    B->>Bridge: POST /session/refresh (refresh cookie)
+    Bridge->>Bridge: rotate access token, update session row
+    Bridge-->>B: new session + CSRF cookies
+
+    Note over B,Bridge: Sign out
+    B->>Bridge: POST /logout
+    Bridge->>PG: mark session revoked
+    Bridge-->>B: clear all cookies
+```
 
 ## Documentation Hub
 

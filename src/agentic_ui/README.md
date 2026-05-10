@@ -14,6 +14,7 @@ The UI does not call the agents service, the RAG service, Chroma, or Postgres di
 - Support conversation archive and unarchive flows across the sidebar, header actions, and profile panel.
 - Support conversation-level reporting, with optional targeting of a specific assistant message from the AI action bar.
 - Provide a registry-driven keyboard shortcut system for global chat actions, composer send flows, and dismissible overlays.
+- Manage server-owned detached inference runs that survive navigation and browser refresh — hydrating active runs on page load and reconnecting the SSE observer without restarting the run.
 - Cache lightweight UI state locally so reloads feel faster without storing the entire conversation transcript in the browser.
 
 ## System Position
@@ -193,16 +194,26 @@ Main endpoint groups:
 - Attachments
   - `/attachments/download/{userId}/{conversationId}/{messageId}/{blobId}`
 - Inference
-  - `/inference/stream/{userId}/{conversationId}`
+  - `/inference/stream/{userId}/{conversationId}` (legacy)
+  - `/inference/runs/{userId}/{conversationId}` — create and start a detached run
+  - `/inference/runs/{userId}?status=active` — list active runs for hydration
+  - `/inference/runs/{userId}/{runId}/stream` — SSE observer for a run
+  - `/inference/runs/{userId}/{runId}/cancel` — cancel a run
 - Speech
   - `/speech/dictation/{userId}`
   - `/speech/read-aloud/{userId}/{conversationId}/{messageId}`
 
 ## AG-UI Streaming Model
 
-The most important runtime path is the streamed assistant response. `streamInference(...)` opens a `fetch(...)` request, reads the response body with a `ReadableStream` reader, and feeds the bytes into `parseSSE(...)`.
+The most important runtime path is the detached inference run. Instead of opening a direct SSE proxy, the UI calls `beginRun(conversationId, request)` on the globally-instantiated `useInferenceRuns` hook. This:
 
-The parsed events are then handled by `streamAguiRun(...)` in `components/handlers/agui.ts`. That module keeps transient runtime state until the run completes, then persists the final AI message back through the bridge.
+1. calls `POST /api/v1/inference/runs/{userId}/{conversationId}` on the bridge
+2. receives a `run_id` and initial snapshot — the server has already spawned the background asyncio task
+3. opens a separate SSE observer connection via `observeRunId(runId)` that reads from `/api/v1/inference/runs/{userId}/{run_id}/stream`
+
+The observer receives a DB snapshot immediately on connect (for reconnect resilience), then receives lightweight in-memory events published by `InferenceRunManager` as the background task progresses. Every incoming event is routed through `applyRunEvent(event)`, which updates `runsByConversation`, the conversation list, and UI state in a single handler.
+
+If the browser navigates away or refreshes, the run continues on the server. On remount, `useInferenceRuns` calls `getActiveInferenceRuns()` to hydrate any runs still in progress and reopens the observer.
 
 Supported event categories include standard AG-UI events and app-specific custom events:
 
@@ -232,17 +243,21 @@ Supported event categories include standard AG-UI events and app-specific custom
 ```mermaid
 sequenceDiagram
     participant UI as Chat Page
+    participant Hook as useInferenceRuns
     participant B as Dialogue Bridge
     participant A as Agents Service
 
-    UI->>B: POST /api/v1/inference/stream/{userId}/{conversationId}
-    B->>A: Forward normalized request
-    A-->>B: SSE AG-UI event stream
-    B-->>UI: Forward SSE frames
-    UI->>UI: parseSSE(...)
-    UI->>UI: streamAguiRun(...)
-    UI->>UI: Update thinking, tools, text, plans, subagents
-    UI->>B: Persist final assistant message
+    UI->>Hook: beginRun(conversationId, request)
+    Hook->>B: POST /api/v1/inference/runs/{userId}/{conversationId}
+    B-->>Hook: run_id + initial snapshot
+    B->>B: spawn background asyncio task
+    Hook->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
+    B-->>Hook: DB snapshot on connect
+    B->>A: POST /agents/{slug}/stream (inside background task)
+    A-->>B: AG-UI SSE frames
+    B-->>Hook: live in-memory events
+    Hook->>Hook: applyRunEvent(...) — updates conversations, messages, thinking
+    Note over B: Single DB write at run completion
 ```
 
 ## Plan and Sub-Agent Rendering
@@ -424,6 +439,7 @@ The chat experience is split into focused surfaces under `src/components/chat`:
   - conversation list
   - pagination plus archive, report, rename, and delete affordances
   - profile entry point
+  - shows a `Loader` spinner in place of the 3-dot dropdown for conversations with an active streaming run
 - `ProfilePanel`
   - user profile
   - theme selection
@@ -436,6 +452,9 @@ The chat experience is split into focused surfaces under `src/components/chat`:
   - loading states
   - branch-aware message display
   - AI message action bar with conversation-aware report affordance
+  - pin-to-bottom scroll behavior with wheel-event unpinning during streaming
+  - animated "jump to bottom" button when scrolled away from the latest message
+  - `scrollResetKey` prop resets scroll position on conversation switch
 - `ChatInputBar`
   - composer
   - attachment strip
@@ -518,6 +537,8 @@ Key files and folders:
   - stateful domain logic for auth, inference, preferences, attachments, retries, and branching
 - `src/hooks/`
   - session effects, scrolling behavior, thinking progress, and layout helpers
+- `src/hooks/useInferenceRuns.ts`
+  - global detached run manager — hydration on mount, beginRun, stopRun, observeRunId, applyRunEvent
 - `src/hooks/useKeyboardShortcuts.ts`
   - global shortcut listener and chat shortcut bridge
 - `src/lib/api.ts`

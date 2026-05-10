@@ -76,17 +76,19 @@ flowchart TD
 | Module | Responsibility |
 | --- | --- |
 | `main.py` | FastAPI app, routes, and request lifecycle |
-| `config.py` | Chroma config, embeddings setup, Excel loading, DuckDB registration |
+| `core/settings.py` | Environment-driven settings (pydantic-settings) |
+| `core/chroma.py` | Chroma HTTP client and embeddings setup |
+| `core/duck_db.py` | Excel loading and in-memory DuckDB registration |
 | `schemas.py` | Request schemas for retrieval and SQL |
 | `observability/*` | logging, request context, and exception handling |
 
 ## 5. Startup and Data Loading
 
-The Excel side of the service is initialized at import time from `config.py`.
+The Excel side of the service is initialized at startup from `core/duck_db.py`.
 
 ```mermaid
 flowchart TD
-    A[Import config.py] --> B[Resolve DATA_DIR = data/]
+    A[Import core/duck_db.py] --> B[Resolve DATA_DIR = data/]
     B --> C{Directory exists?}
     C -->|No| D[Raise FileNotFoundError]
     C -->|Yes| E[Iterate files]
@@ -177,7 +179,7 @@ Successful response shape:
 sequenceDiagram
     participant Client
     participant API as FastAPI
-    participant Config as config.py
+    participant Config as core/chroma.py
     participant Chroma as Chroma REST
 
     Client->>API: POST /retrieve/{collection}
@@ -192,7 +194,7 @@ sequenceDiagram
 ### 6.2 Implementation details
 
 - The Chroma client is created per request in `main.py`.
-- The embeddings model is initialized once in `config.py` as:
+- The embeddings model is initialized once in `core/chroma.py` as:
   - `OpenAIEmbeddings(model="text-embedding-3-large")`
 - Retrieval uses `vectordb.as_retriever(search_kwargs={"k": request.k})`.
 - If no documents are found, the endpoint returns `404`.
@@ -353,9 +355,14 @@ Formatting is handled by the observability formatter builder. The current loggin
 ```text
 src/rag_service/
 ├── main.py                 FastAPI routes and runtime entrypoint
-├── config.py               Chroma settings, embeddings, Excel loading, DuckDB setup
 ├── schemas.py              Request models
-├── data/                   Excel files loaded into DuckDB
+├── core/
+│   ├── settings.py         Environment-driven settings (pydantic-settings)
+│   ├── chroma.py           Chroma HTTP client and embeddings setup
+│   ├── duck_db.py          Excel loading and in-memory DuckDB registration
+│   ├── error_handling.py   Provider error handling helpers
+│   └── proxy.py            Trusted proxy IP resolution
+├── data/                   Excel files loaded into DuckDB at startup
 ├── observability/          Logging, middleware, exception handlers
 ├── requirements.txt        Python dependencies
 └── Dockerfile              Container image definition
@@ -388,7 +395,7 @@ Before starting the service locally:
 
 The current image:
 
-- uses `python:3.10-slim`
+- uses `python:3.11-slim`
 - installs Python dependencies from `requirements.txt`
 - installs `build-essential`
 - copies the service source into `/app`
@@ -428,14 +435,14 @@ Key runtime dependencies from `requirements.txt`:
 You would need to change:
 
 - client creation in `main.py`
-- settings and connection configuration in `config.py`
+- settings and connection configuration in `core/settings.py` and `core/chroma.py`
 - possibly the response mapping from retrieved documents
 
 ### To support multiple workbook sheets
 
 You would need to change:
 
-- the Excel loading loop in `config.py`
+- the Excel loading loop in `core/duck_db.py`
 - table naming logic to include sheet identity
 - any assumptions in downstream agents about one workbook -> one table
 
@@ -451,8 +458,9 @@ Current implementation executes arbitrary SQL against DuckDB. If you want strong
 ## 17. Quick File References
 
 - `main.py`: routes for retrieval, schema, and SQL
-- `config.py`: startup-time Excel loading and Chroma embeddings setup
+- `core/chroma.py`: Chroma HTTP client and embeddings initialization
+- `core/duck_db.py`: startup-time Excel loading and DuckDB table registration
+- `core/settings.py`: authoritative environment variable map
 - `schemas.py`: request contracts
 - `observability/middleware.py`: request ID propagation
 - `observability/exception_handlers.py`: API error behavior
-

@@ -71,7 +71,7 @@ Browser ─► agentic_ui (nginx :8050)
                                                                          └─► mcp_gateway (:8005) ─► MCP tool catalog
 ```
 
-**Streaming path:** browser opens an SSE stream against `dialogue_bridge`, which proxies to `agents`, which emits AG-UI events (plans, sub-agent state, tool traces, text deltas) back through the bridge, where they are persisted to Postgres and forwarded to the UI.
+**Streaming path:** the browser POSTs to `dialogue_bridge` to create a detached inference run. The bridge spawns a background asyncio task that streams from `agents` independently of any HTTP connection — agents emits AG-UI events (plans, sub-agent state, tool traces, text deltas) back into the task, which accumulates them in-memory and publishes lightweight events to SSE observers. The browser subscribes to a separate observer endpoint; it can disconnect and reconnect freely without interrupting the run. A single DB write captures the final result at completion.
 
 ---
 
@@ -171,11 +171,11 @@ All services live under [src/](src/) and ship as containers.
 | --- | --- | --- | --- |
 | `omni_agent` | [omni_agent/system_prompts.py](src/agents/deep_agents/omni_agent/system_prompts.py) | RESEARCHER, WRITER | Planner-style orchestrator. Researcher gathers, Writer drafts; both can write files. |
 
-### 7.3 Runtime base classes — [src/agents/agent_runtime/](src/agents/agent_runtime/)
+### 7.3 Runtime base classes — [src/agents/runtime/](src/agents/runtime/)
 
-- [base_agent.py](src/agents/agent_runtime/base_agent.py) — abstract base class
-- [langgraph_agent.py](src/agents/agent_runtime/langgraph_agent.py) — LangGraph workflow runner
-- [deep_agent.py](src/agents/agent_runtime/deep_agent.py) — Deep-agent orchestration
+- [base_agent.py](src/agents/runtime/base_agent.py) — abstract base class
+- [langgraph_agent.py](src/agents/runtime/langgraph_agent.py) — LangGraph workflow runner
+- [deep_agent.py](src/agents/runtime/deep_agent.py) — Deep-agent orchestration
 
 ---
 
@@ -196,8 +196,12 @@ All services live under [src/](src/) and ship as containers.
 | POST | `/{user_id}/{conv_id}/fork` | [conversations.py:172](src/dialogue_bridge/router/conversations.py#L172) | Fork conversation |
 | DELETE | `/{user_id}/{conv_id}` | [conversations.py:246](src/dialogue_bridge/router/conversations.py#L246) | Delete conversation |
 | GET / PATCH / POST | various | [conversations.py](src/dialogue_bridge/router/conversations.py) | Get / list / archive / share / report |
-| POST | `/stream/{user_id}/{conversation_id}` | [inference.py:31](src/dialogue_bridge/router/inference.py#L31) | Stream agent SSE |
-| POST | `/stream/.../transcribe` | [inference.py:175](src/dialogue_bridge/router/inference.py#L175) | STT transcription |
+| POST | `/stream/{user_id}/{conversation_id}` | [inference.py](src/dialogue_bridge/router/inference.py) | Legacy SSE proxy (still available) |
+| POST | `/stream/.../transcribe` | [inference.py](src/dialogue_bridge/router/inference.py) | STT transcription |
+| POST | `/runs/{user_id}/{conversation_id}` | [inference.py](src/dialogue_bridge/router/inference.py) | Create and start a detached inference run |
+| GET | `/runs/{user_id}?status=active` | [inference.py](src/dialogue_bridge/router/inference.py) | List active runs (hydration on load/refresh) |
+| GET | `/runs/{user_id}/{run_id}/stream` | [inference.py](src/dialogue_bridge/router/inference.py) | SSE observer — snapshot on connect, then live events |
+| POST | `/runs/{user_id}/{run_id}/cancel` | [inference.py](src/dialogue_bridge/router/inference.py) | Signal asyncio cancel; run aborts at current await |
 | POST | `/{user_id}/{conversation_id}` | [messages.py:35](src/dialogue_bridge/router/messages.py#L35) | Add message |
 | PATCH | `/{user_id}/{conversation_id}/{message_id}` | [messages.py:99](src/dialogue_bridge/router/messages.py#L99) | Like / feedback |
 | POST | various | [messages.py](src/dialogue_bridge/router/messages.py) | Read-aloud, report, generate suggestions |
@@ -238,8 +242,9 @@ SQLAlchemy models live in [src/dialogue_bridge/core/database.py](src/dialogue_br
 | `agents` | `id`, `slug` (unique), `name`, `description`, `icon`, `version`, `is_active` | Agent registry shown in UI catalog |
 | `users` | `id`, `username` (unique), `vault_user_id` (unique), `email`, `display_name`, `department`, `role_title`, `last_login_at` | Synced from Vault on login |
 | `user_preferences` | `id`, `user_id` (FK, unique), `tools` (JSON), `prefers_agentic_chat`, `suggestions_enabled`, `read_aloud_voice` | Per-user feature flags |
-| `conversations` | `id`, `user_id`, `agent_id`, `forked_parent_id`, `forked_message_id`, `title`, `is_private`, `is_archived`, `last_message_preview`, `last_message_at` | Branch lineage via `forked_parent_id` / `forked_message_id` |
+| `conversations` | `id`, `user_id`, `agent_id`, `forked_parent_id`, `forked_message_id`, `title`, `is_private`, `is_archived`, `last_message_preview`, `last_message_at`, `active_inference_run_id` (FK) | Branch lineage via `forked_parent_id` / `forked_message_id`; `active_inference_run_id` points to the current detached run |
 | `messages` | `id`, `conversation_id`, `parent_message_id`, `sender` (user/ai), `type` (text/file/image/audio/tool), `content`, `liked`, `reasoning_steps` (JSON), `raw_events` (JSON), `plan` (JSON), `subagents` (JSON) | AG-UI events captured per-message |
+| `inference_runs` | `id`, `user_id`, `conversation_id`, `assistant_message_id`, `parent_message_id`, `status` (queued/running/cancelling/completed/cancelled/failed), `message_path` (JSON), `enabled_tools` (JSON), `content`, `thinking` (JSON), `raw_events` (JSON), `plan` (JSON), `subagents` (JSON), `error_message`, `started_at`, `completed_at`, `cancel_requested_at`, `updated_at` | Detached run record; partial unique index enforces at most one active run per conversation |
 | `attachments` | `id`, `message_id`, `file_name`, `mime_type`, `size_bytes`, `blob_id` | Metadata |
 | `blobs` | `id`, `data` (binary), `created_at` | File binary storage |
 | `conversation_reports` | `id`, `conversation_id`, `user_id`, `message_id`, `reason`, `details`, `status` | Abuse reports |
@@ -252,7 +257,7 @@ Pydantic DTOs (60+) live in [`src/dialogue_bridge/schemas/__init__.py`](src/dial
 
 ## 10. AG-UI Event Protocol
 
-The agent runtime emits a structured event stream consumed by the UI. Events are defined in [src/agents/protocols/agui/events.py](src/agents/protocols/agui/events.py) and emitted by [src/agents/protocols/agui/emitter.py](src/agents/protocols/agui/emitter.py); the bridge captures them via [src/agents/protocols/agui/normalizer.py](src/agents/protocols/agui/normalizer.py).
+The agent runtime emits a structured event stream consumed by the UI. Events are defined in [src/agents/runtime/protocols/agui/events.py](src/agents/runtime/protocols/agui/events.py) and emitted by [src/agents/runtime/protocols/agui/emitter.py](src/agents/runtime/protocols/agui/emitter.py); the bridge captures them via [src/agents/runtime/protocols/agui/normalizer.py](src/agents/runtime/protocols/agui/normalizer.py).
 
 | Event | Purpose |
 | --- | --- |
@@ -308,6 +313,7 @@ The agent runtime emits a structured event stream consumed by the UI. Events are
 | --- | --- |
 | `useSessionEffects.ts` | Auth state sync + token refresh |
 | `useChatEffects.ts` | SSE subscription + AG-UI state machine |
+| `useInferenceRuns.ts` | Global detached run manager — hydration, beginRun, stopRun, applyRunEvent, observeRunId |
 | `useKeyboardShortcuts.ts` | Send, branch, etc. |
 | `use-toast.ts` | Toast notifications |
 | `use-mobile.tsx` | Mobile viewport detection |
@@ -379,16 +385,17 @@ Files most critical for understanding (and most expensive to break):
 
 | File | LOC | Why it matters |
 | --- | --- | --- |
-| [src/agents/protocols/agui/normalizer.py](src/agents/protocols/agui/normalizer.py) | 674 | AG-UI SSE event normalization / parsing |
+| [src/agents/runtime/protocols/agui/normalizer.py](src/agents/runtime/protocols/agui/normalizer.py) | 674 | AG-UI SSE event normalization / parsing |
 | [src/dialogue_bridge/router/conversations.py](src/dialogue_bridge/router/conversations.py) | 638 | Conversation CRUD + branching + sharing |
 | [`src/dialogue_bridge/schemas/__init__.py`](src/dialogue_bridge/schemas/__init__.py) | 580 | 60+ Pydantic DTOs |
+| [src/dialogue_bridge/utils/inference_runs.py](src/dialogue_bridge/utils/inference_runs.py) | 506 | Detached run lifecycle — InferenceRunManager singleton, asyncio task spawning, pub/sub fan-out, DB write policy |
 | [src/dialogue_bridge/core/database.py](src/dialogue_bridge/core/database.py) | 387 | SQLAlchemy models + relationships |
 | [src/dialogue_bridge/core/auth_session.py](src/dialogue_bridge/core/auth_session.py) | 378 | JWT / session / CSRF / refresh |
 | [src/agents/core/configs.py](src/agents/core/configs.py) | 347 | Env-driven service config |
 | [src/agents/langgraph_agents/hr_policies_agent_v1/nodes.py](src/agents/langgraph_agents/hr_policies_agent_v1/nodes.py) | 335 | Multi-step HR workflow nodes |
 | [src/agents/main.py](src/agents/main.py) | 330 | Service init + route registration |
 | [src/agents/protocols/agui/emitter.py](src/agents/protocols/agui/emitter.py) | 293 | AG-UI event encoding / emission |
-| [src/agents/agent_runtime/deep_agent.py](src/agents/agent_runtime/deep_agent.py) | 282 | DeepAgent orchestration |
+| [src/agents/runtime/deep_agent.py](src/agents/runtime/deep_agent.py) | 282 | DeepAgent orchestration |
 
 ---
 
@@ -437,6 +444,7 @@ Files most critical for understanding (and most expensive to break):
 | Change DB schema | [src/dialogue_bridge/core/database.py](src/dialogue_bridge/core/database.py) |
 | Touch auth / sessions | [src/dialogue_bridge/core/auth_session.py](src/dialogue_bridge/core/auth_session.py) + [src/vault/](src/vault/) |
 | Touch the chat surface | [src/agentic_ui/src/pages/ChatPage.tsx](src/agentic_ui/src/pages/ChatPage.tsx) + [src/agentic_ui/src/components/chat/](src/agentic_ui/src/components/chat/) |
-| Wire a new AG-UI event into the UI | Emit in [src/agents/protocols/agui/emitter.py](src/agents/protocols/agui/emitter.py), parse in [src/agentic_ui/src/handlers/agui.ts](src/agentic_ui/src/handlers/agui.ts), render in a chat component |
+| Wire a new AG-UI event into the UI | Emit in [src/agents/runtime/protocols/agui/emitter.py](src/agents/runtime/protocols/agui/emitter.py), parse in [src/agentic_ui/src/handlers/agui.ts](src/agentic_ui/src/handlers/agui.ts), render in a chat component |
 | Add a retrieval source | [src/rag_service/](src/rag_service/) |
-| Trace a message end-to-end | UI input → `dialogue_bridge` `/stream` → `agents` `/agents/{slug}/stream` → AG-UI events back through bridge → persisted to `messages.raw_events` → rendered by `useChatEffects.ts` |
+| Trace a message end-to-end | UI input → `dialogue_bridge` `POST /runs` → `create_inference_run` → `InferenceRunManager.launch` spawns asyncio task → task calls `agents` `/agents/{slug}/stream` → AG-UI events accumulated in `InferenceRunRuntime` → published to observers → single DB write at `_finish_run` → rendered via `useInferenceRuns.applyRunEvent` |
+| Trace a detached run end-to-end | [src/dialogue_bridge/utils/inference_runs.py](src/dialogue_bridge/utils/inference_runs.py) — start at `create_inference_run`, follow `InferenceRunManager.launch` → `_do_stream` → `_finish_run`; pair with [src/agentic_ui/src/hooks/useInferenceRuns.ts](src/agentic_ui/src/hooks/useInferenceRuns.ts) `beginRun` → `observeRunId` → `applyRunEvent` |

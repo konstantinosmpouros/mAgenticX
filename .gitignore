@@ -1,23 +1,25 @@
 .env
 .codex
-.vscode/*
-.virtual_documents/*
-.idea/*
+.claude/
+.vscode/
+.virtual_documents/
+.idea/
 plan/
+docs/draft/
 
 **/__pycache__/
 **/agent_venv/
 **/.ipynb_checkpoints/
 
 notebooks/.ipynb_checkpoints/
-notebooks/vectorstore/*
-notebooks/knowledge_base/*
+notebooks/vectorstore/
+notebooks/knowledge_base/
 
-src/vectorstores/*
-src/vault/*
+src/vectorstores/
+src/vault/
 src/mcp_gateway/mcp_secret.env
 
-data/*
+data/
 
 # Internal TLS certs (generated, contain private keys)
 src/tls/ca/

@@ -193,6 +193,9 @@ System messages supplied by clients are stripped during normalization because ea
 | `/agents/{agent_slug}/stream` | `POST` | Streams AG-UI SSE for a selected agent |
 | `/dictate/transcribe` | `POST` | Transcribes uploaded audio with OpenAI STT |
 | `/titles/generate` | `POST` | Generates multiple short conversation title candidates |
+| `/suggestions/generate` | `POST` | Generates personalized starter suggestions for a conversation |
+| `/speech/read-aloud` | `POST` | Generates TTS audio for an AI response |
+| `/realtime/session` | `POST` | Creates an OpenAI Realtime WebRTC session from an SDP offer |
 
 ### 5.4 Returned stream format
 
@@ -206,7 +209,7 @@ The stream is `text/event-stream` and carries AG-UI compatible frames such as:
 
 ## 6. AG-UI Streaming Normalization
 
-Raw LangGraph and DeepAgent chunks are not sent directly to clients. They are normalized by `protocols/agui/normalizer.py`.
+Raw LangGraph and DeepAgent chunks are not sent directly to clients. They are normalized by `runtime/protocols/agui/normalizer.py`.
 
 ```mermaid
 flowchart TD
@@ -484,21 +487,24 @@ src/agents/
 ├── main.py                         FastAPI entrypoint and routes
 ├── schemas.py                      Request/response schemas and agent definitions
 ├── core/
-│   └── settings.py                 Environment-driven settings (pydantic-settings)
-├── agent_runtime/
+│   ├── settings.py                 Environment-driven settings (pydantic-settings)
+│   ├── error_handling.py           Provider error handling helpers
+│   ├── proxy.py                    Trusted proxy IP resolution
+│   └── tls.py                      TLS client setup
+├── runtime/
 │   ├── base_agent.py               Shared runtime contract
 │   ├── langgraph_agent.py          LangGraph runtime wrapper
-│   └── deep_agent.py               DeepAgents runtime wrapper
+│   ├── deep_agent.py               DeepAgents runtime wrapper
+│   └── protocols/
+│       └── agui/
+│           ├── emitter.py          AG-UI event encoding helpers
+│           ├── events.py           Custom AG-UI event payloads
+│           └── normalizer.py       Runtime chunk to SSE normalization
 ├── utils/
 │   ├── agents.py                   Registry discovery
 │   ├── mcp_tools.py                MCP catalog and session helpers
 │   ├── prompts.py                  Chat payload normalization
-│   ├── title.py                    Title generation chain
-│   └── proxy.py                    Trusted proxy IP resolution
-├── protocols/agui/
-│   ├── emitter.py                  AG-UI event encoding helpers
-│   ├── events.py                   Custom AG-UI event payloads
-│   └── normalizer.py               Runtime chunk to SSE normalization
+│   └── title.py                    Title generation chain
 ├── langgraph_agents/
 │   ├── hr_policies_agent_v1/       HR workflow
 │   ├── orthodox_agent_v1/          Orthodox workflow
@@ -611,8 +617,8 @@ These are implementation facts worth knowing before extending the service:
 
 - `main.py`: route handlers, MCP session wiring, stream response creation
 - `utils/agents.py`: registry discovery and disabled-slug filtering
-- `agent_runtime/base_agent.py`: config validation, tool filtering, manifest metadata
-- `agent_runtime/langgraph_agent.py`: graph build and LangGraph streaming
-- `agent_runtime/deep_agent.py`: deep-agent build lifecycle and streaming
-- `protocols/agui/normalizer.py`: the key translation layer from runtime chunks to UI events
+- `runtime/base_agent.py`: config validation, tool filtering, manifest metadata
+- `runtime/langgraph_agent.py`: graph build and LangGraph streaming
+- `runtime/deep_agent.py`: deep-agent build lifecycle and streaming
+- `runtime/protocols/agui/normalizer.py`: the key translation layer from runtime chunks to UI events
 - `core/settings.py`: authoritative environment variable map

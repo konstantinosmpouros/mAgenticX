@@ -18,7 +18,6 @@
 ## New Features
 
 - Projects / Workspaces: group related conversations, files, agents, tools, preferences, and instructions into persistent workspaces for long-running work.
-- Project-scoped memory: remember useful preferences, decisions, terminology, and context inside a specific project without mixing it into unrelated work.
 - Deep Research mode: run longer multi-step research workflows with source citations, confidence notes, step traces, and exportable reports.
 - Scheduled Tasks: let users create one-off or recurring agent jobs that run later, complete while the user is offline, and notify them with results.
 - Artifacts / Canvas: add an editable side workspace for generated reports, markdown docs, code, tables, diagrams, JSON configs, and other reusable outputs.
