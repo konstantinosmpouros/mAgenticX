@@ -12,9 +12,10 @@ from utils.conversations import (
     clone_branch_to_conversation,
     init_conv,
     init_message,
+    set_conversation_archive_state,
 )
 from utils.inference import prepare_inference_history
-from utils.titles import generate_conversation_title
+from utils.titles import generate_conversation_title, resolve_conversation_title
 from utils.suggestions import generate_conversation_suggestions
 from utils.speech import (
     generate_read_aloud_audio,
@@ -38,6 +39,8 @@ __all__ = [
     "build_agent_stream_url",
     "fetch_tools_from_agents_service",
     "generate_conversation_title",
+    "resolve_conversation_title",
+    "set_conversation_archive_state",
     "generate_conversation_suggestions",
     "generate_read_aloud_audio",
     "create_realtime_session_with_agents",

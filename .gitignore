@@ -1,5 +1,6 @@
 .env
 .codex
+CLAUDE.md
 .claude/
 .vscode/
 .virtual_documents/

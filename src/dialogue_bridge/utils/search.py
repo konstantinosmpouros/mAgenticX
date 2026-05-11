@@ -34,7 +34,7 @@ async def search_workspace_data(
     limit: int,
 ) -> list[WorkspaceSearchResult]:
     pattern = build_like_pattern(query)
-    per_kind_limit = max(3, limit)
+    per_kind_limit = limit
     results: list[WorkspaceSearchResult] = []
 
     conversation_stmt = (

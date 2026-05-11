@@ -24,15 +24,17 @@ from schemas import (
     ConversationTitleUpdate,
 )
 from core.auth_session import require_csrf_protection
+from utils.attachments import encode_disposition
 from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_scoped_messages
 from utils import (
     _preview,
     build_message_lineage,
     build_share_snapshot,
     clone_branch_to_conversation,
-    generate_conversation_title,
     get_agent_by_id,
     init_conv,
+    resolve_conversation_title,
+    set_conversation_archive_state,
     validate_convId,
     validate_convId_full,
     validate_userId,
@@ -67,18 +69,12 @@ async def createConversation(
     if agent is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
 
-    resolved_title = (payload.title or "").strip() if payload.title else None
-
-    # Auto-generate a title when none was provided
-    if not resolved_title:
-        generated = await generate_conversation_title(payload.firstMessage)
-        if generated:
-            resolved_title = generated
-        else:
-            preview_title = _preview(payload.firstMessage.content)
-            fallback_source = "preview" if preview_title else ("agent_name" if agent.name else "default")
-            resolved_title = preview_title or agent.name or "New conversation"
-            logger.info("title_generation_fallback_used", "Conversation title fallback was used", agent_id=agent.id, fallback_source=fallback_source)
+    resolved_title = await resolve_conversation_title(
+        first_message=payload.firstMessage,
+        explicit_title=payload.title,
+        agent_name=agent.name,
+        agent_id=agent.id,
+    )
 
     # Create conversation + first message atomically
     async with logged_db_operation(
@@ -274,7 +270,7 @@ async def exportConversationPdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": encode_disposition(filename, "attachment"),
             "Content-Length": str(len(pdf_bytes)),
             "Cache-Control": "no-store",
         },
@@ -490,26 +486,8 @@ async def archiveConversation(
 ):
     """Archive an existing conversation and return the refreshed summary."""
     set_context(user_id=user_id, conversation_id=conversation_id)
-    current_conv.is_archived = True
-    current_conv.archived_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    await db.commit()
-    await db.refresh(
-        current_conv,
-        attribute_names=[
-            "title",
-            "updated_at",
-            "last_message_preview",
-            "agent",
-            "is_archived",
-            "archived_at",
-        ],
-    )
-    logger.info(
-        "conversation_archived",
-        "Conversation archived",
-        conversation_id=conversation_id,
-        agent_id=current_conv.agent_id,
-    )
+    await set_conversation_archive_state(db, current_conv, True)
+    logger.info("conversation_archived", "Conversation archived", conversation_id=conversation_id, agent_id=current_conv.agent_id)
     return ConversationSummary.model_validate(current_conv)
 
 
@@ -529,26 +507,8 @@ async def unarchiveConversation(
 ):
     """Unarchive an existing conversation and return the refreshed summary."""
     set_context(user_id=user_id, conversation_id=conversation_id)
-    current_conv.is_archived = False
-    current_conv.archived_at = None
-    await db.commit()
-    await db.refresh(
-        current_conv,
-        attribute_names=[
-            "title",
-            "updated_at",
-            "last_message_preview",
-            "agent",
-            "is_archived",
-            "archived_at",
-        ],
-    )
-    logger.info(
-        "conversation_unarchived",
-        "Conversation unarchived",
-        conversation_id=conversation_id,
-        agent_id=current_conv.agent_id,
-    )
+    await set_conversation_archive_state(db, current_conv, False)
+    logger.info("conversation_unarchived", "Conversation unarchived", conversation_id=conversation_id, agent_id=current_conv.agent_id)
     return ConversationSummary.model_validate(current_conv)
 
 

@@ -1,5 +1,3 @@
-import base64
-
 from fastapi import APIRouter, Depends, Header, Response, status
 from fastapi_pagination import Page, Params, create_page
 from observability import get_logger, set_context
@@ -123,7 +121,7 @@ async def getImagesBatch(
             AttachmentTable.file_name,
             AttachmentTable.mime_type,
             AttachmentTable.created_at,
-            BlobTable.data,
+            func.replace(func.encode(BlobTable.data, "base64"), "\n", "").label("data_b64"),
         )
         .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
         .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
@@ -136,10 +134,14 @@ async def getImagesBatch(
     )
 
     raw_params = params.to_raw_params()
-    total_query = select(func.count()).select_from(stmt.subquery())
-    total = await db.scalar(total_query) or 0
-    result = await db.execute(stmt.limit(raw_params.limit).offset(raw_params.offset))
+    paged_stmt = (
+        stmt.add_columns(func.count().over().label("total_count"))
+        .limit(raw_params.limit)
+        .offset(raw_params.offset)
+    )
+    result = await db.execute(paged_stmt)
     rows = result.all()
+    total = rows[0].total_count if rows else 0
 
     items = [
         ImageOut(
@@ -148,7 +150,7 @@ async def getImagesBatch(
             file_name=r.file_name,
             mime_type=r.mime_type,
             created_at=r.created_at,
-            dataB64=base64.b64encode(r.data).decode(),
+            dataB64=r.data_b64,
         )
         for r in rows
     ]

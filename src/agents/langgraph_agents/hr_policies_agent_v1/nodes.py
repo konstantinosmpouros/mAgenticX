@@ -167,12 +167,11 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         async def fetch_single(query: str):
             request_id = get_context().get("request_id")
             headers = internal_service_headers(request_id)
-            async with httpx.AsyncClient(verify=get_httpx_verify()) as client:
+            async with httpx.AsyncClient(verify=get_httpx_verify(), timeout=httpx.Timeout(connect=5.0, read=REQUEST_TIMEOUT_SECONDS)) as client:
                 resp = await client.post(
                     ENDPOINT,
                     json={"query": query, "k": RETRIEVE_TOP_K},
                     headers=headers,
-                    timeout=REQUEST_TIMEOUT_SECONDS,
                 )
                 resp.raise_for_status()
                 retrieved_docs.extend(resp.json()["documents"])

@@ -93,6 +93,20 @@ async def init_attachments(db: AsyncSession, message_id: str, items: List[Attach
         db.add(attach)
 
 
+async def set_conversation_archive_state(
+    db: AsyncSession,
+    conv: ConversationTable,
+    archived: bool,
+) -> None:
+    conv.is_archived = archived
+    conv.archived_at = datetime.now(timezone.utc).replace(tzinfo=None) if archived else None
+    await db.commit()
+    await db.refresh(
+        conv,
+        attribute_names=["title", "updated_at", "last_message_preview", "agent", "is_archived", "archived_at"],
+    )
+
+
 def _preview(text: Optional[str]) -> Optional[str]:
     MAX_PREVIEW_LEN = 40
     if not text:

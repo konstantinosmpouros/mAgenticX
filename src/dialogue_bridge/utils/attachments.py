@@ -96,19 +96,18 @@ async def convert_attachment_to_pdf_preview(
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
     request_context = get_context()
 
-    row = await _get_attachment_blob_row(
+    meta_row = await _get_attachment_blob_row(
         user_id=user_id,
         conversation_id=conversation_id,
         message_id=message_id,
         blob_id=blob_id,
         db=db,
-        include_data=True,
+        include_data=False,
     )
 
-    mime: str | None = row["mime_type"]
-    file_name: str | None = row["file_name"]
-    file_size: int | None = row["blob_size"]
-    blob_data = row["blob_data"]
+    mime: str | None = meta_row["mime_type"]
+    file_name: str | None = meta_row["file_name"]
+    file_size: int | None = meta_row["blob_size"]
 
     if not is_presentation_previewable(file_name, mime):
         raise HTTPException(status_code=400, detail="Only PowerPoint attachments support derived preview.")
@@ -124,6 +123,16 @@ async def convert_attachment_to_pdf_preview(
             status_code=400,
             detail=f"Preview is unavailable for presentations larger than {PRESENTATION_PREVIEW_LIMIT_BYTES // 1024 // 1024} MB.",
         )
+
+    data_row = await _get_attachment_blob_row(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        blob_id=blob_id,
+        db=db,
+        include_data=True,
+    )
+    blob_data = data_row["blob_data"]
 
     if isinstance(blob_data, memoryview):
         blob_bytes = blob_data.tobytes()
@@ -173,6 +182,18 @@ async def convert_attachment_to_pdf_preview(
                     process.communicate(),
                     timeout=PRESENTATION_CONVERSION_TIMEOUT_SECONDS,
                 )
+            except OSError as exc:
+                logger.error(
+                    "presentation_preview_communicate_error",
+                    "Failed to communicate with presentation conversion process",
+                    context=request_context,
+                    blob_id=blob_id,
+                    file_name=file_name,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="The attachment could not be prepared for preview. Please try again.",
+                ) from exc
             except asyncio.TimeoutError as exc:
                 process.kill()
                 with contextlib.suppress(Exception):
@@ -228,6 +249,18 @@ async def convert_attachment_to_pdf_preview(
             return pdf_bytes, output_name
     except HTTPException:
         raise
+    except PermissionError as exc:
+        logger.error(
+            "presentation_preview_permission_error",
+            "Permission denied during presentation preview conversion",
+            context=request_context,
+            blob_id=blob_id,
+            file_name=file_name,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The attachment could not be prepared for preview. Please try again.",
+        ) from exc
     except FileNotFoundError as exc:
         logger.error(
             "presentation_preview_converter_missing",

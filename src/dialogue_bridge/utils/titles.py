@@ -59,6 +59,30 @@ def _message_to_chain_payload(message: MessageIn) -> List[Dict[str, Any]]:
     return [{"role": "user", "content": payload_content}]
 
 
+async def resolve_conversation_title(
+    first_message: MessageIn,
+    explicit_title: Optional[str],
+    agent_name: Optional[str],
+    agent_id: Optional[str],
+) -> str:
+    from utils.conversations import _preview
+    resolved = (explicit_title or "").strip() or None
+    if resolved:
+        return resolved
+    generated = await generate_conversation_title(first_message)
+    if generated:
+        return generated
+    preview = _preview(first_message.content)
+    fallback_source = "preview" if preview else ("agent_name" if agent_name else "default")
+    logger.info(
+        "title_generation_fallback_used",
+        "Conversation title fallback was used",
+        agent_id=agent_id,
+        fallback_source=fallback_source,
+    )
+    return preview or agent_name or "New conversation"
+
+
 async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     """
     Call the agents service to obtain generated conversation title candidates,

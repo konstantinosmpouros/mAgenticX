@@ -12,7 +12,10 @@ from fontTools.ttLib import TTFont
 from fontTools.subset import Options, Subsetter
 
 from core.database import ConversationTable, MessageTable
+from observability import get_logger
 from utils.conversations import build_message_lineage
+
+logger = get_logger(__name__)
 
 PdfExportMode = Literal["full", "branch", "message"]
 
@@ -706,7 +709,8 @@ def _load_logo() -> Optional[_PngImage]:
         return None
     try:
         return _decode_png(_LOGO_PATH)
-    except Exception:
+    except (OSError, ValueError) as exc:
+        logger.warning("logo_load_failed", "Failed to load logo for PDF export", path=str(_LOGO_PATH), error=str(exc))
         return None
 
 
@@ -790,7 +794,8 @@ class _FontRegistry:
             seen.add(key)
             try:
                 fonts.append(_UnicodeFont(path, font_number=font_number, resource_name=f"F{len(fonts) + 1}"))
-            except Exception:
+            except Exception as exc:
+                logger.debug("font_load_skipped", "Font skipped during PDF export registry load", path=str(path), error=str(exc))
                 continue
         return cls(fonts)
 

@@ -618,7 +618,7 @@ class AGUIStreamNormalizer:
         """Decode the JSON payload from an SSE frame."""
         try:
             text = sse_event.decode("utf-8")
-        except Exception:
+        except UnicodeDecodeError:
             return None
 
         for line in text.splitlines():
@@ -626,7 +626,7 @@ class AGUIStreamNormalizer:
                 raw = line[len("data:"):].lstrip()
                 try:
                     payload = json.loads(raw)
-                except Exception:
+                except json.JSONDecodeError:
                     return None
                 if isinstance(payload, dict):
                     return payload
@@ -642,7 +642,7 @@ class AGUIStreamNormalizer:
         """
         try:
             text = sse_event.decode("utf-8")
-        except Exception:
+        except UnicodeDecodeError:
             text = repr(sse_event)
 
         return {
