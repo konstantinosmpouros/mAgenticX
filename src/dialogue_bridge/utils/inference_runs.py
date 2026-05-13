@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,7 @@ from core.database import (
     SessionLocal,
 )
 from core.proxy import internal_service_headers
+from core.settings import settings
 from core.tls import get_httpx_verify
 from observability import get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
@@ -27,9 +28,9 @@ from utils.conversations import _preview
 from utils.inference import prepare_inference_history
 from utils.validators import validate_convId_full
 
-
 ACTIVE_RUN_STATUSES = {"queued", "running", "cancelling"}
 TERMINAL_RUN_STATUSES = {"completed", "cancelled", "failed"}
+MAX_ACTIVE_RUNS_PER_USER = settings.rate_limit.inference_max_active_runs
 
 logger = get_logger(__name__)
 
@@ -478,6 +479,18 @@ async def create_inference_run(
     message_path: list[str] | None,
     enabled_tools: list[ToolPreference] | None,
 ) -> tuple[InferenceRunTable, MessageTable]:
+    user_active_count = await db.scalar(
+        select(func.count()).select_from(InferenceRunTable).where(
+            InferenceRunTable.user_id == user_id,
+            InferenceRunTable.status.in_(ACTIVE_RUN_STATUSES),
+        )
+    )
+    if user_active_count >= MAX_ACTIVE_RUNS_PER_USER:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"You already have {MAX_ACTIVE_RUNS_PER_USER} active inference runs. Cancel one before starting a new one.",
+        )
+
     existing = await db.execute(
         select(InferenceRunTable).where(
             InferenceRunTable.conversation_id == conversation.id,

@@ -7,13 +7,7 @@
 
 ## Security
 
-- Add refresh replay / refresh reuse detection to the session refresh flow.
-- Add edge rate limiting at the host Nginx / Cloudflare layer for authentication-sensitive endpoints.
-- Secure the inference process by implementing stronger rate limiting and abuse controls.
 - Secure the agents from prompt injection by implementing input filtering / guardrails before requests reach the agents.
-- Continue reducing the upload DoS surface: revisit final body limits, keep attachment size/count enforcement aligned between UI and backend, and avoid large base64 payload persistence where possible.
-- Add explicit size limits for persisted payload fields such as large message content & blobs.
-- Harden containers further: add CPU / memory limits per service; add `read_only: true` + `tmpfs` mounts once filesystem access requirements per service are fully mapped (agents needs writable paths for deep agent file access).
 
 ## New Features
 

@@ -4,7 +4,7 @@ import logging
 import time
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +22,7 @@ from schemas import (
 )
 from core.auth_session import require_csrf_protection
 from core.proxy import internal_service_headers
+from core.rate_limit import INFERENCE_RATE_LIMIT, inference_user_key, limiter
 from utils import (
     build_agent_stream_url,
     get_agent_by_id,
@@ -48,7 +49,9 @@ logger = get_logger(__name__)
     response_model=InferenceRunStartResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(INFERENCE_RATE_LIMIT, key_func=inference_user_key)
 async def startInferenceRun(
+    request: Request,
     user_id: str,
     conversation_id: str,
     payload: InferenceRunStartPayload,

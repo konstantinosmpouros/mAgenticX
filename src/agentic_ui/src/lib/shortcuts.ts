@@ -268,17 +268,19 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     allowInEditable: true,
     combos: {
       mac: [
+        { key: "m", code: "KeyM", meta: true, shift: true },
         { key: "+", meta: true, alt: true },
         { key: "+", meta: true, alt: true, shift: true },
       ],
       win: [
+        { key: "m", code: "KeyM", ctrl: true, shift: true },
         { key: "+", ctrl: true, alt: true },
         { key: "+", ctrl: true, alt: true, shift: true },
       ],
     },
     labels: {
-      mac: "Cmd+Alt++",
-      win: "Ctrl+Alt++",
+      mac: "Cmd+Shift+M",
+      win: "Ctrl+Shift+M",
     },
   },
   {

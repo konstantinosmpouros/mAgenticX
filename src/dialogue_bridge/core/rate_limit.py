@@ -4,11 +4,6 @@ from slowapi import Limiter
 from core.settings import settings
 from core.proxy import resolve_client_ip
 
-
-AUTH_RATE_LIMIT_MAX_ATTEMPTS = settings.rate_limit.auth_max_attempts
-AUTH_RATE_LIMIT_WINDOW_SECONDS = settings.rate_limit.auth_window_seconds
-
-
 def _build_limit_string(max_attempts: int, window_seconds: int) -> str:
     if window_seconds <= 0:
         raise ValueError("AUTH_RATE_LIMIT_WINDOW_SECONDS must be greater than zero.")
@@ -29,14 +24,23 @@ def _build_limit_string(max_attempts: int, window_seconds: int) -> str:
 
 
 AUTHENTICATE_LIMIT = _build_limit_string(
-    AUTH_RATE_LIMIT_MAX_ATTEMPTS,
-    AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    settings.rate_limit.auth_max_attempts,
+    settings.rate_limit.auth_window_seconds,
+)
+
+INFERENCE_RATE_LIMIT = _build_limit_string(
+    settings.rate_limit.inference_max_attempts,
+    settings.rate_limit.inference_window_seconds,
 )
 
 
 def client_identifier(request: Request) -> str:
     resolved_ip = resolve_client_ip(request)
     return resolved_ip or "unknown"
+
+
+def inference_user_key(request: Request) -> str:
+    return request.path_params.get("user_id") or resolve_client_ip(request) or "unknown"
 
 
 limiter = Limiter(key_func=client_identifier)

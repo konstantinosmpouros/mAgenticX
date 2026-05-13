@@ -224,7 +224,10 @@ async def _load_session_by_hash(
     if access_token:
         stmt = stmt.where(SessionTable.access_token_hash == _hash_token(access_token))
     elif refresh_token:
-        stmt = stmt.where(SessionTable.refresh_token_hash == _hash_token(refresh_token))
+        h = _hash_token(refresh_token)
+        stmt = stmt.where(
+            (SessionTable.refresh_token_hash == h) | (SessionTable.prev_refresh_token_hash == h)
+        )
 
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
@@ -256,7 +259,13 @@ async def get_refresh_session(request: Request, db: AsyncSession) -> SessionTabl
     if not token:
         raise SessionAuthenticationError("Missing refresh token.")
     session = await _load_session_by_hash(db, refresh_token=token)
-    return _ensure_session_usable(session, for_refresh=True)
+    _ensure_session_usable(session, for_refresh=True)
+    if session.prev_refresh_token_hash == _hash_token(token):
+        session.revoked_at = utcnow()
+        await db.commit()
+        logger.warning("refresh_token_reuse_detected", "Refresh token reuse detected — session revoked", user_id=session.user_id, session_id=session.id)
+        raise SessionAuthenticationError("Refresh token has already been used.")
+    return session
 
 
 async def rotate_user_session(
@@ -272,6 +281,7 @@ async def rotate_user_session(
     now = utcnow()
 
     session.access_token_hash = _hash_token(access_token)
+    session.prev_refresh_token_hash = session.refresh_token_hash
     session.refresh_token_hash = _hash_token(refresh_token)
     session.access_expires_at = now + timedelta(seconds=ACCESS_TTL_SECONDS)
     session.refresh_expires_at = now + timedelta(seconds=REFRESH_TTL_SECONDS)

@@ -363,6 +363,7 @@ class SessionTable(Base):
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     access_token_hash = Column(String, nullable=False, unique=True, index=True)
     refresh_token_hash = Column(String, nullable=False, unique=True, index=True)
+    prev_refresh_token_hash = Column(String, nullable=True, index=True)
     access_expires_at = Column(DateTime, nullable=False)
     refresh_expires_at = Column(DateTime, nullable=False)
     revoked_at = Column(DateTime, nullable=True)
