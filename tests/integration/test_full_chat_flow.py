@@ -32,7 +32,7 @@ async def test_create_stream_and_finalize_chat_flow(client, seeded_user, seeded_
         return "Planned onboarding"
 
     monkeypatch.setattr(conversation_router, "get_agent_by_id", fake_get_agent_by_id)
-    monkeypatch.setattr(conversation_router, "generate_conversation_title", fake_generate_title)
+    monkeypatch.setattr("utils.titles.generate_conversation_title", fake_generate_title)
     monkeypatch.setattr(inference_router, "get_agent_by_id", fake_get_agent_by_id)
 
     create_response = await client.post(

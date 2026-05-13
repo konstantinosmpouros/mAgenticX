@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import sys
 from datetime import datetime, timezone
@@ -10,7 +11,14 @@ import pytest
 import pytest_asyncio
 from fastapi_pagination import add_pagination
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+
+def _sqlite_encode(data: bytes, encoding: str) -> str:
+    if encoding == "base64":
+        return base64.b64encode(data).decode("ascii").replace("\n", "")
+    raise ValueError(f"Unsupported encoding: {encoding}")
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +56,10 @@ def utcnow() -> datetime:
 async def db_engine(tmp_path):
     db_path = tmp_path / "dialogue_bridge_test.db"
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}", future=True)
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def register_sqlite_functions(dbapi_connection, _connection_record):
+        dbapi_connection.create_function("encode", 2, _sqlite_encode)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
