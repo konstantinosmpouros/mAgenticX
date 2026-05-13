@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from core.database import ConversationReportTable, ConversationTable, MessageTable
+import utils.titles
 from router import catalog as catalog_router
 from router import conversations as conversation_router
 
@@ -107,7 +108,7 @@ async def test_create_conversation_persists_first_message_and_fallback_title(
         return None
 
     monkeypatch.setattr(conversation_router, "get_agent_by_id", fake_get_agent_by_id)
-    monkeypatch.setattr("utils.titles.generate_conversation_title", fake_generate_title)
+    monkeypatch.setattr(utils.titles, "generate_conversation_title", fake_generate_title)
 
     response = await client.post(
         f"/v1/conversations/{seeded_user.id}",

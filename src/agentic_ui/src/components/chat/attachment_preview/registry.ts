@@ -114,6 +114,7 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
 
   if (
     mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mime === "application/vnd.ms-excel.sheet.macroenabled.12" ||
     ext === "xlsx" ||
     ext === "xlsm"
   ) {

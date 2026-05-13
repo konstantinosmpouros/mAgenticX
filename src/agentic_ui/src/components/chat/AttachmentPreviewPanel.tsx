@@ -106,6 +106,10 @@ function renderReadyState(state: Extract<PreviewState, { status: "ready" }>) {
     return <DocxPreview blob={blob} />;
   }
 
+  if (descriptor.usesDerivedPdf && previewUrl) {
+    return <PdfPreview name={meta.name} url={previewUrl} />;
+  }
+
   if (descriptor.kind === "xlsx" && blob) {
     return <ExcelPreview blob={blob} />;
   }

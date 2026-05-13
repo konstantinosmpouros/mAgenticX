@@ -98,6 +98,49 @@ def test_attachment_preview_registry_covers_requested_formats():
     assert "fetchAttachmentPreviewBlob" in api_source
     assert "getAttachmentPreviewUrl" in api_source
     assert "getAttachmentDerivedPreviewUrl" in api_source
+    assert "usesDerivedPdf: true" in registry_source
+
+
+def test_excel_preview_uses_original_blob_grid_for_uploaded_files():
+    registry_source = (
+        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "registry.ts"
+    ).read_text(encoding="utf-8")
+    panel_source = (
+        UI_ROOT / "src" / "components" / "chat" / "AttachmentPreviewPanel.tsx"
+    ).read_text(encoding="utf-8")
+
+    xlsx_block_start = registry_source.index('kind: "xlsx"')
+    xlsx_block_end = registry_source.index("};", xlsx_block_start)
+    xlsx_block = registry_source[xlsx_block_start:xlsx_block_end]
+
+    assert "requiresBlob: true" in xlsx_block
+    assert "usesDerivedPdf: true" not in xlsx_block
+    assert 'descriptor.kind === "presentation"' in panel_source
+    assert "fetchAttachmentPreviewBlob" in panel_source
+    assert "<ExcelPreview blob={blob} />" in panel_source
+
+
+def test_excel_preview_renderer_handles_spreadsheet_layout_features():
+    excel_source = (
+        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "ExcelPreview.tsx"
+    ).read_text(encoding="utf-8")
+
+    for expected in [
+        "excelColumnName",
+        "excelColumnWidthToPixels",
+        "excelRowHeightToPixels",
+        "rangesFromWorksheet",
+        "coveredCells",
+        "rowSpan",
+        "colSpan",
+        "gridTemplateColumns",
+        "gridTemplateRows",
+        "column.hidden",
+        "row.hidden",
+        "borderStyle",
+        "alignment?.wrapText",
+    ]:
+        assert expected in excel_source
 
 
 def test_frontend_upload_utils_infer_missing_browser_mime_types():

@@ -260,6 +260,29 @@ async def test_preview_blob_derived_rejects_non_presentations(
     assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
 
 
+async def test_preview_blob_derived_rejects_excel_workbooks(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+):
+    attachment = await _seed_attachment(
+        db_session_factory=db_session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="budget.xlsx",
+        mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        data=b"xlsx bytes",
+    )
+
+    response = await client.get(
+        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
+
+
 def test_is_presentation_previewable_matches_supported_powerpoint_formats():
     assert is_presentation_previewable("deck.pptx", "")
     assert is_presentation_previewable("legacy.ppt", "")

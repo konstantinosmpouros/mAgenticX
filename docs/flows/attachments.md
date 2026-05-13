@@ -171,7 +171,7 @@ The frontend classifies each attachment by MIME type and file extension, then ro
 | --- | --- | --- | --- | --- |
 | PDF | `.pdf` | `pdf` | — | `<iframe>` or PDF.js |
 | Word | `.docx` | `docx` | 25 MB | mammoth.js |
-| Excel | `.xlsx`, `.xlsm` | `xlsx` | 25 MB | SheetJS |
+| Excel | `.xlsx`, `.xlsm` | `xlsx` | 25 MB | ExcelJS worksheet grid |
 | PowerPoint | `.ppt`, `.pptx` | `presentation` | 25 MB | `/preview-derived` → PDF.js |
 | Markdown | `.md`, `.mdx` | `markdown` | 5 MB | React Markdown renderer |
 | JSON | `.json` | `json` | 5 MB | Code block with syntax highlight |
