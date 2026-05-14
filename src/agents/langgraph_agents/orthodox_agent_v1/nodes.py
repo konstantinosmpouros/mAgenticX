@@ -23,6 +23,7 @@ from langgraph.config import get_stream_writer
 
 ENDPOINT = settings.rag.retrieve_url(settings.workflows.orthodox.collection_name)
 REQUEST_TIMEOUT_SECONDS = settings.rag.request_timeout_seconds
+CONNECT_TIMEOUT_SECONDS = settings.rag.connect_timeout_seconds
 RETRIEVE_TOP_K = settings.workflows.orthodox.retrieve_top_k
 
 
@@ -160,7 +161,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         async def fetch_single(query: str):
             request_id = get_context().get("request_id")
             headers = internal_service_headers(request_id)
-            async with httpx.AsyncClient(verify=get_httpx_verify(), timeout=httpx.Timeout(connect=5.0, read=REQUEST_TIMEOUT_SECONDS)) as client:
+            async with httpx.AsyncClient(verify=get_httpx_verify(), timeout=httpx.Timeout(REQUEST_TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT_SECONDS)) as client:
                 resp = await client.post(
                     ENDPOINT,
                     json={"query": query, "k": RETRIEVE_TOP_K},

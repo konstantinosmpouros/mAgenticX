@@ -105,7 +105,7 @@ class RagSettings(BaseSettings):
 
     base_url: str = Field("https://rag_service:8001", validation_alias="RAG_BASE_URL")
     request_timeout_seconds: int = Field(30, validation_alias="RAG_REQUEST_TIMEOUT_SECONDS")
-    connect_timeout_seconds: int = Field(10, validation_alias="RAG_CONNECT_TIMEOUT_SECONDS")
+    connect_timeout_seconds: int = Field(15, validation_alias="RAG_CONNECT_TIMEOUT_SECONDS")
 
     def retrieve_url(self, collection_name: str) -> str:
         return f"{self.base_url.rstrip('/')}/retrieve/{collection_name}"
