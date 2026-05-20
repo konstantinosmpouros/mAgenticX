@@ -14,7 +14,6 @@ import {
   CodeTextPreview,
   CsvPreview,
   DocxPreview,
-  ExcelPreview,
   formatBytes,
   JsonPreview,
   MarkdownPreview,
@@ -103,16 +102,12 @@ function renderReadyState(state: Extract<PreviewState, { status: "ready" }>) {
     return <PdfPreview name={meta.name} url={previewUrl} />;
   }
 
-  if (descriptor.kind === "docx" && previewUrl) {
+  if ((descriptor.kind === "docx" || descriptor.kind === "xlsx") && previewUrl) {
     return <DocxPreview name={meta.name} viewerUrl={previewUrl} />;
   }
 
   if (descriptor.usesDerivedPdf && previewUrl) {
     return <PdfPreview name={meta.name} url={previewUrl} />;
-  }
-
-  if (descriptor.kind === "xlsx" && blob) {
-    return <ExcelPreview blob={blob} />;
   }
 
   if (descriptor.kind === "presentation" && previewUrl) {
@@ -217,13 +212,13 @@ export default function AttachmentPreviewPanel({
         return;
       }
 
-      if (descriptor.kind === "docx") {
+      if (descriptor.kind === "docx" || descriptor.kind === "xlsx") {
         if (meta.file) {
           setState({
             status: "error",
             meta,
             descriptor,
-            error: "Word document preview is unavailable for local files until they are uploaded.",
+            error: `${descriptor.label} preview is unavailable for local files until they are uploaded.`,
           });
           return;
         }

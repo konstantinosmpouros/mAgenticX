@@ -6,7 +6,7 @@ from core.settings import settings
 _openai_key = settings.api_keys.openai
 embeddings_model = OpenAIEmbeddings(
     model="text-embedding-3-large",
-    api_key=_openai_key.get_secret_value() if _openai_key else None,
+    **({"api_key": _openai_key.get_secret_value()} if _openai_key else {}),
 )
 
 chroma_settings = ChromaSettings(

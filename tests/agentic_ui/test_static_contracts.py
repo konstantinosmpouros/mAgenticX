@@ -101,7 +101,7 @@ def test_attachment_preview_registry_covers_requested_formats():
     assert "usesDerivedPdf: true" in registry_source
 
 
-def test_excel_preview_uses_original_blob_grid_for_uploaded_files():
+def test_excel_preview_uses_office_online_viewer_not_exceljs():
     registry_source = (
         UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "registry.ts"
     ).read_text(encoding="utf-8")
@@ -113,54 +113,22 @@ def test_excel_preview_uses_original_blob_grid_for_uploaded_files():
     xlsx_block_end = registry_source.index("};", xlsx_block_start)
     xlsx_block = registry_source[xlsx_block_start:xlsx_block_end]
 
-    assert "requiresBlob: true" in xlsx_block
-    assert "usesDerivedPdf: true" not in xlsx_block
-    assert 'descriptor.kind === "presentation"' in panel_source
-    assert "fetchAttachmentPreviewBlob" in panel_source
-    assert "<ExcelPreview blob={blob} />" in panel_source
+    assert "requiresBlob: false" in xlsx_block
+    assert "usesDerivedPdf" not in xlsx_block
+    assert "fetchDocxPreviewToken" in panel_source
+    assert "view.officeapps.live.com" in panel_source
+    assert 'descriptor.kind === "xlsx"' in panel_source
+    assert "ExcelPreview" not in panel_source
 
 
-def test_word_preview_uses_office_online_viewer_not_derived_pdf():
-    registry_source = (
-        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "registry.ts"
-    ).read_text(encoding="utf-8")
+def test_word_and_excel_share_office_online_viewer_path():
     panel_source = (
         UI_ROOT / "src" / "components" / "chat" / "AttachmentPreviewPanel.tsx"
     ).read_text(encoding="utf-8")
 
-    docx_block_start = registry_source.index('kind: "docx"')
-    docx_block_end = registry_source.index("};", docx_block_start)
-    docx_block = registry_source[docx_block_start:docx_block_end]
-
-    assert "requiresBlob: false" in docx_block
-    assert "usesDerivedPdf" not in docx_block
-    assert "fetchDocxPreviewToken" in panel_source
-    assert "view.officeapps.live.com" in panel_source
-    assert 'descriptor.kind === "docx"' in panel_source
+    assert '"docx" || descriptor.kind === "xlsx"' in panel_source
     assert "<DocxPreview" in panel_source
-
-
-def test_excel_preview_renderer_handles_spreadsheet_layout_features():
-    excel_source = (
-        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "ExcelPreview.tsx"
-    ).read_text(encoding="utf-8")
-
-    for expected in [
-        "excelColumnName",
-        "excelColumnWidthToPixels",
-        "excelRowHeightToPixels",
-        "rangesFromWorksheet",
-        "coveredCells",
-        "rowSpan",
-        "colSpan",
-        "gridTemplateColumns",
-        "gridTemplateRows",
-        "column.hidden",
-        "row.hidden",
-        "borderStyle",
-        "alignment?.wrapText",
-    ]:
-        assert expected in excel_source
+    assert "fetchDocxPreviewToken" in panel_source
 
 
 def test_frontend_upload_utils_infer_missing_browser_mime_types():

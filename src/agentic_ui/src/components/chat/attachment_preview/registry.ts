@@ -122,7 +122,7 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
       kind: "xlsx",
       previewable: true,
       label: "Excel workbook",
-      requiresBlob: true,
+      requiresBlob: false,
     };
   }
 

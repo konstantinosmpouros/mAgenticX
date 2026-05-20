@@ -7,9 +7,7 @@ from core.database import AttachmentTable, BlobTable, ConversationTable, Message
 from router import attachments as attachments_router
 from utils.attachments import (
     generate_docx_preview_token,
-    is_office_previewable,
     is_presentation_previewable,
-    is_word_previewable,
     validate_docx_preview_token,
 )
 
@@ -244,12 +242,11 @@ async def test_preview_blob_derived_converts_powerpoint_to_inline_pdf(
     assert "deck.pdf" in response.headers["content-disposition"]
 
 
-async def test_preview_blob_derived_converts_word_to_inline_pdf(
+async def test_preview_blob_derived_rejects_word_documents(
     client,
     seeded_user,
     seeded_agent,
     db_session_factory,
-    monkeypatch,
 ):
     attachment = await _seed_attachment(
         db_session_factory=db_session_factory,
@@ -260,20 +257,12 @@ async def test_preview_blob_derived_converts_word_to_inline_pdf(
         data=b"docx bytes",
     )
 
-    async def fake_convert(**_: object) -> tuple[bytes, str]:
-        return b"%PDF word preview", "letter.pdf"
-
-    monkeypatch.setattr(attachments_router, "convert_attachment_to_pdf_preview", fake_convert)
-
     response = await client.get(
         f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
     )
 
-    assert response.status_code == 200
-    assert response.content == b"%PDF word preview"
-    assert response.headers["content-type"].startswith("application/pdf")
-    assert "inline" in response.headers["content-disposition"]
-    assert "letter.pdf" in response.headers["content-disposition"]
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
 
 
 async def test_preview_blob_derived_rejects_non_presentations(
@@ -296,7 +285,7 @@ async def test_preview_blob_derived_rejects_non_presentations(
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Only PowerPoint and Word attachments support derived preview."
+    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
 
 
 async def test_preview_blob_derived_rejects_excel_workbooks(
@@ -319,7 +308,7 @@ async def test_preview_blob_derived_rejects_excel_workbooks(
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Only PowerPoint and Word attachments support derived preview."
+    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
 
 
 async def test_preview_token_issues_valid_hmac_token_for_docx(
@@ -442,19 +431,7 @@ def test_is_presentation_previewable_matches_supported_powerpoint_formats():
     assert not is_presentation_previewable("notes.txt", "text/plain")
 
 
-def test_is_word_previewable_matches_supported_docx_formats():
-    assert is_word_previewable("letter.docx", "")
-    assert is_word_previewable(
-        "",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
-    assert is_office_previewable(
-        "letter.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    )
-    assert is_office_previewable(
-        "deck.pptx",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    )
-    assert not is_word_previewable("notes.txt", "text/plain")
-    assert not is_office_previewable("budget.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+def test_is_presentation_previewable_excludes_word_and_excel():
+    assert not is_presentation_previewable("letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert not is_presentation_previewable("budget.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert not is_presentation_previewable("notes.txt", "text/plain")

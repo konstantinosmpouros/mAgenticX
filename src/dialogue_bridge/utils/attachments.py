@@ -26,10 +26,6 @@ PRESENTATION_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 PRESENTATION_EXTENSIONS = {"ppt", "pptx"}
-WORD_MIME_TYPES = {
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-}
-WORD_EXTENSIONS = {"docx"}
 
 
 def _extension_of(name: str | None) -> str:
@@ -42,16 +38,6 @@ def is_presentation_previewable(file_name: str | None, mime: str | None) -> bool
     normalized_mime = (mime or "").strip().lower()
     extension = _extension_of(file_name)
     return normalized_mime in PRESENTATION_MIME_TYPES or extension in PRESENTATION_EXTENSIONS
-
-
-def is_word_previewable(file_name: str | None, mime: str | None) -> bool:
-    normalized_mime = (mime or "").strip().lower()
-    extension = _extension_of(file_name)
-    return normalized_mime in WORD_MIME_TYPES or extension in WORD_EXTENSIONS
-
-
-def is_office_previewable(file_name: str | None, mime: str | None) -> bool:
-    return is_presentation_previewable(file_name, mime) or is_word_previewable(file_name, mime)
 
 
 _DOCX_PREVIEW_TOKEN_TTL = 60
@@ -81,12 +67,8 @@ def validate_docx_preview_token(token: str, secret: str) -> str | None:
         return None
 
 
-def _office_preview_type(file_name: str | None, mime: str | None) -> str | None:
-    if is_presentation_previewable(file_name, mime):
-        return "presentation"
-    if is_word_previewable(file_name, mime):
-        return "word"
-    return None
+def _office_preview_type(file_name: str | None, mime: str | None) -> bool:
+    return is_presentation_previewable(file_name, mime)
 
 
 def _sanitize_preview_filename(name: str | None) -> str:
@@ -161,9 +143,8 @@ async def convert_attachment_to_pdf_preview(
     file_name: str | None = meta_row["file_name"]
     file_size: int | None = meta_row["blob_size"]
 
-    preview_type = _office_preview_type(file_name, mime)
-    if preview_type is None:
-        raise HTTPException(status_code=400, detail="Only PowerPoint and Word attachments support derived preview.")
+    if not _office_preview_type(file_name, mime):
+        raise HTTPException(status_code=400, detail="Only PowerPoint attachments support derived preview.")
 
     if file_size is None or file_size <= 0:
         raise HTTPException(
@@ -195,12 +176,7 @@ async def convert_attachment_to_pdf_preview(
     extension = _extension_of(file_name)
     if not extension:
         normalized_mime = (mime or "").strip().lower()
-        if normalized_mime.endswith("presentationml.presentation"):
-            extension = "pptx"
-        elif normalized_mime in WORD_MIME_TYPES:
-            extension = "docx"
-        else:
-            extension = "ppt"
+        extension = "pptx" if normalized_mime.endswith("presentationml.presentation") else "ppt"
 
     output_name = _sanitize_preview_filename(file_name)
     source_stem = Path(output_name).stem
@@ -216,7 +192,7 @@ async def convert_attachment_to_pdf_preview(
             profile_dir.mkdir()
             input_path.write_bytes(blob_bytes)
 
-            export_filter = "pdf:writer_pdf_Export" if preview_type == "word" else "pdf:impress_pdf_Export"
+            export_filter = "pdf:impress_pdf_Export"
             command = [
                 "soffice",
                 "--headless",
