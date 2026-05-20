@@ -65,11 +65,11 @@ async def resolve_conversation_title(
     explicit_title: Optional[str],
     agent_name: Optional[str],
     agent_id: Optional[str],
-    generated: Optional[str] = None,
 ) -> str:
     resolved = (explicit_title or "").strip() or None
     if resolved:
         return resolved
+    generated = await generate_conversation_title(first_message)
     if generated:
         return generated
     preview = _preview(first_message.content)

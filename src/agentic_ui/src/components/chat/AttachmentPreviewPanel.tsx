@@ -4,6 +4,7 @@ import { Download, X } from "lucide-react";
 import {
   fetchAttachmentDerivedPreviewBlob,
   fetchAttachmentPreviewBlob,
+  fetchDocxPreviewToken,
   getAttachmentPreviewUrl,
 } from "@/lib/api";
 import type { AttachmentOut, MessageOut } from "@/lib/types";
@@ -102,8 +103,8 @@ function renderReadyState(state: Extract<PreviewState, { status: "ready" }>) {
     return <PdfPreview name={meta.name} url={previewUrl} />;
   }
 
-  if (descriptor.kind === "docx" && blob) {
-    return <DocxPreview blob={blob} />;
+  if (descriptor.kind === "docx" && previewUrl) {
+    return <DocxPreview name={meta.name} viewerUrl={previewUrl} />;
   }
 
   if (descriptor.usesDerivedPdf && previewUrl) {
@@ -216,13 +217,55 @@ export default function AttachmentPreviewPanel({
         return;
       }
 
-      if (descriptor.kind === "presentation") {
+      if (descriptor.kind === "docx") {
         if (meta.file) {
           setState({
             status: "error",
             meta,
             descriptor,
-            error: "Preview is unavailable for local PowerPoint files until they are uploaded.",
+            error: "Word document preview is unavailable for local files until they are uploaded.",
+          });
+          return;
+        }
+
+        if (!userId || !conversationId || !meta.blobId) {
+          setState({ status: "error", meta, descriptor, error: "Preview is unavailable for this attachment." });
+          return;
+        }
+
+        setState({ status: "loading", meta, descriptor });
+        try {
+          const { token } = await fetchDocxPreviewToken({
+            userId,
+            conversationId,
+            messageId: preview.message.id,
+            blobId: meta.blobId,
+          });
+          const publicDocUrl = `${window.location.origin}/api/v1/attachments/public/${token}`;
+          const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicDocUrl)}`;
+          if (!cancelled) {
+            setState({ status: "ready", meta, descriptor, previewUrl: viewerUrl });
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setState({
+              status: "error",
+              meta,
+              descriptor,
+              error: error instanceof Error ? error.message : "Preview failed.",
+            });
+          }
+        }
+        return;
+      }
+
+      if (descriptor.usesDerivedPdf) {
+        if (meta.file) {
+          setState({
+            status: "error",
+            meta,
+            descriptor,
+            error: `Preview is unavailable for local ${descriptor.label} files until they are uploaded.`,
           });
           return;
         }

@@ -1,5 +1,8 @@
 import asyncio
+import base64
 import contextlib
+import hashlib
+import hmac
 from pathlib import Path
 import tempfile
 import time
@@ -16,13 +19,17 @@ from core.database import AttachmentTable, BlobTable, ConversationTable, Message
 
 logger = get_logger(__name__)
 
-PRESENTATION_PREVIEW_LIMIT_BYTES = 25 * 1024 * 1024
-PRESENTATION_CONVERSION_TIMEOUT_SECONDS = 45
+OFFICE_PREVIEW_LIMIT_BYTES = 25 * 1024 * 1024
+OFFICE_CONVERSION_TIMEOUT_SECONDS = 45
 PRESENTATION_MIME_TYPES = {
     "application/vnd.ms-powerpoint",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 PRESENTATION_EXTENSIONS = {"ppt", "pptx"}
+WORD_MIME_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+WORD_EXTENSIONS = {"docx"}
 
 
 def _extension_of(name: str | None) -> str:
@@ -37,11 +44,56 @@ def is_presentation_previewable(file_name: str | None, mime: str | None) -> bool
     return normalized_mime in PRESENTATION_MIME_TYPES or extension in PRESENTATION_EXTENSIONS
 
 
+def is_word_previewable(file_name: str | None, mime: str | None) -> bool:
+    normalized_mime = (mime or "").strip().lower()
+    extension = _extension_of(file_name)
+    return normalized_mime in WORD_MIME_TYPES or extension in WORD_EXTENSIONS
+
+
+def is_office_previewable(file_name: str | None, mime: str | None) -> bool:
+    return is_presentation_previewable(file_name, mime) or is_word_previewable(file_name, mime)
+
+
+_DOCX_PREVIEW_TOKEN_TTL = 60
+
+
+def generate_docx_preview_token(blob_id: str, secret: str, ttl: int = _DOCX_PREVIEW_TOKEN_TTL) -> str:
+    expiry = int(time.time()) + ttl
+    payload = f"{blob_id}:{expiry}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    raw = f"{payload}:{sig}"
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def validate_docx_preview_token(token: str, secret: str) -> str | None:
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
+        blob_id, expiry_str, sig = raw.rsplit(":", 2)
+        if int(expiry_str) < time.time():
+            return None
+        payload = f"{blob_id}:{expiry_str}"
+        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        return blob_id
+    except Exception:
+        return None
+
+
+def _office_preview_type(file_name: str | None, mime: str | None) -> str | None:
+    if is_presentation_previewable(file_name, mime):
+        return "presentation"
+    if is_word_previewable(file_name, mime):
+        return "word"
+    return None
+
+
 def _sanitize_preview_filename(name: str | None) -> str:
-    source_name = Path(name or "presentation").name
-    stem = Path(source_name).stem.strip() or "presentation"
+    source_name = Path(name or "document").name
+    stem = Path(source_name).stem.strip() or "document"
     safe_stem = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in stem).strip("._")
-    return f"{safe_stem or 'presentation'}.pdf"
+    return f"{safe_stem or 'document'}.pdf"
 
 
 async def _get_attachment_blob_row(
@@ -109,8 +161,9 @@ async def convert_attachment_to_pdf_preview(
     file_name: str | None = meta_row["file_name"]
     file_size: int | None = meta_row["blob_size"]
 
-    if not is_presentation_previewable(file_name, mime):
-        raise HTTPException(status_code=400, detail="Only PowerPoint attachments support derived preview.")
+    preview_type = _office_preview_type(file_name, mime)
+    if preview_type is None:
+        raise HTTPException(status_code=400, detail="Only PowerPoint and Word attachments support derived preview.")
 
     if file_size is None or file_size <= 0:
         raise HTTPException(
@@ -118,10 +171,10 @@ async def convert_attachment_to_pdf_preview(
             detail="The attachment could not be prepared for preview. Please try again.",
         )
 
-    if file_size > PRESENTATION_PREVIEW_LIMIT_BYTES:
+    if file_size > OFFICE_PREVIEW_LIMIT_BYTES:
         raise HTTPException(
             status_code=400,
-            detail=f"Preview is unavailable for presentations larger than {PRESENTATION_PREVIEW_LIMIT_BYTES // 1024 // 1024} MB.",
+            detail=f"Preview is unavailable for Office files larger than {OFFICE_PREVIEW_LIMIT_BYTES // 1024 // 1024} MB.",
         )
 
     data_row = await _get_attachment_blob_row(
@@ -141,7 +194,13 @@ async def convert_attachment_to_pdf_preview(
 
     extension = _extension_of(file_name)
     if not extension:
-        extension = "pptx" if (mime or "").strip().lower().endswith("presentationml.presentation") else "ppt"
+        normalized_mime = (mime or "").strip().lower()
+        if normalized_mime.endswith("presentationml.presentation"):
+            extension = "pptx"
+        elif normalized_mime in WORD_MIME_TYPES:
+            extension = "docx"
+        else:
+            extension = "ppt"
 
     output_name = _sanitize_preview_filename(file_name)
     source_stem = Path(output_name).stem
@@ -157,6 +216,7 @@ async def convert_attachment_to_pdf_preview(
             profile_dir.mkdir()
             input_path.write_bytes(blob_bytes)
 
+            export_filter = "pdf:writer_pdf_Export" if preview_type == "word" else "pdf:impress_pdf_Export"
             command = [
                 "soffice",
                 "--headless",
@@ -166,7 +226,7 @@ async def convert_attachment_to_pdf_preview(
                 "--norestore",
                 f"-env:UserInstallation={profile_dir.resolve().as_uri()}",
                 "--convert-to",
-                "pdf:impress_pdf_Export",
+                export_filter,
                 "--outdir",
                 str(output_dir),
                 str(input_path),
@@ -180,15 +240,16 @@ async def convert_attachment_to_pdf_preview(
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
-                    timeout=PRESENTATION_CONVERSION_TIMEOUT_SECONDS,
+                    timeout=OFFICE_CONVERSION_TIMEOUT_SECONDS,
                 )
             except OSError as exc:
                 logger.error(
-                    "presentation_preview_communicate_error",
-                    "Failed to communicate with presentation conversion process",
+                    "office_preview_communicate_error",
+                    "Failed to communicate with Office conversion process",
                     context=request_context,
                     blob_id=blob_id,
                     file_name=file_name,
+                    preview_type=preview_type,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -199,30 +260,32 @@ async def convert_attachment_to_pdf_preview(
                 with contextlib.suppress(Exception):
                     await process.communicate()
                 logger.warning(
-                    "presentation_preview_timeout",
-                    "Presentation preview conversion timed out",
+                    "office_preview_timeout",
+                    "Office preview conversion timed out",
                     context=request_context,
                     blob_id=blob_id,
                     file_name=file_name,
                     mime_type=mime,
+                    preview_type=preview_type,
                     file_size=file_size,
-                    timeout_seconds=PRESENTATION_CONVERSION_TIMEOUT_SECONDS,
+                    timeout_seconds=OFFICE_CONVERSION_TIMEOUT_SECONDS,
                     conversion_duration_ms=round((time.monotonic() - started_at) * 1000, 2),
                 )
                 raise HTTPException(
                     status_code=422,
-                    detail="Preview conversion timed out for this presentation.",
+                    detail="Preview conversion timed out for this Office file.",
                 ) from exc
 
             output_path = output_dir / output_name
             if process.returncode != 0 or not output_path.exists():
                 logger.warning(
-                    "presentation_preview_failed",
-                    "Presentation preview conversion failed",
+                    "office_preview_failed",
+                    "Office preview conversion failed",
                     context=request_context,
                     blob_id=blob_id,
                     file_name=file_name,
                     mime_type=mime,
+                    preview_type=preview_type,
                     file_size=file_size,
                     return_code=process.returncode,
                     stdout=stdout.decode("utf-8", errors="ignore")[-2000:],
@@ -231,17 +294,18 @@ async def convert_attachment_to_pdf_preview(
                 )
                 raise HTTPException(
                     status_code=422,
-                    detail="Preview conversion failed for this presentation.",
+                    detail="Preview conversion failed for this Office file.",
                 )
 
             pdf_bytes = output_path.read_bytes()
             logger.info(
-                "presentation_preview_completed",
-                "Presentation preview conversion completed",
+                "office_preview_completed",
+                "Office preview conversion completed",
                 context=request_context,
                 blob_id=blob_id,
                 file_name=file_name,
                 mime_type=mime,
+                preview_type=preview_type,
                 file_size=file_size,
                 pdf_size=len(pdf_bytes),
                 conversion_duration_ms=round((time.monotonic() - started_at) * 1000, 2),
@@ -251,8 +315,8 @@ async def convert_attachment_to_pdf_preview(
         raise
     except PermissionError as exc:
         logger.error(
-            "presentation_preview_permission_error",
-            "Permission denied during presentation preview conversion",
+            "office_preview_permission_error",
+            "Permission denied during Office preview conversion",
             context=request_context,
             blob_id=blob_id,
             file_name=file_name,
@@ -263,8 +327,8 @@ async def convert_attachment_to_pdf_preview(
         ) from exc
     except FileNotFoundError as exc:
         logger.error(
-            "presentation_preview_converter_missing",
-            "LibreOffice is not installed for presentation preview conversion",
+            "office_preview_converter_missing",
+            "LibreOffice is not installed for Office preview conversion",
             context=request_context,
             blob_id=blob_id,
             file_name=file_name,
@@ -272,12 +336,12 @@ async def convert_attachment_to_pdf_preview(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Presentation preview is not available on this server.",
+            detail="Office preview is not available on this server.",
         ) from exc
     except Exception as exc:
         logger.error(
-            "presentation_preview_unexpected_error",
-            "Presentation preview conversion failed unexpectedly",
+            "office_preview_unexpected_error",
+            "Office preview conversion failed unexpectedly",
             exc_info=True,
             context=request_context,
             blob_id=blob_id,

@@ -1,29 +1,20 @@
-# 1. Base image
 FROM python:3.11-slim
 
-# 2. Set environment variables to ensure Python runs optimally
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# 3. Set the working directory
 WORKDIR /app
 
-# 4. Install system deps (if you need build tools for any packages)
+COPY ./requirements.txt .
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
+    && pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip
-
-# 5. Copy & install Python dependencies
-COPY ./requirements.txt .
-RUN pip install -r requirements.txt
-
-# 6. Copy the agent code
 COPY . .
 
-# Command to run the FastAPI server
 EXPOSE 8003
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
-
-

@@ -108,7 +108,7 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
       kind: "docx",
       previewable: true,
       label: "Word document",
-      requiresBlob: true,
+      requiresBlob: false,
     };
   }
 

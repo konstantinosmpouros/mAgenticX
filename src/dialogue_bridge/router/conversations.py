@@ -70,13 +70,11 @@ async def createConversation(
     if agent is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
 
-    generated_title = await generate_conversation_title(payload.firstMessage)
     resolved_title = await resolve_conversation_title(
         first_message=payload.firstMessage,
         explicit_title=payload.title,
         agent_name=agent.name,
         agent_id=agent.id,
-        generated=generated_title,
     )
 
     # Create conversation + first message atomically

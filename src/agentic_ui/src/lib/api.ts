@@ -20,6 +20,7 @@ import type {
   RealtimeVoiceSessionResponse,
   SharedConversationDetail,
   UpdateConversationResponse,
+  DocxPreviewTokenResponse,
   DownloadAttachmentParams,
   InferenceRun,
   InferenceRunEvent,
@@ -910,7 +911,6 @@ export async function downloadAttachment({
   blobId,
   filename,
 }: DownloadAttachmentParams): Promise<void> {
-  const url = `${ATTACHMENTS_BASE_PATH}/download/${userId}/${conversationId}/${messageId}/${blobId}`;
   const blob = await fetchAttachmentBlob({
     userId,
     conversationId,
@@ -1000,6 +1000,25 @@ export async function fetchAttachmentPreviewBlob({
     throw new Error(`Failed to preview attachment: ${res.status}`);
   }
   return await res.blob();
+}
+
+
+export async function fetchDocxPreviewToken({
+  userId,
+  conversationId,
+  messageId,
+  blobId,
+}: Omit<DownloadAttachmentParams, "filename">): Promise<DocxPreviewTokenResponse> {
+  const segments = [userId, conversationId, messageId, blobId].map(encodeURIComponent);
+  const res = await fetch(
+    `${ATTACHMENTS_BASE_PATH}/preview-token/${segments.join("/")}`,
+    withSessionRequest(),
+  );
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to obtain preview token: ${res.status}`);
+  }
+  return await res.json() as DocxPreviewTokenResponse;
 }
 
 

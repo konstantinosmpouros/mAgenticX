@@ -1,6 +1,6 @@
 # Attachments
 
-Attachments are binary files uploaded alongside chat messages. They are stored as raw bytes directly in PostgreSQL (not on disk or in object storage), with each attachment owning exactly one blob row containing its data. The upload path encodes files as base64 in the HTTP request body; the backend decodes and persists them. Download streams the blob back in 512KB chunks with HTTP byte-range support. Preview is handled client-side for most types (PDF, Office documents, code, text) with one server-side conversion path for PowerPoint files (LibreOffice → PDF). Attachments are not indexed for RAG retrieval — they are chat artifacts only.
+Attachments are binary files uploaded alongside chat messages. They are stored as raw bytes directly in PostgreSQL (not on disk or in object storage), with each attachment owning exactly one blob row containing its data. The upload path encodes files as base64 in the HTTP request body; the backend decodes and persists them. Download streams the blob back in 512KB chunks with HTTP byte-range support. Preview is handled client-side for most types (PDF, Excel, code, text). Word documents (.docx) use Microsoft Office Online Viewer via a short-lived HMAC-signed token; PowerPoint files use server-side LibreOffice → PDF conversion. Attachments are not indexed for RAG retrieval — they are chat artifacts only.
 
 ---
 
@@ -13,6 +13,7 @@ flowchart LR
     bridge -->|"INSERT blob + attachment"| pg[("chat_postgres\nattachments + blobs")]
     bridge -->|"stream blob (download/preview)"| pg
     bridge -->|"soffice convert"| lo["LibreOffice\n(PowerPoint only)"]
+    bridge -->|"HMAC token"| viewer["Microsoft Office\nOnline Viewer (Word)"]
 ```
 
 ---
@@ -131,7 +132,7 @@ The `validate=True` flag on `b64decode` causes an immediate error on malformed i
 
 ## Phase 3 — Download and Preview Endpoints
 
-All four endpoints validate the requesting user via the `validate_userId` dependency. Access is limited to the conversation owner.
+The session-authenticated endpoints validate the requesting user via the `validate_userId` dependency. Access is limited to the conversation owner.
 
 ### `GET /v1/attachments/download/{userId}/{convId}/{msgId}/{blobId}`
 
@@ -143,7 +144,7 @@ Same as download but `Content-Disposition: inline`. Used for in-browser renderin
 
 ### `GET /v1/attachments/preview-derived/{userId}/{convId}/{msgId}/{blobId}`
 
-**PowerPoint only.** Converts the blob to PDF using LibreOffice in headless mode (`soffice --headless --convert-to pdf`), then streams the result inline. Conversion limits:
+Converts supported Office blobs to PDF using LibreOffice in headless mode (`soffice --headless --convert-to pdf`), then streams the result inline. This is used for PowerPoint and Word preview fidelity while keeping downloads pointed at the original uploaded file. Conversion limits:
 
 | Limit | Value |
 | --- | --- |
@@ -151,7 +152,21 @@ Same as download but `Content-Disposition: inline`. Used for in-browser renderin
 | Conversion timeout | 45 seconds |
 | Cache-Control | `private, max-age=300` (5 min browser cache) |
 
-Returns 400 if the MIME type is not a presentation type, 422 on timeout or conversion failure, 500 if LibreOffice is not installed.
+Returns 400 if the MIME type is not a supported Office preview type, 422 on timeout or conversion failure, 500 if LibreOffice is not installed.
+
+### `GET /v1/attachments/preview-token/{userId}/{convId}/{msgId}/{blobId}`
+
+Issues a short-lived (60-second) HMAC-SHA256 signed token bound to a specific `blobId`. The token is URL-safe base64 and encodes the blob ID, expiry timestamp, and signature. Used by the frontend to construct a Microsoft Office Online Viewer URL for Word document previews.
+
+### `GET /v1/attachments/public/{token}`
+
+No session authentication required — token validation only. Validates the HMAC token, looks up the blob by the embedded `blobId`, and returns the raw file bytes. This endpoint is intentionally public so that Microsoft's viewer servers can fetch the document from outside the user's session. The `Cache-Control: no-store` response header prevents caching.
+
+| Property | Value |
+| --- | --- |
+| Token TTL | 60 seconds |
+| Signature | HMAC-SHA256 using `SESSION_TOKEN_SECRET` |
+| No-session scope | Token validates ownership transitively — only tokens issued for blobs the user owns can be generated |
 
 ### `GET /v1/attachments/images/{userId}`
 
@@ -161,7 +176,7 @@ Returns a paginated list of all image attachments for a user across all conversa
 
 ## Phase 4 — Client-Side Preview
 
-The frontend classifies each attachment by MIME type and file extension, then routes it to the appropriate renderer. No server processing is involved except for PowerPoint files.
+The frontend classifies each attachment by MIME type and file extension, then routes it to the appropriate renderer. Server-derived previews are used for Word and PowerPoint files.
 
 ### Preview Registry
 
@@ -170,7 +185,7 @@ The frontend classifies each attachment by MIME type and file extension, then ro
 | File Type | Extensions | Preview Kind | Size Limit | Renderer |
 | --- | --- | --- | --- | --- |
 | PDF | `.pdf` | `pdf` | — | `<iframe>` or PDF.js |
-| Word | `.docx` | `docx` | 25 MB | mammoth.js |
+| Word | `.docx` | `docx` | 25 MB | `/preview-token` → Microsoft Office Online Viewer `<iframe>` |
 | Excel | `.xlsx`, `.xlsm` | `xlsx` | 25 MB | ExcelJS worksheet grid |
 | PowerPoint | `.ppt`, `.pptx` | `presentation` | 25 MB | `/preview-derived` → PDF.js |
 | Markdown | `.md`, `.mdx` | `markdown` | 5 MB | React Markdown renderer |
@@ -188,9 +203,10 @@ Files that don't match any known type are shown as an unsupported preview with a
 2. Registry determines `previewKind` and size limit
 3. If file exceeds the size limit for its kind, shows "File too large to preview" with a download button
 4. For text kinds: `fetchAttachmentPreviewBlob()` fetches the blob, decodes as UTF-8, passes to the appropriate renderer
-5. For Office kinds: fetches blob, passes binary data to the client library
+5. For client-rendered Office kinds such as Excel: fetches blob, passes binary data to the client library
 6. For PDF: uses the preview URL as `<iframe src={...}>` — no separate fetch needed
-7. For PowerPoint: calls `getAttachmentDerivedPreviewUrl()` which points to `/preview-derived`; the result (PDF) is rendered as a PDF
+7. For Word (`.docx`): calls `fetchDocxPreviewToken()` → `/preview-token/...` to get a 60-second signed token, constructs a `/api/v1/attachments/public/{token}` URL, then embeds it in `https://view.officeapps.live.com/op/embed.aspx?src=...` as an `<iframe>`
+8. For PowerPoint: calls `fetchAttachmentDerivedPreviewBlob()` which points to `/preview-derived`; the result (PDF) is rendered via PDF.js
 
 `PreviewChrome.tsx` wraps every renderer with consistent controls: close button, download button, and filename display.
 
@@ -268,7 +284,11 @@ If an agent needs to reason about the content of an uploaded file, that content 
 
 - **Edit does not copy attachments.** If a user edits a message that had attachments, the new sibling message starts with no attachments. The user must re-attach any files they want in the edited version.
 
-- **PowerPoint preview requires LibreOffice.** If `soffice` is not in the container's PATH, the `/preview-derived` endpoint returns 500. The Docker image must include LibreOffice for this endpoint to work.
+- **Word preview requires internet access from the user's browser.** The `.docx` preview embeds `https://view.officeapps.live.com` — if the user's network blocks Microsoft's servers, the preview iframe will fail to load. Download still works.
+
+- **Word preview token is single-use by intent, not by mechanism.** The 60-second TTL is the only expiry mechanism; the token is not revoked after first use. This window is sufficient for Microsoft's viewer to fetch the document during iframe load.
+
+- **PowerPoint preview requires LibreOffice.** If `soffice` is not in the container's PATH, the `/preview-derived` endpoint returns 500. The Docker image must include LibreOffice Impress for this endpoint to work.
 
 - **Images are returned with inline base64 on message fetch.** When the backend returns a `MessageOut`, image attachments include their `data` field pre-populated with base64. Non-image attachments have `data: null` — the client must call the download or preview endpoint to get the bytes.
 
@@ -283,11 +303,12 @@ If an agent needs to reason about the content of an uploaded file, that content 
 | Concept | File | What to look for |
 | --- | --- | --- |
 | DB tables | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `AttachmentTable`, `BlobTable`, FK cascade definitions |
-| Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-derived, images endpoints |
+| Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-derived, preview-token, public, images endpoints |
 | Upload persistence | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `init_attachments()`, `clone_branch_to_conversation()` |
 | Share snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |
-| Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut` |
-| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `downloadAttachment()`, `fetchAttachmentBlob()`, `fetchAttachmentPreviewBlob()`, `getAttachmentPreviewUrl()` |
+| Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut`, `DocxPreviewTokenOut` |
+| HMAC token helpers | [src/dialogue_bridge/utils/attachments.py](../../src/dialogue_bridge/utils/attachments.py) | `generate_docx_preview_token()`, `validate_docx_preview_token()` |
+| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `downloadAttachment()`, `fetchAttachmentBlob()`, `fetchAttachmentPreviewBlob()`, `getAttachmentPreviewUrl()`, `fetchDocxPreviewToken()` |
 | Frontend types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `AttachmentIn`, `AttachmentOut` |
 | Upload validation | [src/agentic_ui/src/lib/uploadGuards.ts](../../src/agentic_ui/src/lib/uploadGuards.ts) | size limits, count limits, base64 inflation check |
 | Upload handlers | [src/agentic_ui/src/handlers/attachments.ts](../../src/agentic_ui/src/handlers/attachments.ts) | `handleFileUpload()`, `handlePaste()`, `fileToAttachmentIn()` |

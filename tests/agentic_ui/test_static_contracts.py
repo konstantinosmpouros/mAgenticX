@@ -120,6 +120,26 @@ def test_excel_preview_uses_original_blob_grid_for_uploaded_files():
     assert "<ExcelPreview blob={blob} />" in panel_source
 
 
+def test_word_preview_uses_office_online_viewer_not_derived_pdf():
+    registry_source = (
+        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "registry.ts"
+    ).read_text(encoding="utf-8")
+    panel_source = (
+        UI_ROOT / "src" / "components" / "chat" / "AttachmentPreviewPanel.tsx"
+    ).read_text(encoding="utf-8")
+
+    docx_block_start = registry_source.index('kind: "docx"')
+    docx_block_end = registry_source.index("};", docx_block_start)
+    docx_block = registry_source[docx_block_start:docx_block_end]
+
+    assert "requiresBlob: false" in docx_block
+    assert "usesDerivedPdf" not in docx_block
+    assert "fetchDocxPreviewToken" in panel_source
+    assert "view.officeapps.live.com" in panel_source
+    assert 'descriptor.kind === "docx"' in panel_source
+    assert "<DocxPreview" in panel_source
+
+
 def test_excel_preview_renderer_handles_spreadsheet_layout_features():
     excel_source = (
         UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "ExcelPreview.tsx"

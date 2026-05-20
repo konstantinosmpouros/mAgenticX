@@ -1,13 +1,24 @@
-from fastapi import APIRouter, Depends, Header, Response, status
+import base64
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi_pagination import Page, Params, create_page
 from observability import get_logger, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable, get_db, UserTable
-from schemas import ImageOut
+from core.settings import settings
+from schemas import DocxPreviewTokenOut, ImageOut
 from utils import validate_userId
-from utils.attachments import convert_attachment_to_pdf_preview, encode_disposition, stream_blob_response
+from utils.attachments import (
+    _DOCX_PREVIEW_TOKEN_TTL,
+    _get_attachment_blob_row,
+    convert_attachment_to_pdf_preview,
+    encode_disposition,
+    generate_docx_preview_token,
+    stream_blob_response,
+    validate_docx_preview_token,
+)
 
 
 router = APIRouter()
@@ -68,7 +79,7 @@ async def previewBlobInline(
 
 @router.get(
     "/preview-derived/{user_id}/{conversation_id}/{message_id}/{blob_id}",
-    summary="Convert a PowerPoint attachment to inline PDF for secure in-app preview",
+    summary="Convert an Office attachment to inline PDF for secure in-app preview",
 )
 async def previewBlobDerivedInline(
     user_id: str,
@@ -92,6 +103,66 @@ async def previewBlobDerivedInline(
             "Cache-Control": "private, max-age=300",
             "Content-Disposition": encode_disposition(preview_name, "inline"),
             "Content-Length": str(len(pdf_bytes)),
+        },
+    )
+
+
+@router.get(
+    "/preview-token/{user_id}/{conversation_id}/{message_id}/{blob_id}",
+    response_model=DocxPreviewTokenOut,
+    summary="Issue a short-lived token for Microsoft Office Online Viewer access",
+)
+async def getDocxPreviewToken(
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+    blob_id: str,
+    _current_user: UserTable = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
+):
+    set_context(user_id=user_id)
+    await _get_attachment_blob_row(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        blob_id=blob_id,
+        db=db,
+        include_data=False,
+    )
+    token = generate_docx_preview_token(
+        blob_id,
+        settings.session.token_secret.get_secret_value(),
+        ttl=_DOCX_PREVIEW_TOKEN_TTL,
+    )
+    logger.info("docx_preview_token_issued", "Issued DOCX preview token", blob_id=blob_id)
+    return DocxPreviewTokenOut(token=token, expiresIn=_DOCX_PREVIEW_TOKEN_TTL)
+
+
+@router.get(
+    "/public/{token}",
+    summary="Serve raw DOCX blob for Microsoft Office Online Viewer (token-authenticated, no session required)",
+)
+async def getPublicBlobForViewer(token: str, db: AsyncSession = Depends(get_db)):
+    blob_id = validate_docx_preview_token(token, settings.session.token_secret.get_secret_value())
+    if not blob_id:
+        raise HTTPException(status_code=401, detail="Preview link is invalid or has expired.")
+
+    result = await db.execute(
+        select(BlobTable.data, AttachmentTable.file_name, AttachmentTable.mime_type)
+        .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
+        .where(BlobTable.id == blob_id)
+    )
+    row = result.mappings().one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Blob not found.")
+
+    logger.info("docx_public_blob_served", "Served DOCX blob for Office Viewer", blob_id=blob_id)
+    return Response(
+        content=row["data"],
+        media_type=row["mime_type"],
+        headers={
+            "Content-Disposition": encode_disposition(row["file_name"], "inline"),
+            "Cache-Control": "no-store",
         },
     )
 

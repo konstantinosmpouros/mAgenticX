@@ -35,4 +35,5 @@
 ## Bugs
 
 - When changing to voice mode the transition in bad.
-- Words and Excels in preview are not perfect.
+- The mermaid diagrams, code blocks are not rendering according to the browser size, we need to make it responsive. This problem is more extensive and l mean that the user messages as well are not showing if the width of the browser is too small, we need to make the whole chat body responsive and adapt to different screen sizes or appear a horizontal scrollbar.
+- In the hr policies agent in the detached inference l got a "stream observer lost" error and the agent stopped working, we need to investigate this issue and fix it.

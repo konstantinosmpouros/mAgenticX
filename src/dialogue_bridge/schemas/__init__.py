@@ -619,6 +619,14 @@ class MessageUpdate(BaseModel):
 
 
 #-------------------------------------------
+# DOCX PREVIEW TOKEN DTO
+#-------------------------------------------
+class DocxPreviewTokenOut(BaseModel):
+    token: str
+    expiresIn: int
+
+
+#-------------------------------------------
 # IMAGES RETRIEVAL DTO
 #-------------------------------------------
 class ImageOut(BaseModel):

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import base64
+import os
 
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable
 from router import attachments as attachments_router
-from utils.attachments import is_presentation_previewable
+from utils.attachments import (
+    generate_docx_preview_token,
+    is_office_previewable,
+    is_presentation_previewable,
+    is_word_previewable,
+    validate_docx_preview_token,
+)
 
 
 async def _seed_attachment(
@@ -237,6 +244,38 @@ async def test_preview_blob_derived_converts_powerpoint_to_inline_pdf(
     assert "deck.pdf" in response.headers["content-disposition"]
 
 
+async def test_preview_blob_derived_converts_word_to_inline_pdf(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+    monkeypatch,
+):
+    attachment = await _seed_attachment(
+        db_session_factory=db_session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="letter.docx",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        data=b"docx bytes",
+    )
+
+    async def fake_convert(**_: object) -> tuple[bytes, str]:
+        return b"%PDF word preview", "letter.pdf"
+
+    monkeypatch.setattr(attachments_router, "convert_attachment_to_pdf_preview", fake_convert)
+
+    response = await client.get(
+        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF word preview"
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert "inline" in response.headers["content-disposition"]
+    assert "letter.pdf" in response.headers["content-disposition"]
+
+
 async def test_preview_blob_derived_rejects_non_presentations(
     client,
     seeded_user,
@@ -257,7 +296,7 @@ async def test_preview_blob_derived_rejects_non_presentations(
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
+    assert response.json()["detail"] == "Only PowerPoint and Word attachments support derived preview."
 
 
 async def test_preview_blob_derived_rejects_excel_workbooks(
@@ -280,7 +319,116 @@ async def test_preview_blob_derived_rejects_excel_workbooks(
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
+    assert response.json()["detail"] == "Only PowerPoint and Word attachments support derived preview."
+
+
+async def test_preview_token_issues_valid_hmac_token_for_docx(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+):
+    attachment = await _seed_attachment(
+        db_session_factory=db_session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="letter.docx",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        data=b"docx bytes",
+    )
+
+    response = await client.get(
+        f"/v1/attachments/preview-token/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "token" in payload
+    assert payload["expiresIn"] == 60
+
+    secret = os.environ["SESSION_TOKEN_SECRET"]
+    resolved_blob_id = validate_docx_preview_token(payload["token"], secret)
+    assert resolved_blob_id == attachment["blob_id"]
+
+
+async def test_preview_token_returns_404_for_wrong_blob(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+):
+    attachment = await _seed_attachment(
+        db_session_factory=db_session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="letter.docx",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        data=b"docx bytes",
+    )
+
+    response = await client.get(
+        f"/v1/attachments/preview-token/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/nonexistent-blob-id"
+    )
+
+    assert response.status_code == 404
+
+
+async def test_public_blob_serves_docx_with_valid_token(
+    client,
+    seeded_user,
+    seeded_agent,
+    db_session_factory,
+):
+    docx_bytes = b"real docx content"
+    attachment = await _seed_attachment(
+        db_session_factory=db_session_factory,
+        seeded_user=seeded_user,
+        seeded_agent=seeded_agent,
+        file_name="report.docx",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        data=docx_bytes,
+    )
+
+    secret = os.environ["SESSION_TOKEN_SECRET"]
+    token = generate_docx_preview_token(attachment["blob_id"], secret, ttl=60)
+
+    response = await client.get(f"/v1/attachments/public/{token}")
+
+    assert response.status_code == 200
+    assert response.content == docx_bytes
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_public_blob_rejects_invalid_token(client):
+    response = await client.get("/v1/attachments/public/notavalidtoken")
+
+    assert response.status_code == 401
+    assert "expired" in response.json()["detail"].lower() or "invalid" in response.json()["detail"].lower()
+
+
+def test_generate_and_validate_docx_preview_token_roundtrip():
+    secret = "test-secret-key"
+    blob_id = "blob-abc-123"
+    token = generate_docx_preview_token(blob_id, secret, ttl=60)
+    assert validate_docx_preview_token(token, secret) == blob_id
+
+
+def test_validate_docx_preview_token_rejects_wrong_secret():
+    token = generate_docx_preview_token("blob-xyz", "correct-secret", ttl=60)
+    assert validate_docx_preview_token(token, "wrong-secret") is None
+
+
+def test_validate_docx_preview_token_rejects_tampered_payload():
+    token = generate_docx_preview_token("blob-xyz", "secret", ttl=60)
+    padded = token + "=" * (-len(token) % 4)
+    raw = base64.urlsafe_b64decode(padded.encode()).decode()
+    parts = raw.split(":")
+    parts[0] = "other-blob-id"
+    tampered = base64.urlsafe_b64encode(":".join(parts).encode()).decode().rstrip("=")
+    assert validate_docx_preview_token(tampered, "secret") is None
 
 
 def test_is_presentation_previewable_matches_supported_powerpoint_formats():
@@ -292,3 +440,21 @@ def test_is_presentation_previewable_matches_supported_powerpoint_formats():
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     )
     assert not is_presentation_previewable("notes.txt", "text/plain")
+
+
+def test_is_word_previewable_matches_supported_docx_formats():
+    assert is_word_previewable("letter.docx", "")
+    assert is_word_previewable(
+        "",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    assert is_office_previewable(
+        "letter.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    assert is_office_previewable(
+        "deck.pptx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    )
+    assert not is_word_previewable("notes.txt", "text/plain")
+    assert not is_office_previewable("budget.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

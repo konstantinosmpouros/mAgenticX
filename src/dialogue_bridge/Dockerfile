@@ -8,12 +8,9 @@ ENV PYTHONUNBUFFERED=1
 # Install system dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        build-essential \
         libreoffice-impress \
         fonts-dejavu-core \
         fonts-noto-core \
-        fonts-noto-cjk \
-        fonts-noto-extra \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

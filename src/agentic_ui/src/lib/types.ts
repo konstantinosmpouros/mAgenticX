@@ -371,6 +371,11 @@ export type DownloadAttachmentParams = {
     filename?: string;
 };
 
+export type DocxPreviewTokenResponse = {
+    token: string;
+    expiresIn: number;
+};
+
 
 
 // ------------------------------------------------------
