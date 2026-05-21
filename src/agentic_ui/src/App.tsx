@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,35 +13,62 @@ import SharedConversationPage from "./pages/SharedConvPage";
 import Test from "./pages/Test";
 import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import { CookieConsentBanner } from "./components/ui/cookie-consent-banner";
+import { hasCookieConsent } from "./lib/cookieConsentStorage";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem={true}
-      disableTransitionOnChange={true}
-      storageKey="theme"
-    >
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <Routes>
-          <Route path="/" element={<ChatInterface />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/share/:token" element={<SharedConversationPage />} />
-          <Route path="/architecture" element={<Architecture />} />
-          <Route path="/terms" element={<TermsAndConditions />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/test" element={<Test />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </TooltipProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  const [consented, setConsented] = useState(() => hasCookieConsent());
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem={true}
+        disableTransitionOnChange={true}
+        storageKey="theme"
+      >
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          {consented ? (
+            <Routes>
+              <Route path="/" element={<ChatInterface />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/share/:token" element={<SharedConversationPage />} />
+              <Route path="/architecture" element={<Architecture />} />
+              <Route path="/terms" element={<TermsAndConditions />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/test" element={<Test />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          ) : (
+            <Routes>
+              <Route path="/terms" element={<TermsAndConditions />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route
+                path="*"
+                element={
+                  <div className="flex h-screen flex-col overflow-hidden">
+                    <div className="relative min-h-0 flex-1 overflow-hidden">
+                      <div className="pointer-events-none select-none">
+                        <Login />
+                      </div>
+                      <div className="absolute inset-0 bg-background/50 backdrop-blur-[3px]" />
+                    </div>
+                    <CookieConsentBanner onAccept={() => setConsented(true)} />
+                  </div>
+                }
+              />
+            </Routes>
+          )}
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
