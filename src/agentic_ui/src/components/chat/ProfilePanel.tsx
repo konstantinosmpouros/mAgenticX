@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
     VoiceSelector,
@@ -573,6 +574,18 @@ export default function ProfilePanel({
             title: "Support",
             desc: "Reach the team for operational or product help when something blocks your workflow.",
         },
+        {
+            title: "Terms & Conditions",
+            desc: "Read the terms governing your use of mAgenticX and its services.",
+            href: "/terms",
+            external: true,
+        },
+        {
+            title: "Privacy Policy",
+            desc: "Learn how we collect, use, and protect your personal data.",
+            href: "/privacy",
+            external: true,
+        },
     ];
 
     const themeOptions = [
@@ -902,8 +915,13 @@ export default function ProfilePanel({
                                             {activeSection.description}
                                         </p>
                                     </div>
-                                    <div className="inline-flex items-center rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                                        Signed in as {displayName}
+                                    <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-emerald-500/20 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground sm:max-w-xs">
+                                        <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]" aria-hidden="true" />
+                                        <span className="min-w-0 truncate">
+                                            <span className="text-emerald-600 dark:text-emerald-400">Signed in</span>
+                                            <span className="text-muted-foreground"> as </span>
+                                            <span className="font-medium text-foreground">{displayName}</span>
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -1252,27 +1270,22 @@ export default function ProfilePanel({
                                                                         Default response language for live voice conversations.
                                                                     </p>
                                                                 </div>
-                                                                <div className="inline-flex h-10 w-full rounded-xl border border-border/60 bg-background/60 p-1 sm:w-auto">
-                                                                    {VOICE_MODE_LANGUAGES.map((language) => {
-                                                                        const isSelected = language.id === voiceModeLanguage;
-                                                                        return (
-                                                                            <button
-                                                                                key={language.id}
-                                                                                type="button"
-                                                                                disabled={preferencesSaving}
-                                                                                onClick={() => onSelectVoiceModeLanguage?.(normalizeVoiceModeLanguage(language.id))}
-                                                                                className={cn(
-                                                                                    "min-w-24 flex-1 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none",
-                                                                                    isSelected
-                                                                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                                                                        : "text-muted-foreground hover:bg-background/80 hover:text-foreground"
-                                                                                )}
-                                                                            >
+                                                                <Select
+                                                                    value={voiceModeLanguage}
+                                                                    onValueChange={(value) => onSelectVoiceModeLanguage?.(normalizeVoiceModeLanguage(value))}
+                                                                    disabled={preferencesSaving}
+                                                                >
+                                                                    <SelectTrigger className="h-11 w-full rounded-xl border-border/60 bg-background/60 px-3 text-sm font-semibold hover:bg-background/80 focus:ring-primary/60 sm:w-36">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {VOICE_MODE_LANGUAGES.map((language) => (
+                                                                            <SelectItem key={language.id} value={language.id}>
                                                                                 {language.label}
-                                                                            </button>
-                                                                        );
-                                                                    })}
-                                                                </div>
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
                                                             </div>
                                                         </div>
                                                     </SoftPanel>
@@ -1812,7 +1825,7 @@ export default function ProfilePanel({
                                                 <InfoCard
                                                     eyebrow="Resources"
                                                     title="Documentation"
-                                                    description="Keep the high-signal, high-frequency help actions visible and close to the workspace settings surface."
+                                                    description="Docs, support, and legal resources for mAgenticX."
                                                 >
                                                     <div className="grid gap-4 md:grid-cols-2">
                                                         {helpCards.map((card) =>
