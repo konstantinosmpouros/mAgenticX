@@ -468,9 +468,9 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 {mode === "voice" ? (
                     <motion.div
                         key="voice-bar"
-                        initial={{ opacity: 0, y: rm ? 0 : 12, scale: rm ? 1 : 0.985, filter: rm ? "blur(0px)" : "blur(6px)" }}
-                        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
-                        exit={{ opacity: 0, y: rm ? 0 : 6, scale: rm ? 1 : 0.99, filter: rm ? "blur(0px)" : "blur(4px)", transition: { duration: 0.18, ease: "easeIn" } }}
+                        initial={{ opacity: 0, y: rm ? 0 : 10 }}
+                        animate={{ opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } }}
+                        exit={{ opacity: 0, y: rm ? 0 : 5, transition: { duration: 0.18, ease: "easeIn" } }}
                         style={{ transformOrigin: "center bottom" }}
                     >
                         <div className="relative mx-auto max-w-3xl pointer-events-auto">
@@ -550,9 +550,9 @@ export function ChatInputBar(props: ChatInputBarProps) {
                 ) : (
                     <motion.div
                         key="chat-bar"
-                        initial={{ opacity: 0, y: rm ? 0 : 10, scale: rm ? 1 : 0.99, filter: rm ? "blur(0px)" : "blur(5px)" }}
-                        animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] } }}
-                        exit={{ opacity: 0, y: rm ? 0 : 6, scale: rm ? 1 : 0.99, filter: rm ? "blur(0px)" : "blur(4px)", transition: { duration: 0.18, ease: "easeIn" } }}
+                        initial={{ opacity: 0, y: rm ? 0 : 10 }}
+                        animate={{ opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } }}
+                        exit={{ opacity: 0, y: rm ? 0 : 5, transition: { duration: 0.18, ease: "easeIn" } }}
                         style={{ transformOrigin: "center bottom" }}
                     >
                         {isMessagesEmpty && (

@@ -3,7 +3,6 @@
 ## General
 
 - Consider using a centralized logging solution like ELK or Datadog or loki with Grafana for better observability.
-- Cookies acceptance? Terms and conditions / privacy policy in the help in the profile panel?
 
 ## Security
 

@@ -431,15 +431,12 @@ export function ChatInterface({
   });
   const activeBodyMode: ConversationBodyMode = voiceSession.isActive ? "voice" : "chat";
 
-  // Lags behind voiceSession.isActive by the input-bar exit duration (180 ms) so the
-  // positionClass/emptyWrapperStyle don't snap to a new position while the bar is fading out.
+  // Lags behind voiceSession.isActive by the input-bar exit duration (180 ms) in both
+  // directions so positionClass/emptyWrapperStyle never snap while the bar is animating.
   const [settledVoiceActive, setSettledVoiceActive] = useState(() => voiceSession.isActive);
   useEffect(() => {
-    if (voiceSession.isActive) {
-      setSettledVoiceActive(true);
-      return;
-    }
-    const timeout = window.setTimeout(() => setSettledVoiceActive(false), 180);
+    const next = voiceSession.isActive;
+    const timeout = window.setTimeout(() => setSettledVoiceActive(next), 180);
     return () => window.clearTimeout(timeout);
   }, [voiceSession.isActive]);
   const [bodyTransition, setBodyTransition] = useState<{

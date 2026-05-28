@@ -115,6 +115,8 @@ const MCP_VARIANTS = {
     active: "magenta" as const,
 };
 
+const MOBILE_PROFILE_NAV_BREAKPOINT = 640;
+
 const McpIcon = ({
     size = 22,
     className,
@@ -320,6 +322,9 @@ export default function ProfilePanel({
     const [navCollapsed, setNavCollapsed] = useState<boolean>(() =>
         typeof window !== "undefined" ? window.innerWidth < 960 : false
     );
+    const [mobileProfileNav, setMobileProfileNav] = useState<boolean>(() =>
+        typeof window !== "undefined" ? window.innerWidth < MOBILE_PROFILE_NAV_BREAKPOINT : false
+    );
     const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
     const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
     const [shortcutPlatform, setShortcutPlatform] = useState<ShortcutPlatform>(() => detectShortcutPlatform());
@@ -389,6 +394,7 @@ export default function ProfilePanel({
             setHoveredNavId(null);
             setOpenNavTooltipId(null);
             setNavCollapsed(window.innerWidth < 960);
+            setMobileProfileNav(window.innerWidth < MOBILE_PROFILE_NAV_BREAKPOINT);
         };
 
         handleResize();
@@ -697,18 +703,18 @@ export default function ProfilePanel({
                         <X size={18} />
                     </Button>
 
-                    <div className="flex h-full w-full">
+                    <div className="flex h-full w-full min-w-0 max-[639px]:flex-col">
                         <aside
                             className={cn(
-                                "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-2.5 py-4 transition-[width,padding] duration-300 ease-in-out",
+                                "relative flex h-full flex-col border-r border-border/50 bg-muted/30 px-2.5 py-4 transition-[width,padding] duration-300 ease-in-out max-[639px]:h-auto max-[639px]:w-full max-[639px]:flex-none max-[639px]:border-b max-[639px]:border-r-0 max-[639px]:py-2 max-[639px]:pl-3 max-[639px]:pr-12",
                                 navCollapsed ? "w-16 px-0" : "w-56"
                             )}
                         >
-                            <ScrollArea className="h-full">
-                                <div className="flex h-full flex-col pt-6">
+                            <ScrollArea className="h-full max-[639px]:h-auto">
+                                <div className="flex h-full flex-col pt-6 max-[639px]:h-auto max-[639px]:flex-row max-[639px]:items-start max-[639px]:gap-2 max-[639px]:pt-0">
                                     <div
                                         className={cn(
-                                            "relative mb-6 h-24 pb-1.5 transition-opacity duration-200",
+                                            "relative mb-6 h-24 pb-1.5 transition-opacity duration-200 max-[639px]:hidden",
                                             navCollapsed ? "pointer-events-none opacity-0" : "opacity-100"
                                         )}
                                     >
@@ -730,13 +736,13 @@ export default function ProfilePanel({
                                     </div>
 
                                     <nav className={cn(
-                                        "flex flex-1 flex-col justify-start gap-1 pt-0",
+                                        "flex flex-1 flex-col justify-start gap-1 pt-0 max-[639px]:min-w-0 max-[639px]:flex-row max-[639px]:flex-wrap max-[639px]:items-center max-[639px]:gap-1.5 max-[639px]:overflow-visible",
                                         navCollapsed ? "items-center" : "items-start"
                                     )}>
                                         {navItems.map((item) => {
                                             const isActive = normalizedActiveTab === item.id;
                                             const isHovered = hoveredNavId === item.id;
-                                            const iconSize = 18;
+                                            const iconSize = mobileProfileNav ? 15 : 18;
                                             const isLightTheme = currentTheme === "light";
                                             const mcpVariant: McpIconVariant =
                                                 item.id === "mcp"
@@ -759,7 +765,7 @@ export default function ProfilePanel({
                                                 ) : item.id === "archived" ? (
                                                     <ShieldCheck size={iconSize} />
                                                 ) : item.id === "mcp" ? (
-                                                    <McpIcon size={20} variant={mcpVariant} />
+                                                    <McpIcon size={mobileProfileNav ? 17 : 20} variant={mcpVariant} />
                                                 ) : item.id === "shortcuts" ? (
                                                     <Keyboard size={iconSize} />
                                                 ) : (
@@ -803,14 +809,14 @@ export default function ProfilePanel({
                                                             }}
                                                             className={cn(
                                                                 "group relative grid grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
-                                                                navCollapsed ? "flex h-10 w-10 flex-none items-center justify-center p-0" : "h-11 w-full",
+                                                                navCollapsed ? "flex h-10 w-10 flex-none items-center justify-center p-0 max-[639px]:h-8 max-[639px]:w-auto max-[639px]:gap-1 max-[639px]:px-1.5" : "h-11 w-full",
                                                                 isActive ? "text-primary hover:bg-transparent hover:text-primary focus-visible:bg-transparent" : ""
                                                             )}
                                                             aria-label={item.label}
                                                         >
                                                             <div
                                                                 className={cn(
-                                                                    "flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors",
+                                                                    "flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors max-[639px]:h-6 max-[639px]:w-6",
                                                                     isActive
                                                                         ? "text-primary"
                                                                         : "text-muted-foreground group-hover:text-foreground"
@@ -818,16 +824,20 @@ export default function ProfilePanel({
                                                             >
                                                                 {iconNode}
                                                             </div>
-                                                            {!navCollapsed ? (
+                                                            {navCollapsed ? (
+                                                                <span className="sr-only min-w-0 whitespace-nowrap text-[0.68rem] font-semibold uppercase tracking-[0.14em] max-[639px]:not-sr-only max-[639px]:text-[0.58rem] max-[639px]:tracking-[0.12em]">
+                                                                    {item.label}
+                                                                </span>
+                                                            ) : (
                                                                 <span className="min-w-0 whitespace-nowrap text-[0.68rem] font-semibold uppercase tracking-[0.14em] opacity-100 transition-opacity duration-200 ease-in-out">
                                                                     {item.label}
                                                                 </span>
-                                                            ) : null}
+                                                            )}
                                                         </button>
                                                     </TooltipTrigger>
                                                     {navCollapsed ? (
                                                         <TooltipContent
-                                                            side="right"
+                                                            side={mobileProfileNav ? "bottom" : "right"}
                                                             sideOffset={10}
                                                             className="z-[80] whitespace-nowrap px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]"
                                                         >
@@ -837,6 +847,19 @@ export default function ProfilePanel({
                                                 </Tooltip>
                                             );
                                         })}
+                                        <button
+                                            type="button"
+                                            onClick={onLogout}
+                                            className="group relative hidden h-8 w-auto flex-none items-center justify-center gap-1 rounded-xl px-1.5 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))] max-[639px]:flex"
+                                            aria-label="Logout"
+                                        >
+                                            <div className="flex h-6 w-6 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors group-hover:text-foreground">
+                                                <LogOut className="h-[15px] w-[15px]" />
+                                            </div>
+                                            <span className="min-w-0 whitespace-nowrap text-[0.58rem] font-semibold uppercase tracking-[0.12em]">
+                                                Logout
+                                            </span>
+                                        </button>
                                     </nav>
 
                                     <Tooltip
@@ -870,7 +893,7 @@ export default function ProfilePanel({
                                                     setOpenNavTooltipId((prev) => (prev === "logout" ? null : prev));
                                                 }}
                                                 className={cn(
-                                                    "mt-auto grid grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))]",
+                                                    "mt-auto grid grid-cols-[auto,1fr] items-center gap-2 rounded-xl px-2 py-1 text-left text-[0.9rem] font-medium text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:bg-[hsl(var(--hover-surface))] max-[639px]:hidden",
                                                     navCollapsed ? "flex h-10 w-10 flex-none items-center justify-center self-center p-0" : "h-11 w-full"
                                                 )}
                                                 aria-label="Logout"
@@ -887,7 +910,7 @@ export default function ProfilePanel({
                                         </TooltipTrigger>
                                         {navCollapsed ? (
                                             <TooltipContent
-                                                side="right"
+                                                side={mobileProfileNav ? "bottom" : "right"}
                                                 sideOffset={10}
                                                 className="z-[80] whitespace-nowrap px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]"
                                             >
@@ -899,24 +922,24 @@ export default function ProfilePanel({
                             </ScrollArea>
                         </aside>
 
-                        <div className="flex min-w-0 flex-1 flex-col">
-                            <div className="border-b border-border/60 px-6 py-5 sm:px-8">
+                        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                            <div className="border-b border-border/60 px-6 py-5 sm:px-8 max-[639px]:px-4 max-[639px]:py-3">
                                 {showActiveSectionEyebrow ? (
-                                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground max-[639px]:text-[0.58rem] max-[639px]:tracking-[0.18em]">
                                         {activeSection.eyebrow}
                                     </p>
                                 ) : null}
-                                <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between max-[639px]:gap-2">
                                     <div className="space-y-1">
-                                        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+                                        <h2 className="text-2xl font-semibold tracking-tight text-foreground max-[639px]:text-xl">
                                             {activeSection.title}
                                         </h2>
-                                        <p className="max-w-2xl text-sm text-muted-foreground">
+                                        <p className="max-w-2xl text-sm text-muted-foreground max-[639px]:text-xs">
                                             {activeSection.description}
                                         </p>
                                     </div>
-                                    <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-emerald-500/20 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground sm:max-w-xs">
-                                        <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]" aria-hidden="true" />
+                                    <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-emerald-500/20 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground sm:max-w-xs max-[639px]:gap-1.5 max-[639px]:px-2 max-[639px]:py-0.5 max-[639px]:text-[0.68rem]">
+                                        <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)] max-[639px]:h-1.5 max-[639px]:w-1.5" aria-hidden="true" />
                                         <span className="min-w-0 truncate">
                                             <span className="text-emerald-600 dark:text-emerald-400">Signed in</span>
                                             <span className="text-muted-foreground"> as </span>
