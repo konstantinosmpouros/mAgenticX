@@ -194,7 +194,6 @@ Main endpoint groups:
 - Attachments
   - `/attachments/download/{userId}/{conversationId}/{messageId}/{blobId}`
 - Inference
-  - `/inference/stream/{userId}/{conversationId}` (legacy)
   - `/inference/runs/{userId}/{conversationId}` — create and start a detached run
   - `/inference/runs/{userId}?status=active` — list active runs for hydration
   - `/inference/runs/{userId}/{runId}/stream` — SSE observer for a run

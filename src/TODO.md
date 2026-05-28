@@ -19,11 +19,11 @@
 ## Agents
 
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
-- Add end-to-end non-image attachment support in inference, including deep-agent passthrough and LangGraph input normalization/parsing for file parts.
+- Add end-to-end file (no image) attachment support in inference, including deep-agent passthrough and LangGraph input normalization/parsing for file parts.
 
-## RAG Service
+## Dialogue Bridge
 
-- Instead of a ChromaDB consider adding pgvector in the database and use it for the retrieval, this will reduce the complexity of the system and the number of components to maintain. Also it will provide an easier way to keep the data consistent and avoid issues with synchronization between the database and the vector store.
+- Add the pgvector in order to have an embedding for each conversation and then we can use this embedding to find the most relevant conversations for a given query, this will be useful for the retrieval process and memory across chats.
 
 ## Agentic UI
 
@@ -36,4 +36,4 @@
 - When changing to voice mode the transition in bad in the input bar actually the transition.
 - The mermaid diagrams, code blocks are not rendering according to the browser size, we need to make it responsive. This problem is more extensive and l mean that the user messages as well are not showing if the width of the browser is too small, we need to make the whole chat body responsive and adapt to different screen sizes or appear a horizontal scrollbar.
 - In the hr policies agent in the detached inference l got a "stream observer lost" error and the agent stopped working, we need to investigate this issue and fix it.
-- The read aloud is trying to read the whole message and give the results in one go. We need a more streaming approach for that.
+- The rate limit of inference per user per minute should show in the UI a more user-friendly message instead of just showing an error, we can show a message like "You have reached the maximum number of agent runs per minute, please wait a few seconds and try again." or something like that.

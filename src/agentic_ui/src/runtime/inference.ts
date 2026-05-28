@@ -1,14 +1,13 @@
-import { createConversation, addMessageToConversation, continueSharedConversation, transcribeDictation } from '@/lib/api';
+import { createConversation, addMessageToConversation, continueSharedConversation } from '@/lib/api';
 import type { PlanSnapshot } from '@/lib/agui';
 import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, ToolPreference, InferenceRunStartResponse } from '@/lib/types';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
-import type { DictationStatus } from '@/components/chat/ChatInputBar';
 import { updateSession } from '@/lib/authStorage';
 
 // Inference handlers own every flow that starts an agent run:
-// send, edit-submit, retry, stop-streaming, and speech-to-text input.
+// send, edit-submit, retry, and stop-streaming.
 type SetConversationMessages = (updater: (prev: MessageOut[]) => MessageOut[]) => void;
 
 // Input-bar send flow dependencies.
@@ -42,8 +41,6 @@ type InferenceCtx = {
   setThinkingState: (updater: any) => void;
   // UI transition indicator between persistence and thinking start
   setShowAiTransition?: (v: boolean) => void;
-  setDictationStatus: Dispatch<SetStateAction<DictationStatus>>;
-  textareaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   streamAbortRef: MutableRefObject<AbortController | null>;
   persistUIState?: () => void;
   onPlanSnapshot?: (plan: PlanSnapshot) => void;
@@ -142,8 +139,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     getImageUrl,
     setThinkingState,
     setShowAiTransition,
-    setDictationStatus,
-    textareaRef,
     streamAbortRef,
     enabledTools,
     sharedConversationToken,
@@ -370,63 +365,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
   };
 
 
-  // Handler to update dictation status
-  const handleDictationStatusChange = (status: DictationStatus) => {
-    // Avoid redundant state writes because the recorder can emit the same status repeatedly.
-    setDictationStatus((prev) => (prev === status ? prev : status));
-  };
-
-
-  // Handler to submit dictation audio
-  const handleDictationSubmit = async (audioBlob: Blob) => {
-    if (!userId) {
-      toast({
-        title: 'Authentication required',
-        description: 'Please sign in again to continue.',
-        variant: 'destructive',
-      });
-      setDictationStatus('idle');
-      return;
-    }
-
-    setDictationStatus('submitting');
-    try {
-      // Preserve the browser-provided extension when possible so the backend can sniff audio reliably.
-      const mime = audioBlob.type || 'audio/webm';
-      const [, rawExt = 'webm'] = mime.split('/');
-      const ext = rawExt.split(';')[0] || rawExt || 'webm';
-      const filename = `dictation-${Date.now()}.${ext}`;
-      const transcript = await transcribeDictation(userId, audioBlob, filename);
-      const trimmedTranscript = transcript.trim();
-
-      if (!trimmedTranscript) {
-        toast({
-          title: 'No speech detected',
-          description: 'The transcription was empty. Please try recording again.',
-          variant: 'destructive',
-        });
-      } else {
-        // Append the transcript to any existing draft instead of replacing in-progress typed input.
-        setCurrentMessage((prev) => {
-          if (!prev) return trimmedTranscript;
-          const needsSeparator = !/\s$/.test(prev);
-          return `${prev}${needsSeparator ? ' ' : ''}${trimmedTranscript}`;
-        });
-        textareaRef?.current?.focus();
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Voice transcription failed. Please try again.';
-      toast({
-        title: 'Dictation failed',
-        description: message,
-        variant: 'destructive',
-      });
-    } finally {
-      setDictationStatus('idle');
-    }
-  };
-
-  return { handleSendMessage, handleStopStreaming, handleDictationSubmit, handleDictationStatusChange };
+  return { handleSendMessage, handleStopStreaming };
 }
 
 

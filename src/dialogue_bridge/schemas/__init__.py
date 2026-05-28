@@ -532,16 +532,12 @@ class RealtimeVoiceEndOut(BaseModel):
 
 
 #-------------------------------------------
-# INFERENCE STREAM DTO
+# INFERENCE RUN DTO
 #-------------------------------------------
-class InferenceStreamPayload(BaseModel):
-    """Payload to map the messages branch from the UI and start an inference stream from the agent."""
+class InferenceRunStartPayload(BaseModel):
+    """Payload to map the visible message branch and create a backend-owned inference run."""
     messagePath: list[str] | None = None
     enabledTools: list[ToolPreference] | None = Field(default=None, validation_alias="enabledTools")
-
-
-class InferenceRunStartPayload(InferenceStreamPayload):
-    """Payload to create a backend-owned inference run."""
     parentMessageId: str = Field(..., min_length=1)
 
 
@@ -725,7 +721,6 @@ __all__ = [
     "RealtimeVoiceConversationEventIn",
     "RealtimeVoiceEndIn",
     "RealtimeVoiceEndOut",
-    "InferenceStreamPayload",
     "InferenceRunStartPayload",
     "InferenceRunOut",
     "InferenceRunStartResponse",

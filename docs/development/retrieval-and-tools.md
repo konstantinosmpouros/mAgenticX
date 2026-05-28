@@ -40,7 +40,9 @@ sequenceDiagram
     participant Chroma as ChromaDB
     participant Duck as DuckDB
 
-    Browser->>Bridge: POST /v1/inference/stream/{user_id}/{conv_id}
+    Browser->>Bridge: POST /v1/inference/runs/{user_id}/{conv_id}
+    Bridge-->>Browser: run id + assistant message id
+    Browser->>Bridge: GET /v1/inference/runs/{user_id}/{run_id}/stream
     Bridge->>Bridge: serialize message history with images
     Bridge->>Agents: POST /agents/{slug}/stream {messages, config}
 
@@ -343,7 +345,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 
 - **OpenAI embeddings are called by the RAG service, not the agents service.** If `OPENAI_API_KEY` is missing from the RAG service's environment, the Chroma retriever will fail on the first call. The RAG service does not validate the key at startup.
 
-- **The bridge forwards agent SSE bytes without parsing.** `startInferenceStream()` streams raw bytes from the agents service directly to the client. It does not inspect or rewrite individual SSE frames — any encoding or framing error in the agents service will reach the browser unchanged.
+- **The bridge parses agent SSE into detached run state.** `InferenceRunManager` consumes upstream AG-UI frames, updates an in-memory accumulator, and publishes run snapshots to browser observers. Encoding or framing errors now fail the run instead of being forwarded as opaque bytes.
 
 - **Sub-agent namespace binding can fail silently.** If the `before_agent` message injected by `PatchToolCallsMiddleware` does not match any `pending_tasks` description (e.g., due to whitespace differences), the namespace remains unbound and sub-agent events are emitted without a `SUBAGENT_EVENT` wrapper. The events still reach the client but the UI cannot associate them with the correct task card.
 
@@ -372,6 +374,6 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | HITL, plan, sub-agent event models | [src/agents/runtime/protocols/agui/events.py](../../src/agents/runtime/protocols/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
 | Agent stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{agent_slug}/stream` |
 | Agent catalog endpoints | [src/agents/main.py](../../src/agents/main.py) | `GET /agents`, `GET /tools` |
-| Inference proxy (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceStream()` |
+| Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceRun()`, `observeInferenceRun()`, `cancelInferenceRun()` |
 | Message history serialization | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `prepare_inference_history()`, `serialise_message_with_images_for_agent()` |
 | Internal caller auth | [src/agents/core/proxy.py](../../src/agents/core/proxy.py) | `require_internal_caller()` |

@@ -206,12 +206,15 @@ export function createReadAloudHandlers(ctx: ReadAloudHandlersCtx) {
     try {
       audioBlob = await generateMessageReadAloudAudio(userId, conversationId, message.id);
     } catch (error) {
+      const description = error instanceof Error && error.message
+        ? error.message
+        : "Audio could not be generated for this response.";
       if (readAloudRequestId === requestId) {
         clearActiveAudio();
         setActiveSpeechMessage(null);
         toast?.({
           title: "Read aloud failed",
-          description: "Audio could not be generated for this response.",
+          description,
           variant: "destructive",
         });
       }

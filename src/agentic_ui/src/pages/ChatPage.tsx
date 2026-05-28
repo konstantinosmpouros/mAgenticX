@@ -39,7 +39,6 @@ import {
 // Handlers (modularized)
 import {
   createAttachmentHandlers,
-  createInferenceHandlers,
   createConversationHandlers,
   createAgentHandlers,
   createAuthHandlers,
@@ -47,10 +46,9 @@ import {
   createAiTransitionHandlers,
   createConversationMessageSetter,
   createFeedbackHandlers,
+  createVoiceDictationHandlers,
   createReadAloudHandlers,
-  createMessageEditHandlers,
   createMessageEditUiHandlers,
-  createRetryHandlers,
   createReportHandlers,
   createShareConversationHandlers,
   createSharedConversationHandlers,
@@ -60,6 +58,11 @@ import {
   useWorkspaceSearch,
   buildDefaultConversationSearchResults,
 } from "@/handlers";
+import {
+  createInferenceHandlers,
+  createMessageEditHandlers,
+  createRetryHandlers,
+} from "@/runtime";
 import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail, getSuggestions } from "@/lib/api";
 
@@ -421,6 +424,14 @@ export function ChatInterface({
     }
     setDictationRequestSignal((prev) => prev + 1);
   }, [dictationStatus, isCurrentConversationBusy]);
+
+  const { handleDictationSubmit, handleDictationStatusChange } = createVoiceDictationHandlers({
+    userId,
+    setCurrentMessage,
+    setDictationStatus,
+    textareaRef,
+    toast: toastWrapper,
+  });
 
   const { voiceSession, handleVoiceMode } = useChatVoiceMode({
     toast: toastWrapper,
@@ -843,7 +854,7 @@ export function ChatInterface({
   });
 
   // Inference handler
-  const { handleSendMessage, handleStopStreaming, handleDictationSubmit, handleDictationStatusChange } = createInferenceHandlers({
+  const { handleSendMessage, handleStopStreaming } = createInferenceHandlers({
     userId,
     selectedAgent,
     isPrivateMode,
@@ -864,8 +875,6 @@ export function ChatInterface({
     getImageUrl,
     setThinkingState,
     setShowAiTransition,
-    setDictationStatus,
-    textareaRef,
     streamAbortRef,
     enabledTools: enabledToolsForRequest,
     beginInferenceRun,

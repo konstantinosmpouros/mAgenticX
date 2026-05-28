@@ -1,6 +1,5 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { AGUIEvent } from "@/lib/agui";
 import type { AttachmentIn, AuthResponse, FileAttachment } from "./types";
 import {
   DEFAULT_REALTIME_VOICE,
@@ -173,29 +172,4 @@ export function sortByUpdatedAtDesc<T extends WithUpdatedAt>(items: T[]): T[] {
     const tb = typeof b.updated_at === 'string' ? new Date(b.updated_at).getTime() : b.updated_at.getTime();
     return tb - ta; // newest first
   });
-}
-
-// Utility to parse SSE text incrementally and emit events ASAP.
-export function parseSSE(buffer: string, onEvent: (e: AGUIEvent) => void): string {
-  // Find the last newline to ensure we only process complete lines
-  const lastNewline = Math.max(buffer.lastIndexOf("\n"), buffer.lastIndexOf("\r"));
-  if (lastNewline === -1) return buffer; // no complete lines yet
-
-  const chunk = buffer.slice(0, lastNewline + 1);
-  const rest = buffer.slice(lastNewline + 1);
-
-  const lines = chunk.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) continue;
-    const payload = trimmed.slice(5).trim();
-    if (!payload) continue;
-    try {
-      const obj = JSON.parse(payload);
-      if (obj && typeof obj === 'object' && obj.type) onEvent(obj as AGUIEvent);
-    } catch {
-      // ignore non-JSON frames
-    }
-  }
-  return rest;
 }

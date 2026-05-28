@@ -30,13 +30,11 @@ import type {
   ToolPreference,
   WorkspaceSearchResult,
 } from "./types";
-import type { AGUIEvent } from "@/lib/agui";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
 import {
   normalizeAuthResponse,
   normalizeRealtimeVoice,
   normalizeVoiceModeLanguage,
-  parseSSE,
   withSessionRequest,
 } from "./utils";
 import {
@@ -875,7 +873,14 @@ export async function generateMessageReadAloudAudio(
   }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to generate read-aloud audio: ${res.status}`);
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to generate read-aloud audio: ${res.status}`);
   }
   return await res.blob();
 }
@@ -1274,78 +1279,6 @@ export async function observeInferenceRun(
       flush(textDecoder.decode(value, { stream: true }));
     }
     flush(textDecoder.decode(new Uint8Array(), { stream: false }) + "\n\n");
-  } finally {
-    signal?.removeEventListener?.("abort", cancelReader as any);
-    try { reader.releaseLock(); } catch { /* ignore */ }
-  }
-}
-
-// Start streaming inference by requesting the legacy bridge SSE endpoint
-export async function streamInference(
-  userId: string,
-  conversationId: string,
-  messagePath: string[],
-  onEvent: (e: AGUIEvent) => void,
-  signal?: AbortSignal,
-  enabledTools?: ToolPreference[],
-): Promise<void> {
-  const payload: Record<string, unknown> = {};
-  if (Array.isArray(messagePath) && messagePath.length > 0) {
-    payload.messagePath = messagePath;
-  }
-  if (Array.isArray(enabledTools) && enabledTools.length > 0) {
-    payload.enabledTools = serializeToolPreferences(enabledTools);
-  }
-  const headers: Record<string, string> = { "Accept": "text/event-stream" };
-  if (Object.keys(payload).length > 0) headers["Content-Type"] = "application/json";
-
-  const res = await fetch(`${INFERENCE_BASE_PATH}/stream/${userId}/${conversationId}`, withSessionRequest({
-    method: "POST",
-    headers,
-    signal,
-    body: Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined,
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore body parse issues
-    }
-    const error = new Error(detail || `Failed to start inference stream: ${res.status}`);
-    (error as any).status = res.status;
-    (error as any).detail = detail;
-    throw error;
-  }
-  if (!res.body) {
-    throw new Error(`Failed to start inference stream: ${res.status}`);
-  }
-
-  const reader = res.body.getReader();
-  const textDecoder = new TextDecoder();
-  let buffer = "";
-  const cancelReader = () => {
-    try { reader.cancel(); } catch { /* ignore */ }
-  };
-  signal?.addEventListener("abort", cancelReader, { once: true });
-  try {
-    while (true) {
-      if (signal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += textDecoder.decode(value, { stream: true });
-      buffer = parseSSE(buffer, onEvent);
-    }
-    // Flush any remaining buffered data (handle streams ending without trailing newline)
-    buffer += textDecoder.decode(new Uint8Array(), { stream: false });
-    if (buffer) {
-      // append a newline to ensure the last line is processed
-      buffer = parseSSE(buffer + "\n", onEvent);
-    }
   } finally {
     signal?.removeEventListener?.("abort", cancelReader as any);
     try { reader.releaseLock(); } catch { /* ignore */ }

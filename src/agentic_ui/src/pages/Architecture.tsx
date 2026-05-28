@@ -30,7 +30,7 @@ const services = [
         interfaces: [
             "Auth flow proxied to the bridge/Vault: /api/authenticate and /api/session/refresh.",
             "Chat lifecycle: /api/users/:id/conversations + /messages + /attachments (multipart uploads).",
-            "SSE render: /api/users/:id/conversations/:convId/inference/stream emits AG-UI events.",
+            "Inference runs: /api/v1/inference/runs starts, observes, and cancels agent streams.",
         ],
         data: "Only UI state (theme, drafts) lives in the browser. All durable data rides through the bridge.",
     },
@@ -42,7 +42,7 @@ const services = [
         interfaces: [
             "Auth: /authenticate (Vault userpass→OIDC) and /session/refresh to mint/rotate cookies.",
             "Data APIs: /users/:id/conversations, /messages, /attachments for CRUD + pagination.",
-            "Inference: /users/:id/conversations/:convId/inference/stream forwards SSE to agents; /agents and /tools proxy discovery.",
+            "Inference: /inference/runs/:userId/:conversationId starts runs; /runs/:userId/:runId/stream observes AG-UI events.",
         ],
         data: "Owns Postgres tables for users, agents cache, conversations, messages, and attachment blobs. Depends on Vault, Agents, and Postgres.",
     },
@@ -116,7 +116,7 @@ const requestFlow = [
     "Login: UI posts to the bridge, which authenticates against Vault userpass → OIDC JWT → session/refresh cookies.",
     "Bootstrap: UI pulls agents and MCP tools from the bridge (bridge syncs with the agents service + MCP gateway) and loads user prefs from Postgres.",
     "Start a conversation: UI persists the first message/attachments via the bridge; bridge may ask the agents service to generate a title, then returns summary + detail.",
-    "Inference: UI calls /inference/stream; bridge rebuilds history with inline images, sets thread/checkpoint ids, forwards to agents /stream with tool preferences.",
+    "Inference: UI starts an inference run, observes its run stream, and can cancel it; bridge rebuilds history with inline images, sets thread/checkpoint ids, and forwards to agents /stream with tool preferences.",
     "Execution: Agents run LangGraph, call rag_service (Chroma + DuckDB) and optional MCP tools, and stream AG-UI frames; bridge relays bytes 1:1 to the UI.",
     "Storage: Message/attachment rows live in Postgres; Chroma stores embeddings; Vault holds auth state.",
 ];

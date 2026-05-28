@@ -290,7 +290,7 @@ Behavior:
 - `False` means dislike
 - `None` means cleared reaction
 
-## 10. Inference Proxy Flow
+## 10. Inference Run Flow
 
 The bridge constructs the upstream agent request from stored conversation data instead of blindly forwarding browser payloads.
 
@@ -301,14 +301,17 @@ sequenceDiagram
     participant DB as Postgres
     participant Agents
 
-    UI->>Bridge: POST /v1/inference/stream/{user}/{conversation}
+    UI->>Bridge: POST /v1/inference/runs/{user}/{conversation}
+    Bridge->>DB: create run + AI placeholder
+    Bridge->>UI: run id + assistant message id
+    UI->>Bridge: GET /v1/inference/runs/{user}/{run}/stream
     Bridge->>DB: load conversation + messages + attachments
     Bridge->>Bridge: validate messagePath
     Bridge->>Bridge: remove trailing empty AI placeholder
     Bridge->>Bridge: serialize text + inline image data URLs
     Bridge->>Agents: POST /agents/{slug}/stream
     Agents-->>Bridge: SSE AG-UI frames
-    Bridge-->>UI: forwarded SSE stream
+    Bridge-->>UI: run snapshot events
 ```
 
 ### 10.1 Upstream payload shape
@@ -363,10 +366,10 @@ Trailing empty AI placeholder messages are removed from the upstream history so 
 
 ### 10.4 Streaming behavior
 
-- The upstream stream is proxied as `text/event-stream`.
-- `X-Request-ID` is propagated upstream when available.
-- `Cache-Control: no-cache`, `Connection: keep-alive`, and `X-Accel-Buffering: no` are set on the response.
-- Upstream `httpx` errors are converted into a `RUN_ERROR` SSE frame for the client.
+- The bridge owns a detached run task and the browser observes it over `text/event-stream`.
+- `Cache-Control: no-cache`, `Connection: keep-alive`, and `X-Accel-Buffering: no` are set on observer responses.
+- Upstream AG-UI frames are parsed into in-memory run state and emitted to observers as run snapshots.
+- Upstream failures transition the run to `failed` and publish a terminal snapshot.
 
 ## 11. Detached Inference Runs
 
@@ -566,7 +569,6 @@ Either `content` or at least one attachment must be present for non-placeholder 
 
 | Endpoint | Method | Notes |
 | --- | --- | --- |
-| `/v1/inference/stream/{user_id}/{conversation_id}` | `POST` | Legacy SSE proxy |
 | `/v1/inference/runs/{user_id}/{conversation_id}` | `POST` | Create and start a detached run |
 | `/v1/inference/runs/{user_id}` | `GET` | List runs (`?status=active` for hydration) |
 | `/v1/inference/runs/{user_id}/{run_id}/stream` | `GET` | SSE observer — snapshot on connect, then live events |

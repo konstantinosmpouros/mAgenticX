@@ -19,6 +19,11 @@ _DICTATION_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/dicta
 _DICTATION_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
 _READ_ALOUD_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/speech/read-aloud"
 _READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
+MAX_READ_ALOUD_TEXT_CHARS = 2_000
+READ_ALOUD_TEXT_TOO_LONG_DETAIL = (
+    f"This message is too long to read aloud. Please choose a shorter message "
+    f"({MAX_READ_ALOUD_TEXT_CHARS:,} characters or fewer)."
+)
 
 
 def read_aloud_response(audio: bytes, content_type: str, filename: str) -> StreamingResponse:
@@ -118,12 +123,19 @@ async def transcribe_dictation_audio(
 
 
 async def generate_read_aloud_audio(text: str, voice: str | None = None) -> tuple[bytes, str]:
-    payload = {"text": (text or "").strip(), "voice": (voice or "").strip() or None}
-    if not payload["text"]:
+    readable_text = (text or "").strip()
+    if not readable_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Message does not contain readable text.",
         )
+    if len(readable_text) > MAX_READ_ALOUD_TEXT_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=READ_ALOUD_TEXT_TOO_LONG_DETAIL,
+        )
+
+    payload = {"text": readable_text, "voice": (voice or "").strip() or None}
 
     request_id = get_context().get("request_id")
     try:

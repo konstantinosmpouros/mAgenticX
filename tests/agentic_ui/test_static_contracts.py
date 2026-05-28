@@ -64,7 +64,6 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
         "createRealtimeVoiceSession",
         "persistRealtimeVoiceConversationEvent",
         "endRealtimeVoiceSession",
-        "streamInference",
     ]
 
     for function_name in mutating_functions:
