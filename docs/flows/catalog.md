@@ -258,40 +258,55 @@ flowchart TD
     B["userPreferences.tools.disabled: ToolPreference[]"] --> C
     C["compute enabledTools:\navailableTools - disabled"] --> D
     D["enabledTools: ToolPreference[]\n[{ serverId, toolName }, ...]"]
-    D --> E["POST /v1/inference/runs\n{ enabledTools: [...] }"]
+    D --> E["POST /v1/inference/runs/{user_id}/start\n{ mode, enabledTools, ... }"]
 ```
 
 The subtraction is computed in the inference handler using a `Set` keyed by `"{serverId}::{toolName}"`. The resulting `enabledTools` list is sent in the inference run start payload and forwarded to the agents service. If the user has disabled all tools, `enabledTools` is an empty array; the agent then runs with no MCP tool access.
 
 ### Full inference request shapes
 
-**Conversation creation:**
+**New conversation inference start:**
 
 ```json
 {
+  "mode": "new",
   "agentId": "550e8400-e29b-41d4-a716-446655440000",
   "isPrivate": false,
-  "firstMessage": {
+  "message": {
     "sender": "user",
     "type": "text",
     "content": "Search for recent ML papers",
     "attachments": []
-  }
-}
-```
-
-**Inference run start:**
-
-```json
-{
-  "parentMessageId": "msg-uuid",
-  "messagePath": ["msg-uuid-1", "msg-uuid-2"],
+  },
   "enabledTools": [
     { "serverId": "arxiv-mcp-server", "toolName": "search_arxiv" },
     { "serverId": "tavily", "toolName": "tavily_search" }
   ]
 }
 ```
+
+**Existing conversation inference start:**
+
+```json
+{
+  "mode": "send",
+  "conversationId": "conv-uuid",
+  "parentMessageId": "msg-uuid",
+  "messagePath": ["msg-uuid-1", "msg-uuid-2"],
+  "message": {
+    "sender": "user",
+    "type": "text",
+    "content": "Use the search tools for this",
+    "attachments": []
+  },
+  "enabledTools": [
+    { "serverId": "arxiv-mcp-server", "toolName": "search_arxiv" },
+    { "serverId": "tavily", "toolName": "tavily_search" }
+  ]
+}
+```
+
+Edit, retry, and shared conversation continuation use the same `/start` endpoint with `mode: "edit"`, `mode: "retry"`, or `mode: "shared_continue"`. The bridge persists the user-side action and AI placeholder before launching the run, so the frontend does not call conversation/message persistence APIs separately for inference starts.
 
 ---
 
@@ -342,4 +357,4 @@ The subtraction is computed in the inference handler using a `Set` keyed by `"{s
 | Icon mapping | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `mapIcon()`, icon name → LucideIcon lookup |
 | Startup hydration | [src/agentic_ui/src/hooks/useSessionEffects.ts](../../src/agentic_ui/src/hooks/useSessionEffects.ts) | `useAuthRehydrateEffect`, parallel catalog fetches |
 | IndexedDB snapshot | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | `UISnapshotSerializable`, `agents`, `availableTools` fields |
-| Inference request building | [src/agentic_ui/src/handlers/inference.ts](../../src/agentic_ui/src/handlers/inference.ts) | enabled tool computation, `agentId` in `ConversationIn` |
+| Inference request building | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | enabled tool computation, `agentId` and start-mode payloads |

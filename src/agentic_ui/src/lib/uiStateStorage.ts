@@ -107,6 +107,8 @@ const serializeConversationSummaries = (
   if (!Array.isArray(conversations) || conversations.length === 0) return undefined;
   return conversations.map((conversation) => ({
     ...conversation,
+    activeRunId: null,
+    isStreaming: false,
     agent: serializeAgentForStorage(conversation.agent) ?? {
       id: '',
       name: conversation.agent.name,
@@ -125,6 +127,8 @@ const deserializeConversationSummaries = (
   if (!Array.isArray(conversations) || conversations.length === 0) return undefined;
   return conversations.map((conversation) => ({
     ...conversation,
+    activeRunId: null,
+    isStreaming: false,
     agent: deserializeAgentFromStorage(conversation.agent),
   }));
 };

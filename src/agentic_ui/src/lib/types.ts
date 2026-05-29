@@ -343,16 +343,27 @@ export type InferenceRun = {
     updatedAt: Date;
 };
 
-export type InferenceRunStartRequest = {
-    parentMessageId: string;
+export type InferenceStartMode = "new" | "send" | "edit" | "retry" | "shared_continue";
+
+export type InferenceStartRequest = {
+    mode: InferenceStartMode;
+    agentId?: string;
+    isPrivate?: boolean;
+    title?: string;
+    sharedConversationToken?: string;
+    conversationId?: string;
+    parentMessageId?: string;
+    targetMessageId?: string;
     messagePath?: string[];
     enabledTools?: ToolPreference[];
+    message?: MessageIn;
 };
 
-export type InferenceRunStartResponse = {
+export type InferenceStartResponse = {
+    detail: ConversationDetail;
+    summary: ConversationSummary;
     run: InferenceRun;
     message: MessageOut;
-    summary: ConversationSummary;
 };
 
 export type InferenceRunEvent = {

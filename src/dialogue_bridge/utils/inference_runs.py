@@ -2,12 +2,13 @@ import asyncio
 import json
 import time
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator
 
 import httpx
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,12 +26,13 @@ from observability import get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
 from utils.agents import build_agent_stream_url, get_agent_by_id
 from utils.conversations import _preview
-from utils.inference import prepare_inference_history
+from utils.inference import prepare_inference_history, resolve_inference_message_path
 from utils.validators import validate_convId_full
 
 ACTIVE_RUN_STATUSES = {"queued", "running", "cancelling"}
 TERMINAL_RUN_STATUSES = {"completed", "cancelled", "failed"}
 MAX_ACTIVE_RUNS_PER_USER = settings.rate_limit.inference_max_active_runs
+STALE_QUEUED_RUN_AFTER = timedelta(minutes=2)
 
 logger = get_logger(__name__)
 
@@ -175,6 +177,10 @@ class InferenceRunManager:
             return True
         return False
 
+    def has_live_task(self, run_id: str) -> bool:
+        task = self._tasks.get(run_id)
+        return bool(task and not task.done())
+
     def subscribe(self, run_id: str) -> asyncio.Queue[dict[str, Any]]:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=200)
         self._subscribers.setdefault(run_id, set()).add(queue)
@@ -256,8 +262,17 @@ class InferenceRunManager:
                 request_payload: dict[str, Any] = {
                     "messages": history,
                     "config": {
-                        "run_config": {"configurable": {"thread_id": str(run.conversation_id)}},
-                        "context": {"user_id": str(run.user_id), "conversation_id": str(run.conversation_id)},
+                        "run_config": {
+                            "configurable": 
+                                {
+                                    "thread_id": str(run.conversation_id)
+                                }
+                        },
+                        "context": 
+                            {
+                                "user_id": str(run.user_id),
+                                "conversation_id": str(run.conversation_id)
+                            },
                         "tools": enabled_tools or None,
                     },
                 }
@@ -285,6 +300,14 @@ class InferenceRunManager:
                 exc = stream_task.exception()
                 if exc:
                     raise exc
+                result = stream_task.result()
+                if result == "failed":
+                    return
+
+            if cancel_event.is_set():
+                await _mark_run_cancelled(run_id, runtime)
+                await self._publish_snapshot(run_id, "terminal")
+                return
 
             await _mark_run_completed(run_id, runtime)
             await self._publish_snapshot(run_id, "terminal")
@@ -305,7 +328,7 @@ class InferenceRunManager:
         runtime: InferenceRunRuntime,
         agent_url: str,
         request_payload: dict[str, Any],
-    ) -> None:
+    ) -> str:
         sse_buffer = ""
         timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
@@ -320,11 +343,12 @@ class InferenceRunManager:
                         if event.get("type") == "RUN_ERROR":
                             await _mark_run_failed(run_id, runtime, str(event.get("message") or "Agent stream failed."))
                             await self._publish_snapshot(run_id, "terminal")
-                            return
+                            return "failed"
                         runtime.apply_event(event)
                         has_events = True
                     if has_events:
                         await self._publish_runtime_event(run_id, run_meta, runtime)
+        return "completed"
 
     def _build_runtime_event(self, run_meta: dict[str, Any], runtime: InferenceRunRuntime) -> dict[str, Any]:
         assistant_message_id = run_meta["assistantMessageId"]
@@ -335,7 +359,9 @@ class InferenceRunManager:
                 **run_meta,
                 "content": runtime.content,
                 "thinking": deepcopy(runtime.thoughts) or None,
+                "rawEvents": deepcopy(runtime.raw_events) or [],
                 "plan": deepcopy(runtime.plan),
+                "subagents": deepcopy(runtime.subagents),
                 "updatedAt": now_iso,
             },
             "message": {
@@ -346,7 +372,9 @@ class InferenceRunManager:
                 "type": "text",
                 "content": runtime.content,
                 "thinking": deepcopy(runtime.thoughts) or None,
-                "raw_events": [],
+                "raw_events": deepcopy(runtime.raw_events) or [],
+                "plan": deepcopy(runtime.plan),
+                "subagents": deepcopy(runtime.subagents),
                 "created_at": run_meta["startedAt"],
                 "updated_at": now_iso,
                 "attachments": [],
@@ -387,6 +415,11 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         run = await _load_run(db, run_id)
         if not run:
             return
+        if run.status in TERMINAL_RUN_STATUSES:
+            return
+        if status_value == "completed" and (run.status == "cancelling" or run.cancel_requested_at is not None):
+            status_value = "cancelled"
+            error_message = None
         run.status = status_value
         run.content = runtime.content
         run.thinking = deepcopy(runtime.thoughts) or None
@@ -434,6 +467,10 @@ async def _mark_run_failed(run_id: str, runtime: InferenceRunRuntime, error_mess
     await _finish_run(run_id, runtime, "failed", error_message)
 
 
+async def mark_run_launch_failed(run_id: str) -> None:
+    await _finish_run(run_id, InferenceRunRuntime(), "failed", "Inference run could not be launched.")
+
+
 async def build_run_event_payload(db: AsyncSession, run_id: str, event_type: str) -> dict[str, Any] | None:
     run = await _load_run(db, run_id)
     if not run:
@@ -441,6 +478,8 @@ async def build_run_event_payload(db: AsyncSession, run_id: str, event_type: str
     message = await _load_message(db, run.assistant_message_id)
     conversation = await db.get(ConversationTable, run.conversation_id)
     if conversation is not None:
+        if run.status in TERMINAL_RUN_STATUSES and conversation.active_inference_run_id == run.id:
+            conversation.active_inference_run_id = None
         await db.refresh(conversation, attribute_names=["agent"])
     return {
         "type": event_type,
@@ -451,15 +490,15 @@ async def build_run_event_payload(db: AsyncSession, run_id: str, event_type: str
 
 
 async def observe_run_events(run_id: str) -> AsyncIterator[bytes]:
-    async with SessionLocal() as db:
-        snapshot = await build_run_event_payload(db, run_id, "snapshot")
-    if snapshot:
-        yield f"data: {json.dumps(snapshot, ensure_ascii=False)}\n\n".encode("utf-8")
-        if snapshot.get("run", {}).get("status") in TERMINAL_RUN_STATUSES:
-            return
-
     queue = inference_run_manager.subscribe(run_id)
     try:
+        async with SessionLocal() as db:
+            snapshot = await build_run_event_payload(db, run_id, "snapshot")
+        if snapshot:
+            yield f"data: {json.dumps(snapshot, ensure_ascii=False)}\n\n".encode("utf-8")
+            if snapshot.get("run", {}).get("status") in TERMINAL_RUN_STATUSES:
+                return
+
         while True:
             event = await queue.get()
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
@@ -470,7 +509,50 @@ async def observe_run_events(run_id: str) -> AsyncIterator[bytes]:
         inference_run_manager.unsubscribe(run_id, queue)
 
 
-async def create_inference_run(
+def _is_active_run_integrity_conflict(exc: IntegrityError) -> bool:
+    text = str(exc.orig).lower()
+    return (
+        "uq_inference_runs_one_active_per_conversation" in text
+        or "inference_runs.conversation_id" in text
+    )
+
+
+async def _fail_stale_queued_runs_for_conversation(db: AsyncSession, conversation_id: str) -> None:
+    cutoff = _now() - STALE_QUEUED_RUN_AFTER
+    stale_result = await db.execute(
+        select(InferenceRunTable).where(
+            InferenceRunTable.conversation_id == conversation_id,
+            InferenceRunTable.status == "queued",
+            InferenceRunTable.started_at < cutoff,
+        )
+    )
+    stale_runs = stale_result.scalars().all()
+    if not stale_runs:
+        return
+
+    now = _now()
+    failed_run_ids: set[str] = set()
+    for run in stale_runs:
+        if inference_run_manager.has_live_task(run.id):
+            continue
+        failed_run_ids.add(run.id)
+        run.status = "failed"
+        run.error_message = "Inference run was queued but never launched."
+        run.completed_at = now
+        run.updated_at = now
+        message = await _load_message(db, run.assistant_message_id)
+        if message:
+            message.is_error = True
+            message.error_message = run.error_message
+            message.updated_at = now
+    if not failed_run_ids:
+        return
+    conversation = await db.get(ConversationTable, conversation_id)
+    if conversation and conversation.active_inference_run_id in failed_run_ids:
+        conversation.active_inference_run_id = None
+
+
+async def create_inference_run_record(
     *,
     db: AsyncSession,
     user_id: str,
@@ -479,6 +561,8 @@ async def create_inference_run(
     message_path: list[str] | None,
     enabled_tools: list[ToolPreference] | None,
 ) -> tuple[InferenceRunTable, MessageTable]:
+    await _fail_stale_queued_runs_for_conversation(db, conversation.id)
+
     user_active_count = await db.scalar(
         select(func.count()).select_from(InferenceRunTable).where(
             InferenceRunTable.user_id == user_id,
@@ -504,6 +588,7 @@ async def create_inference_run(
     if not parent:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent message does not belong to this conversation.")
 
+    parent_path = resolve_inference_message_path(conversation.messages, parent_message_id, message_path)
     assistant_message = MessageTable(
         conversation_id=conversation.id,
         parent_message_id=parent_message_id,
@@ -515,28 +600,30 @@ async def create_inference_run(
     db.add(assistant_message)
     await db.flush()
 
-    resolved_path = [*(message_path or []), assistant_message.id]
     run = InferenceRunTable(
         user_id=user_id,
         conversation_id=conversation.id,
         assistant_message_id=assistant_message.id,
         parent_message_id=parent_message_id,
         status="queued",
-        message_path=resolved_path,
+        message_path=[*parent_path, assistant_message.id],
         enabled_tools=_tool_preferences_to_json(enabled_tools),
         content="",
         thinking=None,
         raw_events=[],
     )
     db.add(run)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        if _is_active_run_integrity_conflict(exc):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conversation already has an active inference run.") from exc
+        raise
 
     conversation.active_inference_run_id = run.id
     conversation.last_message_at = _now()
-    await db.commit()
-    await db.refresh(run)
-    loaded_message = await _load_message(db, assistant_message.id)
-    return run, loaded_message or assistant_message
+    return run, assistant_message
 
 
 async def request_run_cancel(db: AsyncSession, run: InferenceRunTable) -> InferenceRunTable:

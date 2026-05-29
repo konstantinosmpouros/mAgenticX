@@ -1,8 +1,17 @@
-import { createConversation, addMessageToConversation, continueSharedConversation } from '@/lib/api';
 import type { PlanSnapshot } from '@/lib/agui';
-import { convertFileAttachments, sortByUpdatedAtDesc } from '@/lib/utils';
+import { getInferenceStartErrorCopy } from '@/lib/inferenceErrors';
+import { convertFileAttachments } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
-import type { Agent, ConversationDetail, ConversationIn, MessageIn, MessageOut, FileAttachment, ToolPreference, InferenceRunStartResponse } from '@/lib/types';
+import type {
+  Agent,
+  ConversationDetail,
+  MessageIn,
+  MessageOut,
+  FileAttachment,
+  ToolPreference,
+  InferenceStartRequest,
+  InferenceStartResponse,
+} from '@/lib/types';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import { updateSession } from '@/lib/authStorage';
 
@@ -45,10 +54,7 @@ type InferenceCtx = {
   persistUIState?: () => void;
   onPlanSnapshot?: (plan: PlanSnapshot) => void;
   resetActivePlan?: () => void;
-  beginInferenceRun: (
-    conversationId: string,
-    request: { parentMessageId: string; messagePath: string[]; enabledTools?: ToolPreference[] },
-  ) => Promise<InferenceRunStartResponse>;
+  beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
   stopActiveInferenceRun?: () => void | Promise<void>;
 };
 
@@ -70,10 +76,7 @@ type MessageEditHandlersCtx = {
   persistUIState?: () => void;
   onPlanSnapshot?: (plan: PlanSnapshot) => void;
   resetActivePlan?: () => void;
-  beginInferenceRun: (
-    conversationId: string,
-    request: { parentMessageId: string; messagePath: string[]; enabledTools?: ToolPreference[] },
-  ) => Promise<InferenceRunStartResponse>;
+  beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
 };
 
 // Retry flow dependencies for starting a fresh AI sibling under the same parent prompt.
@@ -94,10 +97,7 @@ type RetryHandlersCtx = {
   persistUIState?: () => void;
   onPlanSnapshot?: (plan: PlanSnapshot) => void;
   resetActivePlan?: () => void;
-  beginInferenceRun: (
-    conversationId: string,
-    request: { parentMessageId: string; messagePath: string[]; enabledTools?: ToolPreference[] },
-  ) => Promise<InferenceRunStartResponse>;
+  beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
 };
 
 // Resolve the lineage from the root message to a specific node.
@@ -143,7 +143,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     enabledTools,
     sharedConversationToken,
     persistUIState,
-    onPlanSnapshot,
     resetActivePlan,
     beginInferenceRun,
     stopActiveInferenceRun,
@@ -190,7 +189,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     // Selected agent metadata is only needed if this send creates a brand new conversation.
     const currentAgent = agents.find(a => a.id === selectedAgent);
     
-    // Prepare attachments once (as both API payload and temp AttachmentOuts)
+    // Prepare attachments once for the backend-owned start flow.
     const messageAttachments: FileAttachment[] = attachments.map(file => ({
       file,
       url: isImageFile(file) ? getImageUrl(file) : '',
@@ -198,36 +197,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       type: file.type,
     }));
     const apiAttachments = await convertFileAttachments(messageAttachments);
-    const tempAttachmentsOut: any[] = apiAttachments.map((a, i) => ({
-      id: `temp-att-${Date.now()}-${i}`,
-      name: a.name,
-      mime: a.mime,
-      size: a.size,
-      timestamp: new Date(),
-      data: a.dataB64,
-    }));
     
     const lastPersistedMessageId = resolveLastPersistedMessageId();
-    // Capture the active path before mutating state so follow-up streaming stays on the visible branch.
-    const activePathIds = messages.map((msg) => msg.id);
 
-    // Show user's message immediately (with AttachmentOut shape)
-    const tempId = `temp-${Date.now()}`;
-    const tempParentId = messages.length === 0 ? null : lastPersistedMessageId;
-    const tempMessage: MessageOut = {
-      id: tempId,
-      sender: 'user',
-      type: attachments.length > 0 ? 'file' : 'text',
-      content: currentMessage || undefined,
-      parentMessageId: tempParentId ?? undefined,
-      created_at: new Date(),
-      updated_at: new Date(),
-      attachments: tempAttachmentsOut as any,
-      rawEvents: [],
-      plan: undefined,
-      subagents: undefined,
-    };
-    setMessages(prev => [...prev, tempMessage]);
     setCurrentMessage('');
     setAttachments([]);
     // Show the transition dot while we wait for the backend to start emitting real AG-UI events.
@@ -239,75 +211,47 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         if (!currentAgent) {
           throw new Error('No agent selected for new conversation.');
         }
-        const conversationPayload: ConversationIn = {
+        await beginInferenceRun({
+          mode: "new",
           agentId: currentAgent.id,
           isPrivate: isPrivateMode,
-          title: undefined,
-          firstMessage: {
+          message: {
             sender: 'user',
             type: attachments.length > 0 ? 'file' : 'text',
             content: currentMessage || undefined,
             attachments: apiAttachments,
             parentMessageId: null,
           },
-        };
-        
-        const response = await createConversation(userId!, conversationPayload);
-        setCurrentConversation(response.detail);
-        
-        // Replace temp  message with authoritative messages from server
-        setMessages(() => response.detail.messages);
-        setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
-        persistUIState?.();
-        if (setShowAiTransition) setShowAiTransition(true);
-        
-        // Start streaming inference
-        const detailMessages = response.detail.messages || [];
-        const replyParentMessageId = detailMessages.length ? detailMessages[detailMessages.length - 1]?.id : undefined;
-        if (!replyParentMessageId) {
-          throw new Error('Conversation missing first message id.');
-        }
-
-        await beginInferenceRun(response.detail.id, {
-          parentMessageId: replyParentMessageId,
-          messagePath: detailMessages.map((m) => m.id),
           enabledTools,
         });
+        persistUIState?.();
       }
 
       // Full shared conversation: first reply imports the share into the user's workspace.
       else if (sharedConversationToken && currentConversation?.id === `shared:${sharedConversationToken}`) {
-        const messagePayload: MessageIn = {
-          parentMessageId: null,
-          sender: 'user',
-          type: attachments.length > 0 ? 'file' : 'text',
-          content: currentMessage || undefined,
-          attachments: apiAttachments,
-        };
-
-        const response = await continueSharedConversation(sharedConversationToken, messagePayload);
-        setCurrentConversation(response.detail);
-        updateSession({ lastConversationId: response.detail.id });
-        setMessages(() => response.detail.messages);
-        setConversations(prev => sortByUpdatedAtDesc([response.summary, ...prev]));
-        persistUIState?.();
-        if (setShowAiTransition) setShowAiTransition(true);
-
-        const detailMessages = response.detail.messages || [];
-        const replyParentMessageId = detailMessages.length ? detailMessages[detailMessages.length - 1]?.id : undefined;
-        if (!replyParentMessageId) {
-          throw new Error('Conversation missing imported reply id.');
-        }
-
-        await beginInferenceRun(response.detail.id, {
-          parentMessageId: replyParentMessageId,
-          messagePath: detailMessages.map((m) => m.id),
+        const response = await beginInferenceRun({
+          mode: "shared_continue",
+          sharedConversationToken,
+          message: {
+            parentMessageId: null,
+            sender: 'user',
+            type: attachments.length > 0 ? 'file' : 'text',
+            content: currentMessage || undefined,
+            attachments: apiAttachments,
+          },
           enabledTools,
         });
+        setCurrentConversation(response.detail);
+        setMessages(() => response.detail.messages);
+        updateSession({ lastConversationId: response.detail.id });
+        persistUIState?.();
       }
 
       // Existing conversation: send message normally
       else {
+        if (!currentConversation) {
+          throw new Error('No active conversation for this send.');
+        }
         if (!lastPersistedMessageId) {
           throw new Error('Unable to determine parent message for the new entry.');
         }
@@ -319,32 +263,23 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           attachments: apiAttachments,
         };
         
-        const response = await addMessageToConversation(userId!, currentConversation!.id, messagePayload);
-        // Replace temp message with API message
-        setMessages(prev => prev.map(m => (m.id === tempId ? response.message : m)));
-        
-        // Touch currentConversation timestamps minimally
-        setCurrentConversation(prev =>
-          prev ? { ...prev, updated_at: new Date(response.summary.updated_at) } : prev
-        );
-        // Update sidebar summary and keep ordering
-        setConversations(prev => sortByUpdatedAtDesc(prev.map(conv => (conv.id === response.summary.id ? response.summary : conv))));
-        persistUIState?.();
-        if (setShowAiTransition) setShowAiTransition(true);
-        const replyParentMessageId = response.message.id;
-
-        await beginInferenceRun(currentConversation!.id, {
-          parentMessageId: replyParentMessageId,
-          messagePath: [...activePathIds, response.message.id],
+        await beginInferenceRun({
+          mode: "send",
+          conversationId: currentConversation.id,
+          parentMessageId: lastPersistedMessageId,
+          messagePath: buildPathToMessage(currentConversation.messages ?? messages, lastPersistedMessageId),
+          message: messagePayload,
           enabledTools,
         });
+        persistUIState?.();
       }
     } catch (error) {
-      // Handle errors: show toast and remove temp message
       console.error('Failed to send message:', error);
-      toast({ title: 'Error', description: 'Failed to send message. Please try again.', variant: 'destructive' });
-      // Remove optimistic rows so a failed send does not leave stray temp items in the thread.
-      setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
+      const copy = getInferenceStartErrorCopy(error, {
+        title: 'Error',
+        description: 'Failed to send message. Please try again.',
+      });
+      toast({ ...copy, variant: 'destructive' });
     } finally {
       // Always release the shared streaming state, even if the failure happened before streaming began.
       streamAbortRef.current = null;
@@ -374,19 +309,13 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
   const {
     userId,
     currentConversation,
-    setConversationMessages,
-    setCurrentConversation,
-    setConversations,
     toast,
-    setThinkingState,
     setShowAiTransition,
-    streamAbortRef,
     rootBranchKey,
     setBranchSelections,
     setIsSendingMessage,
     enabledTools,
     persistUIState,
-    onPlanSnapshot,
     resetActivePlan,
     beginInferenceRun,
   } = ctx;
@@ -454,43 +383,28 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         content: trimmed,
       };
 
-      const response = await addMessageToConversation(userId, currentConversation.id, payload);
-      const newMessage = response.message;
-
-      // Append the edited user message as a new branch sibling rather than mutating historical content.
-      setConversationMessages((prev) => [...prev, newMessage]);
-
-      setCurrentConversation((prev: ConversationDetail | null) =>
-        prev ? { ...prev, updated_at: new Date(response.summary.updated_at) } : prev,
-      );
-      setConversations((prev) =>
-        sortByUpdatedAtDesc(prev.map((conv) => (conv.id === response.summary.id ? response.summary : conv))),
-      );
-      persistUIState?.();
+      if (setShowAiTransition) setShowAiTransition(true);
+      await beginInferenceRun({
+        mode: 'edit',
+        conversationId: currentConversation.id,
+        targetMessageId,
+        message: payload,
+        enabledTools,
+      });
 
       // Switch the visible branch selection to the newly created edited sibling.
       setBranchSelections((prev) => ({
         ...prev,
         [parentKey]: siblingCount,
       }));
-
-      if (setShowAiTransition) setShowAiTransition(true);
-
-      const baseMessages = [...allMessages, newMessage];
-      // Build the exact branch lineage the streamed AI reply should appear under.
-      const parentPath = buildPathToMessage(baseMessages, parentId);
-      await beginInferenceRun(currentConversation.id, {
-        parentMessageId: newMessage.id,
-        messagePath: [...parentPath, newMessage.id],
-        enabledTools,
-      });
+      persistUIState?.();
     } catch (error) {
       console.error('Failed to submit edited message', error);
-      toast({
+      const copy = getInferenceStartErrorCopy(error, {
         title: 'Failed to edit message',
         description: 'Please try again in a moment.',
-        variant: 'destructive',
       });
+      toast({ ...copy, variant: 'destructive' });
       throw error;
     } finally {
       // Edit submission owns the send/loading flags just like the main composer send flow.
@@ -546,19 +460,13 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
   const {
     userId,
     currentConversation,
-    setConversationMessages,
-    setCurrentConversation,
-    setConversations,
     toast,
-    setThinkingState,
     setShowAiTransition,
-    streamAbortRef,
     rootBranchKey,
     setBranchSelections,
     setIsSendingMessage,
     enabledTools,
     persistUIState,
-    onPlanSnapshot,
     resetActivePlan,
     beginInferenceRun,
   } = ctx;
@@ -602,8 +510,10 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
       setIsSendingMessage?.(true);
       if (setShowAiTransition) setShowAiTransition(true);
       const parentPath = buildPathToMessage(allMessages, parentId);
-      await beginInferenceRun(currentConversation.id, {
-        parentMessageId: parentId,
+      await beginInferenceRun({
+        mode: 'retry',
+        conversationId: currentConversation.id,
+        targetMessageId: message.id,
         messagePath: parentPath,
         enabledTools,
       });
@@ -611,13 +521,14 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
         ...prev,
         [parentKey]: siblingCount,
       }));
+      persistUIState?.();
     } catch (error) {
       console.error('Failed to retry AI message', error);
-      toast({
+      const copy = getInferenceStartErrorCopy(error, {
         title: 'Failed to retry message',
         description: 'Please try again in a moment.',
-        variant: 'destructive',
       });
+      toast({ ...copy, variant: 'destructive' });
     } finally {
       // Retry owns the same send/loading cleanup contract as send and edit-submit.
       setIsSendingMessage?.(false);

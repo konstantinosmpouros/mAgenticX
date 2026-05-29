@@ -403,19 +403,21 @@ sequenceDiagram
     participant Bridge as dialogue_bridge
     participant IRM as InferenceRunRuntime
 
-    UI->>Bridge: POST /v1/inference/start/{user_id}/{conv_id}
-    Bridge-->>UI: InferenceRunStartResponse {run, message, summary}
+    UI->>Bridge: POST /v1/inference/runs/{user_id}/start
+    Bridge-->>UI: InferenceStartResponse {detail, summary, run, message}
     UI->>UI: applyRunEvent({type:"snapshot", ...})
-    UI->>Bridge: GET /v1/inference/observe/{user_id}/{run_id} (SSE)
+    UI->>Bridge: GET /v1/inference/runs/{user_id}/{run_id}/stream (SSE)
     Bridge-->>UI: snapshot (initial DB state)
     Bridge-->>UI: update (per-chunk IRM flush)
     Bridge-->>UI: terminal (run complete)
     UI->>UI: abort controller — stop observing
 ```
 
-`beginRun()` calls `startInferenceRun()`, applies the snapshot event, and immediately begins observing via `observeRun()`. The abort controller stored in `controllersRef` is used both to stop the SSE connection on unmount and to signal that a run has ended (triggered by `applyRunEvent` when the terminal event arrives).
+`beginRun()` calls `startInference()`, applies the returned conversation detail/summary plus the run placeholder state, and immediately begins observing via `observeRun()`. The start endpoint is backend-owned: normal send, edit, retry, new conversation, and shared conversation continuation all persist their user-side action, create the AI placeholder, create the run, and return hydrated state from one request. The abort controller stored in `controllersRef` is used both to stop the SSE connection on unmount and to signal that a run has ended (triggered by `applyRunEvent` when the terminal event arrives).
 
 **Page load hydration** — on mount, `useEffect` calls `getActiveInferenceRuns(userId)`. For each active run returned, `observeRunId()` is called so the UI reconnects to any stream that was already running before the page loaded.
+
+**Sidebar streaming state** — terminal run status is authoritative. When a terminal event arrives, the UI clears `runsByConversation`, `activeRunId`, and `isStreaming` for that conversation. IndexedDB snapshots also strip those transient flags, so a refresh cannot resurrect a stale spinner without a matching active run from the backend.
 
 ---
 
@@ -504,5 +506,5 @@ The UI uses `tasks` to render task cards (one per sub-agent invocation) and `eve
 | Client-side type definitions | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `InferenceRun`, `InferenceRunEvent`, `MessageOut`, `ThinkingState` |
 | Client AG-UI Zod schemas | [src/agentic_ui/src/lib/agui.ts](../../src/agentic_ui/src/lib/agui.ts) | `PlanSnapshotSchema`, `HITLInterruptPayloadSchema`, `CustomAguiEventSchema` |
 | Run observation and lifecycle | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `applyRunEvent()`, `observeRunId()`, `beginRun()`, `stopRun()` |
-| Inference action handlers | [src/agentic_ui/src/handlers/inference.ts](../../src/agentic_ui/src/handlers/inference.ts) | `handleSendMessage()`, `handleStopStreaming()` |
+| Inference runtime | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `handleSendMessage()`, `handleStopStreaming()`, edit/retry/shared continue start requests |
 | Chain of thought rendering | [src/agentic_ui/src/components/chat/message_parts/ChainOfThought.tsx](../../src/agentic_ui/src/components/chat/message_parts/ChainOfThought.tsx) | `buildCoTSteps()`, `CoT` component |

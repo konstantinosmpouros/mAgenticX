@@ -377,13 +377,14 @@ Detached runs are the primary inference path. The run lifecycle is fully owned b
 
 ### 11.1 Run creation
 
-`create_inference_run(...)` (in `utils/inference_runs.py`) runs transactionally:
+`start_inference_flow(...)` (in `utils/inference_start.py`) orchestrates persistence, then calls `create_inference_run_record(...)` (in `utils/inference_runs.py`) in the same transaction:
 
-1. inserts an `InferenceRunTable` row with status `queued`
+1. persists the user-side action for `new`, `send`, `edit`, `retry`, or `shared_continue`
 2. creates an AI placeholder `MessageTable` row
-3. sets `conversation.active_inference_run_id` to the new run id
+3. inserts an `InferenceRunTable` row with status `queued`
+4. sets `conversation.active_inference_run_id` to the new run id
 
-The function returns the `InferenceRunTable` row, the placeholder message, and the conversation summary — all in the same DB transaction.
+The endpoint returns the latest conversation detail/summary, the run, and the placeholder message after the transaction commits.
 
 ### 11.2 Background task execution
 

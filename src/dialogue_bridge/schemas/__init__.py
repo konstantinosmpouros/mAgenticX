@@ -447,10 +447,6 @@ class ConversationPdfExportIn(BaseModel):
         normalized = [str(item).strip() for item in value if str(item).strip()]
         return normalized or None
 
-class ContinueSharedConversationIn(BaseModel):
-    """Create the caller's own conversation from a public share plus their first reply."""
-    firstMessage: MessageIn
-
 class ConversationShareResponse(BaseModel):
     """Owner response for a created share link."""
     id: str
@@ -534,11 +530,19 @@ class RealtimeVoiceEndOut(BaseModel):
 #-------------------------------------------
 # INFERENCE RUN DTO
 #-------------------------------------------
-class InferenceRunStartPayload(BaseModel):
-    """Payload to map the visible message branch and create a backend-owned inference run."""
+class InferenceStartPayload(BaseModel):
+    """Backend-owned inference start request for new/send/edit/retry flows."""
+    mode: Literal["new", "send", "edit", "retry", "shared_continue"]
+    agentId: Optional[str] = None
+    isPrivate: bool = False
+    title: Optional[str] = None
+    sharedConversationToken: Optional[str] = None
+    conversationId: Optional[str] = None
+    parentMessageId: Optional[str] = None
+    targetMessageId: Optional[str] = None
     messagePath: list[str] | None = None
     enabledTools: list[ToolPreference] | None = Field(default=None, validation_alias="enabledTools")
-    parentMessageId: str = Field(..., min_length=1)
+    message: Optional[MessageIn] = None
 
 
 class InferenceRunOut(BaseModel):
@@ -570,10 +574,11 @@ class InferenceRunOut(BaseModel):
         return value if isinstance(value, list) else []
 
 
-class InferenceRunStartResponse(BaseModel):
+class InferenceStartResponse(BaseModel):
+    detail: ConversationDetail
+    summary: ConversationSummary
     run: InferenceRunOut
     message: MessageOut
-    summary: ConversationSummary
 
 
 class InferenceRunEvent(BaseModel):
@@ -711,7 +716,6 @@ __all__ = [
     "ConversationForkIn",
     "ConversationShareIn",
     "ConversationPdfExportIn",
-    "ContinueSharedConversationIn",
     "ConversationShareResponse",
     "ConversationShareListItem",
     "SharedConversationDetail",
@@ -721,9 +725,9 @@ __all__ = [
     "RealtimeVoiceConversationEventIn",
     "RealtimeVoiceEndIn",
     "RealtimeVoiceEndOut",
-    "InferenceRunStartPayload",
+    "InferenceStartPayload",
+    "InferenceStartResponse",
     "InferenceRunOut",
-    "InferenceRunStartResponse",
     "InferenceRunEvent",
     "UpdateConversationResponse",
     "MessageUpdate",

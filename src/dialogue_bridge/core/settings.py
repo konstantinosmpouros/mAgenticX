@@ -200,7 +200,7 @@ class RateLimitSettings(BaseSettings):
 
     auth_max_attempts: int = Field(4, validation_alias="AUTH_RATE_LIMIT_MAX_ATTEMPTS")
     auth_window_seconds: int = Field(60, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
-    inference_max_attempts: int = Field(2, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
+    inference_max_attempts: int = Field(10, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
     inference_window_seconds: int = Field(60, validation_alias="INFERENCE_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_active_runs: int = Field(5, validation_alias="INFERENCE_MAX_ACTIVE_RUNS_PER_USER")
 

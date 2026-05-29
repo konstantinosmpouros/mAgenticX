@@ -40,8 +40,8 @@ sequenceDiagram
     participant Chroma as ChromaDB
     participant Duck as DuckDB
 
-    Browser->>Bridge: POST /v1/inference/runs/{user_id}/{conv_id}
-    Bridge-->>Browser: run id + assistant message id
+    Browser->>Bridge: POST /v1/inference/runs/{user_id}/start {mode, enabledTools}
+    Bridge-->>Browser: detail + summary + run + assistant placeholder
     Browser->>Bridge: GET /v1/inference/runs/{user_id}/{run_id}/stream
     Bridge->>Bridge: serialize message history with images
     Bridge->>Agents: POST /agents/{slug}/stream {messages, config}
@@ -374,6 +374,6 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | HITL, plan, sub-agent event models | [src/agents/runtime/protocols/agui/events.py](../../src/agents/runtime/protocols/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
 | Agent stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{agent_slug}/stream` |
 | Agent catalog endpoints | [src/agents/main.py](../../src/agents/main.py) | `GET /agents`, `GET /tools` |
-| Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceRun()`, `observeInferenceRun()`, `cancelInferenceRun()` |
+| Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `observeInferenceRun()`, `cancelInferenceRun()` |
 | Message history serialization | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `prepare_inference_history()`, `serialise_message_with_images_for_agent()` |
 | Internal caller auth | [src/agents/core/proxy.py](../../src/agents/core/proxy.py) | `require_internal_caller()` |

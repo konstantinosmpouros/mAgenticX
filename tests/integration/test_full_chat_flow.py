@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import utils.titles
-from router import conversations as conversation_router
 from router import inference as inference_router
+from utils import inference_start as inference_start_utils
 
 
 async def test_create_run_and_finalize_chat_flow(client, seeded_user, seeded_agent, monkeypatch):
@@ -12,41 +12,33 @@ async def test_create_run_and_finalize_chat_flow(client, seeded_user, seeded_age
     async def fake_generate_title(_first_message):
         return "Planned onboarding"
 
-    monkeypatch.setattr(conversation_router, "get_agent_by_id", fake_get_agent_by_id)
+    monkeypatch.setattr(inference_start_utils, "get_agent_by_id", fake_get_agent_by_id)
     monkeypatch.setattr(utils.titles, "generate_conversation_title", fake_generate_title)
     monkeypatch.setattr(inference_router.inference_run_manager, "launch", lambda _run_id: None)
 
-    create_response = await client.post(
-        f"/v1/conversations/{seeded_user.id}",
+    run_response = await client.post(
+        f"/v1/inference/runs/{seeded_user.id}/start",
         json={
+            "mode": "new",
             "agentId": seeded_agent.id,
             "isPrivate": False,
-            "firstMessage": {
+            "message": {
                 "sender": "user",
                 "type": "text",
                 "content": "Help me plan a new onboarding flow.",
             },
-        },
-    )
-
-    assert create_response.status_code == 201
-    created = create_response.json()
-    conversation_id = created["detail"]["id"]
-    user_message_id = created["detail"]["messages"][0]["id"]
-    assert created["summary"]["title"] == "Planned onboarding"
-
-    run_response = await client.post(
-        f"/v1/inference/runs/{seeded_user.id}/{conversation_id}",
-        json={
-            "parentMessageId": user_message_id,
-            "messagePath": [user_message_id],
             "enabledTools": [{"serverId": "rag", "toolName": "sql_query"}],
         },
     )
 
     assert run_response.status_code == 201
     run_payload = run_response.json()
+    conversation_id = run_payload["detail"]["id"]
+    user_message_id = run_payload["detail"]["messages"][0]["id"]
     ai_message_id = run_payload["message"]["id"]
+    assert run_payload["summary"]["title"] == "Planned onboarding"
+    assert [message["sender"] for message in run_payload["detail"]["messages"]] == ["user", "ai"]
+    assert run_payload["detail"]["activeRunId"] == run_payload["run"]["id"]
     assert run_payload["run"]["assistantMessageId"] == ai_message_id
     assert run_payload["run"]["messagePath"] == [user_message_id, ai_message_id]
     assert run_payload["run"]["enabledTools"] == [{"server_id": "rag", "tool_name": "sql_query"}]

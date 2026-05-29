@@ -1,6 +1,8 @@
 # Inference and Streaming Flow
 
-When a user sends a message, the platform does not stream the agent response directly through the same HTTP connection that initiated the request. Instead, the dialogue bridge creates a persistent server-side `asyncio` task — an **inference run** — that owns the agent stream independently of any browser connection. The browser opens a separate SSE observer endpoint to receive events from that task. It can disconnect, refresh, or reconnect freely without interrupting the run. The server writes to the database exactly twice per run: once at creation and once at completion.
+Inference is backend-owned. The UI sends one start request, and the dialogue bridge persists the user-side action, creates the AI placeholder, creates the run, commits, launches the detached task, and returns the hydrated conversation state. The UI observes what the backend owns; it does not separately create durable user messages, AI placeholders, or runs.
+
+Dictation, read aloud, and realtime voice mode do not use this flow.
 
 ---
 
@@ -8,18 +10,45 @@ When a user sends a message, the platform does not stream the agent response dir
 
 ```mermaid
 flowchart LR
-    UI["Agentic UI\n(React)"]
-    Bridge["dialogue_bridge\n(FastAPI :8002)"]
+    UI["Agentic UI\nReact"]
+    Bridge["dialogue_bridge\nFastAPI :8002"]
     PG["Postgres"]
-    Agents["agents\n(FastAPI :8003)"]
+    Agents["agents service"]
 
-    UI -->|"POST /runs (start)"| Bridge
-    UI -->|"GET /runs/.../stream (SSE observer)"| Bridge
-    UI -->|"POST /runs/.../cancel"| Bridge
-    Bridge -->|"asyncpg"| PG
-    Bridge -->|"POST /agents/{slug}/stream\n(inside background task)"| Agents
+    UI -->|"POST /v1/inference/runs/{user_id}/start"| Bridge
+    UI -->|"GET /v1/inference/runs/{user_id}/{run_id}/stream"| Bridge
+    UI -->|"POST /v1/inference/runs/{user_id}/{run_id}/cancel"| Bridge
+    Bridge -->|"SQLAlchemy async"| PG
+    Bridge -->|"POST /agents/{slug}/stream\ninside detached task"| Agents
     Agents -->|"AG-UI SSE frames"| Bridge
 ```
+
+---
+
+## Start Modes
+
+`POST /v1/inference/runs/{user_id}/start` accepts a discriminated `mode` payload:
+
+| Mode | Backend action before run creation | Run parent |
+| --- | --- | --- |
+| `new` | Create conversation and first user message | New first user message |
+| `send` | Append a user message to an existing conversation | New user message |
+| `edit` | Create an edited user-message sibling branch | New edited user message |
+| `retry` | Create no user message; retry an AI response | Original AI message's parent user message |
+| `shared_continue` | Clone a full shared snapshot into the user workspace and append the first continuation message | New continuation user message |
+
+The response is always:
+
+```json
+{
+  "detail": "ConversationDetail",
+  "summary": "ConversationSummary",
+  "run": "InferenceRunOut",
+  "message": "MessageOut for the AI placeholder"
+}
+```
+
+The `detail` and `summary` are the source of truth for the UI immediately after start. If the user switches conversations after the request returns, a later conversation detail fetch plus active-run hydration can reconstruct the same state.
 
 ---
 
@@ -30,192 +59,300 @@ sequenceDiagram
     participant UI as Agentic UI
     participant Bridge as dialogue_bridge
     participant PG as Postgres
-    participant Task as asyncio Task
+    participant Task as InferenceRunManager task
     participant Agents as agents service
 
-    UI->>Bridge: POST /v1/inference/runs/{userId}/{conversationId}
-    Bridge->>PG: INSERT inference_run (status=queued) + INSERT message (content="")
-    Bridge->>PG: UPDATE conversation.active_inference_run_id
-    Bridge-->>UI: InferenceRunStartResponse {run, message, summary}
-    Bridge->>Task: asyncio.create_task(_run(run_id))
+    UI->>Bridge: POST /v1/inference/runs/{user_id}/start {mode, message, path, tools}
+    Bridge->>PG: Validate user ownership and active-run conflicts
+    Bridge->>PG: Persist user-side action for mode
+    Bridge->>PG: INSERT AI placeholder + inference_run(status=queued)
+    Bridge->>PG: SET conversation.active_inference_run_id
+    Bridge->>PG: COMMIT
+    Bridge->>PG: Reload conversation detail, run, placeholder
+    Bridge->>Task: launch(run.id)
+    Bridge-->>UI: {detail, summary, run, message}
 
-    UI->>Bridge: GET /v1/inference/runs/{userId}/{run_id}/stream
-    Bridge-->>UI: SSE snapshot from DB (status=queued or running)
+    UI->>UI: Apply returned detail/summary/run/message
+    UI->>Bridge: GET /v1/inference/runs/{user_id}/{run_id}/stream
+    Bridge-->>UI: SSE snapshot
 
-    Task->>PG: UPDATE inference_run status=running
-    Task->>PG: SELECT run + conversation + messages (single read)
-    Task->>Agents: POST /agents/{slug}/stream (background, inside task)
+    Task->>PG: UPDATE run status=running
+    Task->>PG: Load run, conversation, message history
+    Task->>Agents: POST /agents/{slug}/stream
 
-    loop Per AG-UI SSE chunk from agents
-        Agents-->>Task: AG-UI event bytes
-        Task->>Task: _parse_sse_bytes → apply_event → accumulate in runtime
-        Task-->>Bridge: publish in-memory event (no DB write)
-        Bridge-->>UI: SSE data frame (content, thinking, plan)
+    loop AG-UI chunks
+        Agents-->>Task: AG-UI SSE frame
+        Task->>Task: Accumulate content, thinking, rawEvents, plan, subagents
+        Task-->>Bridge: Publish in-memory update
+        Bridge-->>UI: SSE update
     end
 
-    Task->>PG: _finish_run — UPDATE run + message + conversation (single commit)
-    Task-->>Bridge: publish terminal snapshot (from fresh DB read)
-    Bridge-->>UI: SSE terminal event (status=completed/cancelled/failed)
-    UI->>UI: applyRunEvent → patch messages, clear runsByConversation
+    Task->>PG: Terminal write: run + placeholder + conversation
+    Task-->>Bridge: Publish terminal snapshot
+    Bridge-->>UI: SSE terminal
+    UI->>UI: Clear active run and sidebar streaming state
 ```
+
+## Database Execution Map
+
+The inference flow is designed so live streaming does not write to Postgres per chunk. Database work happens at start, observer snapshots, task startup, terminal finalization, hydration, and cancel.
+
+```mermaid
+sequenceDiagram
+    participant UI as Agentic UI
+    participant Start as start_inference_flow
+    participant Runs as create_inference_run_record
+    participant Task as InferenceRunManager task
+    participant Obs as observe_run_events
+    participant PG as Postgres
+
+    UI->>Start: POST /runs/{user_id}/start
+
+    rect rgb(35, 35, 35)
+        Note over Start,PG: Start request transaction
+        Start->>PG: SELECT current user for route ownership dependency
+        Start->>PG: SELECT conversation + messages + attachments for ownership/path validation
+        alt mode = new
+            Start->>PG: INSERT conversation
+            Start->>PG: INSERT first user message + attachments/blobs
+        else mode = send
+            Start->>PG: INSERT user message + attachments/blobs
+            Start->>PG: UPDATE conversation preview/timestamps from user message
+        else mode = edit
+            Start->>PG: INSERT edited user sibling + attachments/blobs
+            Start->>PG: UPDATE conversation preview/timestamps from user message
+        else mode = retry
+            Start->>PG: No user message INSERT
+        else mode = shared_continue
+            Start->>PG: SELECT active share
+            Start->>PG: INSERT copied conversation
+            Start->>PG: INSERT copied snapshot messages + attachments/blobs
+            Start->>PG: INSERT continuation user message + attachments/blobs
+        end
+        Runs->>PG: SELECT stale queued runs for conversation
+        opt stale queued run without live task
+            Runs->>PG: UPDATE stale run status=failed
+            Runs->>PG: UPDATE stale assistant message error fields
+            Runs->>PG: CLEAR conversation.active_inference_run_id if needed
+        end
+        Runs->>PG: SELECT count(active runs for user)
+        Runs->>PG: SELECT active run for conversation
+        Runs->>PG: INSERT AI placeholder message
+        Runs->>PG: INSERT inference_run(status=queued, message_path, enabled_tools)
+        Runs->>PG: UPDATE conversation.active_inference_run_id + last_message_at
+        Start->>PG: COMMIT
+    end
+
+    rect rgb(30, 42, 55)
+        Note over Start,PG: Response hydration after commit
+        Start->>PG: SELECT conversation detail + messages + attachments
+        Start->>PG: SELECT inference_run by id
+        Start->>PG: SELECT AI placeholder + attachments/blobs
+    end
+
+    par Observer connects
+        UI->>Obs: GET /runs/{user_id}/{run_id}/stream
+        Obs->>PG: SELECT inference_run by id
+        Obs->>PG: SELECT assistant message + attachments/blobs
+        Obs->>PG: SELECT conversation + agent for summary snapshot
+    and Task starts
+        Task->>PG: SELECT inference_run by id
+        Task->>PG: UPDATE inference_run status=running
+        Task->>PG: COMMIT
+        Task->>PG: SELECT conversation detail + messages + attachments
+        Task->>PG: SELECT agent metadata if not already cached
+    end
+
+    loop Every AG-UI stream chunk
+        Task->>Task: Accumulate content/thinking/rawEvents/plan/subagents in memory
+        Note over Task,PG: No Postgres read or write per chunk
+    end
+
+    rect rgb(55, 40, 35)
+        Note over Task,PG: Terminal finalization
+        Task->>PG: SELECT inference_run by id
+        Task->>PG: UPDATE inference_run content/status/thinking/rawEvents/plan/subagents/error/completed_at
+        Task->>PG: SELECT assistant message + attachments/blobs
+        Task->>PG: UPDATE assistant message content/thinking/rawEvents/plan/subagents/error fields
+        Task->>PG: SELECT conversation by id
+        Task->>PG: CLEAR conversation.active_inference_run_id
+        Task->>PG: UPDATE conversation preview/timestamps
+        Task->>PG: COMMIT
+    end
+
+    Task->>PG: SELECT inference_run by id for terminal snapshot
+    Task->>PG: SELECT assistant message + attachments/blobs
+    Task->>PG: SELECT conversation + agent for terminal summary
+    Task->>Obs: publish terminal payload to subscriber queues
+```
+
+| Moment | Database work | Why it exists |
+| --- | --- | --- |
+| Start request | Ownership/path reads, mode-specific writes, active-run checks, AI placeholder insert, run insert, conversation active pointer update, one commit | Makes the whole user action durable before the UI observes it |
+| Response hydration | Conversation detail, run, and placeholder reloads | Returns canonical backend state to the UI |
+| Observer connect/reconnect | Run, message, conversation summary reads | Lets the UI recover from refresh or navigation |
+| Task startup | Run status update, conversation/history read, agent metadata read | Prepares the request sent to the agents service |
+| Stream chunks | No database execution | Keeps token streaming latency independent of DB writes |
+| Terminal finalization | Run update, placeholder update, conversation active pointer clear, one commit | Persists the final answer and removes active streaming state |
+| Terminal publish | Run, message, conversation summary reads | Sends a final authoritative SSE snapshot |
+| Cancel, optional | Run status update to `cancelling`; if no live task, message/conversation cleanup and commit | Makes cancellation visible immediately and clears orphaned active state |
 
 ---
 
-## Phase 1 — Run Creation
+## Phase 1 - Backend-Owned Start
 
-The browser calls `POST /v1/inference/runs/{userId}/{conversationId}` with a JSON body containing `parentMessageId`, an optional `messagePath` (the branch of message IDs to use as history), and an optional `enabledTools` list. The endpoint is protected by CSRF double-submit and validates both the user session and conversation ownership before touching the database.
+The router is intentionally thin. `router/inference.py::startInferenceFlow()` validates CSRF/session/rate limit, calls `utils/inference_start.py::start_inference_flow()`, launches the run, and returns the already-built response.
 
-`create_inference_run()` performs all DB work in a single transaction:
+`start_inference_flow()` does the orchestration:
 
-1. Checks for an existing active run on the same conversation. If one exists it returns `409 Conflict` immediately — the partial unique index on `inference_runs` enforces this at the DB level too.
-2. Validates that `parentMessageId` belongs to the conversation's message set.
-3. Inserts a `MessageTable` row for the AI placeholder with `sender="ai"`, `content=""`, `raw_events=[]`. This is the message the browser will start rendering immediately.
-4. Inserts an `InferenceRunTable` row with `status="queued"`, the resolved `message_path` (existing path plus the new placeholder message ID), and serialized `enabled_tools`.
-5. Sets `conversation.active_inference_run_id = run.id` so any client loading the conversation knows a run is active.
-6. Commits and returns the run + loaded message.
-
-The router then returns the full `InferenceRunStartResponse` to the browser **before** launching the background task. Only after the response is sent does it call `inference_run_manager.launch(run.id)`.
+1. Dispatches by `payload.mode`.
+2. Validates conversation ownership before any existing-conversation write.
+3. Rejects unsupported modes or missing mode-specific fields.
+4. Persists the user-side action for `new`, `send`, `edit`, and `shared_continue`.
+5. Uses the existing user prompt for `retry`.
+6. Calls `create_inference_run_record()` to create the AI placeholder and queued run.
+7. Commits once.
+8. Reloads and returns `ConversationDetail`, `ConversationSummary`, `InferenceRunOut`, and the placeholder `MessageOut`.
 
 ```mermaid
 flowchart TD
-    A["POST /runs/{userId}/{conversationId}"] --> B{Active run exists?}
-    B -->|Yes| C["409 Conflict"]
-    B -->|No| D{Parent message valid?}
-    D -->|No| E["400 Bad Request"]
-    D -->|Yes| F["INSERT MessageTable (placeholder)"]
-    F --> G["INSERT InferenceRunTable (status=queued)"]
-    G --> H["UPDATE conversation.active_inference_run_id"]
-    H --> I["COMMIT"]
-    I --> J["Return InferenceRunStartResponse"]
-    J --> K["inference_run_manager.launch(run_id)"]
+    A["POST /runs/{user_id}/start"] --> B{mode}
+    B -->|"new"| C["init_conv()\nconversation + first user message"]
+    B -->|"send"| D["validate conversation + path\ninit_message(user)"]
+    B -->|"edit"| E["validate target user message\ninit_message(user sibling)"]
+    B -->|"retry"| F["validate target AI message\nuse its parent user message"]
+    B -->|"shared_continue"| G["load active share\nclone snapshot + continuation user message"]
+    C & D & E & F & G --> H["create_inference_run_record()"]
+    H --> I["INSERT AI placeholder"]
+    I --> J["INSERT inference_run(status=queued)"]
+    J --> K["SET conversation.active_inference_run_id"]
+    K --> L["COMMIT"]
+    L --> M["Reload detail/run/message"]
+    M --> N["launch(run.id)"]
+    N --> O["Return start response"]
 ```
 
-| Field | Value at creation |
-| --- | --- |
-| `status` | `queued` |
-| `content` | `""` |
-| `thinking` | `null` |
-| `raw_events` | `[]` |
-| `message_path` | `[...existing branch ids, new_message_id]` |
-| `completed_at` | `null` |
+`create_inference_run_record()` also enforces:
+
+- one active run per conversation, backed by the partial unique index on active statuses
+- per-user active-run limits
+- stale queued-run cleanup before creating a new run
+- message lineage validation before storing `message_path`
+
+If `launch()` raises after the DB commit, the router marks the run as failed with `mark_run_launch_failed()` and returns a 500. That prevents a queued run from being left active forever.
 
 ---
 
-## Phase 2 — The Detached asyncio Task
+## Lineage Rules
 
-`InferenceRunManager.launch(run_id)` creates an `asyncio.Event` for cancellation and an `asyncio.Task` wrapping `_run(run_id, cancel_event)`. Both are stored in internal dicts keyed by `run_id`. A done-callback removes them automatically when the task finishes.
+Inference history is branch-aware. The backend does not blindly trust the client path.
 
-`_run()` is the top-level task coroutine. It starts by opening a DB session, loading the run, checking it is still in `ACTIVE_RUN_STATUSES`, and setting `status = "running"`. It then opens a second DB session to re-load the run and capture a `run_meta` dict — a frozen snapshot of all static run fields (IDs, timestamps, path, tools). This dict is passed into the stream loop so that building in-memory events requires no further DB reads.
+- `messagePath` entries must all belong to the conversation.
+- Each entry must be parent-linked to the next entry.
+- For `send`, the path must end at the selected parent before the new user message is inserted.
+- For `edit`, the target must be a user message; the new user message is a sibling under the original parent.
+- For `retry`, the target must be an AI message; the run parent is that AI message's parent user message.
+- The stored run `message_path` is rebuilt by the backend and ends in the new AI placeholder.
 
-After setup, `_run()` races two tasks using `asyncio.wait`:
+This matters for branching: editing and retrying should create siblings, not overwrite existing messages or accidentally run against a stale branch.
+
+---
+
+## Phase 2 - Detached Task Lifecycle
+
+`InferenceRunManager.launch(run_id)` creates an `asyncio.Task` for `_run(run_id, cancel_event)` and stores the task and cancellation event in memory. The task:
+
+1. Marks the run as `running`.
+2. Loads static run metadata and the prepared message history.
+3. Starts `_do_stream()` against the agents service.
+4. Races the stream task against `cancel_event.wait()`.
+5. Finishes as `completed`, `cancelled`, or `failed`.
 
 ```mermaid
 flowchart TD
-    A["_run starts"] --> B["SET status=running in DB"]
-    B --> C["Load run_meta, build request_payload"]
-    C --> D["stream_task = create_task(_do_stream(...))"]
-    C --> E["cancel_waiter = create_task(cancel_event.wait())"]
+    A["_run starts"] --> B["SET run.status=running"]
+    B --> C["Load run metadata and inference history"]
+    C --> D["stream_task = _do_stream(...)"]
+    C --> E["cancel_waiter = cancel_event.wait()"]
     D & E --> F["asyncio.wait(FIRST_COMPLETED)"]
-    F --> G{Who finished first?}
-    G -->|cancel_waiter| H["stream_task.cancel()"]
-    H --> I["_mark_run_cancelled"]
-    G -->|stream_task| J["cancel_waiter.cancel()"]
-    J --> K{stream_task raised?}
-    K -->|Yes| L["_mark_run_failed"]
-    K -->|No| M["_mark_run_completed"]
-    I & L & M --> N["_publish_snapshot terminal"]
+    F --> G{winner}
+    G -->|"cancel"| H["cancel stream task\n_finish_run(cancelled)"]
+    G -->|"stream raises"| I["_finish_run(failed)"]
+    G -->|"RUN_ERROR event"| I
+    G -->|"stream completes"| J["_finish_run(completed)"]
+    H & I & J --> K["publish terminal snapshot"]
 ```
 
-This racing pattern is why cancellation is immediate. When `cancel_event.set()` fires, the `asyncio.wait` returns immediately, and `stream_task.cancel()` throws `CancelledError` at whichever `await` is currently executing inside `aiter_bytes()` — which is the actual HTTP read of the agent stream. There is no waiting for the next chunk to arrive.
+Terminal status is idempotent and authoritative. A run that has already failed or cancelled cannot later be marked completed by a late stream result.
 
 ---
 
-## Phase 3 — Stream Loop and In-Memory Accumulation
+## Phase 3 - AG-UI Runtime Accumulation
 
-`_do_stream()` opens an `httpx.AsyncClient` and POSTs to the agents service stream endpoint. The timeout is set at `connect=30s, read=180s`. The `Accept: text/event-stream` header is sent along with an internal service secret header for TLS-fronted inter-service authentication.
-
-For each raw byte chunk arriving from the agents service, `_parse_sse_bytes()` maintains an SSE text buffer, splitting on `\n\n` to extract complete events and parsing each `data:` line as JSON. Events that have a `type` field are passed to `InferenceRunRuntime.apply_event()`.
-
-`InferenceRunRuntime` is the in-memory accumulator for the entire run:
+The bridge streams the agents service response as AG-UI events and accumulates a runtime state in memory. Runtime updates do not write to the database.
 
 ```mermaid
 flowchart TD
     E["AG-UI event"] --> T{event type}
-    T -->|TEXT_MESSAGE_CHUNK / CONTENT| A["runtime.content += delta"]
-    T -->|THINKING_TEXT_MESSAGE_CONTENT| B["runtime.thoughts.append(delta)"]
-    T -->|TOOL_CALL_START| C["runtime.thoughts.append('[tool] name')"]
-    T -->|THINKING_START| D["record thinking_start timestamp"]
-    T -->|THINKING_END| F["record thinking_end timestamp"]
-    T -->|CUSTOM PLAN_SNAPSHOT| G["runtime.plan = value"]
-    T -->|CUSTOM TASK_SUBAGENT| H["runtime.subagents['tasks'].append(value)"]
-    T -->|CUSTOM SUBAGENT_EVENT| I["runtime.subagents['events'].append(value)"]
-    T -->|CUSTOM HITL_INTERRUPT| J["runtime.subagents['interrupts'].append(value)"]
-    T -->|CUSTOM *| K["runtime.raw_events.append(event)"]
-    T -->|RUN_ERROR| L["_mark_run_failed + _publish_snapshot → return"]
+    T -->|"TEXT_MESSAGE_CHUNK / CONTENT"| A["content += delta"]
+    T -->|"THINKING_TEXT_MESSAGE_CONTENT"| B["thinking append"]
+    T -->|"TOOL_CALL_START"| C["thinking append tool marker"]
+    T -->|"CUSTOM PLAN_SNAPSHOT"| D["plan = snapshot"]
+    T -->|"CUSTOM TASK_SUBAGENT"| F["subagents.tasks append"]
+    T -->|"CUSTOM SUBAGENT_EVENT"| G["subagents.events append"]
+    T -->|"CUSTOM HITL_INTERRUPT"| H["subagents.interrupts append"]
+    T -->|"RUN_ERROR"| I["_finish_run(failed)\nstop stream"]
+    T -->|"any parsed event"| J["rawEvents append when applicable"]
 ```
 
-After each chunk that contained at least one event, `_publish_runtime_event()` is called. This builds a lightweight `{type: "update", run: {...}, message: {...}}` payload entirely from `run_meta` + `runtime` state — zero DB reads — and puts it on every subscriber queue via `InferenceRunManager.publish()`.
+Live update payloads include enough state for the UI to render the current response: `content`, `thinking`, `rawEvents`, `plan`, and `subagents`.
 
 ---
 
-## Phase 4 — SSE Observer and Pub/Sub Fan-Out
+## Phase 4 - SSE Observation
 
-When the browser opens `GET /v1/inference/runs/{userId}/{run_id}/stream`, `observe_run_events(run_id)` is started as an async generator. Its first action is always to emit a DB snapshot regardless of whether the task is currently running:
+`GET /v1/inference/runs/{user_id}/{run_id}/stream` opens an observer connection. `observe_run_events()` subscribes around snapshot emission so a terminal event cannot be missed between "read snapshot" and "start listening".
 
 ```mermaid
 sequenceDiagram
-    participant UI as Browser SSE client
+    participant UI as Browser
     participant Observer as observe_run_events
     participant Manager as InferenceRunManager
     participant PG as Postgres
 
     UI->>Observer: connect
+    Observer->>Manager: subscribe(run_id)
     Observer->>PG: build_run_event_payload(run_id, "snapshot")
-    Observer-->>UI: data: {type: "snapshot", run, message, summary}
-    alt run already terminal
-        Observer-->>UI: (stream closes)
-    else run still active
-        Observer->>Manager: subscribe(run_id) → get Queue(maxsize=200)
-        loop until terminal event
-            Manager-->>Observer: queue.get() — in-memory event
-            Observer-->>UI: data: {type: "update", run, message, summary}
+    Observer-->>UI: snapshot
+    alt snapshot is terminal
+        Observer->>Manager: unsubscribe
+        Observer-->>UI: close
+    else active
+        loop until terminal
+            Manager-->>Observer: queued runtime or terminal event
+            Observer-->>UI: SSE data frame
         end
-        Observer->>Manager: unsubscribe(run_id, queue)
+        Observer->>Manager: unsubscribe
     end
 ```
 
-The immediate snapshot on connect is the reconnect mechanism. A browser that refreshes mid-stream reconnects and receives the last known DB state (which may be slightly behind the in-memory accumulator if no terminal write has happened yet), then immediately resumes receiving live in-memory events from the queue.
-
-`InferenceRunManager.publish()` iterates all registered queues for the run. Each queue has `maxsize=200`. If a queue is full (a slow or stalled browser), the oldest event is silently dropped and the new one is placed — preventing a slow observer from blocking the stream task.
-
-The `controllersRef` in `useInferenceRuns` holds an `AbortController` per active run. When the SSE stream ends (terminal event received), the controller is aborted and cleaned from the ref. This prevents duplicate observer connections if `observeRunId` is called again for a run that already has an open observer.
+Each subscriber queue is bounded. If a browser stalls, old in-memory updates may be dropped, but the terminal database write still contains the final content.
 
 ---
 
-## Phase 5 — Terminal Write and Finalization
+## Phase 5 - Terminal Write
 
-All three terminal outcomes — completed, cancelled, failed — go through `_finish_run()`. This is the **only DB write during or after a run** (excluding the creation write). It is atomic:
+`_finish_run()` is the only durable write after start. It updates:
 
-```mermaid
-flowchart TD
-    A["_finish_run(run_id, runtime, status)"] --> B["SELECT inference_run"]
-    B --> C["UPDATE run: status, content, thinking, raw_events, plan, subagents, error_message, completed_at"]
-    C --> D["SELECT assistant_message"]
-    D --> E["UPDATE message: content, reasoning_steps, reasoning_time_seconds, raw_events, plan, subagents, is_error, error_message"]
-    E --> F["SELECT conversation"]
-    F --> G["UPDATE conversation: active_inference_run_id=null, last_message_preview, last_message_at"]
-    G --> H["db.commit()"]
-```
+- `InferenceRunTable`: status, content, thinking, raw events, plan, subagents, error, completion time
+- AI placeholder `MessageTable`: content, thinking, reasoning time, raw events, plan, subagents, error fields
+- `ConversationTable`: clears `active_inference_run_id`, updates preview/timestamps from the final AI message
 
-After the commit, `_publish_snapshot()` reads the run fresh from DB and publishes the terminal event to all observers. The `type` field in this event is `"terminal"` for completed/cancelled and still carries the full `InferenceRunOut` + `MessageOut` + `ConversationSummary`. When the observer receives an event whose `run.status` is in `TERMINAL_RUN_STATUSES`, it stops reading and returns.
-
-`reasoning_time_seconds` is computed from `InferenceRunRuntime.thinking_duration_seconds()`: it measures from `first_event_ts` (or `thinking_start`) to `thinking_end` (or the timestamp when the first text chunk arrived, which implicitly closes the thinking block).
+After commit, the manager publishes a fresh terminal snapshot. The UI treats terminal run status as authoritative and clears `activeRunId`/`isStreaming` even if an older summary still contains active-run flags.
 
 ---
 
-## Phase 6 — Cancel Flow
-
-The cancel path has two cases depending on whether the live task is still running.
+## Phase 6 - Cancel Flow
 
 ```mermaid
 sequenceDiagram
@@ -223,75 +360,72 @@ sequenceDiagram
     participant Bridge as dialogue_bridge
     participant PG as Postgres
     participant Manager as InferenceRunManager
-    participant Task as asyncio Task
+    participant Task as Run task
 
-    UI->>Bridge: POST /runs/{userId}/{run_id}/cancel
-    Bridge->>PG: UPDATE run status=cancelling, cancel_requested_at=now
+    UI->>Bridge: POST /runs/{user_id}/{run_id}/cancel
+    Bridge->>PG: SET run.status=cancelling
     Bridge->>Manager: request_cancel(run_id)
+    Bridge-->>UI: InferenceRunOut(status=cancelling)
+    Bridge-->>UI: SSE update(status=cancelling)
 
     alt live task exists
         Manager->>Task: cancel_event.set()
-        Bridge-->>UI: InferenceRunOut {status: "cancelling"}
-        Task->>Task: asyncio.wait sees cancel_waiter done
-        Task->>Task: stream_task.cancel() → CancelledError at aiter_bytes await
-        Task->>PG: _finish_run(status=cancelled)
-        Task->>Manager: _publish_snapshot terminal
-        Manager-->>UI: SSE {status: cancelled}
-    else no live task (already done or never started)
-        Bridge->>PG: UPDATE run status=cancelled immediately
-        Bridge->>PG: UPDATE conversation.active_inference_run_id=null
-        Bridge-->>UI: InferenceRunOut {status: "cancelled"}
+        Task->>Task: cancel agents HTTP stream
+        Task->>PG: _finish_run(cancelled)
+        Task-->>UI: terminal snapshot
+    else task not live
+        Bridge->>PG: mark cancelled and clear conversation active pointer
     end
 ```
 
-After `request_cancel()` returns, the cancel endpoint also calls `build_run_event_payload` and publishes an update event so the browser sees `status: "cancelling"` immediately via the SSE stream without waiting for the task to finish.
+Cancel interrupts the agents HTTP stream at the next await inside the bridge task; it does not wait for the next agent chunk.
 
 ---
 
-## Phase 7 — Page Load Hydration
+## Phase 7 - UI Hydration and Sidebar State
 
-On mount, `useInferenceRuns` calls `getActiveInferenceRuns(userId)` which hits `GET /v1/inference/runs/{userId}?status=active`. This returns all runs in `(queued, running, cancelling)` status for the user. For each one, the hook calls `observeRun(run)` to open an SSE observer. This means that if the user closes and reopens the browser while a run is in progress, the UI immediately reconnects to the live stream and resumes rendering.
+`useInferenceRuns` is the only AG-UI observer in the frontend.
+
+- `beginRun()` calls `startInference(userId, request)`.
+- It applies the returned `detail`, `summary`, `run`, and placeholder `message`.
+- It opens the SSE observer at `/v1/inference/runs/{user_id}/{run_id}/stream`.
+- On mount, it calls `getActiveInferenceRuns(userId)` and observes every active run.
+- When active-run hydration returns, conversations not returned as active are cleared locally.
+- Terminal events always clear `runsByConversation`, `activeRunId`, and `isStreaming` for that conversation.
+
+The IndexedDB UI snapshot intentionally does not persist transient streaming state. Serialized and deserialized conversation summaries force `activeRunId: null` and `isStreaming: false`; after rehydrating a snapshot, the app fetches fresh conversations and active runs from the backend.
+
+---
+
+## Shared Conversation Continuation
+
+Shared continuation uses the same start endpoint and run lifecycle as normal chat.
 
 ```mermaid
 flowchart TD
-    A["useInferenceRuns mounts"] --> B["getActiveInferenceRuns(userId)"]
-    B --> C{Any active runs?}
-    C -->|No| D["runsByConversation = empty"]
-    C -->|Yes| E["For each active run:"]
-    E --> F["setRunsByConversation[run.conversationId] = run"]
-    E --> G["observeRun(run) → open SSE observer"]
-    G --> H["observe_run_events: snapshot + live queue"]
+    A["Shared page Continue"] --> B["POST /v1/inference/runs/{user_id}/start\nmode=shared_continue"]
+    B --> C["load active share token"]
+    C --> D["clone full share snapshot into user's workspace"]
+    D --> E["append continuation user message"]
+    E --> F["create AI placeholder + run"]
+    F --> G["return owner conversation detail + run"]
+    G --> H["UI navigates to the owned copied conversation"]
 ```
 
-The hook also watches `currentActiveRunId` (derived from the currently open conversation's `activeRunId` field). Whenever the user navigates to a conversation that has an active run, `observeRunId` is called automatically.
-
----
-
-## Phase 8 — Startup Cleanup
-
-`cleanup_orphaned_inference_runs()` runs in the FastAPI lifespan at service startup, before the server begins accepting requests. It bulk-updates all runs in `ACTIVE_RUN_STATUSES` to `failed` with the message `"Inference run was interrupted by service restart."`, and sets all `conversation.active_inference_run_id` to `null`. This prevents orphaned `queued` or `running` rows from blocking new runs on conversations that had in-flight tasks when the process was killed.
+The original shared conversation is not mutated. The copied conversation belongs to the authenticated user and behaves like any normal conversation after creation.
 
 ---
 
 ## Sharp Edges and Behavioral Notes
 
-- **The run is launched after the HTTP response.** `inference_run_manager.launch(run.id)` is called after the `201` response is already sent. This means the browser receives a run with `status: "queued"` and must open the SSE observer to see it transition to `"running"`. There is no race condition here because the DB snapshot on observer connect always reflects the latest status.
-
-- **There can be exactly one active run per conversation at a time.** This is enforced at two levels: `create_inference_run()` checks with a `SELECT` and raises `409`, and the DB has a partial unique index `uq_inference_runs_one_active_per_conversation` on `(conversation_id)` where `status IN ('queued', 'running', 'cancelling')`.
-
-- **The in-memory queue has maxsize=200. Slow observers lose events.** If the browser's SSE connection is slow or stalled, the queue fills up and the oldest event is evicted to make room for the newest. The observer will not miss the content permanently — the terminal DB write captures everything — but mid-stream rendering may skip intermediate thought steps.
-
-- **Reconnecting gets a stale snapshot then resumes live.** The DB snapshot on reconnect reflects only the last `_finish_run` write, which happens at the end of the run. While the run is live, the snapshot shows `content: ""` because no intermediate DB writes happen. This means a reconnect during a long run will briefly show an empty message before the next in-memory event arrives and fills in the accumulated content.
-
-- **`run_meta` is captured once and never updated during the stream.** The `status` field inside `run_meta` stays `"running"` for the entire stream loop. The browser derives visual state from the events it receives, not from polling the run status directly.
-
-- **Cancel interrupts at the next `await`, not at the next chunk.** `stream_task.cancel()` throws `CancelledError` at whichever `await` is executing inside `aiter_bytes()`. If the agents service is slow to send chunks, the cancel is still immediate from the bridge's perspective — the HTTP connection to the agents service is dropped at the OS level.
-
-- **`RUN_ERROR` from the agents service is treated as a failure, not a cancellation.** If the agent stream itself emits `{type: "RUN_ERROR"}`, `_do_stream` calls `_mark_run_failed` directly and returns. This differs from a task cancellation in that the content accumulated up to the error is still saved.
-
-- **Startup cleanup is a bulk UPDATE, not per-run finalization.** `cleanup_orphaned_inference_runs()` does not call `_finish_run()` — it uses a raw `UPDATE ... WHERE status IN (...)`. This means orphaned runs get `status=failed` but their `content`, `thinking`, and `raw_events` fields stay whatever was last in the DB (which for most crashes is `""` / `null` since no intermediate writes happen). Expect empty AI messages after a crash.
-
-- **The legacy `/stream/{userId}/{conversationId}` endpoint still exists.** It proxies the agent SSE stream directly to the browser without creating a run or any DB record. It is superseded by the detached run flow but remains available.
+- **Start is atomic; launch is not part of the DB transaction.** The run and placeholder commit before `launch()`. If launch fails, the bridge marks the run failed so the conversation is not left active.
+- **One active run per conversation.** The backend pre-checks, and the database partial unique index enforces active statuses `queued`, `running`, and `cancelling`.
+- **Streaming has no intermediate DB writes.** Refresh during a live run gets a DB snapshot plus live in-memory updates. After completion, the terminal write is durable.
+- **Startup cleanup fails orphaned active runs.** On bridge startup, active runs from a previous process are marked failed and conversation active pointers are cleared.
+- **Stale queued runs are cleaned before creating a new run.** This protects conversations from a queued row left behind before task launch.
+- **Slow observers can miss intermediate updates.** The final terminal snapshot is authoritative and contains the completed response state.
+- **`RUN_ERROR` is terminal failed.** It cannot later become completed.
+- **Frontend snapshots must not restore spinners.** Sidebar streaming indicators come from fresh backend summary/detail or active-run hydration, not persisted UI cache.
 
 ---
 
@@ -299,18 +433,18 @@ The hook also watches `currentActiveRunId` (derived from the currently open conv
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Run creation | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `create_inference_run()` |
+| Start endpoint | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()` |
+| Backend start orchestration | [src/dialogue_bridge/utils/inference_start.py](../../src/dialogue_bridge/utils/inference_start.py) | `start_inference_flow()` and mode helpers |
+| Run creation and lineage | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `create_inference_run_record()` |
+| Lineage validation | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `resolve_inference_message_path()` |
 | Task lifecycle | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._run()` |
 | Stream loop | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._do_stream()` |
-| In-memory accumulator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()` |
-| In-memory event builder | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._build_runtime_event()` |
-| Pub/sub fan-out | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager.publish()`, `subscribe()`, `unsubscribe()` |
-| SSE observer generator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `observe_run_events()` |
-| Terminal DB write | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_finish_run()` |
-| Cancel signal | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `request_run_cancel()`, `InferenceRunManager.request_cancel()` |
-| Startup cleanup | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `cleanup_orphaned_inference_runs()` |
-| API endpoints | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceRun`, `observeInferenceRun`, `cancelInferenceRun`, `listInferenceRuns` |
-| DB models | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `InferenceRunTable`, partial unique index, `ConversationTable.active_inference_run_id` |
-| Frontend hook | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `beginRun`, `stopRun`, `applyRunEvent`, `observeRunId`, hydration `useEffect` |
-| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `startInferenceRun`, `getActiveInferenceRuns`, `cancelInferenceRun`, `observeInferenceRun` |
-| Service startup | [src/dialogue_bridge/main.py](../../src/dialogue_bridge/main.py) | `lifespan` → `cleanup_orphaned_inference_runs()` |
+| Runtime accumulator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()` |
+| Terminal write | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_finish_run()` |
+| Observer generator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `observe_run_events()` |
+| Cancel path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `request_run_cancel()` |
+| Shared clone helper | [src/dialogue_bridge/utils/shared_conv.py](../../src/dialogue_bridge/utils/shared_conv.py) | `create_conversation_from_share_record()` |
+| Frontend inference runtime | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `handleSendMessage()`, edit/retry/shared continue start requests |
+| Frontend observer hook | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `beginRun()`, `applyRunEvent()`, `observeRunId()` |
+| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `startInference()`, `observeInferenceRun()`, `getActiveInferenceRuns()` |
+| UI snapshot storage | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | transient run flags are stripped |

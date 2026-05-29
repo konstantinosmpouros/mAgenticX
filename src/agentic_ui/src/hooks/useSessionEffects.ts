@@ -139,7 +139,7 @@ export function useAuthRehydrateEffect(params: {
             needsTools =
               Boolean(setAvailableTools) && !(snapshot.availableTools && snapshot.availableTools.length > 0);
             needsPreferences = Boolean(setUserPreferences) && !snapshot.userPreferences;
-            needsConversations = !(snapshot.conversations && snapshot.conversations.length > 0);
+            needsConversations = true;
 
             if (typeof snapshot.lastConversationId === 'string') {
               conversationId = snapshot.lastConversationId;

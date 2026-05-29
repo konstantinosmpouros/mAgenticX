@@ -4,7 +4,8 @@ import { Building2, CalendarDays, Home, Send, ShieldCheck, X } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import ChatBody from "@/components/chat/ChatBody";
-import { continueSharedConversation, getSharedConversation } from "@/lib/api";
+import { getSharedConversation, startInference } from "@/lib/api";
+import { getInferenceStartErrorCopy } from "@/lib/inferenceErrors";
 import type { MessageOut, SharedConversationDetail } from "@/lib/types";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
 import { useToast } from "@/hooks/use-toast";
@@ -126,26 +127,30 @@ export default function SharedConversationPage() {
       navigate("/login");
       return;
     }
+    const userId = session.userId;
 
     setContinuing(true);
     try {
-      const response = await continueSharedConversation(token, {
-        sender: "user",
-        type: "text",
-        content,
-        parentMessageId: null,
+      const response = await startInference(userId, {
+        mode: "shared_continue",
+        sharedConversationToken: token,
+        message: {
+          sender: "user",
+          type: "text",
+          content,
+          parentMessageId: null,
+        },
       });
       updateSession({ lastConversationId: response.detail.id });
-      toast({ title: "Conversation added", description: "This shared conversation is now in your workspace.", duration: 2200 });
+      toast({ title: "Conversation added", description: "The agent response is now running in your workspace.", duration: 2200 });
       navigate("/");
     } catch (err) {
       console.error("Failed to continue shared conversation:", err);
-      toast({
+      const copy = getInferenceStartErrorCopy(err, {
         title: "Could not continue conversation",
         description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-        duration: 3000,
       });
+      toast({ ...copy, variant: "destructive", duration: 3000 });
     } finally {
       setContinuing(false);
     }
@@ -177,7 +182,7 @@ export default function SharedConversationPage() {
   }
 
   return (
-    <div className="flex min-h-svh max-h-svh flex-col overflow-hidden bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(240_7%_8%)_58%,hsl(220_13%_9%)_100%)] text-foreground">
+    <div className="flex h-svh flex-col overflow-hidden bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(240_7%_8%)_58%,hsl(220_13%_9%)_100%)] text-foreground">
       <header className="shrink-0 border-b border-white/10 bg-background/85 backdrop-blur-xl">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 md:px-6">
           <div className="flex min-w-0 items-center gap-3">
@@ -254,7 +259,7 @@ export default function SharedConversationPage() {
         </div>
       </section>
 
-      <main className="min-h-0 flex-1 overflow-hidden px-0 py-0 md:px-6 md:py-5">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-0 py-0 md:px-6 md:py-5">
         {loading ? (
           <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-center rounded-none border-white/10 bg-card/20 text-sm text-muted-foreground md:rounded-2xl md:border">
             Loading shared conversation...
@@ -276,7 +281,7 @@ export default function SharedConversationPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto h-full w-full max-w-6xl overflow-hidden border-white/10 bg-background/45 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:rounded-2xl md:border">
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden border-white/10 bg-background/45 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:rounded-2xl md:border">
             <ChatBody
               messages={detail.messages}
               loadingConversation={false}

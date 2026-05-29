@@ -54,7 +54,6 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
         "forkConversation",
         "shareConversation",
         "revokeSharedConversationLink",
-        "continueSharedConversation",
         "addMessageToConversation",
         "updateMessageInConversation",
         "likeMessage",
@@ -64,6 +63,8 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
         "createRealtimeVoiceSession",
         "persistRealtimeVoiceConversationEvent",
         "endRealtimeVoiceSession",
+        "startInference",
+        "cancelInferenceRun",
     ]
 
     for function_name in mutating_functions:
@@ -71,6 +72,24 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
         next_function = api_source.find("\nexport ", start + 1)
         block = api_source[start:] if next_function == -1 else api_source[start:next_function]
         assert "{ csrf: true }" in block, function_name
+
+
+def test_inference_runtime_starts_normal_flows_through_backend_start_api():
+    runtime_source = (UI_ROOT / "src" / "runtime" / "inference.ts").read_text(encoding="utf-8")
+    hook_source = (UI_ROOT / "src" / "hooks" / "useInferenceRuns.ts").read_text(encoding="utf-8")
+    api_source = (UI_ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
+
+    assert "createConversation" not in runtime_source
+    assert "addMessageToConversation" not in runtime_source
+    assert 'mode: "new"' in runtime_source
+    assert 'mode: "shared_continue"' in runtime_source
+    assert "continueSharedConversation" not in api_source
+    assert 'mode: "send"' in runtime_source
+    assert "mode: 'edit'" in runtime_source
+    assert "mode: 'retry'" in runtime_source
+    assert "startInference(userId, request)" in hook_source
+    assert "/runs/${userId}/start" in api_source
+    assert "startInferenceRun" not in api_source
 
 
 def test_attachment_preview_registry_covers_requested_formats():

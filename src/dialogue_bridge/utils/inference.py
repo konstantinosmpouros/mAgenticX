@@ -6,6 +6,52 @@ from observability import EventLogger
 from core.database import MessageTable
 
 
+def build_path_to_message(messages: list[MessageTable], message_id: str) -> list[MessageTable]:
+    """Return the parent-linked lineage ending at a message in this conversation."""
+    lookup = {message.id: message for message in messages}
+    current = lookup.get(message_id)
+    if current is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message does not belong to this conversation.")
+
+    path: list[MessageTable] = []
+    seen: set[str] = set()
+    while current is not None:
+        if current.id in seen:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Conversation branch is cyclic.")
+        seen.add(current.id)
+        path.append(current)
+        parent_id = current.parent_message_id
+        if not parent_id:
+            break
+        current = lookup.get(parent_id)
+        if current is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Conversation branch is incomplete.")
+
+    path.reverse()
+    return path
+
+
+def resolve_inference_message_path(
+    messages: list[MessageTable],
+    parent_message_id: str,
+    requested_message_ids: list[str] | None,
+) -> list[str]:
+    """
+    Validate the UI branch hint when provided, then return the authoritative
+    DB lineage ending at the parent message. The backend never trusts client
+    ordering for the persisted run path.
+    """
+    if requested_message_ids:
+        ordered = validate_and_order_message_path(messages, requested_message_ids)
+        for previous, current in zip(ordered, ordered[1:]):
+            if current.parent_message_id != previous.id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="messagePath is not a valid message lineage.")
+        if ordered[-1].id != parent_message_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="messagePath must end at the inference parent message.")
+
+    return [message.id for message in build_path_to_message(messages, parent_message_id)]
+
+
 def validate_and_order_message_path(
     messages: list[MessageTable],
     message_ids: list[str] | None,

@@ -17,11 +17,8 @@ from core.database import (
     b64_decode,
 )
 from schemas import (
-    ContinueSharedConversationIn,
-    ConversationDetail,
     ConversationShareListItem,
-    ConversationSummary,
-    CreateConversationResponse,
+    MessageIn,
 )
 from utils.conversations import _preview, init_message
 
@@ -106,14 +103,19 @@ async def load_active_share(token: str, db: AsyncSession) -> ConversationShareTa
     return share
 
 
-async def create_conversation_from_share(
+async def create_conversation_from_share_record(
     *,
     db: AsyncSession,
     share: ConversationShareTable,
     current_user: UserTable,
-    payload: ContinueSharedConversationIn,
-) -> CreateConversationResponse:
+    first_message: MessageIn,
+) -> tuple[ConversationTable, str]:
     snapshot = dict(share.snapshot_json or {})
+    if snapshot.get("shareMode") != "full":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only full-conversation shares can be continued.",
+        )
     snapshot_messages = list(snapshot.get("messages") or [])
     if not snapshot_messages:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shared conversation has no messages to continue.")
@@ -133,7 +135,7 @@ async def create_conversation_from_share(
         agent_name=agent.name,
         title=title,
         is_private=False,
-        last_message_preview=_preview(payload.firstMessage.content),
+        last_message_preview=_preview(first_message.content),
         last_message_at=now,
         updated_at=now,
     )
@@ -184,11 +186,11 @@ async def create_conversation_from_share(
                 updated_at=parse_snapshot_datetime(attachment.get("timestamp")) or updated_at,
             ))
 
-    first_reply = await init_message(db, conv, payload.firstMessage, parent_message_id=last_imported_message.id if last_imported_message else None)
+    first_reply = await init_message(db, conv, first_message, parent_message_id=last_imported_message.id if last_imported_message else None)
     conv.last_message_preview = _preview(first_reply.content)
     conv.last_message_at = now
     conv.updated_at = now
-    await db.commit()
+    await db.flush()
 
     result = await db.execute(
         select(ConversationTable)
@@ -201,7 +203,4 @@ async def create_conversation_from_share(
         .where(ConversationTable.id == conv.id, ConversationTable.user_id == current_user.id)
     )
     conv_full = result.scalar_one()
-    return CreateConversationResponse(
-        detail=ConversationDetail.model_validate(conv_full),
-        summary=ConversationSummary.model_validate(conv_full),
-    )
+    return conv_full, first_reply.id

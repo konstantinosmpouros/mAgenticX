@@ -225,7 +225,7 @@ export default function ChatBody({
   }, [messages.length, onScrolledPastTop]);
 
   return (
-    <div className="flex-1 overflow-hidden relative">
+    <div className="relative min-h-0 flex-1 overflow-hidden">
       <ScrollArea className="h-full" onScroll={handleScroll} onWheel={handleWheel} viewportRef={viewportRef}>
         <div
           className={`w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth ${
@@ -346,6 +346,5 @@ export default function ChatBody({
     </div>
   );
 }
-
 
 

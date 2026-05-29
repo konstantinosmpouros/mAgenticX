@@ -4,66 +4,53 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from observability import set_context
 
-from core.database import ConversationTable, InferenceRunTable, UserTable, get_db
+from core.database import InferenceRunTable, UserTable, get_db
 from schemas import (
-    ConversationSummary,
+    InferenceStartPayload,
+    InferenceStartResponse,
     InferenceRunOut,
-    InferenceRunStartPayload,
-    InferenceRunStartResponse,
-    MessageOut,
 )
 from core.auth_session import require_csrf_protection
 from core.rate_limit import INFERENCE_RATE_LIMIT, inference_user_key, limiter
-from utils import (
-    validate_convId_full,
-    validate_userId,
-)
+from utils import validate_userId
 from utils.inference_runs import (
     build_run_event_payload,
-    create_inference_run,
     inference_run_manager,
+    mark_run_launch_failed,
     observe_run_events,
     request_run_cancel,
 )
+from utils.inference_start import start_inference_flow
 
 
 router = APIRouter()
 
 
 @router.post(
-    "/runs/{user_id}/{conversation_id}",
-    response_model=InferenceRunStartResponse,
+    "/runs/{user_id}/start",
+    response_model=InferenceStartResponse,
     status_code=status.HTTP_201_CREATED,
 )
 @limiter.limit(INFERENCE_RATE_LIMIT, key_func=inference_user_key)
-async def startInferenceRun(
+async def startInferenceFlow(
     request: Request,
     user_id: str,
-    conversation_id: str,
-    payload: InferenceRunStartPayload,
+    payload: InferenceStartPayload,
     current_user: UserTable = Depends(validate_userId),
-    current_conv: ConversationTable = Depends(validate_convId_full),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
-) -> InferenceRunStartResponse:
-    """Create a backend-owned inference run and start it independently of the observer connection."""
-    set_context(user_id=user_id, conversation_id=conversation_id)
-    run, message = await create_inference_run(
-        db=db,
-        user_id=user_id,
-        conversation=current_conv,
-        parent_message_id=payload.parentMessageId,
-        message_path=payload.messagePath,
-        enabled_tools=payload.enabledTools,
-    )
-
-    await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "active_inference_run_id", "agent"])
-    response = InferenceRunStartResponse(
-        run=InferenceRunOut.model_validate(run),
-        message=MessageOut.model_validate(message),
-        summary=ConversationSummary.model_validate(current_conv),
-    )
-    inference_run_manager.launch(run.id)
+) -> InferenceStartResponse:
+    """Persist the user-side action, create the AI placeholder, and launch a backend-owned run."""
+    set_context(user_id=user_id, conversation_id=payload.conversationId)
+    response = await start_inference_flow(db=db, user=current_user, payload=payload)
+    try:
+        inference_run_manager.launch(response.run.id)
+    except Exception as exc:
+        await mark_run_launch_failed(response.run.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Inference run could not be launched.",
+        ) from exc
     return response
 
 
@@ -122,4 +109,3 @@ async def cancelInferenceRun(
     if payload:
         await inference_run_manager.publish(run.id, payload)
     return InferenceRunOut.model_validate(run)
-

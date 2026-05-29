@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { cancelInferenceRun, getActiveInferenceRuns, observeInferenceRun, startInferenceRun } from "@/lib/api";
+import { cancelInferenceRun, getActiveInferenceRuns, observeInferenceRun, startInference } from "@/lib/api";
+import { sortByUpdatedAtDesc } from "@/lib/utils";
 import type {
   ConversationDetail,
   ConversationSummary,
   InferenceRun,
   InferenceRunEvent,
-  InferenceRunStartRequest,
-  InferenceRunStartResponse,
+  InferenceStartRequest,
+  InferenceStartResponse,
   MessageOut,
   ThinkingState,
 } from "@/lib/types";
@@ -52,6 +53,13 @@ export function useInferenceRuns({
   const applyRunEvent = useCallback((event: InferenceRunEvent) => {
     const { run, message, summary } = event;
     const active = isActiveRun(run);
+    const resolvedSummary = summary
+      ? {
+          ...summary,
+          activeRunId: active ? (summary.activeRunId ?? run.id) : null,
+          isStreaming: active,
+        }
+      : null;
 
     setRunsByConversation((prev) => {
       const next = { ...prev };
@@ -63,9 +71,9 @@ export function useInferenceRuns({
       return next;
     });
 
-    if (summary) {
+    if (resolvedSummary) {
       setConversations((prev) =>
-        prev.map((conversation) => (conversation.id === summary.id ? { ...conversation, ...summary } : conversation))
+        prev.map((conversation) => (conversation.id === resolvedSummary.id ? { ...conversation, ...resolvedSummary } : conversation))
       );
     } else {
       setConversations((prev) =>
@@ -84,12 +92,12 @@ export function useInferenceRuns({
       const nextMessages = message ? patchMessage(prev.messages ?? [], message) : prev.messages;
       return {
         ...prev,
-        ...(summary
+        ...(resolvedSummary
           ? {
-              title: summary.title ?? prev.title,
-              updated_at: new Date(summary.updated_at),
-              activeRunId: summary.activeRunId ?? null,
-              isStreaming: Boolean(summary.isStreaming),
+              title: resolvedSummary.title ?? prev.title,
+              updated_at: new Date(resolvedSummary.updated_at),
+              activeRunId: resolvedSummary.activeRunId ?? null,
+              isStreaming: Boolean(resolvedSummary.isStreaming),
             }
           : {
               activeRunId: active ? run.id : null,
@@ -169,12 +177,24 @@ export function useInferenceRuns({
     void getActiveInferenceRuns(userId)
       .then((runs) => {
         if (cancelled) return;
+        const activeRunsByConversation = new Map(
+          runs.filter(isActiveRun).map((run) => [run.conversationId, run]),
+        );
         setConversations((prev) =>
           prev.map((conversation) => {
-            const run = runs.find((item) => item.conversationId === conversation.id && isActiveRun(item));
-            return run ? { ...conversation, activeRunId: run.id, isStreaming: true } : conversation;
+            const run = activeRunsByConversation.get(conversation.id);
+            return run
+              ? { ...conversation, activeRunId: run.id, isStreaming: true }
+              : { ...conversation, activeRunId: null, isStreaming: false };
           })
         );
+        setCurrentConversation((prev) => {
+          if (!prev) return prev;
+          const run = activeRunsByConversation.get(prev.id);
+          return run
+            ? { ...prev, activeRunId: run.id, isStreaming: true }
+            : { ...prev, activeRunId: null, isStreaming: false };
+        });
         setRunsByConversation(() => {
           const next: Record<string, InferenceRun> = {};
           for (const run of runs) {
@@ -196,16 +216,28 @@ export function useInferenceRuns({
       Object.values(controllersRef.current).forEach((controller) => controller.abort());
       controllersRef.current = {};
     };
-  }, [observeRun, userId]);
+  }, [observeRun, setConversations, setCurrentConversation, userId]);
 
   const beginRun = useCallback(async (
-    conversationId: string,
-    request: InferenceRunStartRequest,
-  ): Promise<InferenceRunStartResponse> => {
+    request: InferenceStartRequest,
+  ): Promise<InferenceStartResponse> => {
     if (!userId) {
       throw new Error("Not authenticated.");
     }
-    const response = await startInferenceRun(userId, conversationId, request);
+    const response = await startInference(userId, request);
+    setConversations((prev) => {
+      const found = prev.some((conversation) => conversation.id === response.summary.id);
+      const next = found
+        ? prev.map((conversation) => (conversation.id === response.summary.id ? response.summary : conversation))
+        : [response.summary, ...prev];
+      return sortByUpdatedAtDesc(next);
+    });
+    setCurrentConversation((prev) => {
+      if (!prev || prev.id === response.detail.id) {
+        return response.detail;
+      }
+      return prev;
+    });
     applyRunEvent({
       type: "snapshot",
       run: response.run,
@@ -214,7 +246,7 @@ export function useInferenceRuns({
     });
     observeRun(response.run);
     return response;
-  }, [applyRunEvent, observeRun, userId]);
+  }, [applyRunEvent, observeRun, setConversations, setCurrentConversation, userId]);
 
   const stopRun = useCallback(async (runId?: string | null) => {
     if (!userId || !runId) return;

@@ -29,16 +29,12 @@ sequenceDiagram
     participant Bridge as dialogue_bridge
     participant PG as Postgres
 
-    Browser->>Bridge: POST /v1/messages/{userId}/{convId} {sender, content, attachments, parentMessageId}
-    Bridge->>PG: INSERT messages + INSERT attachments + INSERT blobs
-    Bridge->>PG: UPDATE conversations (last_message_preview, last_message_at)
-    Bridge-->>Browser: {message: MessageOut, summary: ConversationSummary}
-
-    Browser->>Bridge: POST /v1/inference/start/{userId}/{convId} {parentMessageId, messagePath, enabledTools}
-    Bridge->>PG: INSERT inference_runs (status="queued")
-    Bridge->>PG: INSERT messages (sender="ai", content=NULL — placeholder)
+    Browser->>Bridge: POST /v1/inference/runs/{userId}/start {mode:"send", message, parentMessageId, messagePath, enabledTools}
+    Bridge->>PG: Validate conversation ownership and message path
+    Bridge->>PG: INSERT user message + attachments + blobs
+    Bridge->>PG: INSERT AI placeholder + inference_run(status="queued")
     Bridge->>PG: UPDATE conversations (active_inference_run_id)
-    Bridge-->>Browser: {run: InferenceRun, message: MessageOut, summary: ConversationSummary}
+    Bridge-->>Browser: {detail, summary, run, message}
     Note over Browser,Bridge: inference stream begins (see inference-streaming.md)
 ```
 
@@ -46,11 +42,11 @@ sequenceDiagram
 
 ## Phase 1 — Conversation Creation
 
-Every new conversation is created with its first user message in a single atomic operation. The bridge calls `init_conv()` which inserts the `ConversationTable` row and the first `MessageTable` row together, then commits.
+Normal chat starts are owned by the inference endpoint. For `mode: "new"`, the bridge creates the conversation, first user message, AI placeholder, and inference run in one committed flow, then returns hydrated conversation state.
 
 ```mermaid
 flowchart TD
-    A["handleSendMessage()\nmessages.length === 0"] --> B["POST /api/v1/conversations/{userId}"]
+    A["handleSendMessage()\nmessages.length === 0"] --> B["POST /api/v1/inference/runs/{userId}/start\nmode=new"]
     B --> C["Bridge: fetch agent by agentId"]
     C --> D{title in payload?}
     D -->|No| E["generate_conversation_title()\nfrom agents service"]
@@ -59,24 +55,26 @@ flowchart TD
     G -->|No| H["fallback: message preview or agent name"]
     G -->|Yes| I["use generated title"]
     F & H & I --> J["init_conv() — INSERT conversation + first message"]
-    J --> K["Reload with nested attachments for image encoding"]
-    K --> L["Return CreateConversationResponse\n{detail: ConversationDetail, summary: ConversationSummary}"]
+    J --> K["create AI placeholder + queued run"]
+    K --> L["Return InferenceStartResponse\n{detail, summary, run, message}"]
 ```
 
 **Request shape:**
 
 ```json
 {
+  "mode": "new",
   "agentId": "...",
   "isPrivate": false,
   "title": null,
-  "firstMessage": {
+  "message": {
     "sender": "user",
     "type": "text",
     "content": "Hello",
     "parentMessageId": null,
     "attachments": []
-  }
+  },
+  "enabledTools": []
 }
 ```
 
@@ -100,18 +98,19 @@ Every message in a conversation is connected to its predecessor via `parent_mess
 
 ### Editing a User Message
 
-When a user edits a message, the UI does not `PATCH` the existing row. Instead it:
+When a user edits a message, the UI does not `PATCH` the existing row. Instead it calls the backend-owned inference start endpoint with `mode: "edit"`:
 
-1. Calls `addMessageToConversation()` with the edited content and the **same `parentMessageId`** as the original.
-2. This creates a sibling message under the same parent.
-3. `beginInferenceRun()` is called with `messagePath = [...pathToParent, newMessage.id]`.
-4. The UI selects the new sibling by updating `branchSelections[parentId]` to point at the new index.
+1. The payload includes `conversationId`, `targetMessageId`, the edited user `message`, and enabled tools.
+2. The bridge validates that `targetMessageId` is a user message in the conversation.
+3. The bridge creates a sibling user message under the original parent.
+4. The same transaction creates the AI placeholder and queued run under that new user message.
+5. The UI hydrates from the returned `detail`, `summary`, `run`, and `message`.
 
 The original message is preserved. The user can navigate between branches using the branch selector arrows in the UI.
 
 ### Retrying an AI Response
 
-`handleRetryAiMessage(message)` finds the parent of the AI message, counts existing siblings, and calls `beginInferenceRun()` with `messagePath = pathToParent`. The new AI response lands as an additional sibling under the same parent. The UI increments `branchSelections` to show the new branch.
+`handleRetryAiMessage(message)` calls the inference start endpoint with `mode: "retry"` and the AI `targetMessageId`. The bridge validates that the target is an AI message, uses its parent user message as the run parent, and creates only a new AI placeholder sibling plus the run. No new user message is created for retry.
 
 ---
 
@@ -197,7 +196,7 @@ The share URL is `/share/{token}`. Accessing it calls `GET /v1/shared-conversati
 
 ### Continuing a Shared Conversation
 
-`POST /v1/shared-conversations/{token}/continue { firstMessage }` — imports the snapshot into the authenticated user's workspace as a new conversation, then adds the new message. Returns `CreateConversationResponse`. After this point the conversation is owned by the authenticated user and editable; the original share snapshot is unaffected.
+`POST /v1/inference/runs/{user_id}/start` with `mode: "shared_continue"` — imports the snapshot into the authenticated user's workspace as a new conversation, appends the first continuation user message, creates the AI placeholder/run, and starts inference. Returns `InferenceStartResponse`. After this point the conversation is owned by the authenticated user and editable; the original share snapshot is unaffected.
 
 ### Revoking a Share
 
@@ -267,7 +266,7 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 - **`branchSelections` is in-memory UI state only.** The selected branch index per parent is not persisted. On page reload the UI defaults to the most recently created sibling (last `created_at ASC`). If the user was viewing an older branch, the view resets to the latest one.
 
-- **`continueSharedConversation` always creates a new conversation.** Even if the authenticated user already has the original conversation, continuing a share produces a separate copy. The two conversations are not linked — changes to one do not affect the other.
+- **Shared continuation always creates a new conversation through inference start.** Even if the authenticated user already has the original conversation, `mode: "shared_continue"` clones the shared snapshot into a separate owned copy, appends the continuation user message, creates the AI placeholder/run, and starts inference. The source share and copied conversation are not linked.
 
 ---
 
@@ -284,6 +283,6 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 | Conversation ORM models | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `ConversationTable`, `MessageTable`, `ConversationShareTable`, `ConversationReportTable` |
 | Conversation API calls (frontend) | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `createConversation`, `getConversations`, `deleteConversation`, `forkConversation`, `shareConversation`, `addMessageToConversation` |
 | Conversation action handlers | [src/agentic_ui/src/handlers/conversations.ts](../../src/agentic_ui/src/handlers/conversations.ts) | `handleConversationSelect`, `handleForkConversation`, `handleDeleteConversation`, `clearChatAndStopThinking` |
-| Send message flow | [src/agentic_ui/src/handlers/inference.ts](../../src/agentic_ui/src/handlers/inference.ts) | `handleSendMessage()` — new vs existing vs shared conversation branches |
+| Send message flow | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `handleSendMessage()` — new, existing, edit, retry, shared continuation start modes |
 | Sidebar rendering | [src/agentic_ui/src/components/chat/ChatSidebar.tsx](../../src/agentic_ui/src/components/chat/ChatSidebar.tsx) | Scroll trigger, auto-load, rename inline edit, action menu |
 | Conversation state | [src/agentic_ui/src/pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx) | `currentConversation`, `conversations`, `branchSelections`, pagination state |

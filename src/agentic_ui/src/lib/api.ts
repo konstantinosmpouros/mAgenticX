@@ -24,8 +24,8 @@ import type {
   DownloadAttachmentParams,
   InferenceRun,
   InferenceRunEvent,
-  InferenceRunStartRequest,
-  InferenceRunStartResponse,
+  InferenceStartRequest,
+  InferenceStartResponse,
   ToolMetadata,
   ToolPreference,
   WorkspaceSearchResult,
@@ -708,41 +708,6 @@ export async function getSharedConversation(token: string): Promise<SharedConver
   return transformSharedConversationDetail(data);
 }
 
-
-// Continue a public shared conversation by creating an owned conversation for the signed-in user.
-export async function continueSharedConversation(
-  token: string,
-  firstMessage: MessageIn,
-): Promise<CreateConversationResponse> {
-  const res = await fetch(`${SHARED_CONVERSATIONS_BASE_PATH}/${encodeURIComponent(token)}/continue`, withSessionRequest({
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({ firstMessage }),
-  }, { csrf: true }));
-
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to continue shared conversation: ${res.status}`);
-  }
-
-  const data = await res.json();
-  return {
-    detail: transformConversationDetail(data.detail),
-    summary: transformConversationSummary(data.summary),
-  };
-}
-
-
 // Add a message to an existing conversation
 export async function addMessageToConversation(
   userId: string,
@@ -1156,22 +1121,28 @@ const transformInferenceRunEvent = (event: Record<string, any>): InferenceRunEve
   summary: event.summary ? transformConversationSummary(event.summary) : null,
 });
 
-export async function startInferenceRun(
+export async function startInference(
   userId: string,
-  conversationId: string,
-  payload: InferenceRunStartRequest,
-): Promise<InferenceRunStartResponse> {
+  payload: InferenceStartRequest,
+): Promise<InferenceStartResponse> {
   const body: Record<string, unknown> = {
-    parentMessageId: payload.parentMessageId,
+    mode: payload.mode,
   };
-  if (payload.messagePath?.length) {
-    body.messagePath = payload.messagePath;
-  }
+  if (payload.agentId) body.agentId = payload.agentId;
+  if (typeof payload.isPrivate === "boolean") body.isPrivate = payload.isPrivate;
+  if (payload.title) body.title = payload.title;
+  if (payload.sharedConversationToken) body.sharedConversationToken = payload.sharedConversationToken;
+  if (payload.conversationId) body.conversationId = payload.conversationId;
+  if (payload.parentMessageId) body.parentMessageId = payload.parentMessageId;
+  if (payload.targetMessageId) body.targetMessageId = payload.targetMessageId;
+  if (payload.messagePath?.length) body.messagePath = payload.messagePath;
+  if (payload.message) body.message = payload.message;
   const enabledTools = serializeToolPreferences(payload.enabledTools);
   if (enabledTools) {
     body.enabledTools = enabledTools;
   }
-  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${conversationId}`, withSessionRequest({
+
+  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, withSessionRequest({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1188,16 +1159,17 @@ export async function startInferenceRun(
     } catch {
       // ignore body parse issues
     }
-    const error = new Error(detail || `Failed to start inference run: ${res.status}`);
+    const error = new Error(detail || `Failed to start inference: ${res.status}`);
     (error as any).status = res.status;
     (error as any).detail = detail;
     throw error;
   }
   const data = await res.json();
   return {
+    detail: transformConversationDetail(data.detail),
+    summary: transformConversationSummary(data.summary),
     run: transformInferenceRun(data.run),
     message: transformMessage(data.message),
-    summary: transformConversationSummary(data.summary),
   };
 }
 

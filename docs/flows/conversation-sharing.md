@@ -210,9 +210,9 @@ Validates: `is_active = true`, `revoked_at IS NULL`, `expires_at IS NULL OR expi
 
 ### Fork Endpoint (authentication + CSRF required)
 
-**`POST /v1/shared-conversations/{token}/continue`** — Fork a share into a new conversation
+**Shared continuation through inference start** — Fork a share into a new conversation and start inference
 
-Only valid for `shareMode = "full"` shares. Creates a new conversation owned by the current user, clones all snapshot messages into it, then creates an initial reply message. Returns `CreateConversationResponse` with the new conversation detail. See Phase 4.
+Only valid for `shareMode = "full"` shares. The active chat path calls `POST /v1/inference/runs/{userId}/start` with `mode: "shared_continue"` and the share token. The bridge creates a new conversation owned by the current user, clones all snapshot messages into it, appends the first continuation user message, creates the AI placeholder/run, and returns `InferenceStartResponse` with the new conversation detail. See Phase 5.
 
 ---
 
@@ -233,13 +233,13 @@ The one case where deletion does cascade is conversation deletion — the `conve
 
 ---
 
-## Phase 5 — Forking a Share (continue)
+## Phase 5 — Forking a Share and Starting Inference
 
-`create_conversation_from_share()` in `router/shared_conv.py` drives the fork flow:
+Shared continuation uses the same backend-owned inference start endpoint as normal chat. `utils/inference_start.py` handles the `shared_continue` mode and delegates the clone work to `utils/shared_conv.py::create_conversation_from_share_record()`.
 
 ```mermaid
 flowchart TD
-    A[POST /shared-conversations/token/continue] --> B[load active share]
+    A[POST /inference/runs/userId/start\nmode=shared_continue] --> B[load active share]
     B --> C{shareMode == full?}
     C -->|no| ERR[400 — only full shares are continuable]
     C -->|yes| D[look up agent from snapshot]
@@ -248,8 +248,9 @@ flowchart TD
     F --> G[decode base64 attachments]
     G --> H[create MessageTable + AttachmentTable + BlobTable\nnew UUIDs, relink parent_message_id via id_map]
     H --> I[create initial user reply message]
-    I --> J[commit atomically]
-    J --> K[return CreateConversationResponse]
+    I --> J[create AI placeholder + queued inference run]
+    J --> K[commit atomically]
+    K --> L[return InferenceStartResponse]
 ```
 
 **What gets new UUIDs:** conversation, messages, attachments, blobs.
@@ -257,6 +258,8 @@ flowchart TD
 **What is preserved:** message content, sender, type, created/updated timestamps, reasoning steps, thinking time, raw events, plan, subagents, attachment filenames, MIME types, sizes, and binary blob data (deep copied — not shared references).
 
 **Parent remapping:** a `message_id_map` tracks old → new IDs during the clone loop so `parent_message_id` links are correctly rewritten to the new UUIDs.
+
+The original shared conversation is never mutated. After the response, the frontend navigates to the owned copy and observes the returned run through the normal `/v1/inference/runs/{userId}/{runId}/stream` SSE endpoint.
 
 ---
 
@@ -311,7 +314,7 @@ There are no endpoints to list or resolve reports via the public API. Report man
 
 - **Conversation deletion removes all its shares.** The `conversation_id` FK has `CASCADE DELETE`, so deleting a conversation immediately invalidates all share links for it. Existing recipients get a 404. There is no grace period.
 
-- **Only `full` shares can be forked.** Attempting `POST /shared-conversations/{token}/continue` on a `branch` or `message` share returns 400. The share mode is enforced strictly because forking requires a complete, coherent message tree.
+- **Only `full` shares can be forked.** Attempting inference start with `mode: "shared_continue"` for a `branch` or `message` share returns 400. The share mode is enforced strictly because forking requires a complete, coherent message tree.
 
 - **Revocation is permanent.** Setting `is_active = false` cannot be reversed via the API. If a user wants to re-share, they must create a new share with a new token.
 
@@ -334,11 +337,12 @@ There are no endpoints to list or resolve reports via the public API. Report man
 | Concept | File | What to look for |
 | --- | --- | --- |
 | DB tables (shares + reports) | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `ConversationShareTable`, `ConversationReportTable` |
-| Public share endpoints | [src/dialogue_bridge/router/shared_conv.py](../../src/dialogue_bridge/router/shared_conv.py) | `getSharedConversation()`, `continueSharedConversation()`, `create_conversation_from_share()` |
+| Public share endpoint | [src/dialogue_bridge/router/shared_conv.py](../../src/dialogue_bridge/router/shared_conv.py) | `getSharedConversation()` |
+| Shared inference continuation | [src/dialogue_bridge/utils/inference_start.py](../../src/dialogue_bridge/utils/inference_start.py) | `mode == "shared_continue"` |
 | Owner share endpoints | [src/dialogue_bridge/router/conversations.py](../../src/dialogue_bridge/router/conversations.py) | `shareConversation()`, `revokeConversationShare()`, `getConversationShares()`, `exportConversationPdf()` |
 | Snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `build_share_snapshot()`, `build_message_lineage()`, `clone_branch_to_conversation()` |
 | Scoped message selection + PDF | [src/dialogue_bridge/utils/share_export.py](../../src/dialogue_bridge/utils/share_export.py) | `select_scoped_messages()`, `render_conversation_pdf()`, `_PdfDocument`, `_FontRegistry` |
 | Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `ConversationShareIn`, `ConversationShareResponse`, `SharedConversationDetail` |
-| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `shareConversation()`, `revokeSharedConversationLink()`, `getSharedConversation()`, `continueSharedConversation()`, `downloadConversationPdfExport()` |
+| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `shareConversation()`, `revokeSharedConversationLink()`, `getSharedConversation()`, `startInference()`, `downloadConversationPdfExport()` |
 | Frontend types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `ConversationShareMode`, `ConversationShareResponse`, `SharedConversationDetail` |
 | Share UI handlers | [src/agentic_ui/src/handlers/share.ts](../../src/agentic_ui/src/handlers/share.ts) | `handleCreateShareLink()`, `handleRevokeSharedConversation()`, `loadSharedConversationPage()` |

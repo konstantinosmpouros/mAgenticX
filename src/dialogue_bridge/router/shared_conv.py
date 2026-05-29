@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth_session import require_current_user, require_csrf_protection
-from core.database import UserTable, get_db
+from core.database import get_db
 from observability import get_logger, set_context
-from schemas import ContinueSharedConversationIn, CreateConversationResponse, SharedConversationDetail
-from utils.shared_conv import create_conversation_from_share, load_active_share
+from schemas import SharedConversationDetail
+from utils.shared_conv import load_active_share
 
 
 router = APIRouter()
@@ -36,41 +35,3 @@ async def getSharedConversation(
         expiresAt=share.expires_at,
         createdAt=share.created_at,
     )
-
-
-@router.post(
-    "/{token}/continue",
-    response_model=CreateConversationResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a private conversation from a public share and first reply",
-)
-async def continueSharedConversation(
-    token: str,
-    payload: ContinueSharedConversationIn,
-    current_user: UserTable = Depends(require_current_user),
-    _: None = Depends(require_csrf_protection),
-    db: AsyncSession = Depends(get_db),
-):
-    """Import a full shared snapshot into the authenticated user's workspace and append their first reply."""
-    set_context(user_id=current_user.id, session_id="shared-conversation-continue")
-    share = await load_active_share(token, db)
-    snapshot = dict(share.snapshot_json or {})
-    if snapshot.get("shareMode") != "full":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only full-conversation shares can be continued.",
-        )
-
-    response = await create_conversation_from_share(
-        db=db,
-        share=share,
-        current_user=current_user,
-        payload=payload,
-    )
-    logger.info(
-        "shared_conversation_continued",
-        "Shared conversation imported and continued",
-        share_id=share.id,
-        conversation_id=response.detail.id,
-    )
-    return response
