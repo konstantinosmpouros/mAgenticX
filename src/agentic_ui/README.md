@@ -486,7 +486,7 @@ The Docker image is a two-stage build:
 `nginx.conf.template` is the operational boundary between the browser and the bridge:
 
 - rewrites `/api/...` before proxying to `${BFF_BASE_URL}`
-- forwards `X-Real-IP`, `X-Forwarded-For`, `CF-Connecting-IP`, and `X-Forwarded-Proto`
+- overwrites client IP headers with nginx `$remote_addr` before forwarding to the bridge
 - injects `X-Internal-Proxy-Secret ${TRUSTED_PROXY_SECRET}`
 - disables request and response buffering for large uploads and SSE
 - sets `client_max_body_size 50M`

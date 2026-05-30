@@ -84,7 +84,7 @@ Key nginx settings:
 - `client_max_body_size 50M` — supports attachment uploads
 - `proxy_buffering off` — required for SSE and large file streaming
 - `resolver 127.0.0.11` — deferred DNS resolution for Docker service names
-- `proxy_set_header` chain — propagates `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, `CF-Connecting-IP`
+- `proxy_set_header` chain — overwrites client IP headers with nginx `$remote_addr` before forwarding to the bridge
 
 ### Dev Mode
 
