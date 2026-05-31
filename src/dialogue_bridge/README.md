@@ -619,7 +619,6 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | --- | --- |
 | `/v1/attachments/download/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
 | `/v1/attachments/preview/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
-| `/v1/attachments/preview-derived/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
 | `/v1/attachments/preview-token/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
 | `/v1/attachments/public/{token}` | `GET` |
 | `/v1/attachments/images/{user_id}` | `GET` |

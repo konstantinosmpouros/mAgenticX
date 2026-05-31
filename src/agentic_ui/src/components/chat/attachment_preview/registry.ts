@@ -2,7 +2,7 @@ export type AttachmentPreviewKind =
   | "pdf"
   | "docx"
   | "xlsx"
-  | "presentation"
+  | "pptx"
   | "markdown"
   | "json"
   | "csv"
@@ -25,7 +25,6 @@ export type AttachmentPreviewDescriptor = {
   language?: string;
   reason?: string;
   requiresBlob: boolean;
-  usesDerivedPdf?: boolean;
 };
 
 export const TEXT_PREVIEW_LIMIT_BYTES = 5 * 1024 * 1024;
@@ -133,11 +132,10 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
     ext === "pptx"
   ) {
     return tooLarge(meta, OFFICE_PREVIEW_LIMIT_BYTES, "PowerPoint deck") ?? {
-      kind: "presentation",
+      kind: "pptx",
       previewable: true,
       label: "PowerPoint deck",
       requiresBlob: false,
-      usesDerivedPdf: true,
     };
   }
 

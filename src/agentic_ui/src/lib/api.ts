@@ -928,35 +928,6 @@ export function getAttachmentPreviewUrl({
 }
 
 
-export function getAttachmentDerivedPreviewUrl({
-  userId,
-  conversationId,
-  messageId,
-  blobId,
-}: Omit<DownloadAttachmentParams, "filename">): string {
-  const segments = [userId, conversationId, messageId, blobId].map((value) => encodeURIComponent(value));
-  return `${ATTACHMENTS_BASE_PATH}/preview-derived/${segments.join("/")}`;
-}
-
-
-export async function fetchAttachmentDerivedPreviewBlob({
-  userId,
-  conversationId,
-  messageId,
-  blobId,
-}: Omit<DownloadAttachmentParams, "filename">): Promise<Blob> {
-  const res = await fetch(
-    getAttachmentDerivedPreviewUrl({ userId, conversationId, messageId, blobId }),
-    withSessionRequest(),
-  );
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to preview derived attachment: ${res.status}`);
-  }
-  return await res.blob();
-}
-
-
 // Fetch a blob through the inline preview endpoint for in-browser renderers.
 export async function fetchAttachmentPreviewBlob({
   userId,

@@ -116,7 +116,7 @@ services:
 
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.6.5
+    image: konstantinosmpouros/dialogue_bridge:v2.6.7
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8002"]
     user: "1000:1000"
@@ -153,7 +153,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.7.5
+    image: konstantinosmpouros/agentic_ui:v0.7.7
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:

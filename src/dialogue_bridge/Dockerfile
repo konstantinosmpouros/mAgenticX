@@ -5,14 +5,6 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libreoffice-impress \
-        fonts-dejavu-core \
-        fonts-noto-core \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Install Python dependencies

@@ -1,10 +1,7 @@
 import asyncio
 import base64
-import contextlib
 import hashlib
 import hmac
-from pathlib import Path
-import tempfile
 import time
 from urllib.parse import quote
 
@@ -18,27 +15,6 @@ from core.database import AttachmentTable, BlobTable, ConversationTable, Message
 
 
 logger = get_logger(__name__)
-
-OFFICE_PREVIEW_LIMIT_BYTES = 25 * 1024 * 1024
-OFFICE_CONVERSION_TIMEOUT_SECONDS = 45
-PRESENTATION_MIME_TYPES = {
-    "application/vnd.ms-powerpoint",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-}
-PRESENTATION_EXTENSIONS = {"ppt", "pptx"}
-
-
-def _extension_of(name: str | None) -> str:
-    if not name:
-        return ""
-    return Path(name).suffix.lower().lstrip(".")
-
-
-def is_presentation_previewable(file_name: str | None, mime: str | None) -> bool:
-    normalized_mime = (mime or "").strip().lower()
-    extension = _extension_of(file_name)
-    return normalized_mime in PRESENTATION_MIME_TYPES or extension in PRESENTATION_EXTENSIONS
-
 
 _DOCX_PREVIEW_TOKEN_TTL = 60
 
@@ -65,23 +41,6 @@ def validate_docx_preview_token(token: str, secret: str) -> str | None:
         return blob_id
     except Exception:
         return None
-
-
-def _office_preview_type(file_name: str | None, mime: str | None) -> str | None:
-    if not is_presentation_previewable(file_name, mime):
-        return None
-    extension = _extension_of(file_name)
-    if extension in PRESENTATION_EXTENSIONS:
-        return extension
-    normalized_mime = (mime or "").strip().lower()
-    return "pptx" if normalized_mime.endswith("presentationml.presentation") else "ppt"
-
-
-def _sanitize_preview_filename(name: str | None) -> str:
-    source_name = Path(name or "document").name
-    stem = Path(source_name).stem.strip() or "document"
-    safe_stem = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in stem).strip("._")
-    return f"{safe_stem or 'document'}.pdf"
 
 
 async def _get_attachment_blob_row(
@@ -123,217 +82,6 @@ async def _get_attachment_blob_row(
     if not row:
         raise HTTPException(status_code=404, detail="Blob not found or not accessible.")
     return row
-
-
-async def convert_attachment_to_pdf_preview(
-    *,
-    user_id: str,
-    conversation_id: str,
-    message_id: str,
-    blob_id: str,
-    db: AsyncSession,
-) -> tuple[bytes, str]:
-    set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
-    request_context = get_context()
-
-    meta_row = await _get_attachment_blob_row(
-        user_id=user_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
-        blob_id=blob_id,
-        db=db,
-        include_data=False,
-    )
-
-    mime: str | None = meta_row["mime_type"]
-    file_name: str | None = meta_row["file_name"]
-    file_size: int | None = meta_row["blob_size"]
-
-    preview_type = _office_preview_type(file_name, mime)
-    if preview_type is None:
-        raise HTTPException(status_code=400, detail="Only PowerPoint attachments support derived preview.")
-
-    if file_size is None or file_size <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="The attachment could not be prepared for preview. Please try again.",
-        )
-
-    if file_size > OFFICE_PREVIEW_LIMIT_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Preview is unavailable for Office files larger than {OFFICE_PREVIEW_LIMIT_BYTES // 1024 // 1024} MB.",
-        )
-
-    data_row = await _get_attachment_blob_row(
-        user_id=user_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
-        blob_id=blob_id,
-        db=db,
-        include_data=True,
-    )
-    blob_data = data_row["blob_data"]
-
-    if isinstance(blob_data, memoryview):
-        blob_bytes = blob_data.tobytes()
-    else:
-        blob_bytes = bytes(blob_data)
-
-    extension = preview_type
-
-    output_name = _sanitize_preview_filename(file_name)
-    source_stem = Path(output_name).stem
-    started_at = time.monotonic()
-
-    try:
-        with tempfile.TemporaryDirectory(prefix="attachment-preview-") as temp_dir:
-            temp_path = Path(temp_dir)
-            input_path = temp_path / f"{source_stem}.{extension}"
-            output_dir = temp_path / "output"
-            profile_dir = temp_path / "lo-profile"
-            output_dir.mkdir()
-            profile_dir.mkdir()
-            input_path.write_bytes(blob_bytes)
-
-            export_filter = "pdf:impress_pdf_Export"
-            command = [
-                "soffice",
-                "--headless",
-                "--nologo",
-                "--nodefault",
-                "--nolockcheck",
-                "--norestore",
-                f"-env:UserInstallation={profile_dir.resolve().as_uri()}",
-                "--convert-to",
-                export_filter,
-                "--outdir",
-                str(output_dir),
-                str(input_path),
-            ]
-
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=OFFICE_CONVERSION_TIMEOUT_SECONDS,
-                )
-            except OSError as exc:
-                logger.error(
-                    "office_preview_communicate_error",
-                    "Failed to communicate with Office conversion process",
-                    context=request_context,
-                    blob_id=blob_id,
-                    file_name=file_name,
-                    preview_type=preview_type,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="The attachment could not be prepared for preview. Please try again.",
-                ) from exc
-            except asyncio.TimeoutError as exc:
-                process.kill()
-                with contextlib.suppress(Exception):
-                    await process.communicate()
-                logger.warning(
-                    "office_preview_timeout",
-                    "Office preview conversion timed out",
-                    context=request_context,
-                    blob_id=blob_id,
-                    file_name=file_name,
-                    mime_type=mime,
-                    preview_type=preview_type,
-                    file_size=file_size,
-                    timeout_seconds=OFFICE_CONVERSION_TIMEOUT_SECONDS,
-                    conversion_duration_ms=round((time.monotonic() - started_at) * 1000, 2),
-                )
-                raise HTTPException(
-                    status_code=422,
-                    detail="Preview conversion timed out for this Office file.",
-                ) from exc
-
-            output_path = output_dir / output_name
-            if process.returncode != 0 or not output_path.exists():
-                logger.warning(
-                    "office_preview_failed",
-                    "Office preview conversion failed",
-                    context=request_context,
-                    blob_id=blob_id,
-                    file_name=file_name,
-                    mime_type=mime,
-                    preview_type=preview_type,
-                    file_size=file_size,
-                    return_code=process.returncode,
-                    stdout=stdout.decode("utf-8", errors="ignore")[-2000:],
-                    stderr=stderr.decode("utf-8", errors="ignore")[-2000:],
-                    conversion_duration_ms=round((time.monotonic() - started_at) * 1000, 2),
-                )
-                raise HTTPException(
-                    status_code=422,
-                    detail="Preview conversion failed for this Office file.",
-                )
-
-            pdf_bytes = output_path.read_bytes()
-            logger.info(
-                "office_preview_completed",
-                "Office preview conversion completed",
-                context=request_context,
-                blob_id=blob_id,
-                file_name=file_name,
-                mime_type=mime,
-                preview_type=preview_type,
-                file_size=file_size,
-                pdf_size=len(pdf_bytes),
-                conversion_duration_ms=round((time.monotonic() - started_at) * 1000, 2),
-            )
-            return pdf_bytes, output_name
-    except HTTPException:
-        raise
-    except PermissionError as exc:
-        logger.error(
-            "office_preview_permission_error",
-            "Permission denied during Office preview conversion",
-            context=request_context,
-            blob_id=blob_id,
-            file_name=file_name,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="The attachment could not be prepared for preview. Please try again.",
-        ) from exc
-    except FileNotFoundError as exc:
-        logger.error(
-            "office_preview_converter_missing",
-            "LibreOffice is not installed for Office preview conversion",
-            context=request_context,
-            blob_id=blob_id,
-            file_name=file_name,
-            mime_type=mime,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Office preview is not available on this server.",
-        ) from exc
-    except Exception as exc:
-        logger.error(
-            "office_preview_unexpected_error",
-            "Office preview conversion failed unexpectedly",
-            exc_info=True,
-            context=request_context,
-            blob_id=blob_id,
-            file_name=file_name,
-            mime_type=mime,
-            file_size=file_size,
-            conversion_duration_ms=round((time.monotonic() - started_at) * 1000, 2),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="The attachment could not be prepared for preview. Please try again.",
-        ) from exc
 
 
 def encode_disposition(name: str | None, disposition: str) -> str:

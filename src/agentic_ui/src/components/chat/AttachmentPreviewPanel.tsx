@@ -2,7 +2,6 @@ import * as React from "react";
 import { Download, X } from "lucide-react";
 
 import {
-  fetchAttachmentDerivedPreviewBlob,
   fetchAttachmentPreviewBlob,
   fetchDocxPreviewToken,
   getAttachmentPreviewUrl,
@@ -102,16 +101,11 @@ function renderReadyState(state: Extract<PreviewState, { status: "ready" }>) {
     return <PdfPreview name={meta.name} url={previewUrl} />;
   }
 
-  if ((descriptor.kind === "docx" || descriptor.kind === "xlsx") && previewUrl) {
+  if (
+    (descriptor.kind === "docx" || descriptor.kind === "xlsx" || descriptor.kind === "pptx") &&
+    previewUrl
+  ) {
     return <DocxPreview name={meta.name} viewerUrl={previewUrl} />;
-  }
-
-  if (descriptor.usesDerivedPdf && previewUrl) {
-    return <PdfPreview name={meta.name} url={previewUrl} />;
-  }
-
-  if (descriptor.kind === "presentation" && previewUrl) {
-    return <PdfPreview name={meta.name} url={previewUrl} />;
   }
 
   if (descriptor.kind === "markdown" && text != null) {
@@ -212,7 +206,11 @@ export default function AttachmentPreviewPanel({
         return;
       }
 
-      if (descriptor.kind === "docx" || descriptor.kind === "xlsx") {
+      if (
+        descriptor.kind === "docx" ||
+        descriptor.kind === "xlsx" ||
+        descriptor.kind === "pptx"
+      ) {
         if (meta.file) {
           setState({
             status: "error",
@@ -240,52 +238,6 @@ export default function AttachmentPreviewPanel({
           const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicDocUrl)}`;
           if (!cancelled) {
             setState({ status: "ready", meta, descriptor, previewUrl: viewerUrl });
-          }
-        } catch (error) {
-          if (!cancelled) {
-            setState({
-              status: "error",
-              meta,
-              descriptor,
-              error: error instanceof Error ? error.message : "Preview failed.",
-            });
-          }
-        }
-        return;
-      }
-
-      if (descriptor.usesDerivedPdf) {
-        if (meta.file) {
-          setState({
-            status: "error",
-            meta,
-            descriptor,
-            error: `Preview is unavailable for local ${descriptor.label} files until they are uploaded.`,
-          });
-          return;
-        }
-
-        if (!userId || !conversationId || !meta.blobId) {
-          setState({
-            status: "error",
-            meta,
-            descriptor,
-            error: "Preview is unavailable for this attachment.",
-          });
-          return;
-        }
-
-        setState({ status: "loading", meta, descriptor });
-        try {
-          const previewBlob = await fetchAttachmentDerivedPreviewBlob({
-            userId,
-            conversationId,
-            messageId: preview.message.id,
-            blobId: meta.blobId,
-          });
-          objectUrl = URL.createObjectURL(previewBlob);
-          if (!cancelled) {
-            setState({ status: "ready", meta, descriptor, previewUrl: objectUrl, blob: previewBlob });
           }
         } catch (error) {
           if (!cancelled) {

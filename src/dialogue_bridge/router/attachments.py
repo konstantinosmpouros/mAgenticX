@@ -13,7 +13,6 @@ from utils import validate_userId
 from utils.attachments import (
     _DOCX_PREVIEW_TOKEN_TTL,
     _get_attachment_blob_row,
-    convert_attachment_to_pdf_preview,
     encode_disposition,
     generate_docx_preview_token,
     stream_blob_response,
@@ -74,36 +73,6 @@ async def previewBlobInline(
         range_header=range_header,
         db=db,
         disposition="inline",
-    )
-
-
-@router.get(
-    "/preview-derived/{user_id}/{conversation_id}/{message_id}/{blob_id}",
-    summary="Convert an Office attachment to inline PDF for secure in-app preview",
-)
-async def previewBlobDerivedInline(
-    user_id: str,
-    conversation_id: str,
-    message_id: str,
-    blob_id: str,
-    _current_user: UserTable = Depends(validate_userId),
-    db: AsyncSession = Depends(get_db),
-):
-    pdf_bytes, preview_name = await convert_attachment_to_pdf_preview(
-        user_id=user_id,
-        conversation_id=conversation_id,
-        message_id=message_id,
-        blob_id=blob_id,
-        db=db,
-    )
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={
-            "Cache-Control": "private, max-age=300",
-            "Content-Disposition": encode_disposition(preview_name, "inline"),
-            "Content-Length": str(len(pdf_bytes)),
-        },
     )
 
 

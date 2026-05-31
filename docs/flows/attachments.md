@@ -1,6 +1,6 @@
 # Attachments
 
-Attachments are binary files uploaded alongside chat messages. They are stored as raw bytes directly in PostgreSQL (not on disk or in object storage), with each attachment owning exactly one blob row containing its data. The upload path encodes files as base64 in the HTTP request body; the backend decodes and persists them. Download streams the blob back in 512KB chunks with HTTP byte-range support. Preview is handled client-side for most types (PDF, Excel, code, text). Word documents (.docx) use Microsoft Office Online Viewer via a short-lived HMAC-signed token; PowerPoint files use server-side LibreOffice → PDF conversion. Attachments are not indexed for RAG retrieval — they are chat artifacts only.
+Attachments are binary files uploaded alongside chat messages. They are stored as raw bytes directly in PostgreSQL (not on disk or in object storage), with each attachment owning exactly one blob row containing its data. The upload path encodes files as base64 in the HTTP request body; the backend decodes and persists them. Download streams the blob back in 512KB chunks with HTTP byte-range support. Preview is handled client-side for most types (PDF, code, text). Word documents (`.docx`), Excel workbooks (`.xlsx`/`.xlsm`), and PowerPoint decks (`.ppt`/`.pptx`) all use Microsoft's free Office Online Viewer via a short-lived HMAC-signed token. Attachments are not indexed for RAG retrieval — they are chat artifacts only.
 
 ---
 
@@ -12,8 +12,7 @@ flowchart LR
     nginx --> bridge["dialogue_bridge :8002"]
     bridge -->|"INSERT blob + attachment"| pg[("chat_postgres\nattachments + blobs")]
     bridge -->|"stream blob (download/preview)"| pg
-    bridge -->|"soffice convert"| lo["LibreOffice\n(PowerPoint only)"]
-    bridge -->|"HMAC token"| viewer["Microsoft Office\nOnline Viewer (Word)"]
+    bridge -->|"HMAC token"| viewer["Microsoft Office\nOnline Viewer\n(Word, Excel, PowerPoint)"]
 ```
 
 ---
@@ -142,21 +141,9 @@ Streams the blob with `Content-Disposition: attachment`. Supports the HTTP `Rang
 
 Same as download but `Content-Disposition: inline`. Used for in-browser rendering (PDF viewer, `<iframe>`, `<img>`).
 
-### `GET /v1/attachments/preview-derived/{userId}/{convId}/{msgId}/{blobId}`
-
-Converts supported Office blobs to PDF using LibreOffice in headless mode (`soffice --headless --convert-to pdf`), then streams the result inline. This is used for PowerPoint and Word preview fidelity while keeping downloads pointed at the original uploaded file. Conversion limits:
-
-| Limit | Value |
-| --- | --- |
-| Max input size | 25 MB |
-| Conversion timeout | 45 seconds |
-| Cache-Control | `private, max-age=300` (5 min browser cache) |
-
-Returns 400 if the MIME type is not a supported Office preview type, 422 on timeout or conversion failure, 500 if LibreOffice is not installed.
-
 ### `GET /v1/attachments/preview-token/{userId}/{convId}/{msgId}/{blobId}`
 
-Issues a short-lived (60-second) HMAC-SHA256 signed token bound to a specific `blobId`. The token is URL-safe base64 and encodes the blob ID, expiry timestamp, and signature. Used by the frontend to construct a Microsoft Office Online Viewer URL for Word document previews.
+Issues a short-lived (60-second) HMAC-SHA256 signed token bound to a specific `blobId`. The token is URL-safe base64 and encodes the blob ID, expiry timestamp, and signature. Used by the frontend to construct a Microsoft Office Online Viewer URL for Word, Excel, and PowerPoint previews.
 
 ### `GET /v1/attachments/public/{token}`
 
@@ -176,7 +163,7 @@ Returns a paginated list of all image attachments for a user across all conversa
 
 ## Phase 4 — Client-Side Preview
 
-The frontend classifies each attachment by MIME type and file extension, then routes it to the appropriate renderer. Server-derived previews are used for Word and PowerPoint files.
+The frontend classifies each attachment by MIME type and file extension, then routes it to the appropriate renderer. All Microsoft Office formats (Word, Excel, PowerPoint) use the same short-lived token + Office Online Viewer pipeline.
 
 ### Preview Registry
 
@@ -186,8 +173,8 @@ The frontend classifies each attachment by MIME type and file extension, then ro
 | --- | --- | --- | --- | --- |
 | PDF | `.pdf` | `pdf` | — | `<iframe>` or PDF.js |
 | Word | `.docx` | `docx` | 25 MB | `/preview-token` → Microsoft Office Online Viewer `<iframe>` |
-| Excel | `.xlsx`, `.xlsm` | `xlsx` | 25 MB | ExcelJS worksheet grid |
-| PowerPoint | `.ppt`, `.pptx` | `presentation` | 25 MB | `/preview-derived` → PDF.js |
+| Excel | `.xlsx`, `.xlsm` | `xlsx` | 25 MB | `/preview-token` → Microsoft Office Online Viewer `<iframe>` |
+| PowerPoint | `.ppt`, `.pptx` | `pptx` | 25 MB | `/preview-token` → Microsoft Office Online Viewer `<iframe>` |
 | Markdown | `.md`, `.mdx` | `markdown` | 5 MB | React Markdown renderer |
 | JSON | `.json` | `json` | 5 MB | Code block with syntax highlight |
 | CSV | `.csv` | `csv` | 5 MB | Table renderer (PapaParse) |
@@ -203,10 +190,8 @@ Files that don't match any known type are shown as an unsupported preview with a
 2. Registry determines `previewKind` and size limit
 3. If file exceeds the size limit for its kind, shows "File too large to preview" with a download button
 4. For text kinds: `fetchAttachmentPreviewBlob()` fetches the blob, decodes as UTF-8, passes to the appropriate renderer
-5. For client-rendered Office kinds such as Excel: fetches blob, passes binary data to the client library
-6. For PDF: uses the preview URL as `<iframe src={...}>` — no separate fetch needed
-7. For Word (`.docx`): calls `fetchDocxPreviewToken()` → `/preview-token/...` to get a 60-second signed token, constructs a `/api/v1/attachments/public/{token}` URL, then embeds it in `https://view.officeapps.live.com/op/embed.aspx?src=...` as an `<iframe>`
-8. For PowerPoint: calls `fetchAttachmentDerivedPreviewBlob()` which points to `/preview-derived`; the result (PDF) is rendered via PDF.js
+5. For PDF: uses the preview URL as `<iframe src={...}>` — no separate fetch needed
+6. For Word / Excel / PowerPoint (`.docx`, `.xlsx`/`.xlsm`, `.ppt`/`.pptx`): calls `fetchDocxPreviewToken()` → `/preview-token/...` to get a 60-second signed token, constructs a `/api/v1/attachments/public/{token}` URL, then embeds it in `https://view.officeapps.live.com/op/embed.aspx?src=...` as an `<iframe>`
 
 `PreviewChrome.tsx` wraps every renderer with consistent controls: close button, download button, and filename display.
 
@@ -284,11 +269,9 @@ If an agent needs to reason about the content of an uploaded file, that content 
 
 - **Edit does not copy attachments.** If a user edits a message that had attachments, the new sibling message starts with no attachments. The user must re-attach any files they want in the edited version.
 
-- **Word preview requires internet access from the user's browser.** The `.docx` preview embeds `https://view.officeapps.live.com` — if the user's network blocks Microsoft's servers, the preview iframe will fail to load. Download still works.
+- **Office preview requires public-internet reachability.** Word/Excel/PowerPoint preview embeds `https://view.officeapps.live.com`, which fetches the document via `/api/v1/attachments/public/{token}`. Microsoft's servers must be able to reach the public endpoint — this works in production (Dennis behind Cloudflare/NPM) but **not in local dev** (`localhost:8050` is unreachable from the public internet). Locally, Office previews show an empty iframe; download still works.
 
-- **Word preview token is single-use by intent, not by mechanism.** The 60-second TTL is the only expiry mechanism; the token is not revoked after first use. This window is sufficient for Microsoft's viewer to fetch the document during iframe load.
-
-- **PowerPoint preview requires LibreOffice.** If `soffice` is not in the container's PATH, the `/preview-derived` endpoint returns 500. The Docker image must include LibreOffice Impress for this endpoint to work.
+- **Office preview token is single-use by intent, not by mechanism.** The 60-second TTL is the only expiry mechanism; the token is not revoked after first use. This window is sufficient for Microsoft's viewer to fetch the document during iframe load.
 
 - **Images are returned with inline base64 on message fetch.** When the backend returns a `MessageOut`, image attachments include their `data` field pre-populated with base64. Non-image attachments have `data: null` — the client must call the download or preview endpoint to get the bytes.
 
@@ -303,7 +286,7 @@ If an agent needs to reason about the content of an uploaded file, that content 
 | Concept | File | What to look for |
 | --- | --- | --- |
 | DB tables | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `AttachmentTable`, `BlobTable`, FK cascade definitions |
-| Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-derived, preview-token, public, images endpoints |
+| Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-token, public, images endpoints |
 | Upload persistence | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `init_attachments()`, `clone_branch_to_conversation()` |
 | Share snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |
 | Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut`, `DocxPreviewTokenOut` |
