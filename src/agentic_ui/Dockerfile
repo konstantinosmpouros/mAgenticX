@@ -17,10 +17,14 @@ RUN npm run build -- --debug
 FROM nginx:1.25-alpine
 
 ENV BFF_BASE_URL=http://dialogue_bridge:8002
-ENV TRUSTED_PROXY_SECRET=
 
 # Copy the compiled static files from previous stage
 COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Shim that loads swarm secrets from /run/secrets/* into env vars before exec'ing
+# the next command. Required because nginx envsubst can't read files directly.
+COPY load-secrets-and-exec.sh /usr/local/bin/load-secrets-and-exec.sh
+RUN chmod +x /usr/local/bin/load-secrets-and-exec.sh
 
 # Remove default Nginx config; the base nginx entrypoint renders templates from env vars.
 RUN rm /etc/nginx/conf.d/default.conf

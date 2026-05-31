@@ -16,5 +16,11 @@ RUN apt-get update \
 
 COPY . .
 
+# Shim that loads swarm secrets from /run/secrets/* into env vars before
+# exec'ing the next command. Required because the openai SDK and LangChain
+# read OPENAI_API_KEY directly from os.environ at import time.
+COPY load-secrets-and-exec.sh /usr/local/bin/load-secrets-and-exec.sh
+RUN chmod +x /usr/local/bin/load-secrets-and-exec.sh
+
 EXPOSE 8003
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]
