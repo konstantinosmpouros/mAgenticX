@@ -346,11 +346,11 @@ export default function AttachmentPreviewPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/78 p-3 backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/78 p-3 backdrop-blur-sm sm:p-5 animate-in fade-in-0 duration-200"
       onClick={onClose}
     >
       <div
-        className="flex h-[min(94vh,64rem)] w-[min(96vw,76rem)] flex-col overflow-hidden rounded-[1.85rem] border border-white/10 bg-[#252525] text-white shadow-[0_28px_100px_-32px_rgba(0,0,0,0.92)]"
+        className="flex h-[min(94vh,64rem)] w-[min(96vw,76rem)] flex-col overflow-hidden rounded-[1.85rem] border border-white/10 bg-[#252525] text-white shadow-[0_28px_100px_-32px_rgba(0,0,0,0.92)] animate-in fade-in-0 zoom-in-95 duration-200 ease-out"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-5">

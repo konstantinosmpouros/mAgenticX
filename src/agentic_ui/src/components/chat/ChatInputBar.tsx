@@ -6,7 +6,13 @@ import { VscMicFilled } from "react-icons/vsc";
 import { FaStop } from "react-icons/fa6";
 // import { RiVoiceprintLine } from "react-icons/ri";
 import { PiWaveformBold } from "react-icons/pi";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion, useAnimationControls } from "framer-motion";
+import type { TargetAndTransition, Transition } from "framer-motion";
+
+// Spring-with-overshoot tap pulse, matches the one used in ActionBars so the
+// feel is consistent across the whole app.
+const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
+const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
 import SplitText from "@/components/ui/react_bits/split_text";
 import StarBorder from "@/components/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
@@ -20,6 +26,18 @@ type ChatInputBarProps = {
     /** Replace "top-1/2 -translate-y-1/2" with anything you want */
     positionClass?: string;
     mode?: ChatInputMode;
+    /**
+     * Gate the voice-bar mount even when mode === "voice". Used by the empty-conversation
+     * sequencing so the persona is fully animated in before the voice-bar slides up at
+     * the bottom. Defaults to true (mount immediately when mode is "voice").
+     */
+    voiceBarVisible?: boolean;
+    /**
+     * Gate the chat-bar mount when mode === "chat". Used by the empty-conversation
+     * reverse sequencing so the persona has fully exited before the chat-bar appears
+     * at the centered position. Defaults to true (mount immediately when mode is "chat").
+     */
+    chatBarVisible?: boolean;
 
     // State/controls from your page
     attachments: any[];
@@ -89,6 +107,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
     const {
         positionClass = "top-1/2 -translate-y-1/2",
         mode = "chat",
+        voiceBarVisible = true,
+        chatBarVisible = true,
         isMessagesEmpty = false,
         attachments,
         isPrivateMode,
@@ -172,8 +192,31 @@ export function ChatInputBar(props: ChatInputBarProps) {
         return /agent$/i.test(rawName) ? rawName : `${rawName} Agent`;
     }, [currentAgent?.name]);
 
+    const voiceClosePulse = useAnimationControls();
+    const voiceMutePulse = useAnimationControls();
+
     const attachmentStripRef = React.useRef<HTMLDivElement | null>(null);
     const [attachmentFade, setAttachmentFade] = React.useState({ left: false, right: false });
+
+    // Measure the AnimatePresence inner content and animate the wrapper's actual
+    // `height` to the measured value. We need a real height transition (not a scale
+    // transform) so the flex container reflows during the animation — this is what
+    // makes the body shell grow/shrink smoothly when chat-bar (~150px) swaps with
+    // voice-bar (~75px), instead of snapping and dropping the persona.
+    const innerMeasureRef = React.useRef<HTMLDivElement | null>(null);
+    const [measuredInnerHeight, setMeasuredInnerHeight] = React.useState<number | undefined>(undefined);
+    React.useEffect(() => {
+        const el = innerMeasureRef.current;
+        if (!el || typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const next = entry.contentRect.height;
+                setMeasuredInnerHeight((prev) => (prev === next ? prev : next));
+            }
+        });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
 
     const orderedAttachments = React.useMemo(() => {
         const indexed = attachments.map((file, index) => ({
@@ -457,15 +500,49 @@ export function ChatInputBar(props: ChatInputBarProps) {
     const canSubmitVoiceText = currentMessage.trim().length > 0;
     const rm = prefersReducedMotion ?? false;
 
+    const isCenteredPosition = positionClass.includes("absolute");
+    // Only animate the wrapper's position when chat-bar is the active visible bar.
+    // For voice-mode transitions in an empty conversation the wrapper's positionClass
+    // also changes (sticky-bottom <-> centered), but the bar is empty during the
+    // staging gap and the voice-bar mounts AT its final sticky-bottom slot — we don't
+    // want Framer Motion to drag the wrapper from the centered position down to the
+    // bottom, because that visually pulls the voice-bar in from the middle of the
+    // page where the persona is.
+    const animateWrapperPosition = mode === "chat" && chatBarVisible;
     return (
-        <div
-            ref={containerRef}
+        <motion.div
+            ref={containerRef as React.Ref<HTMLDivElement>}
+            layout={animateWrapperPosition ? "position" : false}
+            transition={{ layout: { duration: rm ? 0 : 0.42, ease: [0.22, 1, 0.36, 1] } }}
+            transformTemplate={(_, generatedTransform) => {
+                // When the wrapper is in its centered (absolute top-[35%]) slot, we
+                // need translate(-50%, -50%) to truly center it. We can't bake this
+                // into the className because Framer Motion's layout animation writes
+                // to the same `transform` property and would override Tailwind's
+                // translate during the animation, snapping the bar off-center at the
+                // end. Composing both translations here keeps them in sync.
+                const centerOffset = isCenteredPosition ? "translate(-50%, -50%)" : "";
+                const generated = generatedTransform || "";
+                return `${centerOffset} ${generated}`.trim();
+            }}
             /* Force dark token scope so the input stays dark even in light theme */
             className={`${positionClass} dark`}
             style={mode === "chat" ? emptyWrapperStyle : undefined}
         >
+            <motion.div
+                animate={{ height: measuredInnerHeight ?? "auto" }}
+                transition={{ duration: rm ? 0 : 0.38, ease: [0.22, 1, 0.36, 1] }}
+                style={{
+                    width: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                }}
+            >
+            <div ref={innerMeasureRef} style={{ width: "100%" }}>
             <AnimatePresence mode="wait">
-                {mode === "voice" ? (
+                {mode === "voice"
+                    ? (voiceBarVisible ? (
                     <motion.div
                         key="voice-bar"
                         initial={{ opacity: 0, y: rm ? 0 : 10 }}
@@ -480,11 +557,16 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                onClick={onCloseVoiceMode}
+                                                onClick={() => {
+                                                    onCloseVoiceMode?.();
+                                                    voiceClosePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                                                }}
                                                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive transition-smooth hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
                                                 aria-label="Close voice mode"
                                             >
-                                                <PhoneOff size={18} />
+                                                <motion.span animate={voiceClosePulse} className="inline-flex">
+                                                    <PhoneOff size={18} />
+                                                </motion.span>
                                             </button>
                                         </TooltipTrigger>
                                         <TooltipContent side="top" align="center">
@@ -496,11 +578,16 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                         <TooltipTrigger asChild>
                                             <button
                                                 type="button"
-                                                onClick={onToggleVoiceMute}
+                                                onClick={() => {
+                                                    onToggleVoiceMute?.();
+                                                    voiceMutePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                                                }}
                                                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border/70 bg-background/70 text-muted-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                                                 aria-label={voiceMuted ? "Unmute microphone" : "Mute microphone"}
                                             >
-                                                {voiceMuted ? <MicOff size={19} /> : <Mic size={19} />}
+                                                <motion.span animate={voiceMutePulse} className="inline-flex">
+                                                    {voiceMuted ? <MicOff size={19} /> : <Mic size={19} />}
+                                                </motion.span>
                                             </button>
                                         </TooltipTrigger>
                                         <TooltipContent side="top" align="center">
@@ -547,7 +634,8 @@ export function ChatInputBar(props: ChatInputBarProps) {
                             </div>
                         </div>
                     </motion.div>
-                ) : (
+                ) : null)
+                    : (chatBarVisible ? (
                     <motion.div
                         key="chat-bar"
                         initial={{ opacity: 0, y: rm ? 0 : 10 }}
@@ -890,8 +978,10 @@ export function ChatInputBar(props: ChatInputBarProps) {
                             </AnimatePresence>
                         </div>
                     </motion.div>
-                )}
+                ) : null)}
             </AnimatePresence>
-        </div>
+            </div>
+            </motion.div>
+        </motion.div>
     );
 }

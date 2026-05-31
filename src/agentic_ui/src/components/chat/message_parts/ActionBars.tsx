@@ -2,7 +2,14 @@
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Copy, Check, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { motion, useAnimationControls } from "framer-motion";
+import type { TargetAndTransition, Transition } from "framer-motion";
 import { useEffect, useState } from "react";
+
+// Spring-with-overshoot tap pulse used by Copy / Like / Dislike. Slight bounce
+// past 1.0 makes the click feel tactile without being cartoonish.
+const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
+const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
 import { LuFlag } from "react-icons/lu";
 import { PiArrowsCounterClockwise } from "react-icons/pi";
 import { BiGitRepoForked } from "react-icons/bi";
@@ -69,9 +76,11 @@ const CopyButton = ({
   onClick: () => void;
   onAfterCopy?: () => void;
 }) => {
+  const pulse = useAnimationControls();
   const handleClick = () => {
     onClick();
     onAfterCopy?.();
+    pulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
   };
 
   return (
@@ -91,7 +100,7 @@ const CopyButton = ({
           onClick={handleClick}
           aria-label={copiedId === messageId ? "Copied" : "Copy"}
         >
-          <span className="relative inline-block h-4 w-4">
+          <motion.span animate={pulse} className="relative inline-block h-4 w-4">
             <Copy
               className={`absolute inset-0 h-4 w-4 transition-all duration-200 ${
                 copiedId === messageId ? "opacity-0 scale-75" : "opacity-100 scale-100"
@@ -102,7 +111,7 @@ const CopyButton = ({
                 copiedId === messageId ? "opacity-100 scale-100" : "opacity-0 scale-75"
               }`}
             />
-          </span>
+          </motion.span>
         </Button>
       </TooltipTrigger>
       <TooltipContent
@@ -141,6 +150,8 @@ export const AIActionBar = ({
   conversationIsReported = false,
 }: AIActionBarProps) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const likePulse = useAnimationControls();
+  const dislikePulse = useAnimationControls();
   const isSpeaking = speakingMessageId === message.id;
 
   useEffect(() => {
@@ -196,10 +207,15 @@ export const AIActionBar = ({
                     : "text-muted-foreground hover:!text-muted-foreground"
                 }`}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onLike(message)}
+                onClick={() => {
+                  onLike(message);
+                  likePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                }}
                 aria-label={message.liked === true ? "Unlike" : "Like"}
               >
-                <ThumbsUp className="h-4 w-4" />
+                <motion.span animate={likePulse} className="inline-flex">
+                  <ThumbsUp className="h-4 w-4" />
+                </motion.span>
               </Button>
             </TooltipTrigger>
             <TooltipContent
@@ -226,10 +242,15 @@ export const AIActionBar = ({
                     : "text-muted-foreground hover:!text-muted-foreground"
                 }`}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onDislike(message)}
+                onClick={() => {
+                  onDislike(message);
+                  dislikePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                }}
                 aria-label={message.liked === false ? "Clear dislike" : "Dislike"}
               >
-                <ThumbsDown className="h-4 w-4" />
+                <motion.span animate={dislikePulse} className="inline-flex">
+                  <ThumbsDown className="h-4 w-4" />
+                </motion.span>
               </Button>
             </TooltipTrigger>
             <TooltipContent
@@ -390,7 +411,9 @@ export const UserActionBar = ({
   onRequestEdit,
   branchControls,
   className,
-}: UserActionBarProps) => (
+}: UserActionBarProps) => {
+  const editPulse = useAnimationControls();
+  return (
   <div className={`flex w-full justify-end ${className ?? ""}`}>
     <div className="flex items-center gap-2">
       <BranchControls
@@ -422,10 +445,15 @@ export const UserActionBar = ({
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onRequestEdit(message)}
+                onClick={() => {
+                  onRequestEdit(message);
+                  editPulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                }}
                 aria-label="Edit message"
               >
-                <Pencil className="h-5 w-5" />
+                <motion.span animate={editPulse} className="inline-flex">
+                  <Pencil className="h-5 w-5" />
+                </motion.span>
               </Button>
             </TooltipTrigger>
             <TooltipContent
@@ -440,4 +468,5 @@ export const UserActionBar = ({
       </div>
     </div>
   </div>
-);
+  );
+};

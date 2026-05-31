@@ -37,6 +37,9 @@ export function useRealtimeVoiceSession({
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const userIdRef = useRef<string | null>(null);
+  // Bumped on every start() and close(); in-flight start() awaits compare against
+  // their captured value and bail out if the user already closed the session.
+  const generationRef = useRef(0);
 
   const cleanup = useCallback(() => {
     try {
@@ -81,6 +84,9 @@ export function useRealtimeVoiceSession({
   const start = useCallback(
     async ({ userId, selectedAgent, voice, language }: StartVoiceSessionArgs) => {
       if (!userId || !selectedAgent || status !== "closed") return;
+      const myGeneration = ++generationRef.current;
+      const isStale = () => generationRef.current !== myGeneration;
+
       setStatus("connecting");
       setErrorMessage(null);
       setMuted(false);
@@ -88,6 +94,10 @@ export function useRealtimeVoiceSession({
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (isStale()) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         localStreamRef.current = stream;
 
         const pc = new RTCPeerConnection();
@@ -101,13 +111,18 @@ export function useRealtimeVoiceSession({
         document.body.appendChild(audio);
         remoteAudioRef.current = audio;
         pc.ontrack = (event) => {
+          if (isStale()) return;
           audio.srcObject = event.streams[0];
         };
 
         const dc = pc.createDataChannel("oai-events");
         dcRef.current = dc;
-        dc.addEventListener("open", () => setStatus("listening"));
+        dc.addEventListener("open", () => {
+          if (isStale()) return;
+          setStatus("listening");
+        });
         dc.addEventListener("message", (message) => {
+          if (isStale()) return;
           try {
             handleRealtimeEvent(JSON.parse(String(message.data)));
           } catch {
@@ -116,7 +131,9 @@ export function useRealtimeVoiceSession({
         });
 
         const offer = await pc.createOffer();
+        if (isStale()) return;
         await pc.setLocalDescription(offer);
+        if (isStale()) return;
         if (!offer.sdp) throw new Error("Browser did not create a WebRTC offer.");
 
         const session = await createRealtimeVoiceSession(userId, {
@@ -125,8 +142,10 @@ export function useRealtimeVoiceSession({
           voice,
           language,
         });
+        if (isStale()) return;
         await pc.setRemoteDescription({ type: "answer", sdp: session.sdp });
       } catch (error) {
+        if (isStale()) return;
         cleanup();
         const message = error instanceof Error ? error.message : "Unable to start realtime voice.";
         setErrorMessage(message);
@@ -138,6 +157,7 @@ export function useRealtimeVoiceSession({
   );
 
   const close = useCallback(async () => {
+    generationRef.current += 1;
     cleanup();
     setStatus("closed");
     setMuted(false);

@@ -67,8 +67,14 @@ def validate_docx_preview_token(token: str, secret: str) -> str | None:
         return None
 
 
-def _office_preview_type(file_name: str | None, mime: str | None) -> bool:
-    return is_presentation_previewable(file_name, mime)
+def _office_preview_type(file_name: str | None, mime: str | None) -> str | None:
+    if not is_presentation_previewable(file_name, mime):
+        return None
+    extension = _extension_of(file_name)
+    if extension in PRESENTATION_EXTENSIONS:
+        return extension
+    normalized_mime = (mime or "").strip().lower()
+    return "pptx" if normalized_mime.endswith("presentationml.presentation") else "ppt"
 
 
 def _sanitize_preview_filename(name: str | None) -> str:
@@ -143,7 +149,8 @@ async def convert_attachment_to_pdf_preview(
     file_name: str | None = meta_row["file_name"]
     file_size: int | None = meta_row["blob_size"]
 
-    if not _office_preview_type(file_name, mime):
+    preview_type = _office_preview_type(file_name, mime)
+    if preview_type is None:
         raise HTTPException(status_code=400, detail="Only PowerPoint attachments support derived preview.")
 
     if file_size is None or file_size <= 0:
@@ -173,10 +180,7 @@ async def convert_attachment_to_pdf_preview(
     else:
         blob_bytes = bytes(blob_data)
 
-    extension = _extension_of(file_name)
-    if not extension:
-        normalized_mime = (mime or "").strip().lower()
-        extension = "pptx" if normalized_mime.endswith("presentationml.presentation") else "ppt"
+    extension = preview_type
 
     output_name = _sanitize_preview_filename(file_name)
     source_stem = Path(output_name).stem

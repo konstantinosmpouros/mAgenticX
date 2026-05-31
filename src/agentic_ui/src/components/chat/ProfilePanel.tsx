@@ -687,11 +687,11 @@ export default function ProfilePanel({
     return (
         <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-6">
             <div
-                className="absolute inset-0 bg-black/65 backdrop-blur-sm transition-opacity"
+                className="absolute inset-0 bg-black/65 backdrop-blur-sm animate-in fade-in-0 duration-200"
                 onClick={onClose}
             />
 
-            <div className="relative z-10 w-full max-w-5xl">
+            <div className="relative z-10 w-full max-w-5xl animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
                 <Card className="relative flex h-[min(44rem,88vh)] w-full overflow-hidden rounded-[30px] border border-border/60 bg-card/95 text-foreground shadow-[0_32px_90px_-36px_rgba(15,23,42,0.65)] backdrop-blur-xl">
                     <Button
                         size="icon"

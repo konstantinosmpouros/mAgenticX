@@ -68,11 +68,11 @@ export default function ShareConversationDialog({
   return (
     <div className="fixed inset-0 z-[60] flex min-h-[100dvh] items-center justify-center px-4 py-6">
       <div
-        className="absolute inset-0 z-0 bg-black/80 backdrop-blur-md transition-opacity"
+        className="absolute inset-0 z-0 bg-black/80 backdrop-blur-md animate-in fade-in-0 duration-200"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full max-w-[43rem]">
-        <Card className="relative overflow-hidden rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)] animate-scale-in">
+      <div className="relative z-10 w-full max-w-[43rem] animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
+        <Card className="relative overflow-hidden rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)]">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20" />
           <Button
             size="icon"

@@ -7,6 +7,16 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { HiOutlineUpload } from "react-icons/hi";
 import { useTheme } from "next-themes";
+import { motion, useAnimationControls } from "framer-motion";
+import type { TargetAndTransition, Transition } from "framer-motion";
+
+const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
+const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
+// Slightly bigger overshoot for the private-mode toggle: when entering private
+// mode the ghost icon also gets a small wiggle so the activation feels like a
+// proper "mode change", not just a tap.
+const PRIVATE_ENTER: TargetAndTransition = { scale: [1, 1.35, 1], rotate: [0, -10, 8, 0] };
+const PRIVATE_ENTER_TRANSITION: Transition = { duration: 0.5, ease: [0.34, 1.56, 0.64, 1] };
 
 type ChatHeaderProps = {
     agents: Agent[];
@@ -63,6 +73,9 @@ export default function ChatHeader({
 }: ChatHeaderProps) {
     const { resolvedTheme } = useTheme();
     const newChatIconSrc = resolvedTheme === "dark" ? "/edit.png" : "/edit2.png";
+
+    const privatePulse = useAnimationControls();
+    const moreMenuPulse = useAnimationControls();
 
     const displayAgents = React.useMemo(() => {
         if (inactiveAgent && !agents.some((agent) => agent.id === inactiveAgent.id)) {
@@ -164,15 +177,26 @@ export default function ChatHeader({
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                                 <button
-                                    onClick={onTogglePrivate}
+                                    onClick={() => {
+                                        onTogglePrivate();
+                                        // If we're about to enter private mode, do the bigger
+                                        // wiggle; if we're about to leave it, just a regular tap.
+                                        if (isPrivateMode) {
+                                            privatePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                                        } else {
+                                            privatePulse.start(PRIVATE_ENTER, PRIVATE_ENTER_TRANSITION);
+                                        }
+                                    }}
                                     onMouseDown={(e) => e.preventDefault()}
-                                    className={`p-3 rounded-full transition-smooth duration-300 ${
+                                    className={`inline-flex items-center justify-center leading-none p-3 rounded-full transition-smooth duration-300 ${
                                         isPrivateMode
                                             ? 'text-fuchsia-600 bg-gradient-to-r from-fuchsia-500/20 via-fuchsia-400/25 to-fuchsia-500/20 shadow-[0_0_20px_rgba(217,70,239,0.4)] border border-fuchsia-500/40 hover:shadow-[0_0_25px_rgba(217,70,239,0.5)]'
-                                            : 'text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] active:scale-110'
+                                            : 'text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]'
                                     }`}
                                 >
-                                    <Ghost size={20} />
+                                    <motion.span animate={privatePulse} className="inline-flex">
+                                        <Ghost size={20} />
+                                    </motion.span>
                                 </button>
                             </TooltipTrigger>
                             <TooltipContent
@@ -235,17 +259,20 @@ export default function ChatHeader({
                                 <button
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => moreMenuPulse.start(TAP_PULSE, TAP_PULSE_TRANSITION)}
                                     className="inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
                                     aria-label="Conversation actions"
                                 >
-                                    <MoreHorizontal size={18} />
+                                    <motion.span animate={moreMenuPulse} className="inline-flex">
+                                        <MoreHorizontal size={18} />
+                                    </motion.span>
                                 </button>
                             </DropdownMenu.Trigger>
                             <DropdownMenu.Portal>
                                     <DropdownMenu.Content
                                         sideOffset={8}
                                         align="end"
-                                        className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none"
+                                        className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none origin-top-right data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
                                     >
                                         <DropdownMenu.Item
                                             onSelect={() => {

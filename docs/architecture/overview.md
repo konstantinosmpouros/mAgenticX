@@ -81,6 +81,7 @@ nginx is the only publicly exposed port (8050). It does three things:
 3. **Injects security headers** — sets `X-Trusted-Proxy-Secret` on every forwarded request so the backend can trust the caller
 
 Key nginx settings:
+
 - `client_max_body_size 50M` — supports attachment uploads
 - `proxy_buffering off` — required for SSE and large file streaming
 - `resolver 127.0.0.11` — deferred DNS resolution for Docker service names
@@ -200,6 +201,7 @@ All vector embeddings use OpenAI `text-embedding-3-large` (1536-dim). The model 
 ### SQL Validation
 
 Every SQL query submitted to `/excel/.../query/sql` is validated before execution:
+
 - Must be a single statement
 - Must start with `SELECT` or `WITH` (after stripping whitespace)
 - Must not contain forbidden tokens: `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `DROP`, `ALTER`, `EXEC`, `EXECUTE`

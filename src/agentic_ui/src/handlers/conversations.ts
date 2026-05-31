@@ -191,6 +191,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
   const handleConversationSelect = async (conversation: ConversationSummary) => {
     handleStopStreaming?.();
+    void closeVoiceMode?.();
     if (!userId || (ctx as any).loadingConversation) return;
     const CLEAR_DELAY_MS = 200;
     setIsClearing(true);

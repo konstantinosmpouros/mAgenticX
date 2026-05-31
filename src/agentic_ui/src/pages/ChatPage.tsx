@@ -440,16 +440,72 @@ export function ChatInterface({
     voiceModeVoice: resolvedPreferences.voiceModeVoice,
     voiceModeLanguage: resolvedPreferences.voiceModeLanguage,
   });
-  const activeBodyMode: ConversationBodyMode = voiceSession.isActive ? "voice" : "chat";
+  const isEmptyConversation = (currentConversation?.messages?.length ?? 0) === 0;
 
-  // Lags behind voiceSession.isActive by the input-bar exit duration (180 ms) in both
-  // directions so positionClass/emptyWrapperStyle never snap while the bar is animating.
-  const [settledVoiceActive, setSettledVoiceActive] = useState(() => voiceSession.isActive);
+  // Staged voice-mode transition (empty conversation only):
+  //   forward (chat -> voice): chat-bar erases at center -> persona orb enters
+  //     -> voice-bar appears at sticky-bottom.
+  //   reverse (voice -> chat): voice-bar exits at sticky-bottom -> persona
+  //     exits -> chat-bar appears at center.
+  // In non-empty conversations everything switches in parallel (no staging)
+  // since chat-bar and voice-bar share the sticky-bottom slot there.
+  const [bodyShowsVoice, setBodyShowsVoice] = useState(voiceSession.isActive);
+  const [voiceBarReady, setVoiceBarReady] = useState(voiceSession.isActive);
+  const [chatBarReady, setChatBarReady] = useState(!voiceSession.isActive);
+  // Drives positionClass. Lags voiceBarReady going *false* by the voice-bar exit
+  // duration (~200 ms) so the voice-bar finishes its exit at sticky-bottom
+  // instead of teleporting to the centered slot. Matches voiceBarReady going
+  // true immediately so voice-bar mounts at the right place.
+  const [positionAtBottom, setPositionAtBottom] = useState(voiceSession.isActive);
   useEffect(() => {
+    if (voiceBarReady) {
+      setPositionAtBottom(true);
+      return;
+    }
+    const t = window.setTimeout(() => setPositionAtBottom(false), 200);
+    return () => window.clearTimeout(t);
+  }, [voiceBarReady]);
+  // Track the previous voice-active value so we only run the staged transition
+  // when voice mode is actually being entered or left. Without this guard,
+  // navigating between conversations (e.g. clicking "new chat" while voice is
+  // already off) would falsely trigger the reverse stage, causing the chat-bar
+  // to unmount and re-mount with a visible flicker.
+  const wasVoiceActiveRef = useRef(voiceSession.isActive);
+  useEffect(() => {
+    const prev = wasVoiceActiveRef.current;
     const next = voiceSession.isActive;
-    const timeout = window.setTimeout(() => setSettledVoiceActive(next), 180);
-    return () => window.clearTimeout(timeout);
-  }, [voiceSession.isActive]);
+    wasVoiceActiveRef.current = next;
+
+    if (next && !prev && isEmptyConversation) {
+      setBodyShowsVoice(false);
+      setVoiceBarReady(false);
+      setChatBarReady(true);
+      const personaIn = window.setTimeout(() => setBodyShowsVoice(true), 180);
+      const barIn = window.setTimeout(() => setVoiceBarReady(true), 180 + 560);
+      return () => {
+        window.clearTimeout(personaIn);
+        window.clearTimeout(barIn);
+      };
+    }
+
+    if (!next && prev && isEmptyConversation) {
+      setVoiceBarReady(false);
+      setChatBarReady(false);
+      const personaOut = window.setTimeout(() => setBodyShowsVoice(false), 180);
+      const chatBarIn = window.setTimeout(() => setChatBarReady(true), 180 + 560);
+      return () => {
+        window.clearTimeout(personaOut);
+        window.clearTimeout(chatBarIn);
+      };
+    }
+
+    setBodyShowsVoice(next);
+    setVoiceBarReady(next);
+    setChatBarReady(true);
+  }, [voiceSession.isActive, isEmptyConversation]);
+
+  const activeBodyMode: ConversationBodyMode = bodyShowsVoice ? "voice" : "chat";
+  const settledVoiceActive = positionAtBottom;
   const [bodyTransition, setBodyTransition] = useState<{
     current: ConversationBodyMode;
     exiting: ConversationBodyMode | null;
@@ -1321,13 +1377,15 @@ export function ChatInterface({
               {/* Input Area */}
               <ChatInputBar
                 mode={voiceSession.isActive ? "voice" : "chat"}
+                voiceBarVisible={voiceBarReady}
+                chatBarVisible={chatBarReady}
                 // Centered empty state
                 isMessagesEmpty={isMessagesEmpty}
                 positionClass={
                   settledVoiceActive
                     ? "sticky bottom-0 left-0 right-0 z-30 p-6"
                     : isMessagesEmpty
-                    ? "absolute left-1/2 top-[35%] -translate-x-1/2 -translate-y-1/2 transform z-40 w-full p-6"
+                    ? "absolute left-1/2 top-[35%] z-40 w-full p-6"
                     : "sticky bottom-0 left-0 right-0 z-30 p-6"
                 }
 

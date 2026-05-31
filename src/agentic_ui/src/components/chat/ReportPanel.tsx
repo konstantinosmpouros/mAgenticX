@@ -64,11 +64,11 @@ export default function ReportConversationDialog({
   return (
     <div className="fixed inset-0 z-[60] flex min-h-[100dvh] items-center justify-center px-4 py-6">
       <div
-        className="absolute inset-0 z-0 bg-black/65 backdrop-blur-sm transition-opacity"
+        className="absolute inset-0 z-0 bg-black/65 backdrop-blur-sm animate-in fade-in-0 duration-200"
         onClick={submitting ? undefined : onClose}
       />
-      <div className="relative z-10 w-full max-w-xl">
-        <Card className="relative overflow-hidden rounded-lg border border-border/70 bg-card text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.35)] animate-scale-in">
+      <div className="relative z-10 w-full max-w-xl animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
+        <Card className="relative overflow-hidden rounded-lg border border-border/70 bg-card text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
           <Button
             size="icon"
             variant="ghost"

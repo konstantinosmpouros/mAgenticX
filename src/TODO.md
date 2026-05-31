@@ -30,6 +30,4 @@
 
 ## Bugs
 
-- When changing to voice mode the transition in bad in the input bar actually the transition. Also if l change the voice mode and go to a conversation before connection and been live l will see and error and when it will connect l will be redirected to the voice mode even though l have left from there and l am in another conversation, we need to fix this issue and make sure that the voice mode is only active when the user is in the voice mode and if leave it will stop.
-- The mermaid diagrams, code blocks are not rendering according to the browser size, we need to make it responsive. This problem is more extensive and l mean that the user messages as well are not showing if the width of the browser is too small, we need to make the whole chat body responsive and adapt to different screen sizes or appear a horizontal scrollbar.
-- In the hr policies agent in the detached inference l got a "stream observer lost" error and the agent stopped working, we need to investigate this issue and fix it.
+- In the hr policies agent in the detached inference l got a "stream observer lost" error and the agent stopped working, we need to investigate this issue and fix it. There is also a bigger inference problem that we dont use webhooks or websocker mechanism for the inference and we use polling and the inference is not so smooth, real time and there is a chance to stop some chunks before the last one.

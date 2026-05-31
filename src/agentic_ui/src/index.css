@@ -774,6 +774,70 @@ All colors MUST be HSL.
 }
 
 /* Chat markdown content overrides */
+
+/* Containment: prevent any wide descendant (custom HTML grids, big SVGs, wide
+   tables, embedded media) from forcing the chat-markdown root to exceed the
+   bubble width. The chat panel uses flex+overflow-hidden, but grid/flex
+   children default to min-width: auto (= intrinsic content size), which is
+   what allows wide content to push ancestors wider. The rules below cap every
+   block-level descendant to 100% of its parent and reset that intrinsic
+   minimum to 0. */
+.chat-markdown {
+  min-width: 0;
+  max-width: 100%;
+  /* Break long unbreakable strings (URLs, base64 blobs, numeric runs, long
+     unspaced words) instead of letting them widen the container. `anywhere`
+     also treats those characters as soft-wrap opportunities for min-content
+     sizing, so the bubble can shrink below their intrinsic width. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown div,
+.chat-markdown main,
+.chat-markdown section,
+.chat-markdown article,
+.chat-markdown aside,
+.chat-markdown header,
+.chat-markdown footer,
+.chat-markdown figure,
+.chat-markdown form,
+.chat-markdown fieldset {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Wide media: scale down rather than overflow. */
+.chat-markdown img,
+.chat-markdown video,
+.chat-markdown canvas,
+.chat-markdown iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Code blocks wrap long lines instead of forcing horizontal overflow.
+   `pre-wrap` keeps indentation and explicit newlines but allows soft-wrap at
+   whitespace; `overflow-wrap: anywhere` breaks unbreakable runs (long URLs,
+   base64, etc.) so they fold instead of pushing the bubble wider. */
+.chat-markdown pre,
+.chat-markdown pre code {
+  display: block;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Tables fill the available bubble width and distribute columns evenly. Keep
+   default display: table so the layout engine sizes columns intelligently —
+   display: block breaks that. */
+.chat-markdown table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: auto;
+}
+
 .chat-markdown h1,
 .chat-markdown h2,
 .chat-markdown h3,
@@ -868,6 +932,10 @@ All colors MUST be HSL.
 }
 
 .chat-markdown [data-streamdown="mermaid-block"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   background: #ffffff;
   border-color: rgb(203 213 225);
@@ -888,6 +956,10 @@ All colors MUST be HSL.
 }
 
 .chat-markdown [aria-label="Mermaid chart"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   border-radius: 0.5rem;
   background: #ffffff;
