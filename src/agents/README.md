@@ -466,8 +466,7 @@ Configuration is loaded from environment variables in `core/settings.py` (pydant
 | `LOG_TIMEZONE` | `Europe/Athens` | Formatter timezone |
 | `LOG_REDACTION_SECRET` | derived fallback | HMAC secret for stable hashes |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` | Secret header name |
-| `TRUSTED_PROXY_SECRET` | empty | Secret value for trusted proxy requests |
-| `TRUSTED_PROXY_CIDRS` | empty | Trusted proxy CIDRs |
+| `TRUSTED_PROXY_SECRET` | required | Shared secret for trusted internal callers — service refuses to start if unset |
 
 ### 11.4 Workflow-specific namespaces
 

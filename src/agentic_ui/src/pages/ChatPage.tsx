@@ -285,7 +285,7 @@ export function ChatInterface({
 
   useEffect(() => {
     const title = resolveConversationTitle(currentConversation);
-    document.title = title ? `${title} | mAgenticX` : "mAgenticX";
+    document.title = title ? `${title}` : "mAgenticX";
   }, [currentConversation]);
 
   // Active profile tab handler

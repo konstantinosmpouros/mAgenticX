@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import ipaddress
 import os
 import re
 from pathlib import Path
 
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-ProxyNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 
 _BASE_MODEL_CONFIG = SettingsConfigDict(
@@ -137,8 +133,6 @@ class ProxySettings(BaseSettings):
         "X-Internal-Proxy-Secret", validation_alias="TRUSTED_PROXY_HEADER_NAME"
     )
     trusted_proxy_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    trusted_proxy_cidrs: str = Field("", validation_alias="TRUSTED_PROXY_CIDRS")
-    trusted_proxy_networks: tuple[ProxyNetwork, ...] = Field(default=())
 
     @field_validator("trusted_proxy_secret", mode="before")
     @classmethod
@@ -149,20 +143,6 @@ class ProxySettings(BaseSettings):
             return value
         resolved = _resolve_file_backed_secret("TRUSTED_PROXY_SECRET")
         return resolved if resolved else ""
-
-    @model_validator(mode="after")
-    def _parse_networks(self) -> "ProxySettings":
-        networks: list[ProxyNetwork] = []
-        for item in self.trusted_proxy_cidrs.split(","):
-            candidate = item.strip()
-            if not candidate:
-                continue
-            try:
-                networks.append(ipaddress.ip_network(candidate, strict=False))
-            except ValueError:
-                continue
-        object.__setattr__(self, "trusted_proxy_networks", tuple(networks))
-        return self
 
 
 class LoggingSettings(BaseSettings):
@@ -319,6 +299,15 @@ class Settings(BaseSettings):
     runtime_models: RuntimeModelsSettings = Field(default_factory=RuntimeModelsSettings)
     workflows: WorkflowsSettings = Field(default_factory=WorkflowsSettings)
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
+
+    @model_validator(mode="after")
+    def _require_proxy_secret(self) -> "Settings":
+        if not self.proxy.trusted_proxy_secret.get_secret_value():
+            raise ValueError(
+                "TRUSTED_PROXY_SECRET must be set. "
+                "Refusing to start without an internal-caller shared secret."
+            )
+        return self
 
 
 settings = Settings()

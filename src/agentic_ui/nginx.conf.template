@@ -11,10 +11,9 @@ server {
   # Trust real client IP from NPM (which sits in front on the `proxy` docker network).
   # `set_real_ip_from` restricts honoring the header to connections from the proxy
   # network; anything else falls back to the actual TCP peer, so external clients
-  # cannot spoof their IP. Verify the CIDR matches the actual `proxy` network on
-  # Dennis (`docker network inspect proxy`); 172.16.0.0/12 covers Docker defaults.
-  set_real_ip_from 172.16.0.0/12;
-  set_real_ip_from 10.0.0.0/8;
+  # cannot spoof their IP. CIDR matches Dennis's `proxy` network exactly — verify
+  # with `docker network inspect proxy` if the network is ever recreated.
+  set_real_ip_from 10.0.9.0/24;
   real_ip_header CF-Connecting-IP;
   real_ip_recursive on;
 

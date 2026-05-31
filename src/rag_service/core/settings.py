@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ipaddress
 import os
 from pathlib import Path
 from typing import Any
@@ -61,30 +60,14 @@ class ProxySettings(BaseSettings):
     trusted_proxy_header_name: str = Field(
         "X-Internal-Proxy-Secret", validation_alias="TRUSTED_PROXY_HEADER_NAME"
     )
-    trusted_proxy_cidrs: str = Field("", validation_alias="TRUSTED_PROXY_CIDRS")
     trusted_proxy_secret: SecretStr = Field(
         default_factory=lambda: SecretStr(""), validation_alias="TRUSTED_PROXY_SECRET"
     )
-    trusted_proxy_networks: tuple = Field(default_factory=tuple)
 
     @field_validator("trusted_proxy_secret", mode="before")
     @classmethod
     def _resolve_secret(cls, v: Any) -> Any:
         return _resolve_file_backed_secret("TRUSTED_PROXY_SECRET_FILE", v) or ""
-
-    @model_validator(mode="after")
-    def _parse_networks(self) -> "ProxySettings":
-        networks = []
-        for item in self.trusted_proxy_cidrs.split(","):
-            candidate = item.strip()
-            if not candidate:
-                continue
-            try:
-                networks.append(ipaddress.ip_network(candidate, strict=False))
-            except ValueError:
-                continue
-        object.__setattr__(self, "trusted_proxy_networks", tuple(networks))
-        return self
 
 
 class Settings(BaseSettings):
@@ -94,6 +77,15 @@ class Settings(BaseSettings):
     rag: RagSettings = Field(default_factory=RagSettings)
     api_keys: ApiKeysSettings = Field(default_factory=ApiKeysSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
+
+    @model_validator(mode="after")
+    def _require_proxy_secret(self) -> "Settings":
+        if not self.proxy.trusted_proxy_secret.get_secret_value():
+            raise ValueError(
+                "TRUSTED_PROXY_SECRET must be set. "
+                "Refusing to start without an internal-caller shared secret."
+            )
+        return self
 
 
 settings = Settings()

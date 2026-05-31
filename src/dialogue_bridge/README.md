@@ -671,8 +671,7 @@ Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `4` |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60` |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` |
-| `TRUSTED_PROXY_SECRET` | empty |
-| `TRUSTED_PROXY_CIDRS` | empty |
+| `TRUSTED_PROXY_SECRET` | required (service refuses to start if unset) |
 
 ### 17.5 CORS variables
 
