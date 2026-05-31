@@ -1,8 +1,9 @@
 services:
 
-  gateway: # 8005
+  mcp_gateway: # 8005
     container_name: mcp_gateway
-    image: docker/mcp-gateway:latest
+    image: docker/mcp-gateway:dind-v0.42.1
+    privileged: true
     command:
     # Configure the MCP Gateway servers and transport
     - --transport=sse
@@ -16,14 +17,12 @@ services:
       - /opt/magenticx/mcp_config/mcp_catalog.yaml:/app/mcp_catalog.yaml:ro
       - /opt/magenticx/mcp_config/mcp_secret.env:/app/mcp_secret:ro
       - /opt/magenticx/mcp_config/mcp_config.yaml:/app/mcp_config.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     networks:
-      - gateway
+      - mcp_gateway
 
 
 networks:
-  gateway:
-    driver: overlay
-    attachable: true
-
+  mcp_gateway:
+    external: true
+    name: mcp_gateway

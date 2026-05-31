@@ -9,7 +9,13 @@ logger = get_logger(__name__)
 
 DATA_DIR = Path("data")
 
-db = duckdb.connect(database=":memory:")
+db = duckdb.connect(
+    database=":memory:",
+    config={
+        "enable_external_access": "false",
+        "allow_unsigned_extensions": "false",
+    },
+)
 TABLES: dict[str, dict] = {}
 
 if not DATA_DIR.exists():

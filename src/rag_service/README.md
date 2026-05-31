@@ -49,7 +49,7 @@ flowchart LR
 
 ### 3.3 SQL execution
 
-- accepts arbitrary SQL as request body
+- accepts a single read-only `SELECT` or `WITH` SQL statement as request body
 - executes it against the in-memory DuckDB database
 - returns JSON rows and row count
 
@@ -253,6 +253,9 @@ Successful response:
 Behavior:
 
 - validates that `{table}` exists in `TABLES`
+- strips a single trailing semicolon
+- rejects empty SQL, multiple statements, non-`SELECT`/`WITH` first tokens, and a small blacklist of mutation/DDL tokens
+- checks that the requested table name appears in the SQL text
 - executes the submitted SQL in DuckDB
 - converts the result DataFrame to `orient="records"`
 - returns `400` on SQL execution failure
@@ -261,13 +264,13 @@ Behavior:
 
 These points matter if you are extending or depending on this service.
 
-### 8.1 SQL path validation is partial
+### 8.1 SQL validation is partial
 
 The endpoint checks that the path table exists:
 
 - `/excel/{table}/query/sql`
 
-But it does not parse the submitted SQL to verify that the SQL actually references that same table name. The route docstring says the SQL must reference the path table, but the current implementation does not enforce it.
+It also requires the SQL text to start with `SELECT` or `WITH`, rejects obvious mutation/DDL tokens, and checks that the path table name appears in the submitted SQL. This is still regex/text validation, not an AST whitelist, so it should not be treated as a complete SQL sandbox.
 
 ### 8.2 DuckDB is in-memory only
 
@@ -448,11 +451,12 @@ You would need to change:
 
 ### To harden SQL execution
 
-Current implementation executes arbitrary SQL against DuckDB. If you want stronger guarantees, likely changes include:
+Current implementation executes text-validated read-only SQL against DuckDB. If you want stronger guarantees, likely changes include:
 
-- parse and validate the SQL before execution
+- parse and validate the SQL with an AST whitelist before execution
 - enforce read-only statements
 - enforce that the SQL references only the path table
+- disable DuckDB external access at the engine level
 - apply result row limits centrally
 
 ## 17. Quick File References

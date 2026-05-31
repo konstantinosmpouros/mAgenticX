@@ -32,7 +32,7 @@ flowchart TB
 
     subgraph Stores["Managed stores & services"]
         PG["chat_postgres<br/>(conversations and blobs)"]
-        Vault["HashiCorp Vault<br/>(auth and JWT)"]
+        Vault["HashiCorp Vault<br/>(userpass auth)"]
         Chroma["vectordb Chroma<br/>(vector collections)"]
         OpenAI["OpenAI API<br/>(LLMs and embeddings)"]
     end
@@ -40,10 +40,10 @@ flowchart TB
     Admin -->|"configure UI"| UI
     Browser -->|"HTTP SSE via 8050"| UI
     UI -->|"REST SSE via /api"| Bridge
-    Bridge -->|"Proxy SSE and tools"| Agents
+    Bridge -->|"Detached run tasks"| Agents
     Agents -->|"Tool catalog SSE"| MCP
     Bridge -->|"Persist conversations"| PG
-    Bridge -->|"JWT exchange"| Vault
+    Bridge -->|"userpass login"| Vault
     Agents -->|"Document and analytics tools"| RAG
     RAG -->|"Vector REST"| Chroma
     RAG -->|"Embeddings"| OpenAI
@@ -121,15 +121,15 @@ sequenceDiagram
     U->>UI: Sign in and open chat
     UI->>B: /api/v1/auth/login
     B-->>UI: session + refresh cookies
-    UI->>B: POST /api/v1/inference/runs/{userId}/{conversationId}
-    B->>P: create inference_run row + AI placeholder message
-    B-->>UI: run_id + initial snapshot
-    B->>B: spawn background asyncio task (detached)
+    UI->>B: POST /api/v1/inference/runs/{userId}/start
+    B->>P: persist user action + AI placeholder + inference_run row
+    B-->>UI: detail + summary + run + assistant message
+    B->>B: launch background asyncio task (detached)
     UI->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
     B-->>UI: DB snapshot on connect, then live in-memory events
     B->>A: POST /agents/{slug}/stream (inside background task)
     A-->>B: AG-UI SSE frames
-    B->>B: accumulate in InferenceRunRuntime (no DB writes during stream)
+    B->>B: accumulate in InferenceRunRuntime (no per-chunk DB writes)
     B-->>UI: publish lightweight events to all observers
     B->>P: single DB write at run completion (content, events, status)
 ```
@@ -204,7 +204,7 @@ Representative use cases supported by the current codebase:
 | Service | Role | Default Port | Main Stack | Docs |
 | --- | --- | ---: | --- | --- |
 | `agentic_ui` | Browser chat app and reverse proxy entrypoint | `8050` | React, Vite, nginx | [UI README](src/agentic_ui/README.md) |
-| `dialogue_bridge` | Authenticated BFF, persistence layer, SSE proxy | `8002` | FastAPI, SQLAlchemy, Postgres | [Bridge README](src/dialogue_bridge/README.md) |
+| `dialogue_bridge` | Authenticated BFF, persistence layer, detached run manager | `8002` | FastAPI, SQLAlchemy, Postgres | [Bridge README](src/dialogue_bridge/README.md) |
 | `agents` | Streaming agent runtime and AG-UI normalization | `8003` | FastAPI, LangGraph, OpenAI | [Agents README](src/agents/README.md) |
 | `rag_service` | Retrieval and SQL over spreadsheet-backed data | `8001` | FastAPI, Chroma, DuckDB | [RAG README](src/rag_service/README.md) |
 | `mcp_gateway` | Tool catalog and MCP SSE endpoint | `8005` | docker/mcp-gateway | [MCP Gateway README](src/mcp_gateway/README.md) |
@@ -224,7 +224,7 @@ Representative use cases supported by the current codebase:
 │   └── exploratory and analysis notebooks
 └── src/
     ├── agentic_ui/          React SPA, nginx proxy, AG-UI rendering
-    ├── dialogue_bridge/     FastAPI BFF, auth, persistence, SSE relay
+    ├── dialogue_bridge/     FastAPI BFF, auth, persistence, detached inference runs
     ├── agents/              Agent runtime, manifests, AG-UI event output
     ├── rag_service/         Retrieval and DuckDB-backed analytics
     ├── mcp_gateway/         MCP catalog and gateway config
@@ -300,7 +300,7 @@ flowchart TD
     Browser["Browser"] -->|"HTTP :8050"| Nginx["nginx — agentic_ui"]
     Nginx -->|"/ → static SPA assets"| SPA["React SPA"]
     Nginx -->|"/api/ → proxy_pass :8002"| Bridge["dialogue_bridge :8002"]
-    Bridge -->|"TLS :8003"| Agents["agents :8003"]
+    Bridge -->|"HTTP :8003"| Agents["agents :8003"]
     Bridge -->|"asyncpg :5432"| PG["chat_postgres"]
     Bridge -->|"HTTPS :8004"| Vault["vault :8004"]
     Agents -->|"HTTP :8001"| RAG["rag_service :8001"]
@@ -328,7 +328,7 @@ flowchart TB
 
     subgraph Stores["Managed stores & services"]
         PG["chat_postgres\n(conversations and blobs)"]
-        Vault["HashiCorp Vault\n(auth and JWT)"]
+        Vault["HashiCorp Vault\n(userpass auth)"]
         Chroma["vectordb Chroma\n(vector collections)"]
         OpenAI["OpenAI API\n(LLMs and embeddings)"]
     end
@@ -336,10 +336,10 @@ flowchart TB
     Admin -->|"configure UI"| UI
     Browser -->|"HTTP SSE via 8050"| UI
     UI -->|"REST SSE via /api"| Bridge
-    Bridge -->|"Proxy SSE and tools"| Agents
+    Bridge -->|"Detached run tasks"| Agents
     Agents -->|"Tool catalog SSE"| MCP
     Bridge -->|"Persist conversations"| PG
-    Bridge -->|"JWT exchange"| Vault
+    Bridge -->|"userpass login"| Vault
     Agents -->|"Document and analytics tools"| RAG
     RAG -->|"Vector REST"| Chroma
     RAG -->|"Embeddings"| OpenAI
@@ -358,11 +358,11 @@ sequenceDiagram
     participant A as Agents
 
     U->>UI: Send message
-    UI->>B: POST /runs/{userId}/{conversationId}
-    B->>P: create inference_run row + AI message placeholder
-    B-->>UI: run_id + initial snapshot
-    B->>B: spawn detached asyncio task
-    UI->>B: GET /runs/{userId}/{run_id}/stream (SSE observer)
+    UI->>B: POST /api/v1/inference/runs/{userId}/start
+    B->>P: persist user action + AI placeholder + inference_run row
+    B-->>UI: detail + summary + run + assistant message
+    B->>B: launch detached asyncio task
+    UI->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
     B-->>UI: DB snapshot on connect, then live events per chunk
     B->>A: POST /agents/{slug}/stream (inside background task)
     A-->>B: AG-UI SSE frames
@@ -370,7 +370,7 @@ sequenceDiagram
     B->>P: single DB write at run completion
     U->>UI: disconnect / refresh
     Note over B,A: run continues server-side uninterrupted
-    UI->>B: reconnect → GET /runs/{userId}/{run_id}/stream
+    UI->>B: reconnect → GET /api/v1/inference/runs/{userId}/{run_id}/stream
     B-->>UI: fresh DB snapshot + resume live events
 ```
 
@@ -391,7 +391,7 @@ sequenceDiagram
 
     Note over B,Bridge: Every authenticated request
     B->>Bridge: request + X-CSRF-Token header + session cookie
-    Bridge->>Bridge: verify access JWT + CSRF double-submit
+    Bridge->>Bridge: verify session cookie + CSRF double-submit
     Bridge-->>B: response
 
     Note over B,Bridge: Token refresh
@@ -418,7 +418,7 @@ Use the root README for orientation, then jump into the service manuals for impl
 ## Development Notes
 
 - If you are working on the browser experience, start with `src/agentic_ui`.
-- If you are changing auth, sessions, chat persistence, or SSE proxying, start with `src/dialogue_bridge`.
+- If you are changing auth, sessions, chat persistence, or detached inference run observation, start with `src/dialogue_bridge`.
 - If you are changing agent workflows, manifests, or AG-UI stream behavior, start with `src/agents`.
 - If you are changing retrieval collections, Excel analytics, or DuckDB behavior, start with `src/rag_service`.
 - If you are changing available tools or MCP server wiring, start with `src/mcp_gateway`.

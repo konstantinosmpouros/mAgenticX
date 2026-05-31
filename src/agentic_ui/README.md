@@ -53,7 +53,7 @@ flowchart TD
     Arch["pages/Architecture.tsx"]
     Test["pages/Test.tsx"]
     API["lib/api.ts"]
-    AGUI["components/handlers/agui.ts"]
+    AGUI["lib/agui.ts + hooks/useInferenceRuns.ts"]
     Storage["authStorage.ts + uiStateStorage.ts"]
     UI["chat/* components"]
 
@@ -75,7 +75,9 @@ The app defines a small set of browser routes:
 
 - `/` renders `ChatInterface`, the production chat workspace.
 - `/login` renders the credential-based login flow.
+- `/share/:token` renders a public shared conversation snapshot with optional authenticated continuation.
 - `/architecture` renders an in-product architecture explainer page.
+- `/terms` and `/privacy` render legal pages.
 - `/test` renders an internal AG-UI/sub-agent replay playground.
 - Any unknown route falls back to `NotFound`.
 
@@ -86,8 +88,9 @@ The app defines a small set of browser routes:
 The page delegates behavior to modular handlers instead of placing all business logic inline:
 
 - `handlers/auth.ts` handles login/logout side effects and post-auth bootstrap.
-- `handlers/inference.ts` prepares sends, creates optimistic placeholders, and starts the AG-UI stream.
-- `handlers/agui.ts` parses the incoming event stream and turns it into UI state plus persisted assistant messages.
+- `runtime/inference.ts` prepares send, edit, retry, and shared-continuation start requests for the backend-owned inference API.
+- `hooks/useInferenceRuns.ts` observes active runs, applies AG-UI run events, and hydrates detached runs after navigation or refresh.
+- `lib/agui.ts` defines client-side AG-UI schemas for plan, sub-agent, and HITL custom events.
 - `handlers/preferences.ts` computes enabled tool state and saves user preferences.
 - `handlers/attachments.ts` manages file picking, paste flows, validation, and download behavior.
 - `handlers/shortcuts.ts` maps shared shortcut IDs onto page-owned actions, while `hooks/useKeyboardShortcuts.ts` attaches the global listener.
@@ -194,20 +197,28 @@ Main endpoint groups:
 - Attachments
   - `/attachments/download/{userId}/{conversationId}/{messageId}/{blobId}`
 - Inference
-  - `/inference/runs/{userId}/{conversationId}` — create and start a detached run
+  - `/inference/runs/{userId}/start` — backend-owned start for new, send, edit, retry, and shared continuation
   - `/inference/runs/{userId}?status=active` — list active runs for hydration
   - `/inference/runs/{userId}/{runId}/stream` — SSE observer for a run
   - `/inference/runs/{userId}/{runId}/cancel` — cancel a run
+- Shared conversations
+  - `/shared-conversations/{token}` — fetch a public read-only shared snapshot
+- Search
+  - `/search/{userId}` — workspace conversation search
 - Speech
   - `/speech/dictation/{userId}`
   - `/speech/read-aloud/{userId}/{conversationId}/{messageId}`
+- Voice
+  - `/voice/realtime/{userId}/session`
+  - `/voice/realtime/{userId}/conversation-event`
+  - `/voice/realtime/{userId}/end`
 
 ## AG-UI Streaming Model
 
-The most important runtime path is the detached inference run. Instead of opening a direct SSE proxy, the UI calls `beginRun(conversationId, request)` on the globally-instantiated `useInferenceRuns` hook. This:
+The most important runtime path is the detached inference run. Instead of opening a direct SSE proxy or persisting messages itself, the UI calls `beginRun(request)` on the globally-instantiated `useInferenceRuns` hook. This:
 
-1. calls `POST /api/v1/inference/runs/{userId}/{conversationId}` on the bridge
-2. receives a `run_id` and initial snapshot — the server has already spawned the background asyncio task
+1. calls `POST /api/v1/inference/runs/{userId}/start` on the bridge
+2. receives the latest conversation detail, sidebar summary, run, and AI placeholder message
 3. opens a separate SSE observer connection via `observeRunId(runId)` that reads from `/api/v1/inference/runs/{userId}/{run_id}/stream`
 
 The observer receives a DB snapshot immediately on connect (for reconnect resilience), then receives lightweight in-memory events published by `InferenceRunManager` as the background task progresses. Every incoming event is routed through `applyRunEvent(event)`, which updates `runsByConversation`, the conversation list, and UI state in a single handler.
@@ -246,17 +257,18 @@ sequenceDiagram
     participant B as Dialogue Bridge
     participant A as Agents Service
 
-    UI->>Hook: beginRun(conversationId, request)
-    Hook->>B: POST /api/v1/inference/runs/{userId}/{conversationId}
-    B-->>Hook: run_id + initial snapshot
-    B->>B: spawn background asyncio task
+    UI->>Hook: beginRun(request)
+    Hook->>B: POST /api/v1/inference/runs/{userId}/start
+    B->>B: persist user action + placeholder + run
+    B-->>Hook: detail + summary + run + placeholder
+    B->>B: launch detached asyncio task
     Hook->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
     B-->>Hook: DB snapshot on connect
     B->>A: POST /agents/{slug}/stream (inside background task)
     A-->>B: AG-UI SSE frames
     B-->>Hook: live in-memory events
     Hook->>Hook: applyRunEvent(...) — updates conversations, messages, thinking
-    Note over B: Single DB write at run completion
+    Note over B: No per-chunk DB writes; terminal state is persisted
 ```
 
 ## Plan and Sub-Agent Rendering
@@ -583,7 +595,7 @@ When extending the UI, the existing seams are:
 
 - add new backend endpoints in `src/lib/api.ts`
 - add new AG-UI event schemas in `src/lib/agui.ts`
-- normalize new stream behaviors in `components/handlers/agui.ts`
+- normalize run observation behavior in `hooks/useInferenceRuns.ts`
 - expose new controls via `ProfilePanel`, `ChatHeader`, or `ChatInputBar`
 - persist only lightweight metadata to IndexedDB unless there is a strong reason to widen the browser cache
 

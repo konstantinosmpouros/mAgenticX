@@ -59,7 +59,7 @@ flowchart LR
 - caches active agent manifests from the `agents` service
 - proxies MCP tool catalog requests through the bridge
 - proxies dictation uploads to the `agents` speech-to-text endpoint
-- forwards SSE inference streams from `agents` to the browser
+- owns detached inference runs and exposes SSE observer streams to the browser
 
 ### 3.4 User preferences
 
@@ -74,9 +74,9 @@ flowchart TD
     B -->|auth| C[Vault + session tables]
     B -->|catalog| D[Agent cache + agents service]
     B -->|conversations/messages| E[Postgres via SQLAlchemy]
-    B -->|inference| F[Prepare history branch]
-    F --> G[POST to agents stream endpoint]
-    G --> H[Forward SSE back to browser]
+    B -->|inference| F[Start run + AI placeholder]
+    F --> G[Detached task posts to agents stream]
+    G --> H[SSE observer fan-out to browser]
     B -->|attachments| I[Blob streaming / image pagination]
 ```
 
@@ -98,11 +98,14 @@ flowchart TD
 | auth | `/v1/auth` |
 | inference | `/v1/inference` |
 | speech | `/v1/speech` |
+| voice | `/v1/voice` |
 | catalog | `/v1/catalog` |
 | preferences | `/v1/preferences` |
 | conversations | `/v1/conversations` |
 | messages | `/v1/messages` |
 | attachments | `/v1/attachments` |
+| shared conversations | `/v1/shared-conversations` |
+| search | `/v1/search` |
 
 ## 6. Authentication and Session Model
 
@@ -299,19 +302,24 @@ sequenceDiagram
     participant UI
     participant Bridge
     participant DB as Postgres
+    participant Task as Inference task
     participant Agents
 
-    UI->>Bridge: POST /v1/inference/runs/{user}/{conversation}
-    Bridge->>DB: create run + AI placeholder
-    Bridge->>UI: run id + assistant message id
+    UI->>Bridge: POST /v1/inference/runs/{user}/start
+    Bridge->>DB: persist user action + AI placeholder + run
+    Bridge->>Task: launch(run.id)
+    Bridge->>UI: detail + summary + run + assistant message
     UI->>Bridge: GET /v1/inference/runs/{user}/{run}/stream
-    Bridge->>DB: load conversation + messages + attachments
-    Bridge->>Bridge: validate messagePath
-    Bridge->>Bridge: remove trailing empty AI placeholder
-    Bridge->>Bridge: serialize text + inline image data URLs
-    Bridge->>Agents: POST /agents/{slug}/stream
-    Agents-->>Bridge: SSE AG-UI frames
+    Bridge-->>UI: DB snapshot on connect
+    Task->>DB: load conversation + messages + attachments
+    Task->>Task: validate messagePath
+    Task->>Task: remove trailing empty AI placeholder
+    Task->>Task: serialize text + inline image data URLs
+    Task->>Agents: POST /agents/{slug}/stream
+    Agents-->>Task: SSE AG-UI frames
+    Task-->>Bridge: publish run events
     Bridge-->>UI: run snapshot events
+    Task->>DB: terminal run + message + conversation write
 ```
 
 ### 10.1 Upstream payload shape
@@ -345,6 +353,9 @@ The bridge sends this shape to the `agents` service:
 
 The inference payload accepts:
 
+- `mode`
+- `message`
+- `conversationId`, `parentMessageId`, or `targetMessageId` depending on mode
 - `messagePath`
 - `enabledTools`
 
@@ -388,9 +399,9 @@ The endpoint returns the latest conversation detail/summary, the run, and the pl
 
 ### 11.2 Background task execution
 
-`InferenceRunManager` is a process-level singleton. `launch(run_id)` spawns an asyncio `Task` that calls `_do_stream(...)`. That method:
+`InferenceRunManager` is a process-level singleton. `launch(run_id)` spawns an asyncio `Task` that calls `_run(...)`, which prepares history and then calls `_do_stream(...)`. That path:
 
-- marks the run `running` in-memory
+- marks the run `running` in Postgres
 - calls the `agents` service SSE endpoint
 - reads each AG-UI chunk and applies it to an `InferenceRunRuntime` accumulator (in-memory only — no DB writes during streaming)
 - builds a lightweight `InferenceRunEvent` via `_build_runtime_event(...)` and publishes it to all subscribed observers
@@ -399,8 +410,8 @@ The endpoint returns the latest conversation detail/summary, the run, and the pl
 
 `observe_run_events(...)` is an async generator consumed by the SSE observer endpoint:
 
-1. on connect, it reads the current `InferenceRunTable` row from Postgres and emits a snapshot event (reconnect resilience)
-2. it then subscribes to the in-memory pub/sub queue for the run
+1. on connect, it subscribes to the in-memory pub/sub queue for the run
+2. it reads the current `InferenceRunTable` row from Postgres and emits a snapshot event (reconnect resilience)
 3. events are forwarded to the browser as `text/event-stream` frames until the run terminates
 4. on termination, the controller is cleaned up and the generator exits
 
@@ -412,19 +423,19 @@ Multiple browsers can observe the same run simultaneously.
 
 ### 11.5 DB write policy
 
-DB writes happen exactly twice per run:
+For the normal success path, DB writes happen at run start and terminal finalization:
 
-- **at creation** (`create_inference_run`) — the run row and AI placeholder are written together
+- **at creation** (`create_inference_run_record`) — the user action, run row, and AI placeholder are written together
 - **at completion** (`_finish_run`) — content, thinking, raw events, plan, subagents, status, and timestamps are written in a single update
 
-There are zero DB writes during streaming. All intermediate state lives in `InferenceRunRuntime` in memory.
+There are zero DB writes per stream chunk. Cancellation, launch failure, and stale queued-run cleanup can add small terminal/cleanup writes outside the happy path.
 
 ### 11.6 Run lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> queued : create_inference_run
-    queued --> running : _do_stream starts
+    [*] --> queued : create_inference_run_record
+    queued --> running : _run starts
     running --> cancelling : cancel signal received
     cancelling --> cancelled : _finish_run
     running --> completed : _finish_run (success)
@@ -570,7 +581,7 @@ Either `content` or at least one attachment must be present for non-placeholder 
 
 | Endpoint | Method | Notes |
 | --- | --- | --- |
-| `/v1/inference/runs/{user_id}/{conversation_id}` | `POST` | Create and start a detached run |
+| `/v1/inference/runs/{user_id}/start` | `POST` | Backend-owned start for new, send, edit, retry, and shared continuation |
 | `/v1/inference/runs/{user_id}` | `GET` | List runs (`?status=active` for hydration) |
 | `/v1/inference/runs/{user_id}/{run_id}/stream` | `GET` | SSE observer — snapshot on connect, then live events |
 | `/v1/inference/runs/{user_id}/{run_id}/cancel` | `POST` | Signal asyncio cancel |
@@ -582,11 +593,35 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | `/v1/speech/dictation/{user_id}` | `POST` |
 | `/v1/speech/read-aloud/{user_id}/{conversation_id}/{message_id}` | `POST` |
 
-### 15.8 Attachments
+### 15.8 Voice
+
+| Endpoint | Method |
+| --- | --- |
+| `/v1/voice/realtime/{user_id}/session` | `POST` |
+| `/v1/voice/realtime/{user_id}/conversation-event` | `POST` |
+| `/v1/voice/realtime/{user_id}/end` | `POST` |
+
+### 15.9 Shared Conversations
+
+| Endpoint | Method |
+| --- | --- |
+| `/v1/shared-conversations/{token}` | `GET` |
+
+### 15.10 Search
+
+| Endpoint | Method |
+| --- | --- |
+| `/v1/search/{user_id}` | `GET` |
+
+### 15.11 Attachments
 
 | Endpoint | Method |
 | --- | --- |
 | `/v1/attachments/download/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
+| `/v1/attachments/preview/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
+| `/v1/attachments/preview-derived/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
+| `/v1/attachments/preview-token/{user_id}/{conversation_id}/{message_id}/{blob_id}` | `GET` |
+| `/v1/attachments/public/{token}` | `GET` |
 | `/v1/attachments/images/{user_id}` | `GET` |
 
 ## 16. Observability, Security, and Edge Behavior
@@ -623,7 +658,7 @@ Client IP resolution trusts forwarded headers only when the request comes from:
 
 ### 16.4 Rate limiting
 
-Authentication is rate-limited per resolved client IP using SlowAPI.
+Authentication is rate-limited per resolved client IP using SlowAPI. Inference starts are rate-limited per user id.
 
 ### 16.5 CORS
 
@@ -670,6 +705,9 @@ Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current
 | --- | --- |
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `4` |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60` |
+| `INFERENCE_RATE_LIMIT_MAX_ATTEMPTS` | `10` |
+| `INFERENCE_RATE_LIMIT_WINDOW_SECONDS` | `60` |
+| `INFERENCE_MAX_ACTIVE_RUNS_PER_USER` | `5` |
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` |
 | `TRUSTED_PROXY_SECRET` | required (service refuses to start if unset) |
 
@@ -686,14 +724,19 @@ src/dialogue_bridge/
 │   ├── settings.py                Environment-driven settings (pydantic-settings)
 │   ├── database.py                ORM models and session factory
 │   ├── auth_client.py             Vault userpass client
-│   └── auth_session.py            Session, cookie, CSRF, and auth dependencies
+│   ├── auth_session.py            Session, cookie, CSRF, and auth dependencies
+│   ├── proxy.py                   Trusted proxy IP resolution
+│   └── rate_limit.py              SlowAPI setup
 ├── router/
 │   ├── auth.py                    Login/session/logout
 │   ├── catalog.py                 Agents and tools catalog
 │   ├── preferences.py             User preferences
 │   ├── conversations.py           Conversation CRUD
 │   ├── messages.py                Message create/update/reactions
-│   ├── inference.py               SSE proxy + detached run endpoints
+│   ├── inference.py               Backend-owned inference start, observe, cancel, list endpoints
+│   ├── voice.py                   Realtime voice session persistence/proxy endpoints
+│   ├── shared_conv.py             Public shared conversation snapshot endpoint
+│   ├── search.py                  Workspace conversation search
 │   ├── speech.py                  Speech and dictation endpoints
 │   └── attachments.py             Blob streaming and image pagination
 ├── schemas/                       Pydantic request/response models
@@ -701,11 +744,15 @@ src/dialogue_bridge/
 │   ├── agents.py                  Agent sync and upstream catalog helpers
 │   ├── conversations.py           Conversation/message/blob persistence helpers
 │   ├── inference.py               Branch resolution and agent payload serialization
+│   ├── inference_start.py         Backend-owned inference start orchestration
 │   ├── inference_runs.py          Detached run lifecycle — InferenceRunManager, InferenceRunRuntime, create/observe/cleanup
+│   ├── shared_conv.py             Shared conversation clone/snapshot helpers
+│   ├── search.py                  Workspace search helper
+│   ├── speech.py                  Speech proxy helpers
+│   ├── voice.py                   Realtime voice helper logic
 │   ├── titles.py                  Upstream title generation helper and random candidate selector
 │   ├── validators.py              Ownership validators
-│   ├── proxy.py                   Trusted proxy IP resolution
-│   └── rate_limit.py              SlowAPI setup
+│   └── suggestions.py             Starter suggestion helper
 ├── observability/                 Logging, metrics, middleware, redaction
 ├── requirements.txt
 └── Dockerfile
@@ -784,7 +831,7 @@ Configured environment there includes:
 - `core/auth_session.py`: sessions, cookies, CSRF, and auth dependencies
 - `core/auth_client.py`: Vault authentication
 - `core/database.py`: ORM schema
-- `router/inference.py`: SSE proxying and detached run endpoints
+- `router/inference.py`: backend-owned inference start, SSE observation, cancellation, and active-run listing
 - `router/speech.py`: speech and dictation endpoints
 - `utils/inference.py`: branch resolution and multimodal serialization
 - `utils/inference_runs.py`: detached run lifecycle — InferenceRunManager, InferenceRunRuntime, create/observe/cleanup

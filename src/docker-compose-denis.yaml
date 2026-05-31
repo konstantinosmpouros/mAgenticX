@@ -20,7 +20,7 @@ services:
 
   rag_service: # 8001
     container_name: rag_service
-    image: konstantinosmpouros/rag_service:v1.2.3
+    image: konstantinosmpouros/rag_service:v1.2.4
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8001"]
     user: "1000:1000"
