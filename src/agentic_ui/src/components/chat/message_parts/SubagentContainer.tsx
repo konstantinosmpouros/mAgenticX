@@ -1,5 +1,7 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { resolveOverlayHost } from "@/lib/overlay-host";
 import { Bot, Check, Copy, Hand, MessageSquareText, Wrench, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,10 @@ export type SubagentItem = {
   tools?: SubagentTool[];
   interrupts?: SubagentInterrupt[];
   eventCount?: number;
+  // Length of the parent message content at the moment this subagent was
+  // delegated. The UI uses this to interleave the live subagent card inline
+  // with the streaming parent text in chronological order.
+  contentOffset?: number;
 };
 
 export type SubagentContainerProps = {
@@ -39,6 +45,10 @@ export type SubagentContainerProps = {
   className?: string;
   title?: string;
   subtitle?: string;
+  // When true, the inline summary header is suppressed and only the portal
+  // modal renders. Useful when an external trigger (e.g. a "+ N more" pill)
+  // owns the open/close state.
+  triggerless?: boolean;
 };
 
 function toDisplayText(value: unknown): string {
@@ -519,6 +529,7 @@ export function SubagentContainer({
   className,
   title = "Subagent activity",
   subtitle,
+  triggerless = false,
 }: SubagentContainerProps) {
   const toolCount = subagents.reduce(
     (total, subagent) => total + (subagent.tools?.length ?? 0),
@@ -549,6 +560,7 @@ export function SubagentContainer({
 
   return (
     <>
+    {triggerless ? null : (
     <div
       role="button"
       tabIndex={0}
@@ -607,10 +619,12 @@ export function SubagentContainer({
         </div>
       </div>
     </div>
+    )}
+    {typeof document !== "undefined" ? createPortal(
     <AnimatePresence>
     {expanded ? (
       <motion.div
-        className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm sm:p-6"
+        className="absolute inset-0 z-[70] flex items-center justify-center p-4 sm:p-6"
         onClick={onToggle}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -618,7 +632,7 @@ export function SubagentContainer({
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
         <motion.div
-          className="relative flex w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
+          className="relative flex max-h-[75vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
           onClick={(event) => event.stopPropagation()}
           initial={{ opacity: 0, scale: 0.975, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -677,7 +691,7 @@ export function SubagentContainer({
           </div>
 
           <div
-            className="max-h-[calc(88vh-8.5rem)] overflow-y-auto px-3 sm:px-4 [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]"
+            className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4 [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]"
           >
             <div className="space-y-3 px-1 py-4">
               {subagents.length ? (
@@ -700,7 +714,9 @@ export function SubagentContainer({
         </motion.div>
       </motion.div>
     ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    resolveOverlayHost(),
+    ) : null}
     </>
   );
 }

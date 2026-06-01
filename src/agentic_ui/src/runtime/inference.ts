@@ -1,4 +1,3 @@
-import type { PlanSnapshot } from '@/lib/agui';
 import { getInferenceStartErrorCopy } from '@/lib/inferenceErrors';
 import { convertFileAttachments } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
@@ -52,8 +51,6 @@ type InferenceCtx = {
   setShowAiTransition?: (v: boolean) => void;
   streamAbortRef: MutableRefObject<AbortController | null>;
   persistUIState?: () => void;
-  onPlanSnapshot?: (plan: PlanSnapshot) => void;
-  resetActivePlan?: () => void;
   beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
   stopActiveInferenceRun?: () => void | Promise<void>;
 };
@@ -74,8 +71,6 @@ type MessageEditHandlersCtx = {
   setIsSendingMessage?: (value: boolean) => void;
   enabledTools?: ToolPreference[];
   persistUIState?: () => void;
-  onPlanSnapshot?: (plan: PlanSnapshot) => void;
-  resetActivePlan?: () => void;
   beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
 };
 
@@ -95,8 +90,6 @@ type RetryHandlersCtx = {
   setIsSendingMessage?: (value: boolean) => void;
   enabledTools?: ToolPreference[];
   persistUIState?: () => void;
-  onPlanSnapshot?: (plan: PlanSnapshot) => void;
-  resetActivePlan?: () => void;
   beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
 };
 
@@ -143,7 +136,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     enabledTools,
     sharedConversationToken,
     persistUIState,
-    resetActivePlan,
     beginInferenceRun,
     stopActiveInferenceRun,
   } = ctx;
@@ -184,7 +176,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     }
 
     // Mark sending state
-    resetActivePlan?.();
     setIsSendingMessage(true);
     // Selected agent metadata is only needed if this send creates a brand new conversation.
     const currentAgent = agents.find(a => a.id === selectedAgent);
@@ -285,7 +276,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       streamAbortRef.current = null;
       setIsSendingMessage(false);
       if (setShowAiTransition) setShowAiTransition(false);
-      resetActivePlan?.();
     }
   };
 
@@ -296,7 +286,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setIsSendingMessage(false);
     setThinkingState((prev: any) => prev ? { ...prev, isActive: false, isDone: true, endTime: Date.now() } : prev);
     if (setShowAiTransition) setShowAiTransition(false);
-    resetActivePlan?.();
   };
 
 
@@ -316,7 +305,6 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     setIsSendingMessage,
     enabledTools,
     persistUIState,
-    resetActivePlan,
     beginInferenceRun,
   } = ctx;
 
@@ -374,7 +362,6 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     const siblingCount = allMessages.filter((m) => (m.parentMessageId ?? null) === parentId).length;
 
     try {
-      resetActivePlan?.();
       setIsSendingMessage?.(true);
       const payload: MessageIn = {
         sender: 'user',
@@ -410,7 +397,6 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
       // Edit submission owns the send/loading flags just like the main composer send flow.
       setIsSendingMessage?.(false);
       if (setShowAiTransition) setShowAiTransition(false);
-      resetActivePlan?.();
     }
   };
 
@@ -467,7 +453,6 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     setIsSendingMessage,
     enabledTools,
     persistUIState,
-    resetActivePlan,
     beginInferenceRun,
   } = ctx;
 
@@ -506,7 +491,6 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     const parentKey = parentId ?? rootBranchKey;
 
     try {
-      resetActivePlan?.();
       setIsSendingMessage?.(true);
       if (setShowAiTransition) setShowAiTransition(true);
       const parentPath = buildPathToMessage(allMessages, parentId);
@@ -533,7 +517,6 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
       // Retry owns the same send/loading cleanup contract as send and edit-submit.
       setIsSendingMessage?.(false);
       if (setShowAiTransition) setShowAiTransition(false);
-      resetActivePlan?.();
     }
   };
 

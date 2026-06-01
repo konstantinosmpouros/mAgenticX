@@ -13,6 +13,7 @@ import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
 import { MessageAttachments } from "./message_parts/MessageAttachments";
 import { CoT, buildCoTSteps } from "./message_parts/ChainOfThought";
 import { MessageContent } from "./message_parts/MessageContent";
+import { AgentRunTimeline, messageHasInlineSubagents } from "./AgentRunTimeline";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 
 type ChatMessageProps = {
@@ -195,15 +196,24 @@ export function ChatMessage({
 
       <Card className={bubbleClass}>
         <div className="space-y-3 min-w-0">
-          <MessageContent
-            message={message}
-            isEditing={isEditing}
-            editingDraft={editingDraft}
-            editingBusy={editingBusy}
-            onChangeEditDraft={onChangeEditDraft}
-            onCancelEdit={onCancelEdit}
-            onSubmitEdit={onSubmitEdit}
-          />
+          {isAi && isStreamingThisMessage && messageHasInlineSubagents(message) ? null : (
+            <MessageContent
+              message={message}
+              isEditing={isEditing}
+              editingDraft={editingDraft}
+              editingBusy={editingBusy}
+              onChangeEditDraft={onChangeEditDraft}
+              onCancelEdit={onCancelEdit}
+              onSubmitEdit={onSubmitEdit}
+            />
+          )}
+
+          {isAi ? (
+            <AgentRunTimeline
+              message={message}
+              isStreaming={isStreamingThisMessage}
+            />
+          ) : null}
 
           <div className="text-sm">
             {isUser ? (

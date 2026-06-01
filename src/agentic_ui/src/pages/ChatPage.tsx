@@ -71,6 +71,7 @@ import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
 import { PlanCard } from "@/components/chat/message_parts/PlanningContainer";
+import { OVERLAY_HOST_ID } from "@/lib/overlay-host";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ReportConversationDialog from "@/components/chat/ReportPanel";
@@ -379,7 +380,6 @@ export function ChatInterface({
   }, [currentConversation?.id]);
 
   useEffect(() => {
-    setActivePlanSnapshots([]);
     setIsPlanExpanded(true);
   }, [currentConversation?.id]);
 
@@ -387,7 +387,6 @@ export function ChatInterface({
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>("idle");
   const [dictationRequestSignal, setDictationRequestSignal] = useState(0);
   const [dictationCancelSignal, setDictationCancelSignal] = useState(0);
-  const [activePlanSnapshots, setActivePlanSnapshots] = useState<PlanSnapshot[]>([]);
   const [isPlanExpanded, setIsPlanExpanded] = useState(true);
 
   const setConversationMessages = createConversationMessageSetter({
@@ -621,15 +620,6 @@ export function ChatInterface({
     },
   });
 
-  const resetActivePlan = useCallback(() => {
-    setActivePlanSnapshots([]);
-    setIsPlanExpanded(true);
-  }, []);
-
-  const handlePlanSnapshot = useCallback((snapshot: PlanSnapshot) => {
-    setActivePlanSnapshots((prev) => [...prev, snapshot]);
-  }, []);
-
   // Message edit handlers
   const { handleConfirmEditMessage } = createMessageEditHandlers({
     userId,
@@ -647,8 +637,6 @@ export function ChatInterface({
     enabledTools: enabledToolsForRequest,
     beginInferenceRun,
     persistUIState: requestPersist,
-    onPlanSnapshot: handlePlanSnapshot,
-    resetActivePlan,
   });
 
   const {
@@ -905,8 +893,6 @@ export function ChatInterface({
     enabledTools: enabledToolsForRequest,
     beginInferenceRun,
     persistUIState: requestPersist,
-    onPlanSnapshot: handlePlanSnapshot,
-    resetActivePlan,
   });
 
   // Inference handler
@@ -937,8 +923,6 @@ export function ChatInterface({
     stopActiveInferenceRun,
     sharedConversationToken,
     persistUIState: requestPersist,
-    onPlanSnapshot: handlePlanSnapshot,
-    resetActivePlan,
   });
 
   // Conversation handlers
@@ -1141,7 +1125,9 @@ export function ChatInterface({
   const effectiveSelectedAgent = selectedAgentFromList ?? fallbackSelectedAgent ?? null;
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   const AgentIcon = currentAgent?.icon || Building2;
-  const activePlan = activePlanSnapshots.length ? activePlanSnapshots[activePlanSnapshots.length - 1] : null;
+  const activePlan = (activeConversationRun?.plan && Array.isArray((activeConversationRun.plan as PlanSnapshot).items))
+    ? (activeConversationRun.plan as PlanSnapshot)
+    : null;
   const showPlanningCard = isCurrentConversationBusy && Boolean(activePlan);
   const canShareCurrentConversation = Boolean(currentConversation?.id && !currentConversation.id.startsWith("shared:"));
   const canShareFullConversation = canShareCurrentConversation && activeMessages.some((message) => (
@@ -1330,7 +1316,7 @@ export function ChatInterface({
         />
         <SidebarInset className="bg-transparent">
           <TooltipProvider>
-            <div className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow">
+            <div id={OVERLAY_HOST_ID} className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow">
               {/* Header */}
               <ChatHeader
                 agents={agents}

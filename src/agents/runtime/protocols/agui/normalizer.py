@@ -614,10 +614,19 @@ class AGUIStreamNormalizer:
         return path[0]
 
 
-    def _sse_to_payload(self, sse_event: bytes) -> Optional[Dict[str, Any]]:
-        """Decode the JSON payload from an SSE frame."""
+    def _sse_to_payload(self, sse_event: Any) -> Optional[Dict[str, Any]]:
+        """Decode the JSON payload from an SSE frame.
+
+        Accepts both bytes (legacy ag_ui) and str (newer ag_ui) so we stay
+        robust to library version drift.
+        """
         try:
-            text = sse_event.decode("utf-8")
+            if isinstance(sse_event, (bytes, bytearray)):
+                text = sse_event.decode("utf-8")
+            elif isinstance(sse_event, str):
+                text = sse_event
+            else:
+                return None
         except UnicodeDecodeError:
             return None
 
@@ -635,13 +644,18 @@ class AGUIStreamNormalizer:
         return None
 
 
-    def _raw_event_payload(self, sse_event: bytes) -> Dict[str, Any]:
+    def _raw_event_payload(self, sse_event: Any) -> Dict[str, Any]:
         """
         Fallback payload when an SSE frame cannot be decoded into JSON.
         Ensures sub-agent events are still wrapped deterministically.
         """
         try:
-            text = sse_event.decode("utf-8")
+            if isinstance(sse_event, (bytes, bytearray)):
+                text = sse_event.decode("utf-8")
+            elif isinstance(sse_event, str):
+                text = sse_event
+            else:
+                text = repr(sse_event)
         except UnicodeDecodeError:
             text = repr(sse_event)
 

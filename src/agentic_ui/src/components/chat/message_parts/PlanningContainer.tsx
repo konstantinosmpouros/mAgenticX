@@ -1,5 +1,7 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { resolveOverlayHost } from "@/lib/overlay-host";
 import {
   CheckCircle2,
   Circle,
@@ -333,24 +335,25 @@ export function PlanningContainer({
         </div>
       </div>
 
-      <AnimatePresence>
-        {expanded ? (
-          <motion.div
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm sm:p-6"
-            onClick={onToggle}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-          >
+      {typeof document !== "undefined" ? createPortal(
+        <AnimatePresence>
+          {expanded ? (
             <motion.div
-              className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
-              onClick={(event) => event.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.975, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.985, y: 6 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="absolute inset-0 z-[70] flex items-center justify-center p-4 sm:p-6"
+              onClick={onToggle}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
             >
+              <motion.div
+                className="relative flex max-h-[70vh] w-full max-w-4xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+                initial={{ opacity: 0, scale: 0.975, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.985, y: 6 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
               <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/[0.05] via-primary/[0.02] to-transparent" />
               <button
                 type="button"
@@ -368,13 +371,17 @@ export function PlanningContainer({
                 </div>
               </div>
 
-              <ScrollArea className="min-h-0 flex-1 px-3 sm:px-4">
+              <div
+                className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4 [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]"
+              >
                 <PlanItems plan={plan} />
-              </ScrollArea>
+              </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+          ) : null}
+        </AnimatePresence>,
+        resolveOverlayHost(),
+      ) : null}
     </>
   );
 }

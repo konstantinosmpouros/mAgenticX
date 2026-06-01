@@ -63,6 +63,9 @@ class AGUIEmitter:
         if getattr(event_obj, "timestamp", None) is None:
             event_obj.timestamp = int(time.time() * 1000)
         sse = self._encoder.encode(event_obj)
+        # Newer ag_ui versions return str; coerce so downstream stays bytes-clean.
+        if isinstance(sse, str):
+            sse = sse.encode("utf-8")
         sse = self._attach_namespace(sse, namespace)
         if writer:
             writer(sse)
@@ -75,7 +78,7 @@ class AGUIEmitter:
         Falls back to the original bytes on any parse/encode issue.
         """
         try:
-            text = sse.decode("utf-8")
+            text = sse.decode("utf-8") if isinstance(sse, (bytes, bytearray)) else str(sse)
             lines = text.splitlines()
 
             new_lines = []

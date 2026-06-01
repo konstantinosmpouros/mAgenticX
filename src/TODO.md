@@ -20,7 +20,6 @@
 ## Dialogue Bridge
 
 - Add the pgvector in order to have an embedding for each conversation and then we can use this embedding to find the most relevant conversations for a given query, this will be useful for the retrieval process and memory across chats.
-- The inference needs to be transferred into Redis in order to be better. This will allow us to have a better performance and also we can have a better way to handle the streaming of the messages and the interactions with the UI without having to worry about a thousand calls to the database.
 
 ## Agentic UI
 

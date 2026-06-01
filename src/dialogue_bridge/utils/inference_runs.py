@@ -115,9 +115,16 @@ class InferenceRunRuntime:
             self.first_event_ts = time.perf_counter()
 
         if event_type == "CUSTOM":
-            self.raw_events.append(event)
             name = event.get("name")
             value = event.get("value")
+            # Stamp the current content offset onto every TASK_SUBAGENT delegation
+            # so the UI can chronologically interleave the subagent card with the
+            # streaming text. Done before raw_events.append so the persisted event
+            # and the live subagent state both see the enriched value.
+            if name == "TASK_SUBAGENT" and isinstance(value, dict):
+                value = {**value, "content_offset": len(self.content)}
+                event = {**event, "value": value}
+            self.raw_events.append(event)
             if name == "PLAN_SNAPSHOT" and isinstance(value, dict):
                 self.plan = value
             elif name == "TASK_SUBAGENT":
