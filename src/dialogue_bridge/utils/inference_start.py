@@ -73,9 +73,7 @@ async def start_inference_flow(
     # so any client path necessarily ends before the real parent. Retry is the
     # only start mode where the client can provide a path ending at the run parent.
     message_path = payload.messagePath if mode == "retry" else None
-    # The "run" is now the same row as the assistant message — the table collapse
-    # got rid of the separate inference_runs record.
-    assistant_message, _same_row = await create_inference_run_record(
+    assistant_message = await create_inference_run_record(
         db=db,
         user_id=user_id,
         conversation=conversation,

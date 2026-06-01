@@ -351,10 +351,10 @@ class InferenceRunManager:
                         await self._publish_runtime_event(run_id, run_meta, runtime)
         return "completed"
 
-    def _build_runtime_event(self, run_meta: dict[str, Any], runtime: InferenceRunRuntime) -> dict[str, Any]:
+    async def _publish_runtime_event(self, run_id: str, run_meta: dict[str, Any], runtime: InferenceRunRuntime) -> None:
         assistant_message_id = run_meta["assistantMessageId"]
         now_iso = _now().isoformat()
-        return {
+        event = {
             "type": "update",
             "run": {
                 **run_meta,
@@ -382,9 +382,7 @@ class InferenceRunManager:
             },
             "summary": None,
         }
-
-    async def _publish_runtime_event(self, run_id: str, run_meta: dict[str, Any], runtime: InferenceRunRuntime) -> None:
-        await self.publish(run_id, self._build_runtime_event(run_meta, runtime))
+        await self.publish(run_id, event)
 
     async def _publish_snapshot(self, run_id: str, event_type: str) -> None:
         async with SessionLocal() as db:
@@ -530,8 +528,6 @@ async def build_run_event_payload(db: AsyncSession, run_id: str, event_type: str
     message = await _load_message(db, run.id)
     conversation = await db.get(ConversationTable, run.conversation_id)
     if conversation is not None:
-        if run.streaming_status in TERMINAL_RUN_STATUSES and conversation.active_assistant_message_id == run.id:
-            conversation.active_assistant_message_id = None
         await db.refresh(conversation, attribute_names=["agent"])
     user_id = conversation.user_id if conversation else ""
     return {
@@ -604,11 +600,8 @@ async def stream_run_events(
 
 def _is_active_run_integrity_conflict(exc: IntegrityError) -> bool:
     text = str(exc.orig).lower()
-    # Old (pre-collapse) and new index names are both checked so the error path
-    # works during any half-migrated state.
     return (
         "uq_messages_one_active_stream_per_conversation" in text
-        or "uq_inference_runs_one_active_per_conversation" in text
         or "messages_conversation_id" in text
     )
 
@@ -655,12 +648,12 @@ async def create_inference_run_record(
     parent_message_id: str,
     message_path: list[str] | None,
     enabled_tools: list[ToolPreference] | None,
-) -> tuple[MessageTable, MessageTable]:
+) -> MessageTable:
     """Create the AI placeholder message that represents the run.
 
-    After the inference_runs-table collapse the run *is* the assistant message.
-    The return is a (message, message) tuple for backwards compatibility with
-    the caller in :mod:`utils.inference_start`; both refer to the same row.
+    After the inference_runs-table collapse the run *is* the assistant message —
+    the returned row carries both the streaming_* lifecycle columns and the
+    final content/raw_events fields once the run terminates.
     """
     await _fail_stale_queued_runs_for_conversation(db, conversation.id)
 
@@ -721,7 +714,7 @@ async def create_inference_run_record(
 
     conversation.active_assistant_message_id = assistant_message.id
     conversation.last_message_at = now
-    return assistant_message, assistant_message
+    return assistant_message
 
 
 async def request_run_cancel(db: AsyncSession, run: MessageTable) -> MessageTable:

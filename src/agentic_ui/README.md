@@ -559,7 +559,7 @@ Key files and folders:
 - `src/hooks/useKeyboardShortcuts.ts`
   - global shortcut listener and chat shortcut bridge
 - `src/lib/api.ts`
-  - bridge API wrapper, WebSocket transport (`connectInferenceWebSocket`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError`), and the deprecated SSE fallback (`observeInferenceRun`)
+  - bridge API wrapper and inference WebSocket transport (`connectInferenceWebSocket`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError`)
 - `src/lib/agui.ts`
   - AG-UI event schemas plus custom event definitions
 - `src/lib/shortcuts.ts`

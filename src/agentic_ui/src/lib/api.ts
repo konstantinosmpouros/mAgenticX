@@ -1190,7 +1190,7 @@ class PermanentInferenceWebSocketError extends Error {
   }
 }
 
-export function getInferenceWebSocketUrl(userId: string, runId: string): string {
+function getInferenceWebSocketUrl(userId: string, runId: string): string {
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const segments = [encodeURIComponent(userId), encodeURIComponent(runId)].join("/");
   return `${wsProtocol}//${window.location.host}${INFERENCE_BASE_PATH}/runs/${segments}/ws`;
@@ -1347,66 +1347,5 @@ export async function connectInferenceWebSocket(
       const delay = INFERENCE_RECONNECT_BACKOFF_MS[consecutiveFailures - 1];
       await inferenceSleepWithAbort(delay, signal);
     }
-  }
-}
-
-
-export async function observeInferenceRun(
-  userId: string,
-  runId: string,
-  onEvent: (event: InferenceRunEvent) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/stream`, withSessionRequest({
-    method: "GET",
-    headers: { "Accept": "text/event-stream" },
-    signal,
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to observe inference run: ${res.status}`);
-  }
-  if (!res.body) {
-    throw new Error(`Failed to observe inference run: ${res.status}`);
-  }
-  const reader = res.body.getReader();
-  const textDecoder = new TextDecoder();
-  let buffer = "";
-  const flush = (value: string) => {
-    buffer += value;
-    const parts = buffer.split(/\n\n/);
-    buffer = parts.pop() ?? "";
-    for (const part of parts) {
-      const data = part
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim())
-        .join("\n");
-      if (!data) continue;
-      try {
-        onEvent(transformInferenceRunEvent(JSON.parse(data)));
-      } catch {
-        // ignore malformed observer frames
-      }
-    }
-  };
-  const cancelReader = () => {
-    try { reader.cancel(); } catch { /* ignore */ }
-  };
-  signal?.addEventListener("abort", cancelReader, { once: true });
-  try {
-    while (true) {
-      if (signal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      const { value, done } = await reader.read();
-      if (done) break;
-      flush(textDecoder.decode(value, { stream: true }));
-    }
-    flush(textDecoder.decode(new Uint8Array(), { stream: false }) + "\n\n");
-  } finally {
-    signal?.removeEventListener?.("abort", cancelReader as any);
-    try { reader.releaseLock(); } catch { /* ignore */ }
   }
 }

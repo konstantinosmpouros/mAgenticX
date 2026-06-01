@@ -402,7 +402,7 @@ The endpoint returns the latest conversation detail/summary, the run shape (buil
 - marks the run `running` in Postgres
 - calls the `agents` service SSE endpoint
 - reads each AG-UI chunk and applies it to an `InferenceRunRuntime` accumulator (in-memory only — no DB writes during streaming)
-- builds a lightweight `InferenceRunEvent` via `_build_runtime_event(...)` and appends it to the run's **Redis Stream** at `inference:run:{run_id}:events` via `RedisEventLog.append(...)`
+- builds a lightweight runtime event dict in `_publish_runtime_event(...)` and appends it to the run's **Redis Stream** at `inference:run:{run_id}:events` via `RedisEventLog.append(...)`
 
 ### 11.3 Observer subscription
 

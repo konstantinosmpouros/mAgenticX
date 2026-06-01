@@ -587,14 +587,6 @@ class InferenceStartResponse(BaseModel):
     message: MessageOut
 
 
-class InferenceRunEvent(BaseModel):
-    type: Literal["snapshot", "update", "terminal"]
-    run: InferenceRunOut
-    message: Optional[MessageOut] = None
-    summary: Optional[ConversationSummary] = None
-
-
-
 #-------------------------------------------
 # CONVERSATION UPDATE DTO
 #-------------------------------------------
@@ -734,7 +726,6 @@ __all__ = [
     "InferenceStartPayload",
     "InferenceStartResponse",
     "InferenceRunOut",
-    "InferenceRunEvent",
     "UpdateConversationResponse",
     "MessageUpdate",
     "ImageOut",

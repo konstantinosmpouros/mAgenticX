@@ -26,7 +26,3 @@
 
 - Chart can be visualized with [shadcn/charts](https://www.shadcn.io/charts) and the agent can have a custom tool like the todo tool in order to represent the chart and create a custom AGUI event for the interaction with the chart.
 - I think the best way to implement an agentic UI is to have all the agui event for every message (raw event list) and then upon read a past message to have a parser that will parse the raw event list and create the final UI for that message, this way we can have a more flexible and powerful way to create the UI for each message and also we can have a better control over the state of the UI and the interactions with it. This will also allow us to have a better way to handle the streaming of the messages and the interactions with the UI without having to worry about the state of the UI at any given time. Also the chain of thought if we can change the icon is the perfect task drop down
-
-## Bugs
-
-- In the hr policies agent in the detached inference l got a "stream observer lost" error and the agent stopped working, we need to investigate this issue and fix it. There is also a bigger inference problem that we dont use webhooks or websocker mechanism for the inference and we use polling and the inference is not so smooth, real time and there is a chance to stop some chunks before the last one.

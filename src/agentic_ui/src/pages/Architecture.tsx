@@ -37,12 +37,12 @@ const services = [
     {
         name: "Dialogue Bridge",
         port: "8002",
-        role: "FastAPI BFF; validates JWTs from Vault, persists conversations/attachments in Postgres, proxies agent SSE streams, and syncs agent/tool manifests.",
-        flow: "Rehydrates message history (including inline images) before posting to the agents /stream endpoint; caches active agents and forwards MCP tool metadata.",
+        role: "FastAPI BFF; validates JWTs from Vault, persists conversations/attachments in Postgres, drives detached inference runs over an in-process asyncio task, and serves WebSocket observers backed by per-run Redis Streams.",
+        flow: "Rehydrates message history (including inline images) before posting to the agents /stream endpoint; appends each parsed AG-UI event to inference:run:{id}:events in Redis so reconnecting clients can replay with a since cursor.",
         interfaces: [
             "Auth: /authenticate (Vault userpass→OIDC) and /session/refresh to mint/rotate cookies.",
             "Data APIs: /users/:id/conversations, /messages, /attachments for CRUD + pagination.",
-            "Inference: /inference/runs/:userId/:conversationId starts runs; /runs/:userId/:runId/stream observes AG-UI events.",
+            "Inference: POST /inference/runs/:userId/start creates an AI placeholder (streaming_status='queued'); WS /inference/runs/:userId/:runId/ws observes AG-UI events with cursor-based replay.",
         ],
         data: "Owns Postgres tables for users, agents cache, conversations, messages, and attachment blobs. Depends on Vault, Agents, and Postgres.",
     },
@@ -116,9 +116,9 @@ const requestFlow = [
     "Login: UI posts to the bridge, which authenticates against Vault userpass → OIDC JWT → session/refresh cookies.",
     "Bootstrap: UI pulls agents and MCP tools from the bridge (bridge syncs with the agents service + MCP gateway) and loads user prefs from Postgres.",
     "Start a conversation: UI persists the first message/attachments via the bridge; bridge may ask the agents service to generate a title, then returns summary + detail.",
-    "Inference: UI starts an inference run, observes its run stream, and can cancel it; bridge rebuilds history with inline images, sets thread/checkpoint ids, and forwards to agents /stream with tool preferences.",
-    "Execution: Agents run LangGraph, call rag_service (Chroma + DuckDB) and optional MCP tools, and stream AG-UI frames; bridge relays bytes 1:1 to the UI.",
-    "Storage: Message/attachment rows live in Postgres; Chroma stores embeddings; Vault holds auth state.",
+    "Inference: UI starts an inference run, subscribes to it over WebSocket (with since-cursor reconnect), and can cancel it; bridge rebuilds history with inline images, sets thread/checkpoint ids, and forwards to agents /stream with tool preferences.",
+    "Execution: Agents run LangGraph, call rag_service (Chroma + DuckDB) and optional MCP tools, and stream AG-UI frames; bridge appends each event to the per-run Redis Stream and forwards to WebSocket observers.",
+    "Storage: Message/attachment rows (including the streaming_* lifecycle columns) live in Postgres; in-flight events live in Redis; Chroma stores embeddings; Vault holds auth state.",
 ];
 
 const deployment = [
