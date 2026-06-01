@@ -14,6 +14,7 @@ This document describes the full mAgenticX platform: every service, its port, it
 | rag_service | `rag_service` | **8001** | FastAPI — Chroma vector retrieval + DuckDB SQL |
 | vectordb | `vectordb` | **8000** | ChromaDB 0.6.3 — vector store |
 | chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16.3 — relational store |
+| redis | `redis` | **6379** | Redis 7.4 — per-run Redis Streams as the inference event log |
 | mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — optional, via `docker-compose-mcp.yaml` |
 | vault | `vault` | **8004** | HashiCorp Vault 1.21 — optional, via `docker-compose-hashicorp.yaml` |
 
@@ -37,6 +38,7 @@ flowchart TB
         rag["rag_service\n:8001"]
         chroma["vectordb (Chroma)\n:8000"]
         pg["chat_postgres (PG)\n:5432"]
+        redis["redis\n:6379"]
         mcp["mcp_gateway\n:8005 (optional)"]
     end
 
@@ -44,11 +46,12 @@ flowchart TB
         vault["vault\n:8004 (optional)"]
     end
 
-    Browser -->|"HTTP / SSE"| nginx
+    Browser -->|"HTTPS + WebSocket"| nginx
     nginx -->|"rewrite /api/ → /v1/"| bridge
     bridge -->|"SSE stream"| agents
     bridge -->|"REST"| vault
     bridge --- pg
+    bridge -->|"XADD / XREAD inference event log"| redis
 
     agents -->|"REST"| rag
     agents -->|"SSE"| mcp
@@ -69,7 +72,7 @@ The browser application is a React 18 SPA built with Vite and served in producti
 
 - Renders the chat interface, sidebar, voice controls, and settings panels
 - Manages client-side session state (localStorage `mx_auth_session` + IndexedDB `mx_ui_state`)
-- Opens SSE connections to receive streaming inference events
+- Opens a WebSocket per active inference run to observe streaming events, with automatic reconnect + cursor-based replay on transient failures
 - Initiates WebRTC signalling for realtime voice mode
 
 ### nginx Reverse Proxy
@@ -84,6 +87,7 @@ Key nginx settings:
 
 - `client_max_body_size 50M` — supports attachment uploads
 - `proxy_buffering off` — required for SSE and large file streaming
+- WebSocket upgrade — a dedicated `^~ /api/v1/inference/runs/` location forwards `Upgrade`/`Connection: $connection_upgrade` and bumps `proxy_read_timeout`/`proxy_send_timeout` to 3600s for long-lived run observers
 - `resolver 127.0.0.11` — deferred DNS resolution for Docker service names
 - `proxy_set_header` chain — overwrites client IP headers with nginx `$remote_addr` before forwarding to the bridge
 
@@ -108,7 +112,8 @@ Key nginx settings:
 
 - Authenticates users (Vault userpass → JWT access + refresh cookies)
 - Manages conversations, messages, and attachments in PostgreSQL
-- Streams inference events from `agents` to the browser via SSE
+- Persists the per-run AG-UI event log in Redis Streams (`inference:run:{id}:events`) and serves WebSocket observers with cursor-based replay
+- Consumes the agents-service SSE stream from inside the detached `InferenceRunManager` task, accumulates the runtime state in memory, and appends each parsed event to Redis
 - Handles voice signalling (WebRTC SDP exchange with OpenAI Realtime API)
 - Serves TTS audio and dictation transcription
 
@@ -217,7 +222,11 @@ ChromaDB runs as a standalone HTTP server on port 8000. `rag_service` connects t
 
 ### chat_postgres (PostgreSQL)
 
-PostgreSQL 16.3 stores all relational data: users, sessions, conversations, messages, attachments, blobs, inference runs, sharing metadata, and reports. `dialogue_bridge` connects via SQLAlchemy (async) with `asyncpg`. The full schema is documented in `docs/architecture/database-schema.md`.
+PostgreSQL 16.3 stores all relational data: users, sessions, conversations, messages (including `streaming_*` columns that carry the inference-run lifecycle), attachments, blobs, sharing metadata, and reports. `dialogue_bridge` connects via SQLAlchemy (async) with `asyncpg`. The full schema is documented in `docs/architecture/database-schema.md`.
+
+### redis (Inference Event Log)
+
+Redis 7.4 (alpine) backs the durable per-run AG-UI event log used by the WebSocket observer. `dialogue_bridge` writes each parsed AG-UI event into a per-run stream (`inference:run:{message_id}:events`) via `XADD … MAXLEN ~ 5000`; the WebSocket handler reads from that stream with `XREAD BLOCK`, replaying from the client's `since=<seq>` cursor on reconnect. On terminal status the stream key gets an `EXPIRE` (default 3600 s), so late reconnects can still replay missed events. The Redis service is reachable only via the `backend` Docker network; AUTH is enforced via the `magenticx_redis_password` Swarm secret (or `REDIS_PASSWORD` env var in local dev). Persistence is disabled — the authoritative final state lives in Postgres.
 
 ### mcp_gateway (Optional)
 
@@ -246,28 +255,34 @@ sequenceDiagram
     participant M as mcp_gateway :8005
     participant R as rag_service :8001
     participant C as vectordb :8000
+    participant Rd as redis :6379
     participant O as OpenAI API
 
-    B->>N: POST /api/v1/inference/run  (SSE)
-    N->>D: POST /v1/inference/run
-    D->>D: create InferenceRun (status=queued)
-    D-->>B: SSE: RUN_STARTED
+    B->>N: POST /api/v1/inference/runs/{user}/start
+    N->>D: POST /v1/inference/runs/{user}/start
+    D->>D: INSERT AI placeholder (streaming_status='queued')
+    D-->>B: {detail, summary, run, message}
+    B->>N: WS /api/v1/inference/runs/{user}/{run}/ws
+    N->>D: WS upgrade (with $connection_upgrade)
+    B-->>D: {"type":"subscribe","since":null}
     D->>A: POST /agents/{slug}/stream (SSE, background task)
     A->>M: SSE connect → load MCP tool manifest
     A->>O: LLM call (streaming)
     O-->>A: token stream
     A-->>D: AG-UI events (SSE)
-    D-->>B: re-streamed AG-UI events
+    D->>Rd: XADD inference:run:{id}:events <payload>
+    Rd-->>D: XREAD BLOCK → (seq, payload)
+    D-->>B: {"type":"event","seq":"...","payload":...}
     Note over A,R: agent may call RAG tool
     A->>R: POST /retrieve/{collection}
     R->>C: vector search
     C-->>R: top-k chunks
     R-->>A: chunks
-    A-->>D: TOOL_CALL_* events
-    D-->>B: TOOL_CALL_* events
+    A-->>D: TOOL_CALL_* events → Redis → WS
     A-->>D: RUN_FINISHED
-    D->>D: persist InferenceRun snapshot
-    D-->>B: SSE: RUN_FINISHED
+    D->>D: terminal UPDATE on AI message + conversation (one tx)
+    D->>Rd: XADD terminal + EXPIRE 3600s
+    D-->>B: {"type":"terminal"} → close
 ```
 
 ### Request: Voice realtime session
@@ -317,7 +332,7 @@ docker compose \
 
 | Network | Members |
 | --- | --- |
-| `backend` | dialogue_bridge, agents, rag_service, vectordb, chat_postgres, mcp_gateway |
+| `backend` | dialogue_bridge, agents, rag_service, vectordb, chat_postgres, redis, mcp_gateway |
 | `frontend` | agentic_ui, dialogue_bridge |
 | `hashicorp_vault` | dialogue_bridge, vault |
 | `mcp_net` | agents, mcp_gateway |
@@ -338,6 +353,11 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `SESSION_REFRESH_TTL_SECONDS` | dialogue_bridge | Refresh token lifetime |
 | `TRUSTED_PROXY_SECRET` | all services | Internal service authentication |
 | `VAULT_URL` | dialogue_bridge | HashiCorp Vault base URL |
+| `REDIS_URL` | dialogue_bridge | Redis connection URL (default `redis://redis:6379/0`) |
+| `REDIS_PASSWORD_FILE` / `REDIS_PASSWORD` | dialogue_bridge, redis | Redis AUTH password (file-mounted secret in prod, env var in local dev) |
+| `REDIS_STREAM_MAXLEN` | dialogue_bridge | Approximate cap on the per-run event stream (default 5000) |
+| `REDIS_STREAM_TERMINAL_TTL_SECONDS` | dialogue_bridge | Replay window after a run ends (default 3600) |
+| `REDIS_STREAM_READ_BLOCK_MS` | dialogue_bridge | `XREAD BLOCK` timeout in ms (default 30000) |
 | `MCP_GATEWAY_URL` | agents | MCP gateway SSE endpoint |
 | `RAG_BASE_URL` | agents | RAG service base URL |
 | `AGENTS_SERVICE_URL` | dialogue_bridge | Agents runtime base URL |

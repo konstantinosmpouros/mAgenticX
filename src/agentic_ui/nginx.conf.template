@@ -1,3 +1,12 @@
+# Connection-upgrade map: forwards `Upgrade: websocket` on WS handshakes and
+# closes the upstream connection on regular HTTP. Required by the inference
+# WebSocket endpoint. The map directive lives at http{} scope; conf.d files
+# are included inside http{} so placing it here is valid.
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
 server {
   listen 80;
 
@@ -90,6 +99,33 @@ server {
     gzip off;
     proxy_read_timeout 60s;
     proxy_send_timeout 60s;
+  }
+
+  # Inference run routes: REST (start, cancel, list, legacy SSE stream) and the
+  # WebSocket endpoint share this prefix. Same upstream as /api/ but with the
+  # Upgrade headers forwarded so the WS handshake succeeds, and long timeouts
+  # so live-tailing streams aren't dropped by an idle-connection cap.
+  location ^~ /api/v1/inference/runs/ {
+    rewrite ^/api/(.*) /$1 break;
+    proxy_pass $bff;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header CF-Connecting-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Internal-Proxy-Secret ${TRUSTED_PROXY_SECRET};
+
+    # WebSocket upgrade plumbing — harmless on regular HTTP requests because
+    # $http_upgrade is empty there and $connection_upgrade maps to "close".
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    proxy_request_buffering off;
+    proxy_buffering off;
+    gzip off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
   }
 
   location /api/ {

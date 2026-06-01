@@ -250,7 +250,7 @@ OpenAI generates server-side transcripts of both the user's speech and the assis
 
 The bridge creates a `MessageTable` row with `type="audio"` and returns `{ message: MessageOut, summary: ConversationSummary }`. The UI updates the conversation sidebar without a separate fetch.
 
-Realtime voice conversations are not subject to the inference run machinery — there is no `InferenceRunTable` row, no `InferenceRunManager`, and no AG-UI event stream. Messages are complete turns written after the fact from OpenAI transcripts.
+Realtime voice conversations are not subject to the inference run machinery — there is no `streaming_*` lifecycle on the AI message row, no `InferenceRunManager` task, no Redis event stream, and no AG-UI event stream. Voice messages are complete turns written after the fact from OpenAI transcripts.
 
 ---
 

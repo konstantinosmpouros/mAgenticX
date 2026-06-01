@@ -42,7 +42,7 @@ sequenceDiagram
 
     Browser->>Bridge: POST /v1/inference/runs/{user_id}/start {mode, enabledTools}
     Bridge-->>Browser: detail + summary + run + assistant placeholder
-    Browser->>Bridge: GET /v1/inference/runs/{user_id}/{run_id}/stream
+    Browser->>Bridge: WS /v1/inference/runs/{user_id}/{run_id}/ws (subscribe)
     Bridge->>Bridge: serialize message history with images
     Bridge->>Agents: POST /agents/{slug}/stream {messages, config}
 
@@ -63,7 +63,7 @@ sequenceDiagram
 
     Agents-->>Bridge: ToolCallResultEvent (SSE)
     Agents-->>Bridge: ToolCallEndEvent (SSE)
-    Bridge-->>Browser: SSE stream (forwarded as-is)
+    Bridge-->>Browser: WS frames (XADD → XREAD → {"type":"event",...})
 ```
 
 ---
@@ -345,7 +345,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 
 - **OpenAI embeddings are called by the RAG service, not the agents service.** If `OPENAI_API_KEY` is missing from the RAG service's environment, the Chroma retriever will fail on the first call. The RAG service does not validate the key at startup.
 
-- **The bridge parses agent SSE into detached run state.** `InferenceRunManager` consumes upstream AG-UI frames, updates an in-memory accumulator, and publishes run snapshots to browser observers. Encoding or framing errors now fail the run instead of being forwarded as opaque bytes.
+- **The bridge parses agent SSE into detached run state.** `InferenceRunManager` consumes upstream AG-UI frames, updates an in-memory accumulator, and appends each parsed event to the per-run Redis stream (`inference:run:{message_id}:events`). Browser observers connect via WebSocket and replay from that stream. Encoding or framing errors now fail the run instead of being forwarded as opaque bytes.
 
 - **Sub-agent namespace binding can fail silently.** If the `before_agent` message injected by `PatchToolCallsMiddleware` does not match any `pending_tasks` description (e.g., due to whitespace differences), the namespace remains unbound and sub-agent events are emitted without a `SUBAGENT_EVENT` wrapper. The events still reach the client but the UI cannot associate them with the correct task card.
 
@@ -374,6 +374,6 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | HITL, plan, sub-agent event models | [src/agents/runtime/protocols/agui/events.py](../../src/agents/runtime/protocols/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
 | Agent stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{agent_slug}/stream` |
 | Agent catalog endpoints | [src/agents/main.py](../../src/agents/main.py) | `GET /agents`, `GET /tools` |
-| Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `observeInferenceRun()`, `cancelInferenceRun()` |
+| Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `inference_run_websocket()`, `cancelInferenceRun()` |
 | Message history serialization | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `prepare_inference_history()`, `serialise_message_with_images_for_agent()` |
 | Internal caller auth | [src/agents/core/proxy.py](../../src/agents/core/proxy.py) | `require_internal_caller()` |

@@ -175,6 +175,26 @@ class ProxySettings(BaseSettings):
         return resolved if resolved else ""
 
 
+class RedisSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    url: str = Field("redis://redis:6379/0", validation_alias="REDIS_URL")
+    password: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    stream_maxlen: int = Field(5000, validation_alias="REDIS_STREAM_MAXLEN")
+    terminal_ttl_seconds: int = Field(3600, validation_alias="REDIS_STREAM_TERMINAL_TTL_SECONDS")
+    read_block_ms: int = Field(30000, validation_alias="REDIS_STREAM_READ_BLOCK_MS")
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def _load_password(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        resolved = _resolve_file_backed_secret("REDIS_PASSWORD")
+        return resolved if resolved else ""
+
+
 class RateLimitSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -269,6 +289,7 @@ class Settings(BaseSettings):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     tls: TlsSettings = Field(default_factory=TlsSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     cors: CorsSettings = Field(default_factory=CorsSettings)

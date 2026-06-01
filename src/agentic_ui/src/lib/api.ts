@@ -1168,6 +1168,189 @@ export async function cancelInferenceRun(userId: string, runId: string): Promise
   return transformInferenceRun(await res.json());
 }
 
+// Reconnect backoff schedule for the inference WebSocket client. After this
+// many consecutive failures (without any successful frame in between), the
+// outer promise rejects and the caller surfaces a toast. Successful frames
+// reset the counter — long-running streams that briefly disconnect should
+// recover seamlessly.
+const INFERENCE_RECONNECT_BACKOFF_MS = [250, 500, 1000, 2000, 5000];
+
+// Tracks the last delivered Redis-stream entry ID per active run so reconnects
+// can resume with ``since=lastSeenSeq``. Cleared when the terminal frame is
+// received (or when an explicit abort completes the run).
+const lastSeenInferenceSeq = new Map<string, string>();
+
+class PermanentInferenceWebSocketError extends Error {
+  readonly permanent = true;
+  readonly code: number;
+  constructor(message: string, code: number) {
+    super(message);
+    this.name = "PermanentInferenceWebSocketError";
+    this.code = code;
+  }
+}
+
+export function getInferenceWebSocketUrl(userId: string, runId: string): string {
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const segments = [encodeURIComponent(userId), encodeURIComponent(runId)].join("/");
+  return `${wsProtocol}//${window.location.host}${INFERENCE_BASE_PATH}/runs/${segments}/ws`;
+}
+
+function inferenceSleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+
+function runOneInferenceWebSocketConnection(
+  url: string,
+  runId: string,
+  onEvent: (event: InferenceRunEvent) => void,
+  signal: AbortSignal | undefined,
+  onProgress: () => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(url);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    let settled = false;
+    const finalize = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener?.("abort", onAbort);
+      action();
+    };
+    const onAbort = () => {
+      try { socket.close(1000, "Aborted"); } catch { /* ignore */ }
+      finalize(() => reject(new DOMException("Aborted", "AbortError")));
+    };
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+
+    socket.onopen = () => {
+      const since = lastSeenInferenceSeq.get(runId) ?? null;
+      try {
+        socket.send(JSON.stringify({ type: "subscribe", since }));
+      } catch {
+        // Server-side close handler will trigger the reconnect path.
+      }
+    };
+
+    socket.onmessage = (msg) => {
+      onProgress();
+      let frame: any;
+      try {
+        frame = JSON.parse(typeof msg.data === "string" ? msg.data : "");
+      } catch {
+        return;
+      }
+      if (!frame || typeof frame !== "object") return;
+      if (frame.type === "event" && frame.payload) {
+        try {
+          onEvent(transformInferenceRunEvent(frame.payload));
+        } catch {
+          // ignore malformed event payload
+        }
+        if (typeof frame.seq === "string" && frame.seq) {
+          lastSeenInferenceSeq.set(runId, frame.seq);
+        }
+        return;
+      }
+      if (frame.type === "snapshot" && frame.payload) {
+        try {
+          onEvent(transformInferenceRunEvent(frame.payload));
+        } catch {
+          // ignore malformed snapshot payload
+        }
+        return;
+      }
+      if (frame.type === "terminal") {
+        finalize(() => {
+          try { socket.close(1000, "Done"); } catch { /* ignore */ }
+          lastSeenInferenceSeq.delete(runId);
+          resolve();
+        });
+      }
+    };
+
+    socket.onerror = () => {
+      // The close handler runs immediately after and surfaces the rejection.
+    };
+
+    socket.onclose = (event) => {
+      if (event.code === 4401) {
+        emitUnauthorized();
+        finalize(() => reject(new PermanentInferenceWebSocketError(
+          event.reason || "Authentication required",
+          event.code,
+        )));
+        return;
+      }
+      if (event.code === 4403 || event.code === 4404) {
+        finalize(() => reject(new PermanentInferenceWebSocketError(
+          event.reason || `WebSocket closed with code ${event.code}`,
+          event.code,
+        )));
+        return;
+      }
+      finalize(() => reject(new Error(`WebSocket closed (code ${event.code})`)));
+    };
+  });
+}
+
+export async function connectInferenceWebSocket(
+  userId: string,
+  runId: string,
+  onEvent: (event: InferenceRunEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const url = getInferenceWebSocketUrl(userId, runId);
+  let consecutiveFailures = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    try {
+      await runOneInferenceWebSocketConnection(url, runId, onEvent, signal, () => {
+        consecutiveFailures = 0;
+      });
+      return;
+    } catch (err: any) {
+      if (signal?.aborted || err?.name === "AbortError") {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      if (err?.permanent) {
+        throw err;
+      }
+      consecutiveFailures += 1;
+      if (consecutiveFailures > INFERENCE_RECONNECT_BACKOFF_MS.length) {
+        throw new Error("Inference stream lost after repeated reconnect attempts.");
+      }
+      const delay = INFERENCE_RECONNECT_BACKOFF_MS[consecutiveFailures - 1];
+      await inferenceSleepWithAbort(delay, signal);
+    }
+  }
+}
+
+
 export async function observeInferenceRun(
   userId: string,
   runId: string,

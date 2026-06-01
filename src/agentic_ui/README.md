@@ -1,6 +1,6 @@
 # Agentic UI
 
-`agentic_ui` is the browser-facing frontend for mAgenticX. It is a React 18 + Vite single-page application that renders the chat workspace, authenticates through the dialogue bridge, streams AG-UI events over Server-Sent Events, and exposes agent-specific interaction features such as planning traces, sub-agent activity, branching, file attachments, voice dictation, archive flows, and conversation reporting.
+`agentic_ui` is the browser-facing frontend for mAgenticX. It is a React 18 + Vite single-page application that renders the chat workspace, authenticates through the dialogue bridge, streams AG-UI events over a WebSocket per active run (with cursor-based reconnect backed by Redis Streams), and exposes agent-specific interaction features such as planning traces, sub-agent activity, branching, file attachments, voice dictation, archive flows, and conversation reporting.
 
 The UI does not call the agents service, the RAG service, Chroma, or Postgres directly. Every backend request goes through the dialogue bridge under `/api/v1/*`, with nginx acting as the production reverse proxy inside the UI container.
 
@@ -14,7 +14,7 @@ The UI does not call the agents service, the RAG service, Chroma, or Postgres di
 - Support conversation archive and unarchive flows across the sidebar, header actions, and profile panel.
 - Support conversation-level reporting, with optional targeting of a specific assistant message from the AI action bar.
 - Provide a registry-driven keyboard shortcut system for global chat actions, composer send flows, and dismissible overlays.
-- Manage server-owned detached inference runs that survive navigation and browser refresh — hydrating active runs on page load and reconnecting the SSE observer without restarting the run.
+- Manage server-owned detached inference runs that survive navigation and browser refresh — hydrating active runs on page load and reconnecting the WebSocket observer (with `since=<lastSeenSeq>` cursor-based replay from Redis) without restarting the run.
 - Cache lightweight UI state locally so reloads feel faster without storing the entire conversation transcript in the browser.
 
 ## System Position
@@ -41,7 +41,7 @@ flowchart LR
 
 ## Runtime Architecture
 
-At runtime, the UI is mostly a state orchestration layer around the chat page. `App.tsx` wires global providers, the router selects the active page, and `ChatPage.tsx` coordinates session rehydration, data fetching, SSE streaming, persistence, and the main interaction state.
+At runtime, the UI is mostly a state orchestration layer around the chat page. `App.tsx` wires global providers, the router selects the active page, and `ChatPage.tsx` coordinates session rehydration, data fetching, WebSocket streaming, persistence, and the main interaction state.
 
 ```mermaid
 flowchart TD
@@ -199,7 +199,8 @@ Main endpoint groups:
 - Inference
   - `/inference/runs/{userId}/start` — backend-owned start for new, send, edit, retry, and shared continuation
   - `/inference/runs/{userId}?status=active` — list active runs for hydration
-  - `/inference/runs/{userId}/{runId}/stream` — SSE observer for a run
+  - `/inference/runs/{userId}/{runId}/ws` — WebSocket observer with `since=<seq>` resume (Redis-backed replay)
+  - `/inference/runs/{userId}/{runId}/stream` — **Deprecated** legacy SSE observer; kept one release cycle for fallback
   - `/inference/runs/{userId}/{runId}/cancel` — cancel a run
 - Shared conversations
   - `/shared-conversations/{token}` — fetch a public read-only shared snapshot
@@ -215,15 +216,17 @@ Main endpoint groups:
 
 ## AG-UI Streaming Model
 
-The most important runtime path is the detached inference run. Instead of opening a direct SSE proxy or persisting messages itself, the UI calls `beginRun(request)` on the globally-instantiated `useInferenceRuns` hook. This:
+The most important runtime path is the detached inference run. Instead of opening a direct stream proxy or persisting messages itself, the UI calls `beginRun(request)` on the globally-instantiated `useInferenceRuns` hook. This:
 
 1. calls `POST /api/v1/inference/runs/{userId}/start` on the bridge
 2. receives the latest conversation detail, sidebar summary, run, and AI placeholder message
-3. opens a separate SSE observer connection via `observeRunId(runId)` that reads from `/api/v1/inference/runs/{userId}/{run_id}/stream`
+3. opens a WebSocket observer via `connectInferenceWebSocket(userId, runId, applyRunEvent, controller.signal)` that targets `/api/v1/inference/runs/{userId}/{runId}/ws`, sends `{"type":"subscribe","since":<lastSeenSeq>|null}`, and consumes server frames as they arrive
 
-The observer receives a DB snapshot immediately on connect (for reconnect resilience), then receives lightweight in-memory events published by `InferenceRunManager` as the background task progresses. Every incoming event is routed through `applyRunEvent(event)`, which updates `runsByConversation`, the conversation list, and UI state in a single handler.
+If the run is already terminal, the server returns a one-shot snapshot from Postgres and closes; otherwise it `XREAD BLOCK`s the per-run Redis stream and forwards events as `{"type":"event","seq":"<stream-id>","payload":...}`. The client tracks `lastSeenInferenceSeq[runId]` in a module-level map. On any non-user-initiated close the client reconnects with exponential backoff `[250, 500, 1000, 2000, 5000]` ms and resends `subscribe` with the latest cursor — missed events are replayed from Redis up to the 1 h post-terminal TTL. Close codes `4401` / `4403` / `4404` surface as `PermanentInferenceWebSocketError` with no retry; the "stream observer lost" toast only fires after 5 sustained transient failures.
 
-If the browser navigates away or refreshes, the run continues on the server. On remount, `useInferenceRuns` calls `getActiveInferenceRuns()` to hydrate any runs still in progress and reopens the observer.
+Every incoming frame is normalized and routed through `applyRunEvent(event)`, which updates `runsByConversation`, the conversation list, and UI state in a single handler.
+
+If the browser navigates away or refreshes, the run continues on the server. On remount, `useInferenceRuns` calls `getActiveInferenceRuns()` to hydrate any runs still in progress and reopens the WebSocket per active run.
 
 Supported event categories include standard AG-UI events and app-specific custom events:
 
@@ -259,16 +262,18 @@ sequenceDiagram
 
     UI->>Hook: beginRun(request)
     Hook->>B: POST /api/v1/inference/runs/{userId}/start
-    B->>B: persist user action + placeholder + run
+    B->>B: persist user action + AI placeholder (streaming_status='queued')
     B-->>Hook: detail + summary + run + placeholder
     B->>B: launch detached asyncio task
-    Hook->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
-    B-->>Hook: DB snapshot on connect
+    Hook->>B: WS /api/v1/inference/runs/{userId}/{run_id}/ws
+    Hook->>B: {"type":"subscribe","since":<lastSeq>|null}
     B->>A: POST /agents/{slug}/stream (inside background task)
     A-->>B: AG-UI SSE frames
-    B-->>Hook: live in-memory events
+    B->>B: XADD inference:run:{id}:events
+    B-->>Hook: {"type":"event","seq":"...","payload":...}
     Hook->>Hook: applyRunEvent(...) — updates conversations, messages, thinking
-    Note over B: No per-chunk DB writes; terminal state is persisted
+    Note over B: No per-chunk DB writes; per-chunk durability lives in Redis
+    B-->>Hook: {"type":"terminal"} → close 1000
 ```
 
 ## Plan and Sub-Agent Rendering
@@ -501,6 +506,7 @@ The Docker image is a two-stage build:
 - overwrites client IP headers with nginx `$remote_addr` before forwarding to the bridge
 - injects `X-Internal-Proxy-Secret ${TRUSTED_PROXY_SECRET}`
 - disables request and response buffering for large uploads and SSE
+- dedicated `^~ /api/v1/inference/runs/` location handles the WebSocket upgrade (`Upgrade` / `Connection: $connection_upgrade` headers + 3600s `proxy_read_timeout` / `proxy_send_timeout`) so long-lived run observers stay alive
 - sets `client_max_body_size 50M`
 
 ```mermaid
@@ -553,7 +559,7 @@ Key files and folders:
 - `src/hooks/useKeyboardShortcuts.ts`
   - global shortcut listener and chat shortcut bridge
 - `src/lib/api.ts`
-  - bridge API wrapper and SSE transport
+  - bridge API wrapper, WebSocket transport (`connectInferenceWebSocket`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError`), and the deprecated SSE fallback (`observeInferenceRun`)
 - `src/lib/agui.ts`
   - AG-UI event schemas plus custom event definitions
 - `src/lib/shortcuts.ts`
@@ -602,6 +608,6 @@ When extending the UI, the existing seams are:
 ## Operational Notes
 
 - The UI assumes the dialogue bridge owns authentication, conversation persistence, and attachment persistence.
-- SSE rendering depends on buffering being disabled in the reverse proxy path.
+- WebSocket observation depends on nginx's WebSocket upgrade location at `/api/v1/inference/runs/` (with `$connection_upgrade` map) being intact end-to-end (browser → NPM/Cloudflare → agentic_ui nginx → dialogue_bridge). Buffering must remain disabled in the proxy path for live event delivery.
 - Attachment validation is intentionally stricter in the browser than the raw proxy ceiling when base64 inflation is considered.
 - The `/architecture` and `/test` routes are auxiliary pages and not part of the primary chat runtime.

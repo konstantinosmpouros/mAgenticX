@@ -248,7 +248,7 @@ flowchart TD
     F --> G[decode base64 attachments]
     G --> H[create MessageTable + AttachmentTable + BlobTable\nnew UUIDs, relink parent_message_id via id_map]
     H --> I[create initial user reply message]
-    I --> J[create AI placeholder + queued inference run]
+    I --> J[create AI placeholder (streaming_status='queued')]
     J --> K[commit atomically]
     K --> L[return InferenceStartResponse]
 ```
@@ -259,7 +259,7 @@ flowchart TD
 
 **Parent remapping:** a `message_id_map` tracks old → new IDs during the clone loop so `parent_message_id` links are correctly rewritten to the new UUIDs.
 
-The original shared conversation is never mutated. After the response, the frontend navigates to the owned copy and observes the returned run through the normal `/v1/inference/runs/{userId}/{runId}/stream` SSE endpoint.
+The original shared conversation is never mutated. After the response, the frontend navigates to the owned copy and observes the returned run through the normal WebSocket endpoint at `/v1/inference/runs/{userId}/{runId}/ws`.
 
 ---
 

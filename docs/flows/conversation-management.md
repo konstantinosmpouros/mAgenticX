@@ -32,8 +32,8 @@ sequenceDiagram
     Browser->>Bridge: POST /v1/inference/runs/{userId}/start {mode:"send", message, parentMessageId, messagePath, enabledTools}
     Bridge->>PG: Validate conversation ownership and message path
     Bridge->>PG: INSERT user message + attachments + blobs
-    Bridge->>PG: INSERT AI placeholder + inference_run(status="queued")
-    Bridge->>PG: UPDATE conversations (active_inference_run_id)
+    Bridge->>PG: INSERT AI placeholder (streaming_status="queued", streaming_message_path, streaming_enabled_tools)
+    Bridge->>PG: UPDATE conversations (active_assistant_message_id)
     Bridge-->>Browser: {detail, summary, run, message}
     Note over Browser,Bridge: inference stream begins (see inference-streaming.md)
 ```
@@ -55,7 +55,7 @@ flowchart TD
     G -->|No| H["fallback: message preview or agent name"]
     G -->|Yes| I["use generated title"]
     F & H & I --> J["init_conv() — INSERT conversation + first message"]
-    J --> K["create AI placeholder + queued run"]
+    J --> K["create AI placeholder (streaming_status='queued')"]
     K --> L["Return InferenceStartResponse\n{detail, summary, run, message}"]
 ```
 

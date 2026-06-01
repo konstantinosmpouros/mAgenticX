@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { cancelInferenceRun, getActiveInferenceRuns, observeInferenceRun, startInference } from "@/lib/api";
+import { cancelInferenceRun, connectInferenceWebSocket, getActiveInferenceRuns, startInference } from "@/lib/api";
 import { sortByUpdatedAtDesc } from "@/lib/utils";
 import type {
   ConversationDetail,
@@ -143,7 +143,11 @@ export function useInferenceRuns({
     }
     const controller = new AbortController();
     controllersRef.current[runId] = controller;
-    void observeInferenceRun(userId, runId, applyRunEvent, controller.signal).catch((error) => {
+    // connectInferenceWebSocket auto-reconnects with `since=<lastSeenSeq>` and
+    // only rejects after a sustained failure (5 consecutive failed attempts)
+    // or a permanent error (401/403/404). The toast below is therefore a true
+    // "we gave up" signal, not a transient blip.
+    void connectInferenceWebSocket(userId, runId, applyRunEvent, controller.signal).catch((error) => {
       delete controllersRef.current[runId];
       if ((error as any)?.name === "AbortError") {
         return;

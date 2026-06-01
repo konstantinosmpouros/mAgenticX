@@ -174,7 +174,10 @@ class ConversationTable(Base):
     archived_at = Column(DateTime, nullable=True)
     is_reported = Column(Boolean, nullable=False, server_default="false")
     reported_at = Column(DateTime, nullable=True)
-    active_inference_run_id = Column(String, ForeignKey("inference_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    # The assistant message currently being streamed for this conversation.
+    # Set when an AI placeholder is created with streaming_status='queued'; cleared
+    # by _finish_run when the message reaches a terminal streaming state.
+    active_assistant_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # for fast conversation list rendering
     last_message_preview = Column(String, server_default="", nullable=True)
@@ -200,9 +203,9 @@ class ConversationTable(Base):
         passive_deletes=True,
         uselist=False,
     )
-    active_inference_run = relationship(
-        "InferenceRunTable",
-        foreign_keys=[active_inference_run_id],
+    active_assistant_message = relationship(
+        "MessageTable",
+        foreign_keys=[active_assistant_message_id],
         post_update=True,
     )
 
@@ -213,6 +216,23 @@ MessageTypeEnum = Enum("text", "file", "image", "audio", "tool", name="message_t
 
 class MessageTable(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        # At most one assistant message per conversation can be in an active
+        # streaming state. Replaces the old inference_runs-table unique index.
+        Index(
+            "uq_messages_one_active_stream_per_conversation",
+            "conversation_id",
+            unique=True,
+            postgresql_where=text("streaming_status IN ('queued', 'running', 'cancelling')"),
+            sqlite_where=text("streaming_status IN ('queued', 'running', 'cancelling')"),
+        ),
+        Index(
+            "ix_messages_streaming_status",
+            "streaming_status",
+            postgresql_where=text("streaming_status IS NOT NULL"),
+            sqlite_where=text("streaming_status IS NOT NULL"),
+        ),
+    )
 
     id = Column(String, primary_key=True, default=gen_uuid)
     conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -240,6 +260,19 @@ class MessageTable(Base):
     plan = Column(JSON, nullable=True)                 # last PlanSnapshot state
     subagents = Column(JSON, nullable=True)            # subagent events keyed by task_id
 
+    # ------------------------------------------------------------------
+    # Streaming / inference-run state (previously its own InferenceRunTable).
+    # These columns are populated only on AI messages that are produced by an
+    # inference run. For user messages and historical AI messages produced
+    # outside the run framework they stay NULL.
+    # ------------------------------------------------------------------
+    streaming_status = Column(String, nullable=True)                      # queued / running / cancelling / completed / cancelled / failed
+    streaming_message_path = Column(JSON, nullable=True)                  # branch context: list of message IDs the agent saw as history
+    streaming_enabled_tools = Column(JSON, nullable=True)                 # tool preferences snapshot at start
+    streaming_started_at = Column(DateTime, nullable=True)
+    streaming_completed_at = Column(DateTime, nullable=True)
+    streaming_cancel_requested_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -251,43 +284,6 @@ class MessageTable(Base):
         passive_deletes=True,
         order_by="AttachmentTable.created_at.asc()",
     )
-
-
-class InferenceRunTable(Base):
-    __tablename__ = "inference_runs"
-    __table_args__ = (
-        Index(
-            "uq_inference_runs_one_active_per_conversation",
-            "conversation_id",
-            unique=True,
-            postgresql_where=text("status IN ('queued', 'running', 'cancelling')"),
-            sqlite_where=text("status IN ('queued', 'running', 'cancelling')"),
-        ),
-    )
-
-    id = Column(String, primary_key=True, default=gen_uuid)
-    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    conversation_id = Column(String, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
-    assistant_message_id = Column(String, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True)
-    parent_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
-    status = Column(String, nullable=False, server_default="queued", index=True)
-    message_path = Column(JSON, nullable=True)
-    enabled_tools = Column(JSON, nullable=True)
-    content = Column(Text, nullable=True)
-    thinking = Column(JSON, nullable=True)
-    raw_events = Column(JSON, nullable=True)
-    plan = Column(JSON, nullable=True)
-    subagents = Column(JSON, nullable=True)
-    error_message = Column(Text, nullable=True)
-    started_at = Column(DateTime, server_default=func.now(), nullable=False)
-    completed_at = Column(DateTime, nullable=True)
-    cancel_requested_at = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    user = relationship("UserTable")
-    conversation = relationship("ConversationTable", foreign_keys=[conversation_id])
-    assistant_message = relationship("MessageTable", foreign_keys=[assistant_message_id])
-    parent_message = relationship("MessageTable", foreign_keys=[parent_message_id])
 
 
 class ConversationReportTable(Base):

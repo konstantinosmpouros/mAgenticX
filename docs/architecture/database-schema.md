@@ -15,14 +15,12 @@ erDiagram
     conversations ||--o{ messages : "contains"
     conversations ||--o| conversation_reports : "flagged by"
     conversations ||--o{ conversation_shares : "shared via"
-    conversations }o--o| inference_runs : "active_inference_run_id"
+    conversations }o--o| messages : "active_assistant_message_id"
     messages ||--o{ messages : "parent_message_id (branching)"
     messages ||--o{ attachments : "has"
     messages }o--o| conversations : "forked_message_id"
     conversations }o--o| conversations : "forked_parent_id"
     attachments ||--o| blobs : "stored in"
-    inference_runs }|--|| messages : "assistant_message_id"
-    inference_runs }o--o| messages : "parent_message_id"
 
     users {
         string id PK
@@ -74,7 +72,7 @@ erDiagram
         string agent_id FK
         string forked_parent_id FK
         string forked_message_id FK
-        string active_inference_run_id FK
+        string active_assistant_message_id FK
         string agent_name
         string title
         boolean is_private
@@ -103,28 +101,13 @@ erDiagram
         json raw_events
         json plan
         json subagents
+        string streaming_status
+        json streaming_message_path
+        json streaming_enabled_tools
+        datetime streaming_started_at
+        datetime streaming_completed_at
+        datetime streaming_cancel_requested_at
         datetime created_at
-        datetime updated_at
-    }
-
-    inference_runs {
-        string id PK
-        string user_id FK
-        string conversation_id FK
-        string assistant_message_id FK
-        string parent_message_id FK
-        string status
-        json message_path
-        json enabled_tools
-        text content
-        json thinking
-        json raw_events
-        json plan
-        json subagents
-        text error_message
-        datetime started_at
-        datetime completed_at
-        datetime cancel_requested_at
         datetime updated_at
     }
 
@@ -288,7 +271,7 @@ The top-level container for a message thread. A conversation belongs to one user
 | `agent_id` | `String` | No | — | FK → `agents.id` CASCADE, INDEXED |
 | `forked_parent_id` | `String` | Yes | `NULL` | FK → `conversations.id` SET NULL, INDEXED — origin conversation when forked |
 | `forked_message_id` | `String` | Yes | `NULL` | FK → `messages.id` SET NULL, INDEXED — origin message when forked |
-| `active_inference_run_id` | `String` | Yes | `NULL` | FK → `inference_runs.id` SET NULL, INDEXED — currently running inference; `post_update=True` to avoid circular insert ordering |
+| `active_assistant_message_id` | `String` | Yes | `NULL` | FK → `messages.id` SET NULL, INDEXED — points at the AI message that is currently being streamed; `post_update=True` to avoid the circular insert ordering with `messages` |
 | `agent_name` | `String` | Yes | `NULL` | Denormalized agent name at conversation creation time (survives agent renames) |
 | `title` | `String` | Yes | `NULL` | Auto-generated or user-set title; max 200 characters |
 | `is_private` | `Boolean` | No | `false` | Private conversations are excluded from shared exports and search results |
@@ -301,7 +284,7 @@ The top-level container for a message thread. A conversation belongs to one user
 | `created_at` | `DateTime` | No | `func.now()` | — |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
 
-**Relationships:** `user`, `agent`, `messages` (ordered by `created_at ASC`, cascade delete), `report` (one-to-one, cascade delete), `active_inference_run` (many-to-one, `post_update=True`).
+**Relationships:** `user`, `agent`, `messages` (ordered by `created_at ASC`, cascade delete), `report` (one-to-one, cascade delete), `active_assistant_message` (many-to-one, `post_update=True`).
 
 ---
 
@@ -325,49 +308,32 @@ Every chat turn — both user and AI — is a row in this table. The `parent_mes
 | `raw_events` | `JSON` | Yes | `NULL` | Full array of AG-UI `CUSTOM` event dicts for this message |
 | `plan` | `JSON` | Yes | `NULL` | Last `PlanSnapshot` received during inference (`{items: [{content, status}]}`) |
 | `subagents` | `JSON` | Yes | `NULL` | Sub-agent event groups: `{tasks, events, beforeAgent, interrupts}` |
+| `streaming_status` | `String` | Yes | `NULL` | INDEXED (partial, `IS NOT NULL`) — `"queued"`, `"running"`, `"cancelling"`, `"completed"`, `"cancelled"`, `"failed"`. `NULL` on user messages and on AI messages that were not produced by a detached run. |
+| `streaming_message_path` | `JSON` | Yes | `NULL` | Ordered list of message IDs representing the branch path the agent saw as history when the run was started |
+| `streaming_enabled_tools` | `JSON` | Yes | `NULL` | Snapshot of `{serverId, toolName}` tool preferences captured at run start |
+| `streaming_started_at` | `DateTime` | Yes | `NULL` | Run creation timestamp; sorts the run list endpoint |
+| `streaming_completed_at` | `DateTime` | Yes | `NULL` | Set on terminal status transition |
+| `streaming_cancel_requested_at` | `DateTime` | Yes | `NULL` | Set when the client requests cancellation |
 | `created_at` | `DateTime` | No | `func.now()` | — |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
 
 **Relationships:** `conversation` (many-to-one), `attachments` (one-to-many, ordered by `created_at ASC`, cascade delete).
 
----
+**The assistant message is the inference run.** There is no separate `inference_runs` table — the `streaming_*` columns on the AI `MessageTable` row carry the full run lifecycle. `InferenceRunRuntime` accumulates `content`, `reasoning_steps`, `raw_events`, `plan`, and `subagents` in memory during the stream; on terminal write, those values plus the final `streaming_status` are persisted to the same row in a single transaction. The `InferenceRunOut` API shape is built from the row by `build_run_out_from_message(...)`.
 
-### `inference_runs`
-
-One row per inference attempt. Created immediately when inference starts (status `"queued"`); updated to a terminal status when the stream completes. The `content`, `thinking`, `plan`, `subagents`, and `raw_events` columns mirror those on `messages` — they are the live in-flight values that `InferenceRunRuntime.apply_event()` accumulates, and they are copied to the linked `MessageTable` row on terminal write.
-
-| Column | Type | Null | Default | Notes |
-| --- | --- | --- | --- | --- |
-| `id` | `String` | No | `gen_uuid()` | PK |
-| `user_id` | `String` | No | — | FK → `users.id` CASCADE, INDEXED |
-| `conversation_id` | `String` | No | — | FK → `conversations.id` CASCADE, INDEXED |
-| `assistant_message_id` | `String` | No | — | FK → `messages.id` CASCADE, INDEXED — the placeholder AI message created at run start |
-| `parent_message_id` | `String` | Yes | `NULL` | FK → `messages.id` SET NULL, INDEXED — the user message that triggered this run |
-| `status` | `String` | No | `"queued"` | INDEXED — `"queued"`, `"running"`, `"cancelling"`, `"completed"`, `"cancelled"`, `"failed"` |
-| `message_path` | `JSON` | Yes | `NULL` | Ordered list of message IDs representing the branch path sent to the agent |
-| `enabled_tools` | `JSON` | Yes | `NULL` | List of `{serverId, toolName}` dicts active for this run |
-| `content` | `Text` | Yes | `NULL` | Accumulated response text (live, from `InferenceRunRuntime`) |
-| `thinking` | `JSON` | Yes | `NULL` | Accumulated thought strings array (live) |
-| `raw_events` | `JSON` | Yes | `NULL` | All `CUSTOM` AG-UI events received (live) |
-| `plan` | `JSON` | Yes | `NULL` | Last `PlanSnapshot` received (live) |
-| `subagents` | `JSON` | Yes | `NULL` | Sub-agent event groups (live) |
-| `error_message` | `Text` | Yes | `NULL` | Error detail for `"failed"` status |
-| `started_at` | `DateTime` | No | `func.now()` | Run creation timestamp |
-| `completed_at` | `DateTime` | Yes | `NULL` | Set on terminal status transition |
-| `cancel_requested_at` | `DateTime` | Yes | `NULL` | Set when client requests cancellation |
-| `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
-
-**Partial unique index:**
+**Partial indexes on `messages`:**
 
 ```sql
-CREATE UNIQUE INDEX uq_inference_runs_one_active_per_conversation
-  ON inference_runs (conversation_id)
-  WHERE status IN ('queued', 'running', 'cancelling');
+CREATE UNIQUE INDEX uq_messages_one_active_stream_per_conversation
+  ON messages (conversation_id)
+  WHERE streaming_status IN ('queued', 'running', 'cancelling');
+
+CREATE INDEX ix_messages_streaming_status
+  ON messages (streaming_status)
+  WHERE streaming_status IS NOT NULL;
 ```
 
-This enforces at most one active run per conversation at the database level. A second `INSERT` or `UPDATE` that would create a second active row for the same `conversation_id` raises a unique constraint violation. The application checks for an existing active run before inserting, but the index is the authoritative guard.
-
-**Relationships:** `user`, `conversation`, `assistant_message` (many-to-one), `parent_message` (many-to-one, nullable).
+The unique index enforces at most one active stream per conversation at the database level — a concurrent attempt to start a second run while one is still active raises a unique-constraint violation. The non-unique index supports the run-list endpoint's filter on `streaming_status IN (...)` without scanning the full table (only ~the active and recently-terminal AI rows are indexed).
 
 ---
 
@@ -447,11 +413,12 @@ A shareable link to a conversation snapshot. The `snapshot_json` column contains
 
 ## Constraint and Index Reference
 
-### Partial Unique Index
+### Partial Indexes
 
 | Index name | Table | Column | WHERE clause | Purpose |
 | --- | --- | --- | --- | --- |
-| `uq_inference_runs_one_active_per_conversation` | `inference_runs` | `conversation_id` | `status IN ('queued', 'running', 'cancelling')` | At most one active run per conversation |
+| `uq_messages_one_active_stream_per_conversation` | `messages` | `conversation_id` | `streaming_status IN ('queued', 'running', 'cancelling')` | At most one active streaming AI message per conversation (UNIQUE) |
+| `ix_messages_streaming_status` | `messages` | `streaming_status` | `streaming_status IS NOT NULL` | Fast filter on the run-list endpoint without scanning user/non-streaming rows |
 
 ### Named Unique Constraints
 
@@ -481,13 +448,9 @@ A shareable link to a conversation snapshot. The `snapshot_json` column contains
 | `conversations.agent_id` | `agents.id` | CASCADE |
 | `conversations.forked_parent_id` | `conversations.id` | SET NULL |
 | `conversations.forked_message_id` | `messages.id` | SET NULL |
-| `conversations.active_inference_run_id` | `inference_runs.id` | SET NULL |
+| `conversations.active_assistant_message_id` | `messages.id` | SET NULL |
 | `messages.conversation_id` | `conversations.id` | CASCADE |
 | `messages.parent_message_id` | `messages.id` | SET NULL |
-| `inference_runs.user_id` | `users.id` | CASCADE |
-| `inference_runs.conversation_id` | `conversations.id` | CASCADE |
-| `inference_runs.assistant_message_id` | `messages.id` | CASCADE |
-| `inference_runs.parent_message_id` | `messages.id` | SET NULL |
 | `conversation_reports.conversation_id` | `conversations.id` | CASCADE |
 | `conversation_reports.user_id` | `users.id` | CASCADE |
 | `conversation_reports.message_id` | `messages.id` | SET NULL |
@@ -505,7 +468,7 @@ A shareable link to a conversation snapshot. The `snapshot_json` column contains
 
 ### Message Branching via Self-Reference
 
-`messages.parent_message_id` is a self-referential FK. Every message in a conversation has exactly one parent (or `NULL` for the root). When a user edits a message or retries an AI response, a new sibling row is created under the same parent — the existing row is never overwritten. The UI selects a path through this tree by traversing `parent_message_id` chains; the `message_path` column on `inference_runs` stores the selected branch as an ordered list of IDs captured at inference start.
+`messages.parent_message_id` is a self-referential FK. Every message in a conversation has exactly one parent (or `NULL` for the root). When a user edits a message or retries an AI response, a new sibling row is created under the same parent — the existing row is never overwritten. The UI selects a path through this tree by traversing `parent_message_id` chains; the `streaming_message_path` column on the AI `messages` row stores the selected branch as an ordered list of IDs captured at inference start.
 
 There is no `position` or `order` column — the canonical ordering within a branch is `created_at ASC`.
 
@@ -513,9 +476,9 @@ There is no `position` or `order` column — the canonical ordering within a bra
 
 `conversations.agent_name` stores the agent label at conversation creation time. If an agent is renamed or deactivated later, the conversation history still shows the name the user saw at the time, without needing a join or a history table.
 
-### `active_inference_run_id` and `post_update`
+### `active_assistant_message_id` and `post_update`
 
-`conversations.active_inference_run_id` creates a circular reference: `conversations` FK → `inference_runs`, and `inference_runs` FK → `conversations`. SQLAlchemy's `post_update=True` on the `active_inference_run` relationship breaks the deadlock by issuing the `conversations` UPDATE in a second round-trip after the initial INSERT.
+`conversations.active_assistant_message_id` creates a circular reference with `messages` (the `messages.conversation_id` FK points back at `conversations`). SQLAlchemy's `post_update=True` on the `active_assistant_message` relationship breaks the insert-ordering deadlock by issuing the `conversations` UPDATE in a second round-trip after the initial AI placeholder `INSERT INTO messages`.
 
 ### `blobs` Has No `updated_at`
 
@@ -523,7 +486,7 @@ Blobs are write-once. Once a file is uploaded, its binary content never changes.
 
 ### JSON Columns for AG-UI State
 
-`messages.raw_events`, `messages.plan`, `messages.subagents`, and their counterparts on `inference_runs` store structured AG-UI event data as Postgres JSON. This avoids normalizing a rapidly-evolving event schema into relational tables. The `inference_runs` columns hold the live in-flight state during streaming; on terminal write, their values are copied verbatim to the corresponding `messages` columns in a single atomic commit.
+`messages.raw_events`, `messages.plan`, and `messages.subagents` store structured AG-UI event data as Postgres JSON. This avoids normalizing a rapidly-evolving event schema into relational tables. During streaming these columns are `NULL` — the live in-flight state lives in the per-task `InferenceRunRuntime` accumulator (process memory) and is mirrored into the durable Redis stream at `inference:run:{message_id}:events`. On terminal write, the accumulator's final state is persisted to the row's JSON columns in a single atomic commit alongside `streaming_status` and `streaming_completed_at`.
 
 ### `conversation_shares.snapshot_json` is a Frozen Copy
 
@@ -561,9 +524,11 @@ These rules are enforced by Pydantic schemas, not database constraints:
 
 - **`conversation_shares.snapshot_json` is stored inline, not in `blobs`.** Large conversations with many messages produce large JSON values stored directly in the Postgres row. There is no size cap enforced by the schema.
 
-- **The partial unique index condition is a string literal.** If the set of active status strings ever changes (e.g., a new `"pausing"` status is added), the index WHERE clause must be updated manually — it does not reference the application's `ACTIVE_RUN_STATUSES` constant.
+- **The partial index conditions are string literals.** If the set of active status strings ever changes (e.g., a new `"pausing"` status is added), the `uq_messages_one_active_stream_per_conversation` and `ix_messages_streaming_status` WHERE clauses must be updated manually — they do not reference the application's `ACTIVE_RUN_STATUSES` constant.
 
-- **`conversations.active_inference_run_id` is SET NULL on run delete, not on status change.** The column is updated programmatically when a run transitions to a terminal status. A crash between run completion and the `UPDATE conversations SET active_inference_run_id = NULL` leaves the column pointing at a completed run until the next startup cleanup.
+- **`conversations.active_assistant_message_id` is SET NULL on message delete, not on streaming-status change.** The column is updated programmatically when the AI message transitions to a terminal `streaming_status`. A crash between terminal write and the `UPDATE conversations SET active_assistant_message_id = NULL` leaves the column pointing at a completed message until the next startup cleanup pass.
+
+- **The durable in-flight event log is in Redis, not Postgres.** Chunks streamed during a run are appended to the Redis Stream `inference:run:{message_id}:events` via `RedisEventLog.append(...)`. Postgres only sees the terminal snapshot when `_finish_run()` commits. Killing the bridge mid-stream leaves the AI row in `streaming_status='running'`; the startup cleanup pass (`cleanup_orphaned_inference_runs`) transitions any abandoned rows to `failed`.
 
 - **`users.email` allows `NULL` with a UNIQUE constraint.** Postgres treats each `NULL` as distinct, so multiple users with no email on record do not violate the constraint. The UNIQUE index only prevents two rows from sharing the same non-null email value.
 
@@ -574,7 +539,7 @@ These rules are enforced by Pydantic schemas, not database constraints:
 | Concept | File | What to look for |
 | --- | --- | --- |
 | All ORM model definitions | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | All `Table` classes, `__table_args__`, relationships |
-| Partial unique index | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `Index("uq_inference_runs_one_active_per_conversation", ..., postgresql_where=...)` |
+| Partial indexes on `messages` | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `Index("uq_messages_one_active_stream_per_conversation", ..., postgresql_where=...)`, `Index("ix_messages_streaming_status", ...)` |
 | Pydantic request/response schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | All `BaseModel` subclasses, attachment limits, enum literals |
 | User upsert on login | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `upsert_user_from_vault()` |
 | Active run status set | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `ACTIVE_RUN_STATUSES` |

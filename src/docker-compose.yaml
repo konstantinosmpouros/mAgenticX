@@ -78,6 +78,29 @@ services:
       - frontend
 
 
+  redis: # 6379
+    image: redis:7.4-alpine
+    container_name: redis
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:-magenticx-dev-redis}
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    user: "999:999"
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    networks:
+      - backend
+
+
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
     image: dialogue_bridge
@@ -93,13 +116,16 @@ services:
       - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}
     depends_on:
       - agents
       - chat_postgres
+      - redis
     restart: unless-stopped
     ports:
       - "8002:8002"
-    networks: 
+    networks:
       - backend
       - frontend
       - hashicorp_vault

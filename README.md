@@ -38,9 +38,10 @@ flowchart TB
     end
 
     Admin -->|"configure UI"| UI
-    Browser -->|"HTTP SSE via 8050"| UI
-    UI -->|"REST SSE via /api"| Bridge
+    Browser -->|"HTTPS + WebSocket via 8050"| UI
+    UI -->|"REST + WebSocket via /api"| Bridge
     Bridge -->|"Detached run tasks"| Agents
+    Bridge -->|"XADD / XREAD per-run event log"| Redis["redis<br/>(inference event log Streams)"]
     Agents -->|"Tool catalog SSE"| MCP
     Bridge -->|"Persist conversations"| PG
     Bridge -->|"userpass login"| Vault
@@ -91,13 +92,15 @@ flowchart LR
     RAG["RAG Service\nChroma + DuckDB access"]
     MCP["MCP Gateway\nSSE tool catalog"]
     Vault["Vault\nuserpass auth"]
-    PG["Postgres\nconversations + attachments"]
+    PG["Postgres\nconversations + attachments + streaming_* lifecycle"]
+    Redis["Redis 7\nper-run AG-UI event Streams"]
     Chroma["Chroma\nvector store"]
 
     User --> UI
     UI --> Bridge
     Bridge --> Vault
     Bridge --> PG
+    Bridge --> Redis
     Bridge --> Agents
     Agents --> RAG
     Agents --> MCP
@@ -122,16 +125,19 @@ sequenceDiagram
     UI->>B: /api/v1/auth/login
     B-->>UI: session + refresh cookies
     UI->>B: POST /api/v1/inference/runs/{userId}/start
-    B->>P: persist user action + AI placeholder + inference_run row
+    B->>P: persist user action + AI placeholder (streaming_status='queued')
     B-->>UI: detail + summary + run + assistant message
     B->>B: launch background asyncio task (detached)
-    UI->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
-    B-->>UI: DB snapshot on connect, then live in-memory events
+    UI->>B: WS /api/v1/inference/runs/{userId}/{run_id}/ws
+    UI-->>B: {"type":"subscribe","since":null}
     B->>A: POST /agents/{slug}/stream (inside background task)
     A-->>B: AG-UI SSE frames
     B->>B: accumulate in InferenceRunRuntime (no per-chunk DB writes)
-    B-->>UI: publish lightweight events to all observers
-    B->>P: single DB write at run completion (content, events, status)
+    B->>B: XADD inference:run:{id}:events <payload>
+    B-->>UI: {"type":"event","seq":"...","payload":...} (XREAD BLOCK)
+    B->>P: single DB write at run completion (terminal streaming_status, content, raw_events)
+    B->>B: XADD terminal + EXPIRE 3600s on the Redis stream
+    B-->>UI: {"type":"terminal"} → close
 ```
 
 ### Retrieval and Tooling Flow
@@ -162,13 +168,14 @@ flowchart TD
 
 ### Browser Rendering Flow
 
-The UI does not just append streamed text. It receives events from the run observer SSE endpoint and normalizes them into visible assistant text, tool traces, plan snapshots, thinking progress, and sub-agent artifacts. The run continues on the server even if the browser disconnects; reconnecting replays a DB snapshot and then resumes live events.
+The UI does not just append streamed text. It receives events over a WebSocket from the run observer endpoint and normalizes them into visible assistant text, tool traces, plan snapshots, thinking progress, and sub-agent artifacts. The run continues on the server even if the browser disconnects; reconnect with `since=<lastSeenSeq>` replays missed events from the per-run Redis stream (1 h post-terminal TTL) before resuming live events.
 
 ```mermaid
 flowchart LR
-    Observer["Run observer SSE\n(/inference/runs/.../stream)"]
-    Snapshot["DB snapshot on connect"]
-    Live["Live in-memory events"]
+    Observer["Run observer WebSocket\n(/inference/runs/.../ws)"]
+    Redis["Redis Stream\ninference:run:{id}:events"]
+    Snapshot["Postgres snapshot\n(only if already terminal)"]
+    Live["Live event frames\n{type:event, seq, payload}"]
     Parse["applyRunEvent(...)"]
     Text["Assistant text"]
     Tools["Tool activity"]
@@ -177,7 +184,8 @@ flowchart LR
     Persist["Single DB write at completion"]
 
     Observer --> Snapshot
-    Observer --> Live
+    Observer --> Redis
+    Redis --> Live
     Snapshot --> Parse
     Live --> Parse
     Parse --> Text
@@ -209,7 +217,8 @@ Representative use cases supported by the current codebase:
 | `rag_service` | Retrieval and SQL over spreadsheet-backed data | `8001` | FastAPI, Chroma, DuckDB | [RAG README](src/rag_service/README.md) |
 | `mcp_gateway` | Tool catalog and MCP SSE endpoint | `8005` | docker/mcp-gateway | [MCP Gateway README](src/mcp_gateway/README.md) |
 | `vectordb` | Persistent vector storage for retrieval | `8000` | Chroma | integrated |
-| `chat_postgres` | Durable chat state, attachments, and feedback | `5432` | PostgreSQL | integrated |
+| `chat_postgres` | Durable chat state, attachments, feedback, and the `streaming_*` inference-run lifecycle on `messages` | `5432` | PostgreSQL | integrated |
+| `redis` | Per-run AG-UI event log (Redis Streams) backing the WebSocket observer's cursor-based replay | `6379` | Redis 7.4 alpine | integrated |
 | `vault` | Authentication backend used by the bridge | `8004` | HashiCorp Vault | integrated |
 
 ## Repository Map
@@ -260,6 +269,7 @@ This core stack includes:
 - `rag_service`
 - `vectordb`
 - `chat_postgres`
+- `redis`
 
 ### Supporting Services
 
@@ -278,6 +288,7 @@ When the default Compose setup is running:
 - Dialogue Bridge: `http://localhost:8002`
 - Agents: `http://localhost:8003`
 - RAG Service: `http://localhost:8001`
+- Redis (inference event log): `redis://redis:6379/0` (internal only — not host-bound)
 - MCP Gateway: `http://localhost:8005/sse` when started
 - Vault: `http://localhost:8004` when started
 
@@ -334,9 +345,10 @@ flowchart TB
     end
 
     Admin -->|"configure UI"| UI
-    Browser -->|"HTTP SSE via 8050"| UI
-    UI -->|"REST SSE via /api"| Bridge
+    Browser -->|"HTTPS + WebSocket via 8050"| UI
+    UI -->|"REST + WebSocket via /api"| Bridge
     Bridge -->|"Detached run tasks"| Agents
+    Bridge -->|"XADD / XREAD per-run event log"| Redis["redis<br/>(inference event log Streams)"]
     Agents -->|"Tool catalog SSE"| MCP
     Bridge -->|"Persist conversations"| PG
     Bridge -->|"userpass login"| Vault
@@ -357,21 +369,27 @@ sequenceDiagram
     participant P as Postgres
     participant A as Agents
 
+    participant R as Redis Stream
+
     U->>UI: Send message
     UI->>B: POST /api/v1/inference/runs/{userId}/start
-    B->>P: persist user action + AI placeholder + inference_run row
+    B->>P: persist user action + AI placeholder (streaming_status='queued')
     B-->>UI: detail + summary + run + assistant message
     B->>B: launch detached asyncio task
-    UI->>B: GET /api/v1/inference/runs/{userId}/{run_id}/stream (SSE observer)
-    B-->>UI: DB snapshot on connect, then live events per chunk
+    UI->>B: WS /api/v1/inference/runs/{userId}/{run_id}/ws
+    UI-->>B: {"type":"subscribe","since":null}
     B->>A: POST /agents/{slug}/stream (inside background task)
     A-->>B: AG-UI SSE frames
-    B-->>UI: lightweight events published to all observers
-    B->>P: single DB write at run completion
+    B->>R: XADD inference:run:{id}:events <payload>
+    R-->>B: XREAD BLOCK → (seq, payload)
+    B-->>UI: {"type":"event","seq":"...","payload":...}
+    B->>P: single DB write at run completion (terminal streaming_status + final content/events)
+    B->>R: XADD terminal + EXPIRE 3600s
     U->>UI: disconnect / refresh
-    Note over B,A: run continues server-side uninterrupted
-    UI->>B: reconnect → GET /api/v1/inference/runs/{userId}/{run_id}/stream
-    B-->>UI: fresh DB snapshot + resume live events
+    Note over B,A: run continues server-side uninterrupted; events keep landing in Redis
+    UI->>B: reconnect → WS /api/v1/inference/runs/{userId}/{run_id}/ws with since=<lastSeq>
+    R-->>B: replay missed events from <lastSeq>
+    B-->>UI: replayed events + live tail
 ```
 
 ### Authentication

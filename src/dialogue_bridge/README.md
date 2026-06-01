@@ -6,7 +6,7 @@ The `dialogue_bridge` service is the backend-for-frontend layer for the Agentic 
 - bridge-managed session cookies and CSRF protection
 - Postgres persistence for conversations, messages, attachments, blobs, sessions, and user preferences
 - agent catalog caching and tool catalog proxying
-- detached inference run lifecycle — server-owned asyncio tasks with SSE observer fan-out
+- detached inference run lifecycle — server-owned asyncio tasks with WebSocket observers backed by per-run Redis Streams
 
 This README documents the current implementation under `src/dialogue_bridge`.
 
@@ -19,7 +19,7 @@ The bridge is the main application-facing API. It owns six major areas:
 3. Persistence of chat state and binary attachments.
 4. Proxying agent capabilities from the `agents` service.
 5. Browser-facing safety concerns such as CSRF, CORS, rate limiting, and proxy-aware client IP handling.
-6. Detached inference run lifecycle — spawning server-owned asyncio tasks, managing in-memory pub/sub for SSE observers, and writing results to Postgres on completion.
+6. Detached inference run lifecycle — spawning server-owned asyncio tasks, appending AG-UI events to per-run Redis Streams, serving WebSocket observers with cursor-based replay, and writing the terminal snapshot to Postgres on completion.
 
 It does not:
 
@@ -59,7 +59,7 @@ flowchart LR
 - caches active agent manifests from the `agents` service
 - proxies MCP tool catalog requests through the bridge
 - proxies dictation uploads to the `agents` speech-to-text endpoint
-- owns detached inference runs and exposes SSE observer streams to the browser
+- owns detached inference runs and exposes WebSocket observer streams to the browser (with a deprecated SSE endpoint kept for one release cycle)
 
 ### 3.4 User preferences
 
@@ -76,7 +76,7 @@ flowchart TD
     B -->|conversations/messages| E[Postgres via SQLAlchemy]
     B -->|inference| F[Start run + AI placeholder]
     F --> G[Detached task posts to agents stream]
-    G --> H[SSE observer fan-out to browser]
+    G --> H[WebSocket observer fan-out via Redis Stream]
     B -->|attachments| I[Blob streaming / image pagination]
 ```
 
@@ -184,9 +184,7 @@ erDiagram
     UserTable ||--o{ ConversationTable : owns
     AgentTable ||--o{ ConversationTable : used_by
     ConversationTable ||--o{ MessageTable : contains
-    ConversationTable ||--o{ InferenceRunTable : has
-    ConversationTable }o--o| InferenceRunTable : active_inference_run_id
-    InferenceRunTable }o--|| MessageTable : assistant_message_id
+    ConversationTable }o--o| MessageTable : active_assistant_message_id
     MessageTable ||--o{ AttachmentTable : contains
     AttachmentTable ||--o| BlobTable : stores
     MessageTable }o--|| MessageTable : parent_message_id
@@ -200,11 +198,10 @@ erDiagram
 | `user_preferences` | disabled tools and agentic-chat preference |
 | `sessions` | bridge-managed access/refresh sessions |
 | `agents` | cached agent manifests from the agents service |
-| `conversations` | conversation shell and sidebar metadata; `active_inference_run_id` FK points to the current detached run |
-| `messages` | user and AI messages, reactions, reasoning, plan, subagent state |
+| `conversations` | conversation shell and sidebar metadata; `active_assistant_message_id` FK points to the AI message currently being streamed |
+| `messages` | user and AI messages, reactions, reasoning, plan, subagent state, plus `streaming_*` columns (status / message_path / enabled_tools / started_at / completed_at / cancel_requested_at) that drive the inference-run lifecycle. A partial unique index on `conversation_id WHERE streaming_status IN ('queued','running','cancelling')` ensures at most one active stream per conversation. |
 | `attachments` | metadata for uploaded files |
 | `blobs` | raw binary payload storage |
-| `inference_runs` | detached run records; status lifecycle (queued → running → completed/cancelled/failed); partial unique index ensures at most one active run per conversation |
 
 ### 7.2 Important message fields
 
@@ -306,20 +303,22 @@ sequenceDiagram
     participant Agents
 
     UI->>Bridge: POST /v1/inference/runs/{user}/start
-    Bridge->>DB: persist user action + AI placeholder + run
-    Bridge->>Task: launch(run.id)
+    Bridge->>DB: persist user action + AI placeholder (streaming_status='queued')
+    Bridge->>Task: launch(message.id)
     Bridge->>UI: detail + summary + run + assistant message
-    UI->>Bridge: GET /v1/inference/runs/{user}/{run}/stream
-    Bridge-->>UI: DB snapshot on connect
+    UI->>Bridge: WS /v1/inference/runs/{user}/{run}/ws (subscribe since=null)
+    Bridge-->>UI: DB snapshot if already terminal, otherwise live tail
     Task->>DB: load conversation + messages + attachments
     Task->>Task: validate messagePath
     Task->>Task: remove trailing empty AI placeholder
     Task->>Task: serialize text + inline image data URLs
     Task->>Agents: POST /agents/{slug}/stream
     Agents-->>Task: SSE AG-UI frames
-    Task-->>Bridge: publish run events
-    Bridge-->>UI: run snapshot events
-    Task->>DB: terminal run + message + conversation write
+    Task->>Bridge: XADD inference:run:{id}:events
+    Bridge-->>UI: {"type":"event","seq":"...","payload":...}
+    Task->>DB: terminal AI message + conversation write
+    Task->>Bridge: XADD terminal + EXPIRE 3600s
+    Bridge-->>UI: {"type":"terminal"} → close
 ```
 
 ### 10.1 Upstream payload shape
@@ -391,11 +390,10 @@ Detached runs are the primary inference path. The run lifecycle is fully owned b
 `start_inference_flow(...)` (in `utils/inference_start.py`) orchestrates persistence, then calls `create_inference_run_record(...)` (in `utils/inference_runs.py`) in the same transaction:
 
 1. persists the user-side action for `new`, `send`, `edit`, `retry`, or `shared_continue`
-2. creates an AI placeholder `MessageTable` row
-3. inserts an `InferenceRunTable` row with status `queued`
-4. sets `conversation.active_inference_run_id` to the new run id
+2. creates an AI placeholder `MessageTable` row with `streaming_status='queued'`, `streaming_started_at=now()`, and snapshots of the message path and tool preferences in the `streaming_*` columns
+3. sets `conversation.active_assistant_message_id` to the new message id
 
-The endpoint returns the latest conversation detail/summary, the run, and the placeholder message after the transaction commits.
+The endpoint returns the latest conversation detail/summary, the run shape (built from the message row), and the placeholder message after the transaction commits. There is no longer a separate `inference_runs` table — the assistant message *is* the run.
 
 ### 11.2 Background task execution
 
@@ -404,18 +402,20 @@ The endpoint returns the latest conversation detail/summary, the run, and the pl
 - marks the run `running` in Postgres
 - calls the `agents` service SSE endpoint
 - reads each AG-UI chunk and applies it to an `InferenceRunRuntime` accumulator (in-memory only — no DB writes during streaming)
-- builds a lightweight `InferenceRunEvent` via `_build_runtime_event(...)` and publishes it to all subscribed observers
+- builds a lightweight `InferenceRunEvent` via `_build_runtime_event(...)` and appends it to the run's **Redis Stream** at `inference:run:{run_id}:events` via `RedisEventLog.append(...)`
 
 ### 11.3 Observer subscription
 
-`observe_run_events(...)` is an async generator consumed by the SSE observer endpoint:
+Browsers connect via WebSocket at `/v1/inference/runs/{user_id}/{run_id}/ws`. The handler authenticates the session cookie, accepts the upgrade, waits for the client's first frame (`{"type": "subscribe", "since": "<seq>" | null}`), then drives `stream_run_events(run_id, since=since)`:
 
-1. on connect, it subscribes to the in-memory pub/sub queue for the run
-2. it reads the current `InferenceRunTable` row from Postgres and emits a snapshot event (reconnect resilience)
-3. events are forwarded to the browser as `text/event-stream` frames until the run terminates
-4. on termination, the controller is cleaned up and the generator exits
+1. if the run is already terminal, a single `{"type": "snapshot", "payload": ...}` frame is sent from the Postgres snapshot and the connection closes
+2. otherwise, the handler `XREAD BLOCK`s the Redis stream from the supplied cursor (or `0` for full backlog), sending each event as `{"type": "event", "seq": "<stream-id>", "payload": ...}`
+3. when a terminal-status event is seen, a `{"type": "terminal"}` frame is sent and the connection closes cleanly
+4. on transient disconnect the client reconnects with `since=<last-seen-seq>`; missed events are replayed from Redis up to the TTL window (1 h after terminal)
 
-Multiple browsers can observe the same run simultaneously.
+The legacy SSE endpoint at `GET /v1/inference/runs/{user_id}/{run_id}/stream` is kept for one release cycle so older clients can still observe; it reads from the same Redis stream and emits `text/event-stream` frames without sequence-ID metadata. New code should use the WebSocket route.
+
+Multiple browsers can observe the same run simultaneously — Redis Streams support fan-out natively (each WebSocket handler is an independent `XREAD` consumer).
 
 ### 11.4 Cancellation
 
@@ -583,7 +583,8 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | --- | --- | --- |
 | `/v1/inference/runs/{user_id}/start` | `POST` | Backend-owned start for new, send, edit, retry, and shared continuation |
 | `/v1/inference/runs/{user_id}` | `GET` | List runs (`?status=active` for hydration) |
-| `/v1/inference/runs/{user_id}/{run_id}/stream` | `GET` | SSE observer — snapshot on connect, then live events |
+| `/v1/inference/runs/{user_id}/{run_id}/ws` | `WS` | WebSocket observer with `since=<seq>` resume — replays from Redis Stream |
+| `/v1/inference/runs/{user_id}/{run_id}/stream` | `GET` | **Deprecated** legacy SSE observer; kept for one release cycle |
 | `/v1/inference/runs/{user_id}/{run_id}/cancel` | `POST` | Signal asyncio cancel |
 
 ### 15.7 Speech
@@ -710,7 +711,18 @@ Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` |
 | `TRUSTED_PROXY_SECRET` | required (service refuses to start if unset) |
 
-### 17.5 CORS variables
+### 17.5 Redis (inference event log) variables
+
+| Variable | Default |
+| --- | --- |
+| `REDIS_URL` | `redis://redis:6379/0` |
+| `REDIS_PASSWORD_FILE` | unset locally; `/run/secrets/redis_password` in prod |
+| `REDIS_PASSWORD` | unset (used only when `REDIS_PASSWORD_FILE` is not provided) |
+| `REDIS_STREAM_MAXLEN` | `5000` (approximate cap on per-run event stream) |
+| `REDIS_STREAM_TERMINAL_TTL_SECONDS` | `3600` (replay window after a run ends) |
+| `REDIS_STREAM_READ_BLOCK_MS` | `30000` (`XREAD BLOCK` timeout) |
+
+### 17.6 CORS variables
 
 Defaults allow local origins around ports `8080` and `8050`. See `core/settings.py` for the authoritative list and override behavior.
 
@@ -744,7 +756,8 @@ src/dialogue_bridge/
 │   ├── conversations.py           Conversation/message/blob persistence helpers
 │   ├── inference.py               Branch resolution and agent payload serialization
 │   ├── inference_start.py         Backend-owned inference start orchestration
-│   ├── inference_runs.py          Detached run lifecycle — InferenceRunManager, InferenceRunRuntime, create/observe/cleanup
+│   ├── inference_runs.py          Detached run lifecycle — InferenceRunManager, InferenceRunRuntime, create/stream/cleanup
+│   ├── event_log.py               Redis-Streams-backed per-run AG-UI event log (RedisEventLog: append / read_since / mark_terminal)
 │   ├── shared_conv.py             Shared conversation clone/snapshot helpers
 │   ├── search.py                  Workspace search helper
 │   ├── speech.py                  Speech proxy helpers
@@ -799,6 +812,7 @@ From `src/docker-compose.yaml`:
 - `dialogue_bridge` depends on:
   - `agents`
   - `chat_postgres`
+  - `redis`
 - exposed port:
   - `8002:8002`
 - networks:
@@ -812,6 +826,8 @@ Configured environment there includes:
 - `VAULT_URL=http://vault:8004`
 - `SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}`
 - `TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}`
+- `REDIS_URL=redis://redis:6379/0`
+- `REDIS_PASSWORD_FILE=/run/secrets/redis_password` (prod) or `REDIS_PASSWORD=${REDIS_PASSWORD}` (local dev)
 
 ## 21. Known Behavioral Notes
 
@@ -821,7 +837,7 @@ Configured environment there includes:
 - Login works with Vault userpass only in the current code.
 - The bridge stores raw binary blobs in Postgres, not in external object storage.
 - Image attachments are returned as base64 in the image pagination endpoint.
-- Inference runs survive browser disconnects. The asyncio background task continues regardless of whether any SSE observer is connected. A reconnecting observer receives the current run state from a DB snapshot before resuming the live event stream.
+- Inference runs survive browser disconnects. The asyncio background task continues regardless of whether any WebSocket observer is connected. A reconnecting observer resends `{"type":"subscribe","since":<lastSeq>}`; the handler replays missed events from the per-run Redis stream and then continues live-tailing. If the run already terminated, the handler emits a single Postgres-backed snapshot frame and closes.
 - On startup, `cleanup_orphaned_inference_runs()` marks any rows still in `queued`, `running`, or `cancelling` status as `failed`. This covers runs that were interrupted by a process restart and prevents stale active-run locks from blocking new inference on those conversations.
 
 ## 22. Quick File References
@@ -830,7 +846,7 @@ Configured environment there includes:
 - `core/auth_session.py`: sessions, cookies, CSRF, and auth dependencies
 - `core/auth_client.py`: Vault authentication
 - `core/database.py`: ORM schema
-- `router/inference.py`: backend-owned inference start, SSE observation, cancellation, and active-run listing
+- `router/inference.py`: backend-owned inference start, WebSocket observation (`inference_run_websocket`), deprecated SSE fallback, cancellation, and active-run listing
 - `router/speech.py`: speech and dictation endpoints
 - `utils/inference.py`: branch resolution and multimodal serialization
 - `utils/inference_runs.py`: detached run lifecycle — InferenceRunManager, InferenceRunRuntime, create/observe/cleanup

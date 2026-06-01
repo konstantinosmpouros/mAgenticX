@@ -352,6 +352,54 @@ async def require_bound_user_id(
     return current_user
 
 
+async def authenticate_websocket_user(
+    websocket_cookies: dict[str, str] | object,
+    user_id: str,
+    db: AsyncSession,
+) -> UserTable | None:
+    """Validate a WebSocket connection's session cookie and user binding.
+
+    Returns the bound :class:`UserTable` on success or ``None`` on any failure
+    (missing cookie, invalid session, inactive user, user-scope mismatch). The
+    caller is responsible for closing the WebSocket with an appropriate code.
+
+    Unlike the REST dependency chain, this helper does NOT raise — exceptions
+    inside the WS upgrade phase result in protocol-level errors that are hard
+    to inspect from the browser. Returning ``None`` lets the route emit a clean
+    close frame with a descriptive code.
+    """
+    # ``websocket_cookies`` accepts either a plain dict or starlette's
+    # MutableHeaders/cookies mapping; we only need ``.get(name)``.
+    cookies_get = getattr(websocket_cookies, "get", None)
+    if cookies_get is None:
+        return None
+    token = cookies_get(SESSION_ACCESS_COOKIE_NAME) or ""
+    token = token.strip()
+    if not token:
+        return None
+    try:
+        session = await _load_session_by_hash(db, access_token=token)
+        _ensure_session_usable(session, for_refresh=False)
+    except SessionAuthenticationError:
+        return None
+    if session.user is None or not session.user.is_active:
+        try:
+            await revoke_session(session, db)
+        except Exception:
+            pass
+        return None
+    if session.user_id != user_id:
+        logger.warning(
+            "ws_user_scope_mismatch",
+            "WebSocket caller attempted to access another user scope",
+            requested_user_id=user_id,
+            authenticated_user_id=session.user_id,
+        )
+        return None
+    set_context(user_id=session.user_id, session_id=session.id)
+    return session.user
+
+
 async def require_refresh_session(
     request: Request,
     db: AsyncSession = Depends(get_db),

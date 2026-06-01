@@ -376,12 +376,14 @@ The UI uses `useInferenceRuns` to manage the full lifecycle: starting runs, obse
 
 ### Run Observation
 
-`observeInferenceRun(userId, runId, callback, signal)` opens a GET SSE connection to the bridge's observe endpoint. Every `InferenceRunEvent` frame delivered is parsed and passed to `applyRunEvent()`:
+`connectInferenceWebSocket(userId, runId, callback, signal)` opens a WebSocket to `/v1/inference/runs/{userId}/{runId}/ws` and sends a `{"type":"subscribe","since":<lastSeenSeq>|null}` frame on open. Every server frame is normalized into an `InferenceRunEvent` shape and passed to `applyRunEvent()`:
 
 ```mermaid
 flowchart TD
-    A["InferenceRunEvent arrives"] --> B{"event.type"}
-    B -->|"snapshot"| C["Initial state — run + message + summary"]
+    A["WS frame arrives"] --> A2{"frame.type"}
+    A2 -->|"event / snapshot / terminal"| A3["Map to InferenceRunEvent"]
+    A3 --> B{"event.type"}
+    B -->|"snapshot"| C["Initial state — run + message + summary (terminal path or first connect)"]
     B -->|"update"| D["Partial update during live stream"]
     B -->|"terminal"| E["Final state — run + message + summary"]
     C & D & E --> F["Determine active: run.status in active set?"]
@@ -390,10 +392,12 @@ flowchart TD
     G & H --> I["Update conversation list flags\n(activeRunId, isStreaming)"]
     I --> J["Patch current conversation detail\n(merge summary + run state)"]
     J --> K["If run for current conversation:\nupdate ThinkingState"]
-    K --> L["If not active:\nabort SSE controller"]
+    K --> L["If not active:\nabort controller → close WS"]
 ```
 
 The `ThinkingState` update inside `applyRunEvent` uses `message?.thinking ?? run.thinking ?? []` — it prefers the message-level thinking array (final, persisted) over the run-level snapshot (live). This ensures the CoT display shows the complete thought sequence after the run finishes.
+
+Every successful frame updates `lastSeenInferenceSeq[runId]` with the server-assigned `seq` (Redis stream ID). On any non-terminal close, the client reconnects with exponential backoff `[250, 500, 1000, 2000, 5000]` ms, resending `subscribe` with the latest cursor — missed events replay from Redis (1 h post-terminal TTL). Close codes `4401` / `4403` / `4404` are surfaced as `PermanentInferenceWebSocketError` without retry; the toast surface only fires after 5 sustained transient failures.
 
 ### Run Lifecycle
 
@@ -401,19 +405,22 @@ The `ThinkingState` update inside `applyRunEvent` uses `message?.thinking ?? run
 sequenceDiagram
     participant UI as useInferenceRuns
     participant Bridge as dialogue_bridge
+    participant Redis as Redis Stream
     participant IRM as InferenceRunRuntime
 
     UI->>Bridge: POST /v1/inference/runs/{user_id}/start
     Bridge-->>UI: InferenceStartResponse {detail, summary, run, message}
     UI->>UI: applyRunEvent({type:"snapshot", ...})
-    UI->>Bridge: GET /v1/inference/runs/{user_id}/{run_id}/stream (SSE)
-    Bridge-->>UI: snapshot (initial DB state)
-    Bridge-->>UI: update (per-chunk IRM flush)
-    Bridge-->>UI: terminal (run complete)
+    UI->>Bridge: WS /v1/inference/runs/{user_id}/{run_id}/ws
+    UI-->>Bridge: {"type":"subscribe","since":null}
+    Bridge->>Redis: XREAD BLOCK STREAMS inference:run:{id}:events 0
+    Redis-->>Bridge: (seq, payload)
+    Bridge-->>UI: {"type":"event","seq":"...","payload":...}
+    Bridge-->>UI: {"type":"terminal"} → close 1000
     UI->>UI: abort controller — stop observing
 ```
 
-`beginRun()` calls `startInference()`, applies the returned conversation detail/summary plus the run placeholder state, and immediately begins observing via `observeRun()`. The start endpoint is backend-owned: normal send, edit, retry, new conversation, and shared conversation continuation all persist their user-side action, create the AI placeholder, create the run, and return hydrated state from one request. The abort controller stored in `controllersRef` is used both to stop the SSE connection on unmount and to signal that a run has ended (triggered by `applyRunEvent` when the terminal event arrives).
+`beginRun()` calls `startInference()`, applies the returned conversation detail/summary plus the run placeholder state, and immediately begins observing via `observeRun()` → `connectInferenceWebSocket()`. The start endpoint is backend-owned: normal send, edit, retry, new conversation, and shared conversation continuation all persist their user-side action, create the AI placeholder, and return hydrated state from one request. The abort controller stored in `controllersRef` is used both to close the WebSocket on unmount and to signal that a run has ended (triggered by `applyRunEvent` when the terminal event arrives).
 
 **Page load hydration** — on mount, `useEffect` calls `getActiveInferenceRuns(userId)`. For each active run returned, `observeRunId()` is called so the UI reconnects to any stream that was already running before the page loaded.
 

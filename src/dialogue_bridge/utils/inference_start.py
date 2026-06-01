@@ -6,11 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from core.database import AttachmentTable, ConversationTable, InferenceRunTable, MessageTable, UserTable
+from core.database import AttachmentTable, ConversationTable, MessageTable, UserTable
 from schemas import (
     ConversationDetail,
     ConversationSummary,
-    InferenceRunOut,
     InferenceStartPayload,
     InferenceStartResponse,
     MessageIn,
@@ -19,7 +18,7 @@ from schemas import (
 from utils.agents import get_agent_by_id
 from utils.conversations import _preview, init_conv, init_message
 from utils.inference import resolve_inference_message_path
-from utils.inference_runs import create_inference_run_record
+from utils.inference_runs import build_run_out_from_message, create_inference_run_record
 from utils.shared_conv import create_conversation_from_share_record, load_active_share
 from utils.titles import resolve_conversation_title
 from utils.validators import validate_convId_full
@@ -49,11 +48,6 @@ async def _load_message(db: AsyncSession, message_id: str) -> MessageTable | Non
     return result.scalar_one_or_none()
 
 
-async def _load_run(db: AsyncSession, run_id: str) -> InferenceRunTable | None:
-    result = await db.execute(select(InferenceRunTable).where(InferenceRunTable.id == run_id))
-    return result.scalar_one_or_none()
-
-
 async def start_inference_flow(
     *,
     db: AsyncSession,
@@ -79,7 +73,9 @@ async def start_inference_flow(
     # so any client path necessarily ends before the real parent. Retry is the
     # only start mode where the client can provide a path ending at the run parent.
     message_path = payload.messagePath if mode == "retry" else None
-    run, assistant_message = await create_inference_run_record(
+    # The "run" is now the same row as the assistant message — the table collapse
+    # got rid of the separate inference_runs record.
+    assistant_message, _same_row = await create_inference_run_record(
         db=db,
         user_id=user_id,
         conversation=conversation,
@@ -88,21 +84,19 @@ async def start_inference_flow(
         enabled_tools=payload.enabledTools,
     )
     conversation_id = conversation.id
-    run_id = run.id
     assistant_message_id = assistant_message.id
     await db.commit()
     db.expire_all()
 
     detail = await validate_convId_full(user_id, conversation_id, db)
-    loaded_run = await _load_run(db, run_id)
     loaded_message = await _load_message(db, assistant_message_id)
-    if loaded_run is None or loaded_message is None:
+    if loaded_message is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Inference run start could not be loaded after creation.")
 
     return InferenceStartResponse(
         detail=ConversationDetail.model_validate(detail),
         summary=ConversationSummary.model_validate(detail),
-        run=InferenceRunOut.model_validate(loaded_run),
+        run=build_run_out_from_message(loaded_message, user_id=user_id),
         message=MessageOut.model_validate(loaded_message),
     )
 

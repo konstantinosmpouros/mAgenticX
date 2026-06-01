@@ -215,7 +215,7 @@ class ConversationSummary(BaseModel):
     archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
     isReported: bool = Field(False, validation_alias="is_reported")
     reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
-    activeRunId: Optional[str] = Field(None, validation_alias="active_inference_run_id")
+    activeRunId: Optional[str] = Field(None, validation_alias="active_assistant_message_id")
     lastMessage: Optional[str] = Field(None, validation_alias="last_message_preview")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
@@ -297,7 +297,7 @@ class ConversationDetail(BaseModel):
     archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
     isReported: bool = Field(False, validation_alias="is_reported")
     reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
-    activeRunId: Optional[str] = Field(None, validation_alias="active_inference_run_id")
+    activeRunId: Optional[str] = Field(None, validation_alias="active_assistant_message_id")
     created_at: datetime = Field(..., validation_alias="created_at")
     updated_at: datetime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
@@ -546,27 +546,33 @@ class InferenceStartPayload(BaseModel):
 
 
 class InferenceRunOut(BaseModel):
-    """Backend-owned inference run visible to the frontend run manager."""
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    """Backend-owned inference run visible to the frontend run manager.
+
+    After the inference_runs-table collapse this is built explicitly by
+    :func:`utils.inference_runs.build_run_out_from_message` from a
+    :class:`MessageTable` row — there is no longer a separate ORM model to
+    validate from. ``id`` and ``assistantMessageId`` are both the message ID.
+    """
+    model_config = ConfigDict(populate_by_name=True)
 
     id: str
-    userId: str = Field(..., validation_alias="user_id")
-    conversationId: str = Field(..., validation_alias="conversation_id")
-    assistantMessageId: str = Field(..., validation_alias="assistant_message_id")
-    parentMessageId: Optional[str] = Field(None, validation_alias="parent_message_id")
+    userId: str
+    conversationId: str
+    assistantMessageId: str
+    parentMessageId: Optional[str] = None
     status: str
-    messagePath: list[str] = Field(default_factory=list, validation_alias="message_path")
-    enabledTools: list[dict] = Field(default_factory=list, validation_alias="enabled_tools")
+    messagePath: list[str] = Field(default_factory=list)
+    enabledTools: list[dict] = Field(default_factory=list)
     content: Optional[str] = None
     thinking: Optional[list[str]] = None
-    rawEvents: list[dict] = Field(default_factory=list, validation_alias="raw_events")
+    rawEvents: list[dict] = Field(default_factory=list)
     plan: Optional[dict] = None
     subagents: Optional[dict] = None
-    errorMessage: Optional[str] = Field(None, validation_alias="error_message")
-    startedAt: datetime = Field(..., validation_alias="started_at")
-    completedAt: Optional[datetime] = Field(None, validation_alias="completed_at")
-    cancelRequestedAt: Optional[datetime] = Field(None, validation_alias="cancel_requested_at")
-    updatedAt: datetime = Field(..., validation_alias="updated_at")
+    errorMessage: Optional[str] = None
+    startedAt: datetime
+    completedAt: Optional[datetime] = None
+    cancelRequestedAt: Optional[datetime] = None
+    updatedAt: datetime
 
     @field_validator("messagePath", "enabledTools", "rawEvents", mode="before")
     @classmethod
