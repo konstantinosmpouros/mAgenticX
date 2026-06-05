@@ -7,6 +7,18 @@ from runtime import DeepAgent
 from core.settings import settings
 from deep_agents.omni_agent.system_prompts import RESEARCHER_SYSTEM_PROMPT, WRITER_SYSTEM_PROMPT
 
+
+HITL_GATED_TOOLS: dict[str, bool] = {
+    # Filesystem mutations — anything that writes to disk goes through approval.
+    "write_file": True,
+    "edit_file": True,
+    # Code execution — arbitrary shell / python is always user-approved.
+    "execute": True,
+    # Subagent delegation — researcher / writer hand-offs require approval so
+    # the user can see the prompt before a model spends tokens on it.
+    "task": True,
+}
+
 class OmniAgent(DeepAgent):
     """
     General-purpose autonomous agent with research, writing, and file-management
@@ -77,4 +89,5 @@ class OmniAgent(DeepAgent):
             store=None,
             backend=FilesystemBackend(root_dir=self._impl_dir, virtual_mode=True),
             context_schema=self.context,
+            interrupt_on=HITL_GATED_TOOLS,
         )

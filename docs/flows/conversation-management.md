@@ -112,6 +112,18 @@ The original message is preserved. The user can navigate between branches using 
 
 `handleRetryAiMessage(message)` calls the inference start endpoint with `mode: "retry"` and the AI `targetMessageId`. The bridge validates that the target is an AI message, uses its parent user message as the run parent, and creates only a new AI placeholder sibling plus the run. No new user message is created for retry.
 
+### Branch Selection vs Active Runs
+
+A run lives on a specific path through the message tree — `MessageTable.streaming_message_path` records the root-to-running-AI-message lineage, exposed to the frontend as `InferenceRun.messagePath`. When the user re-enters a conversation that has an active run, the run's branch may not be the default branch (e.g., they retried an AI message, putting the streaming reply on a sibling), so the default `branchSelections` (index 0 at every fork) would hide the running message.
+
+`useInferenceRuns.deriveBranchSelectionsForActiveRun(detail)` walks `run.messagePath` against the fetched `messages` list and returns the `{parentId → childIndex}` map that puts the running message on the visible path. It's called in three spots in [`pages/ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) and [`handlers/conversations.ts`](../../src/agentic_ui/src/handlers/conversations.ts):
+
+1. **`handleConversationSelect`** — clicking a sidebar row, right before `setCurrentConversation`. Combined with `hydrateConversationDetailFromLiveRun` (which overlays in-memory `rawEvents`/`content`/`plan`/`subagents`) the conversation opens on the running branch with the live state already populated.
+2. **Session restore on mount** — after restoring `lastConversationId` from the auth session, the same overlay + branch-snap runs.
+3. **`snappedRunIdRef`-guarded effect** — fires when `runsByConversation` populates *after* the conversation is already mounted (the race condition: on session restore the conversation detail can arrive before `getActiveInferenceRuns` does, so the first two snaps run with an empty map). The ref ensures the snap fires exactly once per run id — the user can then navigate branches manually without being snapped back.
+
+After the initial snap there is no further branch override, so a brand-new run (e.g., next user turn) gets its own one-time snap when its run id first appears in `runsByConversation`.
+
 ---
 
 ## Phase 3 — Conversation Lifecycle Operations
@@ -264,7 +276,7 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 - **Fork deep-copies blobs.** Each forked message's attachments and their binary blob data are fully duplicated. Two forks of a conversation with a 25 MB image attachment consume 3× the blob storage. There is no content-addressable deduplication.
 
-- **`branchSelections` is in-memory UI state only.** The selected branch index per parent is not persisted. On page reload the UI defaults to the most recently created sibling (last `created_at ASC`). If the user was viewing an older branch, the view resets to the latest one.
+- **`branchSelections` is in-memory UI state only.** The selected branch index per parent is not persisted. On page reload the UI defaults to the most recently created sibling (last `created_at ASC`). If the user was viewing an older branch, the view resets to the latest one. **Exception:** if the conversation has an active inference run, `deriveBranchSelectionsForActiveRun` pins the visible branch to the run's `messagePath` regardless of recency, so a HITL-paused run is always visible on entry.
 
 - **Shared continuation always creates a new conversation through inference start.** Even if the authenticated user already has the original conversation, `mode: "shared_continue"` clones the shared snapshot into a separate owned copy, appends the continuation user message, creates the AI placeholder/run, and starts inference. The source share and copied conversation are not linked.
 

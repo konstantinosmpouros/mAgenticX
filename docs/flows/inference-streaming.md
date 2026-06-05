@@ -404,6 +404,85 @@ Cancel interrupts the agents HTTP stream at the next await inside the bridge tas
 
 ---
 
+## Phase 6.5 - HITL Approval (Resume Flow)
+
+When the underlying LangGraph graph hits `__interrupt__`, the upstream `/stream` HTTP body ends *without* an error frame — the run is alive but paused. The bridge needs to recognise this and wait for an approve/reject signal from the user before re-launching the graph with `Command(resume=...)`.
+
+### Detection
+
+The bridge's `InferenceRunRuntime.apply_event` accumulates `pending_interrupts`:
+
+- Top-level `CUSTOM HITL_INTERRUPT` → +1
+- `CUSTOM SUBAGENT_EVENT` whose inner `event` is a `CUSTOM HITL_INTERRUPT` → +1
+
+When `_do_stream` returns "completed", `_run` reads this counter:
+
+- `pending_interrupts == 0` → genuine terminal → `_finish_run("completed")`.
+- `pending_interrupts > 0` → keep the task alive and race `cancel_waiter` vs a per-run `resume_event`.
+
+### Resume round-trip
+
+```mermaid
+sequenceDiagram
+    participant UI as Browser
+    participant Bridge as dialogue_bridge
+    participant Manager as InferenceRunManager
+    participant Task as Run task
+    participant Agents as agents service
+    participant Redis as Redis Stream
+
+    Note over Task: _do_stream returned; pending_interrupts > 0
+    Task->>Task: await resume_event vs cancel_event
+
+    UI->>Bridge: POST /v1/inference/runs/{user}/{run}/resume<br/>{interruptId, threadId, decision, reason?, value?}
+    Bridge->>Manager: request_resume(run_id, payload)
+    Manager->>Task: store payload + set resume_event
+    Bridge-->>UI: 200 InferenceRunOut
+
+    Task->>Task: pop payload, pending_interrupts -= 1
+    Task->>Agents: POST /agents/{slug}/resume<br/>AgentResumeRequest{thread_id, interrupt_id, decision, value, reason}
+    Agents->>Agents: rehydrate InMemorySaver from cache
+    Agents->>Agents: verify pending interrupt id matches request
+    Agents->>Agents: build Command(resume={"decisions": [...]})
+    Agents->>Agents: graph.astream(command, config)
+    Agents-->>Task: AG-UI SSE frames (resumed run)
+    Task->>Redis: XADD inference:run:{id}:events
+    Redis-->>UI: WS frames via existing observer
+    Note over Task: loop again if another interrupt arrives,<br/>otherwise normal terminal flow
+```
+
+The agents service maintains a process-level `dict[thread_id, InMemorySaver]` (`runtime/checkpointer_cache.py`) so the resume request — which creates a fresh agent instance — can rehydrate the same checkpointer the original `/stream` call wrote to. The cache uses LRU eviction at 256 entries; if a thread is reaped before resume (process restart or extreme load), the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
+
+### Decision payload shape
+
+LangChain's `HumanInTheLoopMiddleware` expects `Command(resume={"decisions": [...]})` where the decisions list has one entry per pending tool call (the middleware validates the count). The agents-side `/resume` endpoint reads the pending interrupt's `action_requests` length from the checkpoint snapshot and replicates the user's single decision N times. Per-decision shape:
+
+| User intent | Decision dict | Effect inside LangChain middleware |
+| --- | --- | --- |
+| approve | `{"type": "approve"}` | Tool executes normally. `reason`/`value` from the bridge are dropped — LangChain's `ApproveDecision` has no `message` slot. |
+| reject | `{"type": "reject", "message": req.reason or "User rejected this action."}` | Tool does **not** execute. A `ToolMessage` with `content=<message>` is appended in its place and the agent loop continues, so the agent can adapt to the rejection rather than terminating. The default message is mandatory — LangChain raises `KeyError` if `message` is missing. |
+
+### interrupt_id contract
+
+Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured at [`normalizer.py:205`](../../src/agents/runtime/protocols/agui/normalizer.py#L205). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:
+
+- UI: [`collectHitlInterruptsFromRawEvents`](../../src/agentic_ui/src/lib/subagents.ts) dedupes on `interruptId`; `useInferenceRuns.resolvedInterrupts` is keyed `${runId}:${interruptId}`.
+- Bridge → agents: `ResumeInferenceRunBody.interruptId` (`api.ts`) → `InferenceRunResumeIn.interruptId` → `_do_resume` body field `interrupt_id` → `AgentResumeRequest.interrupt_id`.
+- Agents: [`main.py`](../../src/agents/main.py) compares `req.interrupt_id` against `snapshot.interrupts[0].id` and returns 409 if the user's clicked card is no longer pending (e.g., a duplicate click after the run advanced).
+
+Why this matters: every HITL in a conversation shares the same conversation-level `thread_id`. Deduping on `thread_id` would silently drop every interrupt after the first — exactly the "second HITL never shows" bug.
+
+### Failure modes
+
+- **Cancel during wait** — the `cancel_waiter` wins the race, `_finish_run("cancelled")` runs, terminal Redis event published, WebSocket closes.
+- **No paused task on the bridge** (e.g., bridge process restart, run already terminated) — `request_resume` returns False, route returns 409.
+- **No cached checkpoint on the agents service** — `_do_resume` catches the 409 from `/agents/{slug}/resume`, marks the run failed.
+- **Stale interrupt click** — agents `/resume` returns 409 ("targeted interrupt is no longer pending") if `req.interrupt_id` doesn't match `snapshot.interrupts[0].id`.
+- **Multiple interrupts in one run** — the loop in `_run` simply runs again. Each resume call decrements the counter and re-enters `_do_resume`. The UI surfaces the next card because dedup is by `interruptId`, not `threadId`.
+- **Reject is non-terminal** — after `_do_resume` returns "completed" following a reject, `_run` checks `pending_interrupts`. If the agent emitted another HITL in response to the rejection it loops; otherwise it falls into normal terminal completion.
+
+---
+
 ## Phase 7 - UI Hydration and Sidebar State
 
 `useInferenceRuns` is the only AG-UI observer in the frontend.
@@ -415,6 +494,21 @@ Cancel interrupts the agents HTTP stream at the next await inside the bridge tas
 - On mount, it calls `getActiveInferenceRuns(userId)` and observes every active run.
 - When active-run hydration returns, conversations not returned as active are cleared locally.
 - Terminal events always clear `runsByConversation`, `activeRunId`, and `isStreaming` for that conversation.
+
+### Re-entering a mid-stream conversation
+
+`MessageTable.content` / `raw_events` / `plan` / `subagents` are written to the DB only inside `_finish_run`. A `getConversationDetail` fetched while a run is mid-stream therefore returns the empty placeholder row — even though `runsByConversation` in memory has the full accumulated state from WS events that arrived while the user was on another conversation. Without intervention the bubble looks blank and any pending HITL modal is invisible until the next WS frame patches the message — and if the run is paused on HITL, no next frame is coming.
+
+Two helpers on `useInferenceRuns` bridge the gap:
+
+- **`hydrateConversationDetailFromLiveRun(detail)`** — looks up `runsByConversation[detail.id]`; if active, overlays `content` / `thinking` / `rawEvents` / `plan` / `subagents` from the live run onto the matching assistant message before mount.
+- **`deriveBranchSelectionsForActiveRun(detail)`** — walks `run.messagePath` and returns a `{parentId → siblingIndex}` map so the visible branch contains the running assistant message. Without this, the conversation can load on a default sibling branch where the streaming message isn't rendered at all (typical when the run is on a retried/edited branch).
+
+Call sites:
+
+- [`handlers/conversations.ts::handleConversationSelect`](../../src/agentic_ui/src/handlers/conversations.ts) — both helpers run between `getConversationDetail` and `setCurrentConversation`. Branch-snap precedes `setCurrentConversation` so the very first render is on the right path.
+- [`ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) session-restore effect — same overlay + snap, for users reopening the app on a mid-stream conversation.
+- [`ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) once-per-run effect — guarded by `snappedRunIdRef`, fires when `runsByConversation` populates *after* the conversation is already mounted. Closes the race in the session-restore case where `getConversationDetail` returns before `getActiveInferenceRuns` does. The ref guard ensures the user is free to navigate branches manually after the initial snap; a brand-new run later in the same session gets its own snap.
 
 The IndexedDB UI snapshot intentionally does not persist transient streaming state. Serialized and deserialized conversation summaries force `activeRunId: null` and `isStreaming: false`; after rehydrating a snapshot, the app fetches fresh conversations and active runs from the backend.
 
@@ -470,14 +564,22 @@ The original shared conversation is not mutated. The copied conversation belongs
 | WebSocket endpoint | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `inference_run_websocket()` |
 | Legacy SSE endpoint (deprecated) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `observeInferenceRun()` — kept one release cycle |
 | Cancel path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `request_run_cancel()` |
+| HITL resume path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.pending_interrupts`, `InferenceRunManager.request_resume()`, `_do_resume()`, `request_run_resume()` |
+| Bridge resume route | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `resumeInferenceRun()` route |
+| Agents resume endpoint | [src/agents/main.py](../../src/agents/main.py) | `resume_agent()` route |
+| Agents checkpointer cache | [src/agents/runtime/checkpointer_cache.py](../../src/agents/runtime/checkpointer_cache.py) | `get_or_create_checkpointer()`, `release_checkpointer()`, `has_checkpointer()` |
 | Run shape builder | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `build_run_out_from_message()` |
 | Orphaned-run cleanup | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `cleanup_orphaned_inference_runs()` |
 | Shared clone helper | [src/dialogue_bridge/utils/shared_conv.py](../../src/dialogue_bridge/utils/shared_conv.py) | `create_conversation_from_share_record()` |
 | Redis settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `RedisSettings` — `url`, `password`, `stream_maxlen`, `terminal_ttl_seconds`, `read_block_ms` |
 | WebSocket auth | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `authenticate_websocket_user()` |
 | Frontend inference runtime | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `handleSendMessage()`, edit/retry/shared continue start requests |
-| Frontend observer hook | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `beginRun()`, `applyRunEvent()`, `observeRunId()` |
+| Frontend observer hook | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `beginRun()`, `applyRunEvent()`, `observeRunId()`, `hydrateConversationDetailFromLiveRun()`, `deriveBranchSelectionsForActiveRun()` |
+| Mid-stream conversation hydration | [src/agentic_ui/src/handlers/conversations.ts](../../src/agentic_ui/src/handlers/conversations.ts) + [src/agentic_ui/src/pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx) | `handleConversationSelect` overlay + branch snap, session-restore overlay + snap, once-per-run snap effect |
 | Frontend WebSocket client | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `connectInferenceWebSocket()`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError` |
-| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `startInference()`, `getActiveInferenceRuns()` |
+| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `startInference()`, `getActiveInferenceRuns()`, `resumeInferenceRun()` |
+| Frontend HITL UI | [src/agentic_ui/src/components/chat/message_parts/HitlInterruptCard.tsx](../../src/agentic_ui/src/components/chat/message_parts/HitlInterruptCard.tsx) | `<HitlInterruptCard>` approve/reject card + `<HitlInterruptModal>` chat-area-scoped popup |
+| Frontend HITL context | [src/agentic_ui/src/lib/hitl-context.tsx](../../src/agentic_ui/src/lib/hitl-context.tsx) | `<HitlProvider>`, `useHitl()` — shares `resumeRun` + `isInterruptResolved` |
+| Agent run timeline | [src/agentic_ui/src/components/chat/AgentRunTimeline.tsx](../../src/agentic_ui/src/components/chat/AgentRunTimeline.tsx) | renders pending interrupts at the top of the streaming bubble |
 | Nginx WebSocket upgrade | [src/agentic_ui/nginx.conf.template](../../src/agentic_ui/nginx.conf.template) | `$connection_upgrade` map + `^~ /api/v1/inference/runs/` location |
 | UI snapshot storage | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | transient run flags are stripped |

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Literal, Optional, Type
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
 
@@ -7,6 +7,27 @@ class Request(BaseModel):
     """Pydantic model for incoming requests: a list of user input dictionaries."""
     messages: List[Dict[str, Any]]
     config: Dict[str, Any]
+
+
+class AgentResumeRequest(BaseModel):
+    """Resume payload for a LangGraph run paused on a HITL interrupt.
+
+    The bridge forwards an approve/reject decision (plus an optional structured
+    value or free-form reason) so the agents service can construct a
+    ``Command(resume=...)`` against the saved checkpoint.
+
+    ``interrupt_id`` is the LangGraph interrupt's unique id from the
+    ``HITL_INTERRUPT`` event the user acted on. When supplied the agents
+    service verifies it matches the checkpoint's currently-pending interrupt
+    so a stale click (e.g. the user clicked the second card while the first
+    was still in flight) can be 409'd instead of resolving the wrong one.
+    """
+    config: Dict[str, Any]
+    thread_id: str
+    decision: Literal["approve", "reject"]
+    reason: Optional[str] = None
+    value: Optional[Any] = None
+    interrupt_id: Optional[str] = None
 
 
 class TitleRequest(BaseModel):

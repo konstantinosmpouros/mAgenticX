@@ -72,6 +72,7 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
 import { PlanCard } from "@/components/chat/message_parts/PlanningContainer";
 import { OVERLAY_HOST_ID } from "@/lib/overlay-host";
+import { HitlProvider } from "@/lib/hitl-context";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ReportConversationDialog from "@/components/chat/ReportPanel";
@@ -237,6 +238,10 @@ export function ChatInterface({
   const {
     beginRun: beginInferenceRun,
     stopRun: stopInferenceRun,
+    resumeRun: resumeInferenceRunHandler,
+    isInterruptResolved,
+    hydrateConversationDetailFromLiveRun,
+    deriveBranchSelectionsForActiveRun,
     getRunForConversation,
     isConversationStreaming,
   } = useInferenceRuns({
@@ -256,6 +261,26 @@ export function ChatInterface({
   const stopActiveInferenceRun = useCallback(() => {
     void stopInferenceRun(activeConversationRun?.id ?? currentConversation?.activeRunId ?? null);
   }, [activeConversationRun?.id, currentConversation?.activeRunId, stopInferenceRun]);
+
+  // Snap branch selections to the active run's path once per run. Covers the
+  // session-restore case where the conversation detail arrives before
+  // useInferenceRuns has hydrated `runsByConversation`: handleConversationSelect
+  // ran its snap with an empty map (no-op), and we have to wait for the run to
+  // appear before pinning the visible branch. After this initial snap the user
+  // is free to navigate branches manually — the ref guard prevents re-snapping
+  // for the same run id.
+  const snappedRunIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentConversation || !activeConversationRun) return;
+    if (snappedRunIdRef.current === activeConversationRun.id) return;
+    const derived = deriveBranchSelectionsForActiveRun(currentConversation);
+    if (!derived) return;
+    setBranchSelections((prev) => {
+      const aligned = Object.entries(derived).every(([key, value]) => prev[key] === value);
+      return aligned ? prev : { ...prev, ...derived };
+    });
+    snappedRunIdRef.current = activeConversationRun.id;
+  }, [currentConversation, activeConversationRun, deriveBranchSelectionsForActiveRun]);
 
   const { requestPersist } = useUISnapshotPersistence({
     userId,
@@ -661,7 +686,6 @@ export function ChatInterface({
     agents,
     selectedAgent,
     setSelectedAgent,
-    allowMissingAgentId: inactiveAgentFallback?.id ?? currentConversation?.agent?.id ?? null,
   });
 
   // Handle inactive agent fallback
@@ -706,9 +730,19 @@ export function ChatInterface({
       try {
         const detail = await getConversationDetail(userId, lastConversationId);
         if (cancelled) return;
-        setSelectedAgent(detail.agent?.id || "");
-        setCurrentConversation(detail);
-        setIsPrivateMode(detail.isPrivate || false);
+        // Overlay any in-memory active-run state so a paused HITL run that
+        // was already being observed by useInferenceRuns shows the modal
+        // immediately on restore, not only after the next WS frame.
+        const hydratedDetail = hydrateConversationDetailFromLiveRun(detail) ?? detail;
+        // Pin branch selections to the running message's path so a non-
+        // default branch (e.g. retried message) doesn't hide the modal.
+        const activeRunBranchSelections = deriveBranchSelectionsForActiveRun(hydratedDetail);
+        setSelectedAgent(hydratedDetail.agent?.id || "");
+        if (activeRunBranchSelections) {
+          setBranchSelections(activeRunBranchSelections);
+        }
+        setCurrentConversation(hydratedDetail);
+        setIsPrivateMode(hydratedDetail.isPrivate || false);
         requestPersist();
       } catch (error) {
         console.error('Failed to hydrate conversation', error);
@@ -979,6 +1013,8 @@ export function ChatInterface({
     archivedPageSize: ARCHIVED_CONV_PAGE_SIZE,
     onSearch: openSearchPanel,
     persistUIState: requestPersist,
+    hydrateConversationDetailFromLiveRun,
+    deriveBranchSelectionsForActiveRun,
   });
 
   useEffect(() => {
@@ -1316,6 +1352,7 @@ export function ChatInterface({
         />
         <SidebarInset className="bg-transparent">
           <TooltipProvider>
+          <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isInterruptResolved }}>
             <div id={OVERLAY_HOST_ID} className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow">
               {/* Header */}
               <ChatHeader
@@ -1524,6 +1561,7 @@ export function ChatInterface({
                 </div>
               )}
             </div>
+          </HitlProvider>
           </TooltipProvider>
         </SidebarInset>
       </SidebarProvider>

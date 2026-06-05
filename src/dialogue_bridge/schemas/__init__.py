@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices, field_validator, computed_field
 import base64
-from typing import List, Optional, Literal
+from typing import Any, List, Optional, Literal
 from datetime import datetime
 
 Senders = Literal["user", "ai"]
@@ -587,6 +587,29 @@ class InferenceStartResponse(BaseModel):
     message: MessageOut
 
 
+class InferenceRunResumeIn(BaseModel):
+    """Frontend → bridge payload for resuming a HITL-paused inference run.
+
+    The bridge forwards this to the agents service's ``/resume`` endpoint
+    which constructs a ``Command(resume=...)`` against the saved checkpoint.
+    ``threadId`` is informational — the bridge always uses the conversation
+    id as the LangGraph thread, so the field is accepted for symmetry with
+    the agents-service shape but not relied upon.
+
+    ``interruptId`` is the LangGraph interrupt's unique id from the
+    ``HITL_INTERRUPT`` event the user acted on; the agents service uses it
+    to verify the request resolves the right pending interrupt when multiple
+    HITLs fire in sequence on the same conversation.
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    interruptId: Optional[str] = None
+    threadId: Optional[str] = None
+    decision: Literal["approve", "reject"]
+    reason: Optional[str] = None
+    value: Optional[Any] = None
+
+
 #-------------------------------------------
 # CONVERSATION UPDATE DTO
 #-------------------------------------------
@@ -726,6 +749,7 @@ __all__ = [
     "InferenceStartPayload",
     "InferenceStartResponse",
     "InferenceRunOut",
+    "InferenceRunResumeIn",
     "UpdateConversationResponse",
     "MessageUpdate",
     "ImageOut",

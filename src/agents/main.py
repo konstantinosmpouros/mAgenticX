@@ -10,7 +10,7 @@ sys.path.append(str(PACKAGE_ROOT))
 import asyncio
 import io
 import json
-from typing import List
+from typing import Any, List
 
 import httpx
 from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, status
@@ -21,6 +21,8 @@ from openai import OpenAI
 
 from core.settings import settings
 from langchain_mcp_adapters.tools import load_mcp_tools
+from langgraph.types import Command
+from runtime.checkpointer import has_checkpointer
 
 from observability import (
     RequestLoggingMiddleware,
@@ -33,6 +35,7 @@ from observability import (
 )
 from schemas import (
     Request,
+    AgentResumeRequest,
     TitleRequest,
     ConversationTitle,
     SuggestionsRequest,
@@ -426,4 +429,186 @@ async def stream_agent(agent_slug: str, req: Request):
             agent_logger.error("agent_stream_failed", "Agent stream execution failed", context=request_context, exc_info=True)
             yield agent._encode_run_error(exc)
     
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+
+# ------------------------------------------------------------------
+# Agent HITL Resume Endpoint
+# ------------------------------------------------------------------
+@app.post("/agents/{agent_slug}/resume", status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
+async def resume_agent(agent_slug: str, req: AgentResumeRequest):
+    """Resume a LangGraph run paused on a ``__interrupt__`` HITL event.
+
+    Looks up the per-thread checkpointer cached at stream time, instantiates a
+    fresh agent bound to it, builds a ``Command(resume=...)`` from the bridge's
+    decision payload, and streams the resulting AG-UI events back. Stream
+    framing and error encoding mirror the regular ``/stream`` endpoint so the
+    bridge can plumb resume output through the same Redis stream + WebSocket
+    observer pipeline.
+    """
+    context_data = req.config.get("context", {}) if isinstance(req.config, dict) else {}
+    run_config = req.config.get("run_config", {}) if isinstance(req.config, dict) else {}
+    configurable = run_config.get("configurable", {}) if isinstance(run_config, dict) else {}
+    # The thread the run was using; the cache key for the saved checkpoint.
+    effective_thread_id = req.thread_id or configurable.get("thread_id") or ""
+    agent_logger = logger.bind(agent_slug=agent_slug)
+    set_context(
+        agent_slug=agent_slug,
+        user_id=context_data.get("user_id"),
+        conversation_id=context_data.get("conversation_id"),
+        thread_id=effective_thread_id,
+    )
+    agent_logger.info(
+        "agent_resume_request_received",
+        "Agent resume request received",
+        decision=req.decision,
+        has_value=req.value is not None,
+        has_reason=bool(req.reason),
+    )
+
+    if not effective_thread_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="thread_id is required to resume a paused run.",
+        )
+    if not await has_checkpointer(effective_thread_id):
+        # The run either never paused or was reaped from the cache (LRU/eviction
+        # or process restart). The bridge handles 409 by failing the run.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No paused checkpoint found for this thread.",
+        )
+
+    definition = AGENT_REGISTRY.get(agent_slug, None)
+    if definition is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown agent.",
+        )
+
+    try:
+        # Force the thread_id onto the run_config so the agent's lazy
+        # checkpointer lookup hits the same cache entry as the original stream.
+        resume_config = dict(req.config)
+        run_config_in = dict(resume_config.get("run_config") or {})
+        configurable_in = dict(run_config_in.get("configurable") or {})
+        configurable_in["thread_id"] = effective_thread_id
+        run_config_in["configurable"] = configurable_in
+        resume_config["run_config"] = run_config_in
+        agent = definition.cls(config=resume_config)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        agent_logger.warning(
+            "agent_resume_initialization_failed",
+            "Failed to initialise agent for resume",
+            exc_info=True,
+            failure_reason="agent_init_failed",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to initialise the requested agent.",
+        ) from exc
+
+    request_context = get_context()
+
+    # Build the LangChain HumanInTheLoopMiddleware-compatible resume payload.
+    # The middleware expects a dict of the form
+    #     {"decisions": [<decision>, <decision>, ...]}
+    # with one entry per pending tool call in the SAME order. The middleware
+    # raises a ValueError if the count is wrong, so we read it back from the
+    # saved checkpoint instead of guessing.
+    try:
+        # Rehydrate the per-thread checkpointer + build the graph via the base-
+        # class helper so we can read the saved state before issuing the
+        # resume command. astream() calls the same helper, so this work is
+        # not duplicated when the event stream below kicks off.
+        await agent.ensure_built()
+        snapshot = agent.compiled.get_state(agent.run_config)
+        pending_interrupts = list(snapshot.interrupts or [])
+    except Exception as exc:
+        agent_logger.warning(
+            "agent_resume_state_load_failed",
+            "Failed to load saved state for resume",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load the paused checkpoint.",
+        ) from exc
+
+    if not pending_interrupts:
+        # The cached checkpointer exists but no interrupt is parked on it.
+        # This happens if the previous resume already drained the queue or the
+        # cache was warmed without ever pausing. Treat as "not paused".
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No pending interrupt found on the checkpoint.",
+        )
+
+    pending_interrupt = pending_interrupts[0]
+    pending_id = getattr(pending_interrupt, "id", None)
+    # When the bridge passes the interrupt_id the user clicked, verify it
+    # matches the graph's currently-pending interrupt. A mismatch means the
+    # user clicked a stale card (e.g. the run already advanced past that
+    # interrupt) — better to 409 than silently resolve the wrong one.
+    if req.interrupt_id and pending_id and req.interrupt_id != str(pending_id):
+        agent_logger.warning(
+            "agent_resume_stale_interrupt",
+            "Resume request targets an interrupt that is no longer pending",
+            requested_interrupt_id=req.interrupt_id,
+            pending_interrupt_id=str(pending_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The targeted interrupt is no longer pending.",
+        )
+
+    # The first interrupt's value is a langchain HITLRequest:
+    #   { "action_requests": [...], "review_configs": [...] }
+    interrupt_value = pending_interrupt.value
+    if isinstance(interrupt_value, dict):
+        action_requests = interrupt_value.get("action_requests") or []
+    else:
+        action_requests = getattr(interrupt_value, "action_requests", []) or []
+    decision_count = max(1, len(action_requests))
+
+    if req.decision == "approve":
+        one_decision: dict[str, Any] = {"type": "approve"}
+    else:
+        # LangChain's RejectDecision requires `message`. Falling back to a
+        # generic string when the user didn't type a reason avoids a KeyError
+        # in HumanInTheLoopMiddleware.after_model when it does
+        # `decision["message"]` to build the ToolMessage. Reject is non-
+        # terminal in LangChain — the rejection becomes a ToolMessage and the
+        # agent loop continues, which is exactly the "rehydrate after reject"
+        # behavior the bridge expects.
+        one_decision = {"type": "reject", "message": req.reason or "User rejected this action."}
+
+    resume_command = Command(resume={"decisions": [dict(one_decision) for _ in range(decision_count)]})
+
+    agent_logger.info(
+        "agent_resume_command_built",
+        "Built LangChain HITL resume command",
+        decision=req.decision,
+        decision_count=decision_count,
+    )
+
+    async def event_stream():
+        try:
+            agent_logger.info("agent_resume_started", "Agent resume execution started", context=request_context)
+            async with mcp_session_context() as session:
+                live_tools = await load_mcp_tools(session)
+                agent.attach_tools(live_tools)
+                async for chunk in agent.astream(payload={"messages": []}, command=resume_command):
+                    yield chunk
+            agent_logger.info("agent_resume_completed", "Agent resume execution completed", context=request_context)
+        except asyncio.CancelledError:
+            agent_logger.info("agent_resume_cancelled", "Agent resume execution cancelled", context=request_context)
+            return
+        except Exception as exc:
+            agent_logger.error("agent_resume_failed", "Agent resume execution failed", context=request_context, exc_info=True)
+            yield agent._encode_run_error(exc)
+
     return StreamingResponse(event_stream(), media_type="text/event-stream")

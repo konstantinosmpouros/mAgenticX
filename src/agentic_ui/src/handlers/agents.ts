@@ -3,7 +3,7 @@ type AgentsCtx = {
   isAgentSwitching: boolean;
   setIsAgentSwitching: (v: boolean) => void;
   setSelectedAgent: (v: string) => void;
-  clearChatAndStopThinking: (options?: { preserveAgent?: boolean }) => void;
+  clearChatAndStopThinking: () => void;
   persistUIState: () => void;
 };
 
@@ -14,8 +14,9 @@ export function createAgentHandlers(ctx: AgentsCtx) {
     // Ignore duplicate clicks while the previous switch/reset animation is still running.
     if (isAgentSwitching) return;
     setIsAgentSwitching(true);
-    // Preserve the old selection during clearing so the UI does not flash to a fallback agent.
-    clearChatAndStopThinking({ preserveAgent: true });
+    // clearChatAndStopThinking now preserves the agent by default, so the new
+    // selection set below is the only writer.
+    clearChatAndStopThinking();
     setTimeout(() => {
       setSelectedAgent(value);
       persistUIState();

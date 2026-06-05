@@ -4,7 +4,9 @@ import type { PlanSnapshot } from "@/lib/agui";
 import { Response } from "@/components/ui/ai-elements/response";
 import { PlanningContainer } from "@/components/chat/message_parts/PlanningContainer";
 import { SubagentCard, SubagentContainer, type SubagentItem } from "@/components/chat/message_parts/SubagentContainer";
-import { buildSubagentItemsFromRawEvents } from "@/lib/subagents";
+import { HitlInterruptModal } from "@/components/chat/message_parts/HitlInterruptCard";
+import { buildSubagentItemsFromRawEvents, collectHitlInterruptsFromRawEvents } from "@/lib/subagents";
+import { useHitl } from "@/lib/hitl-context";
 import { cn } from "@/lib/utils";
 
 type AgentRunTimelineProps = {
@@ -94,6 +96,7 @@ export function AgentRunTimeline({ message, isStreaming, className }: AgentRunTi
   const [planExpanded, setPlanExpanded] = useState(false);
   const [subagentExpanded, setSubagentExpanded] = useState(false);
   const [liveOverflowOpen, setLiveOverflowOpen] = useState(false);
+  const hitl = useHitl();
 
   const plan = useMemo(() => {
     const raw = message.plan as PlanSnapshot | undefined;
@@ -105,8 +108,17 @@ export function AgentRunTimeline({ message, isStreaming, className }: AgentRunTi
     [message.rawEvents],
   );
 
+  // HITL interrupts surface at the top of the timeline as actionable
+  // Confirmation cards so the user doesn't have to expand a subagent card to
+  // approve/reject. We pull from the raw event stream (covers both top-level
+  // and subagent-wrapped HITL_INTERRUPT events).
+  const interrupts = useMemo(
+    () => collectHitlInterruptsFromRawEvents(message.rawEvents),
+    [message.rawEvents],
+  );
+
   if (isStreaming) {
-    if (subagentItems.length === 0) return null;
+    if (subagentItems.length === 0 && interrupts.length === 0) return null;
 
     const blocks = buildInterleavedBlocks(message.content ?? "", subagentItems);
     const hidden = Math.max(0, subagentItems.length - SUBAGENT_VISIBLE_LIMIT);
@@ -114,6 +126,18 @@ export function AgentRunTimeline({ message, isStreaming, className }: AgentRunTi
 
     return (
       <div className={cn("flex w-full flex-col gap-3", className)}>
+        {interrupts.length > 0 && hitl ? (
+          <HitlInterruptModal
+            interrupts={interrupts}
+            isResolved={(interruptId) => hitl.isInterruptResolved(message.id, interruptId)}
+            onResolve={(interrupt, decision, reason) => hitl.resumeRun(message.id, {
+              interruptId: interrupt.interruptId,
+              threadId: interrupt.threadId,
+              decision,
+              reason,
+            })}
+          />
+        ) : null}
         {blocks.map((block) => {
           if (block.kind === "text") {
             const normalized = normalizeMarkdown(block.content);

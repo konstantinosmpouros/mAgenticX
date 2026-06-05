@@ -152,12 +152,16 @@ Every standard AG-UI event emitted by a sub-agent is re-emitted wrapped in this 
 ```json
 {
   "thread_id": "conv-uuid",
-  "interrupt": { "id": "...", "value": { "question": "Approve this action?" } },
-  "metadata": {}
+  "interrupt": { "id": "<langgraph-interrupt-id>", "value": { "action_requests": [...], "review_configs": [...] } },
+  "metadata": { "namespace": "researcher" }
 }
 ```
 
 When the LangGraph graph hits an `__interrupt__` node, no other events from that chunk are emitted — the HITL event is the entire output of that update cycle.
+
+**Dedup contract:** `thread_id` is the conversation-level LangGraph thread — every HITL in a conversation shares the same value, so it is **not** a unique identifier. The bridge and UI dedupe by `interrupt.id`, which is the LangGraph interrupt's unique id captured at the normalizer. Using `thread_id` as a dedup key silently drops every interrupt after the first; this is the bug fix that switched the chain to `interrupt.id`.
+
+**Interrupt value shape (LangChain HITL middleware):** `value` is a serialized `HITLRequest` — `{"action_requests": [<one per pending tool call>], "review_configs": [...]}`. The agents-side `/resume` endpoint reads `action_requests` length from the checkpoint snapshot (not from the wire event) to size the resume `Command(resume={"decisions": [...]})` so its length matches what the middleware expects.
 
 ---
 
@@ -354,9 +358,9 @@ flowchart TD
     B -->|"CUSTOM"| C["append to raw_events\nthen switch on event.name"]
     C -->|"PLAN_SNAPSHOT"| D["self.plan = value"]
     C -->|"TASK_SUBAGENT"| E["push_subagent_event('tasks', value)"]
-    C -->|"SUBAGENT_EVENT"| F["push_subagent_event('events', value)"]
+    C -->|"SUBAGENT_EVENT"| F["push_subagent_event('events', value)\nif inner is HITL_INTERRUPT: pending_interrupts += 1"]
     C -->|"BEFORE_AGENT_EVENT"| G["push_subagent_event('beforeAgent', value)"]
-    C -->|"HITL_INTERRUPT"| H["push_subagent_event('interrupts', value)"]
+    C -->|"HITL_INTERRUPT"| H["push_subagent_event('interrupts', value)\npending_interrupts += 1"]
     B -->|"THINKING_START"| I["thinking_start = perf_counter()\nthinking_end = 0.0"]
     B -->|"THINKING_TEXT_MESSAGE_CONTENT"| J["thoughts.append(delta)"]
     B -->|"TOOL_CALL_START"| K["thoughts.append('[tool] {name}')"]
@@ -367,6 +371,66 @@ flowchart TD
 `thinking_duration_seconds()` computes the elapsed time from `first_event_ts` (or `thinking_start`) to `thinking_end` (or now). This value is stored on the `MessageTable` row as `thinkingTime` and rendered in the `ChainOfThought` component header.
 
 `push_subagent_event(key, value)` appends to the list at `self.subagents[key]`, creating the dict and the list lazily. The keys used are `"tasks"`, `"events"`, `"beforeAgent"`, and `"interrupts"`.
+
+The `pending_interrupts` counter is what the inference manager polls after the upstream `/stream` call ends to decide whether the run is genuinely terminal or paused on a HITL checkpoint. Both top-level `HITL_INTERRUPT` events and ones wrapped inside `SUBAGENT_EVENT` increment it; the resume round-trip (see below) decrements it for each `Command(resume=...)` dispatched.
+
+---
+
+## Phase 6.5 — HITL Resume Round-Trip
+
+When LangGraph emits `__interrupt__`, the agents-service normalizer translates it into an AG-UI `HITL_INTERRUPT` event (`metadata.namespace` carries the namespace path so the bridge / UI know which subagent paused). The graph state is auto-saved by the LangGraph checkpointer keyed by `thread_id`. The upstream `/stream` HTTP body ends naturally after the interrupt — no error frame.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Browser
+    participant Bridge as dialogue_bridge
+    participant Task as Run task
+    participant Redis as Redis Stream
+    participant Agents as agents service
+
+    Note over Task: First /stream leg ends with pending_interrupts > 0
+    Task->>Task: await resume_event vs cancel_event
+
+    UI->>Bridge: POST /v1/inference/runs/{user}/{run}/resume<br/>{interruptId, threadId, decision, reason?, value?}
+    Bridge->>Bridge: validate ownership; request_run_resume(run, payload)
+    Bridge->>Task: set resume_event + store payload (incl. interrupt_id)
+    Bridge-->>UI: 200 InferenceRunOut (snapshot)
+
+    Task->>Task: pop payload; pending_interrupts -= 1
+    Task->>Agents: POST /agents/{slug}/resume<br/>AgentResumeRequest{thread_id, interrupt_id, decision, value, reason}
+    Agents->>Agents: has_checkpointer(thread_id)?
+    Agents->>Agents: rehydrate cached InMemorySaver
+    Agents->>Agents: verify snapshot.interrupts[0].id == req.interrupt_id
+    Agents->>Agents: size decisions[] = len(action_requests)
+    Agents->>Agents: graph.astream(Command(resume=...), config)
+    Agents-->>Task: AG-UI SSE frames
+    loop For each resume chunk
+        Task->>Task: runtime.apply_event(event)
+        Task->>Redis: XADD inference:run:{id}:events
+        Redis-->>UI: WS frame
+    end
+    Note over Task: Run can pause again; the loop in _run re-enters this flow.
+
+    alt no cached checkpoint
+        Agents-->>Task: 409 Conflict (no paused checkpoint)
+        Task->>Bridge: _finish_run("failed", "no paused checkpoint")
+        Bridge->>Redis: terminal XADD + EXPIRE
+    end
+    alt interrupt_id mismatch
+        Agents-->>Task: 409 Conflict (stale interrupt)
+        Task->>Bridge: _finish_run("failed", ...)
+    end
+```
+
+**LangChain `Command(resume=...)` decision payload:** the middleware expects `{"decisions": [<decision>, ...]}` where the list length equals the number of pending tool calls in the interrupted state. The agents `/resume` endpoint reads `snapshot.interrupts[0].value.action_requests` to compute the count and replicates the user's single decision N times.
+
+| User intent | Decision dict | LangChain behaviour |
+| --- | --- | --- |
+| `approve` | `{"type": "approve"}` | Tool executes. `reason`/`value` are dropped — `ApproveDecision` has no `message` slot. |
+| `reject` | `{"type": "reject", "message": req.reason or "User rejected this action."}` | Tool does **not** execute; a `ToolMessage` with `content=<message>` is appended in its place and the agent loop continues, so the agent can react to the rejection. `message` is mandatory — the default text prevents a `KeyError` when the user rejects without typing a reason. |
+
+The checkpointer cache is process-local in the agents service (single-replica). Switching to a Postgres-backed checkpointer is a drop-in if multi-replica is ever required; nothing else in the resume flow needs to change.
 
 ---
 

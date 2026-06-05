@@ -541,6 +541,54 @@ agui.hitl_interrupt(
 )
 ```
 
+#### DeepAgent: gating tools with `interrupt_on`
+
+DeepAgents (built on `create_deep_agent`) can opt-in tools for HITL approval declaratively. Pass a `dict[str, bool]` to `interrupt_on` — keys are tool names, values mark them as gated. LangChain's `HumanInTheLoopMiddleware` then pauses the graph before any gated tool runs and surfaces a `HITLInterruptEvent` with one entry per pending call inside `value.action_requests`.
+
+Example from [`omni_agent/__init__.py`](../../src/agents/deep_agents/omni_agent/__init__.py):
+
+```python
+HITL_GATED_TOOLS: dict[str, bool] = {
+    # Filesystem mutations — anything that writes to disk goes through approval.
+    "write_file": True,
+    "edit_file": True,
+    # Code execution — arbitrary shell / python is always user-approved.
+    "execute": True,
+    # Subagent delegation — researcher / writer hand-offs require approval so
+    # the user can see the prompt before a model spends tokens on it.
+    "task": True,
+}
+
+class OmniAgent(DeepAgent):
+    def register_agent(self) -> Any:
+        return create_deep_agent(
+            ...
+            checkpointer=self.checkpointer,
+            interrupt_on=HITL_GATED_TOOLS,
+        )
+```
+
+`interrupt_on` requires a configured `checkpointer` — without one, the middleware can't pause/resume. DeepAgent's base class wires this for you.
+
+#### Resume — what the bridge sends, what the middleware expects
+
+When the user approves/rejects, the bridge POSTs `AgentResumeRequest{thread_id, interrupt_id, decision, reason, value}` to `/agents/{slug}/resume`. The endpoint:
+
+1. Reads the cached `InMemorySaver` for `thread_id` from `runtime/checkpointer_cache.py` (it was populated by the original `/stream` call's `build()`).
+2. Calls `compiled_graph.get_state(config)` to inspect `snapshot.interrupts`.
+3. Verifies `snapshot.interrupts[0].id == req.interrupt_id` (when supplied); 409s on a stale click.
+4. Computes `decision_count = len(snapshot.interrupts[0].value.action_requests)` so the resume payload has the exact length the middleware validates against.
+5. Builds `Command(resume={"decisions": [<decision_dict>] * decision_count})` and feeds it to `agent.astream(payload={"messages": []}, command=resume_command)`.
+
+Decision dicts:
+
+- **Approve:** `{"type": "approve"}`. Tool executes. The `reason`/`value` from the bridge are not used — LangChain's `ApproveDecision` has no `message` slot.
+- **Reject:** `{"type": "reject", "message": req.reason or "User rejected this action."}`. The middleware injects a `ToolMessage(content=<message>)` instead of running the tool, then **lets the agent loop continue** — reject is non-terminal in LangChain. The default message is non-optional; without it the middleware raises `KeyError: 'message'`.
+
+#### Process-level checkpointer cache
+
+Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), so the in-memory `InMemorySaver` would normally be garbage-collected between calls. [`runtime/checkpointer_cache.py`](../../src/agents/runtime/checkpointer_cache.py) keeps one shared `InMemorySaver` per `thread_id` (default 256-entry LRU), so the resume call can rehydrate the same checkpoint the original stream wrote to. Both `LangGraphAgent.build()` and `DeepAgent.build()` look up `thread_id` in this cache before creating a new saver. The cache is process-local; for multi-replica deploys, swap to `PostgresSaver` from `langgraph-checkpoint-postgres`.
+
 ---
 
 ## Phase 6 — Agent Registration and Discovery

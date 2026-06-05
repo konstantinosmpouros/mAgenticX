@@ -1168,6 +1168,48 @@ export async function cancelInferenceRun(userId: string, runId: string): Promise
   return transformInferenceRun(await res.json());
 }
 
+export type ResumeInferenceRunBody = {
+  // LangGraph interrupt id from the HITL_INTERRUPT event the user is acting
+  // on. Lets the bridge/agents service verify the right interrupt is being
+  // resolved when multiple HITLs fire in sequence on the same conversation.
+  interruptId: string;
+  threadId: string;
+  decision: "approve" | "reject";
+  reason?: string;
+  value?: unknown;
+};
+
+export async function resumeInferenceRun(
+  userId: string,
+  runId: string,
+  body: ResumeInferenceRunBody,
+): Promise<InferenceRun> {
+  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/resume`, withSessionRequest({
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({
+      interruptId: body.interruptId,
+      threadId: body.threadId,
+      decision: body.decision,
+      reason: body.reason ?? null,
+      value: body.value ?? null,
+    }),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch { /* ignore */ }
+    const error = new Error(detail || `Failed to resume inference run: ${res.status}`);
+    (error as any).status = res.status;
+    (error as any).detail = detail;
+    throw error;
+  }
+  return transformInferenceRun(await res.json());
+}
+
 // Reconnect backoff schedule for the inference WebSocket client. After this
 // many consecutive failures (without any successful frame in between), the
 // outer promise rejects and the caller surfaces a toast. Successful frames

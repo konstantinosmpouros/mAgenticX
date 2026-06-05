@@ -265,3 +265,51 @@ export function buildSubagentItemsFromRawEvents(
   }
   return items;
 }
+
+export type RawHitlInterrupt = {
+  interruptId: string;
+  threadId: string;
+  content: unknown;
+};
+
+// Collect every HITL interrupt emitted by the run, whether it arrived at the
+// top level (orchestrator-namespace HITL_INTERRUPT custom events) or wrapped
+// inside SUBAGENT_EVENT. Dedup is keyed on the LangGraph interrupt's unique
+// `id` (captured in normalizer.py as `event.value.interrupt.id`), NOT the
+// conversation-level thread_id — every HITL in a conversation shares the
+// same thread_id, so deduping on that would silently drop every interrupt
+// after the first.
+export function collectHitlInterruptsFromRawEvents(
+  rawEvents: Record<string, any>[] | null | undefined,
+): RawHitlInterrupt[] {
+  if (!rawEvents?.length) return [];
+  const interrupts: RawHitlInterrupt[] = [];
+  const seen = new Set<string>();
+  let positionalFallback = 0;
+  const pushFrom = (raw: Record<string, any> | undefined) => {
+    if (!raw) return;
+    const threadId = String(raw.thread_id ?? raw.threadId ?? "");
+    const wrapped = raw.interrupt;
+    const wrappedId =
+      wrapped && typeof wrapped === "object" ? (wrapped as Record<string, any>).id : undefined;
+    const interruptId = String(wrappedId ?? `${threadId || "thread"}:${positionalFallback++}`);
+    if (seen.has(interruptId)) return;
+    seen.add(interruptId);
+    interrupts.push({ interruptId, threadId: threadId || interruptId, content: wrapped });
+  };
+  for (const event of rawEvents) {
+    if (!event || typeof event !== "object") continue;
+    if (event.type !== "CUSTOM") continue;
+    if (event.name === "HITL_INTERRUPT") {
+      pushFrom(event.value);
+      continue;
+    }
+    if (event.name === "SUBAGENT_EVENT" && event.value) {
+      const inner = event.value.event;
+      if (inner && typeof inner === "object" && inner.type === "CUSTOM" && inner.name === "HITL_INTERRUPT") {
+        pushFrom(inner.value);
+      }
+    }
+  }
+  return interrupts;
+}

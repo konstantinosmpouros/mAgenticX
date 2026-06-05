@@ -23,7 +23,7 @@ from core.settings import settings
 from core.tls import get_httpx_verify
 from observability import get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
-from utils.agents import build_agent_stream_url, get_agent_by_id
+from utils.agents import build_agent_resume_url, build_agent_stream_url, get_agent_by_id
 from utils.conversations import _preview
 from utils.event_log import event_log
 from utils.inference import prepare_inference_history, resolve_inference_message_path
@@ -95,6 +95,11 @@ class InferenceRunRuntime:
         self.thinking_start = 0.0
         self.thinking_end = 0.0
         self.closed_thinking_on_first_chunk = False
+        # Outstanding HITL interrupts emitted by the agent but not yet resumed.
+        # Used by `InferenceRunManager._run` to decide whether to wait for a
+        # /resume after the upstream stream ends, rather than finalising the
+        # run as completed.
+        self.pending_interrupts = 0
 
     def push_subagent_event(self, key: str, value: Any) -> None:
         current = self.subagents or {}
@@ -131,10 +136,25 @@ class InferenceRunRuntime:
                 self.push_subagent_event("tasks", value)
             elif name == "SUBAGENT_EVENT":
                 self.push_subagent_event("events", value)
+                # A subagent that emits __interrupt__ surfaces as
+                # SUBAGENT_EVENT(value={..., event: CUSTOM HITL_INTERRUPT}).
+                # The top-level HITL_INTERRUPT branch below only fires for
+                # orchestrator-namespace interrupts, so without this the
+                # bridge would think the run finished while it's actually
+                # paused inside a subagent.
+                if isinstance(value, dict):
+                    inner = value.get("event")
+                    if (
+                        isinstance(inner, dict)
+                        and inner.get("type") == "CUSTOM"
+                        and inner.get("name") == "HITL_INTERRUPT"
+                    ):
+                        self.pending_interrupts += 1
             elif name == "BEFORE_AGENT_EVENT":
                 self.push_subagent_event("beforeAgent", value)
             elif name == "HITL_INTERRUPT":
                 self.push_subagent_event("interrupts", value)
+                self.pending_interrupts += 1
             return
 
         if event_type == "THINKING_START":
@@ -166,15 +186,26 @@ class InferenceRunManager:
     def __init__(self) -> None:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
+        # HITL resume signalling: a per-run event flipped by the bridge /resume
+        # route, plus the structured payload the route hands to the manager so
+        # _do_resume can forward it to the agents-service /resume endpoint.
+        self._resume_events: dict[str, asyncio.Event] = {}
+        self._resume_payloads: dict[str, dict[str, Any]] = {}
 
     def launch(self, run_id: str) -> None:
         if run_id in self._tasks and not self._tasks[run_id].done():
             return
         cancel_event = asyncio.Event()
         self._cancel_events[run_id] = cancel_event
+        self._resume_events[run_id] = asyncio.Event()
         task = asyncio.create_task(self._run(run_id, cancel_event))
         self._tasks[run_id] = task
-        task.add_done_callback(lambda _: (self._tasks.pop(run_id, None), self._cancel_events.pop(run_id, None)))
+        task.add_done_callback(lambda _: (
+            self._tasks.pop(run_id, None),
+            self._cancel_events.pop(run_id, None),
+            self._resume_events.pop(run_id, None),
+            self._resume_payloads.pop(run_id, None),
+        ))
 
     def request_cancel(self, run_id: str) -> bool:
         event = self._cancel_events.get(run_id)
@@ -182,6 +213,20 @@ class InferenceRunManager:
             event.set()
             return True
         return False
+
+    def request_resume(self, run_id: str, payload: dict[str, Any]) -> bool:
+        """Hand a resume payload to a paused run and unblock its _run task.
+
+        Returns True only if a live _run task is currently waiting on the
+        resume event; the caller (bridge /resume route) uses False to surface
+        a 409 to the client because the run is not actually paused.
+        """
+        event = self._resume_events.get(run_id)
+        if event is None or not self.has_live_task(run_id):
+            return False
+        self._resume_payloads[run_id] = payload
+        event.set()
+        return True
 
     def has_live_task(self, run_id: str) -> bool:
         task = self._tasks.get(run_id)
@@ -253,6 +298,7 @@ class InferenceRunManager:
                 }
                 agent = await get_agent_by_id(conversation.agent_id)
                 agent_url = build_agent_stream_url(agent)
+                resume_url = build_agent_resume_url(agent)
                 enabled_tools = run.streaming_enabled_tools or []
                 history_messages, history = prepare_inference_history(
                     logger=logger,
@@ -267,58 +313,122 @@ class InferenceRunManager:
                     conversation_id=run.conversation_id,
                     history_messages=len(history_messages),
                 )
+                # Shared config block forwarded to both the initial /stream call
+                # and any subsequent /resume calls; the thread_id is what keys
+                # the agents-service checkpointer cache so resume can rehydrate.
+                base_request_config: dict[str, Any] = {
+                    "run_config": {
+                        "configurable": {"thread_id": str(run.conversation_id)},
+                    },
+                    "context": {
+                        "user_id": str(user_id),
+                        "conversation_id": str(run.conversation_id),
+                    },
+                    "tools": enabled_tools or None,
+                }
                 request_payload: dict[str, Any] = {
                     "messages": history,
-                    "config": {
-                        "run_config": {
-                            "configurable":
-                                {
-                                    "thread_id": str(run.conversation_id)
-                                }
-                        },
-                        "context":
-                            {
-                                "user_id": str(user_id),
-                                "conversation_id": str(run.conversation_id)
-                            },
-                        "tools": enabled_tools or None,
-                    },
+                    "config": base_request_config,
                 }
 
-            # Race the stream task against the cancel event so that cancellation
-            # interrupts the HTTP read immediately rather than waiting for the
-            # next chunk to arrive.
-            stream_task = asyncio.create_task(
+            cancel_waiter = asyncio.create_task(cancel_event.wait())
+            # First leg: the initial /stream call. Subsequent legs (if any) come
+            # from /resume after each HITL interrupt.
+            stream_task: asyncio.Task[str] = asyncio.create_task(
                 self._do_stream(run_id, run_meta, runtime, agent_url, request_payload)
             )
-            cancel_waiter = asyncio.create_task(cancel_event.wait())
-            done, _ = await asyncio.wait({stream_task, cancel_waiter}, return_when=asyncio.FIRST_COMPLETED)
 
-            if cancel_waiter in done and stream_task not in done:
-                stream_task.cancel()
-                await asyncio.gather(stream_task, return_exceptions=True)
-                await _mark_run_cancelled(run_id, runtime)
-                await self._publish_snapshot(run_id, "terminal")
-                return
+            try:
+                while True:
+                    done, _ = await asyncio.wait(
+                        {stream_task, cancel_waiter},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
 
-            cancel_waiter.cancel()
-            await asyncio.gather(cancel_waiter, return_exceptions=True)
+                    # Cancellation wins outright: kill the in-flight HTTP stream
+                    # and mark the run cancelled. _do_stream may emit one more
+                    # frame after cancellation; that's fine — it's in Redis.
+                    if cancel_waiter in done and stream_task not in done:
+                        stream_task.cancel()
+                        await asyncio.gather(stream_task, return_exceptions=True)
+                        await _mark_run_cancelled(run_id, runtime)
+                        await self._publish_snapshot(run_id, "terminal")
+                        return
 
-            if not stream_task.cancelled():
-                exc = stream_task.exception()
-                if exc:
-                    raise exc
-                result = stream_task.result()
-                if result == "failed":
-                    return
+                    # Stream leg ended. Surface upstream errors, then decide
+                    # whether the run is genuinely terminal, paused on a HITL
+                    # interrupt, or implicitly failed.
+                    if not stream_task.cancelled():
+                        exc = stream_task.exception()
+                        if exc:
+                            raise exc
+                        result = stream_task.result()
+                        if result == "failed":
+                            # _do_stream already marked the run failed via _finish_run.
+                            return
 
-            if cancel_event.is_set():
-                await _mark_run_cancelled(run_id, runtime)
-                await self._publish_snapshot(run_id, "terminal")
-                return
+                    if cancel_event.is_set():
+                        await _mark_run_cancelled(run_id, runtime)
+                        await self._publish_snapshot(run_id, "terminal")
+                        return
 
-            await _mark_run_completed(run_id, runtime)
-            await self._publish_snapshot(run_id, "terminal")
+                    # No interrupt pending → normal terminal completion.
+                    if runtime.pending_interrupts <= 0:
+                        await _mark_run_completed(run_id, runtime)
+                        await self._publish_snapshot(run_id, "terminal")
+                        return
+
+                    # Paused on a HITL interrupt. Hold the task alive and race
+                    # the cancel event against the bridge /resume signal.
+                    resume_event = self._resume_events.get(run_id)
+                    if resume_event is None:
+                        # Shouldn't happen (launch sets it) — treat as failure.
+                        await _mark_run_failed(run_id, runtime, "Resume signalling not initialised.")
+                        await self._publish_snapshot(run_id, "terminal")
+                        return
+
+                    logger.info(
+                        "inference_run_awaiting_resume",
+                        "Run paused on HITL interrupt; awaiting resume signal",
+                        run_id=run_id,
+                        pending_interrupts=runtime.pending_interrupts,
+                    )
+
+                    resume_waiter = asyncio.create_task(resume_event.wait())
+                    try:
+                        done, _ = await asyncio.wait(
+                            {resume_waiter, cancel_waiter},
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                    finally:
+                        if not resume_waiter.done():
+                            resume_waiter.cancel()
+                            await asyncio.gather(resume_waiter, return_exceptions=True)
+
+                    if cancel_waiter in done:
+                        await _mark_run_cancelled(run_id, runtime)
+                        await self._publish_snapshot(run_id, "terminal")
+                        return
+
+                    # Resume requested. Decrement the pending counter for the
+                    # interrupt we're now resolving and kick off /resume.
+                    resume_payload = self._resume_payloads.pop(run_id, {}) or {}
+                    runtime.pending_interrupts = max(0, runtime.pending_interrupts - 1)
+                    resume_event.clear()
+                    logger.info(
+                        "inference_run_resume_dispatched",
+                        "Dispatching resume to agents service",
+                        run_id=run_id,
+                        decision=resume_payload.get("decision"),
+                    )
+
+                    stream_task = asyncio.create_task(
+                        self._do_resume(run_id, run_meta, runtime, resume_url, base_request_config, resume_payload)
+                    )
+            finally:
+                if not cancel_waiter.done():
+                    cancel_waiter.cancel()
+                    await asyncio.gather(cancel_waiter, return_exceptions=True)
         except asyncio.CancelledError:
             await _mark_run_cancelled(run_id, runtime)
             await self._publish_snapshot(run_id, "terminal")
@@ -356,6 +466,62 @@ class InferenceRunManager:
                         has_events = True
                     if has_events:
                         await self._publish_runtime_event(run_id, run_meta, runtime)
+        return "completed"
+
+    async def _do_resume(
+        self,
+        run_id: str,
+        run_meta: dict[str, Any],
+        runtime: InferenceRunRuntime,
+        resume_url: str,
+        base_request_config: dict[str, Any],
+        resume_payload: dict[str, Any],
+    ) -> str:
+        """Resume a paused HITL run via the agents-service /resume endpoint.
+
+        The body shape matches :class:`AgentResumeRequest` on the agents side.
+        Output framing is identical to ``/stream`` so the existing SSE parser,
+        runtime accumulator, and Redis publisher all work unchanged.
+        """
+        sse_buffer = ""
+        thread_id = base_request_config.get("run_config", {}).get("configurable", {}).get("thread_id", "")
+        body: dict[str, Any] = {
+            "config": base_request_config,
+            "thread_id": thread_id,
+            "decision": resume_payload.get("decision", "approve"),
+            "reason": resume_payload.get("reason"),
+            "value": resume_payload.get("value"),
+            "interrupt_id": resume_payload.get("interrupt_id"),
+        }
+        timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+            headers = internal_service_headers(None)
+            headers["Accept"] = "text/event-stream"
+            try:
+                async with client.stream("POST", resume_url, json=body, headers=headers) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes():
+                        sse_buffer, events = _parse_sse_bytes(sse_buffer, chunk)
+                        has_events = False
+                        for event in events:
+                            if event.get("type") == "RUN_ERROR":
+                                await _mark_run_failed(run_id, runtime, str(event.get("message") or "Agent resume failed."))
+                                await self._publish_snapshot(run_id, "terminal")
+                                return "failed"
+                            runtime.apply_event(event)
+                            has_events = True
+                        if has_events:
+                            await self._publish_runtime_event(run_id, run_meta, runtime)
+            except httpx.HTTPStatusError as exc:
+                # 409 → checkpoint missing (process restart or LRU eviction).
+                # Anything else upstream → fail the run with the status code in the message.
+                status_code = exc.response.status_code if exc.response is not None else None
+                detail = "Inference run could not be resumed."
+                if status_code == 409:
+                    detail = "The agent has no paused checkpoint for this run. Start a new message instead."
+                await _mark_run_failed(run_id, runtime, detail)
+                await self._publish_snapshot(run_id, "terminal")
+                return "failed"
         return "completed"
 
     async def _publish_runtime_event(self, run_id: str, run_meta: dict[str, Any], runtime: InferenceRunRuntime) -> None:
@@ -743,6 +909,19 @@ async def request_run_cancel(db: AsyncSession, run: MessageTable) -> MessageTabl
     await db.commit()
     await db.refresh(run)
     return run
+
+
+async def request_run_resume(run: MessageTable, payload: dict[str, Any]) -> bool:
+    """Hand a HITL resume decision to the live manager task.
+
+    Returns True when a paused task accepted the resume signal; False when no
+    live task is waiting on a HITL interrupt (e.g. the run already terminated,
+    was cancelled, or the bridge process was restarted between interrupt and
+    resume). Callers translate False into a 409 Conflict.
+    """
+    if run.streaming_status not in ACTIVE_RUN_STATUSES:
+        return False
+    return inference_run_manager.request_resume(run.id, payload)
 
 
 async def cleanup_orphaned_inference_runs() -> None:

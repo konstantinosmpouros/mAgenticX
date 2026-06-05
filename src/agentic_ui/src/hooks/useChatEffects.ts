@@ -33,28 +33,29 @@ export function useEnsureDefaultAgentEffect(params: {
   agents: Agent[];
   selectedAgent: string;
   setSelectedAgent: (v: string) => void;
-  allowMissingAgentId?: string | null;
 }) {
-  const {
-    isLoggedIn,
-    userId,
-    agents,
-    selectedAgent,
-    setSelectedAgent,
-    allowMissingAgentId,
-  } = params;
+  const { isLoggedIn, userId, agents, selectedAgent, setSelectedAgent } = params;
+  // Apply the default agent exactly once per login session — only on the
+  // first arrival of the agents list and only when no selection exists yet.
+  // After that the effect never touches selectedAgent, so a restored stale
+  // id, an inactive-agent placeholder for an old conversation, or a user who
+  // explicitly cleared the selection are all left alone instead of being
+  // snapped back to agents[0].
+  const appliedRef = useRef(false);
 
   useEffect(() => {
-    if (isLoggedIn && userId && agents.length > 0) {
-      const exists = agents.some(a => a.id === selectedAgent);
-      if (!exists) {
-        if (allowMissingAgentId && selectedAgent === allowMissingAgentId) {
-          return;
-        }
-        setSelectedAgent(agents[0].id);
-      }
+    if (!isLoggedIn || !userId) {
+      // Re-arm on logout so the next login can apply the default again.
+      appliedRef.current = false;
+      return;
     }
-  }, [isLoggedIn, userId, agents, selectedAgent, allowMissingAgentId, setSelectedAgent]);
+    if (appliedRef.current) return;
+    if (agents.length === 0) return;
+    appliedRef.current = true;
+    if (!selectedAgent) {
+      setSelectedAgent(agents[0].id);
+    }
+  }, [isLoggedIn, userId, agents, selectedAgent, setSelectedAgent]);
 }
 
 

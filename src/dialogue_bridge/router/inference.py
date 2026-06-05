@@ -11,6 +11,7 @@ from schemas import (
     InferenceStartPayload,
     InferenceStartResponse,
     InferenceRunOut,
+    InferenceRunResumeIn,
 )
 from core.auth_session import authenticate_websocket_user, require_csrf_protection
 from core.rate_limit import INFERENCE_RATE_LIMIT, inference_user_key, limiter
@@ -22,6 +23,7 @@ from utils.inference_runs import (
     mark_run_launch_failed,
     observe_run_events,
     request_run_cancel,
+    request_run_resume,
     stream_run_events,
     SNAPSHOT_SEQ_SENTINEL,
 )
@@ -256,4 +258,58 @@ async def cancelInferenceRun(
     payload = await build_run_event_payload(db, run.id, "update")
     if payload:
         await inference_run_manager.publish(run.id, payload)
+    return build_run_out_from_message(run, user_id=user_id)
+
+
+@router.post("/runs/{user_id}/{run_id}/resume", response_model=InferenceRunOut)
+async def resumeInferenceRun(
+    user_id: str,
+    run_id: str,
+    payload: InferenceRunResumeIn,
+    current_user: UserTable = Depends(validate_userId),
+    _: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
+) -> InferenceRunOut:
+    """Send a HITL approve/reject decision to a paused inference run.
+
+    Looks up the AI message, validates the requesting user owns the
+    conversation, and signals the manager's per-run resume event with the
+    payload. The manager's ``_run`` task races this event against the cancel
+    event; on resume it POSTs to the agents service ``/agents/{slug}/resume``
+    endpoint, which feeds a ``Command(resume=...)`` into the saved LangGraph
+    checkpoint. Resulting events flow through the same Redis stream + WS
+    observers as the original run.
+    """
+    result = await db.execute(
+        select(MessageTable)
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            MessageTable.id == run_id,
+            ConversationTable.user_id == user_id,
+            MessageTable.streaming_status.is_not(None),
+        )
+    )
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Inference run not found.")
+
+    resume_payload = {
+        "decision": payload.decision,
+        "reason": payload.reason,
+        "value": payload.value,
+        "interrupt_id": payload.interruptId,
+    }
+    accepted = await request_run_resume(run, resume_payload)
+    if not accepted:
+        raise HTTPException(
+            status_code=409,
+            detail="Run is not paused on a HITL interrupt.",
+        )
+
+    logger.info(
+        "inference_run_resume_received",
+        "Inference run resume signalled from bridge",
+        run_id=run.id,
+        decision=payload.decision,
+    )
     return build_run_out_from_message(run, user_id=user_id)

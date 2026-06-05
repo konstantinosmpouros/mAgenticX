@@ -60,6 +60,29 @@ def build_agent_stream_url(agent: AgentTable) -> str:
     return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{slug}/stream"
 
 
+def build_agent_resume_url(agent: AgentTable) -> str:
+    """Return the HITL resume endpoint for a given agent slug."""
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent metadata unavailable for this conversation",
+        )
+
+    slug = getattr(agent, "slug", None)
+    if not slug:
+        logger.error(
+            "agent_resume_url_missing_slug",
+            "Agent resume URL could not be built because slug is missing",
+            agent_id=getattr(agent, "id", None),
+            failure_reason="agent_slug_missing",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Agent configuration is incomplete. Please try another agent or try again later.",
+        )
+    return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{slug}/resume"
+
+
 async def _load_active_agents(db: AsyncSession) -> List[AgentTable]:
     # Query all active agents so we can refresh the in-memory cache.
     result = await db.execute(select(AgentTable).where(AgentTable.is_active == True))  # noqa: E712

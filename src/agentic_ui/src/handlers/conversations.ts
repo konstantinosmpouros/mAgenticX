@@ -98,6 +98,18 @@ type ConversationsCtx = {
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onSearch?: () => void;
   persistUIState: () => void;
+  // Overlay the in-memory active-run state onto a freshly-fetched
+  // conversation detail. Without this overlay, navigating away from a
+  // mid-stream (especially HITL-paused) conversation and back loses the
+  // accumulated content/raw_events because the DB row is only finalized at
+  // the end of the run; the modal needs the live raw_events to surface.
+  hydrateConversationDetailFromLiveRun?: (detail: ConversationDetail | null) => ConversationDetail | null;
+  // Compute branchSelections that puts the active run's path in view. The
+  // streaming assistant message can be on a non-default branch (e.g. user
+  // retried earlier, so the run lives under a sibling). Without this the
+  // conversation loads on the default branch and the HITL modal is invisible
+  // even though the run state is hydrated correctly.
+  deriveBranchSelectionsForActiveRun?: (detail: ConversationDetail | null) => Record<string, number> | null;
 };
 
 const LOAD_MORE_DELAY_MS = 1200;
@@ -148,16 +160,19 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setCurrentMessage,
     toast,
     persistUIState,
+    hydrateConversationDetailFromLiveRun,
+    deriveBranchSelectionsForActiveRun,
   } = ctx;
 
 
-  const clearChatAndStopThinking = (options?: { preserveAgent?: boolean }) => {
+  const clearChatAndStopThinking = () => {
     // Reuse one reset path so "new chat", delete-current, and title click behave identically.
+    // Clears only chat-bound state — selectedAgent is intentionally preserved
+    // so picking "New chat" keeps the user on the agent they were just using
+    // instead of snapping back to agents[0].
     void closeVoiceMode?.();
     handleStopStreaming?.();
     setIsClearing(true);
-    const defaultAgentId =
-      agents.find((agent) => agent.isActive)?.id ?? agents[0]?.id ?? "";
     setInactiveAgentFallback(null);
     setTimeout(() => {
       // Clear all transient chat state after the transition begins so the UI can animate cleanly.
@@ -167,9 +182,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setCurrentMessage('');
       setCurrentConversation(null);
       setIsPrivateMode(false);
-      if (!options?.preserveAgent && defaultAgentId) {
-        setSelectedAgent(defaultAgentId);
-      }
       // Clear the transition flag shortly after the state swap to avoid abrupt layout jumps.
       setTimeout(() => setIsClearing(false), 150);
       persistUIState();
@@ -202,11 +214,28 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setTimeout(async () => {
       try {
         const conversationDetail = await getConversationDetail(userId, conversation.id);
+        // The DB row of a mid-stream assistant message is empty until
+        // _finish_run writes the final state, so overlay the in-memory run
+        // state before mounting. Without this, a HITL-paused run looks like
+        // a blank message with no actionable modal until the next event
+        // (which never comes while paused) arrives.
+        const hydratedDetail =
+          hydrateConversationDetailFromLiveRun?.(conversationDetail) ?? conversationDetail;
+        // Snap branch selections onto the active run's path so the running
+        // (and possibly HITL-paused) assistant message is the visible branch.
+        // Stale persisted selections from earlier viewing would otherwise
+        // anchor the user on a sibling branch where the streaming message
+        // doesn't even render.
+        const activeRunBranchSelections =
+          deriveBranchSelectionsForActiveRun?.(hydratedDetail) ?? null;
         setTimeout(() => {
           // Apply the fetched detail only after the old chat has visually cleared.
-          setSelectedAgent(conversationDetail.agent?.id || "");
-          setCurrentConversation(conversationDetail);
-          setIsPrivateMode(conversationDetail.isPrivate || false);
+          setSelectedAgent(hydratedDetail.agent?.id || "");
+          if (activeRunBranchSelections) {
+            setBranchSelections?.(activeRunBranchSelections);
+          }
+          setCurrentConversation(hydratedDetail);
+          setIsPrivateMode(hydratedDetail.isPrivate || false);
           setIsClearing(false);
           setLoadingConversation(false);
           persistUIState();

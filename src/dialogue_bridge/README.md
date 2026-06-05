@@ -421,7 +421,16 @@ Multiple browsers can observe the same run simultaneously — Redis Streams supp
 
 `POST /v1/inference/runs/{user_id}/{run_id}/cancel` sets an asyncio `Event` that `_do_stream` checks at each await point. The run aborts immediately at the current suspension point, transitions to `cancelling`, then `cancelled`, and the final DB write reflects the cancellation.
 
-### 11.5 DB write policy
+### 11.5 HITL pause & resume
+
+When the agent emits `__interrupt__`, the agents-service normalizer turns it into an AG-UI `HITL_INTERRUPT` event (or `SUBAGENT_EVENT(HITL_INTERRUPT)` when the interrupt fires inside a subagent namespace). The bridge `InferenceRunRuntime` increments `pending_interrupts` for both shapes; when the upstream `/stream` HTTP body ends, the manager's `_run` task inspects this counter:
+
+- **`pending_interrupts == 0`** → genuine completion → terminal write + Redis EXPIRE.
+- **`pending_interrupts > 0`** → the run is paused on a checkpoint. `_run` keeps the task alive and races `cancel_event` against a per-run `resume_event`.
+
+`POST /v1/inference/runs/{user_id}/{run_id}/resume` carries the user's decision (`approve` / `reject`, plus optional `reason` / `value`) into `InferenceRunManager.request_resume(run_id, payload)`, which stores the payload and flips the event. `_run` wakes, decrements `pending_interrupts`, and spawns `_do_resume(...)` — a parallel to `_do_stream` that POSTs to the agents service's `/agents/{slug}/resume` endpoint. The agents service rehydrates the cached `InMemorySaver` for the same `thread_id` and feeds `Command(resume=...)` into `graph.astream(...)`. New events flow back through the same Redis stream the original run wrote to, so the WebSocket observers transparently see the resumed activity. A 409 from the agents service (no cached checkpoint — e.g., process restart between interrupt and resume) is translated into a failed terminal status with a user-readable error message.
+
+### 11.6 DB write policy
 
 For the normal success path, DB writes happen at run start and terminal finalization:
 
@@ -430,7 +439,7 @@ For the normal success path, DB writes happen at run start and terminal finaliza
 
 There are zero DB writes per stream chunk. Cancellation, launch failure, and stale queued-run cleanup can add small terminal/cleanup writes outside the happy path.
 
-### 11.6 Run lifecycle
+### 11.7 Run lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -586,6 +595,7 @@ Either `content` or at least one attachment must be present for non-placeholder 
 | `/v1/inference/runs/{user_id}/{run_id}/ws` | `WS` | WebSocket observer with `since=<seq>` resume — replays from Redis Stream |
 | `/v1/inference/runs/{user_id}/{run_id}/stream` | `GET` | **Deprecated** legacy SSE observer; kept for one release cycle |
 | `/v1/inference/runs/{user_id}/{run_id}/cancel` | `POST` | Signal asyncio cancel |
+| `/v1/inference/runs/{user_id}/{run_id}/resume` | `POST` | Approve / reject a HITL `__interrupt__` paused on the agents-service checkpoint and resume the run |
 
 ### 15.7 Speech
 

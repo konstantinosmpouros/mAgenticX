@@ -5,9 +5,11 @@ from typing import Any, List, Mapping, Optional, Literal, Sequence, Set
 from abc import abstractmethod, ABC
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from runtime.protocols.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import BaseAgent
+from runtime.checkpointer import get_or_create_checkpointer
 from observability import get_logger
 
 logger = get_logger(__name__)
@@ -92,7 +94,10 @@ class DeepAgent(BaseAgent, ABC):
         self.skills_paths: list[str] = []       # absolute path to skills/ — for create_deep_agent(skills=[...])
         self.agent_md_paths: list[str] = []     # absolute path to AGENT.md — for create_deep_agent(memory=[...])
         self.memory: Any = None
-        self.checkpointer: MemorySaver | None = MemorySaver()  # ephemeral, GC'd at request end
+        # Lazy: created (or rehydrated from the thread-keyed cache) inside
+        # astream() so a HITL resume request picks up the paused checkpoint
+        # instead of starting a fresh saver every request.
+        self.checkpointer: MemorySaver | None = None
         self.sub_agents: SubAgentsT = None
         self.agent: Any = None
 
@@ -198,6 +203,8 @@ class DeepAgent(BaseAgent, ABC):
         """Invoke lifecycle hooks in order and assemble the agent."""
         if self.agent is None:
             logger.info("deep_agent_build_started", "Deep agent build started", agent_slug=self.name)
+            if self.checkpointer is None:
+                self.checkpointer = MemorySaver()
             self.skills_paths   = self.load_skills()
             self.memory         = self.load_memory()
             self.agent_md_paths = self.load_agent_md()
@@ -214,25 +221,59 @@ class DeepAgent(BaseAgent, ABC):
             )
 
 
+    # ---------------------------------------------------------------------
+    # Public lifecycle helpers (used by ``astream`` and HITL resume)
+    # ---------------------------------------------------------------------
+    async def ensure_built(self) -> None:
+        """Rehydrate the per-thread checkpointer from cache and build the agent.
+
+        Idempotent: safe to call multiple times. The HITL ``/resume`` endpoint
+        invokes this directly so it can read ``self.compiled.get_state(...)``
+        before issuing the resume command; ``astream`` also calls it to share
+        the same cache-then-build path.
+        """
+        thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
+        if self.checkpointer is None and thread_id:
+            self.checkpointer = await get_or_create_checkpointer(thread_id)
+        self.build()
+
+
+    @property
+    def compiled(self) -> Any:
+        """The compiled runnable produced by ``build()``. ``None`` until built."""
+        return self.agent
+
+
 
     # ---------------------------------------------------------------------
     # Streaming interface
     # ---------------------------------------------------------------------
-    async def astream(self, payload: Mapping[str, Any]) -> Any:
+    async def astream(self, payload: Mapping[str, Any], *, command: Optional[Command] = None) -> Any:
         """
         Build on demand and stream agent outputs in AG-UI format.
 
         Args:
             payload: Input mapping for the agent. Expected key: ``messages``.
+            command: Optional ``langgraph.types.Command``. When provided it is
+                fed to the underlying agent in place of ``payload`` so a
+                previously paused HITL run can be resumed from its saved
+                checkpoint.
         Yields:
             Streamed SSE bytes in AG-UI format.
         """
         try:
-            self.build()
-            logger.info("deep_agent_execution_started", "Deep agent execution started", agent_slug=self.name, stream_mode=self.stream_mode)
+            await self.ensure_built()
+            logger.info(
+                "deep_agent_execution_started",
+                "Deep agent execution started",
+                agent_slug=self.name,
+                stream_mode=self.stream_mode,
+                resumed=command is not None,
+            )
 
+            agent_input: Any = command if command is not None else payload
             async for chunk in self.agent.astream(
-                payload,
+                agent_input,
                 config=self.run_config,
                 stream_mode=self.stream_mode,
                 subgraphs=True,

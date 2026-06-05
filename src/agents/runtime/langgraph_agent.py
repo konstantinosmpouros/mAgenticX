@@ -5,9 +5,11 @@ from pydantic import BaseModel
 
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
 
 from runtime.protocols.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import BaseAgent
+from runtime.checkpointer import get_or_create_checkpointer
 from observability import get_logger
 
 logger = get_logger(__name__)
@@ -92,15 +94,19 @@ class LangGraphAgent(BaseAgent, ABC):
     def build(self) -> None:
         """
         Build or rebuild the LangGraph ``StateGraph`` for this agent instance.
-        
+
         Invokes the three registration hooks in order to assemble the graph and
-        compiles it with an in-memory checkpointer when HITL is enabled.
-        Invoked automatically by ``astream()`` if the graph is not already built;
-        when no ``state`` is defined, ``self.agents`` is returned directly.
+        compiles it with the per-thread checkpointer when HITL is enabled. If
+        ``self.memory_saver`` was preset by :meth:`ensure_built` (rehydrated
+        from the thread-keyed cache so a resume request can pick up a paused
+        checkpoint) we keep it; otherwise an ephemeral saver is created for
+        this instance. Invoked automatically by ``ensure_built()``; when no
+        ``state`` is defined, ``self.agents`` is returned directly.
         """
         if self.graph is None:
             logger.info("langgraph_build_started", "LangGraph build started", agent_slug=self.name)
-            self.memory_saver = InMemorySaver()  # ephemeral: lives only for this inference
+            if self.memory_saver is None:
+                self.memory_saver = InMemorySaver()
             self.register_agents_and_nodes()
 
             if self.state is None and self.nodes is None:
@@ -114,11 +120,34 @@ class LangGraphAgent(BaseAgent, ABC):
         return
 
 
+    # ---------------------------------------------------------------------
+    # Public lifecycle helpers (used by ``astream`` and HITL resume)
+    # ---------------------------------------------------------------------
+    async def ensure_built(self) -> None:
+        """Rehydrate the per-thread checkpointer from cache and build the graph.
+
+        Idempotent: safe to call multiple times. The HITL ``/resume`` endpoint
+        invokes this directly so it can read ``self.compiled.get_state(...)``
+        before issuing the resume command; ``astream`` also calls it to share
+        the same cache-then-build path.
+        """
+        thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
+        if self.memory_saver is None and thread_id:
+            self.memory_saver = await get_or_create_checkpointer(thread_id)
+        self.build()
+
+
+    @property
+    def compiled(self) -> Any:
+        """The compiled runnable produced by ``build()``. ``None`` until built."""
+        return self.graph
+
+
 
     # ---------------------------------------------------------------------
     # Async inference function
     # ---------------------------------------------------------------------
-    async def astream(self, payload: Mapping[str, Any]) -> Any:
+    async def astream(self, payload: Mapping[str, Any], *, command: Optional[Command] = None) -> Any:
         """
         Stream LangGraph chunks as SSE bytes using the configured stream mode.
 
@@ -126,17 +155,26 @@ class LangGraphAgent(BaseAgent, ABC):
         normalizes other chunks through ``self.agui_normalizer`` before yielding.
         Args:
             payload: Input mapping for the graph execution.
+            command: Optional ``langgraph.types.Command``. When provided it is
+                fed to the graph in place of ``payload`` so a previously paused
+                HITL run can be resumed from its saved checkpoint.
         Yields:
             Streamed chunks in AG-UI format.
         """
         try:
-            # Build graph if not already done
-            self.build()
-            logger.info("langgraph_execution_started", "LangGraph execution started", agent_slug=self.name, stream_mode=self.stream_mode)
+            await self.ensure_built()
+            logger.info(
+                "langgraph_execution_started",
+                "LangGraph execution started",
+                agent_slug=self.name,
+                stream_mode=self.stream_mode,
+                resumed=command is not None,
+            )
 
+            graph_input: Any = command if command is not None else payload
             # Stream graph execution results
             async for chunk in self.graph.astream(
-                payload,
+                graph_input,
                 config=self.run_config,
                 stream_mode=self.stream_mode
             ):

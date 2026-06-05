@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { cancelInferenceRun, connectInferenceWebSocket, getActiveInferenceRuns, startInference } from "@/lib/api";
+import {
+  cancelInferenceRun,
+  connectInferenceWebSocket,
+  getActiveInferenceRuns,
+  resumeInferenceRun,
+  startInference,
+  type ResumeInferenceRunBody,
+} from "@/lib/api";
 import { sortByUpdatedAtDesc } from "@/lib/utils";
 import type {
   ConversationDetail,
@@ -43,6 +50,10 @@ export function useInferenceRuns({
   toast,
 }: UseInferenceRunsOptions) {
   const [runsByConversation, setRunsByConversation] = useState<Record<string, InferenceRun>>({});
+  // Per-(run,thread) marker that a HITL interrupt has been resolved client-side
+  // so the Confirmation card flips to its resolved state instantly. Cleared
+  // automatically on rollback if the resume HTTP call fails.
+  const [resolvedInterrupts, setResolvedInterrupts] = useState<Set<string>>(new Set());
   const controllersRef = useRef<Record<string, AbortController>>({});
   const currentConversationIdRef = useRef<string | null | undefined>(currentConversationId);
 
@@ -258,10 +269,105 @@ export function useInferenceRuns({
     applyRunEvent({ type: "update", run });
   }, [applyRunEvent, userId]);
 
+  const resumeRun = useCallback(async (runId: string, body: ResumeInferenceRunBody) => {
+    if (!userId) throw new Error("Not authenticated.");
+    // Keyed by interruptId — every HITL in a conversation shares the same
+    // thread_id, so threadId would mark every subsequent interrupt as already
+    // resolved and the modal would never re-open for the next one.
+    const key = `${runId}:${body.interruptId}`;
+    // We deliberately do NOT optimistically flip resolved here — the modal
+    // filters its cards by `isResolved`, so an optimistic flip would unmount
+    // the card mid-click and steal the spinner feedback. Mark resolved only
+    // after the bridge confirms the resume signal landed.
+    const run = await resumeInferenceRun(userId, runId, body);
+    applyRunEvent({ type: "update", run });
+    setResolvedInterrupts((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, [applyRunEvent, userId]);
+
+  const isInterruptResolved = useCallback(
+    (runId: string, interruptId: string) => resolvedInterrupts.has(`${runId}:${interruptId}`),
+    [resolvedInterrupts],
+  );
+
+  // Derive the branch-selections map that places the active run's
+  // assistantMessageId on the visible path. Branches are picked by index of
+  // sibling under each parent, so we walk run.messagePath and record the
+  // chosen index at every fork. Returns null when there's no active run, or
+  // when the messagePath can't be reconciled with the messages list (e.g.
+  // out-of-sync state — the existing branchSelections are left untouched).
+  // ``__root__`` matches the rootKey used by useBranchingHandlers.
+  const deriveBranchSelectionsForActiveRun = useCallback(
+    (detail: ConversationDetail | null): Record<string, number> | null => {
+      if (!detail) return null;
+      const liveRun = runsByConversation[detail.id];
+      if (!liveRun || !isActiveRun(liveRun)) return null;
+      const messagePath = liveRun.messagePath ?? [];
+      if (!messagePath.length) return null;
+      const messages = detail.messages ?? [];
+      if (!messages.length) return null;
+      const byParent = new Map<string | null, MessageOut[]>();
+      for (const message of messages) {
+        const key = message.parentMessageId ?? null;
+        if (!byParent.has(key)) byParent.set(key, []);
+        byParent.get(key)!.push(message);
+      }
+      const result: Record<string, number> = {};
+      let parentId: string | null = null;
+      for (const stepId of messagePath) {
+        const siblings = byParent.get(parentId) ?? [];
+        const index = siblings.findIndex((message) => message.id === stepId);
+        if (index < 0) return null;
+        result[parentId ?? "__root__"] = index;
+        parentId = stepId;
+      }
+      return result;
+    },
+    [runsByConversation],
+  );
+
+  // Overlay the in-memory run state onto the freshly-fetched conversation
+  // detail's assistant message. Necessary because the bridge only writes
+  // content/raw_events/plan/subagents to the DB at the end of the run, so a
+  // navigate-away → return round trip would otherwise show an empty assistant
+  // bubble until the next streaming chunk arrives. For HITL-paused runs no
+  // next chunk is ever coming, so the modal would never surface.
+  const hydrateConversationDetailFromLiveRun = useCallback(
+    (detail: ConversationDetail | null): ConversationDetail | null => {
+      if (!detail) return detail;
+      const liveRun = runsByConversation[detail.id];
+      if (!liveRun || !isActiveRun(liveRun)) return detail;
+      const messages = detail.messages ?? [];
+      const targetIndex = messages.findIndex((message) => message.id === liveRun.assistantMessageId);
+      if (targetIndex === -1) return detail;
+      const target = messages[targetIndex];
+      const patched: MessageOut = {
+        ...target,
+        content: liveRun.content ?? target.content,
+        thinking: liveRun.thinking ?? target.thinking,
+        rawEvents: liveRun.rawEvents ?? target.rawEvents,
+        plan: (liveRun.plan ?? target.plan) as MessageOut["plan"],
+        subagents: (liveRun.subagents ?? target.subagents) as MessageOut["subagents"],
+      };
+      const nextMessages = messages.slice();
+      nextMessages[targetIndex] = patched;
+      return { ...detail, messages: nextMessages };
+    },
+    [runsByConversation],
+  );
+
   return {
     runsByConversation,
     beginRun,
     stopRun,
+    resumeRun,
+    isInterruptResolved,
+    hydrateConversationDetailFromLiveRun,
+    deriveBranchSelectionsForActiveRun,
     getRunForConversation: useCallback(
       (conversationId?: string | null) => (conversationId ? runsByConversation[conversationId] ?? null : null),
       [runsByConversation],
