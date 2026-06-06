@@ -11,16 +11,17 @@
 - Scheduled Tasks: let users create one-off or recurring agent jobs that run later, complete while the user is offline, and notify them with results.
 - Artifacts / Canvas: add an editable side workspace for generated reports, markdown docs, code, tables, diagrams, JSON configs, and other reusable outputs.
 - Agent run timeline: make planning, retrieval, tool calls, verification, and final-answer steps visible as a polished timeline for each agent run. Use this for the approval of a [HITL Event](https://ai-sdk.dev/elements/components/confirmation) or create a custom one. This can be used for the agentic chat stream feel as [actions](https://elements.ai-sdk.dev/components/task) or [this one](https://elements.ai-sdk.dev/components/tool). Also cause we are detached from the ui in the runtime we need to modify the planning card to be per conversation that is actively streaming and not in general.
+- Create also a tab in the profile panel for the skills and all the skills should be in a centralized directory in the agents container and the user can add skills or something like that and have operation in the filesystem of the user dir like copy this skill and delete this skill of the user etc.
 
 ## Agents
 
 - Update the retrieval process and the whole RAG pipelines so that it will be like an mcp tool calling.
 - Add end-to-end file (no image) attachment support in inference, including deep-agent passthrough and LangGraph input normalization/parsing for file parts.
+- The skills and agent.md should be in a diff folder. What l mean is that the container inside should have a filesystem per agent and there per user a folder with the skills he wants and the agent md which is the memory with the user so the agent can edit it. Access on runtime will have only in this folder and inside and can create files there in order no edit of other files or source code edit or anything like that. Input file can land there and the agent will be able to read them with execute tool.
 
 ## Dialogue Bridge
 
 - Add the pgvector in order to have an embedding for each conversation and then we can use this embedding to find the most relevant conversations for a given query, this will be useful for the retrieval process and memory across chats.
-- Add alembic for the database migrations and make sure that we can have a smooth migration process for the users.
 
 ## Agentic UI
 

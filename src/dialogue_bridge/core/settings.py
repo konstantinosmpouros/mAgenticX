@@ -69,6 +69,11 @@ class DatabaseSettings(BaseSettings):
     pool_recycle: int = Field(1800, validation_alias="DATABASE_POOL_RECYCLE")
     pool_size: int = Field(5, validation_alias="DATABASE_POOL_SIZE")
     max_overflow: int = Field(20, validation_alias="DATABASE_MAX_OVERFLOW")
+    # When True (default) the lifespan startup runs ``alembic upgrade head``
+    # before the app accepts traffic. Set False to skip migrations on startup —
+    # useful as an emergency knob if a buggy migration takes down the API and
+    # you need to bring the container up to run a manual ``alembic`` command.
+    run_migrations_on_startup: bool = Field(True, validation_alias="RUN_MIGRATIONS_ON_STARTUP")
 
 
 class SessionSettings(BaseSettings):

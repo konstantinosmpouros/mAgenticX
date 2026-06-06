@@ -217,6 +217,56 @@ erDiagram
 
 That means the bridge is also the persistence layer for agent telemetry needed by the UI.
 
+### 7.3 Schema migrations (Alembic)
+
+Schema is versioned with Alembic. Source of truth:
+
+- ORM models in [`core/database.py`](core/database.py) — the canonical declaration.
+- Migration files in [`migrations/versions/`](migrations/versions/) — the ordered set of changes applied over time.
+- [`alembic.ini`](alembic.ini) — minimal config; the DB URL is **not** stored here, it is read from `core.settings.settings.database.url` at runtime by [`migrations/env.py`](migrations/env.py).
+
+The baseline migration ([`0001_baseline.py`](migrations/versions/0001_baseline.py)) reproduces the schema previously created by `Base.metadata.create_all`. **It is the floor of the migration history — never edit it.** All future schema changes go in new migrations on top.
+
+**Startup wiring:** the lifespan handler in [`main.py`](main.py) runs `alembic upgrade head` before the app accepts traffic. The upgrade runs in a worker thread (via `asyncio.to_thread`) so alembic's env.py — which opens its own async engine — doesn't collide with FastAPI's event loop. `script_location` is anchored to an absolute path so the call works regardless of the process CWD.
+
+**Emergency opt-out:** `RUN_MIGRATIONS_ON_STARTUP=false` skips the upgrade entirely. Use this if a buggy migration is taking the API down and you need to boot the container to apply a fix manually. Default is `True`; never set it to `False` in normal operation.
+
+**Authoring a new migration** after changing a model in `core/database.py`:
+
+```bash
+docker compose -f src/docker-compose.yaml exec dialogue_bridge \
+    alembic revision --autogenerate -m "add_foo_column_to_conversations"
+```
+
+Review the generated file under `src/dialogue_bridge/migrations/versions/`. Autogenerate is good but not perfect — hand-tune for server-side defaults, partial indexes, enum changes, and any data backfill (`op.execute("UPDATE ...")`). Then apply:
+
+```bash
+docker compose -f src/docker-compose.yaml exec dialogue_bridge alembic upgrade head
+```
+
+**Useful commands**:
+
+| Command | Effect |
+| --- | --- |
+| `alembic current` | Print the revision currently applied to the DB. |
+| `alembic history` | Show the chain of migrations. |
+| `alembic upgrade head` | Apply all pending migrations. |
+| `alembic upgrade head --sql` | Print the SQL without executing (offline mode, for review). |
+| `alembic downgrade -1` | Roll back one revision (only for migrations that implement `downgrade()`). |
+| `alembic stamp <revision>` | Mark the DB at a specific revision without running any migration. Used during the production cutover (Phase 3). |
+| `alembic check` | Fail if `core/database.py` has model changes that are not yet captured by a migration. Suitable for CI. |
+
+**Production cutover (one-off):** Dennis already has every table from earlier `create_all` runs but no `alembic_version` row. **Before** deploying the image that runs `alembic upgrade head` on startup, run **once** on Dennis to mark the DB as already at baseline:
+
+```bash
+sudo docker exec -it $(sudo docker ps -qf name=magenticx_dialogue_bridge) \
+    alembic stamp 0001_baseline
+```
+
+This inserts the version row only — no data is touched. From then on every container start runs `alembic upgrade head`, which is a no-op until a real migration is added on top of the baseline.
+
+If you forget to stamp first, the baseline migration will try to `CREATE TABLE` on tables that already exist and the startup will fail. Recovery is to drop the failed transaction state (the partial migration won't have committed) and run `alembic stamp 0001_baseline` before restarting.
+
 ## 8. Agent Catalog and Tool Catalog
 
 The bridge does not hardcode the agent list. It synchronizes from the `agents` service.
@@ -841,7 +891,7 @@ Configured environment there includes:
 
 ## 21. Known Behavioral Notes
 
-- Database schema creation happens automatically on startup through `Base.metadata.create_all`.
+- Database schema migrations run automatically on startup via `alembic upgrade head` in the FastAPI lifespan handler (see §7.3). The legacy `Base.metadata.create_all` path was removed when alembic became the source of truth.
 - Agent manifests are synchronized on demand, not during startup.
 - `get_agent_by_id` currently reads only from the in-memory cache, so a cache miss depends on a prior catalog sync path having primed it.
 - Login works with Vault userpass only in the current code.

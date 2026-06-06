@@ -6,12 +6,13 @@ import sys
 PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
 
+import asyncio
+import subprocess
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
 from core.settings import settings
-from core.database import Base, engine
 from utils.inference_runs import cleanup_orphaned_inference_runs
 from observability import (
     RequestLoggingMiddleware,
@@ -40,12 +41,54 @@ configure_logging()
 logger = get_logger(__name__)
 
 
+def _run_alembic_upgrade() -> None:
+    """Apply pending migrations to bring the DB to ``head``.
+
+    Spawned as a subprocess so alembic gets a clean Python interpreter free
+    of any uvicorn-imported state — calling alembic in-process at module load
+    deadlocks (two worker threads stuck on futex_wait_queue) even though the
+    exact same command exits cleanly via ``docker exec``. Process isolation
+    is the safest fix and matches the standard "migrate before serve"
+    deployment pattern. The subprocess inherits the parent's environment so
+    DATABASE_URL and friends propagate automatically.
+    """
+    result = subprocess.run(
+        ["alembic", "-c", str(PACKAGE_ROOT / "alembic.ini"), "upgrade", "head"],
+        cwd=str(PACKAGE_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.stdout:
+        logger.info("alembic_subprocess_stdout", "Alembic subprocess output", output=result.stdout.strip())
+    if result.stderr:
+        logger.info("alembic_subprocess_stderr", "Alembic subprocess stderr", output=result.stderr.strip())
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"alembic upgrade head failed with exit code {result.returncode}"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize database schema
     logger.info("service_startup", "Dialogue bridge startup initiated")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if settings.database.run_migrations_on_startup:
+        logger.info("database_migrations_started", "Running alembic upgrade head")
+        # asyncio.to_thread keeps the FastAPI event loop responsive while the
+        # subprocess runs. Subprocess isolation is the key — the previous
+        # in-process attempt deadlocked because alembic's env.py spun up its
+        # own asyncio.run inside our worker thread; ``subprocess.run`` is OS-
+        # level and shares no state with the parent loop, so to_thread is
+        # safe here.
+        await asyncio.to_thread(_run_alembic_upgrade)
+        logger.info("database_migrations_completed", "Alembic upgrade head completed")
+    else:
+        # Emergency opt-out — boot without touching the schema. The operator
+        # is expected to apply migrations manually before serving real traffic.
+        logger.warning(
+            "database_migrations_skipped",
+            "RUN_MIGRATIONS_ON_STARTUP=false — skipping alembic upgrade head",
+        )
     await cleanup_orphaned_inference_runs()
     logger.info("database_schema_ready", "Database schema is ready")
     yield

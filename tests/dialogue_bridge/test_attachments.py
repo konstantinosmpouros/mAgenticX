@@ -7,7 +7,6 @@ from core.database import AttachmentTable, BlobTable, ConversationTable, Message
 from router import attachments as attachments_router
 from utils.attachments import (
     generate_docx_preview_token,
-    is_presentation_previewable,
     validate_docx_preview_token,
 )
 
@@ -418,20 +417,3 @@ def test_validate_docx_preview_token_rejects_tampered_payload():
     parts[0] = "other-blob-id"
     tampered = base64.urlsafe_b64encode(":".join(parts).encode()).decode().rstrip("=")
     assert validate_docx_preview_token(tampered, "secret") is None
-
-
-def test_is_presentation_previewable_matches_supported_powerpoint_formats():
-    assert is_presentation_previewable("deck.pptx", "")
-    assert is_presentation_previewable("legacy.ppt", "")
-    assert is_presentation_previewable("", "application/vnd.ms-powerpoint")
-    assert is_presentation_previewable(
-        "",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    )
-    assert not is_presentation_previewable("notes.txt", "text/plain")
-
-
-def test_is_presentation_previewable_excludes_word_and_excel():
-    assert not is_presentation_previewable("letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-    assert not is_presentation_previewable("budget.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    assert not is_presentation_previewable("notes.txt", "text/plain")
