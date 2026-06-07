@@ -79,6 +79,17 @@ export type ToolMetadata = {
 };
 
 
+// One entry in the central skills registry. The agent uses `content` as the
+// SKILL.md body; the UI shows `name` + `description` with click-to-expand for
+// the body. Per-user enabled skills (Phase 2+) live as directories under the
+// agent's per-user filesystem and are addressed by `name` alone.
+export type Skill = {
+    name: string;
+    description: string;
+    content: string;
+};
+
+
 
 // ------------------------------------------------------
 // User Preferences Schemas

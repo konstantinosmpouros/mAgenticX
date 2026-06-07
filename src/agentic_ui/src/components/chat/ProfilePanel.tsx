@@ -14,6 +14,7 @@ import {
     LogOut,
     MoonStar,
     Palette,
+    RefreshCw,
     ShieldCheck,
     Sparkles,
     User,
@@ -46,7 +47,7 @@ import {
     type RealtimeVoice,
     type VoiceModeLanguage,
 } from "@/lib/consts";
-import { ConversationShareListItem, ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
+import { ConversationShareListItem, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
 import { generateReadAloudPreviewAudio } from "@/lib/api";
 import {
     SHORTCUTS,
@@ -64,6 +65,8 @@ type ProfilePanelProps = {
     onLogout: () => void;
     user: UserProfile | null;
     availableTools: (ToolMetadata & { enabled?: boolean })[];
+    availableSkills: Skill[];
+    onRefreshSkills?: () => Promise<void>;
     userPreferences: UserPreferences;
     archivedConversations: ConversationSummary[];
     archivedConversationsLoading?: boolean;
@@ -197,12 +200,16 @@ const InfoCard = ({
     description,
     children,
     className,
+    headerAction,
 }: {
     eyebrow?: string;
     title: string;
     description?: string;
     children: ReactNode;
     className?: string;
+    // Optional element rendered to the right of the title row — currently
+    // used by the Skills tab to slot a "force refresh / bypass Redis" button.
+    headerAction?: ReactNode;
 }) => (
     <section className={cn("space-y-4", className)}>
         <div className="space-y-1.5">
@@ -211,7 +218,10 @@ const InfoCard = ({
                     {eyebrow}
                 </p>
             ) : null}
-            <h3 className="text-base font-semibold text-foreground">{title}</h3>
+            <div className="flex items-start justify-between gap-3">
+                <h3 className="text-base font-semibold text-foreground">{title}</h3>
+                {headerAction}
+            </div>
             {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
         </div>
         <div className="mt-5">{children}</div>
@@ -296,6 +306,8 @@ export default function ProfilePanel({
     onLogout,
     user,
     availableTools,
+    availableSkills,
+    onRefreshSkills,
     userPreferences,
     archivedConversations,
     archivedConversationsLoading = false,
@@ -331,6 +343,35 @@ export default function ProfilePanel({
     const [voiceSelectorOpen, setVoiceSelectorOpen] = useState(false);
     const [previewLoadingVoice, setPreviewLoadingVoice] = useState<RealtimeVoice | null>(null);
     const [previewPlayingVoice, setPreviewPlayingVoice] = useState<RealtimeVoice | null>(null);
+    // Skills flow in as the ``availableSkills`` prop, fetched at login /
+    // page refresh and cached in the IndexedDB UI snapshot the same way as
+    // ``availableTools`` and ``agents``. The refresh button below uses
+    // ``onRefreshSkills`` which goes through the bridge with
+    // ``bypass_redis=true`` — that path re-hits the agents service and
+    // upserts the bridge's Redis cache with the fresh response.
+    const [expandedSkills, setExpandedSkills] = useState<Record<string, boolean>>({});
+    const [skillsRefreshing, setSkillsRefreshing] = useState(false);
+
+    // Minimum visible spin duration. The bypass-Redis path is fast enough
+    // (~50-150ms on localhost) that without a floor the spinner can flash for
+    // a single frame and feel like "nothing happened." 600ms reads as a
+    // deliberate refresh without dragging.
+    const MIN_REFRESH_SPIN_MS = 600;
+
+    const handleRefreshSkills = useCallback(async () => {
+        if (!onRefreshSkills || skillsRefreshing) return;
+        setSkillsRefreshing(true);
+        const minSpin = new Promise((resolve) => setTimeout(resolve, MIN_REFRESH_SPIN_MS));
+        try {
+            // Run the actual refresh and the minimum-duration timer in parallel
+            // so the spin always has a chance to be perceived. Promise.all
+            // resolves at the slower of the two; if the network is slow, the
+            // spin keeps going until the network finishes, no extra wait.
+            await Promise.all([onRefreshSkills(), minSpin]);
+        } finally {
+            setSkillsRefreshing(false);
+        }
+    }, [onRefreshSkills, skillsRefreshing]);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const previewAudioUrlRef = useRef<string | null>(null);
     const { theme, setTheme } = useTheme();
@@ -489,6 +530,7 @@ export default function ProfilePanel({
         { id: "appearance", label: "Personalization", hint: "Theme and defaults" },
         { id: "archived", label: "Data Controls", hint: "History and archive" },
         { id: "mcp", label: "MCP Servers", hint: "MCP tools and servers" },
+        { id: "skills", label: "Skills", hint: "Available skill library" },
         { id: "shortcuts", label: "Shortcuts", hint: "Keyboard commands" },
         { id: "help", label: "Help", hint: "Docs and support" },
     ] as const;
@@ -512,6 +554,7 @@ export default function ProfilePanel({
         });
     }, [availableTools, normalizedActiveTab]);
 
+
     const sectionMeta: Record<string, { eyebrow?: string; title: string; description: string }> = {
         profile: {
             title: "Account",
@@ -528,6 +571,10 @@ export default function ProfilePanel({
         mcp: {
             title: "MCP Servers",
             description: "Choose which MCP-powered tools stay available inside conversations.",
+        },
+        skills: {
+            title: "Skills",
+            description: "Browse the central library of skills available to deep agents.",
         },
         shortcuts: {
             title: "Keyboard Shortcuts",
@@ -766,6 +813,8 @@ export default function ProfilePanel({
                                                     <ShieldCheck size={iconSize} />
                                                 ) : item.id === "mcp" ? (
                                                     <McpIcon size={mobileProfileNav ? 17 : 20} variant={mcpVariant} />
+                                                ) : item.id === "skills" ? (
+                                                    <Sparkles size={iconSize} />
                                                 ) : item.id === "shortcuts" ? (
                                                     <Keyboard size={iconSize} />
                                                 ) : (
@@ -1740,6 +1789,91 @@ export default function ProfilePanel({
                                                             );
                                                         })
                                                     )}
+                                                </div>
+                                            </InfoCard>
+                                        </div>
+                                    ) : null}
+
+                                    {normalizedActiveTab === "skills" ? (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <InfoCard
+                                                eyebrow="Library"
+                                                title="Available skills"
+                                                description="Skills are markdown playbooks that deep agents load on demand. Click an entry to read the full instructions."
+                                                headerAction={
+                                                    onRefreshSkills ? (
+                                                        <Tooltip delayDuration={0}>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onMouseDown={(event) => event.preventDefault()}
+                                                                    onClick={() => void handleRefreshSkills()}
+                                                                    disabled={skillsRefreshing}
+                                                                    aria-label="Refresh skills"
+                                                                    className="
+                                                                        h-8 w-8 shrink-0 text-muted-foreground
+                                                                        hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                                                                        active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                                                                        focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                                                                        focus:ring-0 focus-visible:ring-0 transition-colors
+                                                                        disabled:opacity-100 disabled:hover:bg-transparent
+                                                                    "
+                                                                >
+                                                                    <RefreshCw
+                                                                        size={16}
+                                                                        className={cn(skillsRefreshing && "animate-spin")}
+                                                                    />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent side="top" align="center">
+                                                                <p>{skillsRefreshing ? "Refreshing…" : "Refresh"}</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    ) : undefined
+                                                }
+                                            >
+                                                <div className="flex flex-col gap-3">
+                                                    {availableSkills.length === 0 ? (
+                                                        <p className="text-sm text-muted-foreground">No skills registered yet.</p>
+                                                    ) : null}
+                                                    {availableSkills.map((skill) => {
+                                                        const isExpanded = Boolean(expandedSkills[skill.name]);
+                                                        return (
+                                                            <SoftPanel key={skill.name} className="p-4">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setExpandedSkills((prev) => ({
+                                                                            ...prev,
+                                                                            [skill.name]: !prev[skill.name],
+                                                                        }))
+                                                                    }
+                                                                    className="flex w-full items-start justify-between gap-3 text-left"
+                                                                    aria-expanded={isExpanded}
+                                                                >
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <p className="text-sm font-semibold text-foreground">{skill.name}</p>
+                                                                        <p className="text-xs text-muted-foreground">
+                                                                            {skill.description || "No description provided."}
+                                                                        </p>
+                                                                    </div>
+                                                                    <ChevronDown
+                                                                        className={cn(
+                                                                            "mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                                                                            isExpanded && "rotate-180",
+                                                                        )}
+                                                                    />
+                                                                </button>
+                                                                {isExpanded ? (
+                                                                    <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
+                                                                        {skill.content}
+                                                                    </pre>
+                                                                ) : null}
+                                                            </SoftPanel>
+                                                        );
+                                                    })}
                                                 </div>
                                             </InfoCard>
                                         </div>

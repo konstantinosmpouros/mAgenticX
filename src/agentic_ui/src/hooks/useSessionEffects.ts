@@ -1,11 +1,12 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
-import type { Agent, ConversationDetail, ConversationSummary, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
 import { loadSession, clearSession, updateSession, saveSession } from '@/lib/authStorage';
 import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
 import {
   getAgents,
   getConversationDetail,
   getConversations,
+  getSkills,
   getTools,
   refreshSession,
   getUserPreferences,
@@ -35,6 +36,7 @@ export function useAuthRehydrateEffect(params: {
   setAuthResolved?: (v: boolean) => void;
   setAgents: (v: any) => void;
   setAvailableTools?: (v: ToolMetadata[]) => void;
+  setAvailableSkills?: (v: Skill[]) => void;
   setUserPreferences?: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
   setConversationsLoading?: (v: boolean) => void;
@@ -54,6 +56,7 @@ export function useAuthRehydrateEffect(params: {
     setAuthResolved,
     setAgents,
     setAvailableTools,
+    setAvailableSkills,
     setUserPreferences,
     setConversations,
     setConversationsLoading,
@@ -83,6 +86,7 @@ export function useAuthRehydrateEffect(params: {
           setUserProfile(null);
           setAgents([]);
           setAvailableTools?.([]);
+          setAvailableSkills?.([]);
           setUserPreferences?.(null);
           setConversations([]);
           setConversationsLoading?.(false);
@@ -111,6 +115,9 @@ export function useAuthRehydrateEffect(params: {
 
         let hasSnapshotAgents = false;
         let needsTools = Boolean(setAvailableTools);
+        // Skills always refetched from the bridge on rehydrate — they are not
+        // persisted to IndexedDB; their cache lives in Redis with a TTL.
+        const needsSkills = Boolean(setAvailableSkills);
         let needsPreferences = Boolean(setUserPreferences);
         let needsConversations = true;
         let conversationId: string | null =
@@ -133,6 +140,9 @@ export function useAuthRehydrateEffect(params: {
             setAgents(snapshot.agents ?? []);
             hasSnapshotAgents = Boolean(snapshot.agents && snapshot.agents.length > 0);
             if (setAvailableTools) setAvailableTools(snapshot.availableTools ?? []);
+            // Skills get the agents-style flow: read snapshot for instant
+            // paint, always refetch in parallel below to keep the list fresh.
+            if (setAvailableSkills) setAvailableSkills(snapshot.availableSkills ?? []);
             if (setUserPreferences) setUserPreferences(snapshot.userPreferences ?? null);
             setConversations(snapshot.conversations ?? []);
 
@@ -170,6 +180,17 @@ export function useAuthRehydrateEffect(params: {
               .catch((error) => {
                 console.error('Failed to fetch tools on rehydrate', error);
                 setAvailableTools?.([]);
+              }),
+          );
+        }
+
+        if (needsSkills) {
+          requests.push(
+            getSkills()
+              .then((skills) => setAvailableSkills?.(skills))
+              .catch((error) => {
+                console.error('Failed to fetch skills on rehydrate', error);
+                setAvailableSkills?.([]);
               }),
           );
         }
@@ -227,6 +248,7 @@ export function useAuthRehydrateEffect(params: {
         setUserProfile(null);
         setAgents([]);
         setAvailableTools?.([]);
+        setAvailableSkills?.([]);
         setUserPreferences?.(null);
         setConversations([]);
         setConversationsLoading?.(false);
@@ -251,6 +273,7 @@ export function useUISnapshotPersistence(params: {
   activeProfileTab: string;
   currentConversationId: string | null;
   availableTools: ToolMetadata[];
+  availableSkills: Skill[];
   agents: Agent[];
   conversations: ConversationSummary[];
   userPreferences: UserPreferences | null;
@@ -263,21 +286,26 @@ export function useUISnapshotPersistence(params: {
     activeProfileTab,
     currentConversationId,
     availableTools,
+    availableSkills,
     agents,
     conversations,
     userPreferences,
   } = params;
 
+  // Skills follow the same snapshot-then-overwrite pattern as agents — the
+  // IndexedDB copy is just a paint accelerator on refresh; the always-fetch
+  // path overwrites it with whatever the bridge returns.
   const uiSnapshot = useMemo<UISnapshotSerializable | null>(() => {
     if (!userId) return null;
     return {
-      version: 2,
+      version: 3,
       selectedAgent,
       isPrivateMode,
       sidebarOpen,
       activeProfileTab,
       lastConversationId: currentConversationId,
       availableTools,
+      availableSkills,
       agents,
       conversations,
       userPreferences,
@@ -290,6 +318,7 @@ export function useUISnapshotPersistence(params: {
     activeProfileTab,
     currentConversationId,
     availableTools,
+    availableSkills,
     agents,
     conversations,
     userPreferences,

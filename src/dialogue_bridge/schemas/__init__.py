@@ -103,6 +103,19 @@ class ToolManifest(BaseModel):
     parameter_count: int = Field(0, ge=0, validation_alias="parameter_count")
 
 
+class Skill(BaseModel):
+    """One entry in the central skills registry.
+
+    Mirrors :class:`agents.schemas.SkillManifest` — the bridge proxies the
+    agents service ``GET /skills`` and surfaces the result to the agentic UI
+    under this name.
+    """
+
+    name: str
+    description: str = ""
+    content: str = ""
+
+
 
 # -------------------------------------------
 # User preferences DTO
@@ -723,6 +736,7 @@ __all__ = [
     "AgentFull",
     "AgentPublic",
     "ToolManifest",
+    "Skill",
     "ToolPreference",
     "ToolsPreferences",
     "UserPreferences",

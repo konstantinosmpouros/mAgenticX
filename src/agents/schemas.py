@@ -93,6 +93,19 @@ class ToolManifest(BaseModel):
     parameter_count: int = 0
 
 
+class SkillManifest(BaseModel):
+    """One entry in the central skills registry (``src/agents/skills_registry/``).
+
+    ``content`` is the markdown body that follows the frontmatter — agents
+    pull this in via the deepagents ``SkillsMiddleware`` when the user has
+    enabled the skill for that (user, agent) pair.
+    """
+
+    name: str
+    description: str = ""
+    content: str = ""
+
+
 @dataclass(frozen=True)
 class AgentDefinition:
     slug: str

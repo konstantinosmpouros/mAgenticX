@@ -13,6 +13,7 @@ at runtime; the URL is rewritten from ``postgresql+asyncpg://...`` to
 from __future__ import annotations
 
 from logging.config import fileConfig
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from alembic import context
 from sqlalchemy import create_engine, pool
@@ -37,9 +38,20 @@ def _sync_database_url() -> str:
     psycopg2 understands the same DSN, so the rewrite is purely a driver
     selection. The application's asyncpg engine in ``core.database`` is
     untouched.
+
+    The ``ssl`` query parameter (asyncpg-specific, e.g. ``?ssl=verify-full``)
+    is stripped from the URL because psycopg2 rejects it as an "invalid
+    connection option". SSL for psycopg2 is supplied via ``_sync_connect_args``
+    using the libpq-native ``sslmode`` / ``sslrootcert`` keywords instead.
     """
-    url = settings.database.url.get_secret_value()
-    return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    url = settings.database.url.get_secret_value().replace(
+        "postgresql+asyncpg://", "postgresql+psycopg2://", 1
+    )
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+    filtered = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "ssl"]
+    return urlunsplit(parts._replace(query=urlencode(filtered)))
 
 
 def _sync_connect_args() -> dict:

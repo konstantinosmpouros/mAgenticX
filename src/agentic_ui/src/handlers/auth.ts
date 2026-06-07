@@ -1,5 +1,5 @@
-import type { ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
-import { authenticate, getAgents, getConversations, getTools, getUserPreferences, logoutSession } from '@/lib/api';
+import type { Skill, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
+import { authenticate, getAgents, getConversations, getSkills, getTools, getUserPreferences, logoutSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
 
@@ -10,6 +10,7 @@ type AuthCtx = {
   setUserProfile: (v: UserProfile | null) => void;
   setAgents: (v: any) => void;
   setAvailableTools: (v: ToolMetadata[]) => void;
+  setAvailableSkills: (v: Skill[]) => void;
   setUserPreferences: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
   setConversationsLoading: (v: boolean) => void;
@@ -33,6 +34,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setAgents,
     setConversations,
     setAvailableTools,
+    setAvailableSkills,
     setUserPreferences,
     setConversationsLoading,
     setLoginUsername,
@@ -67,6 +69,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
           // Fetch all bootstrap data in parallel; each result can fail independently without blocking login.
           const agentsPromise = getAgents();
           const toolsPromise = getTools();
+          const skillsPromise = getSkills();
           const preferencesPromise = getUserPreferences(user.id);
           const conversationsPromise = getConversations(user.id);
 
@@ -85,6 +88,14 @@ export function createAuthHandlers(ctx: AuthCtx) {
           } catch (e) {
             console.error("Failed to fetch tools after login:", e);
             setAvailableTools([]);
+          }
+
+          try {
+            const skillsList = await skillsPromise;
+            setAvailableSkills(skillsList);
+          } catch (e) {
+            console.error("Failed to fetch skills after login:", e);
+            setAvailableSkills([]);
           }
 
           try {
@@ -143,6 +154,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
       setLoginPassword?.("");
       setAgents([]);
       setAvailableTools([]);
+      setAvailableSkills([]);
       setConversations([]);
       setConversationsLoading(false);
       // Reuse the shared chat reset path so logout clears the same transient state as "new chat".

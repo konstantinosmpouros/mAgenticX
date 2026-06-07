@@ -46,12 +46,14 @@ from schemas import (
     TranscriptionResponse,
     AgentManifest,
     ToolManifest,
+    SkillManifest,
 )
 from utils import (
     generate_title,
     generate_suggestions,
     generate_read_aloud_audio,
     list_mcp_tools,
+    list_registry_skills,
     MCPToolsClientError,
     get_cached_tool_manifests,
     mcp_session_context,
@@ -244,6 +246,22 @@ async def get_available_tools() -> List[ToolManifest]:
     manifests = get_cached_tool_manifests()
     logger.info("tools_cache_filled", "Refreshed tool catalog", count=len(manifests))
     return manifests
+
+
+
+# ------------------------------------------------------------------
+# Skills Registry Endpoint
+# ------------------------------------------------------------------
+@app.get("/skills", response_model=List[SkillManifest], status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
+async def get_available_skills() -> List[SkillManifest]:
+    """Return the central skills registry (read-only catalogue).
+
+    The bridge proxies this and caches the result in Redis with a short TTL,
+    so this scan only runs on cache miss or registry change.
+    """
+    skills = list_registry_skills()
+    logger.info("skills_registry_listed", "Served skills registry", count=len(skills))
+    return skills
 
 
 

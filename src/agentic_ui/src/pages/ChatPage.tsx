@@ -14,6 +14,7 @@ import type {
   ConversationShareListItem,
   ConversationShareMode,
   SharedConversationDetail,
+  Skill,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
@@ -64,7 +65,7 @@ import {
   createRetryHandlers,
 } from "@/runtime";
 import { loadSession } from "@/lib/authStorage";
-import { getConversationDetail, getSuggestions } from "@/lib/api";
+import { getConversationDetail, getSkills, getSuggestions } from "@/lib/api";
 
 // Chat Interface component
 import ChatHeader from "@/components/chat/ChatHeader";
@@ -134,6 +135,7 @@ export function ChatInterface({
   // Main variables use for storing info from the db and present it constantly
   const [agents, setAgents] = useState<Agent[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolMetadata[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
   const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
@@ -290,10 +292,30 @@ export function ChatInterface({
     activeProfileTab,
     currentConversationId: currentConversation?.id ?? null,
     availableTools,
+    availableSkills,
     agents,
     conversations,
     userPreferences,
   });
+
+  // Manual refresh from the Skills tab — hits the bridge with bypass_redis=true,
+  // which refetches from the agents service and upserts the bridge's Redis
+  // cache. State updates immediately so the UI reflects the new list, and the
+  // snapshot is overwritten next time requestPersist fires.
+  const handleRefreshSkills = useCallback(async () => {
+    try {
+      const fresh = await getSkills({ bypassRedis: true });
+      setAvailableSkills(fresh);
+      requestPersist();
+    } catch (error) {
+      console.error("Failed to refresh skills:", error);
+      toastWrapper({
+        title: "Couldn't refresh skills",
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+        variant: "destructive",
+      });
+    }
+  }, [requestPersist]);
 
   const {
     isSearchOpen,
@@ -763,6 +785,7 @@ export function ChatInterface({
     setAuthResolved,
     setAgents,
     setAvailableTools,
+    setAvailableSkills,
     setUserPreferences,
     setConversations,
     setConversationsLoading,
@@ -1097,6 +1120,7 @@ export function ChatInterface({
     setAgents,
     setConversationsLoading,
     setAvailableTools,
+    setAvailableSkills,
     setUserPreferences,
     setConversations,
     setShowUserProfile,
@@ -1482,6 +1506,8 @@ export function ChatInterface({
                 onLogout={handleLogout}
                 user={userProfile}
                 availableTools={toolsWithStatus}
+                availableSkills={availableSkills}
+                onRefreshSkills={handleRefreshSkills}
                 userPreferences={resolvedPreferences}
                 archivedConversations={archivedConversations}
                 archivedConversationsLoading={archivedConvIsLoading}

@@ -35,6 +35,7 @@ from router import (
     speech_router,
     voice_router,
     search_router,
+    skills_router,
 )
 
 configure_logging()
@@ -184,4 +185,9 @@ app.include_router(
     search_router,
     prefix=f"/v1/search",
     tags=["Search"],
+)
+app.include_router(
+    skills_router,
+    prefix=f"/v1/skills",
+    tags=["Skills"],
 )

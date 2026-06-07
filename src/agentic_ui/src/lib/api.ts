@@ -26,6 +26,7 @@ import type {
   InferenceRunEvent,
   InferenceStartRequest,
   InferenceStartResponse,
+  Skill,
   ToolMetadata,
   ToolPreference,
   WorkspaceSearchResult,
@@ -61,6 +62,7 @@ const SPEECH_BASE_PATH = `${API_BASE_PATH}/speech`;
 const VOICE_BASE_PATH = `${API_BASE_PATH}/voice`;
 const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;
 const SEARCH_BASE_PATH = `${API_BASE_PATH}/search`;
+const SKILLS_BASE_PATH = `${API_BASE_PATH}/skills`;
 
 
 
@@ -179,6 +181,36 @@ export async function getAgents(): Promise<Agent[]> {
     icon: mapIcon(a.icon),
     version: a.version,
     isActive: Boolean((a as any).isActive ?? (a as any).is_active ?? true),
+  }));
+}
+
+
+// Fetch the central skills registry. Used by the bootstrap path
+// (auth handlers + auth rehydrate hook) the same way as ``getAgents`` and
+// ``getTools`` — fetched on every page refresh, with an IndexedDB snapshot
+// for instant paint while the request is in flight. Pass ``{ bypassRedis:
+// true }`` to force the bridge to skip its Redis cache and re-fetch from the
+// agents service — that path also upserts the cache so the next normal
+// request benefits from the new data. Only the manual refresh button uses
+// the bypass; everything else (login, page refresh) leaves it false so the
+// cache absorbs the load.
+export async function getSkills(options?: { bypassRedis?: boolean }): Promise<Skill[]> {
+  const url = options?.bypassRedis ? `${SKILLS_BASE_PATH}?bypass_redis=true` : SKILLS_BASE_PATH;
+  const res = await fetch(url, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch skills: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  return data.map((skill: any) => ({
+    name: typeof skill?.name === "string" ? skill.name : "unknown-skill",
+    description: typeof skill?.description === "string" ? skill.description : "",
+    content: typeof skill?.content === "string" ? skill.content : "",
   }));
 }
 
