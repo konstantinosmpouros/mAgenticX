@@ -20,6 +20,7 @@ import type {
   UserPreferences } from "@/lib/types";
 import type { PlanSnapshot } from "@/lib/agui";
 import { usePreferencesHandlers } from "@/handlers/preferences";
+import { useSkills } from "@/hooks/useSkills";
 import {
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
@@ -381,6 +382,17 @@ export function ChatInterface({
     toast: toastWrapper,
     persistUIState: requestPersist,
   });
+
+  // Per-(user, agent) skill selection (Phase 2 Skills feature). The hook
+  // owns its in-memory state; the bridge endpoints write through to the
+  // agents service's per-user filesystem (which IS the source of truth).
+  const {
+    selections: skillSelections,
+    isLoading: isAgentSkillLoading,
+    ensureLoaded: loadAgentSkills,
+    toggleSkill: toggleUserAgentSkill,
+    isToggling: isSkillToggling,
+  } = useSkills({ userId, toast: toastWrapper });
 
   // Reset branch selections on conversation change
   useEffect(() => {
@@ -1508,6 +1520,12 @@ export function ChatInterface({
                 availableTools={toolsWithStatus}
                 availableSkills={availableSkills}
                 onRefreshSkills={handleRefreshSkills}
+                agents={agents}
+                skillSelections={skillSelections}
+                onLoadAgentSkills={loadAgentSkills}
+                onToggleUserAgentSkill={toggleUserAgentSkill}
+                isAgentSkillLoading={isAgentSkillLoading}
+                isSkillToggling={isSkillToggling}
                 userPreferences={resolvedPreferences}
                 archivedConversations={archivedConversations}
                 archivedConversationsLoading={archivedConvIsLoading}

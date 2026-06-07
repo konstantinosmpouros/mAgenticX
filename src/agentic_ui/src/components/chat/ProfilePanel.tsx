@@ -47,7 +47,7 @@ import {
     type RealtimeVoice,
     type VoiceModeLanguage,
 } from "@/lib/consts";
-import { ConversationShareListItem, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile } from "@/lib/types";
+import { Agent, ConversationShareListItem, ConversationSummary, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile } from "@/lib/types";
 import { generateReadAloudPreviewAudio } from "@/lib/api";
 import {
     SHORTCUTS,
@@ -67,6 +67,17 @@ type ProfilePanelProps = {
     availableTools: (ToolMetadata & { enabled?: boolean })[];
     availableSkills: Skill[];
     onRefreshSkills?: () => Promise<void>;
+    // Manage-per-agent skill selection (Phase 2 Skills feature). The Skills
+    // tab renders a "Manage per agent" section for every agent whose
+    // ``type === "deep agent"``; ``skillSelections`` is the per-agent enabled
+    // set keyed by ``agentId``. The hook lazy-loads the selection when the
+    // user expands an agent card via ``onLoadAgentSkills``.
+    agents?: Agent[];
+    skillSelections?: UserAgentSkillSelection;
+    onLoadAgentSkills?: (agentId: string) => Promise<void>;
+    onToggleUserAgentSkill?: (agentId: string, skillName: string) => Promise<void>;
+    isAgentSkillLoading?: (agentId: string) => boolean;
+    isSkillToggling?: (agentId: string, skillName: string) => boolean;
     userPreferences: UserPreferences;
     archivedConversations: ConversationSummary[];
     archivedConversationsLoading?: boolean;
@@ -308,6 +319,12 @@ export default function ProfilePanel({
     availableTools,
     availableSkills,
     onRefreshSkills,
+    agents,
+    skillSelections,
+    onLoadAgentSkills,
+    onToggleUserAgentSkill,
+    isAgentSkillLoading,
+    isSkillToggling,
     userPreferences,
     archivedConversations,
     archivedConversationsLoading = false,
@@ -351,6 +368,30 @@ export default function ProfilePanel({
     // upserts the bridge's Redis cache with the fresh response.
     const [expandedSkills, setExpandedSkills] = useState<Record<string, boolean>>({});
     const [skillsRefreshing, setSkillsRefreshing] = useState(false);
+    // Manage-per-agent UI: which deep-agent cards are expanded. Loading the
+    // selection set is deferred to the first expansion so we don't fan out
+    // N concurrent GETs on Skills-tab open.
+    const [expandedAgentSkills, setExpandedAgentSkills] = useState<Record<string, boolean>>({});
+
+    const deepAgents = useMemo(
+        () => (agents ?? []).filter((agent) => agent.type === "deep agent" && agent.isActive),
+        [agents]
+    );
+
+    const handleToggleAgentSkillsCard = useCallback(
+        (agentId: string) => {
+            setExpandedAgentSkills((prev) => {
+                const isOpening = !prev[agentId];
+                if (isOpening && onLoadAgentSkills) {
+                    // Fire-and-forget — the hook tracks per-agent loading state and
+                    // the UI shows a placeholder while the request is in flight.
+                    void onLoadAgentSkills(agentId);
+                }
+                return { ...prev, [agentId]: !prev[agentId] };
+            });
+        },
+        [onLoadAgentSkills]
+    );
 
     // Minimum visible spin duration. The bypass-Redis path is fast enough
     // (~50-150ms on localhost) that without a floor the spinner can flash for
@@ -1876,6 +1917,106 @@ export default function ProfilePanel({
                                                     })}
                                                 </div>
                                             </InfoCard>
+
+                                            {deepAgents.length > 0 ? (
+                                                <InfoCard
+                                                    eyebrow="Manage"
+                                                    title="Skills per agent"
+                                                    description="Enable or disable skills for each deep agent. Toggles take effect on the next conversation — the agent only sees the skills you've enabled here."
+                                                >
+                                                    <div className="flex flex-col gap-3">
+                                                        {deepAgents.map((agent) => {
+                                                            const isExpanded = Boolean(expandedAgentSkills[agent.id]);
+                                                            const enabledSet = new Set(skillSelections?.[agent.id] ?? []);
+                                                            const loading = isAgentSkillLoading?.(agent.id) ?? false;
+                                                            const AgentIcon = agent.icon;
+                                                            return (
+                                                                <SoftPanel key={agent.id} className="p-4">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleToggleAgentSkillsCard(agent.id)}
+                                                                        className="flex w-full items-start justify-between gap-3 text-left"
+                                                                        aria-expanded={isExpanded}
+                                                                    >
+                                                                        <div className="flex items-start gap-3">
+                                                                            <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+                                                                                <AgentIcon className="h-4 w-4" aria-hidden />
+                                                                            </span>
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <p className="text-sm font-semibold text-foreground">{agent.name}</p>
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    {enabledSet.size === 0
+                                                                                        ? "No skills enabled."
+                                                                                        : `${enabledSet.size} skill${enabledSet.size === 1 ? "" : "s"} enabled.`}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <ChevronDown
+                                                                            className={cn(
+                                                                                "mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                                                                                isExpanded && "rotate-180",
+                                                                            )}
+                                                                        />
+                                                                    </button>
+                                                                    {isExpanded ? (
+                                                                        <div className="mt-4 space-y-2">
+                                                                            {loading && enabledSet.size === 0 ? (
+                                                                                <p className="text-xs text-muted-foreground">Loading…</p>
+                                                                            ) : null}
+                                                                            {availableSkills.length === 0 ? (
+                                                                                <p className="text-xs text-muted-foreground">
+                                                                                    No skills registered yet — nothing to enable.
+                                                                                </p>
+                                                                            ) : null}
+                                                                            {availableSkills.map((skill) => {
+                                                                                const enabled = enabledSet.has(skill.name);
+                                                                                const toggling = isSkillToggling?.(agent.id, skill.name) ?? false;
+                                                                                return (
+                                                                                    <div
+                                                                                        key={skill.name}
+                                                                                        className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2"
+                                                                                    >
+                                                                                        <div className="flex flex-col gap-0.5 min-w-0">
+                                                                                            <p className="truncate text-sm font-medium text-foreground">
+                                                                                                {skill.name}
+                                                                                            </p>
+                                                                                            <p className="line-clamp-2 text-[0.72rem] text-muted-foreground">
+                                                                                                {skill.description || "No description provided."}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            role="switch"
+                                                                                            aria-checked={enabled}
+                                                                                            aria-label={`${enabled ? "Disable" : "Enable"} ${skill.name} for ${agent.name}`}
+                                                                                            disabled={toggling || !onToggleUserAgentSkill}
+                                                                                            onClick={() => onToggleUserAgentSkill?.(agent.id, skill.name)}
+                                                                                            className={cn(
+                                                                                                "relative mt-1 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors",
+                                                                                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                                                                                "disabled:cursor-wait disabled:opacity-70",
+                                                                                                enabled ? "bg-primary" : "bg-muted",
+                                                                                            )}
+                                                                                        >
+                                                                                            <span
+                                                                                                aria-hidden
+                                                                                                className={cn(
+                                                                                                    "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform",
+                                                                                                    enabled ? "translate-x-4" : "translate-x-0.5",
+                                                                                                )}
+                                                                                            />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ) : null}
+                                                                </SoftPanel>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </InfoCard>
+                                            ) : null}
                                         </div>
                                     ) : null}
 

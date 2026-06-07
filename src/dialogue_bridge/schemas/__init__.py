@@ -65,6 +65,7 @@ class AgentFull(BaseModel):
     description: str
     icon: str
     version: Optional[str] = None
+    type: str = "langgraph agent"
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -77,6 +78,7 @@ class AgentPublic(BaseModel):
     description: str
     icon: str
     version: Optional[str] = None
+    type: str = "langgraph agent"
     isActive: bool = Field(..., validation_alias="is_active")
 
 

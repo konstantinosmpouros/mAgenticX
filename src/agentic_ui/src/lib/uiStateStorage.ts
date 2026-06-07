@@ -16,6 +16,7 @@ type AgentSnapshot = {
   description: string;
   iconName?: string | null;
   version?: string;
+  type?: string;
   isActive: boolean;
 };
 
@@ -76,6 +77,7 @@ const serializeAgentForStorage = (agent?: Agent | null): AgentSnapshot | null =>
     description: agent.description,
     iconName,
     version: agent.version,
+    type: agent.type,
     isActive: agent.isActive,
   };
 };

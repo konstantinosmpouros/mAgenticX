@@ -165,6 +165,8 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
             continue
         manifest_ids.add(str(agent_id))
 
+        agent_type = manifest.get("type") or "langgraph agent"
+
         # Upsert each manifest to keep DB rows aligned with the remote service.
         stmt = (
             insert(AgentTable)
@@ -175,6 +177,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
                 description=manifest.get("description") or "",
                 icon=manifest.get("icon") or "",
                 version=manifest.get("version"),
+                type=agent_type,
                 is_active=True,
             )
             .on_conflict_do_update(
@@ -185,6 +188,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
                     "description": manifest.get("description") or "",
                     "icon": manifest.get("icon") or "",
                     "version": manifest.get("version"),
+                    "type": agent_type,
                     "is_active": True,
                     "updated_at": func.now(),  # type: ignore[name-defined]
                 },

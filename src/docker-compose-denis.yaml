@@ -67,6 +67,7 @@ services:
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
       - TRUSTED_PROXY_SECRET_FILE=/run/secrets/trusted_proxy_secret
+      - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
     secrets:
       - openai_api_key
       - trusted_proxy_secret
@@ -78,6 +79,7 @@ services:
       - /opt/magenticx/agents/tls/tls.key:/app/tls/tls.key:ro
       - /opt/magenticx/agents/tls/tls.crt:/app/tls/tls.crt:ro
       - /opt/magenticx/agents/tls/ca.crt:/app/tls/ca.crt:ro
+      - agents_filesystem:/var/agents/filesystem
     networks:
       - backend
       - frontend
@@ -252,5 +254,7 @@ volumes:
       device: /opt/magenticx/vectorstores/chroma_db_openai
 
   chat_convs:
+
+  agents_filesystem:
 
 

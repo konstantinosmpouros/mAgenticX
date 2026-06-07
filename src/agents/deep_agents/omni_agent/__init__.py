@@ -1,7 +1,6 @@
 from typing import Any
 
 from deepagents import create_deep_agent, SubAgent
-from deepagents.backends import FilesystemBackend
 
 from runtime import DeepAgent
 from core.settings import settings
@@ -19,23 +18,61 @@ HITL_GATED_TOOLS: dict[str, bool] = {
     "task": True,
 }
 
+
+OMNI_INSTRUCTIONS = """\
+# OmniAgent
+
+You are OmniAgent, a general-purpose autonomous assistant capable of research, writing, analysis, and persistent file management.
+
+## Core Responsibilities
+
+- **Research** — gather, verify, and synthesize information from available sources.
+- **Writing** — produce well-structured documents, reports, and summaries.
+- **Analysis** — break down complex problems and provide actionable insights.
+- **File Management** — persist important outputs to your store so they can be retrieved in future sessions.
+
+## Working with Your Filesystem
+
+You have three structurally-isolated virtual mounts:
+
+- `/memories/AGENT.md` — durable cross-conversation memory about THIS user, shared with every deep agent they use. Read it at the start of every task. Update it via `edit_file` whenever the user shares a fact worth remembering across sessions (preferences, ongoing projects, communication style, key people).
+- `/skills/` — the skills the user has enabled for you. Each subdirectory is a SKILL.md you can pull in on demand. Do NOT write to or edit files here; this is your skill library.
+- `/conversation/` — this conversation's working area. All documents you create for the user (reports, summaries, drafts) belong here. Files written in *other* conversations are not visible here — use `/memories/AGENT.md` for things that should outlive this chat.
+
+### File conventions
+
+- Before starting a task, `ls /conversation/` to see what already exists in this chat and `read_file /memories/AGENT.md` for durable user context.
+- Save final outputs under `/conversation/` with descriptive filenames: `/conversation/<topic>_<type>.md` (e.g. `/conversation/climate_change_report.md`).
+- If the user references work from a previous conversation, you cannot reach those files directly — check `/memories/AGENT.md` for any pointers, or ask the user to re-share.
+
+## Delegation
+
+You have two specialist sub-agents. Delegate instead of doing everything yourself:
+
+- `research(query)` — deep-dive a topic, look up facts, or gather sources.
+- `write(instructions)` — format, polish, or produce structured written output.
+
+## Behaviour
+
+- On complex tasks: plan first, then act step by step.
+- Always save significant outputs to `/conversation/` before responding.
+- Be concise in chat but thorough in stored documents.
+- Keep `/memories/AGENT.md` tight — prefer overwriting stale entries to appending forever.
+"""
+
+
 class OmniAgent(DeepAgent):
     """
     General-purpose autonomous agent with research, writing, and file-management
     capabilities.
 
     Demonstrates the full ``DeepAgent`` lifecycle:
-    - ``AGENT.md``             — loaded automatically via MemoryMiddleware
-    - ``skills/*/SKILL.md``    — loaded automatically via SkillsMiddleware (progressive disclosure)
+    - ``instructions``         — static system prompt (class attribute)
+    - ``default_skills``       — seeded into the per-user filesystem on first run
+    - ``/memories/AGENT.md``   — durable cross-agent user memory via CompositeBackend
+    - ``/agent/skills/``       — per-user-enabled skills via CompositeBackend
     - ``register_subagents()`` — declares researcher + writer sub-agents
     - ``register_agent()``     — wires everything into ``create_deep_agent``
-
-    Storage strategy:
-    - Uses ``FilesystemBackend`` rooted at the implementation directory so that
-        ``AGENT.md`` and ``skills/`` are resolved from disk.
-    - Override ``load_memory()`` in a subclass and swap in a ``StoreBackend``
-        (or ``CompositeBackend``) inside ``register_agent()`` to enable
-        cross-session persistence.
     """
 
     name = "omni-agent-v1"
@@ -44,6 +81,15 @@ class OmniAgent(DeepAgent):
     version = "1.0.0"
     description = "General-purpose agent for research, writing, and file management"
     icon = "BrainCircuit"
+
+    # Replaces the bundled <impl_dir>/AGENT.md template; loaded via
+    # create_deep_agent(system_prompt=...) below.
+    instructions = OMNI_INSTRUCTIONS
+
+    # Seeded into <user_root>/<self.name>/skills/ the first time a user
+    # interacts with Omni. Names must match directory entries in the
+    # central skills registry (src/agents/skills_registry/).
+    default_skills = ["research", "writing", "file-management"]
 
     # ------------------------------------------------------------------
     # Sub-agents
@@ -82,12 +128,13 @@ class OmniAgent(DeepAgent):
             model=omni.main_model,
             name=self.name,
             tools=self.tools,
+            system_prompt=self.instructions,
             memory=self.agent_md_paths,
             skills=self.skills_paths,
             subagents=self.sub_agents,
             checkpointer=self.checkpointer,
             store=None,
-            backend=FilesystemBackend(root_dir=self._impl_dir, virtual_mode=True),
+            backend=self._build_composite_backend(),
             context_schema=self.context,
             interrupt_on=HITL_GATED_TOOLS,
         )

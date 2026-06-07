@@ -49,11 +49,14 @@ from schemas import (
     SkillManifest,
 )
 from utils import (
+    disable_user_agent_skill,
+    enable_user_agent_skill,
     generate_title,
     generate_suggestions,
     generate_read_aloud_audio,
     list_mcp_tools,
     list_registry_skills,
+    list_user_agent_skills,
     MCPToolsClientError,
     get_cached_tool_manifests,
     mcp_session_context,
@@ -262,6 +265,65 @@ async def get_available_skills() -> List[SkillManifest]:
     skills = list_registry_skills()
     logger.info("skills_registry_listed", "Served skills registry", count=len(skills))
     return skills
+
+
+
+# ------------------------------------------------------------------
+# Per-(user, agent) skill selection
+# ------------------------------------------------------------------
+# The on-disk directory layout under <filesystem_root>/<user_id>/<agent_slug>/
+# IS the selection state — there is no DB row mirroring it. These three
+# endpoints are the only writers after a (user, agent) pair's first run; the
+# DeepAgent runtime reads the same directory via its CompositeBackend
+# ``/agent/skills/`` route at build time.
+@app.get(
+    "/agents/{agent_slug}/users/{user_id}/skills",
+    response_model=List[str],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_user_agent_skills(agent_slug: str, user_id: str) -> List[str]:
+    """Return the sorted list of skill names enabled for this (user, agent)."""
+    try:
+        skills = list_user_agent_skills(user_id=user_id, agent_slug=agent_slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    logger.info(
+        "user_agent_skills_listed",
+        "Served per-(user, agent) enabled skills",
+        user_id=user_id,
+        agent_slug=agent_slug,
+        count=len(skills),
+    )
+    return skills
+
+
+@app.put(
+    "/agents/{agent_slug}/users/{user_id}/skills/{skill_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def enable_skill_for_user_agent(agent_slug: str, user_id: str, skill_name: str) -> None:
+    """Enable ``skill_name`` for this (user, agent) by copying it from the registry."""
+    try:
+        enable_user_agent_skill(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.delete(
+    "/agents/{agent_slug}/users/{user_id}/skills/{skill_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def disable_skill_for_user_agent(agent_slug: str, user_id: str, skill_name: str) -> None:
+    """Disable ``skill_name`` for this (user, agent) by removing its directory."""
+    try:
+        disable_user_agent_skill(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 

@@ -1,5 +1,5 @@
 from uuid import uuid4
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Literal
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 from core.error_handling import agent_stream_error_handler
 from observability import get_logger
@@ -9,6 +9,15 @@ from utils import (
 )
 
 logger = get_logger(__name__)
+
+
+# The closed set of agent lifecycle types. The bridge persists this string
+# verbatim in ``agents.type`` and the UI keys off it (e.g. the per-user skill
+# selection panel renders only for ``"deep agent"``). Subclasses MUST set this
+# to one of these literals — DeepAgent narrows it to ``"deep agent"`` at the
+# base class level so concrete subclasses inherit the correct value.
+AgentType = Literal["deep agent", "langgraph agent"]
+
 
 class BaseAgent:
     """
@@ -35,7 +44,7 @@ class BaseAgent:
     agent_id: str = "base-agent"
     label: str = "Base Agent"
     version: str = "0.0.1"
-    type: Literal["langgraph agent", "openai agent", "deep agent"] = "langgraph agent"
+    type: AgentType = "langgraph agent"
     description: Optional[str] = None
     icon: Optional[str] = None
 

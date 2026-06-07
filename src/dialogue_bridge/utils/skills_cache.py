@@ -28,7 +28,18 @@ logger = get_logger(__name__)
 # cache, giving operators escape velocity without waiting for the TTL.
 SKILLS_REGISTRY_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
+# Per-(user, agent) selection cache. Shorter TTL than the registry — the
+# selection set changes whenever the user toggles a skill, and mutations
+# evict the matching key explicitly anyway, so this TTL is a safety net
+# rather than the primary freshness mechanism.
+USER_AGENT_SKILLS_TTL_SECONDS = 5 * 60  # 5 minutes
+
 _REGISTRY_KEY = "skills:registry"
+
+
+def _user_agent_key(user_id: str, agent_id: str) -> str:
+    """Namespaced cache key for one (user, agent) selection set."""
+    return f"skills:user:{user_id}:agent:{agent_id}"
 
 
 class SkillsCache:
@@ -90,6 +101,67 @@ class SkillsCache:
             await client.delete(_REGISTRY_KEY)
         except Exception:  # noqa: BLE001
             logger.warning("skills_cache_invalidate_failed", "Skills registry cache delete failed", exc_info=True)
+
+    async def get_user_agent_skills(self, user_id: str, agent_id: str) -> List[str] | None:
+        """Return the cached enabled-skill names for a (user, agent) pair."""
+        try:
+            client = await self._get_client()
+            raw = await client.get(_user_agent_key(user_id, agent_id))
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "user_agent_skills_cache_get_failed",
+                "User-agent skills cache read failed",
+                exc_info=True,
+            )
+            return None
+        if not raw:
+            return None
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                "user_agent_skills_cache_decode_failed",
+                "User-agent skills cache returned malformed JSON",
+            )
+            return None
+        if not isinstance(payload, list):
+            return None
+        return [str(item) for item in payload]
+
+    async def set_user_agent_skills(
+        self,
+        user_id: str,
+        agent_id: str,
+        payload: List[str],
+        *,
+        ttl_seconds: int = USER_AGENT_SKILLS_TTL_SECONDS,
+    ) -> None:
+        """Store the enabled-skill names with a TTL — never forever."""
+        try:
+            client = await self._get_client()
+            await client.set(
+                _user_agent_key(user_id, agent_id),
+                json.dumps(payload, ensure_ascii=False),
+                ex=ttl_seconds,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "user_agent_skills_cache_set_failed",
+                "User-agent skills cache write failed",
+                exc_info=True,
+            )
+
+    async def invalidate_user_agent_skills(self, user_id: str, agent_id: str) -> None:
+        """Delete the cached enabled-skill names for a (user, agent) pair."""
+        try:
+            client = await self._get_client()
+            await client.delete(_user_agent_key(user_id, agent_id))
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "user_agent_skills_cache_invalidate_failed",
+                "User-agent skills cache delete failed",
+                exc_info=True,
+            )
 
 
 skills_cache = SkillsCache()

@@ -89,6 +89,10 @@ class AgentTable(Base):
     description = Column(String, nullable=False)
     icon = Column(String, nullable=False)
     version = Column(String, nullable=True)
+    # Lifecycle type — "deep agent", "langgraph agent", "openai agent".
+    # Synced from the agents-service manifest; lets the UI filter to
+    # features only deep agents support (e.g. per-user skill selection).
+    type = Column(String, nullable=False, server_default="langgraph agent")
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

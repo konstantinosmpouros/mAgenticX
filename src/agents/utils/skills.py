@@ -20,13 +20,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
+from core.settings import settings
 from observability import get_logger
+from runtime.user_filesystem import (
+    disable_skill as _disable_skill_fs,
+    enable_skill as _enable_skill_fs,
+    ensure_user_agent_filesystem,
+    is_registry_skill,
+    list_enabled_skills as _list_enabled_skills_fs,
+)
 from schemas import SkillManifest
 
 logger = get_logger(__name__)
 
-# Resolved relative to this file: src/agents/utils/skills.py → src/agents/skills_registry/
-_SKILLS_REGISTRY_DIR = Path(__file__).resolve().parent.parent / "skills_registry"
+
+def _registry_dir() -> Path:
+    """Indirected through settings so the path is overridable in tests."""
+    return settings.filesystem.skills_registry_root
 
 
 def _parse_skill_md(path: Path) -> SkillManifest | None:
@@ -73,16 +83,17 @@ def list_registry_skills() -> List[SkillManifest]:
     static files at most. The bridge caches the result in Redis with a short
     TTL so most calls don't hit this function anyway.
     """
-    if not _SKILLS_REGISTRY_DIR.is_dir():
+    registry_dir = _registry_dir()
+    if not registry_dir.is_dir():
         logger.warning(
             "skills_registry_missing",
             "Skills registry directory does not exist",
-            path=str(_SKILLS_REGISTRY_DIR),
+            path=str(registry_dir),
         )
         return []
 
     skills: List[SkillManifest] = []
-    for child in sorted(_SKILLS_REGISTRY_DIR.iterdir()):
+    for child in sorted(registry_dir.iterdir()):
         if not child.is_dir():
             continue
         skill_md = child / "SKILL.md"
@@ -92,3 +103,38 @@ def list_registry_skills() -> List[SkillManifest]:
         if manifest is not None:
             skills.append(manifest)
     return skills
+
+
+# ---------------------------------------------------------------------------
+# Per-(user, agent) selection helpers
+# ---------------------------------------------------------------------------
+# These thin wrappers re-export the filesystem-level primitives so the FastAPI
+# handlers in ``main.py`` can stay imports-free of runtime internals. The
+# provisioner is the single writer of the on-disk skill set after first run.
+
+
+def list_user_agent_skills(user_id: str, agent_slug: str) -> List[str]:
+    """Return enabled skill names for a (user, agent) pair, sorted."""
+    ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
+    return _list_enabled_skills_fs(user_id, agent_slug)
+
+
+def enable_user_agent_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
+    """Copy the named registry skill into the user-agent's skills directory.
+
+    Raises ``FileNotFoundError`` if the skill is not in the registry — the
+    HTTP layer maps that to a 404 response.
+    """
+    if not is_registry_skill(skill_name):
+        raise FileNotFoundError(f"Skill not in registry: {skill_name}")
+    ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
+    _enable_skill_fs(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)
+
+
+def disable_user_agent_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
+    """Remove the named skill from the user-agent's skills directory.
+
+    Idempotent: no error when the skill isn't enabled.
+    """
+    ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
+    _disable_skill_fs(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)

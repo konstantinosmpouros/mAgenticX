@@ -51,6 +51,7 @@ export type AgentPublic = {
     description: string;
     icon: string; // Lucide icon name string, e.g., "Building2"
     version?: string;
+    type?: string;
     isActive: boolean;
 };
 
@@ -62,6 +63,10 @@ export type Agent = {
     icon: LucideIcon;
     iconName?: string | null;
     version?: string;
+    // Lifecycle type — "deep agent" / "langgraph agent" / "openai agent".
+    // Used by the Skills tab to filter to agents that support per-user
+    // skill selection (only deep agents do).
+    type?: string;
     isActive: boolean;
 };
 
@@ -88,6 +93,13 @@ export type Skill = {
     description: string;
     content: string;
 };
+
+
+// Per-(user, agent) skill selection. Map shape is { [agentId]: Set<skillName> }
+// stored as plain object so it serialises cleanly through React state.
+// The bridge endpoint returns a plain string[] per (user, agent); the hook
+// hydrates this map by fetching per-agent on demand.
+export type UserAgentSkillSelection = Record<string, string[]>;
 
 
 

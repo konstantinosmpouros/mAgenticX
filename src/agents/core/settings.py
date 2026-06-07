@@ -282,6 +282,26 @@ class DeepAgentsSettings(BaseModel):
     omni: OmniDeepAgentSettings = Field(default_factory=OmniDeepAgentSettings)
 
 
+class FilesystemSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    # Per-user filesystem root for CompositeBackend mounts. Bind-mounted from
+    # the host (or a Docker named volume) so AGENT.md and enabled skills
+    # survive container restarts and are shared across this user's agents.
+    user_root: Path = Field(
+        Path("/var/agents/filesystem"),
+        validation_alias="AGENTS_FILESYSTEM_ROOT",
+    )
+
+    # Central skills registry shipped inside the image. Read-only at runtime;
+    # the user-facing PUT endpoint copies subdirectories of this path into the
+    # per-user filesystem when a skill is enabled.
+    skills_registry_root: Path = Field(
+        Path(__file__).resolve().parent.parent / "skills_registry",
+        validation_alias="AGENTS_SKILLS_REGISTRY_ROOT",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level settings
 # ---------------------------------------------------------------------------
@@ -299,6 +319,7 @@ class Settings(BaseSettings):
     runtime_models: RuntimeModelsSettings = Field(default_factory=RuntimeModelsSettings)
     workflows: WorkflowsSettings = Field(default_factory=WorkflowsSettings)
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
+    filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":

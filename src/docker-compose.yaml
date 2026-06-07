@@ -50,6 +50,9 @@ services:
       - RAG_BASE_URL=http://rag_service:8001
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
+      - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
+    volumes:
+      - agents_filesystem:/var/agents/filesystem
     depends_on:
       - rag_service
     restart: unless-stopped
@@ -171,5 +174,7 @@ volumes:
       type: none
       o: bind
       device: ./vectorstores/chroma_db_openai
-  
+
   chat_convs:
+
+  agents_filesystem:

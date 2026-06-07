@@ -22,5 +22,11 @@ COPY . .
 COPY load-secrets-and-exec.sh /usr/local/bin/load-secrets-and-exec.sh
 RUN chmod +x /usr/local/bin/load-secrets-and-exec.sh
 
+# Pre-create the per-user filesystem mount point with UID 1000 ownership so a
+# fresh Docker named volume inherits permissions the non-root container user
+# can write to. Without this, Docker creates the directory as root and the
+# UID-1000 process can't provision <user_id>/ subdirectories.
+RUN mkdir -p /var/agents/filesystem && chown 1000:1000 /var/agents/filesystem
+
 EXPOSE 8003
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]

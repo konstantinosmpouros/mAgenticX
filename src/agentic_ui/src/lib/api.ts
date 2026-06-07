@@ -180,6 +180,7 @@ export async function getAgents(): Promise<Agent[]> {
     description: a.description,
     icon: mapIcon(a.icon),
     version: a.version,
+    type: typeof (a as any).type === "string" ? (a as any).type : undefined,
     isActive: Boolean((a as any).isActive ?? (a as any).is_active ?? true),
   }));
 }
@@ -212,6 +213,63 @@ export async function getSkills(options?: { bypassRedis?: boolean }): Promise<Sk
     description: typeof skill?.description === "string" ? skill.description : "",
     content: typeof skill?.content === "string" ? skill.content : "",
   }));
+}
+
+
+// Fetch enabled skills for a (user, agent) pair.
+// Returns a plain string[] of skill names. The bridge reads through a Redis
+// cache; mutations invalidate the cache and the next GET re-fetches from the
+// agents service (which is authoritative — the on-disk directory IS the state).
+export async function getUserAgentSkills(userId: string, agentId: string): Promise<string[]> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}`;
+  const res = await fetch(url, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch user-agent skills: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!Array.isArray(data)) {
+    return [];
+  }
+  return data.map((entry: any) => String(entry));
+}
+
+
+// Enable a skill for the (user, agent) pair. 204 on success.
+export async function enableUserAgentSkill(
+  userId: string,
+  agentId: string,
+  skillName: string,
+): Promise<void> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(skillName)}`;
+  const res = await fetch(url, withSessionRequest({
+    method: "PUT",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to enable skill ${skillName}: ${res.status}`);
+  }
+}
+
+
+// Disable a skill for the (user, agent) pair. 204 on success (idempotent).
+export async function disableUserAgentSkill(
+  userId: string,
+  agentId: string,
+  skillName: string,
+): Promise<void> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(skillName)}`;
+  const res = await fetch(url, withSessionRequest({
+    method: "DELETE",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to disable skill ${skillName}: ${res.status}`);
+  }
 }
 
 

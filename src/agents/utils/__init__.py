@@ -2,7 +2,12 @@ from utils.prompts import normalise_user_input, make_merge_with_template
 from utils.title import generate_title
 from utils.suggestions import generate_suggestions
 from utils.speech import generate_read_aloud_audio
-from utils.skills import list_registry_skills
+from utils.skills import (
+    disable_user_agent_skill,
+    enable_user_agent_skill,
+    list_registry_skills,
+    list_user_agent_skills,
+)
 from utils.mcp_tools import (
     MCPToolsClientError,
     build_tool_cache_key,
@@ -21,6 +26,9 @@ __all__ = [
     "generate_suggestions",
     "generate_read_aloud_audio",
     "list_registry_skills",
+    "list_user_agent_skills",
+    "enable_user_agent_skill",
+    "disable_user_agent_skill",
     "MCPToolsClientError",
     "build_tool_cache_key",
     "build_cache_key_from_tool_name",

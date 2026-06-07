@@ -1,15 +1,22 @@
 import asyncio
 import inspect
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Literal, Sequence, Set
+from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence, Set
 from abc import abstractmethod, ABC
 
+from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from runtime.protocols.agui import AGUIEmitter, AGUIStreamNormalizer
-from runtime.base_agent import BaseAgent
+from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_or_create_checkpointer
+from runtime.user_filesystem import (
+    conversation_root as _conversation_root,
+    ensure_user_agent_filesystem,
+    memory_root as _memory_root,
+    skills_root as _skills_root,
+)
 from observability import get_logger
 
 logger = get_logger(__name__)
@@ -84,11 +91,32 @@ class DeepAgent(BaseAgent, ABC):
     # Default streaming mode
     stream_mode: List[STREAMING_MODES] = ["messages", "updates"]
 
+    # Override BaseAgent default — every concrete subclass of ``DeepAgent``
+    # IS a deep agent. The bridge persists this in ``agents.type`` and the UI
+    # filters by it to show the per-user skill selection panel only here.
+    type: AgentType = "deep agent"
+
+    # Static behaviour contract — concrete subclasses override these. The
+    # ``instructions`` string replaces the previously-bundled ``AGENT.md``
+    # template (which lived in the agent's source directory and was identical
+    # for every user) — it is the agent's personality / orchestration prompt
+    # passed to ``create_deep_agent(system_prompt=...)``. ``default_skills`` is
+    # the seed set copied into a brand-new (user, agent) filesystem the first
+    # time the pair is observed; it is NOT a runtime filter and never affects
+    # the agent's view after first run.
+    instructions: str = ""
+    default_skills: List[str] = []
+
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         super().__init__(config=config)
 
         # Directory of the concrete subclass file — source assets live here
         self._impl_dir: Path = Path(inspect.getfile(type(self))).parent
+
+        # Per-request cache for the resolved per-user filesystem root. Set on
+        # first build call to avoid restating the directory across the
+        # ``load_skills`` / ``load_agent_md`` / ``register_agent`` hooks.
+        self._user_filesystem_root: Optional[Path] = None
 
         # Agent components — all populated during build()
         self.skills_paths: list[str] = []       # absolute path to skills/ — for create_deep_agent(skills=[...])
@@ -136,13 +164,109 @@ class DeepAgent(BaseAgent, ABC):
 
 
     # ---------------------------------------------------------------------
+    # Per-user filesystem resolution
+    # ---------------------------------------------------------------------
+    def _resolve_user_filesystem_root(self) -> Path:
+        """Provision (idempotently) and return ``<filesystem_root>/<user_id>/``.
+
+        Reads ``user_id`` and ``conversation_id`` from ``self.context`` — the
+        bridge stamps both on every request, and
+        ``BaseAgent._validate_context_config`` rejects payloads that omit
+        either. The first call for a (user, agent) pair seeds ``AGENT.md``
+        from the standard template and copies ``default_skills`` from the
+        registry. The conversation directory is mkdir'd on every call but
+        is a cheap no-op when it already exists.
+        """
+        if self._user_filesystem_root is not None:
+            return self._user_filesystem_root
+        ctx = self.context or {}
+        user_id = ctx.get("user_id")
+        if not user_id:
+            raise ValueError(
+                "Deep agent requires a non-empty user_id in context to provision its filesystem."
+            )
+        conversation_id = ctx.get("conversation_id")
+        self._user_filesystem_root = ensure_user_agent_filesystem(
+            user_id=user_id,
+            agent_slug=self.name,
+            conversation_id=conversation_id,
+            default_skills=self.default_skills,
+        )
+        return self._user_filesystem_root
+
+
+    def _build_composite_backend(
+        self,
+    ) -> Callable[[Any], CompositeBackend]:
+        """Return a factory that mints a fresh ``CompositeBackend`` per tool call.
+
+        The deepagents library accepts ``backend=callable(ToolRuntime) -> Backend``
+        and invokes it on every tool call so ``StateBackend`` can bind to the
+        live runtime. Three FilesystemBackends are mounted at structurally
+        disjoint roots so no route can resolve into another's tree:
+
+            /memories/     → <user_root>/memory/                          (AGENT.md only)
+            /skills/       → <user_root>/agents/<self.name>/skills/       (user-enabled skills)
+            /conversation/ → <user_root>/agents/<self.name>/<conv_id>/    (this chat only)
+            default        → StateBackend(rt)                             (ephemeral scratch)
+
+        Per-conversation isolation: ``/conversation/`` is rooted at a
+        single ``<conv_id>`` directory, so files written in one chat are
+        not visible from the next. The agent persists durable
+        cross-conversation context by editing ``/memories/AGENT.md``
+        directly. (Future: split ``/conversation/`` into ``input/``
+        read-only + ``output/`` read-write subdirectories for uploaded
+        files vs agent-generated artifacts.)
+
+        The central skills registry is intentionally **not mounted**. It is
+        a user-facing catalogue browsed via the ProfilePanel Skills tab —
+        the agent only ever sees the skills the user has explicitly
+        enabled, which arrive on disk via the bridge's PUT endpoint
+        copying registry directories into ``skills/``.
+        """
+        self._resolve_user_filesystem_root()  # ensure tree exists
+        ctx = self.context
+        user_id = ctx["user_id"]
+        conversation_id = ctx["conversation_id"]
+        memory_path = _memory_root(user_id)
+        skills_path = _skills_root(user_id, self.name)
+        conv_path = _conversation_root(user_id, self.name, conversation_id)
+
+        def factory(rt: Any) -> CompositeBackend:
+            return CompositeBackend(
+                default=StateBackend(rt),
+                routes={
+                    "/memories/": FilesystemBackend(
+                        root_dir=str(memory_path), virtual_mode=True
+                    ),
+                    "/skills/": FilesystemBackend(
+                        root_dir=str(skills_path), virtual_mode=True
+                    ),
+                    "/conversation/": FilesystemBackend(
+                        root_dir=str(conv_path), virtual_mode=True
+                    ),
+                },
+            )
+
+        return factory
+
+
+    # ---------------------------------------------------------------------
     # Lifecycle hooks
     # ---------------------------------------------------------------------
     def load_skills(self) -> list[str]:
-        """Auto-discover skills directory. Returns relative path (resolved against backend root_dir=_impl_dir)."""
-        if not (self._impl_dir / "skills").exists():
-            return []
-        return ["./skills/"]
+        """Skills the agent should expose at startup.
+
+        Returns the ``/skills/`` virtual root which the CompositeBackend
+        resolves to ``<user_root>/agents/<agent_slug>/skills/``. The agent
+        therefore sees ONLY skills the user has explicitly enabled for
+        this (user, agent) pair. The central registry is not mounted —
+        users browse it via the ProfilePanel Skills tab, and the bridge's
+        PUT endpoint copies registry directories into this mount when the
+        user enables a skill.
+        """
+        self._resolve_user_filesystem_root()  # ensure tree exists
+        return ["/skills/"]
 
 
     def load_memory(self) -> Any:
@@ -156,10 +280,15 @@ class DeepAgent(BaseAgent, ABC):
 
 
     def load_agent_md(self) -> list[str]:
-        """Auto-discover AGENT.md. Returns relative path (resolved against backend root_dir=_impl_dir)."""
-        if (self._impl_dir / "AGENT.md").exists():
-            return ["./AGENT.md"]
-        return []
+        """The shared cross-agent user memory file.
+
+        Resolved through the CompositeBackend ``/memories/`` route, which
+        maps to ``<user_root>/AGENT.md``. The provisioner seeds this file
+        from the standard template on first run; the agent edits it via
+        ``edit_file`` over time to accumulate durable user facts.
+        """
+        self._resolve_user_filesystem_root()  # ensure file exists
+        return ["/memories/AGENT.md"]
 
 
     def register_subagents(self) -> SubAgentsT:
