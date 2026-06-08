@@ -51,7 +51,7 @@ from typing import Iterable, List
 
 from core.settings import settings
 from observability import get_logger
-from runtime.agent_md_template import AGENT_MD_TEMPLATE
+from runtime.filesystem.agent_md_template import AGENT_MD_TEMPLATE
 
 logger = get_logger(__name__)
 

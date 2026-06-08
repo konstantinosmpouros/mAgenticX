@@ -2,7 +2,7 @@ import json
 import time
 from typing import Any, Dict, Optional, Sequence
 
-from runtime.protocols.agui.events import (
+from runtime.agui.events import (
     # Human-in-the-loop interrupt event
     HITL_INTERRUPT_EVENT_TYPE,
     HITLInterruptEvent,

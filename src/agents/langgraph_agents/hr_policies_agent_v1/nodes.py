@@ -16,7 +16,7 @@ from langgraph_agents.hr_policies_agent_v1.prompt_templates import (
     non_hr_gen_template,
     hr_gen_template,
 )
-from runtime.protocols.agui import AGUIEmitter
+from runtime.agui import AGUIEmitter
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer

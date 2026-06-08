@@ -8,10 +8,10 @@ from deepagents.backends import CompositeBackend, FilesystemBackend, StateBacken
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from runtime.protocols.agui import AGUIEmitter, AGUIStreamNormalizer
+from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_or_create_checkpointer
-from runtime.user_filesystem import (
+from runtime.filesystem import (
     conversation_root as _conversation_root,
     ensure_user_agent_filesystem,
     memory_root as _memory_root,

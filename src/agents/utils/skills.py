@@ -22,7 +22,7 @@ from typing import List
 
 from core.settings import settings
 from observability import get_logger
-from runtime.user_filesystem import (
+from runtime.filesystem import (
     disable_skill as _disable_skill_fs,
     enable_skill as _enable_skill_fs,
     ensure_user_agent_filesystem,
