@@ -1,5 +1,5 @@
-import type { Skill, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
-import { authenticate, getAgents, getConversations, getSkills, getTools, getUserPreferences, logoutSession } from '@/lib/api';
+import type { Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/lib/types';
+import { authenticate, getAgents, getConversations, getMySkills, getSkills, getTools, getUserPreferences, logoutSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
 
@@ -11,6 +11,7 @@ type AuthCtx = {
   setAgents: (v: any) => void;
   setAvailableTools: (v: ToolMetadata[]) => void;
   setAvailableSkills: (v: Skill[]) => void;
+  setMyRegistrySkills?: (v: UserSkill[]) => void;
   setUserPreferences: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
   setConversationsLoading: (v: boolean) => void;
@@ -35,6 +36,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
     setConversations,
     setAvailableTools,
     setAvailableSkills,
+    setMyRegistrySkills,
     setUserPreferences,
     setConversationsLoading,
     setLoginUsername,
@@ -70,6 +72,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
           const agentsPromise = getAgents();
           const toolsPromise = getTools();
           const skillsPromise = getSkills();
+          const mySkillsPromise = setMyRegistrySkills ? getMySkills(user.id) : null;
           const preferencesPromise = getUserPreferences(user.id);
           const conversationsPromise = getConversations(user.id);
 
@@ -96,6 +99,16 @@ export function createAuthHandlers(ctx: AuthCtx) {
           } catch (e) {
             console.error("Failed to fetch skills after login:", e);
             setAvailableSkills([]);
+          }
+
+          if (mySkillsPromise && setMyRegistrySkills) {
+            try {
+              const pool = await mySkillsPromise;
+              setMyRegistrySkills(pool);
+            } catch (e) {
+              console.error("Failed to fetch user skill pool after login:", e);
+              setMyRegistrySkills([]);
+            }
           }
 
           try {
@@ -155,6 +168,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
       setAgents([]);
       setAvailableTools([]);
       setAvailableSkills([]);
+      setMyRegistrySkills?.([]);
       setConversations([]);
       setConversationsLoading(false);
       // Reuse the shared chat reset path so logout clears the same transient state as "new chat".

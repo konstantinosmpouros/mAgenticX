@@ -1,9 +1,15 @@
-"""Skills registry — read-only catalogue of available SKILL.md files.
+"""Skills registry helpers — read-side wrappers around the runtime modules.
 
-The registry lives in the image at ``src/agents/skills_registry/<name>/SKILL.md``
-and is the single source of truth for "what skills exist." Per-user enabled
-skills (Phase 2+) are tracked as directories under the per-user filesystem;
-the registry only describes *what is available to enable*.
+The global registry lives on a mounted volume at
+``$SKILLS_REGISTRY_GLOBAL_ROOT`` and is indexed by ``manifest.json``
+regenerated on agents-service boot (see ``runtime.skill_registry``). This
+module exposes:
+
+- ``list_registry_skills()`` — the catalogue served by ``GET /skills`` to
+  the bridge. Reads the cached global manifest, joins each entry with its
+  SKILL.md body, returns ``list[SkillManifest]``.
+- Per-(user, agent) selection wrappers re-exporting the filesystem
+  primitives so the FastAPI handlers stay imports-free of runtime internals.
 
 SKILL.md frontmatter contract (parsed loosely; only ``name`` and ``description``
 are extracted, anything else is ignored):
@@ -24,84 +30,72 @@ from core.settings import settings
 from observability import get_logger
 from runtime.filesystem import (
     disable_skill as _disable_skill_fs,
-    enable_skill as _enable_skill_fs,
     ensure_user_agent_filesystem,
-    is_registry_skill,
     list_enabled_skills as _list_enabled_skills_fs,
+)
+from runtime.skill_registry import (
+    assign_user_skill_to_agent as _assign_user_skill_to_agent,
+    get_global_manifest,
 )
 from schemas import SkillManifest
 
 logger = get_logger(__name__)
 
 
-def _registry_dir() -> Path:
-    """Indirected through settings so the path is overridable in tests."""
-    return settings.filesystem.skills_registry_root
+def _read_skill_body_from_source_path(source_path: str) -> str:
+    """Return the markdown body following the frontmatter, or empty string.
 
-
-def _parse_skill_md(path: Path) -> SkillManifest | None:
-    """Parse a SKILL.md file into a :class:`SkillManifest`.
-
-    Returns None if the file is malformed (missing frontmatter, missing
-    required keys). The directory name is used as the canonical ``name``
-    if the frontmatter doesn't supply one — but a well-formed SKILL.md
-    should always carry ``name:`` matching its directory.
+    ``source_path`` is the manifest entry's relative path under the
+    skills_registry root (e.g. ``global/<category>/<name>``). The "global/"
+    prefix is stripped and the rest joined under the global volume root.
     """
+    parts = source_path.split("/")
+    if len(parts) < 2 or parts[0] != "global":
+        logger.warning(
+            "skill_body_unexpected_source_path",
+            "Unexpected source_path for global skill body lookup",
+            source_path=source_path,
+        )
+        return ""
+    skill_md = settings.filesystem.skills_registry_global_root
+    for segment in parts[1:]:
+        skill_md = skill_md / segment
+    skill_md = skill_md / "SKILL.md"
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = skill_md.read_text(encoding="utf-8")
     except OSError:
-        logger.warning("skill_read_failed", "Could not read SKILL.md", path=str(path))
-        return None
+        logger.warning(
+            "skill_body_read_failed",
+            "Could not read SKILL.md body",
+            path=str(skill_md),
+        )
+        return ""
 
-    name = path.parent.name
-    description = ""
-    body = raw
-
-    if raw.startswith("---\n"):
-        end = raw.find("\n---\n", 4)
-        if end != -1:
-            frontmatter = raw[4:end]
-            body = raw[end + 5 :].lstrip("\n")
-            for line in frontmatter.splitlines():
-                if ":" not in line:
-                    continue
-                key, _, value = line.partition(":")
-                key = key.strip().lower()
-                value = value.strip().strip("\"'")
-                if key == "name" and value:
-                    name = value
-                elif key == "description":
-                    description = value
-
-    return SkillManifest(name=name, description=description, content=body)
+    if not raw.startswith("---\n"):
+        return raw
+    end = raw.find("\n---\n", 4)
+    if end == -1:
+        return raw
+    return raw[end + 5 :].lstrip("\n")
 
 
 def list_registry_skills() -> List[SkillManifest]:
-    """Return every skill in the registry, sorted alphabetically by name.
+    """Return every global skill with frontmatter + content, alphabetical.
 
-    Cheap enough to call on every request — the registry holds a handful of
-    static files at most. The bridge caches the result in Redis with a short
-    TTL so most calls don't hit this function anyway.
+    Reads from the cached ``GlobalManifest`` so this is O(N) string joins —
+    no directory scan per call.
     """
-    registry_dir = _registry_dir()
-    if not registry_dir.is_dir():
-        logger.warning(
-            "skills_registry_missing",
-            "Skills registry directory does not exist",
-            path=str(registry_dir),
-        )
-        return []
-
+    manifest = get_global_manifest()
     skills: List[SkillManifest] = []
-    for child in sorted(registry_dir.iterdir()):
-        if not child.is_dir():
-            continue
-        skill_md = child / "SKILL.md"
-        if not skill_md.is_file():
-            continue
-        manifest = _parse_skill_md(skill_md)
-        if manifest is not None:
-            skills.append(manifest)
+    for entry in manifest.skills:
+        skills.append(
+            SkillManifest(
+                name=entry.name,
+                description=entry.description,
+                category=entry.category,
+                content=_read_skill_body_from_source_path(entry.source_path),
+            )
+        )
     return skills
 
 
@@ -120,15 +114,18 @@ def list_user_agent_skills(user_id: str, agent_slug: str) -> List[str]:
 
 
 def enable_user_agent_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
-    """Copy the named registry skill into the user-agent's skills directory.
+    """Copy a user-pool skill into the user-agent's skills directory.
 
-    Raises ``FileNotFoundError`` if the skill is not in the registry — the
-    HTTP layer maps that to a 404 response.
+    Source is resolved via the user's manifest (global ref → global volume;
+    custom entry → user volume). Raises ``FileNotFoundError`` if the skill
+    is not in the user's pool — the HTTP layer maps to 404.
     """
-    if not is_registry_skill(skill_name):
-        raise FileNotFoundError(f"Skill not in registry: {skill_name}")
     ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
-    _enable_skill_fs(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)
+    _assign_user_skill_to_agent(
+        user_id=user_id,
+        agent_slug=agent_slug,
+        skill_name=skill_name,
+    )
 
 
 def disable_user_agent_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:

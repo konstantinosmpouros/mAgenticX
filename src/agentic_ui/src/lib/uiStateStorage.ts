@@ -2,7 +2,7 @@
 // Only metadata and IDs are stored; conversations are rehydrated from the backend on refresh.
 
 import { mapIcon } from '@/lib/consts';
-import type { Agent, ConversationSummary, Skill, ToolMetadata, UserPreferences } from '@/lib/types';
+import type { Agent, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserSkill } from '@/lib/types';
 
 
 const DB_NAME = 'mx_ui_state';
@@ -26,13 +26,11 @@ type ConversationSummarySnapshot = Omit<ConversationSummary, 'agent'> & {
 };
 
 
-// v3 carries availableSkills the same way it carries availableTools — as a
-// paint accelerator on refresh. The always-fetch path in useAuthRehydrateEffect
-// overwrites this with the fresh server response (read-through Redis on the
-// bridge). The manual refresh button in the Skills tab fires the bypass-Redis
-// path which upserts the bridge cache and overwrites this snapshot too.
+// v4 adds the per-user skill pool snapshot alongside availableSkills (the
+// global catalog). Both are paint accelerators on refresh; the always-fetch
+// path in useAuthRehydrateEffect overwrites both with fresh server responses.
 export type UISnapshotSerializable = {
-  version: 3;
+  version: 4;
   selectedAgent: string;
   isPrivateMode: boolean;
   activeProfileTab: string;
@@ -40,6 +38,7 @@ export type UISnapshotSerializable = {
   lastConversationId: string | null;
   availableTools?: ToolMetadata[];
   availableSkills?: Skill[];
+  myRegistrySkills?: UserSkill[];
   agents?: Agent[];
   conversations?: ConversationSummary[];
   userPreferences?: UserPreferences | null;
@@ -49,12 +48,13 @@ export type UISnapshotSerializable = {
 
 type PersistedSnapshot = Omit<
   UISnapshotSerializable,
-  'agents' | 'conversations' | 'userPreferences' | 'availableSkills'
+  'agents' | 'conversations' | 'userPreferences' | 'availableSkills' | 'myRegistrySkills'
 > & {
   agents?: AgentSnapshot[];
   conversations?: ConversationSummarySnapshot[];
   userPreferences?: UserPreferences | null;
   availableSkills?: Skill[];
+  myRegistrySkills?: UserSkill[];
 };
 
 
@@ -208,10 +208,11 @@ export async function saveUISnapshot(userId: string, data: UISnapshotSerializabl
     ...rest,
     availableTools: serializeToolsForStorage(data.availableTools),
     availableSkills: data.availableSkills ?? [],
+    myRegistrySkills: data.myRegistrySkills ?? [],
     agents: serializeAgentsListForStorage(data.agents),
     conversations: serializeConversationSummaries(data.conversations),
     userPreferences: data.userPreferences ?? null,
-    version: 3,
+    version: 4,
   };
   await idbPut(STATE_STORE, userId, payload);
 }
@@ -223,10 +224,11 @@ export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializ
   // Discard stale snapshots from previous schema versions — the bootstrap
   // fetches will repopulate from the backend. Avoids subtly-wrong state
   // when a field's shape changed and the load path doesn't notice.
-  if ((saved as { version?: unknown }).version !== 3) return null;
+  if ((saved as { version?: unknown }).version !== 4) return null;
   const {
     availableTools,
     availableSkills,
+    myRegistrySkills,
     agents,
     conversations,
     userPreferences,
@@ -236,10 +238,11 @@ export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializ
   return {
     ...(rest as Omit<
       UISnapshotSerializable,
-      'availableTools' | 'availableSkills' | 'agents' | 'conversations' | 'userPreferences'
+      'availableTools' | 'availableSkills' | 'myRegistrySkills' | 'agents' | 'conversations' | 'userPreferences'
     >),
     availableTools: deserializeToolsFromStorage(availableTools),
     availableSkills: Array.isArray(availableSkills) ? availableSkills : [],
+    myRegistrySkills: Array.isArray(myRegistrySkills) ? myRegistrySkills : [],
     agents: deserializeAgentsListFromStorage(agents),
     conversations: deserializeConversationSummaries(conversations),
     userPreferences: userPreferences ?? null,

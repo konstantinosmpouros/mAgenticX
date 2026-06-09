@@ -68,9 +68,9 @@ class OmniAgent(DeepAgent):
 
     Demonstrates the full ``DeepAgent`` lifecycle:
     - ``instructions``         — static system prompt (class attribute)
-    - ``default_skills``       — seeded into the per-user filesystem on first run
     - ``/memories/AGENT.md``   — durable cross-agent user memory via CompositeBackend
-    - ``/agent/skills/``       — per-user-enabled skills via CompositeBackend
+    - ``/skills/``             — per-(user, agent) assigned skills, populated from
+                                 the user's pool via the Skills tab Manage view
     - ``register_subagents()`` — declares researcher + writer sub-agents
     - ``register_agent()``     — wires everything into ``create_deep_agent``
     """
@@ -85,11 +85,6 @@ class OmniAgent(DeepAgent):
     # Replaces the bundled <impl_dir>/AGENT.md template; loaded via
     # create_deep_agent(system_prompt=...) below.
     instructions = OMNI_INSTRUCTIONS
-
-    # Seeded into <user_root>/<self.name>/skills/ the first time a user
-    # interacts with Omni. Names must match directory entries in the
-    # central skills registry (src/agents/skills_registry/).
-    default_skills = ["research", "writing", "file-management"]
 
     # ------------------------------------------------------------------
     # Sub-agents

@@ -1,14 +1,22 @@
-"""Skills router — registry catalogue + per-(user, agent) selection CRUD.
+"""Skills router — global catalog + per-user pool + per-(user, agent) selection.
 
-Phase 1: ``GET /v1/skills`` returns the central read-only catalogue.
-Phase 2: ``GET / PUT / DELETE /v1/users/{user_id}/agents/{agent_id}/skills[/{name}]``
-manage which skills are enabled for a specific (user, agent) pair. The bridge
-proxies to the agents service (which owns the per-user filesystem) and
-caches selection lists in Redis with a short TTL + explicit invalidation
-on every mutation.
+Three tiers:
 
-The selection state is **not stored in Postgres** — the on-disk directory
-under ``<filesystem_root>/<user_id>/<agent_slug>/skills/`` IS the source of
+- ``GET /v1/skills`` returns the global admin-curated catalog.
+- ``GET / POST / DELETE /v1/users/{user_id}/skills[/...]`` manage the
+  user's personal pool — add globals by name, create owned customs,
+  remove (cascades to per-agent assignments).
+- ``GET / PUT / DELETE /v1/users/{user_id}/agents/{agent_id}/skills[/{name}]``
+  manage which pool skills are assigned to a deep agent. The agents service
+  resolves the source folder via the user's manifest at assignment time.
+
+The bridge proxies to the agents service (which owns every volume) and
+caches reads in Redis with short TTLs + explicit invalidation on every
+mutation.
+
+The selection state is **not stored in Postgres** — the on-disk filesystem
+under ``$SKILLS_REGISTRY_USERS_ROOT/<user_id>/`` and
+``$AGENTS_FILESYSTEM_ROOT/<user_id>/<agent_slug>/skills/`` IS the source of
 truth.
 """
 from __future__ import annotations
@@ -20,13 +28,23 @@ from observability import get_logger, set_context
 
 from core.auth_session import require_csrf_protection
 from core.database import UserTable
-from schemas import Skill
+from schemas import (
+    CustomSkillCreateRequest,
+    Skill,
+    UserSkill,
+    UserSkillDetail,
+)
 from utils import validate_userId
 from utils.skills import (
+    add_global_skill_to_user_pool,
+    create_custom_skill_in_pool,
     disable_user_agent_skill,
     enable_user_agent_skill,
     get_user_agent_skills,
+    get_user_skill_detail,
     list_skills,
+    list_user_skills,
+    remove_skill_from_user_pool,
 )
 
 router = APIRouter()
@@ -39,25 +57,112 @@ async def get_skills(
         default=False,
         description=(
             "When true, skip the Redis cache, fetch fresh from the agents "
-            "service, and upsert the cache with the response. Used by the "
-            "manual 'refresh' button in the Skills tab. A normal page refresh "
-            "leaves this false so it benefits from the cache."
+            "service (forcing its in-memory manifest rebuild), and upsert "
+            "the bridge cache with the response. Used by the manual "
+            "'refresh' button. A normal page refresh leaves this false."
         ),
     ),
 ) -> List[Skill]:
-    """Return every skill in the central registry.
-
-    Proxies the agents service ``GET /skills`` with the trusted-proxy header.
-    Reads go through Redis with a TTL unless ``bypass_redis=true`` is set.
-    """
+    """Return every skill in the global catalog (admin-curated)."""
     payload = await list_skills(bypass_cache=bypass_redis)
     logger.info(
         "skills_listed",
-        "Served skills registry to UI",
+        "Served global skills catalog to UI",
         count=len(payload),
         bypass_redis=bypass_redis,
     )
     return [Skill.model_validate(item) for item in payload]
+
+
+# ---------------------------------------------------------------------------
+# Per-user pool
+# ---------------------------------------------------------------------------
+@router.get(
+    "/users/{user_id}",
+    response_model=List[UserSkill],
+    status_code=status.HTTP_200_OK,
+)
+async def get_user_pool(
+    user_id: str,
+    bypass_redis: bool = Query(default=False),
+    _: UserTable = Depends(validate_userId),
+) -> List[UserSkill]:
+    """Return the user's skill pool manifest (no content)."""
+    set_context(user_id=user_id)
+    payload = await list_user_skills(user_id=user_id, bypass_cache=bypass_redis)
+    logger.info(
+        "user_pool_listed",
+        "Served user skill pool",
+        user_id=user_id,
+        count=len(payload),
+        bypass_redis=bypass_redis,
+    )
+    return [UserSkill.model_validate(item) for item in payload]
+
+
+@router.get(
+    "/users/{user_id}/{skill_name}",
+    response_model=UserSkillDetail,
+    status_code=status.HTTP_200_OK,
+)
+async def get_user_skill(
+    user_id: str,
+    skill_name: str,
+    _: UserTable = Depends(validate_userId),
+) -> UserSkillDetail:
+    """Return a single user-pool skill with its SKILL.md content (no cache)."""
+    set_context(user_id=user_id)
+    payload = await get_user_skill_detail(user_id=user_id, skill_name=skill_name)
+    return UserSkillDetail.model_validate(payload)
+
+
+@router.post(
+    "/users/{user_id}/global/{skill_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def add_global_to_pool(
+    user_id: str,
+    skill_name: str,
+    _: UserTable = Depends(validate_userId),
+    __: None = Depends(require_csrf_protection),
+) -> None:
+    """Append a global-skill reference to the user's pool."""
+    set_context(user_id=user_id)
+    await add_global_skill_to_user_pool(user_id=user_id, skill_name=skill_name)
+
+
+@router.post(
+    "/users/{user_id}/custom",
+    response_model=UserSkill,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_custom_skill(
+    user_id: str,
+    payload: CustomSkillCreateRequest,
+    _: UserTable = Depends(validate_userId),
+    __: None = Depends(require_csrf_protection),
+) -> UserSkill:
+    """Create a user-owned custom skill in the pool."""
+    set_context(user_id=user_id)
+    body = await create_custom_skill_in_pool(
+        user_id=user_id, payload=payload.model_dump()
+    )
+    return UserSkill.model_validate(body)
+
+
+@router.delete(
+    "/users/{user_id}/{skill_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_from_pool(
+    user_id: str,
+    skill_name: str,
+    _: UserTable = Depends(validate_userId),
+    __: None = Depends(require_csrf_protection),
+) -> None:
+    """Remove a skill from the user's pool, cascading to per-agent assignments."""
+    set_context(user_id=user_id)
+    await remove_skill_from_user_pool(user_id=user_id, skill_name=skill_name)
 
 
 @router.get(

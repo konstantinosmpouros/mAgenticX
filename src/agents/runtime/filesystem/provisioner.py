@@ -26,18 +26,22 @@ Each mount lives in a distinct, non-overlapping subtree so no
   directory — files the agent writes in one chat are invisible to its
   next chat. Cross-conversation persistence is the job of
   ``/memories/AGENT.md``, which the agent edits explicitly.
-* The ``/skills/`` mount sees only the enabled-skill directories — not
-  the conversation work area, not the central registry.
+* The ``/skills/`` mount sees only the assigned-skill directories — not
+  the conversation work area, not the global registry.
 * Other deep agents for the same user live at ``agents/<other_slug>/``,
   which is not mounted into this agent's view.
 
-Three jobs:
+Two jobs:
     1. Idempotently create the parent tree the first time a (user, agent) is
        seen (``ensure_user_agent_filesystem``).
-    2. Read the current enabled-skills set for a (user, agent) pair
+    2. Read the current assigned-skills set for a (user, agent) pair
        (``list_enabled_skills``).
-    3. Mutate that set by copying from / removing under the registry
-       (``enable_skill``, ``disable_skill``).
+
+Writes to the skills directory are owned by
+``runtime.skill_registry.user_registry.assign_user_skill_to_agent`` (which
+resolves the source folder via the user's manifest) and the cascade in
+``remove_from_user``. The provisioner only ensures the parent directory
+tree exists; the registry layer owns the skill set inside it.
 
 All ID segments are validated with ``_safe_segment`` before they become
 path components, defending against path-traversal injected through the
@@ -47,7 +51,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
 
 from core.settings import settings
 from observability import get_logger
@@ -73,18 +77,6 @@ def _safe_segment(value: str) -> str:
     ):
         raise ValueError(f"Illegal path segment: {value!r}")
     return value
-
-
-def _registry_skill_dir(skill_name: str) -> Path:
-    return settings.filesystem.skills_registry_root / _safe_segment(skill_name)
-
-
-def is_registry_skill(skill_name: str) -> bool:
-    """True iff the named skill exists in the central registry."""
-    try:
-        return _registry_skill_dir(skill_name).is_dir()
-    except ValueError:
-        return False
 
 
 def user_root(user_id: str) -> Path:
@@ -136,7 +128,6 @@ def ensure_user_agent_filesystem(
     user_id: str,
     agent_slug: str,
     conversation_id: str | None = None,
-    default_skills: Iterable[str] | None = None,
 ) -> Path:
     """Idempotent. Returns the user-level path.
 
@@ -146,12 +137,8 @@ def ensure_user_agent_filesystem(
     - ``<user_id>/memory/`` + seeds ``AGENT.md`` from the standard template
       if it doesn't exist; never overwrites an existing file (the agent's
       edits are sacred).
-    - ``<user_id>/agents/<agent_slug>/skills/`` on first contact. On the
-      very first run for a (user, agent) pair, copies ``default_skills``
-      from the registry into ``skills/`` so a brand-new agent isn't
-      unusable on its first conversation. Subsequent calls leave existing
-      content alone — Phase 2 mutation endpoints own the skill set from
-      then on.
+    - ``<user_id>/agents/<agent_slug>/skills/`` on first contact (empty —
+      assignments are owned by the skill-registry layer).
     - ``<user_id>/agents/<agent_slug>/<conversation_id>/`` when
       ``conversation_id`` is supplied (agent invocation path). Bridge skill
       CRUD endpoints don't pass it.
@@ -172,33 +159,8 @@ def ensure_user_agent_filesystem(
             path=str(agent_md),
         )
 
-    agent_dir = agent_root(user_id, agent_slug)
-    is_first_run = not agent_dir.exists()
     skills_dir = skills_root(user_id, agent_slug)
     skills_dir.mkdir(parents=True, exist_ok=True)
-
-    if is_first_run and default_skills:
-        seeded: list[str] = []
-        for skill_name in default_skills:
-            try:
-                enable_skill(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)
-                seeded.append(skill_name)
-            except FileNotFoundError:
-                logger.warning(
-                    "default_skill_missing_from_registry",
-                    "Default skill is not present in the registry; skipped seeding",
-                    user_id=user_id,
-                    agent_slug=agent_slug,
-                    skill_name=skill_name,
-                )
-        if seeded:
-            logger.info(
-                "default_skills_seeded",
-                "Seeded default skills for first-time (user, agent) pair",
-                user_id=user_id,
-                agent_slug=agent_slug,
-                skills=seeded,
-            )
 
     if conversation_id is not None:
         conv_dir = conversation_root(user_id, agent_slug, conversation_id)
@@ -208,11 +170,11 @@ def ensure_user_agent_filesystem(
 
 
 def list_enabled_skills(user_id: str, agent_slug: str) -> List[str]:
-    """Return the sorted list of skill names currently enabled for the pair.
+    """Return the sorted list of skill names currently assigned to the pair.
 
     Source of truth is the filesystem — ``os.listdir`` on the skills
     directory. Returns an empty list if the directory doesn't exist yet
-    (the user hasn't run the agent for the first time).
+    (the user hasn't assigned any skill to this agent yet).
     """
     skills_dir = agent_root(user_id, agent_slug) / "skills"
     if not skills_dir.is_dir():
@@ -220,49 +182,23 @@ def list_enabled_skills(user_id: str, agent_slug: str) -> List[str]:
     return sorted(entry.name for entry in skills_dir.iterdir() if entry.is_dir())
 
 
-def enable_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
-    """Copy ``<registry>/<skill_name>/`` into the user-agent's skills dir.
-
-    Idempotent: re-enabling an already-present skill is a no-op. Raises
-    :class:`FileNotFoundError` when ``skill_name`` is not in the registry.
-    """
-    src = _registry_skill_dir(skill_name)
-    if not src.is_dir():
-        raise FileNotFoundError(f"Skill not found in registry: {skill_name}")
-
-    dest_parent = agent_root(user_id, agent_slug) / "skills"
-    dest_parent.mkdir(parents=True, exist_ok=True)
-    dest = dest_parent / _safe_segment(skill_name)
-    if dest.exists():
-        logger.info(
-            "skill_already_enabled",
-            "Skill already enabled — no-op",
-            user_id=user_id,
-            agent_slug=agent_slug,
-            skill_name=skill_name,
-        )
-        return
-
-    shutil.copytree(src, dest)
-    logger.info(
-        "skill_enabled",
-        "Skill enabled for user-agent pair",
-        user_id=user_id,
-        agent_slug=agent_slug,
-        skill_name=skill_name,
-    )
-
-
 def disable_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
     """Remove the user-agent's copy of ``skill_name``.
 
     Idempotent: removing a non-existent skill is a no-op.
+
+    NOTE: kept here (not moved to ``runtime.skill_registry``) because it
+    only touches the per-(user, agent) filesystem and is the inverse of
+    ``assign_user_skill_to_agent`` — symmetric ops live with the dir tree
+    they mutate. The Phase B remove-from-pool path uses an in-line
+    ``shutil.rmtree`` cascade instead of calling this so the cascade can
+    iterate over every agent without an extra dependency layer.
     """
     target = agent_root(user_id, agent_slug) / "skills" / _safe_segment(skill_name)
     if not target.exists():
         logger.info(
             "skill_already_disabled",
-            "Skill not enabled — disable is a no-op",
+            "Skill not assigned — disable is a no-op",
             user_id=user_id,
             agent_slug=agent_slug,
             skill_name=skill_name,
@@ -272,7 +208,7 @@ def disable_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
     shutil.rmtree(target)
     logger.info(
         "skill_disabled",
-        "Skill disabled for user-agent pair",
+        "Skill assignment removed for user-agent pair",
         user_id=user_id,
         agent_slug=agent_slug,
         skill_name=skill_name,

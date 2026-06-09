@@ -96,16 +96,13 @@ class DeepAgent(BaseAgent, ABC):
     # filters by it to show the per-user skill selection panel only here.
     type: AgentType = "deep agent"
 
-    # Static behaviour contract — concrete subclasses override these. The
-    # ``instructions`` string replaces the previously-bundled ``AGENT.md``
-    # template (which lived in the agent's source directory and was identical
-    # for every user) — it is the agent's personality / orchestration prompt
-    # passed to ``create_deep_agent(system_prompt=...)``. ``default_skills`` is
-    # the seed set copied into a brand-new (user, agent) filesystem the first
-    # time the pair is observed; it is NOT a runtime filter and never affects
-    # the agent's view after first run.
+    # Static behaviour contract — concrete subclasses override the
+    # ``instructions`` string with their personality / orchestration prompt
+    # passed to ``create_deep_agent(system_prompt=...)``. Skill assignments
+    # are no longer seeded from the deep-agent class — they're owned by the
+    # user's pool (see ``runtime.skill_registry.user_registry``) and a fresh
+    # user's pool starts empty until they explicitly add skills via the UI.
     instructions: str = ""
-    default_skills: List[str] = []
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         super().__init__(config=config)
@@ -173,9 +170,10 @@ class DeepAgent(BaseAgent, ABC):
         bridge stamps both on every request, and
         ``BaseAgent._validate_context_config`` rejects payloads that omit
         either. The first call for a (user, agent) pair seeds ``AGENT.md``
-        from the standard template and copies ``default_skills`` from the
-        registry. The conversation directory is mkdir'd on every call but
-        is a cheap no-op when it already exists.
+        from the standard template; the skills directory is created empty
+        (writes are owned by the skill-registry layer). The conversation
+        directory is mkdir'd on every call but is a cheap no-op when it
+        already exists.
         """
         if self._user_filesystem_root is not None:
             return self._user_filesystem_root
@@ -190,7 +188,6 @@ class DeepAgent(BaseAgent, ABC):
             user_id=user_id,
             agent_slug=self.name,
             conversation_id=conversation_id,
-            default_skills=self.default_skills,
         )
         return self._user_filesystem_root
 

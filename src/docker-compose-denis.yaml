@@ -68,6 +68,8 @@ services:
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
       - TRUSTED_PROXY_SECRET_FILE=/run/secrets/trusted_proxy_secret
       - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
+      - SKILLS_REGISTRY_GLOBAL_ROOT=/var/agents/skills_registry/global
+      - SKILLS_REGISTRY_USERS_ROOT=/var/agents/skills_registry/users
     secrets:
       - openai_api_key
       - trusted_proxy_secret
@@ -80,6 +82,8 @@ services:
       - /opt/magenticx/agents/tls/tls.crt:/app/tls/tls.crt:ro
       - /opt/magenticx/agents/tls/ca.crt:/app/tls/ca.crt:ro
       - agents_filesystem:/var/agents/filesystem
+      - skills_registry_global:/var/agents/skills_registry/global
+      - skills_registry_users:/var/agents/skills_registry/users
     networks:
       - backend
       - frontend
@@ -256,5 +260,9 @@ volumes:
   chat_convs:
 
   agents_filesystem:
+
+  skills_registry_global:
+
+  skills_registry_users:
 
 

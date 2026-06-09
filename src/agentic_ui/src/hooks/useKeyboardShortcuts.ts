@@ -58,12 +58,13 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 function matchesShortcut(event: KeyboardEvent, combo: ShortcutCombo): boolean {
-  if (combo.code && event.code !== combo.code) {
-    return false;
-  }
+  // Match on the physical key (event.code) when the combo defines one, so letter
+  // shortcuts survive non-Latin layouts (e.g. a Greek layout reports event.key
+  // "μ" for the M key) and modifier-shifted glyphs (Option+M is "µ" on macOS).
+  const keyMatches = combo.code ? event.code === combo.code : normalizeKey(event.key) === combo.key;
 
   return (
-    normalizeKey(event.key) === combo.key &&
+    keyMatches &&
     event.metaKey === Boolean(combo.meta) &&
     event.ctrlKey === Boolean(combo.ctrl) &&
     event.shiftKey === Boolean(combo.shift) &&

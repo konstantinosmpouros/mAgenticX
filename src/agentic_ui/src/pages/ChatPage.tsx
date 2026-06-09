@@ -15,6 +15,7 @@ import type {
   ConversationShareMode,
   SharedConversationDetail,
   Skill,
+  UserSkill,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
@@ -137,6 +138,7 @@ export function ChatInterface({
   const [agents, setAgents] = useState<Agent[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolMetadata[]>([]);
   const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
+  const [myRegistrySkills, setMyRegistrySkills] = useState<UserSkill[]>([]);
   const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
@@ -294,6 +296,7 @@ export function ChatInterface({
     currentConversationId: currentConversation?.id ?? null,
     availableTools,
     availableSkills,
+    myRegistrySkills,
     agents,
     conversations,
     userPreferences,
@@ -392,7 +395,53 @@ export function ChatInterface({
     ensureLoaded: loadAgentSkills,
     toggleSkill: toggleUserAgentSkill,
     isToggling: isSkillToggling,
-  } = useSkills({ userId, toast: toastWrapper });
+    mySkills,
+    loadingMySkills,
+    refreshMySkills,
+    addGlobalToPool,
+    createCustomInPool,
+    removeFromPool,
+    skillDetail: mySkillDetails,
+    loadingSkillDetail,
+    ensureSkillDetail,
+  } = useSkills({ userId, toast: toastWrapper, initialPool: myRegistrySkills });
+
+  // Keep ChatPage's myRegistrySkills mirrored from the hook so the snapshot
+  // persistence path sees the live pool. The hook is the source of truth;
+  // this useEffect is a one-way sync.
+  useEffect(() => {
+    setMyRegistrySkills(mySkills);
+  }, [mySkills]);
+
+  const handleRefreshMySkills = useCallback(async () => {
+    await refreshMySkills({ bypassRedis: true });
+    requestPersist();
+  }, [refreshMySkills, requestPersist]);
+
+  const handleAddGlobalSkill = useCallback(
+    async (skillName: string) => {
+      await addGlobalToPool(skillName);
+      requestPersist();
+    },
+    [addGlobalToPool, requestPersist],
+  );
+
+  const handleCreateCustomSkill = useCallback(
+    async (payload: { name: string; description: string; content: string }) => {
+      const created = await createCustomInPool(payload);
+      if (created) requestPersist();
+      return created;
+    },
+    [createCustomInPool, requestPersist],
+  );
+
+  const handleRemoveSkillFromPool = useCallback(
+    async (skillName: string) => {
+      await removeFromPool(skillName);
+      requestPersist();
+    },
+    [removeFromPool, requestPersist],
+  );
 
   // Reset branch selections on conversation change
   useEffect(() => {
@@ -798,6 +847,7 @@ export function ChatInterface({
     setAgents,
     setAvailableTools,
     setAvailableSkills,
+    setMyRegistrySkills,
     setUserPreferences,
     setConversations,
     setConversationsLoading,
@@ -1133,6 +1183,7 @@ export function ChatInterface({
     setConversationsLoading,
     setAvailableTools,
     setAvailableSkills,
+    setMyRegistrySkills,
     setUserPreferences,
     setConversations,
     setShowUserProfile,
@@ -1520,6 +1571,15 @@ export function ChatInterface({
                 availableTools={toolsWithStatus}
                 availableSkills={availableSkills}
                 onRefreshSkills={handleRefreshSkills}
+                mySkills={mySkills}
+                loadingMySkills={loadingMySkills}
+                mySkillDetails={mySkillDetails}
+                isMySkillDetailLoading={loadingSkillDetail}
+                onLoadMySkillDetail={ensureSkillDetail}
+                onRefreshMySkills={handleRefreshMySkills}
+                onAddGlobalSkillToPool={handleAddGlobalSkill}
+                onCreateCustomSkill={handleCreateCustomSkill}
+                onRemoveSkillFromPool={handleRemoveSkillFromPool}
                 agents={agents}
                 skillSelections={skillSelections}
                 onLoadAgentSkills={loadAgentSkills}

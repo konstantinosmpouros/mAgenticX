@@ -84,11 +84,41 @@ export type ToolMetadata = {
 };
 
 
-// One entry in the central skills registry. The agent uses `content` as the
-// SKILL.md body; the UI shows `name` + `description` with click-to-expand for
-// the body. Per-user enabled skills (Phase 2+) live as directories under the
-// agent's per-user filesystem and are addressed by `name` alone.
+// One entry in the global (admin-curated) skills catalog. The agent uses
+// `content` as the SKILL.md body; the UI shows `name` + `description` with
+// click-to-expand for the body. `category` is the parent folder in the
+// `<category>/<skill>/` global hierarchy — surfaced as a small label.
 export type Skill = {
+    name: string;
+    description: string;
+    content: string;
+    category: string;
+};
+
+
+// One entry in the user's personal skill pool — either a reference to a
+// global catalog skill (type="global") or a user-authored custom skill
+// (type="custom"). `source_path` is opaque on the frontend; only the agents
+// service interprets it. `category` mirrors the global hierarchy and is
+// empty for customs.
+export type UserSkill = {
+    name: string;
+    type: "global" | "custom";
+    description: string;
+    source_path: string;
+    category: string;
+};
+
+
+// User-pool entry joined with its SKILL.md body. Returned by the detail
+// endpoint when the user expands a card.
+export type UserSkillDetail = UserSkill & {
+    content: string;
+};
+
+
+// Form payload for creating a user-owned custom skill.
+export type CustomSkillCreatePayload = {
     name: string;
     description: string;
     content: string;

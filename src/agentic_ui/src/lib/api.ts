@@ -27,6 +27,9 @@ import type {
   InferenceStartRequest,
   InferenceStartResponse,
   Skill,
+  UserSkill,
+  UserSkillDetail,
+  CustomSkillCreatePayload,
   ToolMetadata,
   ToolPreference,
   WorkspaceSearchResult,
@@ -212,6 +215,7 @@ export async function getSkills(options?: { bypassRedis?: boolean }): Promise<Sk
     name: typeof skill?.name === "string" ? skill.name : "unknown-skill",
     description: typeof skill?.description === "string" ? skill.description : "",
     content: typeof skill?.content === "string" ? skill.content : "",
+    category: typeof skill?.category === "string" ? skill.category : "",
   }));
 }
 
@@ -269,6 +273,128 @@ export async function disableUserAgentSkill(
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
     throw new Error(`Failed to disable skill ${skillName}: ${res.status}`);
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Per-user skill pool (the user's personal registry of globals + customs)
+// ---------------------------------------------------------------------------
+function normalizeUserSkill(raw: any): UserSkill {
+  return {
+    name: typeof raw?.name === "string" ? raw.name : "unknown-skill",
+    type: raw?.type === "custom" ? "custom" : "global",
+    description: typeof raw?.description === "string" ? raw.description : "",
+    source_path: typeof raw?.source_path === "string" ? raw.source_path : "",
+    category: typeof raw?.category === "string" ? raw.category : "",
+  };
+}
+
+
+// Fetch the user's pool manifest entries (no SKILL.md content). Read-through
+// cached on the bridge with a 5min TTL. ``bypassRedis: true`` forces an
+// upstream fetch and upserts the cache.
+export async function getMySkills(
+  userId: string,
+  options?: { bypassRedis?: boolean },
+): Promise<UserSkill[]> {
+  const base = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}`;
+  const url = options?.bypassRedis ? `${base}?bypass_redis=true` : base;
+  const res = await fetch(url, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch my skills: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!Array.isArray(data)) return [];
+  return data.map(normalizeUserSkill);
+}
+
+
+// Fetch a single user-pool skill with its SKILL.md body. Used when the user
+// expands a card in the My skills view.
+export async function getMySkillDetail(
+  userId: string,
+  skillName: string,
+): Promise<UserSkillDetail> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/${encodeURIComponent(skillName)}`;
+  const res = await fetch(url, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch skill detail ${skillName}: ${res.status}`);
+  }
+  const raw = await res.json();
+  return {
+    ...normalizeUserSkill(raw),
+    content: typeof raw?.content === "string" ? raw.content : "",
+  };
+}
+
+
+// Append a global-catalog skill into the user's pool. 204 on success. 404 if
+// the skill isn't in the global catalog; 409 if it's already in the pool.
+export async function addGlobalSkillToPool(
+  userId: string,
+  skillName: string,
+): Promise<void> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/global/${encodeURIComponent(skillName)}`;
+  const res = await fetch(url, withSessionRequest({
+    method: "POST",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to add global skill ${skillName} to pool: ${res.status}`);
+  }
+}
+
+
+// Create a user-owned custom skill in the pool. 201 with the new manifest
+// entry on success; 409 on name collision with global or own pool.
+export async function createCustomSkill(
+  userId: string,
+  payload: CustomSkillCreatePayload,
+): Promise<UserSkill> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/custom`;
+  const res = await fetch(url, withSessionRequest({
+    method: "POST",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail = "";
+    try {
+      const errBody = await res.json();
+      detail = typeof errBody?.detail === "string" ? errBody.detail : "";
+    } catch {
+      // swallow — we'll throw a generic error
+    }
+    throw new Error(detail || `Failed to create custom skill: ${res.status}`);
+  }
+  const raw = await res.json();
+  return normalizeUserSkill(raw);
+}
+
+
+// Remove a skill from the user's pool. Cascades on the agents service —
+// also removes the skill from every per-(user, agent) assignment folder.
+export async function removeSkillFromPool(
+  userId: string,
+  skillName: string,
+): Promise<void> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/${encodeURIComponent(skillName)}`;
+  const res = await fetch(url, withSessionRequest({
+    method: "DELETE",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to remove skill ${skillName} from pool: ${res.status}`);
   }
 }
 

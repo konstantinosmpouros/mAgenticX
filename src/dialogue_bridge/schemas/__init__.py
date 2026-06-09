@@ -106,12 +106,49 @@ class ToolManifest(BaseModel):
 
 
 class Skill(BaseModel):
-    """One entry in the central skills registry.
+    """One entry in the global skills catalog.
 
-    Mirrors :class:`agents.schemas.SkillManifest` — the bridge proxies the
-    agents service ``GET /skills`` and surfaces the result to the agentic UI
-    under this name.
+    Mirrors :class:`agents.schemas.SkillManifest`. ``category`` is the
+    parent folder under the global registry root, surfaced as a small label
+    next to the skill name in the UI.
     """
+
+    name: str
+    description: str = ""
+    content: str = ""
+    category: str = ""
+
+
+class UserSkill(BaseModel):
+    """One entry in a user's personal skill pool (manifest row, no content).
+
+    Mirrors :class:`agents.schemas.SkillManifestEntry`. ``type`` distinguishes
+    references to globals (``"global"``) from user-owned custom skills
+    (``"custom"``). ``category`` is the parent folder in the global
+    hierarchy — empty string for custom skills.
+    """
+
+    name: str
+    type: Literal["global", "custom"]
+    description: str = ""
+    source_path: str
+    category: str = ""
+
+
+class UserSkillDetail(BaseModel):
+    """A user-pool entry joined with its SKILL.md body — returned by
+    ``GET /v1/users/{user_id}/skills/{name}``."""
+
+    name: str
+    type: Literal["global", "custom"]
+    description: str = ""
+    source_path: str
+    category: str = ""
+    content: str = ""
+
+
+class CustomSkillCreateRequest(BaseModel):
+    """Request body for ``POST /v1/users/{user_id}/skills/custom``."""
 
     name: str
     description: str = ""

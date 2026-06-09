@@ -1,11 +1,12 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
-import type { Agent, ConversationDetail, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/lib/types';
 import { loadSession, clearSession, updateSession, saveSession } from '@/lib/authStorage';
 import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
 import {
   getAgents,
   getConversationDetail,
   getConversations,
+  getMySkills,
   getSkills,
   getTools,
   refreshSession,
@@ -37,6 +38,7 @@ export function useAuthRehydrateEffect(params: {
   setAgents: (v: any) => void;
   setAvailableTools?: (v: ToolMetadata[]) => void;
   setAvailableSkills?: (v: Skill[]) => void;
+  setMyRegistrySkills?: (v: UserSkill[]) => void;
   setUserPreferences?: (v: UserPreferences | null) => void;
   setConversations: (v: any) => void;
   setConversationsLoading?: (v: boolean) => void;
@@ -57,6 +59,7 @@ export function useAuthRehydrateEffect(params: {
     setAgents,
     setAvailableTools,
     setAvailableSkills,
+    setMyRegistrySkills,
     setUserPreferences,
     setConversations,
     setConversationsLoading,
@@ -143,6 +146,7 @@ export function useAuthRehydrateEffect(params: {
             // Skills get the agents-style flow: read snapshot for instant
             // paint, always refetch in parallel below to keep the list fresh.
             if (setAvailableSkills) setAvailableSkills(snapshot.availableSkills ?? []);
+            if (setMyRegistrySkills) setMyRegistrySkills(snapshot.myRegistrySkills ?? []);
             if (setUserPreferences) setUserPreferences(snapshot.userPreferences ?? null);
             setConversations(snapshot.conversations ?? []);
 
@@ -191,6 +195,19 @@ export function useAuthRehydrateEffect(params: {
               .catch((error) => {
                 console.error('Failed to fetch skills on rehydrate', error);
                 setAvailableSkills?.([]);
+              }),
+          );
+        }
+
+        if (setMyRegistrySkills) {
+          // Always refetch the user's pool on rehydrate — the snapshot is a
+          // paint accelerator, not the source of truth.
+          requests.push(
+            getMySkills(restored.user.id)
+              .then((mine) => setMyRegistrySkills(mine))
+              .catch((error) => {
+                console.error('Failed to fetch user skill pool on rehydrate', error);
+                setMyRegistrySkills([]);
               }),
           );
         }
@@ -274,6 +291,7 @@ export function useUISnapshotPersistence(params: {
   currentConversationId: string | null;
   availableTools: ToolMetadata[];
   availableSkills: Skill[];
+  myRegistrySkills?: UserSkill[];
   agents: Agent[];
   conversations: ConversationSummary[];
   userPreferences: UserPreferences | null;
@@ -287,6 +305,7 @@ export function useUISnapshotPersistence(params: {
     currentConversationId,
     availableTools,
     availableSkills,
+    myRegistrySkills,
     agents,
     conversations,
     userPreferences,
@@ -298,7 +317,7 @@ export function useUISnapshotPersistence(params: {
   const uiSnapshot = useMemo<UISnapshotSerializable | null>(() => {
     if (!userId) return null;
     return {
-      version: 3,
+      version: 4,
       selectedAgent,
       isPrivateMode,
       sidebarOpen,
@@ -306,6 +325,7 @@ export function useUISnapshotPersistence(params: {
       lastConversationId: currentConversationId,
       availableTools,
       availableSkills,
+      myRegistrySkills: myRegistrySkills ?? [],
       agents,
       conversations,
       userPreferences,
@@ -319,6 +339,7 @@ export function useUISnapshotPersistence(params: {
     currentConversationId,
     availableTools,
     availableSkills,
+    myRegistrySkills,
     agents,
     conversations,
     userPreferences,

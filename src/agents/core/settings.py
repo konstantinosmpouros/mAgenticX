@@ -293,12 +293,20 @@ class FilesystemSettings(BaseSettings):
         validation_alias="AGENTS_FILESYSTEM_ROOT",
     )
 
-    # Central skills registry shipped inside the image. Read-only at runtime;
-    # the user-facing PUT endpoint copies subdirectories of this path into the
-    # per-user filesystem when a skill is enabled.
-    skills_registry_root: Path = Field(
-        Path(__file__).resolve().parent.parent / "skills_registry",
-        validation_alias="AGENTS_SKILLS_REGISTRY_ROOT",
+    # Global skills registry — admin-curated catalog mounted as a read-write
+    # Docker volume so admins can add skills out-of-band. Seeded at boot from
+    # the image's /opt/skills_registry_seed/ via runtime.skill_registry.
+    skills_registry_global_root: Path = Field(
+        Path("/var/agents/skills_registry/global"),
+        validation_alias="SKILLS_REGISTRY_GLOBAL_ROOT",
+    )
+
+    # Per-user skill registry — each user's pool of skills (refs to global +
+    # owned custom skills) plus their manifest.json. Mutated by bridge user
+    # endpoints; reconciled at boot by the agents-service lifespan.
+    skills_registry_users_root: Path = Field(
+        Path("/var/agents/skills_registry/users"),
+        validation_alias="SKILLS_REGISTRY_USERS_ROOT",
     )
 
 

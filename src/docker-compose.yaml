@@ -51,8 +51,12 @@ services:
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
       - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
+      - SKILLS_REGISTRY_GLOBAL_ROOT=/var/agents/skills_registry/global
+      - SKILLS_REGISTRY_USERS_ROOT=/var/agents/skills_registry/users
     volumes:
       - agents_filesystem:/var/agents/filesystem
+      - skills_registry_global:/var/agents/skills_registry/global
+      - skills_registry_users:/var/agents/skills_registry/users
     depends_on:
       - rag_service
     restart: unless-stopped
@@ -178,3 +182,7 @@ volumes:
   chat_convs:
 
   agents_filesystem:
+
+  skills_registry_global:
+
+  skills_registry_users:

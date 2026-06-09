@@ -47,6 +47,9 @@ from schemas import (
     AgentManifest,
     ToolManifest,
     SkillManifest,
+    SkillManifestEntry,
+    CustomSkillCreate,
+    UserSkillDetail,
 )
 from utils import (
     disable_user_agent_skill,
@@ -62,6 +65,16 @@ from utils import (
     mcp_session_context,
 )
 from utils.agents import AGENT_REGISTRY
+from runtime.skill_registry import (
+    add_custom_to_user,
+    add_global_to_user,
+    get_user_skill_detail,
+    list_user_skills,
+    reconcile_all_user_manifests,
+    rebuild_global_manifest,
+    remove_from_user,
+    seed_global_registry,
+)
 from core.proxy import require_internal_caller
 from core.error_handling import provider_error_handler
 
@@ -113,6 +126,12 @@ async def _lifespan(app: FastAPI):
     loop.set_exception_handler(_make_loop_exception_handler(old))
     try:
         logger.info("service_startup", "Agents service startup initiated")
+        # Bootstrap the global skills registry volume from the image seed,
+        # index it into manifest.json, then heal per-user manifests against
+        # filesystem state.
+        seed_global_registry()
+        rebuild_global_manifest()
+        reconcile_all_user_manifests()
         yield
     finally:
         loop.set_exception_handler(old)
@@ -253,18 +272,125 @@ async def get_available_tools() -> List[ToolManifest]:
 
 
 # ------------------------------------------------------------------
-# Skills Registry Endpoint
+# Global Skills Registry
 # ------------------------------------------------------------------
-@app.get("/skills", response_model=List[SkillManifest], status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
-async def get_available_skills() -> List[SkillManifest]:
-    """Return the central skills registry (read-only catalogue).
+@app.get(
+    "/skills/global",
+    response_model=List[SkillManifest],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_global_skills(bypass_cache: bool = False) -> List[SkillManifest]:
+    """Return the global skills catalog (admin-curated).
 
-    The bridge proxies this and caches the result in Redis with a short TTL,
-    so this scan only runs on cache miss or registry change.
+    With ``bypass_cache=true`` the agents service rescans the global volume
+    + rewrites manifest.json before responding — used by the UI's refresh
+    button when an admin has dropped a new skill into the volume.
+
+    The bridge caches the result in Redis (24 h TTL); ``bypass_cache=true``
+    also bypasses the bridge cache and refreshes it.
     """
+    if bypass_cache:
+        rebuild_global_manifest()
     skills = list_registry_skills()
-    logger.info("skills_registry_listed", "Served skills registry", count=len(skills))
+    logger.info(
+        "skills_global_listed",
+        "Served global skills catalog",
+        count=len(skills),
+        bypass_cache=bypass_cache,
+    )
     return skills
+
+
+# ------------------------------------------------------------------
+# Per-User Skill Pool (manifest-driven)
+# ------------------------------------------------------------------
+# Each user has a manifest.json under $SKILLS_REGISTRY_USERS_ROOT/<user_id>/
+# listing the skills in their pool. Pool entries reference either global
+# skills (no folder copy needed) or owned custom skills (folder lives in
+# users/<user_id>/custom/<name>/). The per-(user, agent) PUT below resolves
+# its source through this manifest — users can only assign skills they have
+# in their pool.
+@app.get(
+    "/users/{user_id}/skills",
+    response_model=List[SkillManifestEntry],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_user_skill_pool(user_id: str) -> List[SkillManifestEntry]:
+    """Return the user's manifest entries (no SKILL.md content, descriptions only)."""
+    try:
+        entries = list_user_skills(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    logger.info(
+        "user_skill_pool_listed",
+        "Served user skill pool",
+        user_id=user_id,
+        count=len(entries),
+    )
+    return entries
+
+
+@app.get(
+    "/users/{user_id}/skills/{skill_name}",
+    response_model=UserSkillDetail,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def get_user_skill_detail_endpoint(user_id: str, skill_name: str) -> UserSkillDetail:
+    """Return one skill from the user's pool with its SKILL.md content."""
+    try:
+        return get_user_skill_detail(user_id, skill_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post(
+    "/users/{user_id}/skills/global/{skill_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def add_global_skill_to_user(user_id: str, skill_name: str) -> None:
+    """Append a reference to a global skill into the user's pool (manifest-only)."""
+    try:
+        add_global_to_user(user_id, skill_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@app.post(
+    "/users/{user_id}/skills/custom",
+    response_model=SkillManifestEntry,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def create_user_custom_skill(user_id: str, payload: CustomSkillCreate) -> SkillManifestEntry:
+    """Create a user-owned custom skill (folder + manifest entry).
+
+    Rejects 409 on name collision (with global OR another pool entry).
+    """
+    try:
+        return add_custom_to_user(user_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@app.delete(
+    "/users/{user_id}/skills/{skill_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def delete_user_skill(user_id: str, skill_name: str) -> None:
+    """Remove a skill from the user's pool and cascade-remove from per-agent assignments."""
+    try:
+        remove_from_user(user_id, skill_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 

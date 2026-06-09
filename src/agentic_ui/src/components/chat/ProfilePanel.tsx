@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { useTheme } from "next-themes";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
     AppWindow,
     Archive,
+    ArrowLeft,
     Ban,
     Check,
     ChevronDown,
+    ChevronRight,
     Copy,
     ExternalLink,
     HelpCircle,
@@ -47,7 +50,7 @@ import {
     type RealtimeVoice,
     type VoiceModeLanguage,
 } from "@/lib/consts";
-import { Agent, ConversationShareListItem, ConversationSummary, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile } from "@/lib/types";
+import { Agent, ConversationShareListItem, ConversationSummary, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/lib/types";
 import { generateReadAloudPreviewAudio } from "@/lib/api";
 import {
     SHORTCUTS,
@@ -65,13 +68,26 @@ type ProfilePanelProps = {
     onLogout: () => void;
     user: UserProfile | null;
     availableTools: (ToolMetadata & { enabled?: boolean })[];
+    // Global catalog — admin-curated, read-only at runtime. Surface searched
+    // from the My skills view via the "+ Add" path when the user wants to
+    // pull a global into their personal pool.
     availableSkills: Skill[];
     onRefreshSkills?: () => Promise<void>;
-    // Manage-per-agent skill selection (Phase 2 Skills feature). The Skills
-    // tab renders a "Manage per agent" section for every agent whose
-    // ``type === "deep agent"``; ``skillSelections`` is the per-agent enabled
-    // set keyed by ``agentId``. The hook lazy-loads the selection when the
-    // user expands an agent card via ``onLoadAgentSkills``.
+    // User pool ("My skills"): the user's personal registry. Mixed globals
+    // (references) + customs (user-authored). Mutation handlers below.
+    mySkills?: UserSkill[];
+    loadingMySkills?: boolean;
+    mySkillDetails?: Record<string, UserSkillDetail>;
+    isMySkillDetailLoading?: (skillName: string) => boolean;
+    onLoadMySkillDetail?: (skillName: string) => Promise<void>;
+    onRefreshMySkills?: () => Promise<void>;
+    onAddGlobalSkillToPool?: (skillName: string) => Promise<void>;
+    onCreateCustomSkill?: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
+    onRemoveSkillFromPool?: (skillName: string) => Promise<void>;
+    // Manage-per-agent skill selection. The Skills tab "Manage" sub-view
+    // renders one card per deep agent; ``skillSelections`` is the per-agent
+    // enabled set keyed by ``agentId``. The hook lazy-loads selection when
+    // the user expands an agent card via ``onLoadAgentSkills``.
     agents?: Agent[];
     skillSelections?: UserAgentSkillSelection;
     onLoadAgentSkills?: (agentId: string) => Promise<void>;
@@ -319,6 +335,15 @@ export default function ProfilePanel({
     availableTools,
     availableSkills,
     onRefreshSkills,
+    mySkills,
+    loadingMySkills = false,
+    mySkillDetails,
+    isMySkillDetailLoading,
+    onLoadMySkillDetail,
+    onRefreshMySkills,
+    onAddGlobalSkillToPool,
+    onCreateCustomSkill,
+    onRemoveSkillFromPool,
     agents,
     skillSelections,
     onLoadAgentSkills,
@@ -344,6 +369,26 @@ export default function ProfilePanel({
     onSelectVoiceModeLanguage,
     preferencesSaving = false,
 }: ProfilePanelProps) {
+    const prefersReducedMotion = useReducedMotion();
+    // Sub-view transitions in the Skills tab — slide-in from the side with a
+    // touch of fade. Layout-shift duration (300ms) per CLAUDE.md, exit at
+    // 65% of enter so dismissals feel responsive, transform+opacity only.
+    const skillsViewMotionProps = useMemo(() => {
+        if (prefersReducedMotion) {
+            return {
+                initial: { opacity: 0 },
+                animate: { opacity: 1 },
+                exit: { opacity: 0 },
+                transition: { duration: 0.1 },
+            };
+        }
+        return {
+            initial: { opacity: 0, x: 16 },
+            animate: { opacity: 1, x: 0 },
+            exit: { opacity: 0, x: -12 },
+            transition: { duration: 0.3, ease: "easeOut" as const },
+        };
+    }, [prefersReducedMotion]);
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
     const [openNavTooltipId, setOpenNavTooltipId] = useState<string | null>(null);
     const navTooltipClickSuppressedUntilRef = useRef(0);
@@ -360,18 +405,26 @@ export default function ProfilePanel({
     const [voiceSelectorOpen, setVoiceSelectorOpen] = useState(false);
     const [previewLoadingVoice, setPreviewLoadingVoice] = useState<RealtimeVoice | null>(null);
     const [previewPlayingVoice, setPreviewPlayingVoice] = useState<RealtimeVoice | null>(null);
-    // Skills flow in as the ``availableSkills`` prop, fetched at login /
-    // page refresh and cached in the IndexedDB UI snapshot the same way as
-    // ``availableTools`` and ``agents``. The refresh button below uses
-    // ``onRefreshSkills`` which goes through the bridge with
-    // ``bypass_redis=true`` — that path re-hits the agents service and
-    // upserts the bridge's Redis cache with the fresh response.
-    const [expandedSkills, setExpandedSkills] = useState<Record<string, boolean>>({});
-    const [skillsRefreshing, setSkillsRefreshing] = useState(false);
     // Manage-per-agent UI: which deep-agent cards are expanded. Loading the
     // selection set is deferred to the first expansion so we don't fan out
     // N concurrent GETs on Skills-tab open.
     const [expandedAgentSkills, setExpandedAgentSkills] = useState<Record<string, boolean>>({});
+
+    // Skills tab sub-view: which screen is currently shown.
+    type SkillsSubView = "my" | "add" | "manage";
+    const [skillsView, setSkillsView] = useState<SkillsSubView>("my");
+    const [skillsSearch, setSkillsSearch] = useState("");
+    const [mySkillsRefreshing, setMySkillsRefreshing] = useState(false);
+    // Create-custom form state. Reset whenever the user leaves the Add view
+    // so reopening "Add" doesn't restore stale content.
+    const [customSkillName, setCustomSkillName] = useState("");
+    const [customSkillDescription, setCustomSkillDescription] = useState("");
+    const [customSkillContent, setCustomSkillContent] = useState("");
+    const [customSkillSubmitting, setCustomSkillSubmitting] = useState(false);
+    const [customSkillError, setCustomSkillError] = useState<string | null>(null);
+    // Pool-card expansion (My skills view) — separate from the global-catalog
+    // expansion state so the two lists track independently.
+    const [expandedPoolSkills, setExpandedPoolSkills] = useState<Record<string, boolean>>({});
 
     const deepAgents = useMemo(
         () => (agents ?? []).filter((agent) => agent.type === "deep agent" && agent.isActive),
@@ -399,20 +452,153 @@ export default function ProfilePanel({
     // deliberate refresh without dragging.
     const MIN_REFRESH_SPIN_MS = 600;
 
-    const handleRefreshSkills = useCallback(async () => {
-        if (!onRefreshSkills || skillsRefreshing) return;
-        setSkillsRefreshing(true);
+    const handleRefreshMySkills = useCallback(async () => {
+        if (!onRefreshMySkills || mySkillsRefreshing) return;
+        setMySkillsRefreshing(true);
         const minSpin = new Promise((resolve) => setTimeout(resolve, MIN_REFRESH_SPIN_MS));
         try {
-            // Run the actual refresh and the minimum-duration timer in parallel
-            // so the spin always has a chance to be perceived. Promise.all
-            // resolves at the slower of the two; if the network is slow, the
-            // spin keeps going until the network finishes, no extra wait.
-            await Promise.all([onRefreshSkills(), minSpin]);
+            await Promise.all([onRefreshMySkills(), minSpin]);
         } finally {
-            setSkillsRefreshing(false);
+            setMySkillsRefreshing(false);
         }
-    }, [onRefreshSkills, skillsRefreshing]);
+    }, [onRefreshMySkills, mySkillsRefreshing]);
+
+    const openAddView = useCallback(() => {
+        setCustomSkillName("");
+        setCustomSkillDescription("");
+        setCustomSkillContent("");
+        setCustomSkillError(null);
+        setSkillsView("add");
+    }, []);
+
+    const cancelAddView = useCallback(() => {
+        setCustomSkillName("");
+        setCustomSkillDescription("");
+        setCustomSkillContent("");
+        setCustomSkillError(null);
+        setSkillsView("my");
+    }, []);
+
+    const handleSubmitCustomSkill = useCallback(async () => {
+        if (!onCreateCustomSkill) return;
+        const trimmedName = customSkillName.trim();
+        if (!trimmedName) {
+            setCustomSkillError("Name is required.");
+            return;
+        }
+        // Mirror agents-service _safe_segment: reject slashes, dots, and
+        // leading-dot names. Server validates again — this is just to fail
+        // fast in the UI before the round-trip.
+        if (/[\\/]/.test(trimmedName) || trimmedName.includes("..") || trimmedName.startsWith(".")) {
+            setCustomSkillError("Name can't contain slashes, '..', or start with a dot.");
+            return;
+        }
+        if (mySkills?.some((s) => s.name === trimmedName)) {
+            setCustomSkillError("You already have a skill with that name.");
+            return;
+        }
+        if (availableSkills.some((s) => s.name === trimmedName)) {
+            setCustomSkillError("That name collides with a global skill. Pick another.");
+            return;
+        }
+        setCustomSkillSubmitting(true);
+        setCustomSkillError(null);
+        try {
+            const created = await onCreateCustomSkill({
+                name: trimmedName,
+                description: customSkillDescription.trim(),
+                content: customSkillContent,
+            });
+            if (created) {
+                setCustomSkillName("");
+                setCustomSkillDescription("");
+                setCustomSkillContent("");
+                setSkillsView("my");
+            }
+        } catch (error) {
+            setCustomSkillError(error instanceof Error ? error.message : "Could not create the skill.");
+        } finally {
+            setCustomSkillSubmitting(false);
+        }
+    }, [
+        availableSkills,
+        customSkillContent,
+        customSkillDescription,
+        customSkillName,
+        mySkills,
+        onCreateCustomSkill,
+    ]);
+
+    const togglePoolSkill = useCallback(
+        (skillName: string) => {
+            setExpandedPoolSkills((prev) => {
+                const willBeOpen = !prev[skillName];
+                if (willBeOpen) {
+                    void onLoadMySkillDetail?.(skillName);
+                }
+                return { ...prev, [skillName]: !prev[skillName] };
+            });
+        },
+        [onLoadMySkillDetail],
+    );
+
+    const normalizedSkillsSearch = skillsSearch.trim().toLowerCase();
+    const skillsSearchTokens = useMemo(() => {
+        if (!normalizedSkillsSearch) return [] as string[];
+        return normalizedSkillsSearch
+            .split(/\s+/)
+            .map((tok) => tok.replace(/[-_./]/g, ""))
+            .filter(Boolean);
+    }, [normalizedSkillsSearch]);
+
+    const matchesAllTokens = useCallback(
+        (s: { name: string; description: string; category: string }) => {
+            if (skillsSearchTokens.length === 0) return true;
+            const haystack = `${s.name} ${s.description} ${s.category}`
+                .toLowerCase()
+                .replace(/[-_./]/g, "");
+            return skillsSearchTokens.every((tok) => haystack.includes(tok));
+        },
+        [skillsSearchTokens],
+    );
+
+    const filteredMySkills = useMemo(() => {
+        if (!mySkills) return [];
+        if (skillsSearchTokens.length === 0) return mySkills;
+        return mySkills.filter(matchesAllTokens);
+    }, [mySkills, skillsSearchTokens, matchesAllTokens]);
+
+    const myPoolNames = useMemo(() => new Set((mySkills ?? []).map((s) => s.name)), [mySkills]);
+
+    const globalCandidates = useMemo(() => {
+        if (skillsSearchTokens.length === 0) return [];
+        const scored = availableSkills
+            .filter((s) => !myPoolNames.has(s.name) && matchesAllTokens(s))
+            .map((s) => {
+                const name = s.name.toLowerCase().replace(/[-_./]/g, "");
+                const category = s.category.toLowerCase().replace(/[-_./]/g, "");
+                let score = 0;
+                for (const tok of skillsSearchTokens) {
+                    if (name === tok) score += 1000;
+                    else if (name.startsWith(tok)) score += 500;
+                    else if (name.includes(tok)) score += 100;
+                    if (category.includes(tok)) score += 20;
+                }
+                return { s, score };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 30)
+            .map((x) => x.s);
+        return scored;
+    }, [availableSkills, myPoolNames, skillsSearchTokens, matchesAllTokens]);
+
+    const globalCandidatesTruncated = useMemo(() => {
+        if (skillsSearchTokens.length === 0) return 0;
+        const total = availableSkills.filter(
+            (s) => !myPoolNames.has(s.name) && matchesAllTokens(s),
+        ).length;
+        return Math.max(0, total - globalCandidates.length);
+    }, [availableSkills, myPoolNames, skillsSearchTokens, matchesAllTokens, globalCandidates.length]);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const previewAudioUrlRef = useRef<string | null>(null);
     const { theme, setTheme } = useTheme();
@@ -1837,95 +2023,327 @@ export default function ProfilePanel({
 
                                     {normalizedActiveTab === "skills" ? (
                                         <div className="space-y-6 animate-fade-in">
-                                            <InfoCard
-                                                eyebrow="Library"
-                                                title="Available skills"
-                                                description="Skills are markdown playbooks that deep agents load on demand. Click an entry to read the full instructions."
-                                                headerAction={
-                                                    onRefreshSkills ? (
-                                                        <Tooltip delayDuration={0}>
-                                                            <TooltipTrigger asChild>
+                                            <AnimatePresence mode="wait" initial={false}>
+                                                {skillsView === "my" ? (
+                                                    <motion.div key="skills-my" className="space-y-6" {...skillsViewMotionProps}>
+                                                    <InfoCard
+                                                        eyebrow="My pool"
+                                                        title="My skills"
+                                                        description="Your personal skill pool. Search the global catalog to add more, or create a custom skill of your own."
+                                                        headerAction={
+                                                            <div className="flex items-center gap-1">
+                                                                {onRefreshMySkills ? (
+                                                                    <Tooltip delayDuration={0}>
+                                                                        <TooltipTrigger asChild>
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                onMouseDown={(e) => e.preventDefault()}
+                                                                                onClick={() => void handleRefreshMySkills()}
+                                                                                disabled={mySkillsRefreshing}
+                                                                                aria-label="Refresh my skills"
+                                                                                className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-[hsl(var(--hover-surface))] focus:bg-[hsl(var(--hover-surface-strong))] focus:outline-none focus:ring-0 focus-visible:ring-0 transition-colors disabled:opacity-100"
+                                                                            >
+                                                                                <RefreshCw size={16} className={cn(mySkillsRefreshing && "animate-spin")} />
+                                                                            </Button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent side="top">{mySkillsRefreshing ? "Refreshing…" : "Refresh"}</TooltipContent>
+                                                                    </Tooltip>
+                                                                ) : null}
                                                                 <Button
                                                                     type="button"
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    onMouseDown={(event) => event.preventDefault()}
-                                                                    onClick={() => void handleRefreshSkills()}
-                                                                    disabled={skillsRefreshing}
-                                                                    aria-label="Refresh skills"
-                                                                    className="
-                                                                        h-8 w-8 shrink-0 text-muted-foreground
-                                                                        hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
-                                                                        active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
-                                                                        focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
-                                                                        focus:ring-0 focus-visible:ring-0 transition-colors
-                                                                        disabled:opacity-100 disabled:hover:bg-transparent
-                                                                    "
+                                                                    size="sm"
+                                                                    onClick={openAddView}
+                                                                    className="h-8 gap-1.5 px-3 text-xs"
                                                                 >
-                                                                    <RefreshCw
-                                                                        size={16}
-                                                                        className={cn(skillsRefreshing && "animate-spin")}
-                                                                    />
+                                                                    <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                                                                    Add
                                                                 </Button>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent side="top" align="center">
-                                                                <p>{skillsRefreshing ? "Refreshing…" : "Refresh"}</p>
-                                                            </TooltipContent>
-                                                        </Tooltip>
-                                                    ) : undefined
-                                                }
-                                            >
-                                                <div className="flex flex-col gap-3">
-                                                    {availableSkills.length === 0 ? (
-                                                        <p className="text-sm text-muted-foreground">No skills registered yet.</p>
-                                                    ) : null}
-                                                    {availableSkills.map((skill) => {
-                                                        const isExpanded = Boolean(expandedSkills[skill.name]);
-                                                        return (
-                                                            <SoftPanel key={skill.name} className="p-4">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        setExpandedSkills((prev) => ({
-                                                                            ...prev,
-                                                                            [skill.name]: !prev[skill.name],
-                                                                        }))
-                                                                    }
-                                                                    className="flex w-full items-start justify-between gap-3 text-left"
-                                                                    aria-expanded={isExpanded}
-                                                                >
-                                                                    <div className="flex flex-col gap-1">
-                                                                        <p className="text-sm font-semibold text-foreground">{skill.name}</p>
-                                                                        <p className="text-xs text-muted-foreground">
-                                                                            {skill.description || "No description provided."}
-                                                                        </p>
-                                                                    </div>
-                                                                    <ChevronDown
-                                                                        className={cn(
-                                                                            "mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                                                                            isExpanded && "rotate-180",
-                                                                        )}
-                                                                    />
-                                                                </button>
-                                                                {isExpanded ? (
-                                                                    <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
-                                                                        {skill.content}
-                                                                    </pre>
-                                                                ) : null}
-                                                            </SoftPanel>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </InfoCard>
+                                                            </div>
+                                                        }
+                                                    >
+                                                        <div className="flex flex-col gap-3">
+                                                            <input
+                                                                type="search"
+                                                                value={skillsSearch}
+                                                                onChange={(e) => setSkillsSearch(e.target.value)}
+                                                                placeholder="Search your skills or the global catalog…"
+                                                                aria-label="Search skills"
+                                                                className="w-full rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                            />
 
-                                            {deepAgents.length > 0 ? (
+                                                            {loadingMySkills && (mySkills?.length ?? 0) === 0 ? (
+                                                                <p className="text-sm text-muted-foreground">Loading your skills…</p>
+                                                            ) : null}
+
+                                                            {!loadingMySkills && filteredMySkills.length === 0 && !normalizedSkillsSearch ? (
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    Your pool is empty. Search above to add a global skill or click <span className="font-medium text-foreground">Add</span> to author your own.
+                                                                </p>
+                                                            ) : null}
+
+                                                            {filteredMySkills.map((skill) => {
+                                                                const isExpanded = Boolean(expandedPoolSkills[skill.name]);
+                                                                const detail = mySkillDetails?.[skill.name];
+                                                                const loadingDetail = isMySkillDetailLoading?.(skill.name) ?? false;
+                                                                return (
+                                                                    <SoftPanel key={skill.name} className="p-4">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => togglePoolSkill(skill.name)}
+                                                                            className="flex w-full items-start justify-between gap-3 text-left"
+                                                                            aria-expanded={isExpanded}
+                                                                        >
+                                                                            <div className="flex flex-col gap-1 min-w-0">
+                                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                                    <p className="truncate text-sm font-semibold text-foreground">{skill.name}</p>
+                                                                                    <span
+                                                                                        className={cn(
+                                                                                            "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                                                                                            skill.type === "custom"
+                                                                                                ? "bg-primary/15 text-primary"
+                                                                                                : "bg-muted text-muted-foreground",
+                                                                                        )}
+                                                                                    >
+                                                                                        {skill.type}
+                                                                                    </span>
+                                                                                    {skill.category ? (
+                                                                                        <span className="inline-flex shrink-0 items-center rounded-md border border-border/40 bg-background/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                                                                            {skill.category}
+                                                                                        </span>
+                                                                                    ) : null}
+                                                                                </div>
+                                                                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                                                                    {skill.description || "No description provided."}
+                                                                                </p>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1">
+                                                                                {onRemoveSkillFromPool ? (
+                                                                                    <Tooltip delayDuration={200}>
+                                                                                        <TooltipTrigger asChild>
+                                                                                            <Button
+                                                                                                type="button"
+                                                                                                variant="ghost"
+                                                                                                size="icon"
+                                                                                                aria-label={`Remove ${skill.name} from your pool`}
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    void onRemoveSkillFromPool(skill.name);
+                                                                                                }}
+                                                                                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                                                            >
+                                                                                                <X className="h-3.5 w-3.5" />
+                                                                                            </Button>
+                                                                                        </TooltipTrigger>
+                                                                                        <TooltipContent side="left">Remove from my pool</TooltipContent>
+                                                                                    </Tooltip>
+                                                                                ) : null}
+                                                                                <ChevronDown
+                                                                                    className={cn(
+                                                                                        "mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                                                                                        isExpanded && "rotate-180",
+                                                                                    )}
+                                                                                />
+                                                                            </div>
+                                                                        </button>
+                                                                        {isExpanded ? (
+                                                                            <div className="mt-3">
+                                                                                {loadingDetail && !detail ? (
+                                                                                    <p className="text-xs text-muted-foreground">Loading content…</p>
+                                                                                ) : detail ? (
+                                                                                    <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
+                                                                                        {detail.content}
+                                                                                    </pre>
+                                                                                ) : (
+                                                                                    <p className="text-xs text-muted-foreground">Could not load content.</p>
+                                                                                )}
+                                                                            </div>
+                                                                        ) : null}
+                                                                    </SoftPanel>
+                                                                );
+                                                            })}
+
+                                                            {globalCandidates.length > 0 ? (
+                                                                <div className="mt-1 flex flex-col gap-2 border-t border-border/40 pt-3">
+                                                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                                                        From global catalog
+                                                                    </p>
+                                                                    {globalCandidates.map((skill) => (
+                                                                        <SoftPanel key={`${skill.category}/${skill.name}`} className="p-3">
+                                                                            <div className="flex items-start justify-between gap-3">
+                                                                                <div className="flex flex-col gap-0.5 min-w-0">
+                                                                                    <div className="flex items-center gap-2 min-w-0">
+                                                                                        <p className="truncate text-sm font-medium text-foreground">{skill.name}</p>
+                                                                                        {skill.category ? (
+                                                                                            <span className="inline-flex shrink-0 items-center rounded-md border border-border/40 bg-background/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                                                                                {skill.category}
+                                                                                            </span>
+                                                                                        ) : null}
+                                                                                    </div>
+                                                                                    <p className="line-clamp-2 text-xs text-muted-foreground">
+                                                                                        {skill.description || "No description provided."}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <Button
+                                                                                    type="button"
+                                                                                    size="sm"
+                                                                                    variant="outline"
+                                                                                    onClick={() => void onAddGlobalSkillToPool?.(skill.name)}
+                                                                                    disabled={!onAddGlobalSkillToPool}
+                                                                                    className="h-7 px-2.5 text-xs"
+                                                                                >
+                                                                                    + Add
+                                                                                </Button>
+                                                                            </div>
+                                                                        </SoftPanel>
+                                                                    ))}
+                                                                    {globalCandidatesTruncated > 0 ? (
+                                                                        <p className="px-1 pt-1 text-[11px] text-muted-foreground">
+                                                                            +{globalCandidatesTruncated} more match{globalCandidatesTruncated === 1 ? "" : "es"}. Refine your search to narrow down.
+                                                                        </p>
+                                                                    ) : null}
+                                                                </div>
+                                                            ) : null}
+
+                                                            {normalizedSkillsSearch && filteredMySkills.length === 0 && globalCandidates.length === 0 ? (
+                                                                <p className="text-sm text-muted-foreground">No skills match your search.</p>
+                                                            ) : null}
+                                                        </div>
+                                                    </InfoCard>
+
+                                                    {deepAgents.length > 0 ? (
+                                                        <div className="flex justify-end">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                onClick={() => setSkillsView("manage")}
+                                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
+                                                            >
+                                                                Manage per agent
+                                                                <ChevronRight className="h-4 w-4" aria-hidden />
+                                                            </Button>
+                                                        </div>
+                                                    ) : null}
+                                                </motion.div>
+                                                ) : null}
+
+                                                {skillsView === "add" ? (
+                                                <motion.div key="skills-add" {...skillsViewMotionProps}>
+                                                <InfoCard
+                                                    eyebrow="Create"
+                                                    title="New custom skill"
+                                                    description="Write a SKILL.md playbook only you can see. Add it to a deep agent from the Manage view once it's saved."
+                                                    headerAction={
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            onClick={cancelAddView}
+                                                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
+                                                        >
+                                                            <ArrowLeft className="h-4 w-4" aria-hidden />
+                                                            Back
+                                                        </Button>
+                                                    }
+                                                >
+                                                    <div className="flex flex-col gap-4">
+                                                        <label className="flex flex-col gap-1.5">
+                                                            <span className="text-xs font-medium text-foreground">Name</span>
+                                                            <input
+                                                                type="text"
+                                                                value={customSkillName}
+                                                                onChange={(e) => setCustomSkillName(e.target.value)}
+                                                                placeholder="my_blog_writer"
+                                                                disabled={customSkillSubmitting}
+                                                                aria-label="Skill name"
+                                                                className="w-full rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                            />
+                                                            <span className="text-[11px] text-muted-foreground">
+                                                                Lowercase, no slashes. Must not collide with global skills or any existing entry in your pool.
+                                                            </span>
+                                                        </label>
+                                                        <label className="flex flex-col gap-1.5">
+                                                            <span className="text-xs font-medium text-foreground">Description</span>
+                                                            <input
+                                                                type="text"
+                                                                value={customSkillDescription}
+                                                                onChange={(e) => setCustomSkillDescription(e.target.value)}
+                                                                placeholder="Short one-liner — shown on the card."
+                                                                disabled={customSkillSubmitting}
+                                                                aria-label="Skill description"
+                                                                className="w-full rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                            />
+                                                        </label>
+                                                        <label className="flex flex-col gap-1.5">
+                                                            <span className="text-xs font-medium text-foreground">SKILL.md content</span>
+                                                            <textarea
+                                                                value={customSkillContent}
+                                                                onChange={(e) => setCustomSkillContent(e.target.value)}
+                                                                placeholder={"# Title\n\nDescribe when and how the agent should use this skill."}
+                                                                disabled={customSkillSubmitting}
+                                                                aria-label="Skill content"
+                                                                rows={12}
+                                                                className="w-full resize-y rounded-md border border-border/60 bg-background/60 px-3 py-2 font-mono text-[0.78rem] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                            />
+                                                            <span className="text-[11px] text-muted-foreground">
+                                                                Frontmatter is added automatically. Just write the body.
+                                                            </span>
+                                                        </label>
+                                                        {customSkillError ? (
+                                                            <p role="alert" className="text-xs text-destructive">{customSkillError}</p>
+                                                        ) : null}
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                onClick={cancelAddView}
+                                                                disabled={customSkillSubmitting}
+                                                                className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:opacity-50 disabled:pointer-events-none"
+                                                            >
+                                                                Cancel
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                onClick={() => void handleSubmitCustomSkill()}
+                                                                disabled={customSkillSubmitting || !customSkillName.trim()}
+                                                                className="inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium transition-smooth disabled:opacity-50 disabled:pointer-events-none"
+                                                            >
+                                                                {customSkillSubmitting ? "Creating…" : "Create skill"}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </InfoCard>
+                                                </motion.div>
+                                            ) : null}
+
+                                            {skillsView === "manage" ? (
+                                                <motion.div key="skills-manage" {...skillsViewMotionProps}>
                                                 <InfoCard
                                                     eyebrow="Manage"
                                                     title="Skills per agent"
-                                                    description="Enable or disable skills for each deep agent. Toggles take effect on the next conversation — the agent only sees the skills you've enabled here."
+                                                    description="Assign skills from your pool to specific deep agents. Toggles take effect on the next conversation."
+                                                    headerAction={
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            onClick={() => setSkillsView("my")}
+                                                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
+                                                        >
+                                                            <ArrowLeft className="h-4 w-4" aria-hidden />
+                                                            Back
+                                                        </Button>
+                                                    }
                                                 >
                                                     <div className="flex flex-col gap-3">
-                                                        {deepAgents.map((agent) => {
+                                                        {(mySkills?.length ?? 0) === 0 ? (
+                                                            <p className="text-sm text-muted-foreground">
+                                                                Your pool is empty. Go back and add some skills first.
+                                                            </p>
+                                                        ) : null}
+                                                        {(mySkills?.length ?? 0) > 0 && deepAgents.length === 0 ? (
+                                                            <p className="text-sm text-muted-foreground">No active deep agents to manage.</p>
+                                                        ) : null}
+                                                        {(mySkills?.length ?? 0) > 0 && deepAgents.map((agent) => {
                                                             const isExpanded = Boolean(expandedAgentSkills[agent.id]);
                                                             const enabledSet = new Set(skillSelections?.[agent.id] ?? []);
                                                             const loading = isAgentSkillLoading?.(agent.id) ?? false;
@@ -1963,12 +2381,7 @@ export default function ProfilePanel({
                                                                             {loading && enabledSet.size === 0 ? (
                                                                                 <p className="text-xs text-muted-foreground">Loading…</p>
                                                                             ) : null}
-                                                                            {availableSkills.length === 0 ? (
-                                                                                <p className="text-xs text-muted-foreground">
-                                                                                    No skills registered yet — nothing to enable.
-                                                                                </p>
-                                                                            ) : null}
-                                                                            {availableSkills.map((skill) => {
+                                                                            {(mySkills ?? []).map((skill) => {
                                                                                 const enabled = enabledSet.has(skill.name);
                                                                                 const toggling = isSkillToggling?.(agent.id, skill.name) ?? false;
                                                                                 return (
@@ -1977,9 +2390,26 @@ export default function ProfilePanel({
                                                                                         className="flex items-start justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2"
                                                                                     >
                                                                                         <div className="flex flex-col gap-0.5 min-w-0">
-                                                                                            <p className="truncate text-sm font-medium text-foreground">
-                                                                                                {skill.name}
-                                                                                            </p>
+                                                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                                                <p className="truncate text-sm font-medium text-foreground">
+                                                                                                    {skill.name}
+                                                                                                </p>
+                                                                                                <span
+                                                                                                    className={cn(
+                                                                                                        "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide",
+                                                                                                        skill.type === "custom"
+                                                                                                            ? "bg-primary/15 text-primary"
+                                                                                                            : "bg-muted text-muted-foreground",
+                                                                                                    )}
+                                                                                                >
+                                                                                                    {skill.type}
+                                                                                                </span>
+                                                                                                {skill.category ? (
+                                                                                                    <span className="shrink-0 rounded-md border border-border/40 bg-background/50 px-1 py-0.5 text-[9px] text-muted-foreground">
+                                                                                                        {skill.category}
+                                                                                                    </span>
+                                                                                                ) : null}
+                                                                                            </div>
                                                                                             <p className="line-clamp-2 text-[0.72rem] text-muted-foreground">
                                                                                                 {skill.description || "No description provided."}
                                                                                             </p>
@@ -2016,7 +2446,9 @@ export default function ProfilePanel({
                                                         })}
                                                     </div>
                                                 </InfoCard>
-                                            ) : null}
+                                                </motion.div>
+                                                ) : null}
+                                            </AnimatePresence>
                                         </div>
                                     ) : null}
 

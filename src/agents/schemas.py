@@ -99,10 +99,75 @@ class SkillManifest(BaseModel):
     ``content`` is the markdown body that follows the frontmatter — agents
     pull this in via the deepagents ``SkillsMiddleware`` when the user has
     enabled the skill for that (user, agent) pair.
+
+    ``category`` is the parent folder under the global registry root. It
+    surfaces in the UI as a small label next to the skill name so users can
+    place a skill in context while searching.
     """
 
     name: str
     description: str = ""
+    content: str = ""
+    category: str = ""
+
+
+class SkillManifestEntry(BaseModel):
+    """One row in the on-disk manifest.json — global or per-user.
+
+    ``source_path`` is relative to the skills_registry root the agents
+    service joins it against. Globals: ``global/<category>/<name>``.
+    Customs: ``users/<user_id>/custom/<name>`` (no category folder; custom
+    skills are flat under each user's custom dir).
+
+    ``category`` is the parent folder name in the global hierarchy — empty
+    for custom skills.
+    """
+
+    name: str
+    type: Literal["global", "custom"]
+    description: str = ""
+    source_path: str
+    category: str = ""
+
+
+class GlobalManifest(BaseModel):
+    """The on-disk ``$SKILLS_REGISTRY_GLOBAL_ROOT/manifest.json`` schema."""
+
+    version: int = 1
+    skills: List[SkillManifestEntry] = Field(default_factory=list)
+
+
+class UserManifest(BaseModel):
+    """The on-disk per-user manifest schema at
+    ``$SKILLS_REGISTRY_USERS_ROOT/<user_id>/manifest.json``."""
+
+    version: int = 1
+    skills: List[SkillManifestEntry] = Field(default_factory=list)
+
+
+class CustomSkillCreate(BaseModel):
+    """Request body for ``POST /users/{user_id}/skills/custom``.
+
+    ``content`` is the markdown body — frontmatter is assembled server-side
+    from ``name`` + ``description`` so the agent reads a consistent SKILL.md
+    regardless of how the skill was authored.
+    """
+
+    name: str
+    description: str = ""
+    content: str = ""
+
+
+class UserSkillDetail(BaseModel):
+    """Returned by ``GET /users/{user_id}/skills/{name}`` — manifest row +
+    SKILL.md content joined.
+    """
+
+    name: str
+    type: Literal["global", "custom"]
+    description: str = ""
+    source_path: str
+    category: str = ""
     content: str = ""
 
 
