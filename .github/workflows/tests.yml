@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   push:
@@ -9,8 +9,21 @@ on:
   workflow_dispatch:
 
 jobs:
-  pytest:
+  # One job per backend service: install only that service's deps, run only its
+  # tests, and report coverage scoped to its own source tree.
+  backend:
+    name: ${{ matrix.service }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: dialogue_bridge
+            tests: tests/dialogue_bridge tests/integration
+          - service: agents
+            tests: tests/agents
+          - service: rag_service
+            tests: tests/rag_service
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,29 +35,34 @@ jobs:
           cache: pip
           cache-dependency-path: |
             tests/requirements.txt
-            src/dialogue_bridge/requirements.txt
-            src/rag_service/requirements.txt
-            src/agents/requirements.txt
+            src/${{ matrix.service }}/requirements.txt
 
-      - name: Install shared test dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r tests/requirements.txt
+          python -m pip install -r src/${{ matrix.service }}/requirements.txt
 
-      - name: Install service dependencies
-        run: |
-          python -m pip install -r src/dialogue_bridge/requirements.txt
-          python -m pip install -r src/rag_service/requirements.txt
-          python -m pip install -r src/agents/requirements.txt
+      - name: Run tests with coverage
+        run: >-
+          python -m pytest ${{ matrix.tests }}
+          --cov=src/${{ matrix.service }}
+          --cov-report=term-missing
+          --cov-report=xml:coverage-${{ matrix.service }}.xml
 
-      - name: Run pytest
-        run: python -m pytest tests -q
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: coverage-${{ matrix.service }}.xml
+          if-no-files-found: ignore
 
-  frontend:
+  # Frontend service: lint + build, plus the Python static-contract checks that
+  # guard the frontend↔bridge API contract. Coverage is N/A (no JS test runner).
+  agentic_ui:
+    name: agentic_ui
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: src/agentic_ui
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -57,10 +75,28 @@ jobs:
           cache-dependency-path: src/agentic_ui/package-lock.json
 
       - name: Install frontend dependencies
+        working-directory: src/agentic_ui
         run: npm ci
 
       - name: Lint frontend
+        working-directory: src/agentic_ui
         run: npm run lint
 
       - name: Build frontend
+        working-directory: src/agentic_ui
         run: npm run build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tests/requirements.txt
+
+      - name: Run frontend contract tests
+        run: python -m pytest tests/agentic_ui -q

@@ -386,7 +386,7 @@ sequenceDiagram
     B->>P: single DB write at run completion (terminal streaming_status + final content/events)
     B->>R: XADD terminal + EXPIRE 3600s
     U->>UI: disconnect / refresh
-    Note over B,A: run continues server-side uninterrupted; events keep landing in Redis
+    Note over B,A: run continues server-side uninterrupted — events keep landing in Redis
     UI->>B: reconnect → WS /api/v1/inference/runs/{userId}/{run_id}/ws with since=<lastSeq>
     R-->>B: replay missed events from <lastSeq>
     B-->>UI: replayed events + live tail
