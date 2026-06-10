@@ -54,6 +54,26 @@ def _load_agents_service(monkeypatch):
         title=title_module,
         mcp_tools=mcp_tools_module,
         agents_utils=agents_utils_module,
+        # AG-UI transformation layer
+        normalizer=importlib.import_module("runtime.agui.normalizer"),
+        emitter=importlib.import_module("runtime.agui.emitter"),
+        agui_events=importlib.import_module("runtime.agui.events"),
+        # core
+        proxy=importlib.import_module("core.proxy"),
+        error_handling=importlib.import_module("core.error_handling"),
+        settings_module=importlib.import_module("core.settings"),
+        # runtime
+        base_agent=importlib.import_module("runtime.base_agent"),
+        checkpointer_store=importlib.import_module("runtime.checkpointer.store"),
+        checkpointer_util=importlib.import_module("utils.checkpointer"),
+        # skill registry + filesystem
+        user_registry=importlib.import_module("runtime.skill_registry.user_registry"),
+        global_manifest=importlib.import_module("runtime.skill_registry.global_manifest"),
+        provisioner=importlib.import_module("runtime.filesystem.provisioner"),
+        # other utils
+        suggestions=importlib.import_module("utils.suggestions"),
+        speech=importlib.import_module("utils.speech"),
+        skills=importlib.import_module("utils.skills"),
     )
 
 
@@ -74,3 +94,47 @@ async def client(agents_service):
     transport = ASGITransport(app=agents_service.main.app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as async_client:
         yield async_client
+
+
+def _write_global_skill(global_root: Path, category: str, name: str, description: str, body: str) -> None:
+    skill_dir = global_root / category / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: {description}\n---\n\n{body}",
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture
+def skills_fs(agents_service, tmp_path):
+    """Point the skill-registry filesystem settings at an isolated tmp tree.
+
+    Seeds two global skills, redirects the per-user registry + per-(user,agent)
+    filesystem roots into tmp_path, and resets the in-memory global manifest
+    cache so each test starts from a freshly indexed global volume.
+    """
+    fs = agents_service.main.settings.filesystem
+
+    global_root = tmp_path / "skills_registry" / "global"
+    users_root = tmp_path / "skills_registry" / "users"
+    user_fs_root = tmp_path / "filesystem"
+    global_root.mkdir(parents=True, exist_ok=True)
+    users_root.mkdir(parents=True, exist_ok=True)
+    user_fs_root.mkdir(parents=True, exist_ok=True)
+
+    fs.skills_registry_global_root = global_root
+    fs.skills_registry_users_root = users_root
+    fs.user_root = user_fs_root
+
+    _write_global_skill(global_root, "research", "deep-research", "Run deep research", "Body for deep research.")
+    _write_global_skill(global_root, "frontend", "design-system", "Design system helper", "Body for design system.")
+
+    agents_service.global_manifest._MANIFEST_CACHE = None
+    agents_service.global_manifest.rebuild_global_manifest()
+
+    return SimpleNamespace(
+        global_root=global_root,
+        users_root=users_root,
+        user_fs_root=user_fs_root,
+        service=agents_service,
+    )

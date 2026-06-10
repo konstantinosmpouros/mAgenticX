@@ -1,0 +1,22 @@
+# Coverage scoping for the CI per-service runs.
+#
+# Coverage is measured over the unit-testable surface only. The modules omitted
+# below are integration-only — they need a full LangGraph graph + LLM runtime,
+# a WebRTC/Realtime session, or are pure logging instrumentation / one-shot
+# bootstrap / DB migrations. They are exercised by integration tests and manual
+# runs, not by the unit suite, so counting them would understate the meaningful
+# coverage of the code we can actually unit-test.
+[run]
+branch = False
+omit =
+    */langgraph_agents/*
+    */deep_agents/*
+    */runtime/deep_agent.py
+    */runtime/langgraph_agent.py
+    */observability/*
+    */skill_registry/seed_global_registry.py
+    */migrations/*
+
+[report]
+show_missing = True
+skip_covered = False
