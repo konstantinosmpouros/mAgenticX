@@ -81,7 +81,7 @@ export default function SkillFilesViewer({
     // whole story and matches the prior, simpler presentation.
     if (files.length <= 1) {
         return (
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
+            <pre className="scrollbar-muted max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
                 {fallbackContent || files[0]?.content || "No content."}
             </pre>
         );
@@ -92,7 +92,7 @@ export default function SkillFilesViewer({
 
     return (
         <div className="grid gap-3 md:grid-cols-[minmax(0,13rem),1fr]">
-            <div className="max-h-72 overflow-y-auto rounded-[1.1rem] bg-muted/40 p-2">
+            <div className="scrollbar-muted max-h-72 overflow-y-auto rounded-[1.1rem] bg-muted/40 p-2">
                 {flatRows.map(({ node, depth }) => {
                     const indent = { paddingLeft: `${depth * 14 + 8}px` };
                     if (node.isDir) {
@@ -139,7 +139,7 @@ export default function SkillFilesViewer({
                             {activeFile?.path}
                         </p>
                         {isText ? (
-                            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
+                            <pre className="scrollbar-muted max-h-72 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
                                 {activeFile?.content || "Empty file."}
                             </pre>
                         ) : (

@@ -16,13 +16,12 @@ import type {
   SharedConversationDetail,
   Skill,
   UserSkill,
-  CustomSkillCreatePayload,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
 import type { PlanSnapshot } from "@/lib/agui";
 import { usePreferencesHandlers } from "@/handlers/preferences";
-import { useSkills } from "@/hooks/useSkills";
+import { useProfilePanel } from "@/hooks/useProfilePanel";
 import {
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
@@ -387,9 +386,11 @@ export function ChatInterface({
     persistUIState: requestPersist,
   });
 
-  // Per-(user, agent) skill selection (Phase 2 Skills feature). The hook
-  // owns its in-memory state; the bridge endpoints write through to the
-  // agents service's per-user filesystem (which IS the source of truth).
+  // Per-(user, agent) skill selection + the user's pool (Phase 2 Skills
+  // feature). useProfilePanel wraps useSkills with the persist-aware mutation
+  // callbacks wired exclusively to the ProfilePanel "Skills" tab. The bridge
+  // endpoints write through to the agents service's per-user filesystem
+  // (which IS the source of truth).
   const {
     selections: skillSelections,
     isLoading: isAgentSkillLoading,
@@ -398,14 +399,14 @@ export function ChatInterface({
     isToggling: isSkillToggling,
     mySkills,
     loadingMySkills,
-    refreshMySkills,
-    addGlobalToPool,
-    createCustomInPool,
-    removeFromPool,
     skillDetail: mySkillDetails,
     loadingSkillDetail,
     ensureSkillDetail,
-  } = useSkills({ userId, toast: toastWrapper, initialPool: myRegistrySkills });
+    handleRefreshMySkills,
+    handleAddGlobalSkill,
+    handleCreateCustomSkill,
+    handleRemoveSkillFromPool,
+  } = useProfilePanel({ userId, toast: toastWrapper, initialPool: myRegistrySkills, requestPersist });
 
   // Keep ChatPage's myRegistrySkills mirrored from the hook so the snapshot
   // persistence path sees the live pool. The hook is the source of truth;
@@ -413,36 +414,6 @@ export function ChatInterface({
   useEffect(() => {
     setMyRegistrySkills(mySkills);
   }, [mySkills]);
-
-  const handleRefreshMySkills = useCallback(async () => {
-    await refreshMySkills({ bypassRedis: true });
-    requestPersist();
-  }, [refreshMySkills, requestPersist]);
-
-  const handleAddGlobalSkill = useCallback(
-    async (skillName: string) => {
-      await addGlobalToPool(skillName);
-      requestPersist();
-    },
-    [addGlobalToPool, requestPersist],
-  );
-
-  const handleCreateCustomSkill = useCallback(
-    async (payload: CustomSkillCreatePayload) => {
-      const created = await createCustomInPool(payload);
-      if (created) requestPersist();
-      return created;
-    },
-    [createCustomInPool, requestPersist],
-  );
-
-  const handleRemoveSkillFromPool = useCallback(
-    async (skillName: string) => {
-      await removeFromPool(skillName);
-      requestPersist();
-    },
-    [removeFromPool, requestPersist],
-  );
 
   // Reset branch selections on conversation change
   useEffect(() => {

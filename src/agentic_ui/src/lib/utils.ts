@@ -4,6 +4,7 @@ import type { AttachmentIn, AuthResponse, FileAttachment, SkillTreeNode } from "
 import {
   DEFAULT_REALTIME_VOICE,
   DEFAULT_VOICE_MODE_LANGUAGE,
+  NA,
   REALTIME_VOICES,
   VOICE_MODE_LANGUAGES,
   withCredentials,
@@ -214,3 +215,46 @@ export function sortByUpdatedAtDesc<T extends WithUpdatedAt>(items: T[]): T[] {
     return tb - ta; // newest first
   });
 }
+
+// Profile panel display formatters — pure, fall back to the NA sentinel.
+export const safeText = (value?: string | null) =>
+  value && String(value).trim().length > 0 ? String(value).trim() : NA;
+
+export const fmtDateTime = (value?: Date | string | null) => {
+  if (!value) return NA;
+  const date = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(date.getTime()) ? NA : date.toLocaleString();
+};
+
+export const fmtDate = (value?: Date | string | null) => {
+  if (!value) return NA;
+  const date = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(date.getTime()) ? NA : date.toLocaleDateString();
+};
+
+export const fmtBoolean = (value?: boolean) => {
+  if (typeof value !== "boolean") return NA;
+  return value ? "Enabled" : "Disabled";
+};
+
+// Skill search is intentionally simple: tokenize on whitespace, normalize away
+// separators (-, _, ., /) so "gws admin" matches "gws-admin-reports", and
+// require every token to appear somewhere in name/description/category.
+export const tokenizeSkillQuery = (query: string): string[] =>
+  query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((tok) => tok.replace(/[-_./]/g, ""))
+    .filter(Boolean);
+
+export const skillMatchesTokens = (
+  s: { name: string; description: string; category: string },
+  tokens: string[],
+): boolean => {
+  if (tokens.length === 0) return true;
+  const haystack = `${s.name} ${s.description} ${s.category}`
+    .toLowerCase()
+    .replace(/[-_./]/g, "");
+  return tokens.every((tok) => haystack.includes(tok));
+};

@@ -455,7 +455,7 @@ export default function SkillBuilder({
                         />
                     </div>
 
-                    <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+                    <div className="scrollbar-muted min-h-0 flex-1 overflow-y-auto pr-0.5">
                         <AnimatePresence initial={false}>
                             {flatRows.map(({ node, depth }) => {
                                 const indent = { paddingLeft: `${depth * 14 + 8}px` };
@@ -629,7 +629,7 @@ export default function SkillBuilder({
                                                 ? "# Title\n\nDescribe when and how the agent should use this skill."
                                                 : "File content…"
                                         }
-                                        className="h-full w-full resize-none rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[0.78rem] leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        className="scrollbar-muted h-full w-full resize-none rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[0.78rem] leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     />
                                 ) : (
                                     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border/60 p-4 text-center">

@@ -83,6 +83,27 @@ export type ToolMetadata = {
     parameterCount: number;
 };
 
+export type ToolWithStatus = ToolMetadata & { enabled?: boolean };
+
+// Profile panel — a documentation/support entry on the Help tab.
+export type HelpCard = {
+    title: string;
+    desc: string;
+    href?: string;
+    external?: boolean;
+};
+
+// Profile panel — a single label/value row rendered inside InfoRowsCard.
+export type InfoRow = {
+    label: string;
+    value: string;
+    hint?: string;
+};
+
+// Skills tab sub-view. The tab opens on the hub (a row per area); each row
+// navigates into a dedicated view, and a Back control returns to the hub.
+export type SkillsSubView = "hub" | "global" | "mine" | "agents" | "create";
+
 
 // One entry in the global (admin-curated) skills catalog. The agent uses
 // `content` as the SKILL.md body; the UI shows `name` + `description` with
