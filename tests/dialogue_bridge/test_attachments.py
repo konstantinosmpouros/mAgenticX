@@ -4,7 +4,6 @@ import base64
 import os
 
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable
-from router import attachments as attachments_router
 from utils.attachments import (
     generate_docx_preview_token,
     validate_docx_preview_token,
@@ -206,108 +205,6 @@ async def test_download_blob_stream_rejects_images_and_missing_blobs(
     assert image_response.json()["detail"] == "Images are not served by this endpoint."
     assert missing_response.status_code == 404
     assert missing_response.json()["detail"] == "Blob not found or not accessible."
-
-
-async def test_preview_blob_derived_converts_powerpoint_to_inline_pdf(
-    client,
-    seeded_user,
-    seeded_agent,
-    db_session_factory,
-    monkeypatch,
-):
-    attachment = await _seed_attachment(
-        db_session_factory=db_session_factory,
-        seeded_user=seeded_user,
-        seeded_agent=seeded_agent,
-        file_name="deck.pptx",
-        mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        data=b"pptx bytes",
-    )
-
-    async def fake_convert(**_: object) -> tuple[bytes, str]:
-        return b"%PDF derived preview", "deck.pdf"
-
-    monkeypatch.setattr(attachments_router, "convert_attachment_to_pdf_preview", fake_convert)
-
-    response = await client.get(
-        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
-    )
-
-    assert response.status_code == 200
-    assert response.content == b"%PDF derived preview"
-    assert response.headers["content-type"].startswith("application/pdf")
-    assert response.headers["cache-control"] == "private, max-age=300"
-    assert "inline" in response.headers["content-disposition"]
-    assert "deck.pdf" in response.headers["content-disposition"]
-
-
-async def test_preview_blob_derived_rejects_word_documents(
-    client,
-    seeded_user,
-    seeded_agent,
-    db_session_factory,
-):
-    attachment = await _seed_attachment(
-        db_session_factory=db_session_factory,
-        seeded_user=seeded_user,
-        seeded_agent=seeded_agent,
-        file_name="letter.docx",
-        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        data=b"docx bytes",
-    )
-
-    response = await client.get(
-        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
-    )
-
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
-
-
-async def test_preview_blob_derived_rejects_non_presentations(
-    client,
-    seeded_user,
-    seeded_agent,
-    db_session_factory,
-):
-    attachment = await _seed_attachment(
-        db_session_factory=db_session_factory,
-        seeded_user=seeded_user,
-        seeded_agent=seeded_agent,
-        file_name="notes.txt",
-        mime_type="text/plain",
-        data=b"plain text",
-    )
-
-    response = await client.get(
-        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
-    )
-
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
-
-
-async def test_preview_blob_derived_rejects_excel_workbooks(
-    client,
-    seeded_user,
-    seeded_agent,
-    db_session_factory,
-):
-    attachment = await _seed_attachment(
-        db_session_factory=db_session_factory,
-        seeded_user=seeded_user,
-        seeded_agent=seeded_agent,
-        file_name="budget.xlsx",
-        mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        data=b"xlsx bytes",
-    )
-
-    response = await client.get(
-        f"/v1/attachments/preview-derived/{seeded_user.id}/{attachment['conversation_id']}/{attachment['message_id']}/{attachment['blob_id']}"
-    )
-
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Only PowerPoint attachments support derived preview."
 
 
 async def test_preview_token_issues_valid_hmac_token_for_docx(

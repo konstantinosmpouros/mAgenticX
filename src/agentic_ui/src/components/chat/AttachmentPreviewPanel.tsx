@@ -21,7 +21,7 @@ import {
   PreviewMessage,
   type AttachmentPreviewDescriptor,
   type AttachmentPreviewMeta,
-} from "@/components/chat/attachment_preview";
+} from "@/components/chat/attachment_preview_parts";
 
 type AttachmentLike = AttachmentOut | Record<string, unknown> | File | string;
 

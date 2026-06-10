@@ -96,7 +96,6 @@ class RedisEventLog:
             if not result:
                 # XREAD timed out without new events; loop and check cancel.
                 continue
-            saw_terminal = False
             for _stream_name, entries in result:
                 for entry_id, fields in entries:
                     payload_raw = fields.get("payload")
@@ -116,9 +115,7 @@ class RedisEventLog:
                         else None
                     )
                     if run_status in terminal_statuses:
-                        saw_terminal = True
-            if saw_terminal:
-                return
+                        return
 
     async def mark_terminal(self, run_id: str) -> None:
         """Apply an EXPIRE to the stream so reconnects within the TTL window

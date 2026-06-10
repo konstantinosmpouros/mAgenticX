@@ -135,9 +135,26 @@ class UserSkill(BaseModel):
     category: str = ""
 
 
+class SkillFile(BaseModel):
+    """One file inside a skill folder.
+
+    ``path`` is relative to the skill root (``/``-separated); ``content`` is
+    UTF-8 text or base64 per ``encoding``. ``size`` is the decoded byte length
+    (populated on read, ignored on create). Mirrors :class:`agents.schemas.SkillFile`.
+    """
+
+    path: str
+    content: str = ""
+    encoding: Literal["utf-8", "base64"] = "utf-8"
+    size: int = 0
+
+
 class UserSkillDetail(BaseModel):
-    """A user-pool entry joined with its SKILL.md body — returned by
-    ``GET /v1/users/{user_id}/skills/{name}``."""
+    """A user-pool entry joined with its file inventory — returned by
+    ``GET /v1/users/{user_id}/skills/{name}``.
+
+    ``content`` is the parsed SKILL.md body (quick preview); ``files`` is the
+    full on-disk inventory."""
 
     name: str
     type: Literal["global", "custom"]
@@ -145,14 +162,19 @@ class UserSkillDetail(BaseModel):
     source_path: str
     category: str = ""
     content: str = ""
+    files: List[SkillFile] = Field(default_factory=list)
 
 
 class CustomSkillCreateRequest(BaseModel):
-    """Request body for ``POST /v1/users/{user_id}/skills/custom``."""
+    """Request body for ``POST /v1/users/{user_id}/skills/custom``.
+
+    A custom skill is a folder of files; one must be ``SKILL.md``. The list is
+    bounded here as cheap DoS protection — the agents service enforces the
+    authoritative per-file/total byte caps when it decodes and writes."""
 
     name: str
     description: str = ""
-    content: str = ""
+    files: List[SkillFile] = Field(default_factory=list, max_length=30)
 
 
 

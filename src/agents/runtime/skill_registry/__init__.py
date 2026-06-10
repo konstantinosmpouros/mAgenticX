@@ -21,6 +21,8 @@ from runtime.skill_registry.global_manifest import (
 )
 from runtime.skill_registry.seed_global_registry import seed_global_registry
 from runtime.skill_registry.user_registry import (
+    SkillNameConflict,
+    SkillValidationError,
     add_custom_to_user,
     add_global_to_user,
     assign_user_skill_to_agent,
@@ -40,6 +42,8 @@ __all__ = [
     "is_global_skill",
     "rebuild_global_manifest",
     "seed_global_registry",
+    "SkillNameConflict",
+    "SkillValidationError",
     "add_custom_to_user",
     "add_global_to_user",
     "assign_user_skill_to_agent",

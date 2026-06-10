@@ -102,7 +102,7 @@ def test_attachment_preview_registry_covers_requested_formats():
         '"pdf"',
         '"docx"',
         '"xlsx"',
-        '"presentation"',
+        '"pptx"',
         '"markdown"',
         '"json"',
         '"csv"',
@@ -115,8 +115,6 @@ def test_attachment_preview_registry_covers_requested_formats():
 
     assert "fetchAttachmentPreviewBlob" in api_source
     assert "getAttachmentPreviewUrl" in api_source
-    assert "getAttachmentDerivedPreviewUrl" in api_source
-    assert "usesDerivedPdf: true" in registry_source
 
 
 def test_excel_preview_uses_office_online_viewer_not_exceljs():

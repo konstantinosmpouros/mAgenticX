@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { AttachmentIn, AuthResponse, FileAttachment } from "./types";
+import type { AttachmentIn, AuthResponse, FileAttachment, SkillTreeNode } from "./types";
 import {
   DEFAULT_REALTIME_VOICE,
   DEFAULT_VOICE_MODE_LANGUAGE,
@@ -13,6 +13,47 @@ import {
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+// Build a nested folder tree from a flat list of "/"-separated skill file
+// paths. Folders are inferred from path segments. Sort order: folders before
+// files, "SKILL.md" pinned first among files, then alphabetical — the same
+// ordering the builder and the read-only viewer both want.
+export function buildSkillFileTree(paths: string[], folderPaths: string[] = []): SkillTreeNode[] {
+  const root: SkillTreeNode = { name: "", path: "", isDir: true, children: [] };
+  const addPath = (raw: string, asDir: boolean) => {
+    const parts = raw.split("/").filter(Boolean);
+    let cursor = root;
+    parts.forEach((segment, index) => {
+      const isLast = index === parts.length - 1;
+      const fullPath = parts.slice(0, index + 1).join("/");
+      const dir = !isLast || asDir;
+      let child = cursor.children.find((node) => node.name === segment);
+      if (!child) {
+        child = { name: segment, path: fullPath, isDir: dir, children: [] };
+        cursor.children.push(child);
+      } else if (dir) {
+        child.isDir = true;
+      }
+      cursor = child;
+    });
+  };
+  // Seed explicit (possibly empty) folders first, then files — so a folder the
+  // user created with no files yet still shows up as a drop target.
+  for (const folder of folderPaths) addPath(folder, true);
+  for (const raw of paths) addPath(raw, false);
+  sortSkillTree(root);
+  return root.children;
+}
+
+function sortSkillTree(node: SkillTreeNode): void {
+  node.children.sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    if (a.name === "SKILL.md") return -1;
+    if (b.name === "SKILL.md") return 1;
+    return a.name.localeCompare(b.name);
+  });
+  node.children.forEach(sortSkillTree);
 }
 
 export function normalizeRealtimeVoice(value: unknown): RealtimeVoice {

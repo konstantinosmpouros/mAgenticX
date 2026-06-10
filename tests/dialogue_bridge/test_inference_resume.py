@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 import pytest_asyncio
 
-from core.database import MessageTable, UserTable
+from core.database import ConversationTable, MessageTable, UserTable
 from router import inference as inference_router
 from utils.inference_runs import (
     InferenceRunRuntime,
@@ -166,8 +166,6 @@ async def test_request_resume_stores_payload_and_flips_event(parked_manager_run)
 @pytest_asyncio.fixture
 async def streaming_message(session_factory, seeded_user, seeded_agent):
     """Persist a conversation + AI placeholder in ``streaming_status='running'``."""
-    from core.database import ConversationTable
-
     async with session_factory() as session:
         conversation = ConversationTable(
             user_id=seeded_user.id,

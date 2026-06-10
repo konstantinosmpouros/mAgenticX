@@ -38,11 +38,13 @@ Reconciliation:
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import shutil
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 from core.settings import settings
@@ -51,6 +53,7 @@ from runtime.filesystem.provisioner import _safe_segment
 from runtime.skill_registry.global_manifest import get_global_manifest, is_global_skill
 from schemas import (
     CustomSkillCreate,
+    SkillFile,
     SkillManifestEntry,
     UserManifest,
     UserSkillDetail,
@@ -59,6 +62,96 @@ from schemas import (
 logger = get_logger(__name__)
 
 _MANIFEST_FILENAME = "manifest.json"
+
+
+class SkillNameConflict(ValueError):
+    """A custom skill name collides with an existing pool entry or a global."""
+
+
+class SkillValidationError(ValueError):
+    """A custom-skill payload failed structural validation (path/size/type)."""
+
+
+# Multi-file custom-skill limits. A custom skill is a small folder of text +
+# light binary assets — these caps keep a single create call from writing an
+# unbounded tree into the user volume.
+_SKILL_ENTRY_FILE = "SKILL.md"
+_MAX_SKILL_FILES = 30
+_MAX_SKILL_FILE_BYTES = 20 * 1024 * 1024         # 20 MiB per file
+_MAX_SKILL_TOTAL_BYTES = 50 * 1024 * 1024        # 50 MiB per skill
+_MAX_SKILL_PATH_DEPTH = 4
+_TEXT_SKILL_EXTENSIONS = frozenset({
+    ".md", ".txt", ".py", ".js", ".ts", ".tsx", ".jsx", ".json",
+    ".yaml", ".yml", ".csv", ".toml", ".sh", ".html", ".css",
+})
+_BINARY_SKILL_EXTENSIONS = frozenset({
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf", ".ico", ".xlsx",
+})
+_ALLOWED_SKILL_EXTENSIONS = _TEXT_SKILL_EXTENSIONS | _BINARY_SKILL_EXTENSIONS
+
+
+def _validate_skill_relpath(raw_path: str) -> PurePosixPath:
+    """Validate a single skill-relative file path into a safe PurePosixPath.
+
+    Rejects absolute paths, ``..``/leading-dot segments (via ``_safe_segment``),
+    excessive depth, and disallowed extensions. Backslashes are normalized to
+    ``/`` so a Windows-authored upload path is handled consistently.
+    """
+    cleaned = (raw_path or "").strip().replace("\\", "/").lstrip("/")
+    parts = [seg for seg in cleaned.split("/") if seg not in ("", ".")]
+    if not parts:
+        raise SkillValidationError(f"Empty or invalid file path: {raw_path!r}")
+    if len(parts) > _MAX_SKILL_PATH_DEPTH:
+        raise SkillValidationError(
+            f"File path exceeds max depth {_MAX_SKILL_PATH_DEPTH}: {raw_path!r}"
+        )
+    for seg in parts:
+        try:
+            _safe_segment(seg)
+        except ValueError as exc:
+            raise SkillValidationError(str(exc)) from exc
+    suffix = PurePosixPath(parts[-1]).suffix.lower()
+    if suffix not in _ALLOWED_SKILL_EXTENSIONS:
+        raise SkillValidationError(f"File type not allowed: {parts[-1]}")
+    return PurePosixPath(*parts)
+
+
+def _decode_skill_file(file: SkillFile, rel_key: str) -> bytes:
+    """Decode a payload file to bytes, validating base64 strictly."""
+    if file.encoding == "base64":
+        try:
+            return base64.b64decode(file.content, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise SkillValidationError(f"Invalid base64 content for {rel_key}") from exc
+    return file.content.encode("utf-8")
+
+
+def _collect_skill_files(folder: Path) -> list[SkillFile]:
+    """Walk a skill folder into a ``SkillFile`` inventory for the detail view.
+
+    Text files under the per-file cap are returned with inline UTF-8 content;
+    binary or oversized files return metadata only (``content=""``) so the
+    detail payload stays bounded.
+    """
+    out: list[SkillFile] = []
+    for path in sorted(folder.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        rel = path.relative_to(folder).as_posix()
+        suffix = path.suffix.lower()
+        if suffix in _TEXT_SKILL_EXTENSIONS and size <= _MAX_SKILL_FILE_BYTES:
+            try:
+                text = path.read_text(encoding="utf-8")
+                out.append(SkillFile(path=rel, content=text, encoding="utf-8", size=size))
+                continue
+            except (OSError, UnicodeDecodeError):
+                pass
+        out.append(SkillFile(path=rel, content="", encoding="base64", size=size))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +312,7 @@ def get_user_skill_detail(user_id: str, skill_name: str) -> UserSkillDetail:
         raise FileNotFoundError(f"Skill not in user pool: {skill_name}")
 
     folder = resolve_skill_path(user_id, skill_name)
-    skill_md = folder / "SKILL.md"
+    skill_md = folder / _SKILL_ENTRY_FILE
     _, _, body = _parse_skill_md(skill_md) if skill_md.is_file() else ("", "", "")
     return UserSkillDetail(
         name=entry.name,
@@ -228,6 +321,7 @@ def get_user_skill_detail(user_id: str, skill_name: str) -> UserSkillDetail:
         source_path=entry.source_path,
         category=entry.category,
         content=body,
+        files=_collect_skill_files(folder),
     )
 
 
@@ -286,29 +380,79 @@ def _assemble_skill_md(name: str, description: str, body: str) -> str:
 
 
 def add_custom_to_user(user_id: str, payload: CustomSkillCreate) -> SkillManifestEntry:
-    """Create a new custom skill folder + manifest entry.
+    """Create a new custom skill folder (multi-file) + manifest entry.
 
-    Rejects collisions with any existing entry in the user's pool AND with
-    any global skill name (to prevent target-dir clashes at assignment time).
+    The payload carries a list of files; exactly one must be ``SKILL.md`` (its
+    body is wrapped with canonical frontmatter). Every file is validated and
+    decoded *before* anything is written, so a bad file can't leave a partial
+    folder behind. Raises:
+
+    - :class:`SkillNameConflict` on a name/global/folder collision (→ 409).
+    - :class:`SkillValidationError` on a bad path/size/type/base64 (→ 422).
     """
-    name = _safe_segment(payload.name.strip())
+    try:
+        name = _safe_segment(payload.name.strip())
+    except ValueError as exc:
+        raise SkillValidationError(str(exc)) from exc
     ensure_user_registry(user_id)
     manifest = read_user_manifest(user_id)
 
     if name in _names_in_use(manifest):
-        raise ValueError(f"Skill name already in user pool: {name}")
+        raise SkillNameConflict(f"Skill name already in user pool: {name}")
     if is_global_skill(name):
-        raise ValueError(f"Skill name collides with a global skill: {name}")
+        raise SkillNameConflict(f"Skill name collides with a global skill: {name}")
 
     skill_dir = _custom_skill_dir(user_id, name)
     if skill_dir.exists():
-        raise ValueError(f"Custom skill folder already exists: {name}")
+        raise SkillNameConflict(f"Custom skill folder already exists: {name}")
+
+    files = payload.files or []
+    if not files:
+        raise SkillValidationError("A custom skill must include at least a SKILL.md file.")
+    if len(files) > _MAX_SKILL_FILES:
+        raise SkillValidationError(f"Too many files ({len(files)}); max is {_MAX_SKILL_FILES}.")
+
+    resolved: list[tuple[PurePosixPath, bytes, bool]] = []
+    seen: set[str] = set()
+    total = 0
+    skill_md_body: str | None = None
+    for file in files:
+        rel = _validate_skill_relpath(file.path)
+        key = rel.as_posix()
+        if key in seen:
+            raise SkillValidationError(f"Duplicate file path: {key}")
+        seen.add(key)
+        data = _decode_skill_file(file, key)
+        if len(data) > _MAX_SKILL_FILE_BYTES:
+            raise SkillValidationError(f"File too large: {key}")
+        total += len(data)
+        if total > _MAX_SKILL_TOTAL_BYTES:
+            raise SkillValidationError("Skill exceeds the total size limit.")
+        is_entry = key == _SKILL_ENTRY_FILE
+        if is_entry:
+            skill_md_body = (
+                file.content if file.encoding == "utf-8" else data.decode("utf-8", "replace")
+            )
+        resolved.append((rel, data, is_entry))
+
+    if skill_md_body is None:
+        raise SkillValidationError("A SKILL.md file is required.")
 
     skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(
-        _assemble_skill_md(name, payload.description, payload.content),
-        encoding="utf-8",
-    )
+    try:
+        for rel, data, is_entry in resolved:
+            target = skill_dir.joinpath(*rel.parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if is_entry:
+                target.write_text(
+                    _assemble_skill_md(name, payload.description, skill_md_body),
+                    encoding="utf-8",
+                )
+            else:
+                target.write_bytes(data)
+    except OSError:
+        shutil.rmtree(skill_dir, ignore_errors=True)
+        raise
 
     entry = SkillManifestEntry(
         name=name,
@@ -323,6 +467,7 @@ def add_custom_to_user(user_id: str, payload: CustomSkillCreate) -> SkillManifes
         "Created custom skill in user pool",
         user_id=user_id,
         skill_name=name,
+        file_count=len(resolved),
     )
     return entry
 

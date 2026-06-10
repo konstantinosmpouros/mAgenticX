@@ -27,6 +27,7 @@ import type {
   InferenceStartRequest,
   InferenceStartResponse,
   Skill,
+  SkillFile,
   UserSkill,
   UserSkillDetail,
   CustomSkillCreatePayload,
@@ -290,6 +291,15 @@ function normalizeUserSkill(raw: any): UserSkill {
   };
 }
 
+function normalizeSkillFile(raw: any): SkillFile {
+  return {
+    path: typeof raw?.path === "string" ? raw.path : "",
+    content: typeof raw?.content === "string" ? raw.content : "",
+    encoding: raw?.encoding === "base64" ? "base64" : "utf-8",
+    size: typeof raw?.size === "number" ? raw.size : undefined,
+  };
+}
+
 
 // Fetch the user's pool manifest entries (no SKILL.md content). Read-through
 // cached on the bridge with a 5min TTL. ``bypassRedis: true`` forces an
@@ -331,6 +341,9 @@ export async function getMySkillDetail(
   return {
     ...normalizeUserSkill(raw),
     content: typeof raw?.content === "string" ? raw.content : "",
+    files: Array.isArray(raw?.files)
+      ? raw.files.map(normalizeSkillFile).filter((f: SkillFile) => f.path)
+      : [],
   };
 }
 
@@ -367,6 +380,11 @@ export async function createCustomSkill(
   }, { csrf: true }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
+    if (res.status === 413) {
+      throw new Error(
+        `This skill is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). Use smaller files.`,
+      );
+    }
     let detail = "";
     try {
       const errBody = await res.json();

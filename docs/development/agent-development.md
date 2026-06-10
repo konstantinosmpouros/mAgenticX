@@ -335,6 +335,32 @@ skills/
 
 `load_skills()` returns `["./skills/"]` if the directory exists. The skills directory is passed to `create_deep_agent(skills=...)` and loaded by `SkillsMiddleware`.
 
+##### User-authored custom skills (multi-file)
+
+End users author their own skills from the **Skills** tab in the profile panel. Unlike the admin-curated global catalog, a custom skill is created at runtime and written to the per-user registry at `$SKILLS_REGISTRY_USERS_ROOT/<user_id>/custom/<name>/`.
+
+A custom skill is a **folder of files**, not a single `SKILL.md`. `POST /v1/users/{user_id}/skills/custom` accepts a file list:
+
+```json
+{
+  "name": "my_blog_writer",
+  "description": "Short one-liner",
+  "files": [
+    { "path": "SKILL.md",         "content": "# Title\n...", "encoding": "utf-8" },
+    { "path": "references/api.md", "content": "...",          "encoding": "utf-8" },
+    { "path": "assets/logo.png",   "content": "<base64>",     "encoding": "base64" }
+  ]
+}
+```
+
+Exactly one file must be `SKILL.md`; its body is wrapped with canonical frontmatter (`name` + `description`) server-side. Every other file is written verbatim — UTF-8 text or base64-decoded binary. `add_custom_to_user` validates and decodes the **entire payload before writing a single byte** (and `rmtree`s the folder on any I/O error mid-write), enforcing:
+
+- ≤ 30 files, ≤ 1 MiB per file, ≤ 5 MiB total, ≤ 4 path segments deep.
+- Allowed extensions only (text: `.md/.txt/.py/.js/.ts/.json/.yaml/.csv/...`; binary: `.png/.jpg/.svg/.pdf/...`).
+- Each path segment passes `_safe_segment` (no `..`, leading dot, or separators).
+
+A structural failure raises `SkillValidationError` → **422** with the specific reason; a name collision raises `SkillNameConflict` → **409**. When the skill is later assigned to an agent, the whole folder is copied via `shutil.copytree`, so multi-file custom skills propagate to the per-(user, agent) skills dir unchanged. `GET /v1/users/{user_id}/skills/{name}` returns the manifest row plus a `files` inventory — text files inline, binary/oversized files as metadata only (`content: ""`).
+
 #### 5. Register sub-agents (optional)
 
 Override `register_subagents()` to declare specialist sub-agents the orchestrator can delegate to:

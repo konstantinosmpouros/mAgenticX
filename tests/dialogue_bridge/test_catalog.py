@@ -26,6 +26,7 @@ async def test_get_available_agents_uses_cache_when_populated(app, client, seede
             "description": seeded_agent.description,
             "icon": seeded_agent.icon,
             "version": seeded_agent.version,
+            "type": seeded_agent.type,
             "isActive": True,
         }
     ]

@@ -110,18 +110,43 @@ export type UserSkill = {
 };
 
 
-// User-pool entry joined with its SKILL.md body. Returned by the detail
-// endpoint when the user expands a card.
-export type UserSkillDetail = UserSkill & {
+// One file inside a skill folder. `path` is relative to the skill root and
+// "/"-separated (e.g. "SKILL.md", "references/api.md"). `content` is UTF-8
+// text when `encoding` is "utf-8" or base64 when "base64" (binary assets).
+// `size` is the decoded byte length — present on reads, omitted on create.
+export type SkillFile = {
+    path: string;
     content: string;
+    encoding: "utf-8" | "base64";
+    size?: number;
 };
 
 
-// Form payload for creating a user-owned custom skill.
+// A node in a skill's folder tree, derived from a flat list of file paths.
+// `path` is the full relative path to this node; folders have children.
+export type SkillTreeNode = {
+    name: string;
+    path: string;
+    isDir: boolean;
+    children: SkillTreeNode[];
+};
+
+
+// User-pool entry joined with its file inventory. Returned by the detail
+// endpoint when the user expands a card. `content` is the SKILL.md body
+// (quick preview); `files` is the full on-disk tree.
+export type UserSkillDetail = UserSkill & {
+    content: string;
+    files: SkillFile[];
+};
+
+
+// Form payload for creating a user-owned custom skill. The folder is described
+// as a list of files; exactly one must be "SKILL.md".
 export type CustomSkillCreatePayload = {
     name: string;
     description: string;
-    content: string;
+    files: SkillFile[];
 };
 
 

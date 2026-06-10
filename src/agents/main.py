@@ -66,6 +66,7 @@ from utils import (
 )
 from utils.agents import AGENT_REGISTRY
 from runtime.skill_registry import (
+    SkillNameConflict,
     add_custom_to_user,
     add_global_to_user,
     get_user_skill_detail,
@@ -370,14 +371,18 @@ async def add_global_skill_to_user(user_id: str, skill_name: str) -> None:
     dependencies=[Depends(require_internal_caller)],
 )
 async def create_user_custom_skill(user_id: str, payload: CustomSkillCreate) -> SkillManifestEntry:
-    """Create a user-owned custom skill (folder + manifest entry).
+    """Create a user-owned custom skill (multi-file folder + manifest entry).
 
-    Rejects 409 on name collision (with global OR another pool entry).
+    409 on a name collision (with a global OR another pool entry); 422 on a
+    structural validation failure (bad path, oversized file, disallowed type,
+    invalid base64, or a missing SKILL.md).
     """
     try:
         return add_custom_to_user(user_id, payload)
-    except ValueError as exc:
+    except SkillNameConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @app.delete(

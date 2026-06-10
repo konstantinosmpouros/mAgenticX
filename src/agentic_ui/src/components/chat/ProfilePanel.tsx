@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { useTheme } from "next-themes";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -6,18 +6,24 @@ import {
     Archive,
     ArrowLeft,
     Ban,
+    Bot,
     Check,
     ChevronDown,
     ChevronRight,
     Copy,
     ExternalLink,
+    FilePlus,
     HelpCircle,
     Keyboard,
+    Library,
     Link2,
     LogOut,
+    Loader2,
     MoonStar,
     Palette,
+    Plus,
     RefreshCw,
+    Search,
     ShieldCheck,
     Sparkles,
     User,
@@ -51,6 +57,8 @@ import {
     type VoiceModeLanguage,
 } from "@/lib/consts";
 import { Agent, ConversationShareListItem, ConversationSummary, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/lib/types";
+import SkillBuilder from "@/components/chat/SkillBuilder";
+import SkillFilesViewer from "@/components/chat/SkillFilesViewer";
 import { generateReadAloudPreviewAudio } from "@/lib/api";
 import {
     SHORTCUTS,
@@ -221,6 +229,31 @@ const fmtBoolean = (value?: boolean) => {
     return value ? "Enabled" : "Disabled";
 };
 
+// Skill search is intentionally simple: tokenize on whitespace, normalize away
+// separators (-, _, ., /) so "gws admin" matches "gws-admin-reports", and
+// require every token to appear somewhere in name/description/category.
+const tokenizeSkillQuery = (query: string): string[] =>
+    query
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .map((tok) => tok.replace(/[-_./]/g, ""))
+        .filter(Boolean);
+
+const skillMatchesTokens = (
+    s: { name: string; description: string; category: string },
+    tokens: string[],
+): boolean => {
+    if (tokens.length === 0) return true;
+    const haystack = `${s.name} ${s.description} ${s.category}`
+        .toLowerCase()
+        .replace(/[-_./]/g, "");
+    return tokens.every((tok) => haystack.includes(tok));
+};
+
+const CATALOG_RESULT_LIMIT = 10;
+const CATALOG_BROWSE_LIMIT = 6;
+
 const InfoCard = ({
     eyebrow,
     title,
@@ -325,6 +358,58 @@ const MetricCard = ({
     </SoftPanel>
 );
 
+// One row on the Skills hub — icon, title, subtitle, a count chip, and a
+// trailing action button. The whole row is the button; the trailing element
+// reads as "Manage"/"Create" and carries a chevron for affordance.
+const SkillHubRow = ({
+    icon,
+    title,
+    subtitle,
+    meta,
+    actionLabel,
+    onClick,
+    index,
+    reduceMotion,
+}: {
+    icon: ReactNode;
+    title: string;
+    subtitle: string;
+    meta?: string;
+    actionLabel: string;
+    onClick: () => void;
+    index: number;
+    reduceMotion: boolean;
+}) => (
+    <motion.button
+        type="button"
+        onClick={onClick}
+        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+        animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: "easeOut", delay: index * 0.05 }}
+        whileTap={reduceMotion ? undefined : { scale: 0.99 }}
+        className="group flex w-full items-center gap-4 rounded-[1.4rem] bg-muted/30 px-5 py-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-background/60 text-primary">
+            {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-semibold text-foreground">{title}</p>
+                {meta ? (
+                    <span className="shrink-0 rounded-full bg-background/60 px-2 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                        {meta}
+                    </span>
+                ) : null}
+            </div>
+            <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors group-hover:bg-background">
+            {actionLabel}
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </span>
+    </motion.button>
+);
+
 export default function ProfilePanel({
     open,
     onClose,
@@ -389,6 +474,31 @@ export default function ProfilePanel({
             transition: { duration: 0.3, ease: "easeOut" as const },
         };
     }, [prefersReducedMotion]);
+    // Per-card entrance for skill lists — staggered fade+rise on enter,
+    // faster ease-in fade on exit. Transform+opacity only; stagger is capped
+    // so a long list doesn't drip in for seconds.
+    const skillCardMotion = useCallback(
+        (index: number) => {
+            if (prefersReducedMotion) {
+                return {
+                    initial: { opacity: 0 },
+                    animate: { opacity: 1 },
+                    exit: { opacity: 0 },
+                    transition: { duration: 0.1 },
+                };
+            }
+            return {
+                initial: { opacity: 0, y: 8 },
+                animate: {
+                    opacity: 1,
+                    y: 0,
+                    transition: { duration: 0.22, ease: "easeOut" as const, delay: Math.min(index, 8) * 0.035 },
+                },
+                exit: { opacity: 0, y: -6, transition: { duration: 0.14, ease: "easeIn" as const } },
+            };
+        },
+        [prefersReducedMotion],
+    );
     const [hoveredNavId, setHoveredNavId] = useState<string | null>(null);
     const [openNavTooltipId, setOpenNavTooltipId] = useState<string | null>(null);
     const navTooltipClickSuppressedUntilRef = useRef(0);
@@ -410,18 +520,24 @@ export default function ProfilePanel({
     // N concurrent GETs on Skills-tab open.
     const [expandedAgentSkills, setExpandedAgentSkills] = useState<Record<string, boolean>>({});
 
-    // Skills tab sub-view: which screen is currently shown.
-    type SkillsSubView = "my" | "add" | "manage";
-    const [skillsView, setSkillsView] = useState<SkillsSubView>("my");
-    const [skillsSearch, setSkillsSearch] = useState("");
+    // Skills tab sub-view. The tab opens on the hub (a row per area); each row
+    // navigates into a dedicated view, and a Back control returns to the hub.
+    type SkillsSubView = "hub" | "global" | "mine" | "agents" | "create";
+    const [skillsView, setSkillsView] = useState<SkillsSubView>("hub");
+    // Two independent, clearly-scoped queries: ``registrySearch`` filters the
+    // user's own pool; ``catalogSearch`` drives the "add from catalog" search.
+    // Splitting them is the fix for the old single-box layout that merged the
+    // pool and catalog results into one confusing list.
+    const [registrySearch, setRegistrySearch] = useState("");
+    const [catalogSearch, setCatalogSearch] = useState("");
+    // Per-skill in-flight state for the catalog "+ Add" button so each card
+    // can show its own spinner and guard against double-adds.
+    const [addingSkills, setAddingSkills] = useState<Record<string, boolean>>({});
     const [mySkillsRefreshing, setMySkillsRefreshing] = useState(false);
-    // Create-custom form state. Reset whenever the user leaves the Add view
-    // so reopening "Add" doesn't restore stale content.
-    const [customSkillName, setCustomSkillName] = useState("");
-    const [customSkillDescription, setCustomSkillDescription] = useState("");
-    const [customSkillContent, setCustomSkillContent] = useState("");
-    const [customSkillSubmitting, setCustomSkillSubmitting] = useState(false);
-    const [customSkillError, setCustomSkillError] = useState<string | null>(null);
+    // Optional name to prefill the create-skill builder (e.g. when the user
+    // clicks "Create 'x' as a custom skill" from the catalog empty state). The
+    // builder owns the rest of its form state internally.
+    const [addPrefillName, setAddPrefillName] = useState("");
     // Pool-card expansion (My skills view) — separate from the global-catalog
     // expansion state so the two lists track independently.
     const [expandedPoolSkills, setExpandedPoolSkills] = useState<Record<string, boolean>>({});
@@ -463,71 +579,15 @@ export default function ProfilePanel({
         }
     }, [onRefreshMySkills, mySkillsRefreshing]);
 
-    const openAddView = useCallback(() => {
-        setCustomSkillName("");
-        setCustomSkillDescription("");
-        setCustomSkillContent("");
-        setCustomSkillError(null);
-        setSkillsView("add");
+    const openAddView = useCallback((prefillName?: string) => {
+        setAddPrefillName(typeof prefillName === "string" ? prefillName : "");
+        setSkillsView("create");
     }, []);
 
     const cancelAddView = useCallback(() => {
-        setCustomSkillName("");
-        setCustomSkillDescription("");
-        setCustomSkillContent("");
-        setCustomSkillError(null);
-        setSkillsView("my");
+        setAddPrefillName("");
+        setSkillsView("hub");
     }, []);
-
-    const handleSubmitCustomSkill = useCallback(async () => {
-        if (!onCreateCustomSkill) return;
-        const trimmedName = customSkillName.trim();
-        if (!trimmedName) {
-            setCustomSkillError("Name is required.");
-            return;
-        }
-        // Mirror agents-service _safe_segment: reject slashes, dots, and
-        // leading-dot names. Server validates again — this is just to fail
-        // fast in the UI before the round-trip.
-        if (/[\\/]/.test(trimmedName) || trimmedName.includes("..") || trimmedName.startsWith(".")) {
-            setCustomSkillError("Name can't contain slashes, '..', or start with a dot.");
-            return;
-        }
-        if (mySkills?.some((s) => s.name === trimmedName)) {
-            setCustomSkillError("You already have a skill with that name.");
-            return;
-        }
-        if (availableSkills.some((s) => s.name === trimmedName)) {
-            setCustomSkillError("That name collides with a global skill. Pick another.");
-            return;
-        }
-        setCustomSkillSubmitting(true);
-        setCustomSkillError(null);
-        try {
-            const created = await onCreateCustomSkill({
-                name: trimmedName,
-                description: customSkillDescription.trim(),
-                content: customSkillContent,
-            });
-            if (created) {
-                setCustomSkillName("");
-                setCustomSkillDescription("");
-                setCustomSkillContent("");
-                setSkillsView("my");
-            }
-        } catch (error) {
-            setCustomSkillError(error instanceof Error ? error.message : "Could not create the skill.");
-        } finally {
-            setCustomSkillSubmitting(false);
-        }
-    }, [
-        availableSkills,
-        customSkillContent,
-        customSkillDescription,
-        customSkillName,
-        mySkills,
-        onCreateCustomSkill,
-    ]);
 
     const togglePoolSkill = useCallback(
         (skillName: string) => {
@@ -542,43 +602,56 @@ export default function ProfilePanel({
         [onLoadMySkillDetail],
     );
 
-    const normalizedSkillsSearch = skillsSearch.trim().toLowerCase();
-    const skillsSearchTokens = useMemo(() => {
-        if (!normalizedSkillsSearch) return [] as string[];
-        return normalizedSkillsSearch
-            .split(/\s+/)
-            .map((tok) => tok.replace(/[-_./]/g, ""))
-            .filter(Boolean);
-    }, [normalizedSkillsSearch]);
-
-    const matchesAllTokens = useCallback(
-        (s: { name: string; description: string; category: string }) => {
-            if (skillsSearchTokens.length === 0) return true;
-            const haystack = `${s.name} ${s.description} ${s.category}`
-                .toLowerCase()
-                .replace(/[-_./]/g, "");
-            return skillsSearchTokens.every((tok) => haystack.includes(tok));
+    const handleAddFromCatalog = useCallback(
+        async (skillName: string) => {
+            if (!onAddGlobalSkillToPool || addingSkills[skillName]) return;
+            setAddingSkills((prev) => ({ ...prev, [skillName]: true }));
+            try {
+                await onAddGlobalSkillToPool(skillName);
+            } finally {
+                setAddingSkills((prev) => {
+                    const next = { ...prev };
+                    delete next[skillName];
+                    return next;
+                });
+            }
         },
-        [skillsSearchTokens],
+        [onAddGlobalSkillToPool, addingSkills],
     );
 
-    const filteredMySkills = useMemo(() => {
-        if (!mySkills) return [];
-        if (skillsSearchTokens.length === 0) return mySkills;
-        return mySkills.filter(matchesAllTokens);
-    }, [mySkills, skillsSearchTokens, matchesAllTokens]);
+    // Registry filter — narrows the user's own pool. Cheap, runs on every
+    // keystroke (the pool is small).
+    const registryTokens = useMemo(() => tokenizeSkillQuery(registrySearch), [registrySearch]);
+    const filteredRegistry = useMemo(() => {
+        const pool = mySkills ?? [];
+        if (registryTokens.length === 0) return pool;
+        return pool.filter((s) => skillMatchesTokens(s, registryTokens));
+    }, [mySkills, registryTokens]);
+
+    // Catalog search is deferred so scoring the (potentially large) global
+    // catalog never blocks typing.
+    const deferredCatalogSearch = useDeferredValue(catalogSearch);
+    const catalogTokens = useMemo(
+        () => tokenizeSkillQuery(deferredCatalogSearch),
+        [deferredCatalogSearch],
+    );
+    const hasCatalogQuery = catalogTokens.length > 0;
 
     const myPoolNames = useMemo(() => new Set((mySkills ?? []).map((s) => s.name)), [mySkills]);
+    const catalogPool = useMemo(
+        () => availableSkills.filter((s) => !myPoolNames.has(s.name)),
+        [availableSkills, myPoolNames],
+    );
 
-    const globalCandidates = useMemo(() => {
-        if (skillsSearchTokens.length === 0) return [];
-        const scored = availableSkills
-            .filter((s) => !myPoolNames.has(s.name) && matchesAllTokens(s))
+    const catalogMatches = useMemo(() => {
+        if (!hasCatalogQuery) return [];
+        return catalogPool
+            .filter((s) => skillMatchesTokens(s, catalogTokens))
             .map((s) => {
                 const name = s.name.toLowerCase().replace(/[-_./]/g, "");
                 const category = s.category.toLowerCase().replace(/[-_./]/g, "");
                 let score = 0;
-                for (const tok of skillsSearchTokens) {
+                for (const tok of catalogTokens) {
                     if (name === tok) score += 1000;
                     else if (name.startsWith(tok)) score += 500;
                     else if (name.includes(tok)) score += 100;
@@ -587,18 +660,23 @@ export default function ProfilePanel({
                 return { s, score };
             })
             .sort((a, b) => b.score - a.score)
-            .slice(0, 30)
             .map((x) => x.s);
-        return scored;
-    }, [availableSkills, myPoolNames, skillsSearchTokens, matchesAllTokens]);
+    }, [catalogPool, catalogTokens, hasCatalogQuery]);
 
-    const globalCandidatesTruncated = useMemo(() => {
-        if (skillsSearchTokens.length === 0) return 0;
-        const total = availableSkills.filter(
-            (s) => !myPoolNames.has(s.name) && matchesAllTokens(s),
-        ).length;
-        return Math.max(0, total - globalCandidates.length);
-    }, [availableSkills, myPoolNames, skillsSearchTokens, matchesAllTokens, globalCandidates.length]);
+    // With a query → ranked matches; without → an alphabetical browse slice so
+    // the "Add from catalog" section is a useful starting point, never blank.
+    const catalogResults = useMemo(() => {
+        if (!hasCatalogQuery) {
+            return [...catalogPool]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .slice(0, CATALOG_BROWSE_LIMIT);
+        }
+        return catalogMatches.slice(0, CATALOG_RESULT_LIMIT);
+    }, [hasCatalogQuery, catalogPool, catalogMatches]);
+
+    const catalogTruncated = hasCatalogQuery
+        ? Math.max(0, catalogMatches.length - catalogResults.length)
+        : Math.max(0, catalogPool.length - catalogResults.length);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const previewAudioUrlRef = useRef<string | null>(null);
     const { theme, setTheme } = useTheme();
@@ -781,6 +859,17 @@ export default function ProfilePanel({
         });
     }, [availableTools, normalizedActiveTab]);
 
+    // Reset the Skills tab to its hub whenever the user leaves it (switches
+    // nav tab or closes the panel) so re-entering never lands deep in an inner
+    // view (global / create / …). Also clears the transient search/prefill state.
+    useEffect(() => {
+        if (open && normalizedActiveTab === "skills") return;
+        setSkillsView("hub");
+        setAddPrefillName("");
+        setCatalogSearch("");
+        setRegistrySearch("");
+    }, [open, normalizedActiveTab]);
+
 
     const sectionMeta: Record<string, { eyebrow?: string; title: string; description: string }> = {
         profile: {
@@ -801,7 +890,7 @@ export default function ProfilePanel({
         },
         skills: {
             title: "Skills",
-            description: "Browse the central library of skills available to deep agents.",
+            description: "Your pool and the shared catalog.",
         },
         shortcuts: {
             title: "Keyboard Shortcuts",
@@ -2024,14 +2113,72 @@ export default function ProfilePanel({
                                     {normalizedActiveTab === "skills" ? (
                                         <div className="space-y-6 animate-fade-in">
                                             <AnimatePresence mode="wait" initial={false}>
-                                                {skillsView === "my" ? (
-                                                    <motion.div key="skills-my" className="space-y-6" {...skillsViewMotionProps}>
+                                                {skillsView === "hub" ? (
+                                                    <motion.div key="skills-hub" className="space-y-3" {...skillsViewMotionProps}>
+                                                        <SkillHubRow
+                                                            index={0}
+                                                            reduceMotion={Boolean(prefersReducedMotion)}
+                                                            icon={<Library className="h-5 w-5" aria-hidden />}
+                                                            title="Global registry"
+                                                            subtitle="Browse the shared catalog"
+                                                            meta={`${availableSkills.length} skills`}
+                                                            actionLabel="Manage"
+                                                            onClick={() => setSkillsView("global")}
+                                                        />
+                                                        <SkillHubRow
+                                                            index={1}
+                                                            reduceMotion={Boolean(prefersReducedMotion)}
+                                                            icon={<Sparkles className="h-5 w-5" aria-hidden />}
+                                                            title="My skills"
+                                                            subtitle="Your added + custom skills"
+                                                            meta={`${mySkills?.length ?? 0} in pool`}
+                                                            actionLabel="Manage"
+                                                            onClick={() => setSkillsView("mine")}
+                                                        />
+                                                        <SkillHubRow
+                                                            index={2}
+                                                            reduceMotion={Boolean(prefersReducedMotion)}
+                                                            icon={<Bot className="h-5 w-5" aria-hidden />}
+                                                            title="Agent skills"
+                                                            subtitle="Assign skills to deep agents"
+                                                            meta={`${deepAgents.length} agent${deepAgents.length === 1 ? "" : "s"}`}
+                                                            actionLabel="Manage"
+                                                            onClick={() => setSkillsView("agents")}
+                                                        />
+                                                        <SkillHubRow
+                                                            index={3}
+                                                            reduceMotion={Boolean(prefersReducedMotion)}
+                                                            icon={<FilePlus className="h-5 w-5" aria-hidden />}
+                                                            title="Create a skill"
+                                                            subtitle="SKILL.md + scripts & assets"
+                                                            meta="multi-file"
+                                                            actionLabel="Create"
+                                                            onClick={() => openAddView()}
+                                                        />
+                                                        <p className="flex items-center gap-2 px-1 pt-2 text-xs text-muted-foreground">
+                                                            <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden />
+                                                            Reusable playbooks your deep agents load when relevant — add or author them here, then assign per agent.
+                                                        </p>
+                                                    </motion.div>
+                                                ) : null}
+
+                                                {skillsView === "mine" ? (
+                                                    <motion.div key="skills-mine" className="space-y-6" {...skillsViewMotionProps}>
                                                     <InfoCard
                                                         eyebrow="My pool"
-                                                        title="My skills"
-                                                        description="Your personal skill pool. Search the global catalog to add more, or create a custom skill of your own."
+                                                        title="Your skills"
                                                         headerAction={
                                                             <div className="flex items-center gap-1">
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => setSkillsView("hub")}
+                                                                    className="h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none"
+                                                                >
+                                                                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+                                                                    Back
+                                                                </Button>
                                                                 {onRefreshMySkills ? (
                                                                     <Tooltip delayDuration={0}>
                                                                         <TooltipTrigger asChild>
@@ -2051,44 +2198,42 @@ export default function ProfilePanel({
                                                                         <TooltipContent side="top">{mySkillsRefreshing ? "Refreshing…" : "Refresh"}</TooltipContent>
                                                                     </Tooltip>
                                                                 ) : null}
-                                                                <Button
-                                                                    type="button"
-                                                                    size="sm"
-                                                                    onClick={openAddView}
-                                                                    className="h-8 gap-1.5 px-3 text-xs"
-                                                                >
-                                                                    <Sparkles className="h-3.5 w-3.5" aria-hidden />
-                                                                    Add
-                                                                </Button>
                                                             </div>
                                                         }
                                                     >
                                                         <div className="flex flex-col gap-3">
-                                                            <input
-                                                                type="search"
-                                                                value={skillsSearch}
-                                                                onChange={(e) => setSkillsSearch(e.target.value)}
-                                                                placeholder="Search your skills or the global catalog…"
-                                                                aria-label="Search skills"
-                                                                className="w-full rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                            />
+                                                            {(mySkills?.length ?? 0) > 6 ? (
+                                                                <div className="relative">
+                                                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                                                    <input
+                                                                        type="search"
+                                                                        value={registrySearch}
+                                                                        onChange={(e) => setRegistrySearch(e.target.value)}
+                                                                        placeholder="Filter your skills…"
+                                                                        aria-label="Filter your skills"
+                                                                        className="w-full rounded-md border border-border/60 bg-background/60 py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                                    />
+                                                                </div>
+                                                            ) : null}
 
                                                             {loadingMySkills && (mySkills?.length ?? 0) === 0 ? (
                                                                 <p className="text-sm text-muted-foreground">Loading your skills…</p>
                                                             ) : null}
 
-                                                            {!loadingMySkills && filteredMySkills.length === 0 && !normalizedSkillsSearch ? (
+                                                            {!loadingMySkills && (mySkills?.length ?? 0) === 0 ? (
                                                                 <p className="text-sm text-muted-foreground">
-                                                                    Your pool is empty. Search above to add a global skill or click <span className="font-medium text-foreground">Add</span> to author your own.
+                                                                    Nothing here yet — add from the Global registry, or Create a skill.
                                                                 </p>
                                                             ) : null}
 
-                                                            {filteredMySkills.map((skill) => {
+                                                            <AnimatePresence initial={false}>
+                                                            {filteredRegistry.map((skill, index) => {
                                                                 const isExpanded = Boolean(expandedPoolSkills[skill.name]);
                                                                 const detail = mySkillDetails?.[skill.name];
                                                                 const loadingDetail = isMySkillDetailLoading?.(skill.name) ?? false;
                                                                 return (
-                                                                    <SoftPanel key={skill.name} className="p-4">
+                                                                    <motion.div key={skill.name} {...skillCardMotion(index)}>
+                                                                    <SoftPanel className="p-4">
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => togglePoolSkill(skill.name)}
@@ -2152,88 +2297,168 @@ export default function ProfilePanel({
                                                                                 {loadingDetail && !detail ? (
                                                                                     <p className="text-xs text-muted-foreground">Loading content…</p>
                                                                                 ) : detail ? (
-                                                                                    <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-[0.78rem] leading-relaxed text-foreground/90">
-                                                                                        {detail.content}
-                                                                                    </pre>
+                                                                                    <SkillFilesViewer
+                                                                                        files={detail.files ?? []}
+                                                                                        fallbackContent={detail.content}
+                                                                                        prefersReducedMotion={prefersReducedMotion}
+                                                                                    />
                                                                                 ) : (
                                                                                     <p className="text-xs text-muted-foreground">Could not load content.</p>
                                                                                 )}
                                                                             </div>
                                                                         ) : null}
                                                                     </SoftPanel>
+                                                                    </motion.div>
                                                                 );
                                                             })}
+                                                            </AnimatePresence>
 
-                                                            {globalCandidates.length > 0 ? (
-                                                                <div className="mt-1 flex flex-col gap-2 border-t border-border/40 pt-3">
-                                                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                                                        From global catalog
-                                                                    </p>
-                                                                    {globalCandidates.map((skill) => (
-                                                                        <SoftPanel key={`${skill.category}/${skill.name}`} className="p-3">
-                                                                            <div className="flex items-start justify-between gap-3">
-                                                                                <div className="flex flex-col gap-0.5 min-w-0">
-                                                                                    <div className="flex items-center gap-2 min-w-0">
-                                                                                        <p className="truncate text-sm font-medium text-foreground">{skill.name}</p>
-                                                                                        {skill.category ? (
-                                                                                            <span className="inline-flex shrink-0 items-center rounded-md border border-border/40 bg-background/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                                                                                {skill.category}
-                                                                                            </span>
-                                                                                        ) : null}
-                                                                                    </div>
-                                                                                    <p className="line-clamp-2 text-xs text-muted-foreground">
-                                                                                        {skill.description || "No description provided."}
-                                                                                    </p>
-                                                                                </div>
-                                                                                <Button
-                                                                                    type="button"
-                                                                                    size="sm"
-                                                                                    variant="outline"
-                                                                                    onClick={() => void onAddGlobalSkillToPool?.(skill.name)}
-                                                                                    disabled={!onAddGlobalSkillToPool}
-                                                                                    className="h-7 px-2.5 text-xs"
-                                                                                >
-                                                                                    + Add
-                                                                                </Button>
-                                                                            </div>
-                                                                        </SoftPanel>
-                                                                    ))}
-                                                                    {globalCandidatesTruncated > 0 ? (
-                                                                        <p className="px-1 pt-1 text-[11px] text-muted-foreground">
-                                                                            +{globalCandidatesTruncated} more match{globalCandidatesTruncated === 1 ? "" : "es"}. Refine your search to narrow down.
-                                                                        </p>
-                                                                    ) : null}
-                                                                </div>
-                                                            ) : null}
-
-                                                            {normalizedSkillsSearch && filteredMySkills.length === 0 && globalCandidates.length === 0 ? (
-                                                                <p className="text-sm text-muted-foreground">No skills match your search.</p>
+                                                            {registryTokens.length > 0 && filteredRegistry.length === 0 ? (
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    No skills in your pool match “{registrySearch.trim()}”.
+                                                                </p>
                                                             ) : null}
                                                         </div>
                                                     </InfoCard>
+                                                    </motion.div>
+                                                ) : null}
 
-                                                    {deepAgents.length > 0 ? (
-                                                        <div className="flex justify-end">
+                                                {skillsView === "global" ? (
+                                                    <motion.div key="skills-global" {...skillsViewMotionProps}>
+                                                    <InfoCard
+                                                        eyebrow="Catalog"
+                                                        title="Add from catalog"
+                                                        headerAction={
                                                             <Button
                                                                 type="button"
                                                                 variant="ghost"
-                                                                onClick={() => setSkillsView("manage")}
+                                                                onClick={() => setSkillsView("hub")}
                                                                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
                                                             >
-                                                                Manage per agent
-                                                                <ChevronRight className="h-4 w-4" aria-hidden />
+                                                                <ArrowLeft className="h-4 w-4" aria-hidden />
+                                                                Back
                                                             </Button>
+                                                        }
+                                                    >
+                                                        <div className="flex flex-col gap-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="relative flex-1">
+                                                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                                                    <input
+                                                                        type="search"
+                                                                        value={catalogSearch}
+                                                                        onChange={(e) => setCatalogSearch(e.target.value)}
+                                                                        placeholder="Search skills to add…"
+                                                                        aria-label="Search the skills catalog"
+                                                                        className="w-full rounded-md border border-border/60 bg-background/60 py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                                    />
+                                                                    <AnimatePresence>
+                                                                        {catalogSearch ? (
+                                                                            <motion.button
+                                                                                type="button"
+                                                                                onClick={() => setCatalogSearch("")}
+                                                                                aria-label="Clear catalog search"
+                                                                                initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
+                                                                                animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                                                                                exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
+                                                                                transition={{ duration: 0.15, ease: "easeOut" }}
+                                                                                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                                            >
+                                                                                <X className="h-3.5 w-3.5" />
+                                                                            </motion.button>
+                                                                        ) : null}
+                                                                    </AnimatePresence>
+                                                                </div>
+                                                                <span className="shrink-0 rounded-full bg-muted/60 px-2.5 py-1 text-[11px] font-medium tabular-nums text-muted-foreground">
+                                                                    {hasCatalogQuery
+                                                                        ? `${catalogResults.length}${catalogTruncated > 0 ? "+" : ""} result${catalogResults.length === 1 ? "" : "s"}`
+                                                                        : `${catalogPool.length} available`}
+                                                                </span>
+                                                            </div>
+
+                                                            {catalogPool.length === 0 ? (
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    You've added every catalog skill to your pool.
+                                                                </p>
+                                                            ) : hasCatalogQuery && catalogResults.length === 0 ? (
+                                                                <div className="flex flex-col items-start gap-2 rounded-[1.1rem] bg-muted/30 px-4 py-4">
+                                                                    <p className="text-sm text-muted-foreground">
+                                                                        No catalog skills match “{deferredCatalogSearch.trim()}”.
+                                                                    </p>
+                                                                    <Button
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        onClick={() => openAddView(deferredCatalogSearch.trim())}
+                                                                        className="h-8 gap-1.5 px-3 text-xs"
+                                                                    >
+                                                                        <Plus className="h-3.5 w-3.5" aria-hidden />
+                                                                        Create “{deferredCatalogSearch.trim()}” as a custom skill
+                                                                    </Button>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <AnimatePresence initial={false}>
+                                                                        {catalogResults.map((skill, index) => {
+                                                                            const adding = Boolean(addingSkills[skill.name]);
+                                                                            return (
+                                                                                <motion.div key={`${skill.category}/${skill.name}`} {...skillCardMotion(index)}>
+                                                                                    <SoftPanel className="p-3">
+                                                                                        <div className="flex items-start justify-between gap-3">
+                                                                                            <div className="flex min-w-0 flex-col gap-0.5">
+                                                                                                <div className="flex min-w-0 items-center gap-2">
+                                                                                                    <p className="truncate text-sm font-medium text-foreground">{skill.name}</p>
+                                                                                                    {skill.category ? (
+                                                                                                        <span className="inline-flex shrink-0 items-center rounded-md border border-border/40 bg-background/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                                                                                            {skill.category}
+                                                                                                        </span>
+                                                                                                    ) : null}
+                                                                                                </div>
+                                                                                                <p className="line-clamp-2 text-xs text-muted-foreground">
+                                                                                                    {skill.description || "No description provided."}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                            <Button
+                                                                                                type="button"
+                                                                                                size="sm"
+                                                                                                variant="outline"
+                                                                                                onClick={() => void handleAddFromCatalog(skill.name)}
+                                                                                                disabled={!onAddGlobalSkillToPool || adding}
+                                                                                                className="h-7 shrink-0 gap-1 px-2.5 text-xs"
+                                                                                            >
+                                                                                                {adding ? (
+                                                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                                                                                                ) : (
+                                                                                                    <Plus className="h-3.5 w-3.5" aria-hidden />
+                                                                                                )}
+                                                                                                {adding ? "Adding…" : "Add"}
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    </SoftPanel>
+                                                                                </motion.div>
+                                                                            );
+                                                                        })}
+                                                                    </AnimatePresence>
+                                                                    {catalogTruncated > 0 ? (
+                                                                        <p className="px-1 pt-1 text-[11px] text-muted-foreground">
+                                                                            {hasCatalogQuery
+                                                                                ? `+${catalogTruncated} more match${catalogTruncated === 1 ? "" : "es"}. Refine your search to narrow down.`
+                                                                                : `+${catalogTruncated} more in the catalog. Search to find a specific skill.`}
+                                                                        </p>
+                                                                    ) : null}
+                                                                </>
+                                                            )}
                                                         </div>
-                                                    ) : null}
-                                                </motion.div>
+                                                    </InfoCard>
+                                                    </motion.div>
                                                 ) : null}
 
-                                                {skillsView === "add" ? (
-                                                <motion.div key="skills-add" {...skillsViewMotionProps}>
+                                                {skillsView === "create" ? (
+                                                <motion.div key="skills-create" {...skillsViewMotionProps}>
                                                 <InfoCard
                                                     eyebrow="Create"
                                                     title="New custom skill"
-                                                    description="Write a SKILL.md playbook only you can see. Add it to a deep agent from the Manage view once it's saved."
+                                                    description="Author a private skill — a SKILL.md playbook plus any scripts or reference files. Assign it from Agent skills once it's saved."
                                                     headerAction={
                                                         <Button
                                                             type="button"
@@ -2246,87 +2471,29 @@ export default function ProfilePanel({
                                                         </Button>
                                                     }
                                                 >
-                                                    <div className="flex flex-col gap-4">
-                                                        <label className="flex flex-col gap-1.5">
-                                                            <span className="text-xs font-medium text-foreground">Name</span>
-                                                            <input
-                                                                type="text"
-                                                                value={customSkillName}
-                                                                onChange={(e) => setCustomSkillName(e.target.value)}
-                                                                placeholder="my_blog_writer"
-                                                                disabled={customSkillSubmitting}
-                                                                aria-label="Skill name"
-                                                                className="w-full rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                            />
-                                                            <span className="text-[11px] text-muted-foreground">
-                                                                Lowercase, no slashes. Must not collide with global skills or any existing entry in your pool.
-                                                            </span>
-                                                        </label>
-                                                        <label className="flex flex-col gap-1.5">
-                                                            <span className="text-xs font-medium text-foreground">Description</span>
-                                                            <input
-                                                                type="text"
-                                                                value={customSkillDescription}
-                                                                onChange={(e) => setCustomSkillDescription(e.target.value)}
-                                                                placeholder="Short one-liner — shown on the card."
-                                                                disabled={customSkillSubmitting}
-                                                                aria-label="Skill description"
-                                                                className="w-full rounded-md border border-border/60 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                            />
-                                                        </label>
-                                                        <label className="flex flex-col gap-1.5">
-                                                            <span className="text-xs font-medium text-foreground">SKILL.md content</span>
-                                                            <textarea
-                                                                value={customSkillContent}
-                                                                onChange={(e) => setCustomSkillContent(e.target.value)}
-                                                                placeholder={"# Title\n\nDescribe when and how the agent should use this skill."}
-                                                                disabled={customSkillSubmitting}
-                                                                aria-label="Skill content"
-                                                                rows={12}
-                                                                className="w-full resize-y rounded-md border border-border/60 bg-background/60 px-3 py-2 font-mono text-[0.78rem] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                            />
-                                                            <span className="text-[11px] text-muted-foreground">
-                                                                Frontmatter is added automatically. Just write the body.
-                                                            </span>
-                                                        </label>
-                                                        {customSkillError ? (
-                                                            <p role="alert" className="text-xs text-destructive">{customSkillError}</p>
-                                                        ) : null}
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                onClick={cancelAddView}
-                                                                disabled={customSkillSubmitting}
-                                                                className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:opacity-50 disabled:pointer-events-none"
-                                                            >
-                                                                Cancel
-                                                            </Button>
-                                                            <Button
-                                                                type="button"
-                                                                onClick={() => void handleSubmitCustomSkill()}
-                                                                disabled={customSkillSubmitting || !customSkillName.trim()}
-                                                                className="inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium transition-smooth disabled:opacity-50 disabled:pointer-events-none"
-                                                            >
-                                                                {customSkillSubmitting ? "Creating…" : "Create skill"}
-                                                            </Button>
-                                                        </div>
-                                                    </div>
+                                                    <SkillBuilder
+                                                        mySkills={mySkills ?? []}
+                                                        availableSkills={availableSkills}
+                                                        initialName={addPrefillName}
+                                                        onCreate={onCreateCustomSkill ?? (async () => null)}
+                                                        onClose={cancelAddView}
+                                                        prefersReducedMotion={prefersReducedMotion}
+                                                    />
                                                 </InfoCard>
                                                 </motion.div>
                                             ) : null}
 
-                                            {skillsView === "manage" ? (
-                                                <motion.div key="skills-manage" {...skillsViewMotionProps}>
+                                            {skillsView === "agents" ? (
+                                                <motion.div key="skills-agents" {...skillsViewMotionProps}>
                                                 <InfoCard
-                                                    eyebrow="Manage"
-                                                    title="Skills per agent"
+                                                    eyebrow="Agents"
+                                                    title="Agent skills"
                                                     description="Assign skills from your pool to specific deep agents. Toggles take effect on the next conversation."
                                                     headerAction={
                                                         <Button
                                                             type="button"
                                                             variant="ghost"
-                                                            onClick={() => setSkillsView("my")}
+                                                            onClick={() => setSkillsView("hub")}
                                                             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
                                                         >
                                                             <ArrowLeft className="h-4 w-4" aria-hidden />

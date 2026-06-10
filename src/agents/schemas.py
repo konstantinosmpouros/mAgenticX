@@ -145,22 +145,43 @@ class UserManifest(BaseModel):
     skills: List[SkillManifestEntry] = Field(default_factory=list)
 
 
+class SkillFile(BaseModel):
+    """One file inside a skill folder.
+
+    ``path`` is relative to the skill root and ``/``-separated (e.g.
+    ``SKILL.md`` or ``references/api.md``). ``content`` is UTF-8 text when
+    ``encoding == "utf-8"`` or standard base64 when ``encoding == "base64"``
+    (used for binary assets like images). ``size`` is the decoded byte length —
+    populated on read, ignored on create.
+    """
+
+    path: str
+    content: str = ""
+    encoding: Literal["utf-8", "base64"] = "utf-8"
+    size: int = 0
+
+
 class CustomSkillCreate(BaseModel):
     """Request body for ``POST /users/{user_id}/skills/custom``.
 
-    ``content`` is the markdown body — frontmatter is assembled server-side
-    from ``name`` + ``description`` so the agent reads a consistent SKILL.md
-    regardless of how the skill was authored.
+    A custom skill is a folder of files. Exactly one file must be named
+    ``SKILL.md`` — its body is wrapped with canonical frontmatter assembled
+    server-side from ``name`` + ``description`` so the agent reads a consistent
+    SKILL.md regardless of how the skill was authored. Every other file is
+    written verbatim (UTF-8 text or base64-decoded binary).
     """
 
     name: str
     description: str = ""
-    content: str = ""
+    files: List[SkillFile] = Field(default_factory=list)
 
 
 class UserSkillDetail(BaseModel):
-    """Returned by ``GET /users/{user_id}/skills/{name}`` — manifest row +
-    SKILL.md content joined.
+    """Returned by ``GET /users/{user_id}/skills/{name}`` — manifest row joined
+    with the skill's file inventory.
+
+    ``content`` is the parsed SKILL.md body (frontmatter stripped) kept as a
+    convenience for a quick preview; ``files`` is the full on-disk inventory.
     """
 
     name: str
@@ -169,6 +190,7 @@ class UserSkillDetail(BaseModel):
     source_path: str
     category: str = ""
     content: str = ""
+    files: List[SkillFile] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)

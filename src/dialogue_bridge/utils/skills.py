@@ -345,6 +345,24 @@ async def create_custom_skill_in_pool(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="A skill with that name already exists in your pool or in the global catalog.",
                 )
+            if resp.status_code in (
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+            ):
+                # Structural validation failure upstream — forward the specific
+                # reason (bad path / oversized file / disallowed type / etc.) so
+                # the UI can show it instead of a generic error.
+                detail = "The skill could not be created — check the files and try again."
+                try:
+                    body = resp.json()
+                    if isinstance(body, dict) and isinstance(body.get("detail"), str):
+                        detail = body["detail"]
+                except ValueError:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=detail,
+                )
             resp.raise_for_status()
     except HTTPException:
         raise

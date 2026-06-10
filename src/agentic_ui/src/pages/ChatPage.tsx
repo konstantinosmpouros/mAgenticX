@@ -16,6 +16,7 @@ import type {
   SharedConversationDetail,
   Skill,
   UserSkill,
+  CustomSkillCreatePayload,
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
@@ -427,7 +428,7 @@ export function ChatInterface({
   );
 
   const handleCreateCustomSkill = useCallback(
-    async (payload: { name: string; description: string; content: string }) => {
+    async (payload: CustomSkillCreatePayload) => {
       const created = await createCustomInPool(payload);
       if (created) requestPersist();
       return created;
