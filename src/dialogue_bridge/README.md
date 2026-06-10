@@ -771,7 +771,7 @@ Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current
 | `TRUSTED_PROXY_HEADER_NAME` | `X-Internal-Proxy-Secret` |
 | `TRUSTED_PROXY_SECRET` | required (service refuses to start if unset) |
 
-### 17.5 Redis (inference event log) variables
+### 17.5 Redis (inference event log + skills cache) variables
 
 | Variable | Default |
 | --- | --- |
@@ -781,6 +781,9 @@ Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current
 | `REDIS_STREAM_MAXLEN` | `5000` (approximate cap on per-run event stream) |
 | `REDIS_STREAM_TERMINAL_TTL_SECONDS` | `3600` (replay window after a run ends) |
 | `REDIS_STREAM_READ_BLOCK_MS` | `30000` (`XREAD BLOCK` timeout) |
+| `REDIS_SKILLS_GLOBAL_TTL_SECONDS` | `86400` (global skills catalog cache, 24 h) |
+| `REDIS_SKILLS_USER_REGISTRY_TTL_SECONDS` | `7200` (per-user skill pool cache, 2 h) |
+| `REDIS_SKILLS_USER_AGENT_TTL_SECONDS` | `7200` (per-(user, agent) assignment cache, 2 h) |
 
 ### 17.6 CORS variables
 

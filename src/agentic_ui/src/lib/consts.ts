@@ -176,6 +176,8 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   sender: message.sender,
   type: message.type,
   liked: message.liked ?? undefined,
+  agentId: message.agentId ?? message.agent_id ?? null,
+  agentName: message.agentName ?? message.agent_name ?? null,
   created_at: toDate(message.created_at),
   updated_at: toDate(message.updated_at),
   attachments: (message.attachments || []).map(transformAttachment),

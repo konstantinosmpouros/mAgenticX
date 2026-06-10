@@ -256,6 +256,9 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         
         await beginInferenceRun({
           mode: "send",
+          // Per-message agent: this turn goes to the currently-selected agent
+          // (falling back to the conversation's last-used agent).
+          agentId: currentAgent?.id ?? currentConversation.agent.id,
           conversationId: currentConversation.id,
           parentMessageId: lastPersistedMessageId,
           messagePath: buildPathToMessage(currentConversation.messages ?? messages, lastPersistedMessageId),

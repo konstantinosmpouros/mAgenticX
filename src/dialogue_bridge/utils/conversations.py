@@ -194,6 +194,8 @@ async def clone_branch_to_conversation(
             type=source_message.type,
             content=source_message.content,
             liked=source_message.liked,
+            agent_id=source_message.agent_id,
+            agent_name=source_message.agent_name,
             reasoning_steps=deepcopy(source_message.reasoning_steps),
             reasoning_time_seconds=source_message.reasoning_time_seconds,
             is_error=source_message.is_error,

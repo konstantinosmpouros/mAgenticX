@@ -39,6 +39,7 @@ type ChatBody = {
   messagesEndRef: React.RefObject<HTMLDivElement>;
   AgentIcon: LucideIcon;
   currentAgent?: Agent;
+  resolveMessageAgent?: (message: MessageOut) => { name: string; Icon: LucideIcon };
   onScrolledPastTop?: (isScrolled: boolean) => void;
   branchChildrenMap?: Record<string, MessageOut[]>;
   branchSelections?: Record<string, number>;
@@ -86,6 +87,7 @@ export default function ChatBody({
   messagesEndRef,
   AgentIcon,
   currentAgent,
+  resolveMessageAgent,
   onScrolledPastTop,
   branchChildrenMap = {},
   branchSelections = {},
@@ -284,6 +286,7 @@ export default function ChatBody({
                     onSubmitEdit={onSubmitEdit}
                     AgentIcon={AgentIcon}
                     currentAgent={currentAgent}
+                    resolveMessageAgent={resolveMessageAgent}
                     copiedId={copiedId}
                     onCopy={onCopy}
                     onLike={onLike}

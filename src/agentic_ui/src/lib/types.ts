@@ -336,6 +336,8 @@ export type MessageOut = {
     sender: string;
     type: string;
     liked?: boolean;
+    agentId?: string | null;
+    agentName?: string | null;
     created_at: Date;
     updated_at: Date;
     attachments: AttachmentOut[];

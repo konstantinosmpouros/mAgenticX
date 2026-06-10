@@ -94,6 +94,8 @@ erDiagram
         enum type
         text content
         boolean liked
+        string agent_id FK
+        string agent_name
         json reasoning_steps
         int reasoning_time_seconds
         boolean is_error
@@ -268,7 +270,7 @@ The top-level container for a message thread. A conversation belongs to one user
 | --- | --- | --- | --- | --- |
 | `id` | `String` | No | `gen_uuid()` | PK |
 | `user_id` | `String` | No | — | FK → `users.id` CASCADE, INDEXED |
-| `agent_id` | `String` | No | — | FK → `agents.id` CASCADE, INDEXED |
+| `agent_id` | `String` | No | — | FK → `agents.id` CASCADE, INDEXED — **last-used pointer**: updated to the agent of each new run. Per-message attribution lives on `messages.agent_id`; this reflects the agent of the most recent message. |
 | `forked_parent_id` | `String` | Yes | `NULL` | FK → `conversations.id` SET NULL, INDEXED — origin conversation when forked |
 | `forked_message_id` | `String` | Yes | `NULL` | FK → `messages.id` SET NULL, INDEXED — origin message when forked |
 | `active_assistant_message_id` | `String` | Yes | `NULL` | FK → `messages.id` SET NULL, INDEXED — points at the AI message that is currently being streamed; `post_update=True` to avoid the circular insert ordering with `messages` |
@@ -301,6 +303,8 @@ Every chat turn — both user and AI — is a row in this table. The `parent_mes
 | `type` | `MessageTypeEnum` | No | `"text"` | `"text"`, `"file"`, `"image"`, `"audio"`, or `"tool"` (Postgres enum `message_type_enum`) |
 | `content` | `Text` | Yes | `NULL` | Message body; `NULL` for placeholder rows created before inference completes |
 | `liked` | `Boolean` | Yes | `NULL` | Three-state: `NULL` = not rated, `true` = liked, `false` = disliked |
+| `agent_id` | `String` | Yes | `NULL` | FK → `agents.id` SET NULL, INDEXED — the agent that produced this message. Set on AI run messages; `NULL` on user messages. Per-message attribution lets one conversation mix agents. |
+| `agent_name` | `String` | Yes | `NULL` | Denormalized agent label captured at run time, so a deactivated/removed agent still renders in the message action bar (mirrors `conversations.agent_name`). |
 | `reasoning_steps` | `JSON` | Yes | `NULL` | Array of thought strings accumulated during inference |
 | `reasoning_time_seconds` | `Integer` | Yes | `NULL` | Thinking duration in whole seconds |
 | `is_error` | `Boolean` | No | `false` | `true` when the inference run that produced this message failed |
@@ -451,6 +455,7 @@ A shareable link to a conversation snapshot. The `snapshot_json` column contains
 | `conversations.active_assistant_message_id` | `messages.id` | SET NULL |
 | `messages.conversation_id` | `conversations.id` | CASCADE |
 | `messages.parent_message_id` | `messages.id` | SET NULL |
+| `messages.agent_id` | `agents.id` | SET NULL — deleting an agent never deletes message history; `agent_name` preserves the label |
 | `conversation_reports.conversation_id` | `conversations.id` | CASCADE |
 | `conversation_reports.user_id` | `users.id` | CASCADE |
 | `conversation_reports.message_id` | `messages.id` | SET NULL |
@@ -474,7 +479,7 @@ There is no `position` or `order` column — the canonical ordering within a bra
 
 ### Denormalized `agent_name` on Conversations
 
-`conversations.agent_name` stores the agent label at conversation creation time. If an agent is renamed or deactivated later, the conversation history still shows the name the user saw at the time, without needing a join or a history table.
+`conversations.agent_name` mirrors `conversations.agent_id` as a denormalized last-used label. Per-message attribution is the source of truth: each AI message carries its own `agent_id` + `agent_name`, so a conversation can mix agents and every message renders the agent that produced it. The conversation-level pair is updated to the latest run's agent (used for the sidebar/header default and the picker seed on conversation switch).
 
 ### `active_assistant_message_id` and `post_update`
 

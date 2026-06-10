@@ -80,7 +80,9 @@ flowchart TD
 
 **Title generation** — `generate_conversation_title()` calls the agents service `POST /titles/generate` with the first message content. If the agents service is unavailable or returns no title, the bridge falls back to: first 200 chars of the message content → agent name → `"New conversation"`.
 
-**`agent_name` denormalization** — the agent's label at creation time is stored directly on the `ConversationTable` row. This survives agent renames: conversations always show the name the user saw when they started chatting.
+**`agent_name` denormalization** — the agent's label is stored directly on the `ConversationTable` row (and on each AI message). This survives agent renames/deactivation: messages always show the name the user saw at the time.
+
+**Per-message agent** — the agent is chosen per message, not per conversation. Each AI message records the agent that produced it (`messages.agent_id` + `agent_name`) and renders that agent's name + icon in its action bar, so a single conversation can mix agents. `conversations.agent_id` is a last-used pointer (updated to each new run's agent) used for the sidebar/header default and to seed the header picker on conversation switch. Switching the header agent picker no longer clears the chat — it sets the agent the next message goes to, in the same conversation. Forking clones each message's `agent_id`/`agent_name`, preserving mixed-agent threads. See [inference-streaming.md](inference-streaming.md) for how each run resolves its agent (`new`/`send` use the selected agent; `edit`/`retry` inherit the original branch's agent).
 
 **Response** — the bridge returns both `ConversationDetail` (full message list, used to populate the chat view immediately) and `ConversationSummary` (sidebar entry). The frontend appends the summary to the top of the conversation list and sorts by `updated_at DESC`.
 

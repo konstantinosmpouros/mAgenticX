@@ -175,7 +175,6 @@ export function ChatInterface({
 
   // Boolean variables for navigation
   const [isClearing, setIsClearing] = useState(false);
-  const [isAgentSwitching, setIsAgentSwitching] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
@@ -1123,10 +1122,7 @@ export function ChatInterface({
 
   // Agent change handler
   const { handleAgentChange } = createAgentHandlers({
-    isAgentSwitching,
-    setIsAgentSwitching,
     setSelectedAgent,
-    clearChatAndStopThinking,
     persistUIState: requestPersist,
   });
 
@@ -1220,6 +1216,19 @@ export function ChatInterface({
   const effectiveSelectedAgent = selectedAgentFromList ?? fallbackSelectedAgent ?? null;
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   const AgentIcon = currentAgent?.icon || Building2;
+
+  // Per-message agent: each AI message renders the agent that produced it,
+  // resolved from the catalog by id, falling back to the denormalized
+  // agentName (deactivated/removed agent) and finally the conversation agent
+  // (pre-migration messages with no agentId).
+  const resolveMessageAgent = useCallback((message: MessageOut) => {
+    if (message.agentId) {
+      const found = agents.find(a => a.id === message.agentId);
+      if (found) return { name: found.name, Icon: found.icon };
+      if (message.agentName) return { name: message.agentName, Icon: Building2 };
+    }
+    return { name: currentAgent?.name ?? "Unknown agent", Icon: AgentIcon };
+  }, [agents, currentAgent, AgentIcon]);
   const activePlan = (activeConversationRun?.plan && Array.isArray((activeConversationRun.plan as PlanSnapshot).items))
     ? (activeConversationRun.plan as PlanSnapshot)
     : null;
@@ -1317,6 +1326,7 @@ export function ChatInterface({
         messagesEndRef={messagesEndRef}
         AgentIcon={AgentIcon}
         currentAgent={currentAgent ?? undefined}
+        resolveMessageAgent={resolveMessageAgent}
         onScrolledPastTop={handleHeaderScrollState}
         branchChildrenMap={branchChildrenMap}
         branchSelections={branchSelections}

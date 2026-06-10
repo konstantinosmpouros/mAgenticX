@@ -1,15 +1,18 @@
 """Redis read-through cache for the bridge's skills endpoints.
 
-Every cache entry carries a TTL — nothing is cached forever. Three key
-families live here:
+Every cache entry carries a TTL — nothing is cached forever. All three TTLs
+are driven from ``settings.redis`` (core/settings.py) and tunable per
+environment. Three key families live here:
 
 - ``skills:global`` — the admin-curated catalog, shared across all users
-  (24 h TTL; refreshed by the UI's bypass-Redis path).
+  (``skills_global_ttl_seconds``, default 24 h; refreshed by the UI's
+  bypass-Redis path).
 - ``skills:user:<user_id>:registry`` — the user's personal skill pool
-  manifest (5 min TTL; invalidated by every pool mutation).
+  manifest (``skills_user_registry_ttl_seconds``, default 2 h; invalidated
+  by every pool mutation).
 - ``skills:user:<user_id>:agent:<agent_id>`` — the per-(user, agent)
-  assignment set (5 min TTL; invalidated by assignment mutations + cascade
-  on pool delete).
+  assignment set (``skills_user_agent_ttl_seconds``, default 2 h;
+  invalidated by assignment mutations + cascade on pool delete).
 
 The Redis client is created lazily on first use, sharing the connection
 configuration that ``utils.event_log.RedisEventLog`` already uses for the
@@ -28,19 +31,13 @@ from observability import get_logger
 
 logger = get_logger(__name__)
 
-# The registry only changes when the agents-service image is redeployed, so
-# a long TTL is appropriate. A user-triggered refresh button in the UI sends
-# ``bypass_redis=true`` which forces an upstream fetch and refreshes this
-# cache, giving operators escape velocity without waiting for the TTL.
-SKILLS_REGISTRY_TTL_SECONDS = 24 * 60 * 60  # 24 hours
-
-# Per-(user, agent) selection cache. Shorter TTL than the registry — the
-# selection set changes whenever the user toggles a skill, and mutations
-# evict the matching key explicitly anyway, so this TTL is a safety net
-# rather than the primary freshness mechanism.
-USER_AGENT_SKILLS_TTL_SECONDS = 5 * 60  # 5 minutes
-
-USER_REGISTRY_TTL_SECONDS = 5 * 60  # 5 minutes — pool changes whenever the user adds/removes
+# Every cache TTL is driven from ``settings.redis`` (see core/settings.py) so
+# operators can tune cache freshness per environment without a code change:
+#   - global catalog      → settings.redis.skills_global_ttl_seconds
+#   - user pool registry  → settings.redis.skills_user_registry_ttl_seconds
+#   - per-(user, agent)   → settings.redis.skills_user_agent_ttl_seconds
+# Mutations evict the matching key explicitly, so each TTL is a freshness
+# safety net rather than the primary invalidation mechanism.
 
 _GLOBAL_KEY = "skills:global"
 
@@ -108,7 +105,7 @@ class SkillsCache:
         return payload if isinstance(payload, list) else None
 
     async def set_global(
-        self, payload: List[dict[str, Any]], *, ttl_seconds: int = SKILLS_REGISTRY_TTL_SECONDS
+        self, payload: List[dict[str, Any]], *, ttl_seconds: int = settings.redis.skills_global_ttl_seconds
     ) -> None:
         """Store the global catalog in Redis with an explicit TTL — never forever."""
         try:
@@ -157,9 +154,9 @@ class SkillsCache:
         user_id: str,
         payload: List[dict[str, Any]],
         *,
-        ttl_seconds: int = USER_REGISTRY_TTL_SECONDS,
+        ttl_seconds: int = settings.redis.skills_user_registry_ttl_seconds,
     ) -> None:
-        """Store the user pool manifest in Redis with a short TTL."""
+        """Store the user pool manifest in Redis with a settings-driven TTL."""
         try:
             client = await self._get_client()
             await client.set(
@@ -251,9 +248,9 @@ class SkillsCache:
         agent_id: str,
         payload: List[str],
         *,
-        ttl_seconds: int = USER_AGENT_SKILLS_TTL_SECONDS,
+        ttl_seconds: int = settings.redis.skills_user_agent_ttl_seconds,
     ) -> None:
-        """Store the enabled-skill names with a TTL — never forever."""
+        """Store the enabled-skill names with a settings-driven TTL — never forever."""
         try:
             client = await self._get_client()
             await client.set(

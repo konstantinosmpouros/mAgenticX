@@ -26,6 +26,7 @@ type ChatMessageProps = {
   onSubmitEdit?: () => void;
   AgentIcon: LucideIcon;
   currentAgent?: Agent;
+  resolveMessageAgent?: (message: MessageOut) => { name: string; Icon: LucideIcon };
   copiedId: string | null;
   onCopy: (content: string, messageId: string) => void;
   onLike: (message: MessageOut) => void;
@@ -70,6 +71,7 @@ export function ChatMessage({
   onSubmitEdit,
   AgentIcon,
   currentAgent,
+  resolveMessageAgent,
   copiedId,
   onCopy,
   onLike,
@@ -101,6 +103,12 @@ export function ChatMessage({
   const isUser = message.sender === "user";
   const isAi = message.sender === "ai";
   const isTempUserMessage = isUser && String(message.id ?? "").startsWith("temp-");
+  // Per-message agent for the AI action bar. With a resolver (main chat) we get
+  // catalog name + icon; without one (e.g. shared view) we fall back to the
+  // denormalized per-message agentName and the conversation's icon.
+  const aiAgent = resolveMessageAgent
+    ? resolveMessageAgent(message)
+    : { name: message.agentName ?? currentAgent?.name ?? "Unknown agent", Icon: AgentIcon };
   const bubbleClass = isUser
     ? `p-5 bg-chat-user text-chat-user-foreground ml-auto shadow-card border-border ${
         isEditing ? "w-full max-w-full" : "max-w-[85%] md:max-w-[75%]"
@@ -270,8 +278,8 @@ export function ChatMessage({
                     readOnly={readOnly}
                     isStreaming={isStreaming}
                     branchControls={branchData}
-                    agentName={currentAgent?.name ?? "Unknown agent"}
-                    AgentIcon={AgentIcon}
+                    agentName={aiAgent.name}
+                    AgentIcon={aiAgent.Icon}
                     timestampLabel={timestampLabel}
                   />
                 </div>

@@ -94,7 +94,7 @@ def test_inference_runtime_starts_normal_flows_through_backend_start_api():
 
 def test_attachment_preview_registry_covers_requested_formats():
     registry_source = (
-        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "registry.ts"
+        UI_ROOT / "src" / "components" / "chat" / "attachment_preview_parts" / "registry.ts"
     ).read_text(encoding="utf-8")
     api_source = (UI_ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 
@@ -119,7 +119,7 @@ def test_attachment_preview_registry_covers_requested_formats():
 
 def test_excel_preview_uses_office_online_viewer_not_exceljs():
     registry_source = (
-        UI_ROOT / "src" / "components" / "chat" / "attachment_preview" / "registry.ts"
+        UI_ROOT / "src" / "components" / "chat" / "attachment_preview_parts" / "registry.ts"
     ).read_text(encoding="utf-8")
     panel_source = (
         UI_ROOT / "src" / "components" / "chat" / "AttachmentPreviewPanel.tsx"
@@ -169,3 +169,19 @@ def test_frontend_transformers_handle_backend_aliases_for_shared_features():
     assert "transformSharedConversationDetail" in consts_source
     assert "ConversationShareResponse" in types_source
     assert "ConversationShareListItem" in types_source
+
+
+def test_frontend_carries_per_message_agent_attribution():
+    consts_source = (UI_ROOT / "src" / "lib" / "consts.ts").read_text(encoding="utf-8")
+    types_source = (UI_ROOT / "src" / "lib" / "types.ts").read_text(encoding="utf-8")
+    inference_source = (UI_ROOT / "src" / "runtime" / "inference.ts").read_text(encoding="utf-8")
+
+    # MessageOut type + transformer carry the per-message agent (both casings).
+    for field in ["agentId", "agentName"]:
+        assert field in types_source
+        assert field in consts_source
+    assert "agent_id" in consts_source
+    assert "agent_name" in consts_source
+
+    # "send" mode now forwards the currently-selected agent for the next turn.
+    assert "agentId: currentAgent?.id" in inference_source

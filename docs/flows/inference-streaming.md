@@ -44,6 +44,8 @@ The event log is durable across container restarts (Redis is its own service) bu
 | `retry` | Create no user message; retry an AI response | Original AI message's parent user message |
 | `shared_continue` | Clone a full shared snapshot into the user workspace and append the first continuation message | New continuation user message |
 
+**Per-message agent.** The agent is a per-message property, not a per-conversation one. `start_inference_flow` resolves the agent for each run and `create_inference_run_record` stamps it onto the AI placeholder (`messages.agent_id` + denormalized `agent_name`) while updating `conversations.agent_id` as a last-used pointer. Resolution by mode: `new`/`send` use the client-supplied `agentId` (the currently-selected agent — `send` now requires it); `edit`/`retry` ignore any client `agentId` and inherit the original branch's agent server-side (the AI message being retried, or the original reply to the user message being edited), falling back to the conversation's agent if that agent was deactivated. The detached task then resolves `get_agent_by_id(run.agent_id or conversation.agent_id)` and builds `/agents/{slug}/stream|resume` from it — so one conversation can mix agents, each run isolated by its run-scoped `thread_id`.
+
 The response is always:
 
 ```json
@@ -451,7 +453,14 @@ sequenceDiagram
     Note over Task: loop again if another interrupt arrives,<br/>otherwise normal terminal flow
 ```
 
-The agents service maintains a process-level `dict[thread_id, InMemorySaver]` (`runtime/checkpointer_cache.py`) so the resume request — which creates a fresh agent instance — can rehydrate the same checkpointer the original `/stream` call wrote to. The cache uses LRU eviction at 256 entries; if a thread is reaped before resume (process restart or extreme load), the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
+The agents service maintains a process-level `dict[thread_id, InMemorySaver]` (`runtime/checkpointer/store.py`) so the resume request — which creates a fresh agent instance — can rehydrate the same checkpointer the original `/stream` call wrote to. The cache uses LRU eviction at 256 entries; if a thread is reaped before resume (process restart or extreme load), the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
+
+**`thread_id` is the run id, not the conversation id.** The bridge sets `configurable.thread_id = str(run.id)` ([`inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py)), so every run — every branch, edit, and retry — gets an isolated checkpoint. `run.id` is stable across a single run's `/stream` call and all its `/resume` legs (the config block is built once), yet unique per run, so a later run can never rehydrate a prior branch's accumulated messages. Keying by `conversation_id` was the source of the "agent sees every branch" / "deleted skill still visible" bug.
+
+**Checkpoint lifecycle — kept only while paused on HITL, else discarded.** The checkpoint is scratch space, not durable history:
+
+- `/stream` releases any existing entry for the thread on entry (clean start — a re-issued run never inherits a half-written checkpoint), then builds a fresh saver.
+- At the end of every `/stream` and `/resume` leg, the agents service probes `compiled.get_state(run_config).interrupts` via `utils.release_checkpoint_unless_paused`. If an interrupt is parked → **keep** the checkpointer so the next `/resume` can rehydrate. Otherwise (normal completion, error, or cancel) → `release_checkpointer(thread_id)`. On a multi-interrupt run the saver survives each paused leg and is freed only when the final leg drains the queue. This works identically for DeepAgent and stateful LangGraphAgent; a stateless LangGraph chain has no `get_state` and is simply released.
 
 ### Decision payload shape
 
@@ -470,7 +479,7 @@ Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph inte
 - Bridge → agents: `ResumeInferenceRunBody.interruptId` (`api.ts`) → `InferenceRunResumeIn.interruptId` → `_do_resume` body field `interrupt_id` → `AgentResumeRequest.interrupt_id`.
 - Agents: [`main.py`](../../src/agents/main.py) compares `req.interrupt_id` against `snapshot.interrupts[0].id` and returns 409 if the user's clicked card is no longer pending (e.g., a duplicate click after the run advanced).
 
-Why this matters: every HITL in a conversation shares the same conversation-level `thread_id`. Deduping on `thread_id` would silently drop every interrupt after the first — exactly the "second HITL never shows" bug.
+Why this matters: every HITL within a single run shares that run's `thread_id` (now `run.id`). Deduping on `thread_id` would silently drop every interrupt after the first in a multi-interrupt run — exactly the "second HITL never shows" bug.
 
 ### Failure modes
 
@@ -567,7 +576,8 @@ The original shared conversation is not mutated. The copied conversation belongs
 | HITL resume path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.pending_interrupts`, `InferenceRunManager.request_resume()`, `_do_resume()`, `request_run_resume()` |
 | Bridge resume route | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `resumeInferenceRun()` route |
 | Agents resume endpoint | [src/agents/main.py](../../src/agents/main.py) | `resume_agent()` route |
-| Agents checkpointer cache | [src/agents/runtime/checkpointer_cache.py](../../src/agents/runtime/checkpointer_cache.py) | `get_or_create_checkpointer()`, `release_checkpointer()`, `has_checkpointer()` |
+| Agents checkpointer cache | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `get_or_create_checkpointer()`, `release_checkpointer()`, `has_checkpointer()` |
+| Checkpoint release lifecycle | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` |
 | Run shape builder | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `build_run_out_from_message()` |
 | Orphaned-run cleanup | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `cleanup_orphaned_inference_runs()` |
 | Shared clone helper | [src/dialogue_bridge/utils/shared_conv.py](../../src/dialogue_bridge/utils/shared_conv.py) | `create_conversation_from_share_record()` |

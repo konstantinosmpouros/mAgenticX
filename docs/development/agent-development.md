@@ -600,7 +600,7 @@ class OmniAgent(DeepAgent):
 
 When the user approves/rejects, the bridge POSTs `AgentResumeRequest{thread_id, interrupt_id, decision, reason, value}` to `/agents/{slug}/resume`. The endpoint:
 
-1. Reads the cached `InMemorySaver` for `thread_id` from `runtime/checkpointer_cache.py` (it was populated by the original `/stream` call's `build()`).
+1. Reads the cached `InMemorySaver` for `thread_id` from `runtime/checkpointer/store.py` (it was populated by the original `/stream` call's `build()`).
 2. Calls `compiled_graph.get_state(config)` to inspect `snapshot.interrupts`.
 3. Verifies `snapshot.interrupts[0].id == req.interrupt_id` (when supplied); 409s on a stale click.
 4. Computes `decision_count = len(snapshot.interrupts[0].value.action_requests)` so the resume payload has the exact length the middleware validates against.
@@ -613,7 +613,9 @@ Decision dicts:
 
 #### Process-level checkpointer cache
 
-Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), so the in-memory `InMemorySaver` would normally be garbage-collected between calls. [`runtime/checkpointer_cache.py`](../../src/agents/runtime/checkpointer_cache.py) keeps one shared `InMemorySaver` per `thread_id` (default 256-entry LRU), so the resume call can rehydrate the same checkpoint the original stream wrote to. Both `LangGraphAgent.build()` and `DeepAgent.build()` look up `thread_id` in this cache before creating a new saver. The cache is process-local; for multi-replica deploys, swap to `PostgresSaver` from `langgraph-checkpoint-postgres`.
+Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), so the in-memory `InMemorySaver` would normally be garbage-collected between calls. [`runtime/checkpointer/store.py`](../../src/agents/runtime/checkpointer/store.py) keeps one shared `InMemorySaver` per `thread_id` (default 256-entry LRU), so the resume call can rehydrate the same checkpoint the original stream wrote to. Both `LangGraphAgent.build()` and `DeepAgent.build()` look up `thread_id` in this cache before creating a new saver. The cache is process-local; for multi-replica deploys, swap to `PostgresSaver` from `langgraph-checkpoint-postgres`.
+
+`thread_id` is `run.id` (set by the bridge), so each run owns an isolated checkpoint — branches, edits, and retries never share state. The checkpoint is treated as scratch space, not durable history: `/stream` releases any stale entry on entry (clean start), and at the end of every `/stream` / `/resume` leg [`utils.release_checkpoint_unless_paused`](../../src/agents/utils/checkpointer.py) probes `compiled.get_state(run_config).interrupts` — it keeps the saver only while a HITL interrupt is parked (so the next `/resume` can rehydrate) and calls `release_checkpointer(thread_id)` on any non-HITL terminal (completion, error, cancel). The 256-entry LRU is just a backstop for the case where a release is missed (e.g. hard cancel).
 
 ---
 
@@ -688,7 +690,7 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 - **`self.tools` is empty until `attach_tools()` is called.** `build()` runs after `attach_tools()` in the stream endpoint, so `register_agent()` and `register_nodes()` see the fully populated `self.tools` list. Do not access `self.tools` in `__init__` or class-level code — it will be empty.
 
-- **`run_config` defaults to a random `thread_id` if not provided.** HITL and multi-turn checkpointing require a stable `thread_id` across turns — the bridge sends `conversation_id` as `thread_id`. If a custom client omits `run_config`, each stream call gets a fresh ephemeral graph state with no memory of prior turns.
+- **`run_config` defaults to a random `thread_id` if not provided.** HITL resume requires a `thread_id` that is stable across a run's `/stream` + `/resume` legs — the bridge sends `run.id` (not `conversation_id`), which satisfies that while keeping each run's checkpoint isolated from other branches/retries. If a custom client omits `run_config`, each stream call gets a fresh ephemeral graph state with no memory of prior turns.
 
 - **The normalizer's `thread_id` is fixed at construction time.** `AGUIStreamNormalizer(thread_id=...)` is initialized in `__init__`, using the `thread_id` from the config received at instantiation. Changing `run_config.configurable.thread_id` after construction has no effect on the normalizer.
 

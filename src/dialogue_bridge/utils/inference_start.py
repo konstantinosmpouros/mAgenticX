@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from core.database import AttachmentTable, ConversationTable, MessageTable, UserTable
+from core.database import AgentTable, AttachmentTable, ConversationTable, MessageTable, UserTable
 from schemas import (
     ConversationDetail,
     ConversationSummary,
@@ -48,6 +48,21 @@ async def _load_message(db: AsyncSession, message_id: str) -> MessageTable | Non
     return result.scalar_one_or_none()
 
 
+async def _resolve_agent_or_400(agent_id: str | None, *, fallback_id: str | None = None) -> AgentTable:
+    """Resolve an active agent by id, falling back to ``fallback_id``.
+
+    Used by retry/edit to inherit the original branch's agent: if that agent has
+    since been deactivated it can't actually run, so we fall back to the
+    conversation's (last-used) agent rather than failing the run.
+    """
+    agent = await get_agent_by_id(agent_id) if agent_id else None
+    if agent is None and fallback_id and fallback_id != agent_id:
+        agent = await get_agent_by_id(fallback_id)
+    if agent is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")
+    return agent
+
+
 async def start_inference_flow(
     *,
     db: AsyncSession,
@@ -57,15 +72,15 @@ async def start_inference_flow(
     user_id = user.id
     mode = payload.mode
     if mode == "new":
-        conversation, parent_message_id = await _create_new_conversation_start(db, user, payload)
+        conversation, parent_message_id, agent = await _create_new_conversation_start(db, user, payload)
     elif mode == "send":
-        conversation, parent_message_id = await _append_user_message_start(db, user_id, payload)
+        conversation, parent_message_id, agent = await _append_user_message_start(db, user_id, payload)
     elif mode == "edit":
-        conversation, parent_message_id = await _create_edit_branch_start(db, user_id, payload)
+        conversation, parent_message_id, agent = await _create_edit_branch_start(db, user_id, payload)
     elif mode == "retry":
-        conversation, parent_message_id = await _create_retry_start(db, user_id, payload)
+        conversation, parent_message_id, agent = await _create_retry_start(db, user_id, payload)
     elif mode == "shared_continue":
-        conversation, parent_message_id = await _create_shared_continue_start(db, user, payload)
+        conversation, parent_message_id, agent = await _create_shared_continue_start(db, user, payload)
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported inference start mode.")
 
@@ -80,6 +95,7 @@ async def start_inference_flow(
         parent_message_id=parent_message_id,
         message_path=message_path,
         enabled_tools=payload.enabledTools,
+        agent=agent,
     )
     conversation_id = conversation.id
     assistant_message_id = assistant_message.id
@@ -103,7 +119,7 @@ async def _create_new_conversation_start(
     db: AsyncSession,
     user: UserTable,
     payload: InferenceStartPayload,
-) -> tuple[ConversationTable, str]:
+) -> tuple[ConversationTable, str, AgentTable]:
     if not payload.agentId:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="agentId is required for new inference starts.")
     first_message = _require_message(payload)
@@ -131,19 +147,22 @@ async def _create_new_conversation_start(
     first = conversation.messages[-1] if conversation.messages else None
     if first is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Conversation first message was not created.")
-    return conversation, first.id
+    return conversation, first.id, agent
 
 
 async def _append_user_message_start(
     db: AsyncSession,
     user_id: str,
     payload: InferenceStartPayload,
-) -> tuple[ConversationTable, str]:
+) -> tuple[ConversationTable, str, AgentTable]:
     if not payload.conversationId:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="conversationId is required for send inference starts.")
     if not payload.parentMessageId:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="parentMessageId is required for send inference starts.")
+    if not payload.agentId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="agentId is required for send inference starts.")
     message = _require_message(payload)
+    agent = await _resolve_agent_or_400(payload.agentId)
     conversation = await validate_convId_full(user_id, payload.conversationId, db)
     _message_by_id(conversation.messages, payload.parentMessageId, detail="Parent message does not belong to this conversation.")
     resolve_inference_message_path(conversation.messages, payload.parentMessageId, payload.messagePath)
@@ -152,14 +171,14 @@ async def _append_user_message_start(
     await db.flush()
     db.expire(conversation, ["messages"])
     conversation = await validate_convId_full(user_id, conversation.id, db)
-    return conversation, created.id
+    return conversation, created.id, agent
 
 
 async def _create_edit_branch_start(
     db: AsyncSession,
     user_id: str,
     payload: InferenceStartPayload,
-) -> tuple[ConversationTable, str]:
+) -> tuple[ConversationTable, str, AgentTable]:
     if not payload.conversationId or not payload.targetMessageId:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="conversationId and targetMessageId are required for edit inference starts.")
     message = _require_message(payload)
@@ -167,19 +186,28 @@ async def _create_edit_branch_start(
     target = _message_by_id(conversation.messages, payload.targetMessageId, detail="Edited message does not belong to this conversation.")
     if target.sender != "user":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only user messages can be edited into a new inference branch.")
+    # The edited branch reuses the agent that originally answered this prompt.
+    original_reply = next(
+        (m for m in conversation.messages if m.parent_message_id == target.id and m.sender == "ai"),
+        None,
+    )
+    agent = await _resolve_agent_or_400(
+        getattr(original_reply, "agent_id", None),
+        fallback_id=conversation.agent_id,
+    )
     created = await init_message(db, conversation, message, parent_message_id=target.parent_message_id)
     _touch_conversation_from_user_message(conversation, message)
     await db.flush()
     db.expire(conversation, ["messages"])
     conversation = await validate_convId_full(user_id, conversation.id, db)
-    return conversation, created.id
+    return conversation, created.id, agent
 
 
 async def _create_retry_start(
     db: AsyncSession,
     user_id: str,
     payload: InferenceStartPayload,
-) -> tuple[ConversationTable, str]:
+) -> tuple[ConversationTable, str, AgentTable]:
     if not payload.conversationId or not payload.targetMessageId:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="conversationId and targetMessageId are required for retry inference starts.")
     conversation = await validate_convId_full(user_id, payload.conversationId, db)
@@ -190,24 +218,28 @@ async def _create_retry_start(
     if not parent_message_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Retry target is missing a parent prompt.")
     _message_by_id(conversation.messages, parent_message_id, detail="Retry parent message does not belong to this conversation.")
-    return conversation, parent_message_id
+    # The retry reuses the agent that produced the message being retried.
+    agent = await _resolve_agent_or_400(target.agent_id, fallback_id=conversation.agent_id)
+    return conversation, parent_message_id, agent
 
 
 async def _create_shared_continue_start(
     db: AsyncSession,
     user: UserTable,
     payload: InferenceStartPayload,
-) -> tuple[ConversationTable, str]:
+) -> tuple[ConversationTable, str, AgentTable]:
     if not payload.sharedConversationToken:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="sharedConversationToken is required for shared conversation inference starts.")
     message = _require_message(payload)
     share = await load_active_share(payload.sharedConversationToken, db)
-    return await create_conversation_from_share_record(
+    conversation, parent_message_id = await create_conversation_from_share_record(
         db=db,
         share=share,
         current_user=user,
         first_message=message,
     )
+    agent = await _resolve_agent_or_400(payload.agentId or conversation.agent_id, fallback_id=conversation.agent_id)
+    return conversation, parent_message_id, agent
 
 
 def _touch_conversation_from_user_message(conversation: ConversationTable, message: MessageIn) -> None:

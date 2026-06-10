@@ -6,7 +6,6 @@ import {
   getAgents,
   getConversationDetail,
   getConversations,
-  getMySkills,
   getSkills,
   getTools,
   refreshSession,
@@ -199,18 +198,9 @@ export function useAuthRehydrateEffect(params: {
           );
         }
 
-        if (setMyRegistrySkills) {
-          // Always refetch the user's pool on rehydrate — the snapshot is a
-          // paint accelerator, not the source of truth.
-          requests.push(
-            getMySkills(restored.user.id)
-              .then((mine) => setMyRegistrySkills(mine))
-              .catch((error) => {
-                console.error('Failed to fetch user skill pool on rehydrate', error);
-                setMyRegistrySkills([]);
-              }),
-          );
-        }
+        // The user's pool is fetched authoritatively inside useSkills when the
+        // userId resolves; the snapshot paint above (setMyRegistrySkills) is
+        // just the instant-paint seed. No rehydrate fetch needed here.
 
         if (needsPreferences) {
           requests.push(

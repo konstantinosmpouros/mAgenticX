@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import (
+    AgentTable,
     AttachmentTable,
     ConversationTable,
     MessageTable,
@@ -296,7 +297,10 @@ class InferenceRunManager:
                     "completedAt": None,
                     "cancelRequestedAt": None,
                 }
-                agent = await get_agent_by_id(conversation.agent_id)
+                # Per-message agent: resolve from the run (the AI message) so a
+                # conversation can mix agents. Fall back to the conversation's
+                # agent for pre-migration runs whose message has no agent_id.
+                agent = await get_agent_by_id(run.agent_id or conversation.agent_id)
                 agent_url = build_agent_stream_url(agent)
                 resume_url = build_agent_resume_url(agent)
                 enabled_tools = run.streaming_enabled_tools or []
@@ -316,9 +320,15 @@ class InferenceRunManager:
                 # Shared config block forwarded to both the initial /stream call
                 # and any subsequent /resume calls; the thread_id is what keys
                 # the agents-service checkpointer cache so resume can rehydrate.
+                # Keyed by run.id (NOT conversation_id) so each run gets an
+                # isolated checkpoint: a conversation-scoped key let the agent
+                # rehydrate the union of every branch + retry in the
+                # conversation. run.id is stable across this run's stream and
+                # all its resume legs (this config is built once) yet unique per
+                # run, so branches and retries never share checkpoint state.
                 base_request_config: dict[str, Any] = {
                     "run_config": {
-                        "configurable": {"thread_id": str(run.conversation_id)},
+                        "configurable": {"thread_id": str(run.id)},
                     },
                     "context": {
                         "user_id": str(user_id),
@@ -821,6 +831,7 @@ async def create_inference_run_record(
     parent_message_id: str,
     message_path: list[str] | None,
     enabled_tools: list[ToolPreference] | None,
+    agent: AgentTable,
 ) -> MessageTable:
     """Create the AI placeholder message that represents the run.
 
@@ -867,6 +878,8 @@ async def create_inference_run_record(
         type="text",
         content="",
         raw_events=[],
+        agent_id=agent.id,
+        agent_name=agent.name,
         streaming_status="queued",
         streaming_enabled_tools=_tool_preferences_to_json(enabled_tools),
         streaming_started_at=now,
@@ -887,6 +900,10 @@ async def create_inference_run_record(
 
     conversation.active_assistant_message_id = assistant_message.id
     conversation.last_message_at = now
+    # The conversation's agent is a last-used pointer (per-message agent is on
+    # the message rows), so reflect the agent that produced this run.
+    conversation.agent_id = agent.id
+    conversation.agent_name = agent.name
     return assistant_message
 
 

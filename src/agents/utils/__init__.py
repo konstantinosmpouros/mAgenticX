@@ -1,3 +1,4 @@
+from utils.checkpointer import release_checkpoint_unless_paused
 from utils.prompts import normalise_user_input, make_merge_with_template
 from utils.title import generate_title
 from utils.suggestions import generate_suggestions
@@ -20,6 +21,7 @@ from utils.mcp_tools import (
 )
 
 __all__ = [
+    "release_checkpoint_unless_paused",
     "normalise_user_input",
     "make_merge_with_template",
     "generate_title",

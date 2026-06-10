@@ -264,6 +264,14 @@ class MessageTable(Base):
     plan = Column(JSON, nullable=True)                 # last PlanSnapshot state
     subagents = Column(JSON, nullable=True)            # subagent events keyed by task_id
 
+    # Which agent produced this message. Set on AI messages (the run record);
+    # NULL on user messages. agent_name is denormalized so a deactivated or
+    # removed agent still renders in the per-message action bar. ondelete is
+    # SET NULL (not CASCADE like conversations) so deleting an agent never
+    # deletes message history — agent_name preserves the label.
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_name = Column(String, nullable=True)
+
     # ------------------------------------------------------------------
     # Streaming / inference-run state (previously its own InferenceRunTable).
     # These columns are populated only on AI messages that are produced by an

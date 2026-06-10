@@ -35,6 +35,8 @@ async def _seed_branch(db_session_factory, seeded_user, seeded_agent):
             sender="ai",
             type="text",
             content="Final answer",
+            agent_id=seeded_agent.id,
+            agent_name=seeded_agent.name,
             reasoning_steps=["Looked up context"],
             raw_events=[{"type": "RUN_FINISHED"}],
             plan={"status": "done"},
@@ -370,6 +372,9 @@ async def test_fork_conversation_clones_selected_branch(
     assert [message.sender for message in messages] == ["user", "ai"]
     assert messages[1].parent_message_id == messages[0].id
     assert messages[1].raw_events == [{"type": "RUN_FINISHED"}]
+    # Per-message agent attribution is preserved through the fork.
+    assert messages[1].agent_id == seeded_agent.id
+    assert messages[1].agent_name == seeded_agent.name
 
 
 async def test_fork_conversation_rejects_unfinished_ai_message(

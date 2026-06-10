@@ -188,6 +188,9 @@ class RedisSettings(BaseSettings):
     stream_maxlen: int = Field(5000, validation_alias="REDIS_STREAM_MAXLEN")
     terminal_ttl_seconds: int = Field(3600, validation_alias="REDIS_STREAM_TERMINAL_TTL_SECONDS")
     read_block_ms: int = Field(30000, validation_alias="REDIS_STREAM_READ_BLOCK_MS")
+    skills_global_ttl_seconds: int = Field(86400, validation_alias="REDIS_SKILLS_GLOBAL_TTL_SECONDS")
+    skills_user_registry_ttl_seconds: int = Field(7200, validation_alias="REDIS_SKILLS_USER_REGISTRY_TTL_SECONDS")
+    skills_user_agent_ttl_seconds: int = Field(7200, validation_alias="REDIS_SKILLS_USER_AGENT_TTL_SECONDS")
 
     @field_validator("password", mode="before")
     @classmethod

@@ -207,6 +207,17 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
     }
   }, [userId, toast]);
 
+  // Authoritative pool load: whenever the user resolves, refetch from the
+  // server. The initialPool seed (in the userId reset effect above) is only an
+  // instant-paint accelerator from the UI snapshot — this is the source of
+  // truth. Without it the hook would keep the snapshot seed (often empty) until
+  // the user manually hit Refresh.
+  useEffect(() => {
+    if (!userId) return;
+    void refreshMySkills();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   const addGlobalToPool = useCallback(async (skillName: string) => {
     if (!userId) {
       toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });

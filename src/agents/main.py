@@ -22,7 +22,7 @@ from openai import OpenAI
 from core.settings import settings
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.types import Command
-from runtime.checkpointer import has_checkpointer
+from runtime.checkpointer import has_checkpointer, release_checkpointer
 
 from observability import (
     RequestLoggingMiddleware,
@@ -52,6 +52,7 @@ from schemas import (
     UserSkillDetail,
 )
 from utils import (
+    release_checkpoint_unless_paused,
     disable_user_agent_skill,
     enable_user_agent_skill,
     generate_title,
@@ -619,9 +620,15 @@ async def stream_agent(agent_slug: str, req: Request):
         ) from exc
     agent_logger.info("agent_initialization_completed", "Agent initialization completed", agent_type=type(agent).__name__)
     request_context = get_context()
-    
+    stream_thread_id = configurable.get("thread_id") or ""
+
     # Stream agent responses
     async def event_stream():
+        # Clean start: a fresh /stream run must never inherit a checkpoint left
+        # by a prior attempt on the same thread_id. /resume is the only path
+        # that continues an existing checkpoint.
+        if stream_thread_id:
+            await release_checkpointer(stream_thread_id)
         try:
             agent_logger.info("agent_stream_started", "Agent stream execution started", context=request_context)
             async with mcp_session_context() as session:
@@ -639,7 +646,12 @@ async def stream_agent(agent_slug: str, req: Request):
         except Exception as exc:
             agent_logger.error("agent_stream_failed", "Agent stream execution failed", context=request_context, exc_info=True)
             yield agent._encode_run_error(exc)
-    
+        finally:
+            try:
+                await release_checkpoint_unless_paused(agent, stream_thread_id)
+            except Exception:
+                agent_logger.warning("checkpoint_release_failed", "Failed to release checkpoint after stream", context=request_context, exc_info=True)
+
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
@@ -821,5 +833,12 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         except Exception as exc:
             agent_logger.error("agent_resume_failed", "Agent resume execution failed", context=request_context, exc_info=True)
             yield agent._encode_run_error(exc)
+        finally:
+            # Resume drained the interrupt → release. Resume re-paused on another
+            # interrupt → keep for the next /resume.
+            try:
+                await release_checkpoint_unless_paused(agent, effective_thread_id)
+            except Exception:
+                agent_logger.warning("checkpoint_release_failed", "Failed to release checkpoint after resume", context=request_context, exc_info=True)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
