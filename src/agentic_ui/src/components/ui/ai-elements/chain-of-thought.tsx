@@ -8,13 +8,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import {
-  BrainIcon,
-  ChevronDownIcon,
-  DotIcon,
-  type LucideIcon,
-} from "lucide-react";
-import type { ComponentProps } from "react";
+import { BrainIcon, ChevronDownIcon, DotIcon } from "lucide-react";
+import type { ComponentProps, ComponentType, ReactNode } from "react";
 import { createContext, memo, useContext, useMemo } from "react";
 
 type ChainOfThoughtContextValue = {
@@ -108,11 +103,13 @@ export const ChainOfThoughtHeader = memo(
   }
 );
 
-export type ChainOfThoughtStepProps = ComponentProps<"div"> & {
-  icon?: LucideIcon;
-  label: string;
+export type ChainOfThoughtStepProps = Omit<ComponentProps<"div">, "children"> & {
+  icon?: ComponentType<{ className?: string }>;
+  label?: ReactNode;
   description?: string;
   status?: "complete" | "active" | "pending";
+  hideConnector?: boolean;
+  children?: ReactNode;
 };
 
 export const ChainOfThoughtStep = memo(
@@ -122,6 +119,7 @@ export const ChainOfThoughtStep = memo(
     label,
     description,
     status = "complete",
+    hideConnector = false,
     children,
     ...props
   }: ChainOfThoughtStepProps) => {
@@ -143,10 +141,15 @@ export const ChainOfThoughtStep = memo(
       >
         <div className="relative mt-0.5">
           <Icon className="size-4" />
-          <div className="-mx-px absolute top-7 bottom-0 left-1/2 w-px bg-border" />
+          {!hideConnector && (
+            // Starts just below the icon and overshoots the row's bottom edge to
+            // bridge the inter-step gap — collapsed single-line rows otherwise
+            // leave the connector zero-height and invisible.
+            <div className="-mx-px absolute top-5 -bottom-5 left-1/2 w-px bg-border" />
+          )}
         </div>
-        <div className="flex-1 space-y-2">
-          <div>{label}</div>
+        <div className="min-w-0 flex-1 space-y-2">
+          {label != null && label !== "" && <div>{label}</div>}
           {description && (
             <div className="text-muted-foreground text-xs">{description}</div>
           )}

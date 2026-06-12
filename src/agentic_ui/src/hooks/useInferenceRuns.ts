@@ -8,6 +8,12 @@ import {
   type ResumeInferenceRunBody,
 } from "@/lib/api";
 import { sortByUpdatedAtDesc } from "@/lib/utils";
+import {
+  createTimeline,
+  foldTimeline,
+  reduceTimelineEvents,
+  timelineThoughtStrings,
+} from "@/lib/timeline";
 import type {
   ConversationDetail,
   ConversationSummary,
@@ -39,6 +45,52 @@ const patchMessage = (messages: MessageOut[], message: MessageOut) => {
 
 const isActiveRun = (run: InferenceRun | null | undefined) => Boolean(run && ACTIVE_STATUSES.has(String(run.status)));
 
+const foldRunSnapshot = (run: InferenceRun): InferenceRun => ({
+  ...run,
+  timeline: foldTimeline(run.rawEvents, {
+    status: String(run.status),
+    legacyMessage: { content: run.content, thinking: run.thinking },
+  }),
+});
+
+// One run state per conversation, folded incrementally. "events" frames carry
+// only the new AG-UI events + run meta; "snapshot"/"terminal" frames carry the
+// full state (rawEvents = the coalesced log) and are re-folded from scratch.
+// "update" is the client-local merge of cancel/resume REST responses — meta
+// only, so the in-progress timeline is preserved.
+const mergeRunEvent = (existing: InferenceRun | null | undefined, event: InferenceRunEvent): InferenceRun => {
+  const incoming = event.run;
+  const base = existing && existing.id === incoming.id ? existing : null;
+
+  if (event.type === "events") {
+    const fallback = base ?? { ...incoming, timeline: createTimeline() };
+    const previousTimeline = fallback.timeline ?? createTimeline();
+    return {
+      ...fallback,
+      status: incoming.status ?? fallback.status,
+      pendingInterrupts: incoming.pendingInterrupts ?? fallback.pendingInterrupts,
+      errorMessage: incoming.errorMessage ?? fallback.errorMessage ?? null,
+      completedAt: incoming.completedAt ?? fallback.completedAt ?? null,
+      cancelRequestedAt: incoming.cancelRequestedAt ?? fallback.cancelRequestedAt ?? null,
+      updatedAt: incoming.updatedAt,
+      timeline: event.events?.length ? reduceTimelineEvents(previousTimeline, event.events) : previousTimeline,
+    };
+  }
+
+  if (event.type === "update" && base) {
+    return {
+      ...base,
+      status: incoming.status ?? base.status,
+      errorMessage: incoming.errorMessage ?? base.errorMessage ?? null,
+      completedAt: incoming.completedAt ?? base.completedAt ?? null,
+      cancelRequestedAt: incoming.cancelRequestedAt ?? base.cancelRequestedAt ?? null,
+      updatedAt: incoming.updatedAt,
+    };
+  }
+
+  return foldRunSnapshot(incoming);
+};
+
 export function useInferenceRuns({
   userId,
   currentConversationId,
@@ -55,6 +107,10 @@ export function useInferenceRuns({
   // automatically on rollback if the resume HTTP call fails.
   const [resolvedInterrupts, setResolvedInterrupts] = useState<Set<string>>(new Set());
   const controllersRef = useRef<Record<string, AbortController>>({});
+  // Mirror of runsByConversation so incremental "events" frames fold onto the
+  // latest run state synchronously — WS callbacks arrive in order and must
+  // not race React's async state updates.
+  const runsRef = useRef<Record<string, InferenceRun>>({});
   const currentConversationIdRef = useRef<string | null | undefined>(currentConversationId);
 
   useEffect(() => {
@@ -62,7 +118,8 @@ export function useInferenceRuns({
   }, [currentConversationId]);
 
   const applyRunEvent = useCallback((event: InferenceRunEvent) => {
-    const { run, message, summary } = event;
+    const { message, summary } = event;
+    const run = mergeRunEvent(runsRef.current[event.run.conversationId], event);
     const active = isActiveRun(run);
     const resolvedSummary = summary
       ? {
@@ -72,15 +129,16 @@ export function useInferenceRuns({
         }
       : null;
 
-    setRunsByConversation((prev) => {
-      const next = { ...prev };
+    {
+      const next = { ...runsRef.current };
       if (active) {
         next[run.conversationId] = run;
       } else {
         delete next[run.conversationId];
       }
-      return next;
-    });
+      runsRef.current = next;
+      setRunsByConversation(next);
+    }
 
     if (resolvedSummary) {
       setConversations((prev) =>
@@ -120,7 +178,7 @@ export function useInferenceRuns({
 
     if (run.conversationId === currentConversationIdRef.current) {
       setShowAiTransition?.(false);
-      const thoughts = message?.thinking ?? run.thinking ?? [];
+      const thoughts = message?.thinking ?? (run.timeline ? timelineThoughtStrings(run.timeline) : run.thinking ?? []);
       setThinkingState((prev: ThinkingState | null) => {
         if (!active && (!prev || prev.messageId !== run.assistantMessageId)) {
           return prev;
@@ -148,6 +206,10 @@ export function useInferenceRuns({
     }
   }, [setConversations, setCurrentConversation, setShowAiTransition, setThinkingState]);
 
+  // Self-reference for the clean-resolve retry below — a useCallback cannot
+  // list itself as a dependency.
+  const observeRunIdRef = useRef<(runId?: string | null) => void>(() => {});
+
   const observeRunId = useCallback((runId?: string | null) => {
     if (!userId || !runId || controllersRef.current[runId]) {
       return;
@@ -158,19 +220,40 @@ export function useInferenceRuns({
     // only rejects after a sustained failure (5 consecutive failed attempts)
     // or a permanent error (401/403/404). The toast below is therefore a true
     // "we gave up" signal, not a transient blip.
-    void connectInferenceWebSocket(userId, runId, applyRunEvent, controller.signal).catch((error) => {
-      delete controllersRef.current[runId];
-      if ((error as any)?.name === "AbortError") {
-        return;
-      }
-      console.error("Failed to observe inference run:", error);
-      toast({
-        title: "Stream observer lost",
-        description: "The run is still owned by the server. Reopen the conversation to refresh its latest state.",
-        variant: "destructive",
+    void connectInferenceWebSocket(userId, runId, applyRunEvent, controller.signal)
+      .then(() => {
+        // Without this delete a cleanly-resolved run could never be
+        // re-observed — the guard above would see the stale controller.
+        delete controllersRef.current[runId];
+        if (controller.signal.aborted) {
+          return;
+        }
+        // Safety net: the socket closed on a terminal frame but the run is
+        // still active in state — the terminal payload never landed. The
+        // server answers a finished run with its DB snapshot (terminal
+        // status), so one re-observe converges the state.
+        const lingering = Object.values(runsRef.current).find((run) => run.id === runId);
+        if (lingering && isActiveRun(lingering)) {
+          window.setTimeout(() => observeRunIdRef.current(runId), 1000);
+        }
+      })
+      .catch((error) => {
+        delete controllersRef.current[runId];
+        if ((error as any)?.name === "AbortError") {
+          return;
+        }
+        console.error("Failed to observe inference run:", error);
+        toast({
+          title: "Stream observer lost",
+          description: "The run is still owned by the server. Reopen the conversation to refresh its latest state.",
+          variant: "destructive",
+        });
       });
-    });
   }, [applyRunEvent, toast, userId]);
+
+  useEffect(() => {
+    observeRunIdRef.current = observeRunId;
+  }, [observeRunId]);
 
   const observeRun = useCallback((run: InferenceRun) => {
     observeRunId(run.id);
@@ -182,6 +265,7 @@ export function useInferenceRuns({
 
   useEffect(() => {
     if (!userId) {
+      runsRef.current = {};
       setRunsByConversation({});
       Object.values(controllersRef.current).forEach((controller) => controller.abort());
       controllersRef.current = {};
@@ -210,16 +294,19 @@ export function useInferenceRuns({
             ? { ...prev, activeRunId: run.id, isStreaming: true }
             : { ...prev, activeRunId: null, isStreaming: false };
         });
-        setRunsByConversation(() => {
+        {
           const next: Record<string, InferenceRun> = {};
           for (const run of runs) {
             if (isActiveRun(run)) {
-              next[run.conversationId] = run;
+              // REST placeholders carry no event log mid-run; the WS snapshot
+              // frame that follows the subscribe re-folds the full timeline.
+              next[run.conversationId] = foldRunSnapshot(run);
               observeRun(run);
             }
           }
-          return next;
-        });
+          runsRef.current = next;
+          setRunsByConversation(next);
+        }
       })
       .catch((error) => {
         if (cancelled) return;
@@ -330,43 +417,12 @@ export function useInferenceRuns({
     [runsByConversation],
   );
 
-  // Overlay the in-memory run state onto the freshly-fetched conversation
-  // detail's assistant message. Necessary because the bridge only writes
-  // content/raw_events/plan/subagents to the DB at the end of the run, so a
-  // navigate-away → return round trip would otherwise show an empty assistant
-  // bubble until the next streaming chunk arrives. For HITL-paused runs no
-  // next chunk is ever coming, so the modal would never surface.
-  const hydrateConversationDetailFromLiveRun = useCallback(
-    (detail: ConversationDetail | null): ConversationDetail | null => {
-      if (!detail) return detail;
-      const liveRun = runsByConversation[detail.id];
-      if (!liveRun || !isActiveRun(liveRun)) return detail;
-      const messages = detail.messages ?? [];
-      const targetIndex = messages.findIndex((message) => message.id === liveRun.assistantMessageId);
-      if (targetIndex === -1) return detail;
-      const target = messages[targetIndex];
-      const patched: MessageOut = {
-        ...target,
-        content: liveRun.content ?? target.content,
-        thinking: liveRun.thinking ?? target.thinking,
-        rawEvents: liveRun.rawEvents ?? target.rawEvents,
-        plan: (liveRun.plan ?? target.plan) as MessageOut["plan"],
-        subagents: (liveRun.subagents ?? target.subagents) as MessageOut["subagents"],
-      };
-      const nextMessages = messages.slice();
-      nextMessages[targetIndex] = patched;
-      return { ...detail, messages: nextMessages };
-    },
-    [runsByConversation],
-  );
-
   return {
     runsByConversation,
     beginRun,
     stopRun,
     resumeRun,
     isInterruptResolved,
-    hydrateConversationDetailFromLiveRun,
     deriveBranchSelectionsForActiveRun,
     getRunForConversation: useCallback(
       (conversationId?: string | null) => (conversationId ? runsByConversation[conversationId] ?? null : null),

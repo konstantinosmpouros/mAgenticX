@@ -1,12 +1,11 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
-from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from observability import get_logger, set_context
 
-from core.database import ConversationTable, MessageTable, UserTable, get_db
+from core.database import ConversationTable, MessageTable, SessionLocal, UserTable, get_db
 from schemas import (
     InferenceStartPayload,
     InferenceStartResponse,
@@ -21,7 +20,6 @@ from utils.inference_runs import (
     build_run_out_from_message,
     inference_run_manager,
     mark_run_launch_failed,
-    observe_run_events,
     request_run_cancel,
     request_run_resume,
     stream_run_events,
@@ -102,40 +100,6 @@ async def listInferenceRuns(
     return [build_run_out_from_message(message, user_id=user_id) for message in result.scalars().all()]
 
 
-@router.get("/runs/{user_id}/{run_id}/stream")
-async def observeInferenceRun(
-    user_id: str,
-    run_id: str,
-    current_user: UserTable = Depends(validate_userId),
-    db: AsyncSession = Depends(get_db),
-):
-    """Legacy SSE endpoint. Deprecated — clients should use the WebSocket
-    endpoint at ``/runs/{user_id}/{run_id}/ws`` which supports reconnect with
-    a ``since`` cursor. Kept here for one release cycle for compatibility.
-    """
-    # The "run id" is the assistant message id after the inference_runs collapse.
-    # Authorize via the conversation owner.
-    result = await db.execute(
-        select(MessageTable)
-        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
-        .where(
-            MessageTable.id == run_id,
-            ConversationTable.user_id == user_id,
-            MessageTable.streaming_status.is_not(None),
-        )
-    )
-    run = result.scalar_one_or_none()
-    if not run:
-        raise HTTPException(status_code=404, detail="Inference run not found.")
-
-    headers = {
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    }
-    return StreamingResponse(observe_run_events(run_id), media_type="text/event-stream", headers=headers)
-
-
 @router.websocket("/runs/{user_id}/{run_id}/ws")
 async def inference_run_websocket(
     websocket: WebSocket,
@@ -149,17 +113,23 @@ async def inference_run_websocket(
       - Client opens the WebSocket; the browser cookie carries the session.
       - First client frame: ``{"type": "subscribe", "since": "<seq>" | null}``
         where ``since`` is the last ``seq`` the client successfully processed.
-        On a fresh connection the client sends ``null`` and gets the full
-        backlog from the Redis stream (or the DB snapshot if the run is
-        already terminal).
       - Server frames:
-          ``{"type": "snapshot", "payload": <run-event-payload>}`` for runs
-              already in a terminal state — exactly one frame, then close.
-          ``{"type": "event", "seq": "<stream-id>", "payload": <run-event>}``
-              for every live event. The client persists ``seq`` and resends it
-              as ``since`` on reconnect.
-          ``{"type": "terminal"}`` when the run reaches a terminal state.
-              Server closes cleanly afterwards.
+          ``{"type": "snapshot", "payload": <run-event-payload>}`` — sent once
+              on a fresh subscribe (``since`` null): for terminal runs the
+              DB-built final state; for in-flight runs a synthesized live
+              snapshot whose ``run.rawEvents`` carries the full coalesced
+              event log so far. The client folds it, then applies deltas.
+          ``{"type": "event", "seq": "<stream-id>", "payload": <frame>}``
+              for every live frame; ``frame.type == "events"`` carries the
+              new seq-stamped AG-UI events of one upstream chunk plus run
+              meta. The client persists ``seq`` and resends it as ``since``
+              on reconnect, and skips events whose ``seq`` it already folded.
+          ``{"type": "terminal", "payload": <run-event-payload> | null}``
+              when the run reaches a terminal state. The payload is the
+              DB-built final state — the client applies it before closing,
+              so the run flips to its real status even when the terminal
+              stream entry was lost on this socket. Server closes cleanly
+              afterwards.
     """
     user = await authenticate_websocket_user(websocket.cookies, user_id, db)
     if user is None:
@@ -216,7 +186,21 @@ async def inference_run_websocket(
                 await websocket.send_json({"type": "snapshot", "payload": event})
             else:
                 await websocket.send_json({"type": "event", "seq": seq, "payload": event})
-        await websocket.send_json({"type": "terminal"})
+        # The terminal frame carries the authoritative final state: if the
+        # terminal stream entry was lost on this socket (send raced the close,
+        # reconnect gap), the client still flips the run to its real status.
+        terminal_payload = None
+        try:
+            async with SessionLocal() as terminal_db:
+                terminal_payload = await build_run_event_payload(terminal_db, run_id, "terminal")
+        except Exception:
+            logger.warning(
+                "ws_terminal_payload_failed",
+                "Failed to build terminal payload; sending bare terminal frame",
+                exc_info=True,
+                run_id=run_id,
+            )
+        await websocket.send_json({"type": "terminal", "payload": terminal_payload})
     except WebSocketDisconnect:
         logger.info("ws_disconnect", "WebSocket subscriber disconnected", run_id=run_id)
         return
@@ -255,9 +239,7 @@ async def cancelInferenceRun(
     if not run:
         raise HTTPException(status_code=404, detail="Inference run not found.")
     run = await request_run_cancel(db, run)
-    payload = await build_run_event_payload(db, run.id, "update")
-    if payload:
-        await inference_run_manager.publish(run.id, payload)
+    await inference_run_manager.publish_run_status(run, user_id=user_id)
     return build_run_out_from_message(run, user_id=user_id)
 
 

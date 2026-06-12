@@ -309,9 +309,9 @@ Every chat turn — both user and AI — is a row in this table. The `parent_mes
 | `reasoning_time_seconds` | `Integer` | Yes | `NULL` | Thinking duration in whole seconds |
 | `is_error` | `Boolean` | No | `false` | `true` when the inference run that produced this message failed |
 | `error_message` | `Text` | Yes | `NULL` | Error detail when `is_error=true` |
-| `raw_events` | `JSON` | Yes | `NULL` | Full array of AG-UI `CUSTOM` event dicts for this message |
+| `raw_events` | `JSON` | Yes | `NULL` | The **full per-run AG-UI event log** (every event, seq-stamped, with consecutive text/tool-args deltas coalesced and oversized `TOOL_CALL_RESULT` content truncated + flagged). The UI replays this into the rendered run timeline. Rows persisted before the timeline rebuild contain only `CUSTOM` events — the UI's legacy fold covers them. |
 | `plan` | `JSON` | Yes | `NULL` | Last `PlanSnapshot` received during inference (`{items: [{content, status}]}`) |
-| `subagents` | `JSON` | Yes | `NULL` | Sub-agent event groups: `{tasks, events, beforeAgent, interrupts}` |
+| `subagents` | `JSON` | Yes | `NULL` | Sub-agent aggregate groups: `{tasks, beforeAgent, interrupts}` on new rows (the heavyweight `events` key is no longer accumulated — `raw_events` carries every `SUBAGENT_EVENT`); old rows keep their persisted `events` lists |
 | `streaming_status` | `String` | Yes | `NULL` | INDEXED (partial, `IS NOT NULL`) — `"queued"`, `"running"`, `"cancelling"`, `"completed"`, `"cancelled"`, `"failed"`. `NULL` on user messages and on AI messages that were not produced by a detached run. |
 | `streaming_message_path` | `JSON` | Yes | `NULL` | Ordered list of message IDs representing the branch path the agent saw as history when the run was started |
 | `streaming_enabled_tools` | `JSON` | Yes | `NULL` | Snapshot of `{serverId, toolName}` tool preferences captured at run start |
@@ -323,7 +323,7 @@ Every chat turn — both user and AI — is a row in this table. The `parent_mes
 
 **Relationships:** `conversation` (many-to-one), `attachments` (one-to-many, ordered by `created_at ASC`, cascade delete).
 
-**The assistant message is the inference run.** There is no separate `inference_runs` table — the `streaming_*` columns on the AI `MessageTable` row carry the full run lifecycle. `InferenceRunRuntime` accumulates `content`, `reasoning_steps`, `raw_events`, `plan`, and `subagents` in memory during the stream; on terminal write, those values plus the final `streaming_status` are persisted to the same row in a single transaction. The `InferenceRunOut` API shape is built from the row by `build_run_out_from_message(...)`.
+**The assistant message is the inference run.** There is no separate `inference_runs` table — the `streaming_*` columns on the AI `MessageTable` row carry the full run lifecycle. `InferenceRunRuntime` keeps the seq-stamped coalesced event log plus the flat aggregates (`content`, `reasoning_steps`, `plan`, `subagents`) in memory during the stream; on terminal write, those values plus the final `streaming_status` are persisted to the same row in a single transaction. The `InferenceRunOut` API shape is built from the row by `build_run_out_from_message(...)`, and `MessageOut` exposes `streaming_status` as `streamingStatus` so the client's Done sentinel can distinguish completed/cancelled/failed on hydration. Note the storage implication of the full log: `raw_events` now grows with run length (text and sub-agent activity are stored once in the log, with delta coalescing and tool-result truncation keeping it bounded); no DDL changed — the column was already `JSON`.
 
 **Partial indexes on `messages`:**
 

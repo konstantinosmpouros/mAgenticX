@@ -1,19 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { Agent, MessageOut, ThinkingState } from "@/lib/types";
+import type { Agent, MessageOut, RunTimeline, ThinkingState } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
 import { Check, X as CloseIcon } from "lucide-react";
-import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtHeader,
-} from "@/components/ui/ai-elements/chain-of-thought";
 import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
 import { MessageAttachments } from "./message_parts/MessageAttachments";
-import { CoT, buildCoTSteps } from "./message_parts/ChainOfThought";
 import { MessageContent } from "./message_parts/MessageContent";
-import { AgentRunTimeline, messageHasInlineSubagents } from "./AgentRunTimeline";
+import { PlanSidePanel, SubagentsSidePanel } from "./message_parts/RunSidePanels";
+import { AgentRunTimeline } from "./AgentRunTimeline";
+import { useRunTimeline } from "@/hooks/useRunTimeline";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 
 type ChatMessageProps = {
@@ -46,9 +42,13 @@ type ChatMessageProps = {
   userActionVisibilityClass: string;
   thinkingState?: ThinkingState | null;
   expandedThinking: Record<string, boolean>;
-  onToggleThinking: (messageId: string) => void;
+  onToggleThinking: (key: string, next?: boolean) => void;
   activeBranchPath?: string[];
   streamingMessageId?: string | null;
+  // The in-flight run's incrementally-folded timeline; only the streaming
+  // target message renders from it, every other message replays its own
+  // persisted event log via useRunTimeline.
+  liveTimeline?: RunTimeline | null;
   isImageFile: (attachment: any) => boolean;
   onDownloadAttachment: (attachment: any, message: MessageOut) => void;
   onPreviewAttachment: (attachment: any, message: MessageOut) => void;
@@ -94,6 +94,7 @@ export function ChatMessage({
   onToggleThinking,
   activeBranchPath,
   streamingMessageId,
+  liveTimeline = null,
   isImageFile,
   onDownloadAttachment,
   onPreviewAttachment,
@@ -103,6 +104,7 @@ export function ChatMessage({
   const isUser = message.sender === "user";
   const isAi = message.sender === "ai";
   const isTempUserMessage = isUser && String(message.id ?? "").startsWith("temp-");
+  const [openRunPanel, setOpenRunPanel] = useState<"plan" | "subagents" | null>(null);
   // Per-message agent for the AI action bar. With a resolver (main chat) we get
   // catalog name + icon; without one (e.g. shared view) we fall back to the
   // denormalized per-message agentName and the conversation's icon.
@@ -125,27 +127,22 @@ export function ChatMessage({
     return true;
   }, [thinkingState?.branchPath, activeBranchPath]);
 
-  const isStreamingTarget = Boolean(
-    isAi &&
-      isStreaming &&
-      thinkingState?.isActive &&
-      branchPathActive &&
-      streamingMessageId &&
-      streamingMessageId === message.id
-  );
-
-  const liveThoughts = thinkingState && isStreamingTarget ? thinkingState.thoughts : [];
-  const liveActiveIndex = thinkingState
-    ? Math.min(Math.max(thinkingState.currentThoughtIndex ?? -1, -1), (thinkingState.thoughts?.length ?? 0) - 1)
-    : -1;
-  const showLiveCoT = isStreamingTarget && Boolean(liveThoughts?.length);
-  const showStoredCoT = isAi && !isStreamingTarget && Array.isArray(message.thinking) && message.thinking.length > 0;
-  const showAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
   const isStreamingThisMessage = Boolean(
     isAi && isStreaming && streamingMessageId && streamingMessageId === message.id
   );
+  const isStreamingTarget = Boolean(
+    isStreamingThisMessage && thinkingState?.isActive && branchPathActive
+  );
+
+  const settledTimeline = useRunTimeline(isAi ? message : null);
+  const timeline = isStreamingThisMessage && liveTimeline ? liveTimeline : settledTimeline;
+
+  const showAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
   const showActionBar = isAi ? !(isStreamingTarget || isStreamingThisMessage) : !isTempUserMessage && !isEditing;
   const showUserSending = isTempUserMessage && !isEditing;
+
+  const planForPanel = !isStreamingThisMessage && timeline?.terminal ? timeline.plan : null;
+  const subagentCount = !isStreamingThisMessage && timeline?.terminal ? timeline.subagentCount : 0;
 
   const timestampLabel = useMemo(
     () =>
@@ -168,43 +165,9 @@ export function ChatMessage({
         />
       )}
 
-      {showStoredCoT && (
-        <CoT
-          message={message}
-          isOpen={Boolean(expandedThinking[message.id])}
-          onToggle={() => onToggleThinking(message.id)}
-        />
-      )}
-
-      {showLiveCoT && thinkingState && (
-        <ChainOfThought
-          key={`live-${message.id}-${thinkingState.startTime ?? "active"}`}
-          className="max-w-[85%] md:max-w-[85%] w-full space-y-2"
-          open={expandedThinking[message.id] ?? true}
-          onOpenChange={() => onToggleThinking(message.id)}
-        >
-          <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground">
-            <ShimmeringText
-              text="Reasoning..."
-              duration={1.1}
-              pause={1.4}
-              color="hsl(var(--muted-foreground))"
-              shimmeringColor="#2b2d36"
-              className="text-sm md:text-[0.95rem] font-medium"
-            />
-          </ChainOfThoughtHeader>
-          <ChainOfThoughtContent className="[&>div:last-child>div:first-child>div:last-child]:hidden">
-            {buildCoTSteps(liveThoughts, {
-              activeIndex: liveActiveIndex,
-              isComplete: thinkingState.isDone && !thinkingState.isActive,
-            })}
-          </ChainOfThoughtContent>
-        </ChainOfThought>
-      )}
-
       <Card className={bubbleClass}>
         <div className="space-y-3 min-w-0">
-          {isAi && isStreamingThisMessage && messageHasInlineSubagents(message) ? null : (
+          {isUser ? (
             <MessageContent
               message={message}
               isEditing={isEditing}
@@ -214,12 +177,14 @@ export function ChatMessage({
               onCancelEdit={onCancelEdit}
               onSubmitEdit={onSubmitEdit}
             />
-          )}
-
-          {isAi ? (
+          ) : timeline ? (
             <AgentRunTimeline
-              message={message}
+              timeline={timeline}
+              runId={message.id}
               isStreaming={isStreamingThisMessage}
+              fallbackThinkingSeconds={message.thinkingTime ?? null}
+              expandedThinking={expandedThinking}
+              onToggleThinking={onToggleThinking}
             />
           ) : null}
 
@@ -281,6 +246,9 @@ export function ChatMessage({
                     agentName={aiAgent.name}
                     AgentIcon={aiAgent.Icon}
                     timestampLabel={timestampLabel}
+                    onOpenPlan={planForPanel ? () => setOpenRunPanel("plan") : undefined}
+                    onOpenSubagents={subagentCount > 0 ? () => setOpenRunPanel("subagents") : undefined}
+                    subagentCount={subagentCount}
                   />
                 </div>
               )
@@ -288,6 +256,21 @@ export function ChatMessage({
           </div>
         </div>
       </Card>
+
+      {planForPanel ? (
+        <PlanSidePanel
+          plan={planForPanel}
+          open={openRunPanel === "plan"}
+          onOpenChange={(open) => setOpenRunPanel(open ? "plan" : null)}
+        />
+      ) : null}
+      {timeline && subagentCount > 0 ? (
+        <SubagentsSidePanel
+          timeline={timeline}
+          open={openRunPanel === "subagents"}
+          onOpenChange={(open) => setOpenRunPanel(open ? "subagents" : null)}
+        />
+      ) : null}
 
       {showUserSending ? (
         <div className="mt-2 text-right">

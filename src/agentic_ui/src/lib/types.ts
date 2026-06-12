@@ -345,6 +345,7 @@ export type MessageOut = {
     thinkingTime?: number;
     error?: boolean;
     errorMessage?: string;
+    streamingStatus?: string | null;
     rawEvents?: Record<string, any>[];  // defaults to [] on the backend
     plan?: PlanSnapshot;
     subagents?: Record<string, any>;
@@ -437,11 +438,118 @@ export type InferenceRun = {
     rawEvents?: Record<string, any>[];
     plan?: Record<string, any> | null;
     subagents?: Record<string, any> | null;
+    pendingInterrupts?: number;
     errorMessage?: string | null;
     startedAt: Date;
     completedAt?: Date | null;
     cancelRequestedAt?: Date | null;
     updatedAt: Date;
+    timeline?: RunTimeline;
+};
+
+// ------------------------------------------------------
+// Run timeline — derived client-side from the raw AG-UI event log.
+// The same reducer (lib/timeline.ts) folds live WS frames incrementally and
+// replays persisted message.rawEvents on hydration, so live and hydrated
+// views cannot drift. Never persisted anywhere.
+// ------------------------------------------------------
+export type ToolExecutionState = "input-streaming" | "input-available" | "output-available" | "output-error";
+
+export type TimelineThought = {
+    kind: "thought";
+    id: string;
+    text: string;
+};
+
+export type TimelineHitlApproval = {
+    kind: "hitl";
+    id: string;
+    threadId: string;
+    content: unknown;
+    status: "pending" | "approved" | "rejected";
+    reason?: string | null;
+    subagentId?: string;
+};
+
+export type TimelineToolExecution = {
+    kind: "tool";
+    id: string;
+    name: string;
+    argsText: string;
+    result?: string;
+    resultTruncated?: boolean;
+    state: ToolExecutionState;
+    approval?: TimelineHitlApproval;
+    startedAt?: number;
+    endedAt?: number;
+};
+
+export type ThinkingBlockItem = TimelineThought | TimelineToolExecution | TimelineHitlApproval;
+
+export type ThinkingBlock = {
+    kind: "thinking";
+    id: string;
+    items: ThinkingBlockItem[];
+    startedAt?: number;
+    endedAt?: number;
+};
+
+export type ContentBlock = {
+    kind: "content";
+    id: string;
+    text: string;
+};
+
+export type SubagentBlock = {
+    kind: "subagent";
+    id: string;
+    taskId: string;
+    type?: string;
+    label?: string;
+    description?: string;
+    prompt?: string;
+    namespace?: string;
+    blocks: (ThinkingBlock | ContentBlock)[];
+};
+
+export type TimelineBlock = ThinkingBlock | ContentBlock | SubagentBlock;
+
+export type TimelineTerminalStatus = "completed" | "cancelled" | "failed";
+
+// Internal reducer bookkeeping. Carried on the timeline so the fold can
+// resume incrementally across WS frames; rendering code must not read it.
+// Approved HITL tools re-execute under a fresh toolCallId on resume; this
+// marks the stalled item the next matching TOOL_CALL_START must merge into.
+export type PendingToolRetool = { block: number; item: number; name: string };
+
+export type TimelineFoldIndexes = {
+    openThinkingIndex: number | null;
+    openContentIndex: number | null;
+    subagentIndexByKey: Record<string, number>;
+    taskIdRemap: Record<string, string>;
+    toolPaths: Record<string, { block: number; item: number }>;
+    pendingRetool: PendingToolRetool | null;
+    blockCounter: number;
+    itemCounter: number;
+    subFolds: Record<string, SubagentFoldIndexes>;
+};
+
+export type SubagentFoldIndexes = {
+    openThinkingIndex: number | null;
+    openContentIndex: number | null;
+    toolPaths: Record<string, { block: number; item: number }>;
+    pendingRetool: PendingToolRetool | null;
+};
+
+export type RunTimeline = {
+    blocks: TimelineBlock[];
+    plan: PlanSnapshot | null;
+    interrupts: TimelineHitlApproval[];
+    subagentCount: number;
+    terminal: boolean;
+    terminalStatus?: TimelineTerminalStatus;
+    lastSeq: number;
+    fold: TimelineFoldIndexes;
 };
 
 export type InferenceStartMode = "new" | "send" | "edit" | "retry" | "shared_continue";
@@ -467,11 +575,17 @@ export type InferenceStartResponse = {
     message: MessageOut;
 };
 
+// Wire frames from the inference run stream. "snapshot" carries the full
+// state (terminal runs: DB-built run+message; in-flight runs: run.rawEvents
+// holds the coalesced log so far). "events" carries the new seq-stamped AG-UI
+// events of one upstream chunk plus run meta. "update" is client-local only —
+// REST responses (cancel/resume) merged through the same code path.
 export type InferenceRunEvent = {
-    type: "snapshot" | "update" | "terminal";
+    type: "snapshot" | "update" | "terminal" | "events";
     run: InferenceRun;
     message?: MessageOut | null;
     summary?: ConversationSummary | null;
+    events?: Record<string, any>[];
 };
 
 // Parameters required to download an attachment from the backend

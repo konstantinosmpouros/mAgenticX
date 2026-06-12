@@ -2,7 +2,7 @@
 
 Inference is backend-owned. The UI sends one start request, and the dialogue bridge persists the user-side action, creates the AI placeholder, creates the run, commits, launches the detached task, and returns the hydrated conversation state. The UI observes what the backend owns; it does not separately create durable user messages, AI placeholders, or runs.
 
-The UI subscribes to events over **WebSocket** at `/v1/inference/runs/{user_id}/{run_id}/ws`. The connection is automatically re-established with a `since=<last-seen-seq>` cursor on transient failures (5-step exponential backoff, 250 ms → 5 s). Events are persisted to a per-run **Redis Stream** (`inference:run:{run_id}:events`) by the detached task; the WebSocket handler reads from that stream, so a brief network blip — or a container restart of `dialogue_bridge` — does not drop chunks. The legacy SSE endpoint at `/v1/inference/runs/{user_id}/{run_id}/stream` is still served for one release cycle but should not be used by new code.
+The UI subscribes to events over **WebSocket** at `/v1/inference/runs/{user_id}/{run_id}/ws`. The connection is automatically re-established with a `since=<last-seen-seq>` cursor on transient failures (5-step exponential backoff, 250 ms → 5 s). The wire protocol is **snapshot-then-deltas**: a fresh subscribe receives one snapshot frame (the full coalesced event log so far, synthesized from the in-process runtime for live runs, or the DB-built final state for terminal runs), then per-chunk `events` delta frames. Frames are persisted to a per-run **Redis Stream** (`inference:run:{run_id}:events`) by the detached task; the WebSocket handler reads from that stream, so a brief network blip — or a container restart of `dialogue_bridge` — does not drop chunks. The UI folds the raw AG-UI events into the rendered timeline client-side (`lib/timeline.ts`); the bridge never ships a pre-rendered shape. The legacy SSE endpoint was removed — the WebSocket route is the only observer.
 
 Dictation, read aloud, and realtime voice mode do not use this flow.
 
@@ -85,6 +85,7 @@ sequenceDiagram
     UI->>UI: Apply returned detail/summary/run/message
     UI->>Bridge: WS /v1/inference/runs/{user_id}/{run_id}/ws
     UI-->>Bridge: {"type":"subscribe","since":null}
+    Bridge-->>UI: {"type":"snapshot","payload":{run incl. rawEvents so far}}
 
     Task->>PG: UPDATE message streaming_status=running
     Task->>PG: Load conversation + message history
@@ -92,16 +93,17 @@ sequenceDiagram
 
     loop AG-UI chunks
         Agents-->>Task: AG-UI SSE frame
-        Task->>Task: Accumulate content, thinking, rawEvents, plan, subagents
-        Task->>Redis: XADD inference:run:{id}:events <payload>
+        Task->>Task: apply_event: seq-stamp + append to coalesced log + aggregates
+        Task->>Redis: XADD {"type":"events","run":<meta>,"events":[chunk events]}
         Redis-->>Bridge: XREAD BLOCK ... -> {seq, payload}
         Bridge-->>UI: {"type":"event","seq":"...","payload":...}
+        UI->>UI: reduceTimelineEvents(run.timeline, payload.events)
     end
 
     Task->>PG: Terminal write: AI message + conversation (single transaction)
     Task->>Redis: XADD terminal payload + EXPIRE stream 1h
-    Bridge-->>UI: {"type":"terminal"}
-    UI->>UI: Clear active run and sidebar streaming state
+    Bridge-->>UI: {"type":"terminal","payload":<final state>}
+    UI->>UI: Apply payload, clear active run and sidebar streaming state
 ```
 
 ## Database Execution Map
@@ -180,7 +182,7 @@ sequenceDiagram
 
     loop Every AG-UI stream chunk
         Task->>Task: Accumulate content/thinking/rawEvents/plan/subagents in memory
-        Task->>Redis: XADD inference:run:{id}:events MAXLEN~5000 payload=<json>
+        Task->>Redis: XADD inference:run:{id}:events MAXLEN~20000 payload=<json>
         Redis-->>WS: replay frame to every connected observer
         WS-->>UI: {"type":"event","seq":"<stream-id>","payload":...}
         Note over Task,PG: No Postgres read or write per chunk
@@ -199,7 +201,8 @@ sequenceDiagram
     Task->>Redis: XADD terminal payload
     Task->>Redis: EXPIRE inference:run:{id}:events 3600s
     Redis-->>WS: terminal frame
-    WS-->>UI: {"type":"terminal"}
+    WS->>PG: build final payload (build_run_event_payload)
+    WS-->>UI: {"type":"terminal","payload":<final state>}
     WS-->>UI: close 1000 (normal)
 ```
 
@@ -209,7 +212,7 @@ sequenceDiagram
 | Response hydration | Conversation detail + placeholder reloads, run shape built from the message row | — | Returns canonical backend state to the UI |
 | WebSocket connect/reconnect | AI message + conversation summary reads (terminal snapshot path), or message lookup only (live path) | `XREAD BLOCK` from the supplied `since` cursor (or `0` for full backlog) | Lets the UI recover from refresh, navigation, container restart, or transient network blips |
 | Task startup | Message `streaming_status` update, conversation/history read, agent metadata read | — | Prepares the request sent to the agents service |
-| Stream chunks | No database execution | `XADD` per parsed AG-UI event with `MAXLEN ~ 5000` trim | Keeps token streaming latency independent of DB writes; durable in Redis up to the trim cap |
+| Stream chunks | No database execution | `XADD` per parsed AG-UI event with `MAXLEN ~ 20000` trim | Keeps token streaming latency independent of DB writes; durable in Redis up to the trim cap |
 | Terminal finalization | AI message + conversation update, conversation active pointer clear, one commit | Final terminal `XADD` + `EXPIRE 3600s` on the stream key | Persists the final answer and removes active streaming state |
 | Cancel, optional | Message `streaming_status='cancelling'`; if no live task, full cleanup + commit | Cancel event published into the stream | Makes cancellation visible immediately and clears orphaned active state |
 
@@ -302,25 +305,27 @@ Terminal status is idempotent and authoritative. A run that has already failed o
 
 ---
 
-## Phase 3 - AG-UI Runtime Accumulation
+## Phase 3 - AG-UI Event Log Keeping
 
-The bridge streams the agents service response as AG-UI events and accumulates a runtime state in memory. Runtime updates do not write to the database.
+The bridge streams the agents service response as AG-UI events. Its primary job is **log keeping**: every event is stamped with a monotonic `seq` and appended to `raw_events` — the full per-run event log the UI replays into its timeline, both live and on hydration. Runtime updates do not write to the database; the log is persisted once at terminal.
 
-```mermaid
-flowchart TD
-    E["AG-UI event"] --> T{event type}
-    T -->|"TEXT_MESSAGE_CHUNK / CONTENT"| A["content += delta"]
-    T -->|"THINKING_TEXT_MESSAGE_CONTENT"| B["thinking append"]
-    T -->|"TOOL_CALL_START"| C["thinking append tool marker"]
-    T -->|"CUSTOM PLAN_SNAPSHOT"| D["plan = snapshot"]
-    T -->|"CUSTOM TASK_SUBAGENT"| F["subagents.tasks append"]
-    T -->|"CUSTOM SUBAGENT_EVENT"| G["subagents.events append"]
-    T -->|"CUSTOM HITL_INTERRUPT"| H["subagents.interrupts append"]
-    T -->|"RUN_ERROR"| I["_finish_run(failed)\nstop stream"]
-    T -->|"any parsed event"| J["rawEvents append when applicable"]
+Appending coalesces consecutive delta events so the stored log stays block-lossless without per-token entries:
+
+- `TEXT_MESSAGE_CHUNK`/`TEXT_MESSAGE_CONTENT` with the same `messageId` + namespace merge into one event with a concatenated `delta`; the merged event keeps the `seq` of the **last** merged wire event and gains `timestampEnd`.
+- `TOOL_CALL_ARGS` with the same `toolCallId` merge the same way.
+- `SUBAGENT_EVENT` envelopes merge one level down when they share a `task_id` and carry mergeable inner deltas.
+- `THINKING_TEXT_MESSAGE_CONTENT` is **deliberately never coalesced** — each thinking event is a discrete thought step emitted by the agent, and merging them would collapse steps on hydration that the live stream rendered separately.
+- `TOOL_CALL_RESULT` content (top-level and SUBAGENT_EVENT-wrapped) is truncated at `settings.inference.tool_result_max_chars` (default 16000) with a `"truncated": true` flag; the agent saw the full output, only the stored/streamed copy is cut.
+
+Alongside the log, `apply_event` still maintains flat aggregates — `content`, `thoughts`, `plan`, `subagents` (`tasks`/`interrupts`/`beforeAgent`; the heavyweight `events` key is no longer accumulated), `pending_interrupts` — but these serve previews, search, voice read-aloud, export, and the HITL pause decision only. **They are never the source of the rendered timeline**; that is always a fold over `raw_events`.
+
+After each upstream chunk the task publishes one delta frame to the Redis stream:
+
+```json
+{"type": "events", "run": {"<slim run meta>": "...", "pendingInterrupts": 0, "updatedAt": "..."}, "events": ["<the chunk's seq-stamped AG-UI events>"]}
 ```
 
-Live update payloads include enough state for the UI to render the current response: `content`, `thinking`, `rawEvents`, `plan`, and `subagents`.
+Frames are O(chunk), not O(run) — the old cumulative `update` snapshots are gone. `RUN_ERROR` is appended to the log, then the run is marked failed and the terminal snapshot published.
 
 ---
 
@@ -345,19 +350,40 @@ sequenceDiagram
         SR-->>WS: ("__snapshot__", payload)
         WS-->>UI: {"type":"snapshot","payload":...}
         WS-->>UI: close 1000
-    else still streaming
-        loop until terminal seq seen or client disconnect
-            SR->>Redis: XREAD BLOCK <read_block_ms> STREAMS ...:events <since>
+    else fresh subscribe (since=null) on an in-flight run
+        SR->>Redis: capture last entry id (cursor anchor)
+        SR->>SR: build_live_snapshot() from the in-process runtime
+        SR-->>WS: ("__snapshot__", {run incl. full coalesced rawEvents})
+        WS-->>UI: {"type":"snapshot","payload":...}
+        loop live-tail from the captured cursor until terminal
+            SR->>Redis: XREAD BLOCK <read_block_ms> STREAMS ...:events <cursor>
             Redis-->>SR: [(seq, payload), ...]
-            SR-->>WS: (seq, payload)
             WS-->>UI: {"type":"event","seq":"<stream-id>","payload":...}
         end
-        WS-->>UI: {"type":"terminal"}
+        WS->>PG: build final payload (build_run_event_payload)
+        WS-->>UI: {"type":"terminal","payload":<final state>}
+        WS-->>UI: close 1000
+    else reconnect with a since cursor
+        loop replay + live-tail until terminal seq seen or client disconnect
+            SR->>Redis: XREAD BLOCK <read_block_ms> STREAMS ...:events <since>
+            Redis-->>SR: [(seq, payload), ...]
+            WS-->>UI: {"type":"event","seq":"<stream-id>","payload":...}
+        end
+        WS->>PG: build final payload (build_run_event_payload)
+        WS-->>UI: {"type":"terminal","payload":<final state>}
         WS-->>UI: close 1000
     end
 ```
 
-The client tracks `lastSeenInferenceSeq` per run; on any close that is not user-initiated, it reconnects with exponential backoff (250 ms → 500 → 1 s → 2 s → 5 s) and re-sends `subscribe` with the latest cursor. Missed events are replayed from Redis up to the 1 h post-terminal TTL. The toast surface only fires after 5 sustained failures, or immediately on a permanent close code (`4401`/`4403`/`4404`).
+The live snapshot makes Redis `MAXLEN` trimming irrelevant for late subscribers: instead of replaying the stream from 0, a fresh subscriber gets the full coalesced log in one frame and tails only new deltas. The cursor anchor is captured **before** the snapshot is built, so events published in between appear both in the snapshot and as deltas — harmless, because the client skips any event whose per-event `seq` it has already folded (`timeline.lastSeq`). If the run is active but this process has no live runtime for it (e.g. a different replica owns the task), the generator falls back to a plain replay from the beginning of the stream.
+
+**Terminal delivery is defended at three layers**, so a run can never finish on the backend while the UI stays in streaming state:
+
+1. **Idle guard in the tail loop** — when an `XREAD` poll times out with no events, `read_since` invokes an `on_idle` callback that checks the run's `streaming_status` in Postgres; a terminal status ends the generator. This unblocks consumers whose terminal stream entry was lost (publish raced the subscribe, stream trimmed) — without it the loop would block forever and the socket would never close.
+2. **Terminal frame carries the payload** — the closing `{"type":"terminal","payload":<final state>}` frame is built fresh from the DB by the WS handler. The client applies it like a snapshot before resolving, so the run flips to its real status even if the terminal stream entry never reached this socket. A `null` payload (build failure) degrades to the bare close frame.
+3. **Clean-resolve safety net in the client** — when the WS resolves cleanly but the run is somehow still active in state, `observeRunId` re-subscribes once after ~1 s; the server answers a finished run with its DB snapshot. The resolve path also clears the run's `AbortController` registration (previously only the error path did, which permanently blocked re-observation of that run).
+
+The client tracks `lastSeenInferenceSeq` per run (the Redis entry id, distinct from the per-event `seq`); on any close that is not user-initiated, it reconnects with exponential backoff (250 ms → 500 → 1 s → 2 s → 5 s) and re-sends `subscribe` with the latest cursor. Missed events are replayed from Redis up to the 1 h post-terminal TTL. The toast surface only fires after 5 sustained failures, or immediately on a permanent close code (`4401`/`4403`/`4404`).
 
 Multiple observers per run are supported natively — Redis Streams fan out reads, so each WebSocket handler is an independent `XREAD` consumer.
 
@@ -388,15 +414,15 @@ sequenceDiagram
     Bridge->>PG: UPDATE message streaming_status=cancelling, streaming_cancel_requested_at=now()
     Bridge->>Manager: request_cancel(message_id)
     Bridge-->>UI: InferenceRunOut(status=cancelling)
-    Bridge-->>Redis: XADD cancelling event
-    Redis-->>UI: WS {"type":"event","payload":{status:"cancelling",...}}
+    Bridge-->>Redis: XADD {"type":"events","events":[],"run":{status:"cancelling",...}}
+    Redis-->>UI: WS {"type":"event","payload":{...}} (status-only delta)
 
     alt live task exists
         Manager->>Task: cancel_event.set()
         Task->>Task: cancel agents HTTP stream
         Task->>PG: _finish_run(cancelled)
         Task->>Redis: terminal XADD + EXPIRE
-        Redis-->>UI: WS {"type":"terminal"}
+        Redis-->>UI: WS {"type":"terminal","payload":<final state>}
     else task not live
         Bridge->>PG: mark cancelled and clear conversation active pointer
     end
@@ -412,15 +438,17 @@ When the underlying LangGraph graph hits `__interrupt__`, the upstream `/stream`
 
 ### Detection
 
-The bridge's `InferenceRunRuntime.apply_event` accumulates `pending_interrupts`:
+The bridge's `InferenceRunRuntime.apply_event` registers pending interrupt **identities** in `pending_interrupt_ids`, keyed by `interrupt.id`:
 
-- Top-level `CUSTOM HITL_INTERRUPT` → +1
-- `CUSTOM SUBAGENT_EVENT` whose inner `event` is a `CUSTOM HITL_INTERRUPT` → +1
+- Top-level `CUSTOM HITL_INTERRUPT` → `register_interrupt(value)`
+- `CUSTOM SUBAGENT_EVENT` whose inner `event` is a `CUSTOM HITL_INTERRUPT` → `register_interrupt(inner.value)`
 
-When `_do_stream` returns "completed", `_run` reads this counter:
+A **sub-agent interrupt arrives through both shapes** (same `interrupt.id`), so registration dedupes — the second envelope is a no-op. This must never be a bare counter: counting both envelopes (+2) while each resume resolves one (−1) drifts the count upward across resume legs, and the run then waits for a resume forever after its genuine completion.
 
-- `pending_interrupts == 0` → genuine terminal → `_finish_run("completed")`.
-- `pending_interrupts > 0` → keep the task alive and race `cancel_waiter` vs a per-run `resume_event`.
+When `_do_stream` returns "completed", `_run` inspects the set:
+
+- empty (`pending_interrupts == 0`) → genuine terminal → `_finish_run("completed")`.
+- non-empty → keep the task alive and race `cancel_waiter` vs a per-run `resume_event`.
 
 ### Resume round-trip
 
@@ -441,7 +469,8 @@ sequenceDiagram
     Manager->>Task: store payload + set resume_event
     Bridge-->>UI: 200 InferenceRunOut
 
-    Task->>Task: pop payload, pending_interrupts -= 1
+    Task->>Task: pop payload, resolve_interrupt(interrupt_id)
+    Task->>Redis: XADD events frame with CUSTOM BRIDGE_HITL_RESOLVED<br/>{interrupt_id, decision, reason} — also appended to raw_events
     Task->>Agents: POST /agents/{slug}/resume<br/>AgentResumeRequest{thread_id, interrupt_id, decision, value, reason}
     Agents->>Agents: rehydrate InMemorySaver from cache
     Agents->>Agents: verify pending interrupt id matches request
@@ -473,9 +502,9 @@ LangChain's `HumanInTheLoopMiddleware` expects `Command(resume={"decisions": [..
 
 ### interrupt_id contract
 
-Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured at [`normalizer.py:205`](../../src/agents/runtime/protocols/agui/normalizer.py#L205). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:
+Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured in [`normalizer.py`](../../src/agents/runtime/agui/normalizer.py). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:
 
-- UI: [`collectHitlInterruptsFromRawEvents`](../../src/agentic_ui/src/lib/subagents.ts) dedupes on `interruptId`; `useInferenceRuns.resolvedInterrupts` is keyed `${runId}:${interruptId}`.
+- UI: the timeline reducer ([`lib/timeline.ts`](../../src/agentic_ui/src/lib/timeline.ts)) dedupes interrupts on `interrupt.id` and flips their status when the `BRIDGE_HITL_RESOLVED` marker arrives; `useInferenceRuns.resolvedInterrupts` (keyed `${runId}:${interruptId}`) is the instant client-side overlay for the round-trip window between the resume HTTP response and the marker frame.
 - Bridge → agents: `ResumeInferenceRunBody.interruptId` (`api.ts`) → `InferenceRunResumeIn.interruptId` → `_do_resume` body field `interrupt_id` → `AgentResumeRequest.interrupt_id`.
 - Agents: [`main.py`](../../src/agents/main.py) compares `req.interrupt_id` against `snapshot.interrupts[0].id` and returns 409 if the user's clicked card is no longer pending (e.g., a duplicate click after the run advanced).
 
@@ -506,17 +535,16 @@ Why this matters: every HITL within a single run shares that run's `thread_id` (
 
 ### Re-entering a mid-stream conversation
 
-`MessageTable.content` / `raw_events` / `plan` / `subagents` are written to the DB only inside `_finish_run`. A `getConversationDetail` fetched while a run is mid-stream therefore returns the empty placeholder row — even though `runsByConversation` in memory has the full accumulated state from WS events that arrived while the user was on another conversation. Without intervention the bubble looks blank and any pending HITL modal is invisible until the next WS frame patches the message — and if the run is paused on HITL, no next frame is coming.
+`MessageTable.content` / `raw_events` / `plan` / `subagents` are written to the DB only inside `_finish_run`. A `getConversationDetail` fetched while a run is mid-stream therefore returns the empty placeholder row. The placeholder is mounted as-is: the streaming assistant message renders from the **live run timeline** (`runsByConversation[conversationId].timeline`), which `useInferenceRuns` folds incrementally from WS frames — and which the fresh-subscribe snapshot frame fully reconstructs the moment the observer attaches, including for a HITL-paused run where no further delta is coming. There is no message-overlay step anymore; the live state never flows through `ConversationDetail`.
 
-Two helpers on `useInferenceRuns` bridge the gap:
+One helper still bridges branching:
 
-- **`hydrateConversationDetailFromLiveRun(detail)`** — looks up `runsByConversation[detail.id]`; if active, overlays `content` / `thinking` / `rawEvents` / `plan` / `subagents` from the live run onto the matching assistant message before mount.
 - **`deriveBranchSelectionsForActiveRun(detail)`** — walks `run.messagePath` and returns a `{parentId → siblingIndex}` map so the visible branch contains the running assistant message. Without this, the conversation can load on a default sibling branch where the streaming message isn't rendered at all (typical when the run is on a retried/edited branch).
 
 Call sites:
 
-- [`handlers/conversations.ts::handleConversationSelect`](../../src/agentic_ui/src/handlers/conversations.ts) — both helpers run between `getConversationDetail` and `setCurrentConversation`. Branch-snap precedes `setCurrentConversation` so the very first render is on the right path.
-- [`ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) session-restore effect — same overlay + snap, for users reopening the app on a mid-stream conversation.
+- [`handlers/conversations.ts::handleConversationSelect`](../../src/agentic_ui/src/handlers/conversations.ts) — branch-snap runs between `getConversationDetail` and `setCurrentConversation` so the very first render is on the right path.
+- [`ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) session-restore effect — same snap, for users reopening the app on a mid-stream conversation.
 - [`ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) once-per-run effect — guarded by `snappedRunIdRef`, fires when `runsByConversation` populates *after* the conversation is already mounted. Closes the race in the session-restore case where `getConversationDetail` returns before `getActiveInferenceRuns` does. The ref guard ensures the user is free to navigate branches manually after the initial snap; a brand-new run later in the same session gets its own snap.
 
 The IndexedDB UI snapshot intentionally does not persist transient streaming state. Serialized and deserialized conversation summaries force `activeRunId: null` and `isStreaming: false`; after rehydrating a snapshot, the app fetches fresh conversations and active runs from the backend.
@@ -547,7 +575,7 @@ The original shared conversation is not mutated. The copied conversation belongs
 - **Start is atomic; launch is not part of the DB transaction.** The AI placeholder commits before `launch()`. If launch fails, the bridge marks the message `streaming_status='failed'` so the conversation is not left active.
 - **The run id is the assistant message id.** There is no separate `inference_runs` table — every reference to `run_id` in URLs, WebSocket frames, Redis stream keys, and runtime caches is the AI `messages.id`.
 - **One active stream per conversation.** The backend pre-checks, and the partial unique index `uq_messages_one_active_stream_per_conversation` enforces active statuses `queued`, `running`, and `cancelling`.
-- **Streaming has no intermediate DB writes.** Per-chunk durability lives in Redis Streams. Refresh during a live run replays from Redis up to `MAXLEN ~ 5000` events; terminal commits the final state to Postgres.
+- **Streaming has no intermediate DB writes.** Per-chunk durability lives in Redis Streams (`MAXLEN ~ 20000` delta frames). A refresh during a live run doesn't even need the backlog: the fresh-subscribe snapshot frame carries the full coalesced log from the in-process runtime, and only new deltas tail after it. Terminal commits the final state to Postgres.
 - **Reconnect is transparent up to 1 h after terminal.** The WebSocket client resumes with `since=<lastSeenSeq>`; the Redis stream is kept alive for `terminal_ttl_seconds` (default 3600 s) after `streaming_status` flips terminal.
 - **Startup cleanup fails orphaned active streams.** On bridge startup, AI messages stuck in `streaming_status IN ('queued','running','cancelling')` from a previous process are transitioned to `failed` and conversation active pointers are cleared (`cleanup_orphaned_inference_runs`).
 - **Stale queued messages are cleaned before creating a new placeholder.** This protects conversations from a queued AI row left behind before task launch.
@@ -568,11 +596,10 @@ The original shared conversation is not mutated. The copied conversation belongs
 | Stream loop | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._do_stream()` |
 | Runtime accumulator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()` |
 | Terminal write | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_finish_run()` |
-| Observer generator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `stream_run_events()`, `SNAPSHOT_SEQ_SENTINEL` |
-| Redis event log | [src/dialogue_bridge/utils/event_log.py](../../src/dialogue_bridge/utils/event_log.py) | `RedisEventLog.append()`, `.read_since()`, `.mark_terminal()` |
+| Observer generator | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `stream_run_events()`, `SNAPSHOT_SEQ_SENTINEL`, `InferenceRunManager.build_live_snapshot()` |
+| Redis event log | [src/dialogue_bridge/utils/event_log.py](../../src/dialogue_bridge/utils/event_log.py) | `RedisEventLog.append()`, `.read_since()`, `.last_entry_id()`, `.mark_terminal()` |
 | WebSocket endpoint | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `inference_run_websocket()` |
-| Legacy SSE endpoint (deprecated) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `observeInferenceRun()` — kept one release cycle |
-| Cancel path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `request_run_cancel()` |
+| Cancel path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `request_run_cancel()`, `InferenceRunManager.publish_run_status()` |
 | HITL resume path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.pending_interrupts`, `InferenceRunManager.request_resume()`, `_do_resume()`, `request_run_resume()` |
 | Bridge resume route | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `resumeInferenceRun()` route |
 | Agents resume endpoint | [src/agents/main.py](../../src/agents/main.py) | `resume_agent()` route |
@@ -584,12 +611,15 @@ The original shared conversation is not mutated. The copied conversation belongs
 | Redis settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `RedisSettings` — `url`, `password`, `stream_maxlen`, `terminal_ttl_seconds`, `read_block_ms` |
 | WebSocket auth | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `authenticate_websocket_user()` |
 | Frontend inference runtime | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `handleSendMessage()`, edit/retry/shared continue start requests |
-| Frontend observer hook | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `beginRun()`, `applyRunEvent()`, `observeRunId()`, `hydrateConversationDetailFromLiveRun()`, `deriveBranchSelectionsForActiveRun()` |
-| Mid-stream conversation hydration | [src/agentic_ui/src/handlers/conversations.ts](../../src/agentic_ui/src/handlers/conversations.ts) + [src/agentic_ui/src/pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx) | `handleConversationSelect` overlay + branch snap, session-restore overlay + snap, once-per-run snap effect |
+| Frontend observer hook | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `beginRun()`, `applyRunEvent()`, `mergeRunEvent()`, `observeRunId()`, `deriveBranchSelectionsForActiveRun()` |
+| Timeline reducer | [src/agentic_ui/src/lib/timeline.ts](../../src/agentic_ui/src/lib/timeline.ts) | `reduceTimelineEvents()`, `foldTimeline()`, `finalizeTimeline()`, `pendingTimelineInterrupts()` — one fold for live and hydrated |
+| Settled-message timeline | [src/agentic_ui/src/hooks/useRunTimeline.ts](../../src/agentic_ui/src/hooks/useRunTimeline.ts) | memoized replay of `message.rawEvents` |
+| Mid-stream branch snap | [src/agentic_ui/src/handlers/conversations.ts](../../src/agentic_ui/src/handlers/conversations.ts) + [src/agentic_ui/src/pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx) | `handleConversationSelect` branch snap, session-restore snap, once-per-run snap effect |
 | Frontend WebSocket client | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `connectInferenceWebSocket()`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError` |
 | Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `startInference()`, `getActiveInferenceRuns()`, `resumeInferenceRun()` |
-| Frontend HITL UI | [src/agentic_ui/src/components/chat/message_parts/HitlInterruptCard.tsx](../../src/agentic_ui/src/components/chat/message_parts/HitlInterruptCard.tsx) | `<HitlInterruptCard>` approve/reject card + `<HitlInterruptModal>` chat-area-scoped popup |
+| Frontend HITL UI | [src/agentic_ui/src/components/chat/HitlInputTakeover.tsx](../../src/agentic_ui/src/components/chat/HitlInputTakeover.tsx) + [src/agentic_ui/src/components/chat/message_parts/HitlInterruptCard.tsx](../../src/agentic_ui/src/components/chat/message_parts/HitlInterruptCard.tsx) | `<HitlInputTakeover>` composer takeover + `<HitlInterruptCard>` inline timeline card |
 | Frontend HITL context | [src/agentic_ui/src/lib/hitl-context.tsx](../../src/agentic_ui/src/lib/hitl-context.tsx) | `<HitlProvider>`, `useHitl()` — shares `resumeRun` + `isInterruptResolved` |
-| Agent run timeline | [src/agentic_ui/src/components/chat/AgentRunTimeline.tsx](../../src/agentic_ui/src/components/chat/AgentRunTimeline.tsx) | renders pending interrupts at the top of the streaming bubble |
+| Agent run timeline | [src/agentic_ui/src/components/chat/AgentRunTimeline.tsx](../../src/agentic_ui/src/components/chat/AgentRunTimeline.tsx) + [message_parts/TimelineBlocks.tsx](../../src/agentic_ui/src/components/chat/message_parts/TimelineBlocks.tsx) | block sequence renderer: Thinking/Content/Subagent blocks, Done sentinel |
+| Post-run side panels | [src/agentic_ui/src/components/chat/message_parts/RunSidePanels.tsx](../../src/agentic_ui/src/components/chat/message_parts/RunSidePanels.tsx) | `<PlanSidePanel>`, `<SubagentsSidePanel>` behind the AI action-bar buttons |
 | Nginx WebSocket upgrade | [src/agentic_ui/nginx.conf.template](../../src/agentic_ui/nginx.conf.template) | `$connection_upgrade` map + `^~ /api/v1/inference/runs/` location |
 | UI snapshot storage | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | transient run flags are stripped |

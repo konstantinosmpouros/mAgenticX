@@ -1324,6 +1324,9 @@ const transformInferenceRunEvent = (event: Record<string, any>): InferenceRunEve
   run: transformInferenceRun(event.run ?? {}),
   message: event.message ? transformMessage(event.message) : null,
   summary: event.summary ? transformConversationSummary(event.summary) : null,
+  // Raw AG-UI events of an "events" delta frame — consumed verbatim by the
+  // timeline reducer, never field-mapped.
+  events: Array.isArray(event.events) ? event.events : undefined,
 });
 
 export async function startInference(
@@ -1560,6 +1563,16 @@ function runOneInferenceWebSocketConnection(
         return;
       }
       if (frame.type === "terminal") {
+        // The payload is the DB-built final state — apply it so the run
+        // flips to its real status even when the terminal stream entry was
+        // lost on this socket (send raced the close, reconnect gap).
+        if (frame.payload) {
+          try {
+            onEvent(transformInferenceRunEvent(frame.payload));
+          } catch {
+            // ignore malformed terminal payload
+          }
+        }
         finalize(() => {
           try { socket.close(1000, "Done"); } catch { /* ignore */ }
           lastSeenInferenceSeq.delete(runId);

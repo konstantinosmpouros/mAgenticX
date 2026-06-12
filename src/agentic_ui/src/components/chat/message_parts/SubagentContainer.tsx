@@ -1,8 +1,6 @@
 import * as React from "react";
-import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { resolveOverlayHost } from "@/lib/overlay-host";
-import { Bot, Check, Copy, Hand, MessageSquareText, Wrench, X } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Bot, Check, Copy, Hand, MessageSquareText, Wrench } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -31,25 +29,37 @@ export type SubagentItem = {
   text?: string;
   tools?: SubagentTool[];
   interrupts?: SubagentInterrupt[];
-  eventCount?: number;
-  // Length of the parent message content at the moment this subagent was
-  // delegated. The UI uses this to interleave the live subagent card inline
-  // with the streaming parent text in chronological order.
-  contentOffset?: number;
 };
 
-export type SubagentContainerProps = {
-  subagents: SubagentItem[];
-  expanded: boolean;
-  onToggle: () => void;
+function SmoothCollapse({
+  open,
+  className,
+  children,
+}: {
+  open: boolean;
   className?: string;
-  title?: string;
-  subtitle?: string;
-  // When true, the inline summary header is suppressed and only the portal
-  // modal renders. Useful when an external trigger (e.g. a "+ N more" pill)
-  // owns the open/close state.
-  triggerless?: boolean;
-};
+  children: React.ReactNode;
+}) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <AnimatePresence initial={false}>
+      {open ? (
+        <motion.div
+          initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1, transition: { duration: 0.3, ease: "easeOut" } }}
+          exit={
+            reduceMotion
+              ? { opacity: 0, transition: { duration: 0.1 } }
+              : { height: 0, opacity: 0, transition: { duration: 0.2, ease: "easeIn" } }
+          }
+          className={cn("overflow-hidden", className)}
+        >
+          {children}
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
 
 function toDisplayText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -87,10 +97,6 @@ function getSubagentTitle(subagent: SubagentItem, index: number): string {
     subagent.id ||
     `Subagent ${index + 1}`
   );
-}
-
-function getSubagentIdentity(subagent: SubagentItem): string {
-  return subagent.id || subagent.namespace || "";
 }
 
 function getSubagentTranscript(subagent: SubagentItem): string {
@@ -250,8 +256,14 @@ function DisclosureButton({
   );
 }
 
-function ToolCallItem({ toolCall }: { toolCall: SubagentTool }) {
-  const [toolExpanded, setToolExpanded] = React.useState(true);
+function ToolCallItem({
+  toolCall,
+  defaultExpanded = true,
+}: {
+  toolCall: SubagentTool;
+  defaultExpanded?: boolean;
+}) {
+  const [toolExpanded, setToolExpanded] = React.useState(defaultExpanded);
   const [argsExpanded, setArgsExpanded] = React.useState(true);
   const [resultExpanded, setResultExpanded] = React.useState(false);
   const previousStatusRef = React.useRef(toolCall.status);
@@ -296,7 +308,7 @@ function ToolCallItem({ toolCall }: { toolCall: SubagentTool }) {
         </span>
       </DisclosureButton>
 
-      {toolExpanded ? (
+      <SmoothCollapse open={toolExpanded}>
         <div className="space-y-2">
           {toolCall.args ? (
             <div>
@@ -310,13 +322,13 @@ function ToolCallItem({ toolCall }: { toolCall: SubagentTool }) {
                   Args
                 </span>
               </DisclosureButton>
-              {argsExpanded ? (
+              <SmoothCollapse open={argsExpanded}>
                 <CopyableContentBox content={toolCall.args} tone="code" size="sm">
                   <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-6 text-zinc-100">
                     {toolCall.args}
                   </pre>
                 </CopyableContentBox>
-              ) : null}
+              </SmoothCollapse>
             </div>
           ) : null}
 
@@ -332,17 +344,17 @@ function ToolCallItem({ toolCall }: { toolCall: SubagentTool }) {
                   Result
                 </span>
               </DisclosureButton>
-              {resultExpanded ? (
+              <SmoothCollapse open={resultExpanded}>
                 <CopyableContentBox content={toolCall.result} tone="code" size="md">
                   <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-6 text-zinc-100">
                     {toolCall.result}
                   </pre>
                 </CopyableContentBox>
-              ) : null}
+              </SmoothCollapse>
             </div>
           ) : null}
         </div>
-      ) : null}
+      </SmoothCollapse>
     </div>
   );
 }
@@ -350,11 +362,15 @@ function ToolCallItem({ toolCall }: { toolCall: SubagentTool }) {
 export type SubagentCardProps = {
   subagent: SubagentItem;
   index?: number;
+  // Side-panel mode: expanding the card reveals the section headers only;
+  // each section (and each tool) opens on demand instead of all at once.
+  defaultCollapsedSections?: boolean;
 };
 
 export function SubagentCard({
   subagent,
   index = 0,
+  defaultCollapsedSections = false,
 }: SubagentCardProps) {
   const transcript = getSubagentTranscript(subagent);
   const title = getSubagentTitle(subagent, index);
@@ -364,9 +380,26 @@ export function SubagentCard({
   const hasTools = tools.length > 0;
   const hasInterrupts = interrupts.length > 0;
   const [cardExpanded, setCardExpanded] = React.useState(false);
-  const [textExpanded, setTextExpanded] = React.useState(true);
-  const [toolsExpanded, setToolsExpanded] = React.useState(true);
-  const [interruptsExpanded, setInterruptsExpanded] = React.useState(true);
+  const [textExpanded, setTextExpanded] = React.useState(!defaultCollapsedSections);
+  const [toolsExpanded, setToolsExpanded] = React.useState(!defaultCollapsedSections);
+  const [interruptsExpanded, setInterruptsExpanded] = React.useState(!defaultCollapsedSections);
+  const [promptExpanded, setPromptExpanded] = React.useState(false);
+  const [promptClampable, setPromptClampable] = React.useState(false);
+  const [promptFullHeight, setPromptFullHeight] = React.useState(0);
+  const promptRef = React.useRef<HTMLParagraphElement>(null);
+  const reduceMotion = useReducedMotion();
+  const promptText = subagent.prompt || subagent.description || "Delegated subagent task in progress.";
+
+  // 72px = three lines at leading-6; the paragraph sits unclipped inside an
+  // overflow-hidden motion wrapper, so offsetHeight is its full text height.
+  React.useLayoutEffect(() => {
+    if (!cardExpanded) return;
+    const el = promptRef.current;
+    if (el) {
+      setPromptFullHeight(el.offsetHeight);
+      setPromptClampable(el.offsetHeight > 76);
+    }
+  }, [cardExpanded, promptText]);
 
   return (
     <div
@@ -376,15 +409,22 @@ export function SubagentCard({
       )}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-primary/[0.05] via-primary/[0.02] to-transparent" />
-      {cardExpanded ? (
-        <div className="pointer-events-none absolute left-9 top-[4rem] bottom-8 w-px bg-[linear-gradient(180deg,hsl(var(--primary)/0.28)_0%,hsl(var(--border)/0.88)_72%,hsl(var(--border)/0.72)_88%,transparent_100%)]" />
-      ) : null}
+      <AnimatePresence initial={false}>
+        {cardExpanded ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { duration: 0.3, delay: 0.15 } }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            className="pointer-events-none absolute left-9 top-[4rem] bottom-8 w-px bg-[linear-gradient(180deg,hsl(var(--primary)/0.28)_0%,hsl(var(--border)/0.88)_72%,hsl(var(--border)/0.72)_88%,transparent_100%)]"
+          />
+        ) : null}
+      </AnimatePresence>
 
       <DisclosureButton
         title={`Toggle ${title}`}
         expanded={cardExpanded}
         onClick={() => setCardExpanded((current) => !current)}
-        className={cn("relative -ml-1", cardExpanded ? "mb-5" : "mb-0")}
+        className={cn("relative -ml-1", cardExpanded ? "mb-1" : "mb-0")}
       >
         <div className="min-w-0 flex-1 pr-4">
           <div
@@ -421,26 +461,41 @@ export function SubagentCard({
             ) : null}
           </div>
 
-          <p
-            className={cn(
-              "max-w-3xl text-muted-foreground transition-[max-height,padding,font-size,line-height] duration-300",
-              cardExpanded
-                ? "pl-8 text-sm leading-6"
-                : "max-h-[2.3rem] overflow-hidden pl-5 text-[12px] leading-[1.15rem]",
-            )}
-          >
-            {subagent.prompt || subagent.description || "Delegated subagent task in progress."}
-          </p>
+          {!cardExpanded ? (
+            <p className="max-h-[2.3rem] max-w-3xl overflow-hidden pl-5 text-[12px] leading-[1.15rem] text-muted-foreground">
+              {promptText}
+            </p>
+          ) : null}
         </div>
       </DisclosureButton>
 
-      <div
-        className={cn(
-          "grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out",
-          cardExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-        )}
-      >
-        <div className="min-h-0">
+      {/* The task description lives outside the header button so the
+          Show more toggle isn't a button nested inside a button. */}
+      {cardExpanded ? (
+        <div className="relative mb-5 max-w-3xl pl-8 pr-4">
+          <motion.div
+            className="overflow-hidden"
+            initial={false}
+            animate={{ maxHeight: promptExpanded ? promptFullHeight + 16 : 72 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: "easeOut" }}
+          >
+            <p ref={promptRef} className="text-sm leading-6 text-muted-foreground">
+              {promptText}
+            </p>
+          </motion.div>
+          {promptClampable ? (
+            <button
+              type="button"
+              onClick={() => setPromptExpanded((current) => !current)}
+              className="mt-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+            >
+              {promptExpanded ? "Show less" : "Show more"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <SmoothCollapse open={cardExpanded}>
       <div className="relative grid gap-8 pl-8 pt-2 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-6">
           {hasTranscript ? (
@@ -456,13 +511,13 @@ export function SubagentCard({
                 title="Response"
               />
             </DisclosureButton>
-            {textExpanded ? (
-                <CopyableContentBox content={transcript} size="xl">
-                  <p className="whitespace-pre-wrap break-words text-[14px] leading-7 text-zinc-100">
-                    {transcript}
-                  </p>
-                </CopyableContentBox>
-            ) : null}
+            <SmoothCollapse open={textExpanded}>
+              <CopyableContentBox content={transcript} size="xl">
+                <p className="whitespace-pre-wrap break-words text-[14px] leading-7 text-zinc-100">
+                  {transcript}
+                </p>
+              </CopyableContentBox>
+            </SmoothCollapse>
           </section>
           ) : null}
         </div>
@@ -481,18 +536,18 @@ export function SubagentCard({
                 title="Tool Activity"
               />
             </DisclosureButton>
-            {toolsExpanded ? (
-                <div className="space-y-4 pl-5">
-                  {tools.map((toolCall, toolIndex) => (
-                    <div key={toolCall.id} className="relative">
-                      {toolIndex < tools.length - 1 ? (
-                        <span className="absolute left-[5px] top-4 bottom-[-16px] w-px bg-gradient-to-b from-primary/35 via-border/80 to-transparent" />
-                      ) : null}
-                      <ToolCallItem toolCall={toolCall} />
-                    </div>
-                  ))}
-                </div>
-            ) : null}
+            <SmoothCollapse open={toolsExpanded}>
+              <div className="space-y-4 pl-5">
+                {tools.map((toolCall, toolIndex) => (
+                  <div key={toolCall.id} className="relative">
+                    {toolIndex < tools.length - 1 ? (
+                      <span className="absolute left-[5px] top-4 bottom-[-16px] w-px bg-gradient-to-b from-primary/35 via-border/80 to-transparent" />
+                    ) : null}
+                    <ToolCallItem toolCall={toolCall} defaultExpanded={!defaultCollapsedSections} />
+                  </div>
+                ))}
+              </div>
+            </SmoothCollapse>
           </section>
           ) : null}
 
@@ -509,214 +564,14 @@ export function SubagentCard({
                 title="HITL Interrupts"
               />
             </DisclosureButton>
-            {interruptsExpanded ? (
-                <InterruptList interrupts={interrupts} />
-            ) : null}
+            <SmoothCollapse open={interruptsExpanded}>
+              <InterruptList interrupts={interrupts} />
+            </SmoothCollapse>
           </section>
           ) : null}
         </div>
       </div>
-        </div>
-      </div>
+      </SmoothCollapse>
     </div>
-  );
-}
-
-export function SubagentContainer({
-  subagents,
-  expanded,
-  onToggle,
-  className,
-  title = "Subagent activity",
-  subtitle,
-  triggerless = false,
-}: SubagentContainerProps) {
-  const toolCount = subagents.reduce(
-    (total, subagent) => total + (subagent.tools?.length ?? 0),
-    0,
-  );
-  const interruptCount = subagents.reduce(
-    (total, subagent) => total + (subagent.interrupts?.length ?? 0),
-    0,
-  );
-
-  React.useEffect(() => {
-    if (!expanded) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [expanded]);
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onToggle();
-    }
-  };
-
-  return (
-    <>
-    {triggerless ? null : (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-expanded={expanded}
-      onClick={onToggle}
-      onKeyDown={handleKeyDown}
-      className={cn(
-        "group relative block w-full cursor-pointer select-none text-left outline-none",
-        className,
-      )}
-    >
-      <div className="absolute inset-x-12 top-2 h-10 rounded-full bg-[hsl(var(--primary)/0.1)] blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
-
-      <div className="relative overflow-hidden rounded-[30px] border border-border/70 bg-background shadow-lg">
-        <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-primary/[0.04] to-transparent" />
-
-        <div className="relative flex flex-col">
-          <div className="flex flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              {subtitle ? (
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  {subtitle}
-                </div>
-              ) : null}
-
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary transition-colors duration-500 ease-out">
-                  <Bot className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="truncate text-sm font-semibold text-foreground">
-                    {title}
-                  </h3>
-                  <p className="truncate text-[11px] text-muted-foreground transition-colors duration-500 ease-out">
-                    {subagents.length} subagents
-                    {toolCount ? ` · ${toolCount} tool flows` : ""}
-                    {interruptCount ? ` · ${interruptCount} interrupts` : ""}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden shrink-0 items-center gap-2 self-start rounded-full bg-secondary/45 px-2.5 py-1 transition-colors duration-500 ease-out sm:mt-1 sm:flex">
-              <span className="inline-flex h-2 w-2 rounded-full bg-primary" />
-              <span className="text-[11px] text-muted-foreground">
-                {subagents.length}
-              </span>
-              <span className="inline-flex h-2 w-2 rounded-full bg-sky-500" />
-              <span className="text-[11px] text-muted-foreground">{toolCount}</span>
-              <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-              <span className="text-[11px] text-muted-foreground">
-                {interruptCount}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    )}
-    {typeof document !== "undefined" ? createPortal(
-    <AnimatePresence>
-    {expanded ? (
-      <motion.div
-        className="absolute inset-0 z-[70] flex items-center justify-center p-4 sm:p-6"
-        onClick={onToggle}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-      >
-        <motion.div
-          className="relative flex max-h-[75vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
-          onClick={(event) => event.stopPropagation()}
-          initial={{ opacity: 0, scale: 0.975, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.985, y: 6 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-        >
-          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/[0.05] via-primary/[0.02] to-transparent" />
-          <button
-            type="button"
-            onClick={onToggle}
-            className="absolute right-4 top-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
-            aria-label="Close subagent activity"
-          >
-            <X size={18} />
-          </button>
-
-          <div className="relative flex flex-col border-b border-border/70 px-4 py-4 pr-16 sm:px-5 sm:pr-20">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                {subtitle ? (
-                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                    {subtitle}
-                  </div>
-                ) : null}
-
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary transition-colors duration-500 ease-out">
-                    <Bot className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-foreground">
-                      {title}
-                    </h3>
-                    <p className="truncate text-[11px] text-muted-foreground transition-colors duration-500 ease-out">
-                      {subagents.length} subagents
-                      {toolCount ? ` · ${toolCount} tool flows` : ""}
-                      {interruptCount ? ` · ${interruptCount} interrupts` : ""}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="hidden shrink-0 items-center gap-2 self-start rounded-full bg-secondary/45 px-2.5 py-1 transition-colors duration-500 ease-out sm:mt-1 sm:flex">
-                <span className="inline-flex h-2 w-2 rounded-full bg-primary" />
-                <span className="text-[11px] text-muted-foreground">
-                  {subagents.length}
-                </span>
-                <span className="inline-flex h-2 w-2 rounded-full bg-sky-500" />
-                <span className="text-[11px] text-muted-foreground">{toolCount}</span>
-                <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-                <span className="text-[11px] text-muted-foreground">
-                  {interruptCount}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4 [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]"
-          >
-            <div className="space-y-3 px-1 py-4">
-              {subagents.length ? (
-                subagents.map((subagent, index) => (
-                  <SubagentCard
-                    key={getSubagentIdentity(subagent) || `subagent-${index}`}
-                    subagent={subagent}
-                    index={index}
-                  />
-                ))
-              ) : (
-                <div className="rounded-[26px] bg-secondary/25 px-4 py-8 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    No subagent activity has been streamed yet.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    ) : null}
-    </AnimatePresence>,
-    resolveOverlayHost(),
-    ) : null}
-    </>
   );
 }

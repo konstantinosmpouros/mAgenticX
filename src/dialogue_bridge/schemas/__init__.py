@@ -347,6 +347,9 @@ class MessageOut(BaseModel):
     thinkingTime: Optional[int] = Field(None, validation_alias="reasoning_time_seconds")
     error: Optional[bool] = Field(None, validation_alias="is_error")
     errorMessage: Optional[str] = Field(None, validation_alias="error_message")
+    # Final run lifecycle status of an assistant message (completed/cancelled/
+    # failed) — the client's Done sentinel renders its flavor from this.
+    streamingStatus: Optional[str] = Field(None, validation_alias="streaming_status")
     rawEvents: List[dict] = Field(default_factory=list, validation_alias="raw_events")
 
     @field_validator("rawEvents", mode="before")

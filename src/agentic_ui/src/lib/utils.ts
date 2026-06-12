@@ -258,3 +258,59 @@ export const skillMatchesTokens = (
     .replace(/[-_./]/g, "");
   return tokens.every((tok) => haystack.includes(tok));
 };
+
+// The agents occasionally emit "•" bullets, which Streamdown doesn't treat as
+// list markers — normalize them to "-" so every text surface renders the same.
+export const normalizeBulletMarkdown = (text: string): string =>
+  text
+    .split("\n")
+    .map((line) => {
+      const bulletMatch = line.match(/^(\s*)•\s*/);
+      if (!bulletMatch) return line;
+      const [, indent] = bulletMatch;
+      return `${indent}- ${line.slice(bulletMatch[0].length)}`;
+    })
+    .join("\n");
+
+// Parse a LangChain HITL interrupt payload into the human-readable parts.
+// `content` is the wrapped interrupt {id, value: {action_requests: [{action|
+// name, args, description}], review_configs}} — shapes vary across agents, so
+// every access is defensive and `raw` always carries the full payload.
+export type ParsedHitlRequest = {
+  toolName?: string;
+  description?: string;
+  argsText?: string;
+  requestCount: number;
+  raw: string;
+};
+
+export const parseHitlInterrupt = (content: unknown): ParsedHitlRequest => {
+  let raw: string;
+  try {
+    raw = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+  } catch {
+    raw = String(content);
+  }
+  const fallback: ParsedHitlRequest = { requestCount: 0, raw };
+  if (!content || typeof content !== "object") return fallback;
+
+  const wrapped = (content as Record<string, any>).value ?? content;
+  if (!wrapped || typeof wrapped !== "object") return fallback;
+  const requests = (wrapped as Record<string, any>).action_requests;
+  if (!Array.isArray(requests) || requests.length === 0) return fallback;
+
+  const first = requests[0];
+  if (!first || typeof first !== "object") return { ...fallback, requestCount: requests.length };
+  const toolName =
+    typeof first.action === "string" ? first.action : typeof first.name === "string" ? first.name : undefined;
+  const description = typeof first.description === "string" ? first.description.trim() : undefined;
+  let argsText: string | undefined;
+  if (first.args !== undefined && first.args !== null) {
+    try {
+      argsText = typeof first.args === "string" ? first.args : JSON.stringify(first.args, null, 2);
+    } catch {
+      argsText = String(first.args);
+    }
+  }
+  return { toolName, description, argsText, requestCount: requests.length, raw };
+};

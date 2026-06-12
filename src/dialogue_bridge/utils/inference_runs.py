@@ -85,6 +85,45 @@ def _message_payload_from_runtime(runtime: "InferenceRunRuntime", *, error: bool
     }
 
 
+_TEXT_DELTA_TYPES = {"TEXT_MESSAGE_CHUNK", "TEXT_MESSAGE_CONTENT"}
+
+
+def _coalesce_key(event: dict[str, Any]) -> tuple[Any, ...] | None:
+    """Merge identity for delta-bearing events. Consecutive stored events with
+    the same key are collapsed into one event with a concatenated ``delta`` so
+    the persisted log stays block-lossless without keeping per-token entries.
+
+    THINKING_TEXT_MESSAGE_CONTENT is deliberately NOT coalesced: each thinking
+    event is a discrete thought step (custom-mode agents emit one event per
+    thought), so merging them would collapse steps on hydration that the live
+    stream showed separately.
+    """
+    event_type = event.get("type")
+    if event_type in _TEXT_DELTA_TYPES:
+        return ("text", event.get("messageId"), repr(event.get("namespace")))
+    if event_type == "TOOL_CALL_ARGS":
+        return ("tool_args", event.get("toolCallId"))
+    return None
+
+
+def _merge_delta_into(last: dict[str, Any], incoming: dict[str, Any]) -> bool:
+    key = _coalesce_key(incoming)
+    if key is None or key != _coalesce_key(last):
+        return False
+    last["delta"] = str(last.get("delta") or "") + str(incoming.get("delta") or "")
+    if incoming.get("timestamp") is not None:
+        last["timestampEnd"] = incoming["timestamp"]
+    return True
+
+
+def _truncate_tool_result(event: dict[str, Any]) -> dict[str, Any]:
+    content = event.get("content")
+    limit = settings.inference.tool_result_max_chars
+    if isinstance(content, str) and len(content) > limit:
+        return {**event, "content": content[:limit], "truncated": True}
+    return event
+
+
 class InferenceRunRuntime:
     def __init__(self) -> None:
         self.content = ""
@@ -96,11 +135,34 @@ class InferenceRunRuntime:
         self.thinking_start = 0.0
         self.thinking_end = 0.0
         self.closed_thinking_on_first_chunk = False
-        # Outstanding HITL interrupts emitted by the agent but not yet resumed.
-        # Used by `InferenceRunManager._run` to decide whether to wait for a
-        # /resume after the upstream stream ends, rather than finalising the
-        # run as completed.
-        self.pending_interrupts = 0
+        self.next_seq = 0
+        # Outstanding HITL interrupt identities emitted by the agent but not
+        # yet resumed. Used by `InferenceRunManager._run` to decide whether to
+        # wait for a /resume after the upstream stream ends, rather than
+        # finalising the run as completed. Tracked by `interrupt.id`, never a
+        # bare counter: a sub-agent interrupt is delivered TWICE (top-level
+        # HITL_INTERRUPT with namespace metadata + the same event wrapped in
+        # SUBAGENT_EVENT) while each /resume resolves exactly one interrupt —
+        # a counter drifts upward and the run never finalises.
+        self.pending_interrupt_ids: list[str] = []
+
+    @property
+    def pending_interrupts(self) -> int:
+        return len(self.pending_interrupt_ids)
+
+    def register_interrupt(self, value: Any) -> None:
+        wrapped = value.get("interrupt") if isinstance(value, dict) else None
+        raw_id = wrapped.get("id") if isinstance(wrapped, dict) else None
+        token = str(raw_id) if raw_id is not None else f"anon-{self.next_seq}"
+        if token not in self.pending_interrupt_ids:
+            self.pending_interrupt_ids.append(token)
+
+    def resolve_interrupt(self, interrupt_id: Any) -> None:
+        token = str(interrupt_id) if interrupt_id is not None else None
+        if token and token in self.pending_interrupt_ids:
+            self.pending_interrupt_ids.remove(token)
+        elif self.pending_interrupt_ids:
+            self.pending_interrupt_ids.pop(0)
 
     def push_subagent_event(self, key: str, value: Any) -> None:
         current = self.subagents or {}
@@ -115,34 +177,76 @@ class InferenceRunRuntime:
         end = self.thinking_end or time.perf_counter()
         return max(0, round(end - start))
 
-    def apply_event(self, event: dict[str, Any]) -> None:
+    def _append_raw(self, event: dict[str, Any]) -> None:
+        stored = deepcopy(event)
+        if self.raw_events:
+            last = self.raw_events[-1]
+            if _merge_delta_into(last, stored):
+                last["seq"] = stored.get("seq", last.get("seq"))
+                return
+            # SUBAGENT_EVENT envelopes wrap the inner delta, so the merge has
+            # to happen one level down: same task_id + mergeable inner events.
+            if (
+                last.get("type") == "CUSTOM"
+                and stored.get("type") == "CUSTOM"
+                and last.get("name") == "SUBAGENT_EVENT"
+                and stored.get("name") == "SUBAGENT_EVENT"
+            ):
+                last_value, stored_value = last.get("value"), stored.get("value")
+                if (
+                    isinstance(last_value, dict)
+                    and isinstance(stored_value, dict)
+                    and last_value.get("task_id") == stored_value.get("task_id")
+                    and isinstance(last_value.get("event"), dict)
+                    and isinstance(stored_value.get("event"), dict)
+                    and _merge_delta_into(last_value["event"], stored_value["event"])
+                ):
+                    last["seq"] = stored.get("seq", last.get("seq"))
+                    if stored.get("timestamp") is not None:
+                        last["timestampEnd"] = stored["timestamp"]
+                    return
+        self.raw_events.append(stored)
+
+    def apply_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        """Fold one upstream AG-UI event into the run state and return the
+        seq-stamped wire event for the delta frame.
+
+        Every event lands in ``raw_events`` (the durable per-run log the UI
+        replays into its timeline); consecutive delta events are coalesced on
+        append. Aggregates (``content``/``thoughts``/``plan``/``subagents``)
+        are kept only for previews, search, voice read-aloud and export.
+        """
         event_type = event.get("type")
         if not self.first_event_ts:
             self.first_event_ts = time.perf_counter()
+        self.next_seq += 1
+
+        if event_type == "TOOL_CALL_RESULT":
+            event = _truncate_tool_result(event)
+        elif event_type == "CUSTOM" and event.get("name") == "SUBAGENT_EVENT":
+            value = event.get("value")
+            if isinstance(value, dict):
+                inner = value.get("event")
+                if isinstance(inner, dict) and inner.get("type") == "TOOL_CALL_RESULT":
+                    truncated = _truncate_tool_result(inner)
+                    if truncated is not inner:
+                        event = {**event, "value": {**value, "event": truncated}}
+        event = {**event, "seq": self.next_seq}
 
         if event_type == "CUSTOM":
             name = event.get("name")
             value = event.get("value")
-            # Stamp the current content offset onto every TASK_SUBAGENT delegation
-            # so the UI can chronologically interleave the subagent card with the
-            # streaming text. Done before raw_events.append so the persisted event
-            # and the live subagent state both see the enriched value.
-            if name == "TASK_SUBAGENT" and isinstance(value, dict):
-                value = {**value, "content_offset": len(self.content)}
-                event = {**event, "value": value}
-            self.raw_events.append(event)
             if name == "PLAN_SNAPSHOT" and isinstance(value, dict):
                 self.plan = value
             elif name == "TASK_SUBAGENT":
                 self.push_subagent_event("tasks", value)
             elif name == "SUBAGENT_EVENT":
-                self.push_subagent_event("events", value)
-                # A subagent that emits __interrupt__ surfaces as
+                # A subagent that emits __interrupt__ surfaces BOTH as a
+                # top-level HITL_INTERRUPT (namespace in metadata) and as
                 # SUBAGENT_EVENT(value={..., event: CUSTOM HITL_INTERRUPT}).
-                # The top-level HITL_INTERRUPT branch below only fires for
-                # orchestrator-namespace interrupts, so without this the
-                # bridge would think the run finished while it's actually
-                # paused inside a subagent.
+                # register_interrupt dedupes by interrupt.id, so whichever
+                # envelope arrives second is a no-op and one approval resolves
+                # the whole identity.
                 if isinstance(value, dict):
                     inner = value.get("event")
                     if (
@@ -150,43 +254,41 @@ class InferenceRunRuntime:
                         and inner.get("type") == "CUSTOM"
                         and inner.get("name") == "HITL_INTERRUPT"
                     ):
-                        self.pending_interrupts += 1
+                        self.register_interrupt(inner.get("value"))
             elif name == "BEFORE_AGENT_EVENT":
                 self.push_subagent_event("beforeAgent", value)
             elif name == "HITL_INTERRUPT":
                 self.push_subagent_event("interrupts", value)
-                self.pending_interrupts += 1
-            return
-
-        if event_type == "THINKING_START":
+                self.register_interrupt(value)
+        elif event_type == "THINKING_START":
             self.thinking_start = time.perf_counter()
             self.thinking_end = 0.0
-            return
-
-        if event_type == "THINKING_TEXT_MESSAGE_CONTENT":
+        elif event_type == "THINKING_TEXT_MESSAGE_CONTENT":
             self.thoughts.append(str(event.get("delta") or ""))
-            return
-
-        if event_type == "TOOL_CALL_START":
-            name = str(event.get("toolCallName") or "tool")
-            self.thoughts.append(f"[tool] {name}")
-            return
-
-        if event_type == "THINKING_END":
+        elif event_type == "TOOL_CALL_START":
+            self.thoughts.append(f"[tool] {event.get('toolCallName') or 'tool'}")
+        elif event_type == "THINKING_END":
             self.thinking_end = time.perf_counter()
-            return
-
-        if event_type in {"TEXT_MESSAGE_CHUNK", "TEXT_MESSAGE_CONTENT"}:
+        elif event_type in _TEXT_DELTA_TYPES:
             self.content += str(event.get("delta") or "")
             if not self.closed_thinking_on_first_chunk:
                 self.closed_thinking_on_first_chunk = True
                 self.thinking_end = time.perf_counter()
+
+        self._append_raw(event)
+        return event
 
 
 class InferenceRunManager:
     def __init__(self) -> None:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
+        # Live run state exposed to WebSocket subscribers: a late subscriber
+        # gets one synthesized snapshot frame built from the in-process
+        # runtime (full coalesced event log) instead of replaying the Redis
+        # stream from 0, which makes MAXLEN trimming irrelevant.
+        self._runtimes: dict[str, InferenceRunRuntime] = {}
+        self._run_metas: dict[str, dict[str, Any]] = {}
         # HITL resume signalling: a per-run event flipped by the bridge /resume
         # route, plus the structured payload the route hands to the manager so
         # _do_resume can forward it to the agents-service /resume endpoint.
@@ -204,6 +306,8 @@ class InferenceRunManager:
         task.add_done_callback(lambda _: (
             self._tasks.pop(run_id, None),
             self._cancel_events.pop(run_id, None),
+            self._runtimes.pop(run_id, None),
+            self._run_metas.pop(run_id, None),
             self._resume_events.pop(run_id, None),
             self._resume_payloads.pop(run_id, None),
         ))
@@ -233,6 +337,42 @@ class InferenceRunManager:
         task = self._tasks.get(run_id)
         return bool(task and not task.done())
 
+    def build_live_snapshot(self, run_id: str) -> dict[str, Any] | None:
+        """Synthesize a snapshot frame for an in-flight run from the
+        in-process runtime: full coalesced event log + current run meta.
+
+        Returns None when this process doesn't own a live task for the run
+        (other replica, or the run already terminated) — callers fall back to
+        replaying the Redis stream from the beginning.
+        """
+        runtime = self._runtimes.get(run_id)
+        run_meta = self._run_metas.get(run_id)
+        if runtime is None or run_meta is None or not self.has_live_task(run_id):
+            return None
+        return {
+            "type": "snapshot",
+            "run": {
+                **run_meta,
+                "updatedAt": _now().isoformat(),
+                "pendingInterrupts": runtime.pending_interrupts,
+                "rawEvents": deepcopy(runtime.raw_events),
+            },
+            "message": None,
+            "summary": None,
+        }
+
+    async def publish_run_status(self, run: MessageTable, *, user_id: str) -> None:
+        """Publish a status-only delta frame (no events) so observers learn
+        about lifecycle flips that happen outside the stream loop, e.g. a
+        cancel request moving the run to ``cancelling``/``cancelled``.
+        """
+        frame = {
+            "type": "events",
+            "events": [],
+            "run": build_run_out_from_message(run, user_id=user_id).model_dump(mode="json", by_alias=False),
+        }
+        await self.publish(run.id, frame)
+
     async def publish(self, run_id: str, event: dict[str, Any]) -> None:
         """Append the event to the durable per-run Redis Stream.
 
@@ -253,6 +393,7 @@ class InferenceRunManager:
 
     async def _run(self, run_id: str, cancel_event: asyncio.Event) -> None:
         runtime = InferenceRunRuntime()
+        self._runtimes[run_id] = runtime
         try:
             async with SessionLocal() as db:
                 run = await _load_run(db, run_id)
@@ -288,15 +429,11 @@ class InferenceRunManager:
                     "enabledTools": run.streaming_enabled_tools or [],
                     "startedAt": started_at.isoformat(),
                     "updatedAt": started_at.isoformat(),
-                    "content": None,
-                    "thinking": None,
-                    "rawEvents": [],
-                    "plan": None,
-                    "subagents": None,
                     "errorMessage": None,
                     "completedAt": None,
                     "cancelRequestedAt": None,
                 }
+                self._run_metas[run_id] = run_meta
                 # Per-message agent: resolve from the run (the AI message) so a
                 # conversation can mix agents. Fall back to the conversation's
                 # agent for pre-migration runs whose message has no agent_id.
@@ -420,11 +557,26 @@ class InferenceRunManager:
                         await self._publish_snapshot(run_id, "terminal")
                         return
 
-                    # Resume requested. Decrement the pending counter for the
+                    # Resume requested. Resolve the pending identity for the
                     # interrupt we're now resolving and kick off /resume.
                     resume_payload = self._resume_payloads.pop(run_id, {}) or {}
-                    runtime.pending_interrupts = max(0, runtime.pending_interrupts - 1)
+                    runtime.resolve_interrupt(resume_payload.get("interrupt_id"))
                     resume_event.clear()
+                    # Persist the resolution in the event log itself so a
+                    # reloaded client doesn't re-show an answered approval —
+                    # resolution state must survive in the durable log, not in
+                    # client memory.
+                    marker = runtime.apply_event({
+                        "type": "CUSTOM",
+                        "name": "BRIDGE_HITL_RESOLVED",
+                        "value": {
+                            "interrupt_id": resume_payload.get("interrupt_id"),
+                            "decision": resume_payload.get("decision", "approve"),
+                            "reason": resume_payload.get("reason"),
+                        },
+                        "timestamp": int(time.time() * 1000),
+                    })
+                    await self._publish_delta(run_id, run_meta, runtime, [marker])
                     logger.info(
                         "inference_run_resume_dispatched",
                         "Dispatching resume to agents service",
@@ -466,16 +618,16 @@ class InferenceRunManager:
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes():
                     sse_buffer, events = _parse_sse_bytes(sse_buffer, chunk)
-                    has_events = False
+                    new_events: list[dict[str, Any]] = []
                     for event in events:
                         if event.get("type") == "RUN_ERROR":
+                            runtime.apply_event(event)
                             await _mark_run_failed(run_id, runtime, str(event.get("message") or "Agent stream failed."))
                             await self._publish_snapshot(run_id, "terminal")
                             return "failed"
-                        runtime.apply_event(event)
-                        has_events = True
-                    if has_events:
-                        await self._publish_runtime_event(run_id, run_meta, runtime)
+                        new_events.append(runtime.apply_event(event))
+                    if new_events:
+                        await self._publish_delta(run_id, run_meta, runtime, new_events)
         return "completed"
 
     async def _do_resume(
@@ -512,16 +664,16 @@ class InferenceRunManager:
                     response.raise_for_status()
                     async for chunk in response.aiter_bytes():
                         sse_buffer, events = _parse_sse_bytes(sse_buffer, chunk)
-                        has_events = False
+                        new_events: list[dict[str, Any]] = []
                         for event in events:
                             if event.get("type") == "RUN_ERROR":
+                                runtime.apply_event(event)
                                 await _mark_run_failed(run_id, runtime, str(event.get("message") or "Agent resume failed."))
                                 await self._publish_snapshot(run_id, "terminal")
                                 return "failed"
-                            runtime.apply_event(event)
-                            has_events = True
-                        if has_events:
-                            await self._publish_runtime_event(run_id, run_meta, runtime)
+                            new_events.append(runtime.apply_event(event))
+                        if new_events:
+                            await self._publish_delta(run_id, run_meta, runtime, new_events)
             except httpx.HTTPStatusError as exc:
                 # 409 → checkpoint missing (process restart or LRU eviction).
                 # Anything else upstream → fail the run with the status code in the message.
@@ -534,38 +686,29 @@ class InferenceRunManager:
                 return "failed"
         return "completed"
 
-    async def _publish_runtime_event(self, run_id: str, run_meta: dict[str, Any], runtime: InferenceRunRuntime) -> None:
-        assistant_message_id = run_meta["assistantMessageId"]
-        now_iso = _now().isoformat()
-        event = {
-            "type": "update",
+    async def _publish_delta(
+        self,
+        run_id: str,
+        run_meta: dict[str, Any],
+        runtime: InferenceRunRuntime,
+        events: list[dict[str, Any]],
+    ) -> None:
+        """Publish the new seq-stamped events of one upstream chunk.
+
+        Frames are O(chunk), not O(run): the client folds them into its
+        timeline incrementally and a late subscriber gets the synthesized
+        snapshot frame first, so nothing here needs to be cumulative.
+        """
+        frame = {
+            "type": "events",
             "run": {
                 **run_meta,
-                "content": runtime.content,
-                "thinking": deepcopy(runtime.thoughts) or None,
-                "rawEvents": deepcopy(runtime.raw_events) or [],
-                "plan": deepcopy(runtime.plan),
-                "subagents": deepcopy(runtime.subagents),
-                "updatedAt": now_iso,
+                "updatedAt": _now().isoformat(),
+                "pendingInterrupts": runtime.pending_interrupts,
             },
-            "message": {
-                "id": assistant_message_id,
-                "conversation_id": run_meta["conversationId"],
-                "parent_message_id": run_meta.get("parentMessageId"),
-                "sender": "ai",
-                "type": "text",
-                "content": runtime.content,
-                "thinking": deepcopy(runtime.thoughts) or None,
-                "raw_events": deepcopy(runtime.raw_events) or [],
-                "plan": deepcopy(runtime.plan),
-                "subagents": deepcopy(runtime.subagents),
-                "created_at": run_meta["startedAt"],
-                "updated_at": now_iso,
-                "attachments": [],
-            },
-            "summary": None,
+            "events": events,
         }
-        await self.publish(run_id, event)
+        await self.publish(run_id, frame)
 
     async def _publish_snapshot(self, run_id: str, event_type: str) -> None:
         async with SessionLocal() as db:
@@ -721,34 +864,6 @@ async def build_run_event_payload(db: AsyncSession, run_id: str, event_type: str
     }
 
 
-async def observe_run_events(run_id: str, since: str | None = None) -> AsyncIterator[bytes]:
-    """Yield SSE-formatted event frames for a run, sourced from the Redis stream.
-
-    Backwards-compatible legacy SSE endpoint. The WebSocket endpoint uses
-    :func:`stream_run_events` directly to send structured frames with sequence
-    IDs.
-
-    - If the run is already terminal: yields the DB snapshot once and returns.
-    - Otherwise: replays the Redis stream from ``since`` (or from the beginning
-      if not supplied), then live-tails until a terminal event is seen.
-    """
-    async with SessionLocal() as db:
-        run = await _load_run(db, run_id)
-        if run and run.streaming_status in TERMINAL_RUN_STATUSES:
-            snapshot = await build_run_event_payload(db, run_id, "snapshot")
-            if snapshot:
-                yield f"data: {json.dumps(snapshot, ensure_ascii=False)}\n\n".encode("utf-8")
-            return
-
-    cursor = since if since else "0"
-    async for _entry_id, event in event_log.read_since(
-        run_id,
-        cursor,
-        terminal_statuses=TERMINAL_RUN_STATUSES,
-    ):
-        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
-
-
 SNAPSHOT_SEQ_SENTINEL = "__snapshot__"
 
 
@@ -758,11 +873,17 @@ async def stream_run_events(
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Yield ``(seq, event)`` pairs from the run's stream for WebSocket consumers.
 
-    Behaviour mirrors :func:`observe_run_events` but exposes the entry ID as the
-    ``seq`` cursor so the client can resume after disconnect. For runs already
-    in a terminal state, a single frame is yielded with the
-    :data:`SNAPSHOT_SEQ_SENTINEL` marker; this seq must NOT be sent back as a
-    ``since`` cursor.
+    The entry ID is exposed as the ``seq`` cursor so the client can resume
+    after disconnect. Frames carrying the :data:`SNAPSHOT_SEQ_SENTINEL` seq
+    must NOT be sent back as a ``since`` cursor.
+
+    - Terminal run: one DB-built snapshot frame, then return.
+    - Fresh subscribe (``since`` is None) on an in-flight run owned by this
+      process: one synthesized live snapshot frame (full coalesced log), then
+      live-tail from the stream position captured *before* the snapshot was
+      built. Events published in between appear in both — the client's
+      per-event ``seq`` guard dedupes them.
+    - Reconnect (``since`` given) or no in-process runtime: plain Redis replay.
     """
     async with SessionLocal() as db:
         run = await _load_run(db, run_id)
@@ -772,11 +893,30 @@ async def stream_run_events(
                 yield (SNAPSHOT_SEQ_SENTINEL, snapshot)
             return
 
-    cursor = since if since else "0"
+    cursor = since
+    if cursor is None:
+        last_entry_id = await event_log.last_entry_id(run_id)
+        live_snapshot = inference_run_manager.build_live_snapshot(run_id)
+        if live_snapshot is not None:
+            yield (SNAPSHOT_SEQ_SENTINEL, live_snapshot)
+            cursor = last_entry_id
+
+    # Escape hatch for the tail loop: if the run reaches a terminal status in
+    # the DB but its terminal frame never flows through this consumer's XREAD
+    # (publish raced the subscribe, stream trimmed), the generator would block
+    # forever and the client would never get the closing terminal frame.
+    async def _run_went_terminal() -> bool:
+        async with SessionLocal() as idle_db:
+            status_value = await idle_db.scalar(
+                select(MessageTable.streaming_status).where(MessageTable.id == run_id)
+            )
+        return status_value is None or status_value in TERMINAL_RUN_STATUSES
+
     async for entry_id, event in event_log.read_since(
         run_id,
-        cursor,
+        cursor if cursor else "0",
         terminal_statuses=TERMINAL_RUN_STATUSES,
+        on_idle=_run_went_terminal,
     ):
         yield (entry_id, event)
 

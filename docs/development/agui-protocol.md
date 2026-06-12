@@ -1,6 +1,6 @@
 # AG-UI Protocol
 
-The AG-UI protocol is the event contract that flows between the agents service and every consumer of an inference stream. Agents produce a stream of typed Server-Sent Events; the dialogue bridge accumulates them into an `InferenceRunRuntime` snapshot; the client observes a higher-level `InferenceRunEvent` SSE feed that delivers the accumulated state on connect, then streams deltas. The protocol has a standard layer (run lifecycle, thinking, text, tool calls) and a custom-event layer (plan snapshots, sub-agent delegation, HITL interrupts) layered on top of the `CUSTOM` event type.
+The AG-UI protocol is the event contract that flows between the agents service and every consumer of an inference stream. Agents produce a stream of typed Server-Sent Events; the dialogue bridge keeps them as a seq-stamped, delta-coalesced **event log** (`raw_events`) and forwards them in per-chunk `events` frames; the client observes the run over WebSocket — one snapshot frame on subscribe (the full log so far), then deltas — and folds the raw events into the rendered timeline with a single pure reducer (`lib/timeline.ts`). The protocol has a standard layer (run lifecycle, thinking, text, tool calls) and a custom-event layer (plan snapshots, sub-agent delegation, HITL interrupts) layered on top of the `CUSTOM` event type.
 
 ---
 
@@ -10,15 +10,15 @@ The AG-UI protocol is the event contract that flows between the agents service a
 flowchart LR
     Agent["agents service\nLangGraph / DeepAgent"]
     Norm["AGUIStreamNormalizer\n(in agents service)"]
-    Bridge["dialogue_bridge\nInferenceRunRuntime"]
-    Client["Browser\nuseInferenceRuns"]
+    Bridge["dialogue_bridge\nInferenceRunRuntime (log keeper)"]
+    Client["Browser\nuseInferenceRuns + lib/timeline.ts"]
 
     Agent -->|"raw LangGraph chunks\n(messages + updates modes)"| Norm
     Norm -->|"AG-UI SSE frames\n(text/event-stream)"| Bridge
-    Bridge -->|"InferenceRunEvent SSE\n(snapshot → updates → terminal)"| Client
+    Bridge -->|"WS frames via Redis Stream\n(snapshot → events deltas → terminal)"| Client
 ```
 
-The normalizer and emitter live inside the agents service process. The bridge does not interpret individual AG-UI frames during streaming — it accumulates them via `apply_event()` and forwards the run-level snapshot to the UI.
+The normalizer and emitter live inside the agents service process. The bridge interprets each AG-UI frame just enough to keep the log and its flat aggregates (`apply_event()`): it seq-stamps every event, appends it to `raw_events` with delta coalescing, tracks `pending_interrupts`, and maintains `content`/`thoughts`/`plan`/`subagents` for previews, search, voice and export. **Timeline semantics live exclusively in the client reducer** — the bridge never ships a rendered shape, so renderer changes never require a bridge deploy.
 
 ---
 
@@ -32,14 +32,15 @@ sequenceDiagram
     participant IRM as InferenceRunRuntime
     participant UI as Browser
 
-    Bridge->>UI: InferenceRunEvent {type:"snapshot", run, message}
-    UI->>Bridge: GET /observe/{run_id} (SSE)
+    UI->>Bridge: WS subscribe {"type":"subscribe","since":null}
+    Bridge-->>UI: {"type":"snapshot","payload":{run incl. rawEvents so far}}
 
     Graph->>Norm: updates chunk {ai_msg: tool_calls}
     Norm->>Bridge: ToolCallStartEvent SSE
     Norm->>Bridge: ToolCallArgsEvent SSE
-    Bridge->>IRM: apply_event(TOOL_CALL_START) → append "[tool] name" to thoughts
-    Bridge->>UI: InferenceRunEvent {type:"update", run}
+    Bridge->>IRM: apply_event(...) → seq-stamp + append to raw_events
+    Bridge-->>UI: {"type":"events","run":<meta>,"events":[chunk events]}
+    UI->>UI: reduceTimelineEvents(timeline, events)
 
     Graph->>Norm: messages chunk {tool_message}
     Norm->>Bridge: ToolCallResultEvent SSE
@@ -47,11 +48,11 @@ sequenceDiagram
 
     Graph->>Norm: messages chunk {ai_msg: content delta}
     Norm->>Bridge: TextMessageChunkEvent SSE
-    Bridge->>IRM: apply_event(TEXT_MESSAGE_CHUNK) → content += delta
+    Bridge->>IRM: apply_event(TEXT_MESSAGE_CHUNK) → log append (coalesced) + content aggregate
 
     Graph-->>Norm: stream complete
-    Bridge->>IRM: _finish_run() — commit run + message to DB
-    Bridge->>UI: InferenceRunEvent {type:"terminal", run, message, summary}
+    Bridge->>IRM: _finish_run() — commit message incl. full raw_events to DB
+    Bridge-->>UI: {"type":"terminal","run","message","summary"}
 ```
 
 ---
@@ -101,6 +102,7 @@ All custom events share a wrapper shape:
 | `SUBAGENT_EVENT` | `SubAgentEvent` | An AG-UI event emitted by a sub-agent, wrapped with task context |
 | `BEFORE_AGENT_EVENT` | `BeforeAgentEvent` | Pre-execution message injected by `PatchToolCallsMiddleware` into a sub-agent |
 | `HITL_INTERRUPT` | `HITLInterruptEvent` | Graph paused — waiting for human input |
+| `BRIDGE_HITL_RESOLVED` | `{interrupt_id, decision, reason}` | **Bridge-synthesized** (never emitted by the agents service): appended to the event log when `/resume` is accepted, so resolution state survives reloads. The client reducer flips the matching approval's status on it. |
 
 #### `PlanSnapshot`
 
@@ -151,7 +153,7 @@ Every standard AG-UI event emitted by a sub-agent is re-emitted wrapped in this 
 
 ```json
 {
-  "thread_id": "conv-uuid",
+  "thread_id": "run-uuid (the assistant message id)",
   "interrupt": { "id": "<langgraph-interrupt-id>", "value": { "action_requests": [...], "review_configs": [...] } },
   "metadata": { "namespace": "researcher" }
 }
@@ -159,7 +161,7 @@ Every standard AG-UI event emitted by a sub-agent is re-emitted wrapped in this 
 
 When the LangGraph graph hits an `__interrupt__` node, no other events from that chunk are emitted — the HITL event is the entire output of that update cycle.
 
-**Dedup contract:** `thread_id` is the conversation-level LangGraph thread — every HITL in a conversation shares the same value, so it is **not** a unique identifier. The bridge and UI dedupe by `interrupt.id`, which is the LangGraph interrupt's unique id captured at the normalizer. Using `thread_id` as a dedup key silently drops every interrupt after the first; this is the bug fix that switched the chain to `interrupt.id`.
+**Dedup contract:** `thread_id` is the run-level LangGraph thread (`run.id`) — every HITL within a run shares the same value, so it is **not** a unique identifier. The bridge and UI dedupe by `interrupt.id`, which is the LangGraph interrupt's unique id captured at the normalizer. Using `thread_id` as a dedup key silently drops every interrupt after the first; this is the bug fix that switched the chain to `interrupt.id`.
 
 **Interrupt value shape (LangChain HITL middleware):** `value` is a serialized `HITLRequest` — `{"action_requests": [<one per pending tool call>], "review_configs": [...]}`. The agents-side `/resume` endpoint reads `action_requests` length from the checkpoint snapshot (not from the wire event) to size the resume `Command(resume={"decisions": [...]})` so its length matches what the middleware expects.
 
@@ -344,35 +346,39 @@ If binding fails (e.g., description mismatch due to whitespace), `_namespace_tas
 
 ---
 
-## Phase 6 — Bridge Accumulation
+## Phase 6 — Bridge Log Keeping
 
-The dialogue bridge never parses individual AG-UI frames during the live stream — it forwards raw bytes to the client. But it does parse frames via `_parse_sse_bytes()` for the `InferenceRunRuntime` accumulator, which builds the in-memory snapshot that becomes the terminal `MessageTable` row and the intermediate `InferenceRunEvent` updates.
+The dialogue bridge parses frames via `_parse_sse_bytes()` and feeds each event to `InferenceRunRuntime.apply_event()`. Its primary output is the **event log**: every event gets a monotonic `seq` stamp and is appended to `raw_events` — the durable per-run log that the client replays into the rendered timeline and that `_finish_run` persists onto the `MessageTable` row. The chunk's stamped events are then published as one `{"type":"events"}` delta frame to the Redis stream.
 
 `_parse_sse_bytes(buffer, chunk)` accumulates bytes into a string buffer, splits on `\n\n` (SSE frame boundary), parses lines starting with `data:`, JSON-decodes each payload, and filters to dicts that have a `"type"` field. The unparsed remainder is returned as the new buffer.
 
-`InferenceRunRuntime.apply_event()` dispatches on `event["type"]`:
+**Log coalescing** (`_append_raw` / `_coalesce_key`): consecutive `TEXT_MESSAGE_CHUNK`/`TEXT_MESSAGE_CONTENT` (same `messageId` + namespace) and `TOOL_CALL_ARGS` (same `toolCallId`) merge into one stored event with a concatenated `delta`, keeping the `seq` of the last merged wire event and gaining `timestampEnd`. `SUBAGENT_EVENT` envelopes merge one level down when they share a `task_id` with mergeable inner deltas. `THINKING_TEXT_MESSAGE_CONTENT` is **never coalesced** — each thinking event is one discrete thought step, and merging would make the hydrated view flatter than the live one. `TOOL_CALL_RESULT` content is truncated at `settings.inference.tool_result_max_chars` with a `"truncated": true` flag.
+
+Alongside the log, `apply_event()` maintains flat aggregates used for previews / search / voice / export and the pause decision — never for the timeline:
 
 ```mermaid
 flowchart TD
-    A["apply_event(event)"] --> B{event.type}
-    B -->|"CUSTOM"| C["append to raw_events\nthen switch on event.name"]
+    A["apply_event(event)"] --> S["seq-stamp event\n(+ truncate TOOL_CALL_RESULT)"]
+    S --> B{event.type}
+    B -->|"CUSTOM"| C{event.name}
     C -->|"PLAN_SNAPSHOT"| D["self.plan = value"]
     C -->|"TASK_SUBAGENT"| E["push_subagent_event('tasks', value)"]
-    C -->|"SUBAGENT_EVENT"| F["push_subagent_event('events', value)\nif inner is HITL_INTERRUPT: pending_interrupts += 1"]
+    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)"]
     C -->|"BEFORE_AGENT_EVENT"| G["push_subagent_event('beforeAgent', value)"]
-    C -->|"HITL_INTERRUPT"| H["push_subagent_event('interrupts', value)\npending_interrupts += 1"]
+    C -->|"HITL_INTERRUPT"| H["push_subagent_event('interrupts', value)\nregister_interrupt(value)"]
     B -->|"THINKING_START"| I["thinking_start = perf_counter()\nthinking_end = 0.0"]
     B -->|"THINKING_TEXT_MESSAGE_CONTENT"| J["thoughts.append(delta)"]
     B -->|"TOOL_CALL_START"| K["thoughts.append('[tool] {name}')"]
     B -->|"THINKING_END"| L["thinking_end = perf_counter()"]
     B -->|"TEXT_MESSAGE_CHUNK\nor TEXT_MESSAGE_CONTENT"| M["content += delta\nif not closed_thinking:\n  closed_thinking=True\n  thinking_end = perf_counter()"]
+    B & C --> Z["_append_raw(event)\n(coalesced log append)"]
 ```
 
-`thinking_duration_seconds()` computes the elapsed time from `first_event_ts` (or `thinking_start`) to `thinking_end` (or now). This value is stored on the `MessageTable` row as `thinkingTime` and rendered in the `ChainOfThought` component header.
+`thinking_duration_seconds()` computes the elapsed time from `first_event_ts` (or `thinking_start`) to `thinking_end` (or now). This value is stored on the `MessageTable` row as `thinkingTime` and used as the fallback duration label on legacy timelines.
 
-`push_subagent_event(key, value)` appends to the list at `self.subagents[key]`, creating the dict and the list lazily. The keys used are `"tasks"`, `"events"`, `"beforeAgent"`, and `"interrupts"`.
+`push_subagent_event(key, value)` appends to the list at `self.subagents[key]`, creating the dict and the list lazily. The keys used are `"tasks"`, `"beforeAgent"`, and `"interrupts"` — the old heavyweight `"events"` key is no longer accumulated, because the full log already carries every `SUBAGENT_EVENT` and the UI folds sub-agent panels from it.
 
-The `pending_interrupts` counter is what the inference manager polls after the upstream `/stream` call ends to decide whether the run is genuinely terminal or paused on a HITL checkpoint. Both top-level `HITL_INTERRUPT` events and ones wrapped inside `SUBAGENT_EVENT` increment it; the resume round-trip (see below) decrements it for each `Command(resume=...)` dispatched.
+`pending_interrupt_ids` (exposed as the `pending_interrupts` count) is what the inference manager inspects after the upstream `/stream` call ends to decide whether the run is genuinely terminal or paused on a HITL checkpoint. It is a set of **interrupt identities** keyed by `interrupt.id`, never a bare counter: a sub-agent interrupt is delivered twice (top-level `HITL_INTERRUPT` with namespace metadata + the same event wrapped in `SUBAGENT_EVENT`), so `register_interrupt` makes the second envelope a no-op, and each resume round-trip (see below) removes exactly one identity — the payload's `interrupt_id`, or the oldest pending entry as a fallback. A counter here double-counts every sub-agent pause, drifts upward across resume legs, and leaves the bridge waiting for a resume after the run has actually finished.
 
 ---
 
@@ -398,6 +404,7 @@ sequenceDiagram
     Bridge-->>UI: 200 InferenceRunOut (snapshot)
 
     Task->>Task: pop payload; pending_interrupts -= 1
+    Task->>Redis: XADD events frame carrying CUSTOM BRIDGE_HITL_RESOLVED<br/>(also appended to raw_events — resolution survives reloads)
     Task->>Agents: POST /agents/{slug}/resume<br/>AgentResumeRequest{thread_id, interrupt_id, decision, value, reason}
     Agents->>Agents: has_checkpointer(thread_id)?
     Agents->>Agents: rehydrate cached InMemorySaver
@@ -440,26 +447,27 @@ The UI uses `useInferenceRuns` to manage the full lifecycle: starting runs, obse
 
 ### Run Observation
 
-`connectInferenceWebSocket(userId, runId, callback, signal)` opens a WebSocket to `/v1/inference/runs/{userId}/{runId}/ws` and sends a `{"type":"subscribe","since":<lastSeenSeq>|null}` frame on open. Every server frame is normalized into an `InferenceRunEvent` shape and passed to `applyRunEvent()`:
+`connectInferenceWebSocket(userId, runId, callback, signal)` opens a WebSocket to `/v1/inference/runs/{userId}/{runId}/ws` and sends a `{"type":"subscribe","since":<lastSeenSeq>|null}` frame on open. Every server frame is normalized into an `InferenceRunEvent` shape and passed to `applyRunEvent()`, which merges it via `mergeRunEvent()`:
 
 ```mermaid
 flowchart TD
     A["WS frame arrives"] --> A2{"frame.type"}
     A2 -->|"event / snapshot / terminal"| A3["Map to InferenceRunEvent"]
     A3 --> B{"event.type"}
-    B -->|"snapshot"| C["Initial state — run + message + summary (terminal path or first connect)"]
-    B -->|"update"| D["Partial update during live stream"]
+    B -->|"snapshot"| C["Full state — foldTimeline(run.rawEvents)\n(live snapshot or terminal/DB path)"]
+    B -->|"events"| D["Incremental — reduceTimelineEvents(\nrun.timeline, frame.events) + merge slim meta"]
+    B -->|"update (client-local REST merge)"| D2["Meta-only merge, timeline preserved"]
     B -->|"terminal"| E["Final state — run + message + summary"]
-    C & D & E --> F["Determine active: run.status in active set?"]
-    F -->|"active"| G["runsByConversation[conv_id] = run"]
+    C & D & D2 & E --> F["Determine active: run.status in active set?"]
+    F -->|"active"| G["runsByConversation[conv_id] = run (with timeline)"]
     F -->|"not active"| H["delete runsByConversation[conv_id]"]
     G & H --> I["Update conversation list flags\n(activeRunId, isStreaming)"]
-    I --> J["Patch current conversation detail\n(merge summary + run state)"]
+    I --> J["Patch message into conversation detail\n(snapshot/terminal frames only)"]
     J --> K["If run for current conversation:\nupdate ThinkingState"]
     K --> L["If not active:\nabort controller → close WS"]
 ```
 
-The `ThinkingState` update inside `applyRunEvent` uses `message?.thinking ?? run.thinking ?? []` — it prefers the message-level thinking array (final, persisted) over the run-level snapshot (live). This ensures the CoT display shows the complete thought sequence after the run finishes.
+Per-event `seq` numbers (stamped by the bridge, distinct from the Redis entry-id `seq` on the WS envelope) make the fold idempotent: events already folded — e.g. the overlap between the live snapshot and the first deltas — are skipped via `timeline.lastSeq`. The `ThinkingState` update derives its flat thought strings from the folded timeline (`timelineThoughtStrings`), falling back to `message.thinking` on terminal frames.
 
 Every successful frame updates `lastSeenInferenceSeq[runId]` with the server-assigned `seq` (Redis stream ID). On any non-terminal close, the client reconnects with exponential backoff `[250, 500, 1000, 2000, 5000]` ms, resending `subscribe` with the latest cursor — missed events replay from Redis (1 h post-terminal TTL). Close codes `4401` / `4403` / `4404` are surfaced as `PermanentInferenceWebSocketError` without retry; the toast surface only fires after 5 sustained transient failures.
 
@@ -480,7 +488,7 @@ sequenceDiagram
     Bridge->>Redis: XREAD BLOCK STREAMS inference:run:{id}:events 0
     Redis-->>Bridge: (seq, payload)
     Bridge-->>UI: {"type":"event","seq":"...","payload":...}
-    Bridge-->>UI: {"type":"terminal"} → close 1000
+    Bridge-->>UI: {"type":"terminal","payload":<final state>} → close 1000
     UI->>UI: abort controller — stop observing
 ```
 
@@ -492,41 +500,33 @@ sequenceDiagram
 
 ---
 
-## Phase 8 — UI Rendering
+## Phase 8 — UI Rendering: the Run Timeline
 
-### Chain of Thought
+The AI message body is the **derived run timeline**: a temporal block sequence `[Thinking, Content, Subagent, Content, Thinking, …]` folded from the raw event log by `lib/timeline.ts`. The same reducer runs incrementally on live `events` frames (`reduceTimelineEvents`) and in batch on hydration (`foldTimeline` via the memoized `useRunTimeline` hook, keyed to the message's final event state) — live and hydrated views cannot drift because they are the same function. Nothing derived is ever persisted.
 
-`ChainOfThought.tsx` renders the `message.thinking` array as a collapsible step list. Each entry is classified as either a text thought or a tool invocation by testing against `/^\s*\[tool\]\s*/i`. Tool steps render with a `Wrench` icon; text steps render with a numbered label.
+Block semantics (`reduceTimelineEvents`):
 
-`buildCoTSteps(thoughts, {activeIndex, isComplete})` assigns a status to each step:
-
-| Condition | Status |
+| Event | Effect on blocks |
 | --- | --- |
-| `isComplete` | `"complete"` for all steps |
-| `index < activeIndex` | `"complete"` |
-| `index === activeIndex` | `"active"` |
-| `index > activeIndex` | `"pending"` |
+| `THINKING_START` / `THINKING_TEXT_MESSAGE_CONTENT` | Opens (or appends a thought item to) the open Thinking block; thinking after content starts a **new** Thinking block — that's the alternation |
+| `TOOL_CALL_*` | Tool item inside the open Thinking block (implicitly opening one — the deep-agent path never emits `THINKING_START`); lifecycle maps to `input-streaming → input-available → output-available`, durations from event timestamps |
+| `TEXT_MESSAGE_CHUNK`/`CONTENT` | Closes the open Thinking block, appends to the open Content block |
+| `TASK_SUBAGENT` / `SUBAGENT_EVENT` | Opens a Subagent block at its log position (closing open blocks) and folds the inner events into the panel's own nested mini-timeline |
+| `HITL_INTERRUPT` | Binds the approval onto the stalled tool item it gates (`tool.approval`, nearest resultless tool in the open Thinking block, name-matched via the action request) + entry in `timeline.interrupts`; a standalone approval item is the fallback for interrupts that don't gate a tool call |
+| `BRIDGE_HITL_RESOLVED` | Flips the matching approval to approved/rejected. On approve it arms a single-shot `pendingRetool` marker: the resumed graph re-executes the tool under a **fresh `toolCallId`**, and the next matching `TOOL_CALL_START` merges into the stalled item (args re-stream, result lands there) instead of creating a duplicate step |
+| `PLAN_SNAPSHOT` | Replaces `timeline.plan` (not a block) |
 
-When `isComplete=true`, a final "Completed" step with a `CheckCircle2` icon is appended. The component header reads `"Thought for {duration}"` when `message.thinkingTime` is present, computed by `formatThinkingDuration()` which produces `"1m 23s"` or `"45s"` format.
+The **Done sentinel** (`finalizeTimeline`) closes all open blocks and stamps `terminal`/`terminalStatus` — it fires **only** from a terminal run status (completed/cancelled/failed), never from `THINKING_END`, so a HITL-paused run keeps an open, done-less timeline. Rendering lives in `message_parts/TimelineBlocks.tsx` behind `AgentRunTimeline.tsx`: the Thinking block interior is a claude.ai-style vertical step flow (icon column + connector line), where thoughts are dot steps and each tool call is one compact clickable row that expands inline to its Parameters/Result code blocks. A HITL-gated tool carries its whole approval lifecycle on that one row — amber "Needs approval" while pending (the composer takeover is the approval surface), an emerald "Approved" trace plus the result once re-executed, or an orange "Rejected" with the reason (the tool never ran). Closed Thinking blocks end with a green Done step; the run's last block carries the terminal status (Done/Stopped/Failed). Once terminal, the plan card and sub-agent panels leave the body for two AI-action-bar buttons that open right-side panels (`RunSidePanels.tsx`); the pending HITL approval takes over the composer (`HitlInputTakeover.tsx`).
+
+Legacy messages persisted before the full-log change carry CUSTOM-only logs; `foldTimeline` detects the absence of text/thinking/tool events and reconstructs a coarse `[Thinking, …subagents…, Content]` timeline from the aggregated `content`/`thinking` columns instead.
 
 ### Plan Snapshot
 
-The `message.plan` field (type `PlanSnapshot`) drives a plan card in the message. Each `PlanItem` has a `content` string and a `status` that maps to a visual indicator (pending / in-progress spinner / completed checkmark). The plan is updated in real time as `PLAN_SNAPSHOT` events arrive — `onPlanSnapshot` in the inference handler calls `resetActivePlan()` on new snapshots and rebuilds the display.
+`timeline.plan` (type `PlanSnapshot`) drives the live plan card above the composer while the run streams and the post-run Plan side panel. Each `PlanItem` has a `content` string and a `status` that maps to a visual indicator (pending / in-progress spinner / completed checkmark); each `PLAN_SNAPSHOT` event wholesale-replaces the plan.
 
 ### Sub-Agent Events
 
-`message.subagents` is a dict with four optional lists:
-
-```typescript
-{
-  tasks: TaskSubAgentEvent[]     // delegation declarations
-  events: SubAgentEvent[]        // wrapped sub-agent AG-UI events
-  beforeAgent: BeforeAgentEvent[] // pre-execution messages
-  interrupts: HITLInterruptEvent[] // paused-waiting-for-human
-}
-```
-
-The UI uses `tasks` to render task cards (one per sub-agent invocation) and `events` to populate each card's inner event stream by filtering on `task_id`.
+Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` events in the log — each delegation becomes a Subagent block whose nested blocks reuse the same Thinking/Content primitives. The persisted `message.subagents` dict (`tasks` / `beforeAgent` / `interrupts`) remains as a flat aggregate for non-timeline consumers; the old `events` key is no longer written.
 
 ---
 
@@ -536,7 +536,7 @@ The UI uses `tasks` to render task cards (one per sub-agent invocation) and `eve
 
 - **`TEXT_MESSAGE_CONTENT` and `TEXT_MESSAGE_CHUNK` both accumulate to `content`.** The bridge accumulates both event types via `content += delta`. A well-behaved agent emits one or the other, not both — but the accumulator does not prevent double-counting if a buggy agent emits both for the same text.
 
-- **The `message_id` in `TEXT_MESSAGE_START` is the `thread_id`, not a per-message UUID.** `AGUIStreamNormalizer.thread_id` is the LangGraph `configurable.thread_id`, which equals the `conversation_id`. All text events in one run share the same `message_id`. Consumers that expect a unique per-message ID will be surprised.
+- **The `message_id` in `TEXT_MESSAGE_START` is the `thread_id`, not a per-message UUID.** `AGUIStreamNormalizer.thread_id` is the LangGraph `configurable.thread_id`, which equals the run id (the assistant message id). All text events in one run share the same `message_id`. Consumers that expect a unique per-message ID will be surprised; the bridge's log coalescing leans on it as part of the text merge key.
 
 - **`TOOL_CALL_ARGS` serializes args as a JSON string, not an object.** The `delta` field in `ToolCallArgsEvent` is `json.dumps({"name": name, "args": args or {}})`. Clients must JSON-parse the `delta` field to access the arguments dict.
 
@@ -558,24 +558,27 @@ The UI uses `tasks` to render task cards (one per sub-agent invocation) and `eve
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Custom event type constants | [src/agents/runtime/protocols/agui/events.py](../../src/agents/runtime/protocols/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, etc. |
-| Custom event Pydantic models | [src/agents/runtime/protocols/agui/events.py](../../src/agents/runtime/protocols/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent` |
-| AG-UI event emission | [src/agents/runtime/protocols/agui/emitter.py](../../src/agents/runtime/protocols/agui/emitter.py) | `AGUIEmitter` — all public methods |
-| Namespace attachment | [src/agents/runtime/protocols/agui/emitter.py](../../src/agents/runtime/protocols/agui/emitter.py) | `_attach_namespace()` |
-| LangGraph → AG-UI translation | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
-| Envelope unwrapping | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `_unwrap_envelope()` |
-| Messages mode handling | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `_handle_messages_payload()` |
-| Updates mode handling | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `_handle_updates_payload()` |
-| Tool call correlation sets | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `_pending_tool_call_ids`, `_started_tool_call_ids`, `_finished_tool_call_ids`, `_ignored_tool_call_ids` |
-| Plan snapshot deduplication | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `_fingerprint()`, `_last_plan_fingerprint` |
-| Sub-agent namespace binding | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `_maybe_bind_namespace()`, `_resolve_namespace_label()` |
-| Sub-agent event wrapping | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `_wrap_subagent_events_if_needed()` |
-| Protocol package exports | [src/agents/runtime/protocols/agui/\_\_init\_\_.py](../../src/agents/runtime/protocols/agui/__init__.py) | All exported symbols |
-| Bridge event accumulation | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()` |
+| Custom event type constants | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, etc. |
+| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent` |
+| AG-UI event emission | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `AGUIEmitter` — all public methods |
+| Namespace attachment | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `_attach_namespace()` |
+| LangGraph → AG-UI translation | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
+| Envelope unwrapping | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_unwrap_envelope()` |
+| Messages mode handling | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_handle_messages_payload()` |
+| Updates mode handling | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_handle_updates_payload()` |
+| Tool call correlation sets | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_pending_tool_call_ids`, `_started_tool_call_ids`, `_finished_tool_call_ids`, `_ignored_tool_call_ids` |
+| Plan snapshot deduplication | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_fingerprint()`, `_last_plan_fingerprint` |
+| Sub-agent namespace binding | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_maybe_bind_namespace()`, `_resolve_namespace_label()` |
+| Sub-agent event wrapping | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_wrap_subagent_events_if_needed()` |
+| Protocol package exports | [src/agents/runtime/agui/\_\_init\_\_.py](../../src/agents/runtime/agui/__init__.py) | All exported symbols |
+| Bridge log keeping | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()`, `_append_raw()`, `_coalesce_key()`, `_truncate_tool_result()` |
+| Delta frame publishing | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._publish_delta()`, `build_live_snapshot()` |
 | Thinking duration calculation | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `thinking_duration_seconds()` |
-| SSE frame parsing | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `_parse_sse_bytes()` |
-| Client-side type definitions | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `InferenceRun`, `InferenceRunEvent`, `MessageOut`, `ThinkingState` |
+| SSE frame parsing | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_parse_sse_bytes()` |
+| Client-side type definitions | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `InferenceRun`, `InferenceRunEvent`, `MessageOut`, `RunTimeline`, `TimelineBlock`, `ThinkingState` |
 | Client AG-UI Zod schemas | [src/agentic_ui/src/lib/agui.ts](../../src/agentic_ui/src/lib/agui.ts) | `PlanSnapshotSchema`, `HITLInterruptPayloadSchema`, `CustomAguiEventSchema` |
-| Run observation and lifecycle | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `applyRunEvent()`, `observeRunId()`, `beginRun()`, `stopRun()` |
+| Timeline reducer | [src/agentic_ui/src/lib/timeline.ts](../../src/agentic_ui/src/lib/timeline.ts) | `reduceTimelineEvents()`, `foldTimeline()`, `finalizeTimeline()`, `pendingTimelineInterrupts()` |
+| Run observation and lifecycle | [src/agentic_ui/src/hooks/useInferenceRuns.ts](../../src/agentic_ui/src/hooks/useInferenceRuns.ts) | `applyRunEvent()`, `mergeRunEvent()`, `observeRunId()`, `beginRun()`, `stopRun()` |
+| Settled-message timeline | [src/agentic_ui/src/hooks/useRunTimeline.ts](../../src/agentic_ui/src/hooks/useRunTimeline.ts) | `useRunTimeline()` memoized fold |
 | Inference runtime | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `handleSendMessage()`, `handleStopStreaming()`, edit/retry/shared continue start requests |
-| Chain of thought rendering | [src/agentic_ui/src/components/chat/message_parts/ChainOfThought.tsx](../../src/agentic_ui/src/components/chat/message_parts/ChainOfThought.tsx) | `buildCoTSteps()`, `CoT` component |
+| Timeline rendering | [src/agentic_ui/src/components/chat/message_parts/TimelineBlocks.tsx](../../src/agentic_ui/src/components/chat/message_parts/TimelineBlocks.tsx) | `TimelineBlocks`, `SubagentPanel`, Done sentinel, tool cards |

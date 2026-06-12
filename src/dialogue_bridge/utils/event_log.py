@@ -1,8 +1,9 @@
 """Per-run append-only event log backed by Redis Streams.
 
 Each inference run gets its own stream at ``inference:run:{run_id}:events``.
-Entries store a single ``payload`` field holding the JSON-serialized event.
-The stream is capped at a configurable MAXLEN (default 5000) and gets an
+Entries store a single ``payload`` field holding the JSON-serialized frame —
+one ``events`` delta frame per upstream SSE chunk, plus the terminal frame.
+The stream is capped at a configurable MAXLEN (default 20000) and gets an
 EXPIRE applied once the run reaches a terminal state, so reconnecting
 clients within the TTL window can still replay missed events from any
 ``since`` cursor.
@@ -12,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 import redis.asyncio as aioredis
 
@@ -73,14 +74,18 @@ class RedisEventLog:
         *,
         terminal_statuses: set[str],
         cancel_event: asyncio.Event | None = None,
+        on_idle: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         """Yield ``(entry_id, event)`` pairs from the run's stream.
 
         - ``since`` is the last-seen entry ID. ``None`` or empty starts from
           the beginning of the stream (replay full backlog).
         - Blocks on ``XREAD BLOCK`` waiting for new events. Returns when a
-          terminal event is seen (status in ``terminal_statuses``) or when
-          ``cancel_event`` is set.
+          terminal event is seen (status in ``terminal_statuses``), when
+          ``cancel_event`` is set, or when ``on_idle`` returns True after an
+          XREAD timeout — the escape hatch for a run that went terminal
+          without its terminal frame reaching this consumer (publish racing
+          the subscribe, trimmed stream). Without it the loop blocks forever.
         """
         client = await self._get_client()
         key = _stream_key(run_id)
@@ -95,6 +100,8 @@ class RedisEventLog:
             )
             if not result:
                 # XREAD timed out without new events; loop and check cancel.
+                if on_idle is not None and await on_idle():
+                    return
                 continue
             for _stream_name, entries in result:
                 for entry_id, fields in entries:
@@ -117,10 +124,19 @@ class RedisEventLog:
                     if run_status in terminal_statuses:
                         return
 
+    async def last_entry_id(self, run_id: str) -> str | None:
+        """Return the newest entry ID in the run's stream, or None when the
+        stream is empty/absent. Used to anchor the live-tail cursor before a
+        synthesized snapshot frame is built, so no event can fall in a gap.
+        """
+        client = await self._get_client()
+        entries = await client.xrevrange(_stream_key(run_id), count=1)
+        return entries[0][0] if entries else None
+
     async def mark_terminal(self, run_id: str) -> None:
         """Apply an EXPIRE to the stream so reconnects within the TTL window
         can still replay events. After expiry Redis drops the stream entirely;
-        the durable record is kept in PostgreSQL (``InferenceRunTable``).
+        the durable record is the assistant message row in PostgreSQL.
         """
         client = await self._get_client()
         await client.expire(_stream_key(run_id), settings.redis.terminal_ttl_seconds)

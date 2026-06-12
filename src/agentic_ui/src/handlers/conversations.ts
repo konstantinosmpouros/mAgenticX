@@ -98,12 +98,6 @@ type ConversationsCtx = {
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onSearch?: () => void;
   persistUIState: () => void;
-  // Overlay the in-memory active-run state onto a freshly-fetched
-  // conversation detail. Without this overlay, navigating away from a
-  // mid-stream (especially HITL-paused) conversation and back loses the
-  // accumulated content/raw_events because the DB row is only finalized at
-  // the end of the run; the modal needs the live raw_events to surface.
-  hydrateConversationDetailFromLiveRun?: (detail: ConversationDetail | null) => ConversationDetail | null;
   // Compute branchSelections that puts the active run's path in view. The
   // streaming assistant message can be on a non-default branch (e.g. user
   // retried earlier, so the run lives under a sibling). Without this the
@@ -160,7 +154,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setCurrentMessage,
     toast,
     persistUIState,
-    hydrateConversationDetailFromLiveRun,
     deriveBranchSelectionsForActiveRun,
   } = ctx;
 
@@ -213,14 +206,10 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
 
     setTimeout(async () => {
       try {
-        const conversationDetail = await getConversationDetail(userId, conversation.id);
-        // The DB row of a mid-stream assistant message is empty until
-        // _finish_run writes the final state, so overlay the in-memory run
-        // state before mounting. Without this, a HITL-paused run looks like
-        // a blank message with no actionable modal until the next event
-        // (which never comes while paused) arrives.
-        const hydratedDetail =
-          hydrateConversationDetailFromLiveRun?.(conversationDetail) ?? conversationDetail;
+        // A mid-stream assistant message's DB row is an empty placeholder;
+        // its live state renders from the run timeline kept by
+        // useInferenceRuns, so the fetched detail mounts as-is.
+        const hydratedDetail = await getConversationDetail(userId, conversation.id);
         // Snap branch selections onto the active run's path so the running
         // (and possibly HITL-paused) assistant message is the visible branch.
         // Stale persisted selections from earlier viewing would otherwise

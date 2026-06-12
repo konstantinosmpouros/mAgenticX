@@ -1,9 +1,7 @@
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import { Check, Loader2, ShieldAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { resolveOverlayHost } from "@/lib/overlay-host";
 import { cn } from "@/lib/utils";
 
 export type HitlInterrupt = {
@@ -22,11 +20,14 @@ export type HitlInterrupt = {
 type HitlInterruptCardProps = {
   interrupt: HitlInterrupt;
   resolved: boolean;
+  // How the interrupt was resolved, when the event log knows it. Falls back
+  // to a neutral "Decision sent" when only the client-side marker is set.
+  resolution?: "approved" | "rejected" | null;
   onResolve: (decision: "approve" | "reject", reason?: string) => Promise<void>;
   className?: string;
 };
 
-function summariseInterrupt(content: unknown): string {
+export function summariseInterrupt(content: unknown): string {
   if (typeof content === "string") return content.trim();
   if (content && typeof content === "object") {
     const obj = content as Record<string, unknown>;
@@ -41,11 +42,11 @@ function summariseInterrupt(content: unknown): string {
   return content === null || content === undefined ? "" : String(content);
 }
 
-// The card is the smallest reusable unit. The Test.tsx demo renders this
-// directly with a mock resolver; production wraps it in HitlInterruptModal
-// (below) and only ever passes `resolved={false}` because the modal filters
-// out resolved interrupts before rendering.
-export function HitlInterruptCard({ interrupt, resolved, onResolve, className }: HitlInterruptCardProps) {
+// The card is the smallest reusable unit: it renders inline inside the
+// Thinking block of the run timeline (and in the Test.tsx demo). The pending
+// approval also surfaces as the input-bar takeover (HitlInputTakeover), which
+// drives the same resolver.
+export function HitlInterruptCard({ interrupt, resolved, resolution, onResolve, className }: HitlInterruptCardProps) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -65,14 +66,22 @@ export function HitlInterruptCard({ interrupt, resolved, onResolve, className }:
   };
 
   if (resolved) {
+    const isRejected = resolution === "rejected";
     return (
       <div className={cn(
-        "flex items-center gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-[12px] text-emerald-500",
+        "flex items-center gap-2 rounded-2xl border px-3 py-2 text-[12px]",
+        isRejected
+          ? "border-orange-500/25 bg-orange-500/[0.06] text-orange-500"
+          : "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-500",
         className,
       )}>
-        <Check className="h-3.5 w-3.5" />
-        <span className="font-medium">Decision sent</span>
-        <span className="truncate text-emerald-500/70">· thread {interrupt.threadId}</span>
+        {isRejected ? <X className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+        <span className="font-medium">
+          {resolution === "approved" ? "Approved" : isRejected ? "Rejected" : "Decision sent"}
+        </span>
+        <span className={cn("truncate", isRejected ? "text-orange-500/70" : "text-emerald-500/70")}>
+          · thread {interrupt.threadId}
+        </span>
       </div>
     );
   }
@@ -142,60 +151,3 @@ export function HitlInterruptCard({ interrupt, resolved, onResolve, className }:
   );
 }
 
-// --------------------------------------------------------------------------
-// HitlInterruptModal — chat-area-scoped popup wrapping a stack of cards
-// --------------------------------------------------------------------------
-
-type HitlInterruptModalProps = {
-  interrupts: HitlInterrupt[];
-  isResolved: (interruptId: string) => boolean;
-  onResolve: (
-    interrupt: HitlInterrupt,
-    decision: "approve" | "reject",
-    reason?: string,
-  ) => Promise<void>;
-};
-
-// Portals into the chat-area overlay host (same trick the PlanningContainer
-// and SubagentContainer modals use) so it blocks the conversation pane
-// without covering the sidebar or chat header. No close button, no backdrop
-// click-to-dismiss, no ESC handler — the only way past it is to approve or
-// reject every pending interrupt. As each card is resolved (after the bridge
-// HTTP call confirms) it drops out of the filtered list, and once nothing is
-// pending the modal returns null.
-export function HitlInterruptModal({ interrupts, isResolved, onResolve }: HitlInterruptModalProps) {
-  const pending = interrupts.filter((interrupt) => !isResolved(interrupt.interruptId));
-  if (pending.length === 0) return null;
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div className="absolute inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
-      <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-amber-500/50 bg-card shadow-2xl">
-        <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/[0.18] text-amber-500">
-            <ShieldAlert className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">Action required</h3>
-            <p className="text-[10.5px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-              {pending.length} interrupt{pending.length === 1 ? "" : "s"} awaiting your decision
-            </p>
-          </div>
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]">
-          {pending.map((interrupt) => (
-            <HitlInterruptCard
-              key={interrupt.interruptId}
-              interrupt={interrupt}
-              resolved={false}
-              onResolve={(decision, reason) => onResolve(interrupt, decision, reason)}
-              className="shadow-none"
-            />
-          ))}
-        </div>
-      </div>
-    </div>,
-    resolveOverlayHost(),
-  );
-}

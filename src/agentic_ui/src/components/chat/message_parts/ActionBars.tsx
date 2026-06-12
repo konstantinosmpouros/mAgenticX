@@ -1,6 +1,6 @@
 ﻿import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Copy, Check, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
+import { Bot, Copy, Check, ListTodo, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { motion, useAnimationControls } from "framer-motion";
 import type { TargetAndTransition, Transition } from "framer-motion";
@@ -57,6 +57,11 @@ type AIActionBarProps = BaseActionBarProps & {
   AgentIcon?: LucideIcon;
   timestampLabel?: string;
   conversationIsReported?: boolean;
+  // Post-run timeline panels: present only once the run is terminal and the
+  // plan card / sub-agent panels have collapsed out of the message body.
+  onOpenPlan?: () => void;
+  onOpenSubagents?: () => void;
+  subagentCount?: number;
 };
 
 type UserActionBarProps = BaseActionBarProps & {
@@ -148,6 +153,9 @@ export const AIActionBar = ({
   AgentIcon,
   timestampLabel,
   conversationIsReported = false,
+  onOpenPlan,
+  onOpenSubagents,
+  subagentCount = 0,
 }: AIActionBarProps) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const likePulse = useAnimationControls();
@@ -388,6 +396,75 @@ export const AIActionBar = ({
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
+        </div>
+      )}
+
+      {onOpenPlan && (
+        <div className="mt-1">
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="
+                  h-8 w-8 text-muted-foreground
+                  hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                  active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                  focus:ring-0 focus-visible:ring-0 transition-colors
+                "
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onOpenPlan}
+                aria-label="Open agent plan"
+              >
+                <ListTodo className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="center"
+              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+            >
+              <p>Plan</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+
+      {onOpenSubagents && (
+        <div className="mt-1">
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="
+                  relative h-8 w-8 text-muted-foreground
+                  hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
+                  active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
+                  focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
+                  focus:ring-0 focus-visible:ring-0 transition-colors
+                "
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onOpenSubagents}
+                aria-label={`Open sub-agent activity (${subagentCount} delegated)`}
+              >
+                <Bot className="h-4 w-4" />
+                {subagentCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-semibold leading-none text-primary-foreground">
+                    {subagentCount > 9 ? "9+" : subagentCount}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="center"
+              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+            >
+              <p>Sub-agents</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
       )}
 

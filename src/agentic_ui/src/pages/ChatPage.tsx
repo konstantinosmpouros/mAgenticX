@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,7 +19,6 @@ import type {
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/lib/types";
-import type { PlanSnapshot } from "@/lib/agui";
 import { usePreferencesHandlers } from "@/handlers/preferences";
 import { useProfilePanel } from "@/hooks/useProfilePanel";
 import {
@@ -83,6 +82,8 @@ import ShareConversationDialog from "@/components/chat/SharePanel";
 import ChatBody from "@/components/chat/ChatBody";
 import VoiceModeBody from "@/components/chat/VoiceModeBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
+import { HitlInputTakeover } from "@/components/chat/HitlInputTakeover";
+import { pendingTimelineInterrupts } from "@/lib/timeline";
 import SearchPanel from "@/components/chat/SearchPanel";
 import { Loader } from "@/components/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/lib/uiStateStorage";
@@ -244,7 +245,6 @@ export function ChatInterface({
     stopRun: stopInferenceRun,
     resumeRun: resumeInferenceRunHandler,
     isInterruptResolved,
-    hydrateConversationDetailFromLiveRun,
     deriveBranchSelectionsForActiveRun,
     getRunForConversation,
     isConversationStreaming,
@@ -782,12 +782,8 @@ export function ChatInterface({
     setLoadingConversation(true);
     (async () => {
       try {
-        const detail = await getConversationDetail(userId, lastConversationId);
+        const hydratedDetail = await getConversationDetail(userId, lastConversationId);
         if (cancelled) return;
-        // Overlay any in-memory active-run state so a paused HITL run that
-        // was already being observed by useInferenceRuns shows the modal
-        // immediately on restore, not only after the next WS frame.
-        const hydratedDetail = hydrateConversationDetailFromLiveRun(detail) ?? detail;
         // Pin branch selections to the running message's path so a non-
         // default branch (e.g. retried message) doesn't hide the modal.
         const activeRunBranchSelections = deriveBranchSelectionsForActiveRun(hydratedDetail);
@@ -1069,7 +1065,6 @@ export function ChatInterface({
     archivedPageSize: ARCHIVED_CONV_PAGE_SIZE,
     onSearch: openSearchPanel,
     persistUIState: requestPersist,
-    hydrateConversationDetailFromLiveRun,
     deriveBranchSelectionsForActiveRun,
   });
 
@@ -1134,11 +1129,13 @@ export function ChatInterface({
   });
   const defaultSearchResults = buildDefaultConversationSearchResults(conversations);
 
-  // Handle thinking toggle
-  const toggleThinking = (messageId: string) => {
+  // Handle thinking toggle. `next` carries the explicit target state when the
+  // block's default (absent from the record) is open — a bare flip of an
+  // unset key would no-op visually on the first click.
+  const toggleThinking = (messageId: string, next?: boolean) => {
     setExpandedThinking(prev => ({
       ...prev,
-      [messageId]: !prev[messageId]
+      [messageId]: next ?? !prev[messageId]
     }));
   };
 
@@ -1229,10 +1226,22 @@ export function ChatInterface({
     }
     return { name: currentAgent?.name ?? "Unknown agent", Icon: AgentIcon };
   }, [agents, currentAgent, AgentIcon]);
-  const activePlan = (activeConversationRun?.plan && Array.isArray((activeConversationRun.plan as PlanSnapshot).items))
-    ? (activeConversationRun.plan as PlanSnapshot)
+  const activePlan = activeConversationRun?.timeline?.plan?.items?.length
+    ? activeConversationRun.timeline.plan
     : null;
   const showPlanningCard = isCurrentConversationBusy && Boolean(activePlan);
+  // Pending HITL approvals of the active run drive the input-bar takeover.
+  // The timeline's own resolution state (BRIDGE_HITL_RESOLVED markers) is
+  // overlaid with the client-side resolved set so the surface swaps back the
+  // instant the bridge confirms the resume, before the next WS frame lands.
+  const pendingRunInterrupts = useMemo(() => {
+    const run = activeConversationRun;
+    if (!run?.timeline) return [];
+    return pendingTimelineInterrupts(run.timeline).filter(
+      (item) => !isInterruptResolved(run.id, item.id),
+    );
+  }, [activeConversationRun, isInterruptResolved]);
+  const activeHitlInterrupt = pendingRunInterrupts[0] ?? null;
   const canShareCurrentConversation = Boolean(currentConversation?.id && !currentConversation.id.startsWith("shared:"));
   const canShareFullConversation = canShareCurrentConversation && activeMessages.some((message) => (
     message.sender === "ai" &&
@@ -1347,6 +1356,7 @@ export function ChatInterface({
         onReadAloud={handleReadAloud}
         speakingMessageId={speakingMessageId}
         isStreaming={isCurrentConversationBusy}
+        liveTimeline={activeConversationRun?.timeline ?? null}
         scrollResetKey={currentConversation?.id ?? null}
       />
     );
@@ -1529,6 +1539,26 @@ export function ChatInterface({
                       onToggle={() => setIsPlanExpanded((prev) => !prev)}
                       title="Deep agent execution plan"
                       className="absolute bottom-[calc(100%-1px)] left-1/2 z-10 w-[min(100%,39rem)] -translate-x-1/2"
+                    />
+                  ) : null
+                }
+                hitlTakeover={
+                  activeHitlInterrupt && activeConversationRun ? (
+                    <HitlInputTakeover
+                      interrupt={{
+                        interruptId: activeHitlInterrupt.id,
+                        threadId: activeHitlInterrupt.threadId,
+                        content: activeHitlInterrupt.content,
+                      }}
+                      pendingCount={pendingRunInterrupts.length}
+                      onResolve={(decision, reason) =>
+                        resumeInferenceRunHandler(activeConversationRun.id, {
+                          interruptId: activeHitlInterrupt.id,
+                          threadId: activeHitlInterrupt.threadId,
+                          decision,
+                          reason,
+                        })
+                      }
                     />
                   ) : null
                 }

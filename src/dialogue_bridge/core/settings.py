@@ -138,6 +138,14 @@ class UpstreamSettings(BaseSettings):
     agents_service_url: str = Field("https://agents:8003", validation_alias="AGENTS_SERVICE_URL")
 
 
+class InferenceSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    # Cap stored TOOL_CALL_RESULT content in the per-run event log; oversized
+    # results are cut and flagged with "truncated": true so the UI can say so.
+    tool_result_max_chars: int = Field(16000, validation_alias="INFERENCE_TOOL_RESULT_MAX_CHARS")
+
+
 class VoiceSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -185,7 +193,7 @@ class RedisSettings(BaseSettings):
 
     url: str = Field("redis://redis:6379/0", validation_alias="REDIS_URL")
     password: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    stream_maxlen: int = Field(5000, validation_alias="REDIS_STREAM_MAXLEN")
+    stream_maxlen: int = Field(20000, validation_alias="REDIS_STREAM_MAXLEN")
     terminal_ttl_seconds: int = Field(3600, validation_alias="REDIS_STREAM_TERMINAL_TTL_SECONDS")
     read_block_ms: int = Field(30000, validation_alias="REDIS_STREAM_READ_BLOCK_MS")
     skills_global_ttl_seconds: int = Field(86400, validation_alias="REDIS_SKILLS_GLOBAL_TTL_SECONDS")
@@ -294,6 +302,7 @@ class Settings(BaseSettings):
     session: SessionSettings = Field(default_factory=SessionSettings)
     vault: VaultSettings = Field(default_factory=VaultSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
+    inference: InferenceSettings = Field(default_factory=InferenceSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     tls: TlsSettings = Field(default_factory=TlsSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)

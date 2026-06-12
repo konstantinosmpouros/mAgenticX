@@ -1,14 +1,11 @@
 import * as React from "react";
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { resolveOverlayHost } from "@/lib/overlay-host";
 import {
   CheckCircle2,
   Circle,
   ListTodo,
   LoaderCircle,
   Sparkles,
-  X,
 } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -108,7 +105,7 @@ function PlanCounts({ plan }: { plan: PlanSnapshot }) {
   );
 }
 
-function PlanItems({ plan }: { plan: PlanSnapshot }) {
+export function PlanItems({ plan }: { plan: PlanSnapshot }) {
   return (
     <div className="space-y-1.5 px-1 py-2">
       {plan.items.map((item, index) => {
@@ -273,115 +270,3 @@ export function PlanCard({
   );
 }
 
-export type PlanningContainerProps = {
-  plan: PlanSnapshot;
-  expanded: boolean;
-  onToggle: () => void;
-  className?: string;
-  title?: string;
-  subtitle?: string;
-};
-
-export function PlanningContainer({
-  plan,
-  expanded,
-  onToggle,
-  className,
-  title = "Agent plan",
-  subtitle,
-}: PlanningContainerProps) {
-  React.useEffect(() => {
-    if (!expanded) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [expanded]);
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onToggle();
-    }
-  };
-
-  return (
-    <>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={onToggle}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          "group relative block w-full cursor-pointer select-none text-left outline-none",
-          className
-        )}
-      >
-        <div className="absolute inset-x-12 top-2 h-10 rounded-full bg-[hsl(var(--primary)/0.1)] blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
-
-        <div className="relative overflow-hidden rounded-[30px] border border-border/70 bg-background shadow-lg">
-          <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-primary/[0.04] to-transparent" />
-
-          <div className="relative flex flex-col">
-            <div className="flex flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start sm:justify-between">
-              <PlanSummary plan={plan} title={title} subtitle={subtitle} />
-              <PlanCounts plan={plan} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {typeof document !== "undefined" ? createPortal(
-        <AnimatePresence>
-          {expanded ? (
-            <motion.div
-              className="absolute inset-0 z-[70] flex items-center justify-center p-4 sm:p-6"
-              onClick={onToggle}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-            >
-              <motion.div
-                className="relative flex max-h-[70vh] w-full max-w-4xl flex-col overflow-hidden rounded-[32px] border border-border/70 bg-background shadow-2xl"
-                onClick={(event) => event.stopPropagation()}
-                initial={{ opacity: 0, scale: 0.975, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.985, y: 6 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
-              >
-              <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/[0.05] via-primary/[0.02] to-transparent" />
-              <button
-                type="button"
-                onClick={onToggle}
-                className="absolute right-4 top-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground shadow-sm transition hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0"
-                aria-label="Close plan"
-              >
-                <X size={18} />
-              </button>
-
-              <div className="relative flex flex-col border-b border-border/70 px-4 py-4 pr-16 sm:px-5 sm:pr-20">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <PlanSummary plan={plan} title={title} subtitle={subtitle} />
-                  <PlanCounts plan={plan} />
-                </div>
-              </div>
-
-              <div
-                className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-4 [scrollbar-color:hsl(var(--muted-foreground)_/_0.25)_transparent] [&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-[hsl(var(--muted-foreground)/0.25)] [&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--muted-foreground)/0.35)]"
-              >
-                <PlanItems plan={plan} />
-              </div>
-              </motion.div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>,
-        resolveOverlayHost(),
-      ) : null}
-    </>
-  );
-}

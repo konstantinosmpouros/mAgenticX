@@ -14,6 +14,10 @@ export const PLAN_SNAPSHOT_EVENT_NAMES = [
   "plan_snapshot",
 ] as const;
 
+// Nullable fields below use .nullish(), never .optional(): the agents-service
+// emitter serializes payloads with Pydantic model_dump(), which writes unset
+// Optionals as explicit nulls — .optional() rejects null and would silently
+// drop the whole event at safeParse.
 const MetadataSchema = z.record(z.string(), z.any());
 
 export type AGUIEvent = z.infer<typeof EventSchemas>;
@@ -24,7 +28,7 @@ export type AGUIEvent = z.infer<typeof EventSchemas>;
 export const HITLInterruptPayloadSchema = z.object({
   thread_id: z.string(),
   interrupt: z.any(),
-  metadata: MetadataSchema.optional(),
+  metadata: MetadataSchema.nullish(),
 });
 export type HITLInterruptEvent = z.infer<typeof HITLInterruptPayloadSchema>;
 
@@ -43,14 +47,14 @@ export type PlanItemStatus = z.infer<typeof PlanItemStatusSchema>;
 export const PlanItemSchema = z.object({
   content: z.string(),
   status: PlanItemStatusSchema,
-  metadata: MetadataSchema.optional(),
+  metadata: MetadataSchema.nullish(),
 });
 export type PlanItem = z.infer<typeof PlanItemSchema>;
 
 export const PlanSnapshotSchema = z.object({
   items: z.array(PlanItemSchema),
-  updated_at: z.number().optional(),
-  metadata: MetadataSchema.optional(),
+  updated_at: z.number().nullish(),
+  metadata: MetadataSchema.nullish(),
 });
 export type PlanSnapshot = z.infer<typeof PlanSnapshotSchema>;
 
@@ -93,7 +97,7 @@ export const SubAgentCustomEventSchema = CustomEventSchema.extend({
 // ------------------------------------------------------
 export const BeforeAgentPayloadSchema = z.object({
   message: z.string(),
-  metadata: MetadataSchema.optional(),
+  metadata: MetadataSchema.nullish(),
 });
 export type BeforeAgentEvent = z.infer<typeof BeforeAgentPayloadSchema>;
 

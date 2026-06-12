@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import type {
   Agent,
   MessageOut,
+  RunTimeline,
   ThinkingState,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,7 @@ type ChatBody = {
   onDownloadAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
   onPreviewAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
   onImageClick: (imageUrl: string) => void;
-  onToggleThinking: (messageId: string) => void;
+  onToggleThinking: (messageId: string, next?: boolean) => void;
   copiedId: string | null;
   onCopy: (content: string, messageId: string) => void;
   onLike: (message: MessageOut) => void;
@@ -61,6 +62,9 @@ type ChatBody = {
   speakingMessageId?: string | null;
   readOnly?: boolean;
   isStreaming?: boolean;
+  // Incrementally-folded timeline of the conversation's active run; handed
+  // only to the streaming target message.
+  liveTimeline?: RunTimeline | null;
   scrollResetKey?: string | null;
 };
 
@@ -109,6 +113,7 @@ export default function ChatBody({
   speakingMessageId,
   readOnly = false,
   isStreaming,
+  liveTimeline = null,
   scrollResetKey,
 }: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -309,6 +314,7 @@ export default function ChatBody({
                     onToggleThinking={onToggleThinking}
                     activeBranchPath={activeBranchPath}
                     streamingMessageId={streamingMessageId}
+                    liveTimeline={streamingMessageId === message.id ? liveTimeline : null}
                     isImageFile={isImageFile}
                     onDownloadAttachment={onDownloadAttachment}
                     onPreviewAttachment={onPreviewAttachment}

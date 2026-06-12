@@ -3,9 +3,19 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ToolUIPart } from "ai";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, useContext, useMemo } from "react";
+
+// Decoupled from the `ai` package's ToolUIPart: the approval lifecycle states
+// this component gates on, expressed as a local union.
+type ConfirmationState =
+  | "input-streaming"
+  | "input-available"
+  | "approval-requested"
+  | "approval-responded"
+  | "output-available"
+  | "output-denied"
+  | "output-error";
 
 type ToolUIPartApproval =
   | {
@@ -37,7 +47,7 @@ type ToolUIPartApproval =
 
 interface ConfirmationContextValue {
   approval: ToolUIPartApproval;
-  state: ToolUIPart["state"];
+  state: ConfirmationState;
 }
 
 const ConfirmationContext = createContext<ConfirmationContextValue | null>(
@@ -56,7 +66,7 @@ const useConfirmation = () => {
 
 export type ConfirmationProps = ComponentProps<typeof Alert> & {
   approval?: ToolUIPartApproval;
-  state: ToolUIPart["state"];
+  state: ConfirmationState;
 };
 
 export const Confirmation = ({

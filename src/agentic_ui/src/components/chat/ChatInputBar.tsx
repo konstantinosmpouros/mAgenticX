@@ -85,6 +85,10 @@ type ChatInputBarProps = {
     dictationRequestSignal?: number;
     dictationCancelSignal?: number;
     topAccessory?: React.ReactNode;
+    // When set, replaces the chat composer inside the same AnimatePresence
+    // swap (voice-bar precedent) — used for the pending-HITL approval surface
+    // so the action lives at the bottom where the user is already looking.
+    hitlTakeover?: React.ReactNode;
     starterSuggestions?: string[];
     onStarterSuggestionSelect?: (suggestion: string) => void;
 };
@@ -147,6 +151,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
         dictationRequestSignal,
         dictationCancelSignal,
         topAccessory,
+        hitlTakeover,
         starterSuggestions = [],
         onStarterSuggestionSelect,
     } = props;
@@ -635,6 +640,19 @@ export function ChatInputBar(props: ChatInputBarProps) {
                         </div>
                     </motion.div>
                 ) : null)
+                    : hitlTakeover ? (
+                    <motion.div
+                        key="hitl-bar"
+                        initial={{ opacity: 0, y: rm ? 0 : 10 }}
+                        animate={{ opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] } }}
+                        exit={{ opacity: 0, y: rm ? 0 : 5, transition: { duration: 0.18, ease: "easeIn" } }}
+                        style={{ transformOrigin: "center bottom" }}
+                    >
+                        <div className="relative mx-auto max-w-3xl pointer-events-auto">
+                            {hitlTakeover}
+                        </div>
+                    </motion.div>
+                )
                     : (chatBarVisible ? (
                     <motion.div
                         key="chat-bar"

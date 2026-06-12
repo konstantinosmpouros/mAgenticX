@@ -282,7 +282,7 @@ sequenceDiagram
     A-->>D: RUN_FINISHED
     D->>D: terminal UPDATE on AI message + conversation (one tx)
     D->>Rd: XADD terminal + EXPIRE 3600s
-    D-->>B: {"type":"terminal"} → close
+    D-->>B: {"type":"terminal","payload":<final state>} → close
 ```
 
 ### Request: Voice realtime session
