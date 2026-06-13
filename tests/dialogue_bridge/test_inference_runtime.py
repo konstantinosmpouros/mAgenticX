@@ -39,7 +39,6 @@ from utils.inference_runs import (
     cleanup_orphaned_inference_runs,
     create_inference_run_record,
     mark_run_launch_failed,
-    observe_run_events,
     request_run_cancel,
     stream_run_events,
     _mark_run_completed,
@@ -121,7 +120,7 @@ def test_apply_plan_snapshot_sets_plan_and_appends_raw_event():
     assert runtime.raw_events[-1]["name"] == "PLAN_SNAPSHOT"
 
 
-def test_apply_task_subagent_stamps_content_offset():
+def test_apply_task_subagent_records_task_and_raw_event():
     runtime = InferenceRunRuntime()
     runtime.apply_event({"type": "TEXT_MESSAGE_CHUNK", "delta": "12345"})
     runtime.apply_event({
@@ -130,19 +129,25 @@ def test_apply_task_subagent_stamps_content_offset():
         "value": {"task_id": "t1", "subagent_type": "writer"},
     })
     tasks = runtime.subagents["tasks"]
-    assert tasks[0]["content_offset"] == 5
-    # the enriched value was persisted to raw_events too
-    assert runtime.raw_events[-1]["value"]["content_offset"] == 5
+    assert tasks[0]["task_id"] == "t1"
+    assert tasks[0]["subagent_type"] == "writer"
+    # the event is also folded into the durable log the UI replays
+    assert runtime.raw_events[-1]["name"] == "TASK_SUBAGENT"
+    assert runtime.raw_events[-1]["value"]["task_id"] == "t1"
 
 
-def test_apply_subagent_event_appends_to_events():
+def test_apply_subagent_event_folds_into_raw_events_without_interrupt():
     runtime = InferenceRunRuntime()
     runtime.apply_event({
         "type": "CUSTOM",
         "name": "SUBAGENT_EVENT",
         "value": {"task_id": "t1", "event": {"type": "TEXT_MESSAGE_CHUNK", "delta": "hi"}},
     })
-    assert "events" in runtime.subagents
+    # SUBAGENT_EVENT envelopes land in the raw log; they no longer populate a
+    # `subagents` aggregate (the UI reducer reconstructs the timeline instead).
+    assert runtime.subagents is None
+    assert runtime.raw_events[-1]["name"] == "SUBAGENT_EVENT"
+    assert runtime.raw_events[-1]["value"]["task_id"] == "t1"
     assert runtime.pending_interrupts == 0
 
 
@@ -695,7 +700,7 @@ async def test_load_run_and_load_message(session_factory, seeded_user, seeded_ag
 
 
 # ---------------------------------------------------------------------------
-# build_run_event_payload / observe_run_events / stream_run_events (terminal)
+# build_run_event_payload / stream_run_events (terminal)
 # ---------------------------------------------------------------------------
 async def _seed_terminal_run(session_factory, seeded_user, seeded_agent):
     async with session_factory() as session:
@@ -737,15 +742,6 @@ async def test_build_run_event_payload_missing_run_returns_none(patch_session_lo
         assert await build_run_event_payload(session, "no-such-run", "snapshot") is None
 
 
-async def test_observe_run_events_terminal_yields_single_snapshot(
-    patch_session_local, session_factory, seeded_user, seeded_agent
-):
-    conv_id, run_id = await _seed_terminal_run(session_factory, seeded_user, seeded_agent)
-    frames = [frame async for frame in observe_run_events(run_id)]
-    assert len(frames) == 1
-    assert frames[0].startswith(b"data: ")
-
-
 async def test_stream_run_events_terminal_yields_snapshot_sentinel(
     patch_session_local, session_factory, seeded_user, seeded_agent
 ):
@@ -782,21 +778,11 @@ async def _seed_running_run(session_factory, seeded_user, seeded_agent):
 
 
 def _patch_read_since(monkeypatch, events):
-    async def fake_read_since(run_id, cursor, *, terminal_statuses):
+    async def fake_read_since(run_id, cursor, *, terminal_statuses, cancel_event=None, on_idle=None):
         for idx, event in enumerate(events):
             yield (str(idx), event)
 
     monkeypatch.setattr(ir.event_log, "read_since", fake_read_since)
-
-
-async def test_observe_run_events_live_tail_replays_redis(
-    patch_session_local, session_factory, seeded_user, seeded_agent, monkeypatch
-):
-    run_id = await _seed_running_run(session_factory, seeded_user, seeded_agent)
-    _patch_read_since(monkeypatch, [{"type": "update", "n": 1}, {"type": "update", "n": 2}])
-    frames = [frame async for frame in observe_run_events(run_id, since="0")]
-    assert len(frames) == 2
-    assert all(frame.startswith(b"data: ") for frame in frames)
 
 
 async def test_stream_run_events_live_tail_passes_through_entry_ids(
@@ -804,7 +790,9 @@ async def test_stream_run_events_live_tail_passes_through_entry_ids(
 ):
     run_id = await _seed_running_run(session_factory, seeded_user, seeded_agent)
     _patch_read_since(monkeypatch, [{"type": "update", "n": 1}])
-    frames = [frame async for frame in stream_run_events(run_id)]
+    # `since` given → reconnect path: straight Redis replay, no live snapshot
+    # frame, entry IDs from `read_since` pass through untouched.
+    frames = [frame async for frame in stream_run_events(run_id, since="0")]
     assert frames == [("0", {"type": "update", "n": 1})]
 
 

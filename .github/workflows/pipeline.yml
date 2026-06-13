@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -9,10 +9,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ===========================================================================
+  # CI stage
+  # ===========================================================================
+
   # One job per backend service: install only that service's deps, run only its
   # tests, and report coverage scoped to its own source tree.
   backend:
-    name: ${{ matrix.service }}
+    name: ci / ${{ matrix.service }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -61,7 +65,7 @@ jobs:
   # Frontend service: lint + build, plus the Python static-contract checks that
   # guard the frontend↔bridge API contract. Coverage is N/A (no JS test runner).
   agentic_ui:
-    name: agentic_ui
+    name: ci / agentic_ui
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -100,3 +104,28 @@ jobs:
 
       - name: Run frontend contract tests
         run: python -m pytest tests/agentic_ui -q
+
+  # ===========================================================================
+  # CD stage — PLACEHOLDER, not yet implemented.
+  #
+  # Deployment is currently manual (see CLAUDE.md § Deployment): images are
+  # built locally with `docker buildx --platform linux/arm64`, pushed to Docker
+  # Hub, and the Swarm stack is redeployed by hand from Portainer. This job only
+  # establishes the pipeline shape so the CD stage has a home; wire the real
+  # steps once the automated deploy path is decided.
+  #
+  # Intended future steps:
+  #   - docker buildx build --platform linux/arm64 -t <repo>/<svc>:<tag> --push
+  #   - trigger the Portainer stack redeploy (webhook) for magenticx
+  # ===========================================================================
+  deploy:
+    name: cd / deploy (not yet implemented)
+    needs: [backend, agentic_ui]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: CD placeholder
+        run: |
+          echo "CI passed on main — CD stage reached."
+          echo "CD is not yet implemented: deploy is manual today"
+          echo "(buildx --platform linux/arm64 -> Docker Hub -> Portainer redeploy)."

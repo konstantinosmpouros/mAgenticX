@@ -376,10 +376,10 @@ class InferenceRunManager:
     async def publish(self, run_id: str, event: dict[str, Any]) -> None:
         """Append the event to the durable per-run Redis Stream.
 
-        Subscribers consume via :func:`observe_run_events` (SSE legacy) or the
-        WebSocket endpoint, both backed by the same stream. Failure to write
-        is logged but never raised — losing the wire frame is preferable to
-        crashing the inference run.
+        Subscribers consume via :func:`stream_run_events` over the WebSocket
+        endpoint, backed by the same stream. Failure to write is logged but
+        never raised — losing the wire frame is preferable to crashing the
+        inference run.
         """
         try:
             await event_log.append(run_id, event)
