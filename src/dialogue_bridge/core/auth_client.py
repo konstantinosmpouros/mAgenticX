@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -73,7 +74,7 @@ class VaultAuthenticator:
         return headers
 
     def _build_login_url(self, username: str) -> str:
-        return f"{self._settings.addr.rstrip('/')}/v1/auth/{self._settings.userpass_mount}/login/{username}"
+        return f"{self._settings.addr.rstrip('/')}/v1/auth/{self._settings.userpass_mount}/login/{quote(username, safe='')}"
 
     def _build_oidc_url(self) -> str:
         return f"{self._settings.addr.rstrip('/')}/v1/{self._settings.oidc_path.rstrip('/')}/{self._settings.oidc_role}"

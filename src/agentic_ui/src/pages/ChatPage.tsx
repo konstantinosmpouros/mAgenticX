@@ -1212,6 +1212,11 @@ export function ChatInterface({
   const fallbackSelectedAgent = inactiveAgentFallback && inactiveAgentFallback.id === selectedAgent ? inactiveAgentFallback : null;
   const effectiveSelectedAgent = selectedAgentFromList ?? fallbackSelectedAgent ?? null;
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
+  // The input bar reflects ONLY the header dropdown selection (the agent the
+  // next message is sent to) — never the conversation's stored agent. With no
+  // selection it stays null so the placeholder is vague and name-free rather
+  // than showing the wrong agent.
+  const inputBarAgent = effectiveSelectedAgent;
   const AgentIcon = currentAgent?.icon || Building2;
 
   // Per-message agent: each AI message renders the agent that produced it,
@@ -1529,7 +1534,7 @@ export function ChatInterface({
                 TooltipTrigger={TooltipTrigger}
                 TooltipContent={TooltipContent}
                 toast={toast}
-                currentAgent={currentAgent ?? undefined}
+                currentAgent={inputBarAgent ?? undefined}
                 Textarea={Textarea}
                 topAccessory={
                   showPlanningCard && activePlan ? (

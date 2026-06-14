@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from pathlib import Path
 
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
@@ -145,6 +146,9 @@ class ProxySettings(BaseSettings):
         return resolved if resolved else ""
 
 
+_DEFAULT_REDACTION_SECRET = "agents-log-redaction"
+
+
 class LoggingSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -170,11 +174,8 @@ class LoggingSettings(BaseSettings):
             return value
         if isinstance(value, str) and value:
             return value
-        resolved = (
-            _resolve_file_backed_secret("LOG_REDACTION_SECRET", "SESSION_TOKEN_SECRET")
-            or "agents-log-redaction"
-        )
-        return resolved
+        resolved = _resolve_file_backed_secret("LOG_REDACTION_SECRET", "SESSION_TOKEN_SECRET")
+        return resolved or _DEFAULT_REDACTION_SECRET
 
 
 class AgentRegistrySettings(BaseSettings):
@@ -336,6 +337,19 @@ class Settings(BaseSettings):
                 "TRUSTED_PROXY_SECRET must be set. "
                 "Refusing to start without an internal-caller shared secret."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _harden_redaction_secret(self) -> "Settings":
+        # The shared default is reversible by anyone who reads the source, so it
+        # must never reach a running process. When no secret is configured
+        # (LOG_REDACTION_SECRET / SESSION_TOKEN_SECRET unset), fall back to a
+        # random per-process key — pseudonymization stays one-way, at the cost
+        # of cross-restart/replica correlation. Provision a real
+        # LOG_REDACTION_SECRET in prod to keep correlation too. Not env-gated on
+        # purpose: APP_ENV is unset in prod, so an env check would never fire.
+        if self.logging.redaction_secret.get_secret_value() == _DEFAULT_REDACTION_SECRET:
+            self.logging.redaction_secret = SecretStr(secrets.token_hex(32))
         return self
 
 

@@ -1,38 +1,39 @@
-import { FormEvent, memo, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, memo, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
+import { Check, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { VscEye, VscEyeClosed } from "react-icons/vsc";
-import Galaxy from "@/components/ui/react_bits/bg_galaxy";
+import ParticleNetwork from "@/components/ui/react_bits/bg_particle_network";
 import { authenticate, restoreSession } from "@/lib/api";
 import { loadSession, saveSession, updateSession } from "@/lib/authStorage";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { AuthApiError } from "@/lib/types";
 
-const GalaxyBg = memo(
+// Animated backdrop: a constellation network over a layered charcoal→magenta
+// vignette. Memoized so form state changes never re-mount the canvas.
+const ParticleBg = memo(
     () => (
-        <div className="absolute inset-0 -z-10 pointer-events-none">
-            <Galaxy
-                mouseRepulsion={true}
-                mouseInteraction={false}
-                density={1.1}
-                glowIntensity={0.18}
-                saturation={0.08}
-                hueShift={185}
-                twinkleIntensity={0.22}
-                rotationSpeed={0.05}
-                autoCenterRepulsion={0}
-                starSpeed={0.4}
-                transparent={false}
+        <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
+            <div className="absolute inset-0 bg-[#060709]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,_rgba(208,176,255,0.08)_0%,_rgba(6,7,9,0)_55%)]" />
+            <ParticleNetwork
+                className="absolute inset-0 h-full w-full"
+                density={0.9}
+                maxDistance={140}
+                speed={1}
+                accentRatio={0.18}
             />
         </div>
     ),
-    () => true
+    () => true,
 );
 
 export default function Login() {
+    const reduceMotion = useReducedMotion();
     const navigate = useNavigate();
     const { toast } = useToast();
     const [username, setUsername] = useState("");
@@ -42,8 +43,24 @@ export default function Login() {
     const [authStatus, setAuthStatus] = useState<"idle" | "rate_limited">("idle");
     const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
     const [cooldownSeconds, setCooldownSeconds] = useState(0);
+    const [capsLock, setCapsLock] = useState(false);
+    const [success, setSuccess] = useState(false);
 
     const isRateLimited = rateLimitedUntil !== null && cooldownSeconds > 0;
+
+    useEffect(() => {
+        const previous = document.title;
+        document.title = "Sign in · mAgenticX";
+        return () => {
+            document.title = previous;
+        };
+    }, []);
+
+    const handleCapsLock = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (typeof event.getModifierState === "function") {
+            setCapsLock(event.getModifierState("CapsLock"));
+        }
+    };
 
     useEffect(() => {
         if (rateLimitedUntil === null) {
@@ -82,18 +99,13 @@ export default function Login() {
         return null;
     }, [authStatus, cooldownSeconds, isRateLimited]);
 
-    const statusToneClasses =
-        statusConfig?.tone === "warning" ? "text-amber-100/85" : "text-white/72";
+    // Single accent palette (black/white/magenta): the rate-limit "paused"
+    // state reads as a restrained magenta chip rather than amber/rose.
+    const statusToneClasses = "text-white/65";
 
-    const dotToneClasses =
-        statusConfig?.tone === "warning"
-            ? "bg-amber-300/85 shadow-[0_0_18px_rgba(252,211,77,0.45)]"
-            : "bg-white/70";
+    const dotToneClasses = "bg-[#d0b0ff] shadow-[0_0_16px_rgba(208,176,255,0.5)] animate-pulse";
 
-    const chipToneClasses =
-        statusConfig?.tone === "warning"
-            ? "border-amber-200/30 bg-amber-200/10 text-amber-50/90"
-            : "border-rose-200/25 bg-rose-200/10 text-rose-50/85";
+    const chipToneClasses = "border-[#d0b0ff]/30 bg-[#d0b0ff]/12 text-[#ecdcff]";
 
     useEffect(() => {
         let cancelled = false;
@@ -124,6 +136,25 @@ export default function Login() {
         };
     }, [navigate]);
 
+    // Staggered entrance: the container reveals children one after another;
+    // each child fades up. Reduced motion collapses offsets to a plain fade.
+    const containerVariants: Variants = {
+        hidden: {},
+        show: {
+            transition: reduceMotion
+                ? { staggerChildren: 0 }
+                : { staggerChildren: 0.08, delayChildren: 0.12 },
+        },
+    };
+    const itemVariants: Variants = {
+        hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 },
+        show: {
+            opacity: 1,
+            y: 0,
+            transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+        },
+    };
+
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (submitting || isRateLimited) return;
@@ -137,6 +168,11 @@ export default function Login() {
                 saveSession(response.user, ttlSeconds * 1000);
                 setUsername("");
                 setPassword("");
+                // Brief success beat so the hand-off feels intentional, not abrupt.
+                setSuccess(true);
+                if (!reduceMotion) {
+                    await new Promise((resolve) => setTimeout(resolve, 450));
+                }
                 navigate("/", { replace: true });
             } else {
                 toast({
@@ -187,127 +223,207 @@ export default function Login() {
     return (
         // Force dark styling for the login scene even when global theme is light
         <div className="dark flex min-h-[100dvh] items-center justify-center">
-            <GalaxyBg />
-            <Card className="relative w-full max-w-[min(92vw,30rem)] overflow-hidden rounded-[32px] border border-white/12 bg-gradient-to-br from-[#232b3d]/85 via-[#161c2b]/92 to-[#0f1422]/94 px-6 py-8 shadow-[0_28px_80px_-32px_rgba(7,9,14,0.85)] backdrop-blur-2xl sm:px-10 sm:py-12">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.22)_0%,_rgba(16,22,33,0)_68%)] opacity-75" aria-hidden="true" />
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(211,164,255,0.16)_0%,_rgba(12,18,28,0)_70%)] opacity-60 mix-blend-lighten" aria-hidden="true" />
-                <div className="pointer-events-none absolute inset-x-14 bottom-[-4rem] h-44 rounded-full bg-white/12 blur-[110px]" aria-hidden="true" />
+            <ParticleBg />
+            <motion.div
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                className="w-full max-w-[min(92vw,30rem)]"
+            >
+                <Card className="relative w-full overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#0b0c10]/85 px-7 py-10 shadow-[0_40px_120px_-40px_rgba(0,0,0,0.92)] backdrop-blur-2xl sm:px-11 sm:py-14">
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" aria-hidden="true" />
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,_rgba(255,255,255,0.05)_0%,_rgba(11,12,16,0)_60%)]" aria-hidden="true" />
 
-                <div className="relative z-10 flex flex-col gap-10 text-white">
-                    <header className="flex flex-col items-center gap-5 text-center">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-gradient-to-br from-white/25 via-white/12 to-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.32)]">
-                            <img src="/logo2.png" alt="mAgenticX mark" className="h-10 w-10 object-contain" />
-                        </div>
-                        <div className="space-y-2">
-                            <h1 className="bg-gradient-to-r from-white via-white to-[#f1d6ff] bg-clip-text text-xl font-semibold tracking-tight text-transparent sm:text-2xl">
-                                Sign in to mAgenticX
-                            </h1>
-                            <p className="text-sm text-white/72">
-                                Enter your workspace credentials to continue.
-                            </p>
-                            {statusConfig && (
-                                <div className="relative mx-auto w-fit">
-                                    <button
-                                        type="button"
-                                        aria-label={statusConfig.tooltip}
-                                        className="group/status relative block"
-                                    >
-                                        <span
-                                            className={cn(
-                                                "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-medium tracking-[0.16em] uppercase transition-colors",
-                                                statusToneClasses,
-                                            )}
-                                        >
-                                            <span className={cn("h-1.5 w-1.5 rounded-full", dotToneClasses)} aria-hidden="true" />
-                                            <span>{statusConfig.text}</span>
-                                            {statusConfig.chip ? (
+                    <motion.div
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="show"
+                        className="relative z-10 flex flex-col gap-10 text-white"
+                    >
+                        <header className="flex flex-col items-center gap-5 text-center">
+                            <motion.div
+                                variants={itemVariants}
+                                animate={reduceMotion ? undefined : { y: [0, -6, 0] }}
+                                transition={reduceMotion ? undefined : { duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+                                className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-gradient-to-br from-white/25 via-white/12 to-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.32)]"
+                            >
+                                <div className="pointer-events-none absolute -inset-2 rounded-[1.75rem] bg-[radial-gradient(circle,_rgba(211,164,255,0.45)_0%,_rgba(211,164,255,0)_70%)] blur-md" aria-hidden="true" />
+                                <img src="/logo2.png" alt="mAgenticX mark" className="relative h-10 w-10 object-contain" />
+                            </motion.div>
+                            <div className="space-y-2">
+                                <motion.h1
+                                    variants={itemVariants}
+                                    className="text-xl font-semibold tracking-tight text-white sm:text-2xl"
+                                >
+                                    Sign in to mAgenticX
+                                </motion.h1>
+                                <motion.p variants={itemVariants} className="text-sm text-white/55">
+                                    Enter your workspace credentials to continue.
+                                </motion.p>
+                                {/* Stable live region: the chip animates its height in/out so the
+                                    divider below slides instead of jumping, and SR announces the pause. */}
+                                <div role="status" aria-live="polite">
+                                    <AnimatePresence>
+                                        {statusConfig && (
+                                            <motion.div
+                                                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: "auto" }}
+                                                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+                                                transition={{ duration: 0.24, ease: "easeOut" }}
+                                                className="overflow-hidden"
+                                            >
+                                                <div className="relative mx-auto w-fit pt-1">
+                                            <button
+                                                type="button"
+                                                aria-label={statusConfig.tooltip}
+                                                className="group/status relative block"
+                                            >
                                                 <span
                                                     className={cn(
-                                                        "rounded-full border px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal",
-                                                        chipToneClasses,
+                                                        "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-medium tracking-[0.16em] uppercase transition-colors",
+                                                        statusToneClasses,
                                                     )}
                                                 >
-                                                    {statusConfig.chip}
+                                                    <span className={cn("h-1.5 w-1.5 rounded-full", dotToneClasses)} aria-hidden="true" />
+                                                    <span>{statusConfig.text}</span>
+                                                    {statusConfig.chip ? (
+                                                        <span
+                                                            className={cn(
+                                                                "rounded-full border px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal",
+                                                                chipToneClasses,
+                                                            )}
+                                                        >
+                                                            {statusConfig.chip}
+                                                        </span>
+                                                    ) : null}
                                                 </span>
-                                            ) : null}
-                                        </span>
-                                    </button>
-                                    <div
-                                        className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-60 -translate-x-1/2 rounded-xl border border-white/10 bg-[#111827]/88 px-3 py-2 text-xs leading-relaxed text-white/82 opacity-0 shadow-[0_14px_34px_-18px_rgba(5,8,18,0.85)] backdrop-blur-xl transition-all duration-200 group-hover/status:translate-y-0 group-hover/status:opacity-100 group-focus-visible/status:translate-y-0 group-focus-visible/status:opacity-100"
-                                        role="tooltip"
-                                    >
-                                        {statusConfig.tooltip}
-                                    </div>
+                                            </button>
+                                            <div
+                                                className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-60 -translate-x-1/2 rounded-xl border border-white/10 bg-[#111827]/88 px-3 py-2 text-xs leading-relaxed text-white/82 opacity-0 shadow-[0_14px_34px_-18px_rgba(5,8,18,0.85)] backdrop-blur-xl transition-all duration-200 group-hover/status:translate-y-0 group-hover/status:opacity-100 group-focus-visible/status:translate-y-0 group-focus-visible/status:opacity-100"
+                                                role="tooltip"
+                                            >
+                                                {statusConfig.tooltip}
+                                            </div>
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
-                            )}
-                            <div className="mx-auto h-px w-14 rounded-full bg-gradient-to-r from-transparent via-[#dba9ff]/70 to-transparent" />
-                        </div>
-                    </header>
-
-                    <div className="space-y-8 text-white">
-                        <form className="space-y-6" onSubmit={handleSubmit}>
-                            <div className="space-y-2">
-                                <label htmlFor="login-username" className="text-xs font-semibold uppercase tracking-[0.2em] text-white/65">
-                                    Username
-                                </label>
-                                <Input
-                                    id="login-username"
-                                    type="text"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    placeholder="Your username"
-                                    autoComplete="username"
-                                    className="h-12 rounded-xl !border-white/18 !bg-[#3b3b3b] text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
+                                <motion.div
+                                    variants={itemVariants}
+                                    className="mx-auto h-px w-14 rounded-full bg-gradient-to-r from-transparent via-[#dba9ff]/70 to-transparent"
                                 />
                             </div>
+                        </header>
 
-                            <div className="space-y-2">
-                                <label htmlFor="login-password" className="text-xs font-semibold uppercase tracking-[0.2em] text-white/65">
-                                    Password
-                                </label>
-                                <div className="relative">
+                        <div className="space-y-8 text-white">
+                            <form className="space-y-6" onSubmit={handleSubmit}>
+                                <motion.div variants={itemVariants} className="space-y-2">
+                                    <label htmlFor="login-username" className="text-xs font-semibold uppercase tracking-[0.2em] text-white/65">
+                                        Username
+                                    </label>
                                     <Input
-                                        id="login-password"
-                                        type={showPassword ? "text" : "password"}
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        placeholder="Your password"
-                                        autoComplete="current-password"
-                                        className="h-12 rounded-xl !border-white/18 !bg-[#3b3b3b] pr-12 text-sm text-white placeholder:text-white/45 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
+                                        id="login-username"
+                                        type="text"
+                                        value={username}
+                                        onChange={(e) => setUsername(e.target.value)}
+                                        placeholder="Your username"
+                                        autoComplete="username"
+                                        className="h-12 rounded-xl !border-white/10 !bg-white/[0.04] text-sm text-white placeholder:text-white/45 transition-[border-color,box-shadow] duration-200 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
                                     />
-                                    {password.trim() && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/65 transition-colors hover:text-white/85"
-                                            aria-label={showPassword ? "Hide password" : "Show password"}
+                                </motion.div>
+
+                                <motion.div variants={itemVariants} className="space-y-2">
+                                    <label htmlFor="login-password" className="text-xs font-semibold uppercase tracking-[0.2em] text-white/65">
+                                        Password
+                                    </label>
+                                    <div className="relative">
+                                        <Input
+                                            id="login-password"
+                                            type={showPassword ? "text" : "password"}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            onKeyDown={handleCapsLock}
+                                            onKeyUp={handleCapsLock}
+                                            onBlur={() => setCapsLock(false)}
+                                            placeholder="Your password"
+                                            autoComplete="current-password"
+                                            className="h-12 rounded-xl !border-white/10 !bg-white/[0.04] pr-12 text-sm text-white placeholder:text-white/45 transition-[border-color,box-shadow] duration-200 focus:border-[#e1c6ff]/55 focus:ring-[#e1c6ff]/30"
+                                        />
+                                        <AnimatePresence>
+                                            {password.trim() && (
+                                                <motion.button
+                                                    type="button"
+                                                    initial={{ opacity: 0, scale: 0.8 }}
+                                                    animate={{ opacity: 1, scale: 1 }}
+                                                    exit={{ opacity: 0, scale: 0.8 }}
+                                                    transition={{ duration: 0.15 }}
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/65 transition-colors hover:text-white/85"
+                                                    aria-label={showPassword ? "Hide password" : "Show password"}
+                                                >
+                                                    {showPassword ? <VscEyeClosed size={18} /> : <VscEye size={18} />}
+                                                </motion.button>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                    <AnimatePresence>
+                                        {capsLock && (
+                                            <motion.p
+                                                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                                                transition={{ duration: 0.16, ease: "easeOut" }}
+                                                role="status"
+                                                aria-live="polite"
+                                                className="text-[11px] font-medium text-[#d0b0ff]"
+                                            >
+                                                Caps Lock is on
+                                            </motion.p>
+                                        )}
+                                    </AnimatePresence>
+                                </motion.div>
+
+                                <motion.div variants={itemVariants}>
+                                    <motion.div
+                                        whileHover={submitting || isRateLimited || success || reduceMotion ? undefined : { scale: 1.02 }}
+                                        whileTap={submitting || isRateLimited || success || reduceMotion ? undefined : { scale: 0.98 }}
+                                        transition={{ duration: 0.18, ease: "easeOut" }}
+                                    >
+                                        <Button
+                                            type="submit"
+                                            disabled={submitting || isRateLimited || success}
+                                            className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#e0c2ff] via-[#d0b0ff] to-[#c79bff] text-[#0a0b0f] shadow-[0_18px_44px_-22px_rgba(208,176,255,0.75)] transition-colors hover:from-[#e7cdff] hover:via-[#d9bdff] hover:to-[#cda6ff] focus-visible:ring-2 focus-visible:ring-[#d0b0ff]/45 disabled:cursor-not-allowed disabled:opacity-70"
                                         >
-                                            {showPassword ? <VscEyeClosed size={18} /> : <VscEye size={18} />}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
+                                            {success ? (
+                                                <Check className="h-4 w-4" aria-hidden="true" />
+                                            ) : submitting ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                            ) : null}
+                                            <span className="text-sm font-semibold tracking-wide">
+                                                {success
+                                                    ? "Welcome back"
+                                                    : submitting
+                                                      ? "Signing In..."
+                                                      : isRateLimited
+                                                        ? `Try again in ${cooldownSeconds}s`
+                                                        : "Sign In"}
+                                            </span>
+                                        </Button>
+                                    </motion.div>
+                                </motion.div>
+                            </form>
 
-                            <Button
-                                type="submit"
-                                disabled={submitting || isRateLimited}
-                                className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-white via-white/94 to-white/88 text-slate-900 shadow-[0_18px_40px_-28px_rgba(187, 31, 102,0.9)] transition hover:from-white/95 hover:via-white/92 hover:to-white/85 focus-visible:ring-[#dfb7ff]/35 disabled:cursor-not-allowed disabled:opacity-80"
-                            >
-                                <span className="text-sm font-semibold tracking-wide">
-                                    {submitting ? "Signing In..." : isRateLimited ? `Try again in ${cooldownSeconds}s` : "Sign In"}
-                                </span>
-                            </Button>
-                        </form>
-
-                        <div className="text-center text-xs text-white/55">
-                            Don't have access yet?{" "}
-                            <button type="button" className="font-semibold text-[#d0b0ff] underline-offset-4 transition hover:text-white">
-                                Request to sign up
-                            </button>
+                            <motion.div variants={itemVariants} className="text-center text-xs text-white/55">
+                                Don't have access yet?{" "}
+                                <button type="button" className="font-semibold text-[#d0b0ff] underline-offset-4 transition-colors hover:text-white">
+                                    Request to sign up
+                                </button>
+                            </motion.div>
                         </div>
-                    </div>
-                </div>
-            </Card>
+                    </motion.div>
+                </Card>
+            </motion.div>
         </div>
     );
 }

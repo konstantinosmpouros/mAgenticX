@@ -16,6 +16,12 @@ db = duckdb.connect(
         "allow_unsigned_extensions": "false",
     },
 )
+# Defense-in-depth, applied post-connect (these are rejected inside connect()'s
+# config): block all filesystem access, then freeze the configuration so the
+# read-only posture cannot be relaxed at runtime even if a setting is flipped.
+# lock_configuration must come last — once set, no further SET is permitted.
+db.execute("SET disabled_filesystems='LocalFileSystem'")
+db.execute("SET lock_configuration=true")
 TABLES: dict[str, dict] = {}
 
 if not DATA_DIR.exists():

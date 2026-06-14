@@ -193,9 +193,12 @@ export function ChatInputBar(props: ChatInputBarProps) {
 
     const agentDisplayName = React.useMemo(() => {
         const rawName = currentAgent?.name?.trim();
-        if (!rawName) return "the Agent";
+        if (!rawName) return null;
         return /agent$/i.test(rawName) ? rawName : `${rawName} Agent`;
     }, [currentAgent?.name]);
+
+    // No agent selected → keep the placeholder vague rather than naming one.
+    const messagePlaceholder = agentDisplayName ? `Message ${agentDisplayName}...` : "Type a message...";
 
     const voiceClosePulse = useAnimationControls();
     const voiceMutePulse = useAnimationControls();
@@ -780,7 +783,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                                 value={currentMessage}
                                                 onChange={(e: any) => setCurrentMessage(e.target.value)}
                                                 onPaste={handlePaste}
-                                                placeholder={`Message ${agentDisplayName}...`}
+                                                placeholder={messagePlaceholder}
                                                 onKeyDown={(e: any) => {
                                                     const shouldSubmit =
                                                         e.key === "Enter" &&

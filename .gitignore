@@ -31,3 +31,4 @@ src/tls/rag_service/
 src/tls/chat_postgres/
 src/tls/vault/
 src/tls/npm/
+src/tls/redis/

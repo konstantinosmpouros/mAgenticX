@@ -2,6 +2,12 @@ services:
   vectordb: # 8000
     image: chromadb/chroma:0.6.3
     container_name: vectordb
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/heartbeat', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/chroma/chroma
@@ -20,6 +26,12 @@ services:
 
   rag_service: # 8001
     container_name: rag_service
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ssl,http.client; ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; c=http.client.HTTPSConnection('127.0.0.1',8001,context=ctx,timeout=5); c.request('GET','/'); c.getresponse()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     image: konstantinosmpouros/rag_service:v1.2.5
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8001"]
@@ -55,6 +67,12 @@ services:
 
   agents: # 8003
     container_name: agents
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ssl,http.client; ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; c=http.client.HTTPSConnection('127.0.0.1',8003,context=ctx,timeout=5); c.request('GET','/'); c.getresponse()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     image: konstantinosmpouros/agents:v1.15.0
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8003"]
@@ -98,6 +116,12 @@ services:
   chat_postgres: # 5432
     image: postgres:16.3
     container_name: chat_postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "chat_db"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     entrypoint: ["/bin/sh", "/var/lib/postgresql/tls/entrypoint-postgres-tls.sh"]
     command: ["postgres"]
     environment:
@@ -123,11 +147,23 @@ services:
   redis: # 6379
     image: redis:7.4-alpine
     container_name: redis
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$(cat /run/secrets/redis_password) redis-cli -h localhost --tls --cacert /tls/ca.crt ping | grep -q PONG"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         exec redis-server \
           --requirepass "$$(cat /run/secrets/redis_password)" \
+          --port 0 \
+          --tls-port 6379 \
+          --tls-cert-file /tls/tls.crt \
+          --tls-key-file /tls/tls.key \
+          --tls-ca-cert-file /tls/ca.crt \
+          --tls-auth-clients no \
           --maxmemory 256mb \
           --maxmemory-policy allkeys-lru \
           --save "" \
@@ -137,6 +173,10 @@ services:
       - no-new-privileges:true
     secrets:
       - redis_password
+    volumes:
+      - /opt/magenticx/redis/tls/tls.crt:/tls/tls.crt:ro
+      - /opt/magenticx/redis/tls/tls.key:/tls/tls.key:ro
+      - /opt/magenticx/redis/tls/ca.crt:/tls/ca.crt:ro
     restart: unless-stopped
     networks:
       - backend
@@ -149,6 +189,12 @@ services:
 
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
+    healthcheck:
+      test: ["CMD", "python", "-c", "import ssl,http.client; ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; c=http.client.HTTPSConnection('127.0.0.1',8002,context=ctx,timeout=5); c.request('GET','/'); c.getresponse()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     image: konstantinosmpouros/dialogue_bridge:v2.8.0
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8002"]
@@ -161,7 +207,7 @@ services:
       - AGENTS_SERVICE_URL=https://agents:8003
       - SESSION_TOKEN_SECRET_FILE=/run/secrets/session_token_secret
       - TRUSTED_PROXY_SECRET_FILE=/run/secrets/trusted_proxy_secret
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=rediss://redis:6379/0
       - REDIS_PASSWORD_FILE=/run/secrets/redis_password
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
     secrets:
@@ -190,6 +236,12 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     image: konstantinosmpouros/agentic_ui:v0.9.0
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]

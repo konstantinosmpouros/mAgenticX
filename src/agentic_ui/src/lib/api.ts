@@ -315,7 +315,9 @@ export async function getMySkills(
   }));
   if (!res.ok) {
     if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch my skills: ${res.status}`);
+    const error = new Error(`Failed to fetch my skills: ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   const data = await res.json();
   if (!Array.isArray(data)) return [];
@@ -449,7 +451,7 @@ export async function searchWorkspace(
     q: query,
     limit: String(limit),
   });
-  const res = await fetch(`${SEARCH_BASE_PATH}/${userId}?${params.toString()}`, withSessionRequest({
+  const res = await fetch(`${SEARCH_BASE_PATH}/${encodeURIComponent(userId)}?${params.toString()}`, withSessionRequest({
     headers: { "Accept": "application/json" },
   }));
   if (!res.ok) {

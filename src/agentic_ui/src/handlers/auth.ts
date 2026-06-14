@@ -2,6 +2,7 @@ import type { Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } fro
 import { authenticate, getAgents, getConversations, getMySkills, getSkills, getTools, getUserPreferences, logoutSession } from '@/lib/api';
 import { sortByUpdatedAtDesc } from '@/lib/utils';
 import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
+import { setUnauthorizedSuppressed } from '@/lib/consts';
 
 // Auth handlers bridge API auth with local session persistence and a full chat-shell reset.
 type AuthCtx = {
@@ -157,6 +158,11 @@ export function createAuthHandlers(ctx: AuthCtx) {
   };
 
   const handleLogout = () => {
+    // A deliberate logout must be silent. Tearing down the session races with
+    // any in-flight authenticated requests, which 401 once it's gone and would
+    // otherwise fire the global "Session expired" reaction — suppress it for
+    // the logout window (a genuine idle expiry still surfaces normally).
+    setUnauthorizedSuppressed(true);
     // Close the profile panel first so logout feels immediate before the full shell reset finishes.
     setShowUserProfile(false);
     setTimeout(() => {
@@ -175,6 +181,8 @@ export function createAuthHandlers(ctx: AuthCtx) {
       clearChatAndStopThinking();
       persistUIState();
       onLoggedOut?.();
+      // Re-arm once trailing in-flight 401s have settled, so a later real expiry still alerts.
+      setTimeout(() => setUnauthorizedSuppressed(false), 1500);
     }, 300);
   };
 

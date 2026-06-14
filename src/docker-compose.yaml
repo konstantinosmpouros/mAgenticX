@@ -1,3 +1,5 @@
+name: magenticx
+
 services:
 
   vectordb: # 8000

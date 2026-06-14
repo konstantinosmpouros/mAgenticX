@@ -1,6 +1,8 @@
 // IndexedDB-backed persistence for lightweight UI state (agents/tools/preferences lists).
 // Only metadata and IDs are stored; conversations are rehydrated from the backend on refresh.
 
+import { z } from 'zod';
+
 import { mapIcon } from '@/lib/consts';
 import type { Agent, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserSkill } from '@/lib/types';
 
@@ -56,6 +58,46 @@ type PersistedSnapshot = Omit<
   availableSkills?: Skill[];
   myRegistrySkills?: UserSkill[];
 };
+
+
+// IndexedDB is attacker-writable under an XSS scenario, so a persisted snapshot
+// is untrusted input. Before any of it is spread into app state we validate the
+// top-level shape and reject prototype-pollution keys; on any failure the whole
+// snapshot is discarded (the bootstrap fetch repopulates from the backend)
+// rather than partially applied. Nested collections are validated as arrays of
+// plain objects only — the per-item deserializers below reconstruct fields
+// defensively, and `types.ts` stays the single source of truth for their shape.
+const FORBIDDEN_SNAPSHOT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function hasForbiddenKey(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasForbiddenKey);
+  if (value !== null && typeof value === 'object') {
+    const keys = Object.getOwnPropertyNames(value);
+    if (keys.some((key) => FORBIDDEN_SNAPSHOT_KEYS.has(key))) return true;
+    return keys.some((key) => hasForbiddenKey((value as Record<string, unknown>)[key]));
+  }
+  return false;
+}
+
+const looseObject = z.object({}).passthrough();
+
+const snapshotSchema = z
+  .object({
+    version: z.literal(4),
+    selectedAgent: z.string(),
+    isPrivateMode: z.boolean(),
+    activeProfileTab: z.string(),
+    sidebarOpen: z.boolean(),
+    lastConversationId: z.string().nullable(),
+    availableTools: z.array(looseObject).optional(),
+    availableSkills: z.array(looseObject).optional(),
+    myRegistrySkills: z.array(looseObject).optional(),
+    agents: z.array(looseObject).optional(),
+    conversations: z.array(looseObject).optional(),
+    userPreferences: looseObject.nullable().optional(),
+    selectedImage: z.string().nullable().optional(),
+  })
+  .strict();
 
 
 const createFallbackAgent = (): Agent => ({
@@ -221,10 +263,11 @@ export async function saveUISnapshot(userId: string, data: UISnapshotSerializabl
 export async function loadUISnapshot(userId: string): Promise<UISnapshotSerializable | null> {
   const saved: PersistedSnapshot | undefined = await idbGet(STATE_STORE, userId);
   if (!saved) return null;
-  // Discard stale snapshots from previous schema versions — the bootstrap
-  // fetches will repopulate from the backend. Avoids subtly-wrong state
-  // when a field's shape changed and the load path doesn't notice.
-  if ((saved as { version?: unknown }).version !== 4) return null;
+  // Discard the snapshot wholesale on any integrity failure — wrong/old schema
+  // (enforced by the `version` literal), unexpected shape, or prototype-
+  // pollution keys — instead of spreading untrusted bytes into app state. The
+  // bootstrap fetch repopulates from the backend either way.
+  if (hasForbiddenKey(saved) || !snapshotSchema.safeParse(saved).success) return null;
   const {
     availableTools,
     availableSkills,

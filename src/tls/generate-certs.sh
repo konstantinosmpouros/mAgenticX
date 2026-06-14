@@ -14,6 +14,7 @@
 #
 # Post-generation steps on the Linux VM:
 #   chown 999:999 chat_postgres/server.key
+#   chown 999:999 redis/tls.key
 #   chown 100:100 vault/tls.key
 #
 set -euo pipefail
@@ -25,7 +26,7 @@ DAYS_CERT=825      # Service certs valid ~2.25 years
 KEY_BITS=2048
 
 # Default services when no arguments are provided
-DEFAULT_SERVICES=(agentic_ui dialogue_bridge agents rag_service chat_postgres vault npm)
+DEFAULT_SERVICES=(agentic_ui dialogue_bridge agents rag_service chat_postgres vault npm redis)
 
 # Use arguments if provided, otherwise fall back to defaults
 if [ $# -gt 0 ]; then

@@ -197,6 +197,10 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       const fetched = await getMySkills(userId, opts);
       setMySkills(fetched);
     } catch (error) {
+      // A 401 means the session ended (e.g. logged out while this background
+      // refresh was in flight) — already handled by the global unauthorized
+      // redirect, so don't surface a "try again" toast on the way out.
+      if ((error as { status?: number })?.status === 401) return;
       toast({
         title: 'Could not refresh your skills',
         description: error instanceof Error ? error.message : 'Please try again.',
