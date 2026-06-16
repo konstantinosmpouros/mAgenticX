@@ -108,7 +108,7 @@ async def create_realtime_session_with_agents(
         "instructions": instructions,
         "metadata": metadata,
     }
-    timeout = httpx.Timeout(connect=15.0, read=75.0, write=75.0, pool=15.0)
+    timeout = settings.http.voice_timeout
     try:
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
             response = await upstream_error_handler.run_with_retries(

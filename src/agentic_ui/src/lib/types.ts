@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { PlanSnapshot } from "@/lib/agui";
+import type { PlanSnapshot } from "@/runtime/agui";
 import type { RealtimeVoice, VoiceModeLanguage } from "@/lib/consts";
 
 
@@ -461,6 +461,31 @@ export type TimelineThought = {
     text: string;
 };
 
+// One action's resolved outcome inside a batched HITL interrupt. Index-aligned
+// to the interrupt's action_requests order.
+export type TimelineHitlActionOutcome = {
+    status: "approved" | "rejected";
+    reason?: string | null;
+};
+
+// Parsed, human-readable view of a LangChain HITL interrupt payload, produced
+// by parseHitlInterrupt in runtime/hitl.ts. `raw` always carries the full
+// payload; the other fields are best-effort because interrupt shapes vary.
+export type ParsedHitlAction = {
+    toolName?: string;
+    description?: string;
+    argsText?: string;
+};
+
+export type ParsedHitlRequest = ParsedHitlAction & {
+    // Every action_request in the (possibly batched) interrupt, in order. The
+    // top-level toolName/description/argsText mirror actions[0] for callers that
+    // only need the first (back-compat). requestCount === actions.length.
+    actions: ParsedHitlAction[];
+    requestCount: number;
+    raw: string;
+};
+
 export type TimelineHitlApproval = {
     kind: "hitl";
     id: string;
@@ -469,6 +494,13 @@ export type TimelineHitlApproval = {
     status: "pending" | "approved" | "rejected";
     reason?: string | null;
     subagentId?: string;
+    // Which action_request this binding represents, when the interrupt gated
+    // multiple tool calls in one turn (per-tool approval chips). Undefined for
+    // a single-action interrupt.
+    actionIndex?: number;
+    // Per-action resolved outcomes (set on BRIDGE_HITL_RESOLVED for a batch);
+    // index-aligned to action_requests. Drives per-tool chip status.
+    decisions?: TimelineHitlActionOutcome[];
 };
 
 export type TimelineToolExecution = {
@@ -527,6 +559,7 @@ export type TimelineFoldIndexes = {
     openContentIndex: number | null;
     subagentIndexByKey: Record<string, number>;
     taskIdRemap: Record<string, string>;
+    namespaceToKey: Record<string, string>;
     toolPaths: Record<string, { block: number; item: number }>;
     pendingRetool: PendingToolRetool | null;
     blockCounter: number;

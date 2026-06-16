@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 
 import httpx
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from core.settings import settings
@@ -16,10 +16,13 @@ from schemas import DictationResponse
 logger = get_logger(__name__)
 
 _DICTATION_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/dictate/transcribe"
-_DICTATION_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
+DICTATION_TOO_LARGE_DETAIL = (
+    f"The audio recording is too large. Please record a shorter clip "
+    f"({settings.speech.dictation_max_bytes // (1024 * 1024)} MB or less)."
+)
+DICTATION_UNSUPPORTED_MEDIA_DETAIL = "Unsupported audio format. Please record an audio clip."
 _READ_ALOUD_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/speech/read-aloud"
-_READ_ALOUD_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
-MAX_READ_ALOUD_TEXT_CHARS = 2_000
+MAX_READ_ALOUD_TEXT_CHARS = settings.speech.read_aloud_max_chars
 READ_ALOUD_TEXT_TOO_LONG_DETAIL = (
     f"This message is too long to read aloud. Please choose a shorter message "
     f"({MAX_READ_ALOUD_TEXT_CHARS:,} characters or fewer)."
@@ -35,6 +38,28 @@ def read_aloud_response(audio: bytes, content_type: str, filename: str) -> Strea
             "Cache-Control": "no-store",
         },
     )
+
+
+async def read_capped_dictation_audio(audio: UploadFile) -> bytes:
+    # MediaRecorder tags blobs with codec params (e.g. "audio/webm;codecs=opus"),
+    # so match only the base content type. Reject non-audio uploads up front.
+    base_mime = (audio.content_type or "").split(";")[0].strip().lower()
+    if not base_mime.startswith("audio/"):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=DICTATION_UNSUPPORTED_MEDIA_DETAIL,
+        )
+    # Read in bounded chunks so an oversized body is rejected before the whole
+    # payload is buffered into memory.
+    buffer = bytearray()
+    while chunk := await audio.read(settings.speech.dictation_read_chunk_bytes):
+        buffer.extend(chunk)
+        if len(buffer) > settings.speech.dictation_max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=DICTATION_TOO_LARGE_DETAIL,
+            )
+    return bytes(buffer)
 
 
 async def transcribe_dictation_audio(
@@ -57,7 +82,7 @@ async def transcribe_dictation_audio(
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
     try:
-        async with httpx.AsyncClient(timeout=_DICTATION_TIMEOUT, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify()) as client:
             response = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(_DICTATION_ENDPOINT, files=files, headers=upstream_headers),
@@ -139,7 +164,7 @@ async def generate_read_aloud_audio(text: str, voice: str | None = None) -> tupl
 
     request_id = get_context().get("request_id")
     try:
-        async with httpx.AsyncClient(timeout=_READ_ALOUD_TIMEOUT, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify()) as client:
             response = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(

@@ -1,6 +1,6 @@
 from typing import Any
 
-from deepagents import create_deep_agent, SubAgent
+from deepagents import SubAgent
 
 from runtime import DeepAgent
 from core.settings import settings
@@ -72,7 +72,7 @@ class OmniAgent(DeepAgent):
     - ``/skills/``             — per-(user, agent) assigned skills, populated from
                                  the user's pool via the Skills tab Manage view
     - ``register_subagents()`` — declares researcher + writer sub-agents
-    - ``register_agent()``     — wires everything into ``create_deep_agent``
+    - ``register_agent()``     — calls ``build_deep_agent()`` (base assembler)
     """
 
     name = "omni-agent-v1"
@@ -119,17 +119,9 @@ class OmniAgent(DeepAgent):
     # ------------------------------------------------------------------
     def register_agent(self) -> Any:
         omni = settings.deep_agents.omni
-        return create_deep_agent(
+        return self.build_deep_agent(
             model=omni.main_model,
-            name=self.name,
-            tools=self.tools,
             system_prompt=self.instructions,
-            memory=self.agent_md_paths,
-            skills=self.skills_paths,
             subagents=self.sub_agents,
-            checkpointer=self.checkpointer,
-            store=None,
-            backend=self._build_composite_backend(),
-            context_schema=self.context,
             interrupt_on=HITL_GATED_TOOLS,
         )

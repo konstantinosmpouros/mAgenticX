@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence, Set
 from abc import abstractmethod, ABC
 
+from deepagents import create_deep_agent, FilesystemPermission
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
@@ -228,10 +229,16 @@ class DeepAgent(BaseAgent, ABC):
         memory_path = _memory_root(user_id)
         skills_path = _skills_root(user_id, self.name)
         conv_path = _conversation_root(user_id, self.name, conversation_id)
+        # Per-conversation, on-disk homes for deepagents' offloaded artifacts.
+        # Created eagerly so `ls` works before the first offload write.
+        large_tool_results_path = conv_path / "large_tool_results"
+        conversation_history_path = conv_path / "conversation_history"
+        large_tool_results_path.mkdir(parents=True, exist_ok=True)
+        conversation_history_path.mkdir(parents=True, exist_ok=True)
 
         def factory(rt: Any) -> CompositeBackend:
             return CompositeBackend(
-                default=StateBackend(rt),
+                default=StateBackend(),
                 routes={
                     "/memories/": FilesystemBackend(
                         root_dir=str(memory_path), virtual_mode=True
@@ -242,10 +249,77 @@ class DeepAgent(BaseAgent, ABC):
                     "/conversation/": FilesystemBackend(
                         root_dir=str(conv_path), virtual_mode=True
                     ),
+                    # deepagents offloads to the top-level /large_tool_results/ and
+                    # /conversation_history/ prefixes (default artifacts_root="/").
+                    # Route them to per-conversation disk so they persist instead
+                    # of living on the ephemeral StateBackend default. These dirs
+                    # sit inside the conversation dir, so they are also reachable
+                    # under /conversation/ — a cosmetic overlap the planned
+                    # input/output restructure will remove.
+                    "/large_tool_results/": FilesystemBackend(
+                        root_dir=str(large_tool_results_path), virtual_mode=True
+                    ),
+                    "/conversation_history/": FilesystemBackend(
+                        root_dir=str(conversation_history_path), virtual_mode=True
+                    ),
                 },
             )
 
         return factory
+
+
+    def _build_workspace_permissions(self) -> list[FilesystemPermission]:
+        """Permission rules over the built-in filesystem tools. The only control
+        the backend layer can't provide is making ``/skills/`` read-only (it is a
+        writable FilesystemBackend), so that is all this enforces.
+
+        Confinement is structural, not rule-based: the CompositeBackend routes
+        every other path to a per-(user, agent, conversation) FilesystemBackend
+        or the ephemeral, agent-scoped StateBackend, none of which can reach the
+        host or another user (and ``virtual_mode`` blocks ``..``/absolute-path
+        escapes). So there is deliberately NO catch-all deny — one would also
+        block the agent from reading deepagents' own ``/large_tool_results/``
+        eviction area. ``{,/**}`` matches the mount root, the root with a
+        trailing slash, and everything beneath it.
+        """
+        return [
+            FilesystemPermission(operations=["write"], paths=["/skills{,/**}"], mode="deny"),
+        ]
+
+
+    def build_deep_agent(
+        self,
+        *,
+        model: Any,
+        system_prompt: Any = None,
+        subagents: SubAgentsT = None,
+        interrupt_on: dict[str, Any] | None = None,
+    ) -> Any:
+        """Assemble the runnable with the fixed, plug-and-play filesystem wiring
+        injected from the base — memory, skills, the per-(user, agent,
+        conversation) CompositeBackend, and its permission ladder. These are
+        identical for every deep agent; only the on-disk roots vary, computed
+        per (user, agent, conversation) at tool-call time. Concrete agents call
+        this from ``register_agent()`` and supply only what differs: model,
+        system prompt, sub-agents, and HITL gating. Agent-specific tools come
+        from ``self.tools`` (populate them via ``attach_tools()``).
+        """
+        return create_deep_agent(
+            model=model,
+            name=self.name,
+            tools=self.tools,
+            system_prompt=system_prompt,
+            subagents=subagents,
+            interrupt_on=interrupt_on,
+            # Fixed filesystem — same mounts + permissions for every deep agent.
+            memory=self.agent_md_paths,
+            skills=self.skills_paths,
+            backend=self._build_composite_backend(),
+            permissions=self._build_workspace_permissions(),
+            context_schema=self.context,
+            checkpointer=self.checkpointer,
+            store=None,
+        )
 
 
     # ---------------------------------------------------------------------

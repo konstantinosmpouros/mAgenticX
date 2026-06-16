@@ -39,7 +39,7 @@ const sections = [
     },
     {
         title: "Third-Party Services",
-        body: "mAgenticX integrates with third-party services including OpenAI for AI inference and optionally MCP-compatible tools (such as Tavily for web search). These services operate under their own privacy policies and terms of service. We encourage you to review those policies before using features that depend on these integrations.",
+        body: "mAgenticX integrates with third-party services including OpenAI for AI inference, Microsoft Office Online for previewing Office documents (Word, Excel, and PowerPoint attachments are transmitted to Microsoft's viewer service to render an in-app preview), and optionally MCP-compatible tools (such as Tavily for web search). These services operate under their own privacy policies and terms of service. We encourage you to review those policies before using features that depend on these integrations.",
     },
     {
         title: "Changes to This Policy",
@@ -99,9 +99,9 @@ export default function PrivacyPolicy() {
                             </div>
                             <div className="flex flex-col items-end gap-1 text-right">
                                 <span className="text-xs text-muted-foreground">Last updated</span>
-                                <span className="text-sm font-semibold text-foreground">May 2025</span>
+                                <span className="text-sm font-semibold text-foreground">June 2026</span>
                                 <span className="mt-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-[0.65rem] font-semibold text-muted-foreground">
-                                    v1.0
+                                    v1.1
                                 </span>
                             </div>
                         </div>

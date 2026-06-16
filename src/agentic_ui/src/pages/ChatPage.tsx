@@ -29,7 +29,6 @@ import {
   useSidebarInteractionEffect,
 } from "@/hooks/useChatEffects";
 import { useChatVoiceMode } from "@/hooks/useChatVoiceMode";
-import { useInferenceRuns } from "@/hooks/useInferenceRuns";
 import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
@@ -59,11 +58,15 @@ import {
   createSearchResultHandlers,
   useWorkspaceSearch,
   buildDefaultConversationSearchResults,
+  runActiveUiDismissal,
 } from "@/handlers";
 import {
   createInferenceHandlers,
   createMessageEditHandlers,
   createRetryHandlers,
+  useInferenceRuns,
+  HitlProvider,
+  pendingTimelineInterrupts,
 } from "@/runtime";
 import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail, getSkills, getSuggestions } from "@/lib/api";
@@ -74,7 +77,6 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
 import { PlanCard } from "@/components/chat/message_parts/PlanningContainer";
 import { OVERLAY_HOST_ID } from "@/lib/overlay-host";
-import { HitlProvider } from "@/lib/hitl-context";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ReportConversationDialog from "@/components/chat/ReportPanel";
@@ -83,7 +85,6 @@ import ChatBody from "@/components/chat/ChatBody";
 import VoiceModeBody from "@/components/chat/VoiceModeBody";
 import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
 import { HitlInputTakeover } from "@/components/chat/HitlInputTakeover";
-import { pendingTimelineInterrupts } from "@/lib/timeline";
 import SearchPanel from "@/components/chat/SearchPanel";
 import { Loader } from "@/components/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/lib/uiStateStorage";
@@ -857,77 +858,30 @@ export function ChatInterface({
   }, []);
 
   const dismissActiveUi = useCallback(() => {
-    if (isSearchOpen) {
-      closeSearchPanel();
-      return true;
-    }
-
-    if (selectedFilePreview) {
-      handleCloseFilePreview();
-      return true;
-    }
-
-    if (selectedImage) {
-      handleCloseImagePreview();
-      return true;
-    }
-
-    if (dictationStatus !== "idle" && dictationStatus !== "submitting") {
-      cancelDictation();
-      return true;
-    }
-
-    if (isReportDialogOpen) {
-      closeReportDialog();
-      return true;
-    }
-
-    if (shareTargetMessage) {
-      closeShareDialog();
-      return true;
-    }
-
-    if (showUserProfile) {
-      closeProfilePanel();
-      return true;
-    }
-
-    if (isAgentPickerOpen) {
-      setIsAgentPickerOpen(false);
-      return true;
-    }
-
-    if (isHeaderActionMenuOpen) {
-      setIsHeaderActionMenuOpen(false);
-      return true;
-    }
-
-    if (isSidebarFloatingUiOpen) {
-      setSidebarDismissFloatingUiSignal((prev) => prev + 1);
-      return true;
-    }
-
-    if (editingMessageId) {
-      handleCancelEditMessage();
-      return true;
-    }
-
-    if (typeof document !== "undefined") {
-      const expandedTrigger = document.querySelector<HTMLElement>('[aria-expanded="true"]');
-      if (expandedTrigger) {
-        window.dispatchEvent(new Event("magenticx:close-ai-action-menus"));
-        expandedTrigger.blur();
-        return true;
-      }
-
-      const activeElement = document.activeElement;
-      if (activeElement instanceof HTMLElement && activeElement !== document.body) {
-        activeElement.blur();
-        return true;
-      }
-    }
-
-    return false;
+    return runActiveUiDismissal({
+      isSearchOpen,
+      selectedFilePreview,
+      selectedImage,
+      dictationStatus,
+      isReportDialogOpen,
+      shareTargetMessage,
+      showUserProfile,
+      isAgentPickerOpen,
+      isHeaderActionMenuOpen,
+      isSidebarFloatingUiOpen,
+      editingMessageId,
+      closeSearchPanel,
+      handleCloseFilePreview,
+      handleCloseImagePreview,
+      cancelDictation,
+      closeReportDialog,
+      closeShareDialog,
+      closeProfilePanel,
+      handleCancelEditMessage,
+      setIsAgentPickerOpen,
+      setIsHeaderActionMenuOpen,
+      setSidebarDismissFloatingUiSignal,
+    });
   }, [
     cancelDictation,
     closeSearchPanel,
@@ -1556,12 +1510,16 @@ export function ChatInterface({
                         content: activeHitlInterrupt.content,
                       }}
                       pendingCount={pendingRunInterrupts.length}
-                      onResolve={(decision, reason) =>
+                      onResolve={(decisions) =>
                         resumeInferenceRunHandler(activeConversationRun.id, {
                           interruptId: activeHitlInterrupt.id,
                           threadId: activeHitlInterrupt.threadId,
-                          decision,
-                          reason,
+                          // Overall decision (legacy/back-compat field): approve
+                          // unless every action was rejected. Per-action outcomes
+                          // ride in `decisions`.
+                          decision: decisions.some((d) => d.decision === "approve") ? "approve" : "reject",
+                          reason: decisions.find((d) => d.decision === "reject" && d.reason)?.reason,
+                          decisions,
                         })
                       }
                     />

@@ -75,7 +75,11 @@ server {
   }
 
   location ^~ /api/v1/attachments/public/ {
-    add_header Access-Control-Allow-Origin "*" always;
+    # Office Online (embed.aspx) is the only legitimate cross-origin reader, and
+    # Microsoft fetches the doc server-side (no Origin header) — so this scoping
+    # does NOT gate the viewer; it only stops arbitrary sites' JS from reading
+    # the blob with a leaked short-lived token. Never widen back to "*".
+    add_header Access-Control-Allow-Origin "https://view.officeapps.live.com" always;
     add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
     add_header Access-Control-Allow-Headers "Range, Content-Type" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;

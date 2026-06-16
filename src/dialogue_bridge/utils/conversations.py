@@ -4,13 +4,16 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import HTTPException, status
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from core.database import (
     AgentTable,
     AttachmentTable,
     b64_encode,
     BlobTable,
+    ConversationShareTable,
     ConversationTable,
     MessageTable,
     UserTable,
@@ -274,3 +277,59 @@ def _attachment_to_share_snapshot(attachment: AttachmentTable) -> dict:
         "timestamp": attachment.created_at.isoformat() if attachment.created_at else None,
         "data": b64_encode(blob_data) if blob_data else None,
     }
+
+
+def conversation_summaries_query(user_id: str, *, archived: bool) -> Select:
+    """Build the paginated summary query for a user's active or archived conversations."""
+    stmt = (
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(
+            ConversationTable.user_id == user_id,
+            ConversationTable.is_private == False,
+            ConversationTable.is_archived == archived,
+        )
+    )
+    if archived:
+        return stmt.order_by(
+            ConversationTable.archived_at.desc(), ConversationTable.updated_at.desc()
+        )
+    return stmt.order_by(ConversationTable.updated_at.desc())
+
+
+async def get_conversation_with_agent(db: AsyncSession, conversation_id: str) -> ConversationTable:
+    """Reload a conversation with its agent eagerly loaded (e.g. after a fork)."""
+    result = await db.execute(
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(ConversationTable.id == conversation_id)
+    )
+    return result.scalar_one()
+
+
+async def get_share_for_owner(
+    db: AsyncSession, share_id: str, conversation_id: str, owner_user_id: str
+) -> ConversationShareTable | None:
+    """Load a share link scoped to its owning user and conversation."""
+    result = await db.execute(
+        select(ConversationShareTable).where(
+            ConversationShareTable.id == share_id,
+            ConversationShareTable.conversation_id == conversation_id,
+            ConversationShareTable.owner_user_id == owner_user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_owned_shares(
+    db: AsyncSession, owner_user_id: str, page: int, size: int
+) -> List[ConversationShareTable]:
+    """Return a page of share links owned by the user, newest first."""
+    result = await db.execute(
+        select(ConversationShareTable)
+        .where(ConversationShareTable.owner_user_id == owner_user_id)
+        .order_by(ConversationShareTable.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    return list(result.scalars().all())

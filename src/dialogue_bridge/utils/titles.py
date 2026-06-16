@@ -14,9 +14,6 @@ from utils.conversations import _preview
 logger = get_logger(__name__)
 
 _TITLE_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/titles/generate"
-_TITLE_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
-_TITLE_MAX_LEN = 120
-_TITLE_MIN_CANDIDATES = 3
 
 
 def _message_to_chain_payload(message: MessageIn) -> List[Dict[str, Any]]:
@@ -93,7 +90,7 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
     try:
-        async with httpx.AsyncClient(timeout=_TITLE_TIMEOUT, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify()) as client:
             response = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(_TITLE_ENDPOINT, json=payload, headers=upstream_headers),
@@ -143,8 +140,8 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
         title = (raw_title or "").strip()
         if not title:
             continue
-        if len(title) > _TITLE_MAX_LEN:
-            title = title[:_TITLE_MAX_LEN].rstrip()
+        if len(title) > settings.generation.title_max_len:
+            title = title[:settings.generation.title_max_len].rstrip()
             truncated = True
         key = title.casefold()
         if key in seen:
@@ -152,7 +149,7 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
         seen.add(key)
         titles.append(title)
 
-    if len(titles) < _TITLE_MIN_CANDIDATES:
+    if len(titles) < settings.generation.title_min_candidates:
         logger.warning(
             "title_generation_insufficient_candidates",
             "Conversation title generation returned too few usable candidates",

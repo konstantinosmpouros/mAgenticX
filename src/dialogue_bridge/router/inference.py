@@ -1,11 +1,11 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from observability import get_logger, set_context
 
-from core.database import ConversationTable, MessageTable, SessionLocal, UserTable, get_db
+from core.database import SessionLocal, UserTable, get_db
+from core.settings import settings
 from schemas import (
     InferenceStartPayload,
     InferenceStartResponse,
@@ -18,7 +18,9 @@ from utils import validate_userId
 from utils.inference_runs import (
     build_run_event_payload,
     build_run_out_from_message,
+    get_active_run_for_user,
     inference_run_manager,
+    list_runs_for_user,
     mark_run_launch_failed,
     request_run_cancel,
     request_run_resume,
@@ -83,21 +85,8 @@ async def listInferenceRuns(
     by streaming_status and join through ``conversations`` to scope to the
     requesting user.
     """
-    stmt = (
-        select(MessageTable)
-        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
-        .where(
-            ConversationTable.user_id == user_id,
-            MessageTable.streaming_status.is_not(None),
-        )
-    )
-    if status_filter == "active":
-        stmt = stmt.where(MessageTable.streaming_status.in_(("queued", "running", "cancelling")))
-    elif status_filter:
-        stmt = stmt.where(MessageTable.streaming_status == status_filter)
-    stmt = stmt.order_by(MessageTable.streaming_started_at.desc())
-    result = await db.execute(stmt)
-    return [build_run_out_from_message(message, user_id=user_id) for message in result.scalars().all()]
+    runs = await list_runs_for_user(db, user_id, status_filter)
+    return [build_run_out_from_message(message, user_id=user_id) for message in runs]
 
 
 @router.websocket("/runs/{user_id}/{run_id}/ws")
@@ -136,16 +125,7 @@ async def inference_run_websocket(
         await websocket.close(code=_WS_UNAUTHORIZED, reason="Authentication required")
         return
 
-    result = await db.execute(
-        select(MessageTable)
-        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
-        .where(
-            MessageTable.id == run_id,
-            ConversationTable.user_id == user_id,
-            MessageTable.streaming_status.is_not(None),
-        )
-    )
-    run = result.scalar_one_or_none()
+    run = await get_active_run_for_user(db, user_id, run_id)
     if not run:
         await websocket.close(code=_WS_NOT_FOUND, reason="Inference run not found")
         return
@@ -155,7 +135,9 @@ async def inference_run_websocket(
 
     # First client frame must be a subscribe.
     try:
-        first_frame = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+        first_frame = await asyncio.wait_for(
+            websocket.receive_json(), timeout=settings.inference.ws_subscribe_timeout_seconds
+        )
     except asyncio.TimeoutError:
         await websocket.close(code=_WS_BAD_REQUEST, reason="No subscribe frame within 10s")
         return
@@ -226,16 +208,7 @@ async def cancelInferenceRun(
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> InferenceRunOut:
-    result = await db.execute(
-        select(MessageTable)
-        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
-        .where(
-            MessageTable.id == run_id,
-            ConversationTable.user_id == user_id,
-            MessageTable.streaming_status.is_not(None),
-        )
-    )
-    run = result.scalar_one_or_none()
+    run = await get_active_run_for_user(db, user_id, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Inference run not found.")
     run = await request_run_cancel(db, run)
@@ -262,16 +235,7 @@ async def resumeInferenceRun(
     checkpoint. Resulting events flow through the same Redis stream + WS
     observers as the original run.
     """
-    result = await db.execute(
-        select(MessageTable)
-        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
-        .where(
-            MessageTable.id == run_id,
-            ConversationTable.user_id == user_id,
-            MessageTable.streaming_status.is_not(None),
-        )
-    )
-    run = result.scalar_one_or_none()
+    run = await get_active_run_for_user(db, user_id, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Inference run not found.")
 
@@ -280,6 +244,7 @@ async def resumeInferenceRun(
         "reason": payload.reason,
         "value": payload.value,
         "interrupt_id": payload.interruptId,
+        "decisions": [d.model_dump() for d in payload.decisions] if payload.decisions else None,
     }
     accepted = await request_run_resume(run, resume_payload)
     if not accepted:

@@ -1407,6 +1407,11 @@ export async function cancelInferenceRun(userId: string, runId: string): Promise
   return transformInferenceRun(await res.json());
 }
 
+export type ResumeActionDecision = {
+  decision: "approve" | "reject";
+  reason?: string;
+};
+
 export type ResumeInferenceRunBody = {
   // LangGraph interrupt id from the HITL_INTERRUPT event the user is acting
   // on. Lets the bridge/agents service verify the right interrupt is being
@@ -1416,6 +1421,11 @@ export type ResumeInferenceRunBody = {
   decision: "approve" | "reject";
   reason?: string;
   value?: unknown;
+  // Per-action decisions for a batched interrupt (one entry per action_request,
+  // in order). When present, the backend applies them positionally instead of
+  // replicating the single `decision`. The `decision` field stays as the
+  // overall/legacy fallback.
+  decisions?: ResumeActionDecision[];
 };
 
 export async function resumeInferenceRun(
@@ -1432,6 +1442,7 @@ export async function resumeInferenceRun(
       decision: body.decision,
       reason: body.reason ?? null,
       value: body.value ?? null,
+      decisions: body.decisions ?? null,
     }),
   }, { csrf: true }));
   if (!res.ok) {

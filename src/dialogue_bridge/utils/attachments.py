@@ -7,19 +7,22 @@ from urllib.parse import quote
 
 from fastapi import HTTPException, Response, status
 from fastapi.responses import StreamingResponse
+from fastapi_pagination import Page, Params, create_page
 from observability import StreamMetrics, get_context, get_logger, set_context
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable
+from core.settings import settings
+from schemas import ImageOut
 
 
 logger = get_logger(__name__)
 
-_DOCX_PREVIEW_TOKEN_TTL = 60
 
-
-def generate_docx_preview_token(blob_id: str, secret: str, ttl: int = _DOCX_PREVIEW_TOKEN_TTL) -> str:
+def generate_docx_preview_token(
+    blob_id: str, secret: str, ttl: int = settings.attachments.docx_preview_token_ttl_seconds
+) -> str:
     expiry = int(time.time()) + ttl
     payload = f"{blob_id}:{expiry}"
     sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
@@ -143,9 +146,9 @@ async def stream_blob_response(
         "Content-Disposition": encode_disposition(file_name, disposition),
     }
     if disposition == "inline":
-        base_headers["Cache-Control"] = "private, max-age=300"
+        base_headers["Cache-Control"] = f"private, max-age={settings.attachments.inline_cache_max_age_seconds}"
 
-    chunk_size = 1024 * 512
+    chunk_size = settings.attachments.stream_chunk_bytes
 
     async def stream_range(start: int, end: int, *, partial: bool):
         metrics = StreamMetrics()
@@ -261,3 +264,58 @@ async def stream_blob_response(
         media_type=mime or "application/octet-stream",
         headers=headers,
     )
+
+
+async def get_public_docx_blob(db: AsyncSession, blob_id: str):
+    """Load the raw bytes + display metadata for a token-authenticated DOCX viewer request."""
+    result = await db.execute(
+        select(BlobTable.data, AttachmentTable.file_name, AttachmentTable.mime_type)
+        .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
+        .where(BlobTable.id == blob_id)
+    )
+    return result.mappings().one_or_none()
+
+
+async def list_user_images(db: AsyncSession, user_id: str, params: Params) -> Page[ImageOut]:
+    """Return a page of the user's image attachments with base64-encoded payloads."""
+    stmt = (
+        select(
+            BlobTable.id.label("blob_id"),
+            AttachmentTable.id.label("attachment_id"),
+            AttachmentTable.file_name,
+            AttachmentTable.mime_type,
+            AttachmentTable.created_at,
+            func.replace(func.encode(BlobTable.data, "base64"), "\n", "").label("data_b64"),
+        )
+        .join(AttachmentTable, AttachmentTable.blob_id == BlobTable.id)
+        .join(MessageTable, MessageTable.id == AttachmentTable.message_id)
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            ConversationTable.user_id == user_id,
+            AttachmentTable.mime_type.like("image/%"),
+        )
+        .order_by(desc(AttachmentTable.created_at))
+    )
+
+    raw_params = params.to_raw_params()
+    paged_stmt = (
+        stmt.add_columns(func.count().over().label("total_count"))
+        .limit(raw_params.limit)
+        .offset(raw_params.offset)
+    )
+    result = await db.execute(paged_stmt)
+    rows = result.all()
+    total = rows[0].total_count if rows else 0
+
+    items = [
+        ImageOut(
+            blob_id=r.blob_id,
+            attachment_id=r.attachment_id,
+            file_name=r.file_name,
+            mime_type=r.mime_type,
+            created_at=r.created_at,
+            dataB64=r.data_b64,
+        )
+        for r in rows
+    ]
+    return create_page(items, total=total, params=params)

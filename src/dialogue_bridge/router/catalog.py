@@ -1,17 +1,15 @@
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from observability import get_logger, set_context
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from core.database import ConversationTable, get_db, UserTable
+from core.database import get_db, UserTable
 from schemas import AgentPublic, ToolManifest
 from utils import (
     fetch_tools_from_agents_service,
     generate_conversation_suggestions,
     get_agent_by_id,
     get_cached_agents,
+    recent_conversations_for_suggestions,
     sync_agents_with_service,
     validate_userId,
 )
@@ -61,25 +59,7 @@ async def getSuggestions(
     set_context(user_id=user_id)
     agent = await get_agent_by_id(agentId) if agentId else None
 
-    result = await db.execute(
-        select(ConversationTable)
-        .options(selectinload(ConversationTable.agent))
-        .where(
-            ConversationTable.user_id == current_user.id,
-            ConversationTable.is_private == False,
-        )
-        .order_by(ConversationTable.updated_at.desc())
-        .limit(8)
-    )
-    conversations = result.scalars().all()
-    recent_conversations = [
-        {
-            "title": conversation.title,
-            "last_message": conversation.last_message_preview,
-            "agent_name": conversation.agent.name if conversation.agent else conversation.agent_name,
-        }
-        for conversation in conversations
-    ]
+    recent_conversations = await recent_conversations_for_suggestions(db, current_user.id)
     suggestions = await generate_conversation_suggestions(
         agent_name=agent.name if agent else None,
         agent_description=agent.description if agent else None,

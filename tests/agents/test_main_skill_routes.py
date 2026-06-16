@@ -436,6 +436,55 @@ async def test_resume_reject_uses_reason(client, agents_service, internal_header
     assert cmd.resume["decisions"][0] == {"type": "reject", "message": "no thanks"}
 
 
+class _BatchResumeAgent(_FakeResumeAgent):
+    interrupts = [
+        _FakeInterrupt(action_requests=[{"action": "write_file"}, {"action": "write_file"}]),
+    ]
+
+
+async def test_resume_batched_per_action_decisions(client, agents_service, internal_headers, monkeypatch):
+    # A batched interrupt (2 gated tool calls) with a mixed per-action decisions
+    # list must map positionally — approve #0, reject #1 — not replicate one.
+    _resume_env(agents_service, monkeypatch, agent_cls=_BatchResumeAgent)
+    _BatchResumeAgent.captured_command = {}
+    response = await client.post(
+        "/agents/omni/resume",
+        headers=internal_headers,
+        json={
+            "config": {"run_config": {"configurable": {}}},
+            "thread_id": "t-1",
+            "decision": "approve",
+            "decisions": [
+                {"decision": "approve"},
+                {"decision": "reject", "reason": "wrong path"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    cmd = _BatchResumeAgent.captured_command["command"]
+    assert cmd.resume["decisions"] == [
+        {"type": "approve"},
+        {"type": "reject", "message": "wrong path"},
+    ]
+
+
+async def test_resume_decisions_count_mismatch_422(client, agents_service, internal_headers, monkeypatch):
+    # 2 pending actions but only 1 decision → 422 (guards the LangChain
+    # ValueError from leaking as a 500).
+    _resume_env(agents_service, monkeypatch, agent_cls=_BatchResumeAgent)
+    response = await client.post(
+        "/agents/omni/resume",
+        headers=internal_headers,
+        json={
+            "config": {"run_config": {"configurable": {}}},
+            "thread_id": "t-1",
+            "decision": "approve",
+            "decisions": [{"decision": "approve"}],
+        },
+    )
+    assert response.status_code == 422
+
+
 async def test_resume_no_pending_interrupt_409(client, agents_service, internal_headers, monkeypatch):
     class _NoInterruptAgent(_FakeResumeAgent):
         interrupts: list = []

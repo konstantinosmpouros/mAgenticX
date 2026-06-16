@@ -4,12 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from observability import get_logger, logged_db_operation, set_context
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 
-from core.database import ConversationReportTable, ConversationShareTable, ConversationTable, MessageTable, get_db, UserTable
+from core.database import ConversationReportTable, ConversationShareTable, ConversationTable, get_db, UserTable
 from schemas import (
     ConversationDetail,
     ConversationForkIn,
@@ -31,9 +29,13 @@ from utils import (
     build_message_lineage,
     build_share_snapshot,
     clone_branch_to_conversation,
-    generate_conversation_title,
+    conversation_summaries_query,
     get_agent_by_id,
+    get_conversation_with_agent,
+    get_owned_message,
+    get_share_for_owner,
     init_conv,
+    list_owned_shares,
     resolve_conversation_title,
     set_conversation_archive_state,
     validate_convId,
@@ -156,13 +158,7 @@ async def forkConversation(
         await db.commit()
         operation.add(forked_conversation_id=forked_conv.id)
 
-    stmt = (
-        select(ConversationTable)
-        .options(selectinload(ConversationTable.agent))
-        .where(ConversationTable.id == forked_conv.id)
-    )
-    result = await db.execute(stmt)
-    forked_full = result.scalar_one()
+    forked_full = await get_conversation_with_agent(db, forked_conv.id)
     logger.info("conversation_forked", "Conversation forked", **operation.snapshot())
     return ConversationSummary.model_validate(forked_full)
 
@@ -294,14 +290,7 @@ async def revokeConversationShare(
 ):
     """Revoke a share link owned by the authenticated conversation owner."""
     set_context(user_id=user_id, conversation_id=conversation_id)
-    result = await db.execute(
-        select(ConversationShareTable).where(
-            ConversationShareTable.id == share_id,
-            ConversationShareTable.conversation_id == current_conv.id,
-            ConversationShareTable.owner_user_id == current_user.id,
-        )
-    )
-    share = result.scalar_one_or_none()
+    share = await get_share_for_owner(db, share_id, current_conv.id, current_user.id)
     if share is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link not found.")
 
@@ -328,17 +317,7 @@ async def getConvsSummary(
     Use query params: ?page=1&size=50
     """
     set_context(user_id=user_id)
-    stmt = (
-        select(ConversationTable)
-        .options(selectinload(ConversationTable.agent))
-        .where(
-            ConversationTable.user_id == user_id,
-            ConversationTable.is_private == False,
-            ConversationTable.is_archived == False,
-        )
-        .order_by(ConversationTable.updated_at.desc())
-    )
-    page = await apaginate(db, stmt)
+    page = await apaginate(db, conversation_summaries_query(user_id, archived=False))
     logger.info("conversation_summary_list_fetched", "Conversation summary list fetched", total=page.total, page=page.page, size=page.size)
     return page
 
@@ -358,17 +337,7 @@ async def getArchivedConvsSummary(
     Return a paginated archived conversation summary list for the user.
     """
     set_context(user_id=user_id)
-    stmt = (
-        select(ConversationTable)
-        .options(selectinload(ConversationTable.agent))
-        .where(
-            ConversationTable.user_id == user_id,
-            ConversationTable.is_private == False,
-            ConversationTable.is_archived == True,
-        )
-        .order_by(ConversationTable.archived_at.desc(), ConversationTable.updated_at.desc())
-    )
-    page = await apaginate(db, stmt)
+    page = await apaginate(db, conversation_summaries_query(user_id, archived=True))
     logger.info("conversation_archived_summary_list_fetched", "Archived conversation summary list fetched", total=page.total, page=page.page, size=page.size)
     return page
 
@@ -389,14 +358,7 @@ async def getConversationShares(
     """Return share links owned by the authenticated user."""
     set_context(user_id=user_id)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    result = await db.execute(
-        select(ConversationShareTable)
-        .where(ConversationShareTable.owner_user_id == current_user.id)
-        .order_by(ConversationShareTable.created_at.desc())
-        .offset((page - 1) * size)
-        .limit(size)
-    )
-    shares = result.scalars().all()
+    shares = await list_owned_shares(db, current_user.id, page, size)
     logger.info(
         "conversation_share_list_fetched",
         "Conversation share list fetched",
@@ -539,13 +501,9 @@ async def reportConversation(
 
     resolved_message_id = payload.messageId
     if resolved_message_id:
-        message_result = await db.execute(
-            select(MessageTable).where(
-                MessageTable.id == resolved_message_id,
-                MessageTable.conversation_id == conversation_id,
-            )
+        target_message = await get_owned_message(
+            db, conversation_id, resolved_message_id, with_attachments=False
         )
-        target_message = message_result.scalar_one_or_none()
         if target_message is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

@@ -398,7 +398,7 @@ Before starting the service locally:
 
 The current image:
 
-- uses `python:3.11-slim`
+- uses `python:3.12-slim`
 - installs Python dependencies from `requirements.txt`
 - installs `build-essential`
 - copies the service source into `/app`

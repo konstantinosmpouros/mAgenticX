@@ -1,4 +1,4 @@
-import { getInferenceStartErrorCopy } from '@/lib/inferenceErrors';
+import { getInferenceStartErrorCopy } from './inferenceErrors';
 import { convertFileAttachments } from '@/lib/utils';
 import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
 import type {

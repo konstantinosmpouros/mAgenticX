@@ -358,6 +358,17 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `REDIS_STREAM_MAXLEN` | dialogue_bridge | Approximate cap on the per-run event stream (default 5000) |
 | `REDIS_STREAM_TERMINAL_TTL_SECONDS` | dialogue_bridge | Replay window after a run ends (default 3600) |
 | `REDIS_STREAM_READ_BLOCK_MS` | dialogue_bridge | `XREAD BLOCK` timeout in ms (default 30000) |
+| `INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS` | dialogue_bridge | Wait for the WS subscribe frame before closing (default 10) |
+| `ATTACHMENT_MAX_SIZE_BYTES` / `ATTACHMENT_MAX_TOTAL_BYTES` / `ATTACHMENT_MAX_PER_MESSAGE` | dialogue_bridge | Per-file, per-message-total, and count limits for attachments (defaults 25 MB / 25 MB / 10) |
+| `ATTACHMENT_DOCX_PREVIEW_TOKEN_TTL_SECONDS` | dialogue_bridge | Lifetime of the Office-viewer preview token (default 60) |
+| `ATTACHMENT_INLINE_CACHE_MAX_AGE_SECONDS` | dialogue_bridge | `Cache-Control: max-age` for inline blob previews (default 300) |
+| `ATTACHMENT_STREAM_CHUNK_BYTES` | dialogue_bridge | Blob streaming chunk size (default 524288) |
+| `SPEECH_DICTATION_READ_CHUNK_BYTES` | dialogue_bridge | Dictation upload read-chunk size (default 1 MB) |
+| `SHARE_DEFAULT_TTL_DAYS` / `SHARE_MAX_TTL_DAYS` | dialogue_bridge | Default and maximum share-link lifetime (defaults 30 / 365) |
+| `GENERATION_TITLE_MAX_LEN` / `GENERATION_TITLE_MIN_CANDIDATES` | dialogue_bridge | Title-generation length cap and minimum usable candidates (defaults 120 / 3) |
+| `GENERATION_SUGGESTION_MAX_LEN` / `GENERATION_SUGGESTION_MIN_CANDIDATES` / `GENERATION_SUGGESTION_COUNT` | dialogue_bridge | Suggestion length cap, minimum candidates, and returned count (defaults 160 / 6 / 10) |
+| `GENERATION_SUGGESTION_RECENT_CONTEXT_COUNT` | dialogue_bridge | Recent conversations sampled for suggestion context (default 8) |
+| `HTTP_<PROFILE>_{CONNECT,READ,WRITE,POOL}_SECONDS` | dialogue_bridge | Upstream httpx timeouts per profile (`AGENTS`, `GENERATION`, `SKILLS`, `VOICE`, `INFERENCE`) |
 | `MCP_GATEWAY_URL` | agents | MCP gateway SSE endpoint |
 | `RAG_BASE_URL` | agents | RAG service base URL |
 | `AGENTS_SERVICE_URL` | dialogue_bridge | Agents runtime base URL |

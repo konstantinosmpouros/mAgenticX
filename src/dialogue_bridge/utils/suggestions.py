@@ -1,7 +1,11 @@
 from typing import Any, Dict, List, Optional
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from core.database import ConversationTable
 from core.proxy import internal_service_headers
 from core.tls import get_httpx_verify
 from observability import get_context, get_logger
@@ -12,9 +16,29 @@ from core.error_handling import upstream_error_handler
 logger = get_logger(__name__)
 
 _SUGGESTIONS_ENDPOINT = f"{settings.upstream.agents_service_url.rstrip('/')}/suggestions/generate"
-_SUGGESTIONS_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
-_SUGGESTION_MAX_LEN = 160
-_SUGGESTION_MIN_CANDIDATES = 6
+
+
+async def recent_conversations_for_suggestions(db: AsyncSession, user_id: str) -> List[Dict[str, Any]]:
+    """Load the user's recent non-private conversations as suggestion context."""
+    result = await db.execute(
+        select(ConversationTable)
+        .options(selectinload(ConversationTable.agent))
+        .where(
+            ConversationTable.user_id == user_id,
+            ConversationTable.is_private == False,
+        )
+        .order_by(ConversationTable.updated_at.desc())
+        .limit(settings.generation.suggestion_recent_context_count)
+    )
+    conversations = result.scalars().all()
+    return [
+        {
+            "title": conversation.title,
+            "last_message": conversation.last_message_preview,
+            "agent_name": conversation.agent.name if conversation.agent else conversation.agent_name,
+        }
+        for conversation in conversations
+    ]
 
 
 def build_suggestion_context_payload(
@@ -68,7 +92,7 @@ async def generate_conversation_suggestions(
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
     try:
-        async with httpx.AsyncClient(timeout=_SUGGESTIONS_TIMEOUT, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify()) as client:
             response = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(_SUGGESTIONS_ENDPOINT, json=payload, headers=upstream_headers),
@@ -116,15 +140,15 @@ async def generate_conversation_suggestions(
         suggestion = (raw_suggestion or "").strip()
         if not suggestion:
             continue
-        if len(suggestion) > _SUGGESTION_MAX_LEN:
-            suggestion = suggestion[:_SUGGESTION_MAX_LEN].rstrip()
+        if len(suggestion) > settings.generation.suggestion_max_len:
+            suggestion = suggestion[:settings.generation.suggestion_max_len].rstrip()
         key = suggestion.casefold()
         if key in seen:
             continue
         seen.add(key)
         suggestions.append(suggestion)
 
-    if len(suggestions) < _SUGGESTION_MIN_CANDIDATES:
+    if len(suggestions) < settings.generation.suggestion_min_candidates:
         logger.warning(
             "suggestion_generation_insufficient_candidates",
             "Conversation suggestion generation returned too few usable candidates",
@@ -139,4 +163,4 @@ async def generate_conversation_suggestions(
         "Conversation suggestions generated successfully",
         candidate_count=len(suggestions),
     )
-    return suggestions[:10]
+    return suggestions[:settings.generation.suggestion_count]

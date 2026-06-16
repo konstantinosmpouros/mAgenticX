@@ -8,8 +8,8 @@ import {
   SubAgentPayloadSchema,
   TASK_SUBAGENT_EVENT_TYPE,
   TaskSubAgentPayloadSchema,
-} from "@/lib/agui";
-import { parseHitlInterrupt } from "@/lib/utils";
+} from "./agui";
+import { parseHitlInterrupt } from "./hitl";
 import type {
   ContentBlock,
   PendingToolRetool,
@@ -19,6 +19,7 @@ import type {
   ThinkingBlock,
   TimelineBlock,
   TimelineFoldIndexes,
+  TimelineHitlActionOutcome,
   TimelineHitlApproval,
   TimelineTerminalStatus,
   TimelineThought,
@@ -61,6 +62,7 @@ export function createTimeline(): RunTimeline {
       openContentIndex: null,
       subagentIndexByKey: {},
       taskIdRemap: {},
+      namespaceToKey: {},
       toolPaths: {},
       pendingRetool: null,
       blockCounter: 0,
@@ -85,6 +87,7 @@ function cloneFold(fold: TimelineFoldIndexes): TimelineFoldIndexes {
     ...fold,
     subagentIndexByKey: { ...fold.subagentIndexByKey },
     taskIdRemap: { ...fold.taskIdRemap },
+    namespaceToKey: { ...fold.namespaceToKey },
     toolPaths: { ...fold.toolPaths },
     subFolds: Object.fromEntries(
       Object.entries(fold.subFolds).map(([key, sub]) => [key, { ...sub, toolPaths: { ...sub.toolPaths } }]),
@@ -236,6 +239,23 @@ function applyToolEvent(
   const type = event.type;
   const toolCallId = String(event.toolCallId ?? "");
   if (type === "TOOL_CALL_START") {
+    // A HITL pause+resume re-emits the SAME toolCallId (deepagents 0.6.10
+    // preserves it across the interrupt), and a fresh per-resume normalizer
+    // re-sends START/ARGS because its dedup state reset. Fold the repeat back
+    // into the item we already track for this id instead of duplicating the
+    // step — args re-stream, the result lands on it. Consume any pending retool
+    // marker so it can't later mis-merge an unrelated same-named call.
+    const existing = toolCallId ? paths[toolCallId] : undefined;
+    if (existing) {
+      takeRetool();
+      updateToolAt(getBlock(existing.block), existing.item, (tool) => ({
+        ...tool,
+        argsText: "",
+        state: "input-streaming",
+        startedAt: eventTimestamp(event),
+      }));
+      return;
+    }
     // An approved HITL tool re-executes as a fresh tool call on resume —
     // fold it back into the stalled step so params, approval, and result
     // read as one execution. The marker is single-shot: any other tool call
@@ -311,31 +331,42 @@ function pushInterrupt(session: Session, raw: RawEvent, subagentId?: string): Ti
   return approval;
 }
 
-// Attaches a freshly raised interrupt to the tool step it gates: the nearest
-// resultless tool in the open block, preferring a name match from the
-// interrupt's action request. The step then carries the approval lifecycle —
-// no separate chip item. Returns false when nothing stalled is found (e.g. a
-// free-form interrupt), letting the caller fall back to a chip item.
+// Attaches a freshly raised interrupt to the tool step(s) it gates. A batched
+// interrupt carries multiple action_requests (the orchestrator gated several
+// tool calls in one turn); each action is bound to its own resultless tool step
+// — name-matched in action order, tagged with `actionIndex` — so every gated
+// tool carries its own approval chip and can resolve independently. The step
+// then owns the approval lifecycle (no separate chip item). Returns false when
+// nothing stalled is found (e.g. a free-form interrupt), letting the caller
+// fall back to a chip item.
 function bindInterruptToTool(block: ThinkingBlock, approval: TimelineHitlApproval): boolean {
-  const wantedName = parseHitlInterrupt(approval.content).toolName ?? null;
-  let fallbackIndex = -1;
-  for (let i = block.items.length - 1; i >= 0; i -= 1) {
+  const parsed = parseHitlInterrupt(approval.content);
+  const actions = parsed.actions.length ? parsed.actions : [{ toolName: parsed.toolName }];
+
+  // Bindable steps: resultless, not-yet-approval-bound tool items, in forward
+  // (call) order — which matches action_requests order.
+  const candidates: number[] = [];
+  for (let i = 0; i < block.items.length; i += 1) {
     const item = block.items[i];
     if (item.kind !== "tool") continue;
-    if (item.state === "output-available" || item.state === "output-error") break;
+    if (item.state === "output-available" || item.state === "output-error") continue;
     if (item.approval) continue;
-    if (!wantedName || item.name === wantedName) {
-      block.items[i] = { ...item, approval };
-      return true;
-    }
-    if (fallbackIndex === -1) fallbackIndex = i;
+    candidates.push(i);
   }
-  if (fallbackIndex >= 0) {
-    const item = block.items[fallbackIndex] as TimelineToolExecution;
-    block.items[fallbackIndex] = { ...item, approval };
-    return true;
-  }
-  return false;
+  if (!candidates.length) return false;
+
+  const used = new Set<number>();
+  let boundAny = false;
+  actions.forEach((action, actionIndex) => {
+    let pick = candidates.find((ci) => !used.has(ci) && (!action.toolName || (block.items[ci] as TimelineToolExecution).name === action.toolName));
+    if (pick === undefined) pick = candidates.find((ci) => !used.has(ci));
+    if (pick === undefined) return;
+    used.add(pick);
+    const item = block.items[pick] as TimelineToolExecution;
+    block.items[pick] = { ...item, approval: { ...approval, actionIndex } };
+    boundAny = true;
+  });
+  return boundAny;
 }
 
 function resolveInterrupt(
@@ -343,6 +374,7 @@ function resolveInterrupt(
   interruptId: string | null,
   decision: string | undefined,
   reason: string | null | undefined,
+  decisions?: TimelineHitlActionOutcome[],
 ): void {
   const interrupts = session.state.interrupts;
   const targetId =
@@ -350,9 +382,18 @@ function resolveInterrupt(
   if (!targetId) return;
   const status: TimelineHitlApproval["status"] = decision === "reject" ? "rejected" : "approved";
 
+  // For a batched interrupt, each bound tool resolves to ITS action's outcome
+  // (decisions[actionIndex]); single-action / legacy interrupts use the overall
+  // status+reason.
+  const outcomeFor = (approval: TimelineHitlApproval): TimelineHitlActionOutcome => {
+    const idx = approval.actionIndex;
+    if (decisions && typeof idx === "number" && decisions[idx]) return decisions[idx];
+    return { status, reason: reason ?? null };
+  };
+
   const index = interrupts.findIndex((item) => item.id === targetId);
   if (index >= 0) {
-    interrupts[index] = { ...interrupts[index], status, reason: reason ?? null };
+    interrupts[index] = { ...interrupts[index], status, reason: reason ?? null, decisions };
   }
 
   const resolveInBlock = (
@@ -364,11 +405,14 @@ function resolveInterrupt(
       if (item.kind === "hitl" && item.id === targetId) {
         write().items[itemIndex] = { ...item, status, reason: reason ?? null };
       } else if (item.kind === "tool" && item.approval?.id === targetId) {
+        const outcome = outcomeFor(item.approval);
         write().items[itemIndex] = {
           ...item,
-          approval: { ...item.approval, status, reason: reason ?? null },
+          approval: { ...item.approval, status: outcome.status, reason: outcome.reason ?? null },
         };
-        if (status === "approved") recordRetool(itemIndex, item.name);
+        // Only an APPROVED tool re-executes on resume — arm the retool fold for
+        // it. A rejected tool keeps its rejection and never re-runs.
+        if (outcome.status === "approved") recordRetool(itemIndex, item.name);
       }
     });
   };
@@ -624,18 +668,29 @@ function applyEvent(session: Session, event: RawEvent): void {
       const wrapper = parsed.data;
       const inner = wrapper.event as RawEvent;
       const fold = session.state.fold;
-      // BEFORE_AGENT's metadata.namespace is the public id for fallback task
-      // ids minted from the LangGraph namespace when tool-call binding fails.
-      const beforeAgentNamespace =
-        inner?.type === "CUSTOM" && inner?.name === BEFORE_AGENT_EVENT_TYPE
-          ? String(inner.value?.metadata?.namespace ?? "")
-          : "";
-      let key: string;
-      if (beforeAgentNamespace) {
-        fold.taskIdRemap[wrapper.task_id] = beforeAgentNamespace;
-        key = beforeAgentNamespace;
-      } else {
-        key = fold.taskIdRemap[wrapper.task_id] || wrapper.task_id;
+      // The LangGraph namespace is the stable identity of a subagent across the
+      // whole run, including a HITL pause+resume. The wrapper.task_id is NOT
+      // stable: when a subagent's own tool is gated, the resume stream comes
+      // through a fresh normalizer that can't rebind and falls back to the raw
+      // namespace id — which would orphan the continuation into a new block.
+      // So route by namespace once it's been seen, only deriving a fresh key
+      // (and aliasing the namespace to it) on the first sighting.
+      const nsKey = wrapper.namespace.join(" / ");
+      let key = nsKey ? fold.namespaceToKey[nsKey] : undefined;
+      if (key === undefined) {
+        // BEFORE_AGENT's metadata.namespace is the public id for fallback task
+        // ids minted from the LangGraph namespace when tool-call binding fails.
+        const beforeAgentNamespace =
+          inner?.type === "CUSTOM" && inner?.name === BEFORE_AGENT_EVENT_TYPE
+            ? String(inner.value?.metadata?.namespace ?? "")
+            : "";
+        if (beforeAgentNamespace) {
+          fold.taskIdRemap[wrapper.task_id] = beforeAgentNamespace;
+          key = beforeAgentNamespace;
+        } else {
+          key = fold.taskIdRemap[wrapper.task_id] || wrapper.task_id;
+        }
+        if (nsKey) fold.namespaceToKey[nsKey] = key;
       }
       const { block } = ensureSubagentBlock(session, key, eventTimestamp(event));
       block.namespace = block.namespace || wrapper.namespace.join(" / ");
@@ -664,7 +719,16 @@ function applyEvent(session: Session, event: RawEvent): void {
     if (name === BRIDGE_HITL_RESOLVED_EVENT_TYPE) {
       const value = (event.value ?? {}) as Record<string, any>;
       const interruptId = value.interrupt_id != null ? String(value.interrupt_id) : null;
-      resolveInterrupt(session, interruptId, value.decision, value.reason ?? null);
+      // Per-action outcomes for a batched interrupt (index-aligned to the
+      // action_requests). Map the raw {decision,reason} list to {status,reason}.
+      const rawDecisions = Array.isArray(value.decisions) ? value.decisions : null;
+      const decisions: TimelineHitlActionOutcome[] | undefined = rawDecisions
+        ? rawDecisions.map((d: Record<string, any>) => ({
+            status: d?.decision === "reject" ? "rejected" : "approved",
+            reason: d?.reason ?? null,
+          }))
+        : undefined;
+      resolveInterrupt(session, interruptId, value.decision, value.reason ?? null, decisions);
       return;
     }
 

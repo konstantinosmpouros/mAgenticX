@@ -10,16 +10,29 @@ from utils.conversations import (
     build_message_lineage,
     build_share_snapshot,
     clone_branch_to_conversation,
+    conversation_summaries_query,
+    get_conversation_with_agent,
+    get_share_for_owner,
     init_conv,
     init_message,
+    list_owned_shares,
     set_conversation_archive_state,
+)
+from utils.messages import (
+    apply_ai_message_update,
+    get_owned_message,
+    toggle_message_reaction,
 )
 from utils.inference import prepare_inference_history
 from utils.titles import generate_conversation_title, resolve_conversation_title
-from utils.suggestions import generate_conversation_suggestions
+from utils.suggestions import (
+    generate_conversation_suggestions,
+    recent_conversations_for_suggestions,
+)
 from utils.speech import (
     generate_read_aloud_audio,
     read_aloud_response,
+    read_capped_dictation_audio,
     transcribe_dictation_audio,
 )
 from utils.voice import (
@@ -42,6 +55,14 @@ __all__ = [
     "resolve_conversation_title",
     "set_conversation_archive_state",
     "generate_conversation_suggestions",
+    "recent_conversations_for_suggestions",
+    "conversation_summaries_query",
+    "get_conversation_with_agent",
+    "get_share_for_owner",
+    "list_owned_shares",
+    "apply_ai_message_update",
+    "get_owned_message",
+    "toggle_message_reaction",
     "generate_read_aloud_audio",
     "create_realtime_session_with_agents",
     "build_voice_instructions",
@@ -53,6 +74,7 @@ __all__ = [
     "preferred_voice_mode_language",
     "recent_history_for_voice_instructions",
     "read_aloud_response",
+    "read_capped_dictation_audio",
     "transcribe_dictation_audio",
     "get_agent_by_id",
     "get_cached_agents",

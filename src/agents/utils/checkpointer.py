@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from observability import get_logger
+from runtime.agui.normalizer import release_namespace_bindings
 from runtime.checkpointer import release_checkpointer
 
 logger = get_logger(__name__)
@@ -33,3 +34,6 @@ async def release_checkpoint_unless_paused(agent: Any, thread_id: str) -> None:
             exc_info=True,
         )
     await release_checkpointer(thread_id)
+    # Same lifecycle as the checkpointer: subagent namespace bindings are kept
+    # while paused (so /resume rehydrates them) and dropped once the run ends.
+    release_namespace_bindings(thread_id)

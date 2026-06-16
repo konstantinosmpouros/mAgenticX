@@ -1,0 +1,51 @@
+# Keep the build context lean and prevent stray local files (secrets, TLS
+# material, caches) from being baked into the image by `COPY . .`.
+#
+# Note: do NOT ignore *.md (deep-agent AGENT.md / skill docs are auto-discovered
+# at runtime), skills_registry/, or load-secrets-and-exec.sh — all are required
+# in the image.
+
+# Version control
+.git/
+.gitignore
+
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage*.xml
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local secrets and TLS material — must never ship in the image.
+# Production mounts certs at runtime from /opt/magenticx/<service>/tls/.
+.env
+.env.*
+*.pem
+*.key
+*.crt
+tls/
+
+# Local databases / scratch artifacts
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor / OS cruft
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker build files themselves
+Dockerfile
+.dockerignore

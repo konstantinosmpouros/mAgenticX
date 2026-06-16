@@ -546,7 +546,7 @@ Without them:
 
 The service image:
 
-- starts from `python:3.11-slim`
+- starts from `python:3.12-slim`
 - installs `build-essential`
 - installs dependencies from `requirements.txt`
 - copies the full service directory into `/app`

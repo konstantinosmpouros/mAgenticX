@@ -4,6 +4,7 @@ import os
 import secrets
 from pathlib import Path
 
+import httpx
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -144,6 +145,118 @@ class InferenceSettings(BaseSettings):
     # Cap stored TOOL_CALL_RESULT content in the per-run event log; oversized
     # results are cut and flagged with "truncated": true so the UI can say so.
     tool_result_max_chars: int = Field(16000, validation_alias="INFERENCE_TOOL_RESULT_MAX_CHARS")
+    ws_subscribe_timeout_seconds: float = Field(10.0, validation_alias="INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS")
+
+
+class SpeechSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    dictation_max_bytes: int = Field(25 * 1024 * 1024, validation_alias="SPEECH_DICTATION_MAX_BYTES")
+    dictation_read_chunk_bytes: int = Field(1024 * 1024, validation_alias="SPEECH_DICTATION_READ_CHUNK_BYTES")
+    read_aloud_max_chars: int = Field(2000, validation_alias="SPEECH_READ_ALOUD_MAX_CHARS")
+
+
+class AttachmentSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    max_size_bytes: int = Field(25 * 1024 * 1024, validation_alias="ATTACHMENT_MAX_SIZE_BYTES")
+    max_total_bytes: int = Field(25 * 1024 * 1024, validation_alias="ATTACHMENT_MAX_TOTAL_BYTES")
+    max_per_message: int = Field(10, validation_alias="ATTACHMENT_MAX_PER_MESSAGE")
+    docx_preview_token_ttl_seconds: int = Field(60, validation_alias="ATTACHMENT_DOCX_PREVIEW_TOKEN_TTL_SECONDS")
+    inline_cache_max_age_seconds: int = Field(300, validation_alias="ATTACHMENT_INLINE_CACHE_MAX_AGE_SECONDS")
+    stream_chunk_bytes: int = Field(512 * 1024, validation_alias="ATTACHMENT_STREAM_CHUNK_BYTES")
+
+
+class ShareSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    default_ttl_days: int = Field(30, validation_alias="SHARE_DEFAULT_TTL_DAYS")
+    max_ttl_days: int = Field(365, validation_alias="SHARE_MAX_TTL_DAYS")
+
+
+class GenerationSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    title_max_len: int = Field(120, validation_alias="GENERATION_TITLE_MAX_LEN")
+    title_min_candidates: int = Field(3, validation_alias="GENERATION_TITLE_MIN_CANDIDATES")
+    suggestion_max_len: int = Field(160, validation_alias="GENERATION_SUGGESTION_MAX_LEN")
+    suggestion_min_candidates: int = Field(6, validation_alias="GENERATION_SUGGESTION_MIN_CANDIDATES")
+    suggestion_count: int = Field(10, validation_alias="GENERATION_SUGGESTION_COUNT")
+    suggestion_recent_context_count: int = Field(8, validation_alias="GENERATION_SUGGESTION_RECENT_CONTEXT_COUNT")
+
+
+class HttpTimeoutSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    agents_connect_seconds: float = Field(10.0, validation_alias="HTTP_AGENTS_CONNECT_SECONDS")
+    agents_read_seconds: float = Field(30.0, validation_alias="HTTP_AGENTS_READ_SECONDS")
+    agents_write_seconds: float = Field(30.0, validation_alias="HTTP_AGENTS_WRITE_SECONDS")
+    agents_pool_seconds: float = Field(10.0, validation_alias="HTTP_AGENTS_POOL_SECONDS")
+
+    generation_connect_seconds: float = Field(10.0, validation_alias="HTTP_GENERATION_CONNECT_SECONDS")
+    generation_read_seconds: float = Field(120.0, validation_alias="HTTP_GENERATION_READ_SECONDS")
+    generation_write_seconds: float = Field(120.0, validation_alias="HTTP_GENERATION_WRITE_SECONDS")
+    generation_pool_seconds: float = Field(10.0, validation_alias="HTTP_GENERATION_POOL_SECONDS")
+
+    skills_connect_seconds: float = Field(10.0, validation_alias="HTTP_SKILLS_CONNECT_SECONDS")
+    skills_read_seconds: float = Field(15.0, validation_alias="HTTP_SKILLS_READ_SECONDS")
+    skills_write_seconds: float = Field(10.0, validation_alias="HTTP_SKILLS_WRITE_SECONDS")
+    skills_pool_seconds: float = Field(10.0, validation_alias="HTTP_SKILLS_POOL_SECONDS")
+
+    voice_connect_seconds: float = Field(15.0, validation_alias="HTTP_VOICE_CONNECT_SECONDS")
+    voice_read_seconds: float = Field(75.0, validation_alias="HTTP_VOICE_READ_SECONDS")
+    voice_write_seconds: float = Field(75.0, validation_alias="HTTP_VOICE_WRITE_SECONDS")
+    voice_pool_seconds: float = Field(15.0, validation_alias="HTTP_VOICE_POOL_SECONDS")
+
+    inference_connect_seconds: float = Field(30.0, validation_alias="HTTP_INFERENCE_CONNECT_SECONDS")
+    inference_read_seconds: float = Field(180.0, validation_alias="HTTP_INFERENCE_READ_SECONDS")
+    inference_write_seconds: float = Field(180.0, validation_alias="HTTP_INFERENCE_WRITE_SECONDS")
+    inference_pool_seconds: float = Field(30.0, validation_alias="HTTP_INFERENCE_POOL_SECONDS")
+
+    @property
+    def agents_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.agents_connect_seconds,
+            read=self.agents_read_seconds,
+            write=self.agents_write_seconds,
+            pool=self.agents_pool_seconds,
+        )
+
+    @property
+    def generation_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.generation_connect_seconds,
+            read=self.generation_read_seconds,
+            write=self.generation_write_seconds,
+            pool=self.generation_pool_seconds,
+        )
+
+    @property
+    def skills_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.skills_connect_seconds,
+            read=self.skills_read_seconds,
+            write=self.skills_write_seconds,
+            pool=self.skills_pool_seconds,
+        )
+
+    @property
+    def voice_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.voice_connect_seconds,
+            read=self.voice_read_seconds,
+            write=self.voice_write_seconds,
+            pool=self.voice_pool_seconds,
+        )
+
+    @property
+    def inference_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.inference_connect_seconds,
+            read=self.inference_read_seconds,
+            write=self.inference_write_seconds,
+            pool=self.inference_pool_seconds,
+        )
 
 
 class VoiceSettings(BaseSettings):
@@ -304,6 +417,11 @@ class Settings(BaseSettings):
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     inference: InferenceSettings = Field(default_factory=InferenceSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
+    speech: SpeechSettings = Field(default_factory=SpeechSettings)
+    attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
+    share: ShareSettings = Field(default_factory=ShareSettings)
+    generation: GenerationSettings = Field(default_factory=GenerationSettings)
+    http: HttpTimeoutSettings = Field(default_factory=HttpTimeoutSettings)
     tls: TlsSettings = Field(default_factory=TlsSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)

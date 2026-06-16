@@ -862,7 +862,7 @@ For meaningful local use, you also need:
 
 The image:
 
-- uses `python:3.10-slim`
+- uses `python:3.12-slim`
 - installs `build-essential`
 - installs dependencies from `requirements.txt`
 - copies the app into `/app`

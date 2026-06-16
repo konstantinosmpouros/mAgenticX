@@ -246,7 +246,44 @@ async def test_resume_route_dispatches_to_manager_when_paused(
         "reason": "Sensitive content",
         "value": {"source": "test"},
         "interrupt_id": "interrupt-abc-123",
+        "decisions": None,
     }
+
+
+async def test_resume_route_forwards_per_action_decisions(
+    client, seeded_user, streaming_message, monkeypatch,
+):
+    # A batched interrupt: the per-action decisions list must be forwarded to the
+    # manager verbatim (one entry per action_request, in order).
+    captured: dict[str, object] = {}
+
+    def fake_request_resume(run_id: str, payload: dict) -> bool:
+        captured["payload"] = payload
+        return True
+
+    monkeypatch.setattr(
+        inference_router.inference_run_manager,
+        "request_resume",
+        fake_request_resume,
+    )
+
+    response = await client.post(
+        f"/v1/inference/runs/{seeded_user.id}/{streaming_message['message_id']}/resume",
+        json={
+            "interruptId": "int-batch",
+            "decision": "approve",
+            "decisions": [
+                {"decision": "approve"},
+                {"decision": "reject", "reason": "wrong path"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["payload"]["decisions"] == [
+        {"decision": "approve", "reason": None},
+        {"decision": "reject", "reason": "wrong path"},
+    ]
 
 
 async def test_resume_route_rejects_invalid_decision(client, seeded_user, streaming_message):

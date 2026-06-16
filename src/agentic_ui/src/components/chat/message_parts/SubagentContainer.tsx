@@ -127,7 +127,7 @@ function InterruptList({ interrupts }: { interrupts: SubagentInterrupt[] }) {
             </span>
           </div>
           <CopyableContentBox content={toDisplayText(interrupt.content)} tone="code" size="md">
-            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-6 text-white">
+            <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] leading-6 text-white">
               {toDisplayText(interrupt.content)}
             </pre>
           </CopyableContentBox>
@@ -324,7 +324,7 @@ function ToolCallItem({
               </DisclosureButton>
               <SmoothCollapse open={argsExpanded}>
                 <CopyableContentBox content={toolCall.args} tone="code" size="sm">
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-6 text-zinc-100">
+                  <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] leading-6 text-zinc-100">
                     {toolCall.args}
                   </pre>
                 </CopyableContentBox>
@@ -346,7 +346,7 @@ function ToolCallItem({
               </DisclosureButton>
               <SmoothCollapse open={resultExpanded}>
                 <CopyableContentBox content={toolCall.result} tone="code" size="md">
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-6 text-zinc-100">
+                  <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] leading-6 text-zinc-100">
                     {toolCall.result}
                   </pre>
                 </CopyableContentBox>
@@ -386,20 +386,31 @@ export function SubagentCard({
   const [promptExpanded, setPromptExpanded] = React.useState(false);
   const [promptClampable, setPromptClampable] = React.useState(false);
   const [promptFullHeight, setPromptFullHeight] = React.useState(0);
+  const [promptClampHeight, setPromptClampHeight] = React.useState(72);
   const promptRef = React.useRef<HTMLParagraphElement>(null);
   const reduceMotion = useReducedMotion();
   const promptText = subagent.prompt || subagent.description || "Delegated subagent task in progress.";
 
-  // 72px = three lines at leading-6; the paragraph sits unclipped inside an
-  // overflow-hidden motion wrapper, so offsetHeight is its full text height.
+  // Measure the paragraph's true full height and the height of its first three
+  // lines from real line metrics (line-height rounds per browser, so a hard 72px
+  // shaves the third line's descender). Re-measure on expand and on resize so
+  // the expanded clamp never clips the last line with a stale height.
   React.useLayoutEffect(() => {
     if (!cardExpanded) return;
-    const el = promptRef.current;
-    if (el) {
-      setPromptFullHeight(el.offsetHeight);
-      setPromptClampable(el.offsetHeight > 76);
-    }
-  }, [cardExpanded, promptText]);
+    const measure = () => {
+      const el = promptRef.current;
+      if (!el) return;
+      const full = el.offsetHeight;
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 24;
+      const clamp = Math.ceil(lineHeight * 3);
+      setPromptFullHeight(full);
+      setPromptClampHeight(clamp);
+      setPromptClampable(full > clamp + 4);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [cardExpanded, promptExpanded, promptText]);
 
   return (
     <div
@@ -476,7 +487,7 @@ export function SubagentCard({
           <motion.div
             className="overflow-hidden"
             initial={false}
-            animate={{ maxHeight: promptExpanded ? promptFullHeight + 16 : 72 }}
+            animate={{ maxHeight: promptExpanded ? promptFullHeight + 16 : promptClampHeight }}
             transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: "easeOut" }}
           >
             <p ref={promptRef} className="text-sm leading-6 text-muted-foreground">
@@ -496,8 +507,7 @@ export function SubagentCard({
       ) : null}
 
       <SmoothCollapse open={cardExpanded}>
-      <div className="relative grid gap-8 pl-8 pt-2 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-6">
+      <div className="relative flex flex-col gap-6 pl-8 pr-4 pt-2">
           {hasTranscript ? (
           <section>
             <DisclosureButton
@@ -513,16 +523,14 @@ export function SubagentCard({
             </DisclosureButton>
             <SmoothCollapse open={textExpanded}>
               <CopyableContentBox content={transcript} size="xl">
-                <p className="whitespace-pre-wrap break-words text-[14px] leading-7 text-zinc-100">
+                <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[14px] leading-7 text-zinc-100">
                   {transcript}
                 </p>
               </CopyableContentBox>
             </SmoothCollapse>
           </section>
           ) : null}
-        </div>
 
-        <div className="space-y-6">
           {hasTools ? (
           <section>
             <DisclosureButton
@@ -569,7 +577,6 @@ export function SubagentCard({
             </SmoothCollapse>
           </section>
           ) : null}
-        </div>
       </div>
       </SmoothCollapse>
     </div>

@@ -10,6 +10,7 @@ from utils import (
     generate_read_aloud_audio,
     normalize_realtime_voice,
     read_aloud_response,
+    read_capped_dictation_audio,
     transcribe_dictation_audio,
     validate_convId,
     validate_userId,
@@ -38,7 +39,9 @@ async def transcribe_dictation(
     set_context(user_id=user_id)
 
     try:
-        audio_bytes = await audio.read()
+        audio_bytes = await read_capped_dictation_audio(audio)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             "dictation_read_failed",

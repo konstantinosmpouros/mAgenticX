@@ -38,6 +38,41 @@ STALE_QUEUED_RUN_AFTER = timedelta(minutes=2)
 logger = get_logger(__name__)
 
 
+async def get_active_run_for_user(db: AsyncSession, user_id: str, run_id: str) -> MessageTable | None:
+    """Load an inference run (assistant message with a streaming status) scoped to its owner."""
+    result = await db.execute(
+        select(MessageTable)
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            MessageTable.id == run_id,
+            ConversationTable.user_id == user_id,
+            MessageTable.streaming_status.is_not(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_runs_for_user(
+    db: AsyncSession, user_id: str, status_filter: str | None
+) -> list[MessageTable]:
+    """List the user's inference runs, optionally filtered by streaming status."""
+    stmt = (
+        select(MessageTable)
+        .join(ConversationTable, ConversationTable.id == MessageTable.conversation_id)
+        .where(
+            ConversationTable.user_id == user_id,
+            MessageTable.streaming_status.is_not(None),
+        )
+    )
+    if status_filter == "active":
+        stmt = stmt.where(MessageTable.streaming_status.in_(ACTIVE_RUN_STATUSES))
+    elif status_filter:
+        stmt = stmt.where(MessageTable.streaming_status == status_filter)
+    stmt = stmt.order_by(MessageTable.streaming_started_at.desc())
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -566,13 +601,24 @@ class InferenceRunManager:
                     # reloaded client doesn't re-show an answered approval —
                     # resolution state must survive in the durable log, not in
                     # client memory.
+                    # `decisions` (per-action list) drives the UI's per-tool
+                    # approval chips for a batched interrupt; the scalar
+                    # `decision` (overall: approve if any approved) keeps the
+                    # single-action reducer path and legacy clients working.
+                    resume_decisions = resume_payload.get("decisions")
+                    overall_decision = resume_payload.get("decision", "approve")
+                    if resume_decisions:
+                        overall_decision = (
+                            "approve" if any(d.get("decision") == "approve" for d in resume_decisions) else "reject"
+                        )
                     marker = runtime.apply_event({
                         "type": "CUSTOM",
                         "name": "BRIDGE_HITL_RESOLVED",
                         "value": {
                             "interrupt_id": resume_payload.get("interrupt_id"),
-                            "decision": resume_payload.get("decision", "approve"),
+                            "decision": overall_decision,
                             "reason": resume_payload.get("reason"),
+                            "decisions": resume_decisions,
                         },
                         "timestamp": int(time.time() * 1000),
                     })
@@ -610,7 +656,7 @@ class InferenceRunManager:
         request_payload: dict[str, Any],
     ) -> str:
         sse_buffer = ""
-        timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
+        timeout = settings.http.inference_timeout
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
             headers = internal_service_headers(None)
             headers["Accept"] = "text/event-stream"
@@ -654,8 +700,9 @@ class InferenceRunManager:
             "reason": resume_payload.get("reason"),
             "value": resume_payload.get("value"),
             "interrupt_id": resume_payload.get("interrupt_id"),
+            "decisions": resume_payload.get("decisions"),
         }
-        timeout = httpx.Timeout(connect=30.0, read=180.0, write=180.0, pool=30.0)
+        timeout = settings.http.inference_timeout
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
             headers = internal_service_headers(None)
             headers["Accept"] = "text/event-stream"

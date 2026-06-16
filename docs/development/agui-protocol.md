@@ -308,7 +308,7 @@ When `name == "task"`:
    - Stores `{description, subagent_type}` in `_pending_tasks[tool_call_id]`.
 3. Adds `tool_call_id` to `_ignored_tool_call_ids`.
 
-`_pending_tasks` is later used by `_maybe_bind_namespace()` to bind the LangGraph subgraph namespace to the task ID (see Phase 5).
+`_pending_tasks` is later consumed by `_bind_namespace_to_next_task()` (via `_resolve_namespace_label()`) to bind the LangGraph subgraph namespace to the task ID in task-call order (see Phase 5).
 
 ### `__interrupt__` — HITL
 
@@ -320,29 +320,29 @@ The interrupt value is normalized to `{"id": ..., "value": ...}` if the raw valu
 
 ## Phase 5 — Sub-Agent Namespace Wrapping
 
-LangGraph assigns a `namespace` tuple to each subgraph invocation. The normalizer must map these opaque tuples to the `task_id` strings declared by `TASK_SUBAGENT` events so the client can route sub-agent output correctly.
+LangGraph assigns a freshly-generated `namespace` tuple (e.g. `("tools:<uuid>",)`) to each subgraph invocation. **That uuid is not derivable from the `task` tool_call_id** — deepagents (0.6.10) runs the sub-agent via `subagent.ainvoke(state, {"configurable": {"ls_agent_type": "subagent"}})`, with no `checkpoint_ns` seeded from the call id — so there is no hard id link in the wire data. The normalizer must still map each opaque namespace to the `task_id` declared by its `TASK_SUBAGENT` event so the client can route sub-agent output to the right task card.
 
 ```mermaid
 flowchart TD
-    A["updates chunk arrives with\nnon-None namespace tuple"] --> B["_resolve_namespace_label()"]
+    A["sub-agent chunk arrives\n(non-None namespace tuple)"] --> B["_resolve_namespace_label(namespace)"]
     B --> C{Already in\n_namespace_task_labels?}
     C -->|Yes| D["Return cached task_id"]
-    C -->|No| E["_maybe_bind_namespace(namespace, payload)"]
-    E --> F{"PatchToolCallsMiddleware\n.before_agent node present?"}
-    F -->|No| G["Return deterministic ID\nfrom namespace parts"]
-    F -->|Yes| H["Extract message content string"]
-    H --> I{Matches any\n_pending_tasks description?}
-    I -->|Yes| J["Cache mapping\nnamespace → task_id\nRemove from _pending_tasks"]
-    I -->|No| G
-    D & J & G --> K["_wrap_subagent_events_if_needed()"]
-    K --> L["For each SSE frame:\n_sse_to_payload() → SubAgentEvent envelope"]
+    C -->|No| E["_bind_namespace_to_next_task(namespace)"]
+    E --> F{Any unbound\n_pending_tasks?}
+    F -->|No| G["Fall back to deterministic\nnamespace-derived id\n(_namespace_task_id)"]
+    F -->|Yes| H["Bind namespace → OLDEST\nunbound task tool_call_id\n(FIFO = task-call order)"]
+    H --> I["Cache in _namespace_task_labels\n+ write-through to\n_THREAD_NAMESPACE_BINDINGS[thread_id]\nRemove from _pending_tasks"]
+    D & I & G --> K["_wrap_subagent_events_if_needed()"]
+    K --> L["For each SSE frame:\n_sse_to_payload() → SubAgentEvent envelope\nstamped with the bound task_id"]
 ```
 
-`PatchToolCallsMiddleware` is a LangGraph middleware that injects a `before_agent` message into the subgraph's input containing the task description. The normalizer uses this known message to match the namespace to the pending task. If the description matches a `_pending_tasks` entry, the binding is cached in `_namespace_task_labels` and the pending entry is removed (preventing double-binding).
+**Order-based binding.** Because the namespace uuid carries no link to the task call, binding is by **order**: the first time a sub-agent namespace is seen, it is bound to the *oldest still-unbound* `task` tool_call_id in `_pending_tasks` (insertion-ordered = task-call order). The bind is anchored by the `PatchToolCallsMiddleware.before_agent` marker, which 0.6.10 emits **stamped with the sub-agent's namespace** the moment the gated `task` is approved (its body is empty, so there is nothing to content-match — the namespace + arrival order is the signal). `_resolve_namespace_label()` also binds lazily on the first metadata-bearing chunk if the marker was missed. `task` is HITL-gated, so sub-agents start sequentially and FIFO is exact; two parallel sub-agents of the *same* type are the residual ambiguity (each still binds to a distinct task — no drop or collision).
 
-If binding fails (e.g., description mismatch due to whitespace), `_namespace_task_id()` falls back to a deterministic ID derived from the namespace tuple itself — the first part after a `:` separator, or the first non-empty element.
+**Binding persists across HITL resume (`_THREAD_NAMESPACE_BINDINGS`).** A fresh `AGUIStreamNormalizer` is built per request, so without persistence a `/resume` leg would start with an empty `_namespace_task_labels`. That is fatal when a **sub-agent's own tool** is gated: on resume the orchestrator does not re-emit the `task` call (the sub-agent is mid-flight), so `_pending_tasks` is empty and the sub-agent's continuation would fall back to the raw namespace id — orphaning it into a new task card. The module-level `_THREAD_NAMESPACE_BINDINGS` store (keyed by `thread_id`) is rehydrated in `__init__` and written through on every bind, so the mapping survives the paused→resume boundary. It is dropped by `release_namespace_bindings(thread_id)` on the same lifecycle as the checkpointer cache — on a fresh `/stream` start and on a non-paused terminal (via `release_checkpoint_unless_paused`). The client mirrors this with a stable-namespace route (see Phase 8).
 
-`_wrap_subagent_events_if_needed()` iterates the list of SSE bytes for that chunk. For each frame it calls `_sse_to_payload()` to decode the JSON, then wraps it in a `SubAgentEvent` envelope via `emitter.subagent_event()`. If SSE decoding fails, `_raw_event_payload()` produces a fallback `{"type": "RAW_SSE_EVENT", "raw_sse": "..."}` dict.
+If no task is pending and the namespace is unbound, `_namespace_task_id()` falls back to a deterministic id derived from the tuple — the first part after a `:` separator, or the first non-empty element.
+
+`_wrap_subagent_events_if_needed()` iterates the list of SSE bytes for that chunk. For each frame it calls `_sse_to_payload()` to decode the JSON, then wraps it in a `SubAgentEvent` envelope (stamped with the bound `task_id`) via `emitter.subagent_event()`. If SSE decoding fails, `_raw_event_payload()` produces a fallback `{"type": "RAW_SSE_EVENT", "raw_sse": "..."}` dict.
 
 ---
 
@@ -437,7 +437,7 @@ sequenceDiagram
 | `approve` | `{"type": "approve"}` | Tool executes. `reason`/`value` are dropped — `ApproveDecision` has no `message` slot. |
 | `reject` | `{"type": "reject", "message": req.reason or "User rejected this action."}` | Tool does **not** execute; a `ToolMessage` with `content=<message>` is appended in its place and the agent loop continues, so the agent can react to the rejection. `message` is mandatory — the default text prevents a `KeyError` when the user rejects without typing a reason. |
 
-The checkpointer cache is process-local in the agents service (single-replica). Switching to a Postgres-backed checkpointer is a drop-in if multi-replica is ever required; nothing else in the resume flow needs to change.
+The checkpointer cache is process-local in the agents service (single-replica). Switching to a Postgres-backed checkpointer is a drop-in if multi-replica is ever required; nothing else in the resume flow needs to change. The sub-agent namespace→task binding store (`_THREAD_NAMESPACE_BINDINGS`, Phase 5) shares this exact lifecycle and single-replica assumption — it is rehydrated on each resume leg so a sub-agent's post-approval output keeps its original task card, and released alongside the checkpointer when the run truly ends.
 
 ---
 
@@ -511,7 +511,7 @@ Block semantics (`reduceTimelineEvents`):
 | `THINKING_START` / `THINKING_TEXT_MESSAGE_CONTENT` | Opens (or appends a thought item to) the open Thinking block; thinking after content starts a **new** Thinking block — that's the alternation |
 | `TOOL_CALL_*` | Tool item inside the open Thinking block (implicitly opening one — the deep-agent path never emits `THINKING_START`); lifecycle maps to `input-streaming → input-available → output-available`, durations from event timestamps |
 | `TEXT_MESSAGE_CHUNK`/`CONTENT` | Closes the open Thinking block, appends to the open Content block |
-| `TASK_SUBAGENT` / `SUBAGENT_EVENT` | Opens a Subagent block at its log position (closing open blocks) and folds the inner events into the panel's own nested mini-timeline |
+| `TASK_SUBAGENT` / `SUBAGENT_EVENT` | Opens a Subagent block at its log position (closing open blocks) and folds the inner events into the panel's own nested mini-timeline. The reducer keys the block by the **stable LangGraph namespace** (`fold.namespaceToKey`), aliased to the `task_id` on first sighting — so a sub-agent's post-resume continuation (which may arrive under a fallback `task_id` after a HITL pause) rejoins the same block instead of orphaning |
 | `HITL_INTERRUPT` | Binds the approval onto the stalled tool item it gates (`tool.approval`, nearest resultless tool in the open Thinking block, name-matched via the action request) + entry in `timeline.interrupts`; a standalone approval item is the fallback for interrupts that don't gate a tool call |
 | `BRIDGE_HITL_RESOLVED` | Flips the matching approval to approved/rejected. On approve it arms a single-shot `pendingRetool` marker: the resumed graph re-executes the tool under a **fresh `toolCallId`**, and the next matching `TOOL_CALL_START` merges into the stalled item (args re-stream, result lands there) instead of creating a duplicate step |
 | `PLAN_SNAPSHOT` | Replaces `timeline.plan` (not a block) |
@@ -540,11 +540,11 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 - **`TOOL_CALL_ARGS` serializes args as a JSON string, not an object.** The `delta` field in `ToolCallArgsEvent` is `json.dumps({"name": name, "args": args or {}})`. Clients must JSON-parse the `delta` field to access the arguments dict.
 
-- **Sub-agent namespace binding can fail silently.** If `_maybe_bind_namespace()` cannot match the before_agent message content to a pending task (e.g., due to whitespace normalization differences), the namespace falls back to a deterministic ID from `_namespace_task_id()`. The events are still emitted as `SUBAGENT_EVENT` but with a generated `task_id` that does not match any `TASK_SUBAGENT` event — the UI will render an orphaned sub-agent stream with no associated task card.
+- **Sub-agent namespace binding is order-based, and persists across resume.** Binding maps a namespace to the oldest unbound `task` tool_call_id (`_bind_namespace_to_next_task`), since the LangGraph namespace uuid carries no link to the call id. FIFO is exact while `task` is HITL-gated (sequential starts); two concurrent sub-agents of the *same* type are the residual ambiguity (each still binds to a distinct task — never dropped or collided). The binding is persisted per `thread_id` in `_THREAD_NAMESPACE_BINDINGS` and rehydrated on every `/resume` leg, which is what keeps a sub-agent whose **own tool** was HITL-gated from orphaning its post-approval continuation into a new task card. Only if no task is pending and the namespace is genuinely unknown does it fall back to a generated `task_id` (`_namespace_task_id`) that matches no `TASK_SUBAGENT` — the orphan case.
 
 - **HITL pre-empts everything.** When `__interrupt__` appears in an updates payload, all other node updates in that dict are skipped. If a graph node emits both a tool call and an interrupt in the same update (unusual but possible), the tool call start/args events are not emitted. The agent graph still has the tool call recorded in its checkpoint; it will re-emit when the human resumes.
 
-- **The `BEFORE_AGENT_EVENT` is consumed for namespace binding, not for display.** The normalizer reads it to match the namespace to a `_pending_tasks` entry. It is also emitted as a custom event that the bridge stores in `subagents["beforeAgent"]`, but the current UI does not render it — it exists for future debugging tooling.
+- **The `BEFORE_AGENT_EVENT` marker anchors namespace binding, not display.** In 0.6.10 the `PatchToolCallsMiddleware.before_agent` node update arrives stamped with the sub-agent's namespace but with an **empty body** — so the normalizer uses its namespace + arrival order (not its content) to trigger the bind, and emits a `BEFORE_AGENT_EVENT` with an empty `message`. The bridge stores it in `subagents["beforeAgent"]`; the current UI does not render it.
 
 - **`RUN_ERROR` bypasses the normalizer.** When `agent.astream()` raises an unhandled exception, `BaseAgent._encode_run_error()` directly encodes a `RUN_ERROR` SSE frame without going through the normalizer. The bridge forwards it to the client, which marks the run as failed and displays an error state.
 
@@ -568,7 +568,8 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 | Updates mode handling | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_handle_updates_payload()` |
 | Tool call correlation sets | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_pending_tool_call_ids`, `_started_tool_call_ids`, `_finished_tool_call_ids`, `_ignored_tool_call_ids` |
 | Plan snapshot deduplication | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_fingerprint()`, `_last_plan_fingerprint` |
-| Sub-agent namespace binding | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_maybe_bind_namespace()`, `_resolve_namespace_label()` |
+| Sub-agent namespace binding | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_bind_namespace_to_next_task()`, `_resolve_namespace_label()`, `_namespace_task_id()` |
+| Namespace binding persistence across resume | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_THREAD_NAMESPACE_BINDINGS`, `release_namespace_bindings()` (cleared via `utils/checkpointer.py` + `main.py`) |
 | Sub-agent event wrapping | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_wrap_subagent_events_if_needed()` |
 | Protocol package exports | [src/agents/runtime/agui/\_\_init\_\_.py](../../src/agents/runtime/agui/__init__.py) | All exported symbols |
 | Bridge log keeping | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()`, `_append_raw()`, `_coalesce_key()`, `_truncate_tool_result()` |

@@ -95,7 +95,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     toggle their active status. If the agents service is unreachable, surface a 503.
     """
     manifests: Sequence[Dict[str, Any]] | None = None
-    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    timeout = settings.http.agents_timeout
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
     try:
@@ -225,7 +225,7 @@ async def get_agent_by_id(agent_id: str) -> AgentTable | None:
 
 async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
     """Proxy the agents service `/tools` endpoint without caching."""
-    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    timeout = settings.http.agents_timeout
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
     try:

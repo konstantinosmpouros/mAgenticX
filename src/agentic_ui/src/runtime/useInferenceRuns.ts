@@ -13,7 +13,7 @@ import {
   foldTimeline,
   reduceTimelineEvents,
   timelineThoughtStrings,
-} from "@/lib/timeline";
+} from "./timeline";
 import type {
   ConversationDetail,
   ConversationSummary,

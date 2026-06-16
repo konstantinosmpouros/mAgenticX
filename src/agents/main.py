@@ -10,7 +10,7 @@ sys.path.append(str(PACKAGE_ROOT))
 import asyncio
 import io
 import json
-from typing import Any, List
+from typing import Any, List, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, status
@@ -22,6 +22,7 @@ from openai import OpenAI
 from core.settings import settings
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.types import Command
+from runtime.agui.normalizer import release_namespace_bindings
 from runtime.checkpointer import has_checkpointer, release_checkpointer
 
 from observability import (
@@ -629,6 +630,7 @@ async def stream_agent(agent_slug: str, req: Request):
         # that continues an existing checkpoint.
         if stream_thread_id:
             await release_checkpointer(stream_thread_id)
+            release_namespace_bindings(stream_thread_id)
         try:
             agent_logger.info("agent_stream_started", "Agent stream execution started", context=request_context)
             async with mcp_session_context() as session:
@@ -797,9 +799,7 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         action_requests = getattr(interrupt_value, "action_requests", []) or []
     decision_count = max(1, len(action_requests))
 
-    if req.decision == "approve":
-        one_decision: dict[str, Any] = {"type": "approve"}
-    else:
+    def _to_lc_decision(decision: str, reason: Optional[str]) -> dict[str, Any]:
         # LangChain's RejectDecision requires `message`. Falling back to a
         # generic string when the user didn't type a reason avoids a KeyError
         # in HumanInTheLoopMiddleware.after_model when it does
@@ -807,15 +807,38 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         # terminal in LangChain — the rejection becomes a ToolMessage and the
         # agent loop continues, which is exactly the "rehydrate after reject"
         # behavior the bridge expects.
-        one_decision = {"type": "reject", "message": req.reason or "User rejected this action."}
+        if decision == "approve":
+            return {"type": "approve"}
+        return {"type": "reject", "message": reason or "User rejected this action."}
 
-    resume_command = Command(resume={"decisions": [dict(one_decision) for _ in range(decision_count)]})
+    if req.decisions is not None:
+        # Per-action path (batched interrupt): one decision per hanging tool
+        # call, in order. LangChain maps decisions[i] -> action_requests[i]
+        # positionally and raises ValueError on a count mismatch, so we guard
+        # with a 422 (clearer than a 500 from a leaked ValueError).
+        if len(req.decisions) != len(action_requests):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"Decision count ({len(req.decisions)}) does not match the "
+                    f"number of pending actions ({len(action_requests)})."
+                ),
+            )
+        decisions = [_to_lc_decision(d.decision, d.reason) for d in req.decisions]
+    else:
+        # Legacy / single-action path: replicate the one decision across every
+        # hanging tool call.
+        decisions = [dict(_to_lc_decision(req.decision, req.reason)) for _ in range(decision_count)]
+
+    resume_command = Command(resume={"decisions": decisions})
 
     agent_logger.info(
         "agent_resume_command_built",
         "Built LangChain HITL resume command",
         decision=req.decision,
-        decision_count=decision_count,
+        decision_count=len(decisions),
+        decision_types=[d["type"] for d in decisions],
+        per_action=req.decisions is not None,
     )
 
     async def event_stream():

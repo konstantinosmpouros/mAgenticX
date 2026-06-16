@@ -10,3 +10,4 @@ export * from './share';
 export * from './report';
 export * from './voice';
 export * from './search';
+export * from './ui';

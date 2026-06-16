@@ -3,12 +3,10 @@ import base64
 from typing import Any, List, Optional, Literal
 from datetime import datetime
 
+from core.settings import settings
+
 Senders = Literal["user", "ai"]
 Types = Literal["text", "file", "image", "audio", "tool"]
-
-MAX_ATTACHMENT_SIZE_BYTES = 25 * 1024 * 1024
-MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024
-MAX_ATTACHMENTS_PER_MESSAGE = 10
 
 
 #-------------------------------------------
@@ -428,8 +426,8 @@ class AttachmentIn(BaseModel):
         raw_size = len(raw)
         if raw_size <= 0:
             raise ValueError(f"Attachment '{self.name}' is empty.")
-        if raw_size > MAX_ATTACHMENT_SIZE_BYTES:
-            raise ValueError(f"Attachment '{self.name}' exceeds the {MAX_ATTACHMENT_SIZE_BYTES // (1024 * 1024)} MB limit.")
+        if raw_size > settings.attachments.max_size_bytes:
+            raise ValueError(f"Attachment '{self.name}' exceeds the {settings.attachments.max_size_bytes // (1024 * 1024)} MB limit.")
         if self.size is not None and self.size != raw_size:
             raise ValueError(f"Attachment '{self.name}' size metadata does not match payload size.")
 
@@ -463,12 +461,12 @@ class MessageIn(BaseModel):
             return self
         if not self.content and not self.attachments:
             raise ValueError("Either 'content' or at least one attachment is required.")
-        if len(self.attachments) > MAX_ATTACHMENTS_PER_MESSAGE:
-            raise ValueError(f"No more than {MAX_ATTACHMENTS_PER_MESSAGE} attachments are allowed per message.")
+        if len(self.attachments) > settings.attachments.max_per_message:
+            raise ValueError(f"No more than {settings.attachments.max_per_message} attachments are allowed per message.")
         total_bytes = sum(item.size or 0 for item in self.attachments)
-        if total_bytes > MAX_TOTAL_ATTACHMENT_BYTES:
+        if total_bytes > settings.attachments.max_total_bytes:
             raise ValueError(
-                f"Total attachment payload exceeds the {MAX_TOTAL_ATTACHMENT_BYTES // (1024 * 1024)} MB limit."
+                f"Total attachment payload exceeds the {settings.attachments.max_total_bytes // (1024 * 1024)} MB limit."
             )
         return self
 
@@ -666,6 +664,14 @@ class InferenceStartResponse(BaseModel):
     message: MessageOut
 
 
+class ResumeActionDecisionIn(BaseModel):
+    """One approve/reject decision for a single gated tool call in a batched
+    HITL interrupt. Index-aligned to the interrupt's ``action_requests`` order;
+    forwarded verbatim to the agents ``/resume`` endpoint."""
+    decision: Literal["approve", "reject"]
+    reason: Optional[str] = None
+
+
 class InferenceRunResumeIn(BaseModel):
     """Frontend → bridge payload for resuming a HITL-paused inference run.
 
@@ -674,6 +680,12 @@ class InferenceRunResumeIn(BaseModel):
     ``threadId`` is informational — the bridge always uses the conversation
     id as the LangGraph thread, so the field is accepted for symmetry with
     the agents-service shape but not relied upon.
+
+    ``decisions`` is the per-action list for a *batched* interrupt (multiple
+    gated tool calls in one turn): one entry per ``action_request`` in order,
+    so the user can approve some and reject others. When omitted the single
+    ``decision`` is replicated across all hanging tool calls (single-action /
+    legacy path).
 
     ``interruptId`` is the LangGraph interrupt's unique id from the
     ``HITL_INTERRUPT`` event the user acted on; the agents service uses it
@@ -687,6 +699,7 @@ class InferenceRunResumeIn(BaseModel):
     decision: Literal["approve", "reject"]
     reason: Optional[str] = None
     value: Optional[Any] = None
+    decisions: Optional[List[ResumeActionDecisionIn]] = None
 
 
 #-------------------------------------------

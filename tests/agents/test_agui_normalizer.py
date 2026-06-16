@@ -10,6 +10,17 @@ def _norm(agents_service, thread_id="t-1"):
     return agents_service.normalizer.AGUIStreamNormalizer(thread_id=thread_id)
 
 
+@pytest.fixture(autouse=True)
+def _clear_namespace_bindings(agents_service):
+    # Namespace->task bindings persist per thread_id across normalizer instances
+    # (so a HITL resume keeps its mapping). Tests share thread_id="t-1", so clear
+    # the module-global store around each test to keep them isolated.
+    store = agents_service.normalizer._THREAD_NAMESPACE_BINDINGS
+    store.clear()
+    yield
+    store.clear()
+
+
 def _decode(frame):
     """Decode a single AG-UI SSE frame (bytes) into its JSON data payload dict."""
     if isinstance(frame, (bytes, bytearray)):
@@ -483,41 +494,43 @@ def test_hitl_interrupt_bare_object_not_list(agents_service):
 # ----------------------------------------------------------------------------
 # updates mode — before_agent event
 # ----------------------------------------------------------------------------
-def test_before_agent_event_emitted_under_namespace(agents_service):
+def test_before_agent_marker_binds_namespace_to_pending_task(agents_service):
     norm = _norm(agents_service)
-    payload = {
-        "PatchToolCallsMiddleware.before_agent": {
-            "messages": [HumanMessage(content="delegated instruction")]
-        }
-    }
+    # Register a pending task via a task tool call (orchestrator namespace).
+    ai = AIMessage(
+        content="",
+        tool_calls=[{"id": "task-7", "name": "task", "args": {"subagent_type": "r", "description": "go research"}}],
+    )
+    norm.handle_chunk(("updates", {"agent": {"messages": [ai]}}))
+    assert "task-7" in norm._pending_tasks
+
+    # deepagents 0.6.10 emits the before_agent marker with a NULL body, stamped
+    # with the subagent namespace. We bind on namespace + FIFO, not on content.
+    payload = {"PatchToolCallsMiddleware.before_agent": None}
     out = norm.handle_chunk((("tools:abc",), "updates", payload))
-    # wrapped as subagent event because namespace present
+
+    # Marker wrapped as a subagent event, keyed by the bound task tool_call_id.
     assert _names(out) == ["SUBAGENT_EVENT"]
     name, value = _custom_value(out[0])
+    assert value["task_id"] == "task-7"
     assert value["event"]["name"] == "BEFORE_AGENT_EVENT"
-    assert value["event"]["value"]["message"] == "delegated instruction"
+    # Namespace is now bound to the task id; pending task consumed.
+    assert norm._namespace_task_labels[("tools:abc",)] == "task-7"
+    assert "task-7" not in norm._pending_tasks
 
 
-def test_before_agent_event_no_namespace_skipped(agents_service):
+def test_before_agent_marker_no_namespace_skipped(agents_service):
     norm = _norm(agents_service)
-    payload = {
-        "PatchToolCallsMiddleware.before_agent": {
-            "messages": [HumanMessage(content="instruction")]
-        }
-    }
-    out = norm.handle_chunk(("updates", payload))
+    out = norm.handle_chunk(("updates", {"PatchToolCallsMiddleware.before_agent": None}))
     assert out == []
 
 
-def test_before_agent_event_empty_message_skipped(agents_service):
+def test_before_agent_marker_no_pending_task_emits_nothing(agents_service):
     norm = _norm(agents_service)
-    payload = {
-        "PatchToolCallsMiddleware.before_agent": {
-            "messages": [HumanMessage(content="")]
-        }
-    }
-    out = norm.handle_chunk((("tools:abc",), "updates", payload))
+    # No pending task to bind => no BEFORE_AGENT_EVENT, namespace stays unbound.
+    out = norm.handle_chunk((("tools:abc",), "updates", {"PatchToolCallsMiddleware.before_agent": None}))
     assert out == []
+    assert ("tools:abc",) not in norm._namespace_task_labels
 
 
 # ----------------------------------------------------------------------------
@@ -744,72 +757,63 @@ def test_namespace_token_none(agents_service):
 
 
 # ----------------------------------------------------------------------------
-# namespace binding (_maybe_bind_namespace / _resolve_namespace_label)
+# namespace binding (_bind_namespace_to_next_task / _resolve_namespace_label)
 # ----------------------------------------------------------------------------
 def test_resolve_namespace_label_none(agents_service):
     norm = _norm(agents_service)
     assert norm._resolve_namespace_label(None) is None
 
 
-def test_maybe_bind_namespace_none_or_non_dict(agents_service):
+def test_bind_namespace_none(agents_service):
     norm = _norm(agents_service)
-    assert norm._maybe_bind_namespace(None, {}) is None
-    assert norm._maybe_bind_namespace(("ns",), "not-dict") is None
+    assert norm._bind_namespace_to_next_task(None) is None
 
 
-def test_maybe_bind_namespace_cached(agents_service):
+def test_bind_namespace_cached(agents_service):
     norm = _norm(agents_service)
     norm._namespace_task_labels[("ns",)] = "task-99"
-    assert norm._maybe_bind_namespace(("ns",), {}) == "task-99"
-
-
-def test_maybe_bind_namespace_no_before_agent_node(agents_service):
-    norm = _norm(agents_service)
-    assert norm._maybe_bind_namespace(("ns",), {"other": {}}) is None
-
-
-def test_maybe_bind_namespace_matches_pending_task(agents_service):
-    norm = _norm(agents_service)
-    # register a pending task via a task tool call
-    ai = AIMessage(
-        content="",
-        tool_calls=[{"id": "task-7", "name": "task", "args": {"subagent_type": "r", "description": "go research"}}],
-    )
-    norm.handle_chunk(("updates", {"agent": {"messages": [ai]}}))
+    # already bound => returns the cached id, does not consume a pending task
+    norm._pending_tasks["task-7"] = {"description": "d", "subagent_type": "r"}
+    assert norm._bind_namespace_to_next_task(("ns",)) == "task-99"
     assert "task-7" in norm._pending_tasks
 
-    payload = {
-        "PatchToolCallsMiddleware.before_agent": {
-            "messages": [HumanMessage(content="go research")]
-        }
-    }
-    bound = norm._maybe_bind_namespace(("tools:xyz",), payload)
-    assert bound == "task-7"
-    # bound mapping cached; pending task consumed
-    assert norm._namespace_task_labels[("tools:xyz",)] == "task-7"
-    assert "task-7" not in norm._pending_tasks
 
-
-def test_maybe_bind_namespace_no_match(agents_service):
+def test_bind_namespace_no_pending_task(agents_service):
     norm = _norm(agents_service)
-    norm._pending_tasks["task-1"] = {"description": "other", "subagent_type": "r"}
-    payload = {
-        "PatchToolCallsMiddleware.before_agent": {
-            "messages": [HumanMessage(content="unmatched")]
-        }
-    }
-    assert norm._maybe_bind_namespace(("ns",), payload) is None
+    assert norm._bind_namespace_to_next_task(("ns",)) is None
+    assert ("ns",) not in norm._namespace_task_labels
 
 
-def test_maybe_bind_namespace_skips_non_string_content(agents_service):
+def test_bind_namespace_consumes_oldest_pending_task_fifo(agents_service):
     norm = _norm(agents_service)
-    norm._pending_tasks["task-1"] = {"description": "d", "subagent_type": "r"}
+    # Two task calls in order => FIFO binds the first namespace to the first.
+    for tid, desc in (("task-1", "first"), ("task-2", "second")):
+        ai = AIMessage(
+            content="",
+            tool_calls=[{"id": tid, "name": "task", "args": {"subagent_type": "r", "description": desc}}],
+        )
+        norm.handle_chunk(("updates", {"agent": {"messages": [ai]}}))
+    assert list(norm._pending_tasks) == ["task-1", "task-2"]
 
-    class _M:
-        content = None
+    assert norm._bind_namespace_to_next_task(("tools:ns-a",)) == "task-1"
+    assert norm._bind_namespace_to_next_task(("tools:ns-b",)) == "task-2"
+    assert norm._namespace_task_labels == {("tools:ns-a",): "task-1", ("tools:ns-b",): "task-2"}
+    assert norm._pending_tasks == {}
 
-    payload = {"PatchToolCallsMiddleware.before_agent": {"messages": [_M()]}}
-    assert norm._maybe_bind_namespace(("ns",), payload) is None
+
+def test_bind_namespace_idempotent_no_double_consume(agents_service):
+    norm = _norm(agents_service)
+    ai = AIMessage(
+        content="",
+        tool_calls=[{"id": "task-1", "name": "task", "args": {"subagent_type": "r", "description": "d"}}],
+    )
+    norm.handle_chunk(("updates", {"agent": {"messages": [ai]}}))
+    norm._pending_tasks["task-2"] = {"description": "d2", "subagent_type": "r"}
+
+    assert norm._bind_namespace_to_next_task(("tools:ns",)) == "task-1"
+    # second call for the same namespace is a no-op; task-2 untouched
+    assert norm._bind_namespace_to_next_task(("tools:ns",)) == "task-1"
+    assert "task-2" in norm._pending_tasks
 
 
 def test_resolve_namespace_label_prefers_bound_label(agents_service):
@@ -819,9 +823,86 @@ def test_resolve_namespace_label_prefers_bound_label(agents_service):
     assert norm._resolve_namespace_label(("tools:raw",)) == "bound-task"
 
 
+def test_resolve_namespace_label_lazy_binds_to_pending_task(agents_service):
+    norm = _norm(agents_service)
+    ai = AIMessage(
+        content="",
+        tool_calls=[{"id": "task-1", "name": "task", "args": {"subagent_type": "r", "description": "d"}}],
+    )
+    norm.handle_chunk(("updates", {"agent": {"messages": [ai]}}))
+    # First resolve of an unseen subagent namespace lazily binds to the pending
+    # task even without a before_agent marker (reorder/absent-marker fallback).
+    assert norm._resolve_namespace_label(("tools:raw",)) == "task-1"
+    assert "task-1" not in norm._pending_tasks
+
+
 def test_resolve_namespace_label_falls_back_to_derived(agents_service):
     norm = _norm(agents_service)
+    # No pending task => fall back to the namespace-derived id.
     assert norm._resolve_namespace_label(("tools:raw",)) == "raw"
+
+
+# ----------------------------------------------------------------------------
+# namespace binding persistence across resume (thread-keyed)
+# ----------------------------------------------------------------------------
+def test_namespace_binding_rehydrated_across_instances(agents_service):
+    mod = agents_service.normalizer
+    tid = "thread-rehydrate-1"
+    # First stream binds a namespace to its task tool_call_id.
+    n1 = mod.AGUIStreamNormalizer(thread_id=tid)
+    n1._pending_tasks["call_W"] = {"description": "d", "subagent_type": "writer"}
+    assert n1._resolve_namespace_label(("tools:abc",)) == "call_W"
+
+    # A fresh normalizer for the SAME thread (simulating /resume after a
+    # subagent's own gated tool) rehydrates the binding even with no pending
+    # task — so the subagent's continuation keeps its original task_id instead
+    # of orphaning onto the raw namespace id.
+    n2 = mod.AGUIStreamNormalizer(thread_id=tid)
+    assert n2._pending_tasks == {}
+    assert n2._resolve_namespace_label(("tools:abc",)) == "call_W"
+
+
+def test_release_namespace_bindings_clears_store(agents_service):
+    mod = agents_service.normalizer
+    tid = "thread-release-1"
+    n1 = mod.AGUIStreamNormalizer(thread_id=tid)
+    n1._pending_tasks["call_X"] = {"description": "d", "subagent_type": "r"}
+    n1._resolve_namespace_label(("tools:zzz",))
+
+    mod.release_namespace_bindings(tid)
+
+    # Store cleared => a fresh instance does NOT inherit; with no pending task it
+    # falls back to the namespace-derived id.
+    n2 = mod.AGUIStreamNormalizer(thread_id=tid)
+    assert n2._resolve_namespace_label(("tools:zzz",)) == "zzz"
+
+
+def test_namespace_bindings_isolated_per_thread(agents_service):
+    mod = agents_service.normalizer
+    a = mod.AGUIStreamNormalizer(thread_id="thread-A")
+    a._pending_tasks["call_A"] = {"description": "d", "subagent_type": "r"}
+    a._resolve_namespace_label(("tools:shared",))
+
+    # A different thread must not inherit thread-A's binding for the same
+    # namespace string; it binds its own pending task.
+    b = mod.AGUIStreamNormalizer(thread_id="thread-B")
+    b._pending_tasks["call_B"] = {"description": "d", "subagent_type": "r"}
+    assert b._resolve_namespace_label(("tools:shared",)) == "call_B"
+
+    mod.release_namespace_bindings("thread-A")
+    mod.release_namespace_bindings("thread-B")
+
+
+def test_empty_thread_id_does_not_persist(agents_service):
+    mod = agents_service.normalizer
+    n1 = mod.AGUIStreamNormalizer(thread_id="")
+    n1._pending_tasks["call_E"] = {"description": "d", "subagent_type": "r"}
+    n1._resolve_namespace_label(("tools:e",))
+
+    # Threadless runs never resume, so nothing is persisted under "" (avoids
+    # cross-run leakage); a fresh threadless instance falls back to derived id.
+    n2 = mod.AGUIStreamNormalizer(thread_id="")
+    assert n2._resolve_namespace_label(("tools:e",)) == "e"
 
 
 # ----------------------------------------------------------------------------

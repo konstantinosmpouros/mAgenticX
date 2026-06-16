@@ -54,7 +54,7 @@ def _user_agent_skill_item_url(agent_slug: str, user_id: str, skill_name: str) -
 
 
 def _default_timeout() -> httpx.Timeout:
-    return httpx.Timeout(connect=10.0, read=15.0, write=10.0, pool=10.0)
+    return settings.http.skills_timeout
 
 
 async def _resolve_agent_slug(agent_id: str) -> str:
@@ -467,7 +467,7 @@ async def get_user_agent_skills(*, user_id: str, agent_id: str) -> List[str]:
         return cached
 
     agent_slug = await _resolve_agent_slug(agent_id)
-    timeout = httpx.Timeout(connect=10.0, read=15.0, write=10.0, pool=10.0)
+    timeout = _default_timeout()
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
 
@@ -533,7 +533,7 @@ async def _proxy_skill_mutation(
     """Shared PUT / DELETE proxy logic — both endpoints differ only in HTTP verb."""
     agent_slug = await _resolve_agent_slug(agent_id)
     url = _user_agent_skill_item_url(agent_slug, user_id, skill_name)
-    timeout = httpx.Timeout(connect=10.0, read=15.0, write=10.0, pool=10.0)
+    timeout = _default_timeout()
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
 

@@ -20,10 +20,8 @@ from schemas import (
     ConversationShareListItem,
     MessageIn,
 )
+from core.settings import settings
 from utils.conversations import _preview, init_message
-
-DEFAULT_SHARE_TTL_DAYS = 30
-MAX_SHARE_TTL_DAYS = 365
 
 
 def parse_snapshot_datetime(value: str | None) -> datetime | None:
@@ -41,13 +39,13 @@ def share_not_found() -> HTTPException:
 
 def resolve_share_expires_at(expires_at: datetime | None, now: datetime | None = None) -> datetime:
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
-    resolved = expires_at or (now + timedelta(days=DEFAULT_SHARE_TTL_DAYS))
+    resolved = expires_at or (now + timedelta(days=settings.share.default_ttl_days))
     resolved = resolved.replace(tzinfo=None)
-    max_expires_at = now + timedelta(days=MAX_SHARE_TTL_DAYS)
+    max_expires_at = now + timedelta(days=settings.share.max_ttl_days)
     if resolved > max_expires_at:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Share expiration cannot be more than {MAX_SHARE_TTL_DAYS} days from now.",
+            detail=f"Share expiration cannot be more than {settings.share.max_ttl_days} days from now.",
         )
     return resolved
 

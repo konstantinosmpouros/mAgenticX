@@ -5,6 +5,22 @@ from runtime.agui.emitter import AGUIEmitter
 
 _ALLOWED_MODES = {"messages", "updates"}
 
+# Subagent namespace->task_call_id bindings, persisted across the streams of a
+# single run (keyed by thread_id). A fresh AGUIStreamNormalizer is built per
+# request, so on a HITL resume — especially when a SUBAGENT's own tool is gated
+# and the orchestrator never re-emits the `task` call — the in-instance binding
+# would be empty and the subagent's continuation would fall back to the raw
+# LangGraph namespace id, orphaning it into a new UI block. Rehydrating from
+# this store keeps the binding stable across the paused->resume boundary.
+# Same lifecycle + single-worker assumption as the checkpointer cache.
+_THREAD_NAMESPACE_BINDINGS: Dict[str, Dict[tuple, str]] = {}
+
+
+def release_namespace_bindings(thread_id: str) -> None:
+    """Drop the persisted namespace bindings for a finished/fresh run."""
+    if thread_id:
+        _THREAD_NAMESPACE_BINDINGS.pop(thread_id, None)
+
 class AGUIStreamNormalizer:
     """
     Combined streaming normalizer for LangGraph:
@@ -38,7 +54,12 @@ class AGUIStreamNormalizer:
 
         # --- sub-agent namespace mapping ---
         self._pending_tasks: Dict[str, Dict[str, str]] = {}
-        self._namespace_task_labels: Dict[tuple, str] = {}
+        # Rehydrate bindings established on earlier streams of this run so a HITL
+        # resume (incl. a subagent's own gated tool) keeps mapping the subagent's
+        # namespace to its original `task` tool_call_id instead of orphaning it.
+        self._namespace_task_labels: Dict[tuple, str] = dict(
+            _THREAD_NAMESPACE_BINDINGS.get(thread_id, {})
+        )
 
 
 
@@ -230,24 +251,26 @@ class AGUIStreamNormalizer:
 
         # Walk node updates
         for node_name, node_update in payload.items():
-            if node_update is None or not isinstance(node_update, dict):
-                continue
-
-            # Emit a dedicated marker for sub-agent before_agent instructions.
+            # Sub-agent startup marker. deepagents 0.6.10 emits this stamped with
+            # the subagent's namespace right after its `task` call is approved,
+            # but with a null body — so we bind on the namespace + pending-task
+            # order, NOT on message content. This is the only deterministic link
+            # between a `task` tool_call_id and its subagent's stream namespace.
             if node_name == "PatchToolCallsMiddleware.before_agent":
                 if namespace is not None:
-                    for msg in self._unwrap_messages_list(node_update.get("messages")):
-                        delegated_message = getattr(msg, "content", None)
-                        if isinstance(delegated_message, str) and delegated_message:
-                            self._push(
-                                out,
-                                self.emitter.before_agent_event(
-                                    message=delegated_message,
-                                    metadata=meta,
-                                    namespace=ns_label,
-                                ),
-                            )
-                            break
+                    bound = self._bind_namespace_to_next_task(namespace)
+                    if bound is not None:
+                        self._push(
+                            out,
+                            self.emitter.before_agent_event(
+                                message="",
+                                metadata={**meta, "namespace": bound},
+                                namespace=bound,
+                            ),
+                        )
+                continue
+
+            if node_update is None or not isinstance(node_update, dict):
                 continue
 
             # Authoritative todos snapshot may be present as node_update["todos"]
@@ -492,49 +515,45 @@ class AGUIStreamNormalizer:
         return [t for t in normalized if t.get("id") and t.get("name")]
 
 
-    def _maybe_bind_namespace(self, namespace: Optional[tuple], payload: Any) -> Optional[str]:
+    def _bind_namespace_to_next_task(self, namespace: Optional[tuple]) -> Optional[str]:
         """
-        Map a LangGraph subgraph namespace (tuple) to a task_id by matching the
-        first HumanMessage content of PatchToolCallsMiddleware.before_agent to a
-        pending task description.
+        Bind a never-seen subagent namespace to the oldest unbound `task`
+        tool_call_id. ``task`` is HITL-gated so subagents start sequentially,
+        making FIFO over ``_pending_tasks`` (insertion-ordered = task-call order)
+        an exact match; the namespaced ``before_agent`` marker anchors the bind
+        even under reordering. Returns the mapped tool_call_id, or None when no
+        task is pending.
         """
-        if namespace is None or not isinstance(payload, dict):
+        if namespace is None:
             return None
 
         if namespace in self._namespace_task_labels:
             return self._namespace_task_labels[namespace]
 
-        node = payload.get("PatchToolCallsMiddleware.before_agent")
-        if not isinstance(node, dict):
-            return None
-
-        for msg in self._unwrap_messages_list(node.get("messages")):
-            content = getattr(msg, "content", None)
-            if not isinstance(content, str) or not content:
-                continue
-
-            for task_id, info in list(self._pending_tasks.items()):
-                if content == info.get("description"):
-                    task_str = str(task_id)
-                    self._namespace_task_labels[namespace] = task_str
-                    self._pending_tasks.pop(task_id, None)
-                    return task_str
+        for task_id in list(self._pending_tasks.keys()):
+            task_str = str(task_id)
+            self._namespace_task_labels[namespace] = task_str
+            self._pending_tasks.pop(task_id, None)
+            if self.thread_id:
+                _THREAD_NAMESPACE_BINDINGS.setdefault(self.thread_id, {})[namespace] = task_str
+            return task_str
 
         return None
 
 
     def _resolve_namespace_label(self, namespace: Optional[tuple], payload: Any = None) -> Optional[str]:
         """
-        Return the mapped task_id for a namespace (if any). When payload is provided,
-        attempt to bind first (for sub-agent startup chunks).
+        Return the mapped task_id for a namespace. Lazily binds an unseen
+        namespace to the next pending task (fallback for streams where the
+        ``before_agent`` marker is absent or reordered), then prefers the bound
+        tool_call_id over the deterministic namespace-derived id.
         """
         if namespace is None:
             return None
 
-        if payload is not None:
-            self._maybe_bind_namespace(namespace, payload)
+        if namespace not in self._namespace_task_labels:
+            self._bind_namespace_to_next_task(namespace)
 
-        # Prefer explicit mapping (task tool-call id), then deterministic namespace-derived id.
         return self._namespace_task_labels.get(namespace) or self._namespace_task_id(namespace)
 
 
@@ -542,8 +561,14 @@ class AGUIStreamNormalizer:
         """
         For sub-agent namespaces, wrap every normalized AG-UI event inside SUBAGENT_EVENT.
         Orchestrator events (namespace None/empty) pass through unchanged.
+
+        The envelope task_id is the bound `task` tool_call_id when known, so the
+        wrapped events collapse onto the same key the UI's TASK_SUBAGENT block
+        uses; it falls back to the namespace-derived id only when no task bound.
         """
-        task_id = self._namespace_task_id(namespace)
+        if namespace is None or self._namespace_task_id(namespace) is None:
+            return events
+        task_id = self._namespace_task_labels.get(namespace) or self._namespace_task_id(namespace)
         if task_id is None:
             return events
 

@@ -9,12 +9,27 @@ class Request(BaseModel):
     config: Dict[str, Any]
 
 
+class ResumeActionDecision(BaseModel):
+    """One approve/reject decision for a single gated tool call in a batched
+    HITL interrupt. The list order is index-aligned to the interrupt's
+    ``action_requests`` (LangChain maps ``decisions[i]`` to the i-th hanging
+    tool call positionally)."""
+    decision: Literal["approve", "reject"]
+    reason: Optional[str] = None
+
+
 class AgentResumeRequest(BaseModel):
     """Resume payload for a LangGraph run paused on a HITL interrupt.
 
     The bridge forwards an approve/reject decision (plus an optional structured
     value or free-form reason) so the agents service can construct a
     ``Command(resume=...)`` against the saved checkpoint.
+
+    ``decisions`` is the per-action list for a *batched* interrupt (the
+    orchestrator gated multiple tool calls in one turn): one entry per
+    ``action_request`` in order, enabling independent approve/reject. When
+    omitted, the single ``decision`` is replicated across all hanging tool
+    calls (legacy / single-action path).
 
     ``interrupt_id`` is the LangGraph interrupt's unique id from the
     ``HITL_INTERRUPT`` event the user acted on. When supplied the agents
@@ -28,6 +43,7 @@ class AgentResumeRequest(BaseModel):
     reason: Optional[str] = None
     value: Optional[Any] = None
     interrupt_id: Optional[str] = None
+    decisions: Optional[List[ResumeActionDecision]] = None
 
 
 class TitleRequest(BaseModel):

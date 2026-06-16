@@ -2,11 +2,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from observability import get_logger, logged_db_operation, set_context
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import AttachmentTable, ConversationTable, MessageTable, get_db, UserTable
+from core.database import ConversationTable, get_db, UserTable
 from schemas import (
     ConversationSummary,
     MessageIn,
@@ -17,7 +15,10 @@ from schemas import (
 from core.auth_session import require_csrf_protection
 from utils import (
     _preview,
+    apply_ai_message_update,
+    get_owned_message,
     init_message,
+    toggle_message_reaction,
     validate_convId,
     validate_userId,
 )
@@ -74,14 +75,8 @@ async def addMessageToConversation(
         operation.add(message_id=msg.id)
 
     # 3) Load only the inserted message with attachments (including blobs for images)
-    stmt = (
-        select(MessageTable)
-        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
-        .where(MessageTable.id == msg.id)
-    )
-    result = await db.execute(stmt)
-    msg_row = result.scalar_one_or_none()
-    
+    msg_row = await get_owned_message(db, current_conv.id, msg.id)
+
     # Refresh conversation row so auto-updated columns (e.g., updated_at) are loaded
     message_out = MessageOut.model_validate(msg_row)
     await db.refresh(current_conv, attribute_names=["updated_at", "last_message_preview", "agent"])
@@ -111,16 +106,7 @@ async def updateMessageInConversation(
     Update an existing message (used to finalize AI placeholders after streaming).
     """
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
-    stmt = (
-        select(MessageTable)
-        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
-        .where(
-            MessageTable.id == message_id,
-            MessageTable.conversation_id == conversation_id,
-        )
-    )
-    res = await db.execute(stmt)
-    msg = res.scalar_one_or_none()
+    msg = await get_owned_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found.")
     if msg.sender != "ai":
@@ -136,15 +122,7 @@ async def updateMessageInConversation(
         message_id=message_id,
         raw_event_count=len(payload.rawEvents),
     ) as operation:
-        msg.content = payload.content
-        msg.reasoning_steps = payload.thinking
-        msg.reasoning_time_seconds = payload.thinkingTime
-        if payload.error is not None:
-            msg.is_error = bool(payload.error)
-        msg.error_message = payload.errorMessage
-        msg.raw_events = payload.rawEvents
-        msg.plan = payload.plan
-        msg.subagents = payload.subagents
+        apply_ai_message_update(msg, payload)
 
         preview = _preview(payload.content)
         if preview is not None:
@@ -179,21 +157,11 @@ async def likeMessage(
 ):
     # Load message within the validated conversation, including attachments for UI consistency
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
-    stmt = (
-        select(MessageTable)
-        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
-        .where(
-            MessageTable.id == message_id,
-            MessageTable.conversation_id == conversation_id,
-        )
-    )
-    res = await db.execute(stmt)
-    msg = res.scalar_one_or_none()
+    msg = await get_owned_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found.")
-    
-    # Toggle semantics: clicking like again clears the reaction
-    msg.liked = None if msg.liked is True else True
+
+    toggle_message_reaction(msg, True)
     await db.commit()
     await db.refresh(msg)
     logger.info("message_like_toggled", "Message like toggled", liked=msg.liked)
@@ -216,21 +184,11 @@ async def dislikeMessage(
     db: AsyncSession = Depends(get_db),
 ):
     set_context(user_id=user_id, conversation_id=conversation_id, message_id=message_id)
-    stmt = (
-        select(MessageTable)
-        .options(selectinload(MessageTable.attachments).selectinload(AttachmentTable.blob))
-        .where(
-            MessageTable.id == message_id,
-            MessageTable.conversation_id == conversation_id,
-        )
-    )
-    res = await db.execute(stmt)
-    msg = res.scalar_one_or_none()
+    msg = await get_owned_message(db, conversation_id, message_id)
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found.")
-    
-    # Toggle semantics: clicking dislike again clears the reaction
-    msg.liked = None if msg.liked is False else False
+
+    toggle_message_reaction(msg, False)
     await db.commit()
     await db.refresh(msg)
     logger.info("message_dislike_toggled", "Message dislike toggled", liked=msg.liked)

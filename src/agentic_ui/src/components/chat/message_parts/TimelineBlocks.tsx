@@ -22,9 +22,8 @@ import { Response } from "@/components/ui/ai-elements/response";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
 import { SubagentCard } from "./SubagentContainer";
-import { subagentBlockToItem } from "@/lib/timeline";
-import { useHitl } from "@/lib/hitl-context";
-import { cn, normalizeBulletMarkdown, parseHitlInterrupt } from "@/lib/utils";
+import { subagentBlockToItem, useHitl, parseHitlInterrupt } from "@/runtime";
+import { cn, normalizeBulletMarkdown } from "@/lib/utils";
 import type {
   ContentBlock,
   ThinkingBlock,

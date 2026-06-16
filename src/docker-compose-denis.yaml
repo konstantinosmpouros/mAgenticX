@@ -195,7 +195,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 45s
-    image: konstantinosmpouros/dialogue_bridge:v2.8.0
+    image: konstantinosmpouros/dialogue_bridge:v2.8.1
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8002"]
     user: "1000:1000"
@@ -242,7 +242,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    image: konstantinosmpouros/agentic_ui:v0.9.0
+    image: konstantinosmpouros/agentic_ui:v0.9.1
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:

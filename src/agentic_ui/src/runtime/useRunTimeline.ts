@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { foldTimeline } from "@/lib/timeline";
+import { foldTimeline } from "./timeline";
 import type { MessageOut, RunTimeline } from "@/lib/types";
 
 // Derive the timeline of a settled AI message by replaying its persisted raw

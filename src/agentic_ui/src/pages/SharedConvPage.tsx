@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import ChatBody from "@/components/chat/ChatBody";
 import { getSharedConversation, startInference } from "@/lib/api";
-import { getInferenceStartErrorCopy } from "@/lib/inferenceErrors";
+import { getInferenceStartErrorCopy } from "@/runtime";
 import type { MessageOut, SharedConversationDetail } from "@/lib/types";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
 import { useToast } from "@/hooks/use-toast";
