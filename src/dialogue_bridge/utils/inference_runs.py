@@ -180,6 +180,23 @@ class InferenceRunRuntime:
         # SUBAGENT_EVENT) while each /resume resolves exactly one interrupt —
         # a counter drifts upward and the run never finalises.
         self.pending_interrupt_ids: list[str] = []
+        # Per-run token usage, summed across every AI message (main + sub-agents,
+        # across all resume legs). Deduped by message_id since a settled AI
+        # message can surface both directly and wrapped in a SUBAGENT_EVENT.
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self._counted_usage_ids: set[str] = set()
+
+    def _accumulate_usage(self, value: Any) -> None:
+        if not isinstance(value, dict):
+            return
+        mid = value.get("message_id")
+        token = str(mid) if mid is not None else f"usage-{self.next_seq}"
+        if token in self._counted_usage_ids:
+            return
+        self._counted_usage_ids.add(token)
+        self.input_tokens += int(value.get("input_tokens") or 0)
+        self.output_tokens += int(value.get("output_tokens") or 0)
 
     @property
     def pending_interrupts(self) -> int:
@@ -284,17 +301,19 @@ class InferenceRunRuntime:
                 # the whole identity.
                 if isinstance(value, dict):
                     inner = value.get("event")
-                    if (
-                        isinstance(inner, dict)
-                        and inner.get("type") == "CUSTOM"
-                        and inner.get("name") == "HITL_INTERRUPT"
-                    ):
-                        self.register_interrupt(inner.get("value"))
+                    if isinstance(inner, dict) and inner.get("type") == "CUSTOM":
+                        inner_name = inner.get("name")
+                        if inner_name == "HITL_INTERRUPT":
+                            self.register_interrupt(inner.get("value"))
+                        elif inner_name == "TOKEN_USAGE":
+                            self._accumulate_usage(inner.get("value"))
             elif name == "BEFORE_AGENT_EVENT":
                 self.push_subagent_event("beforeAgent", value)
             elif name == "HITL_INTERRUPT":
                 self.push_subagent_event("interrupts", value)
                 self.register_interrupt(value)
+            elif name == "TOKEN_USAGE":
+                self._accumulate_usage(value)
         elif event_type == "THINKING_START":
             self.thinking_start = time.perf_counter()
             self.thinking_end = 0.0
@@ -829,6 +848,8 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         run.raw_events = payload["raw_events"]
         run.plan = payload["plan"]
         run.subagents = payload["subagents"]
+        run.input_tokens = runtime.input_tokens or None
+        run.output_tokens = runtime.output_tokens or None
         run.is_error = is_error
         run.error_message = error_message
         run.updated_at = _now()
@@ -884,6 +905,8 @@ def build_run_out_from_message(message: MessageTable, *, user_id: str) -> Infere
         rawEvents=message.raw_events or [],
         plan=message.plan,
         subagents=message.subagents,
+        inputTokens=message.input_tokens,
+        outputTokens=message.output_tokens,
         errorMessage=message.error_message,
         startedAt=started,
         completedAt=message.streaming_completed_at,

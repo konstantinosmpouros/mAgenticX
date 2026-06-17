@@ -313,6 +313,22 @@ class AGUIStreamNormalizer:
                         self._push(out, self.emitter.response_end(message_id=self.thread_id, namespace=ns_label))
                         state["response_ended"] = True
 
+                # Per-message token usage — independent of whether the message
+                # carried text and/or tool calls (a tools-only turn still costs
+                # tokens). One emission per settled AI message; message_id lets
+                # the bridge dedupe. Sub-agent usage is namespace-wrapped
+                # downstream by _wrap_subagent_events_if_needed.
+                usage_metadata = getattr(msg, "usage_metadata", None)
+                if isinstance(usage_metadata, dict) and usage_metadata:
+                    self._push(
+                        out,
+                        self.emitter.token_usage(
+                            usage_metadata,
+                            message_id=getattr(msg, "id", None),
+                            namespace=ns_label,
+                        ),
+                    )
+
                 # Tool intents: emit start/args OR plan/subagent events
                 for tc in self._iter_tool_calls(msg):
                     tc_id = tc["id"]

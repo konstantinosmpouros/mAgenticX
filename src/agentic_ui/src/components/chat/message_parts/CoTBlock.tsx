@@ -18,25 +18,21 @@ import {
 } from "@/components/ui/ai-elements/chain-of-thought";
 import { ToolInput, ToolOutput } from "@/components/ui/ai-elements/tool";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Response } from "@/components/ui/ai-elements/response";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
-import { SubagentCard } from "./SubagentContainer";
-import { subagentBlockToItem, useHitl, parseHitlInterrupt } from "@/runtime";
-import { cn, normalizeBulletMarkdown } from "@/lib/utils";
+import { useHitl, parseHitlInterrupt } from "@/runtime";
+import { cn } from "@/lib/utils";
 import type {
-  ContentBlock,
   ThinkingBlock,
-  TimelineBlock,
   TimelineHitlApproval,
   TimelineTerminalStatus,
   TimelineToolExecution,
-  RunTimeline,
 } from "@/lib/types";
 
-// Renderers for the derived run timeline: the AI message body is the block
-// sequence [Thinking, Content, Subagent, Content, …] exactly as the reducer
-// folded it from the event log — the structure mirrors how the model worked.
+// The CoT (chain-of-thought) object: one collapsible thinking block rendering
+// its ordered items — thoughts, tool executions (carrying their own HITL
+// approval lifecycle), and resolved HITL records — ending in the Done sentinel
+// once the run is terminal.
 
 export const formatThinkingDuration = (seconds?: number | null) => {
   if (typeof seconds !== "number" || Number.isNaN(seconds) || seconds < 0) {
@@ -239,7 +235,7 @@ type ThinkingBlockViewProps = {
   onOpenChange: () => void;
 };
 
-const ThinkingBlockView = memo(
+export const CoTBlock = memo(
   ({ block, runId, isLiveActive, doneStatus, fallbackDurationSeconds, open, onOpenChange }: ThinkingBlockViewProps) => {
     const durationLabel = formatThinkingDuration(
       blockDurationSeconds(block) ?? fallbackDurationSeconds ?? null,
@@ -307,102 +303,4 @@ const ThinkingBlockView = memo(
     );
   },
 );
-ThinkingBlockView.displayName = "ThinkingBlockView";
-
-const ContentBlockView = memo(({ block }: { block: ContentBlock }) => {
-  const normalized = normalizeBulletMarkdown(block.text);
-  if (!normalized.trim()) return null;
-  return <Response>{normalized}</Response>;
-});
-ContentBlockView.displayName = "ContentBlockView";
-
-type TimelineBlocksProps = {
-  timeline: RunTimeline;
-  runId: string;
-  isStreaming: boolean;
-  // Post-terminal the sub-agent panels leave the message body for the
-  // action-bar side panel; inline they render only while streaming.
-  hideSubagents?: boolean;
-  fallbackThinkingSeconds?: number | null;
-  expandedThinking: Record<string, boolean>;
-  onToggleThinking: (key: string, next?: boolean) => void;
-};
-
-export function TimelineBlocks({
-  timeline,
-  runId,
-  isStreaming,
-  hideSubagents = false,
-  fallbackThinkingSeconds,
-  expandedThinking,
-  onToggleThinking,
-}: TimelineBlocksProps) {
-  // Post-run the sub-agent containers leave the body for the side panel,
-  // which would leave the thinking blocks around them stacked back-to-back —
-  // merge those neighbours into one block so the settled message reads as a
-  // single "Thought for Ns" per stretch of work.
-  const renderBlocks = useMemo<TimelineBlock[]>(() => {
-    if (!hideSubagents) return timeline.blocks;
-    const merged: TimelineBlock[] = [];
-    for (const block of timeline.blocks) {
-      if (block.kind === "subagent") continue;
-      const last = merged[merged.length - 1];
-      if (block.kind === "thinking" && last?.kind === "thinking") {
-        merged[merged.length - 1] = {
-          ...last,
-          items: [...last.items, ...block.items],
-          startedAt: last.startedAt ?? block.startedAt,
-          endedAt: block.endedAt ?? last.endedAt,
-        };
-        continue;
-      }
-      merged.push(block);
-    }
-    return merged;
-  }, [timeline.blocks, hideSubagents]);
-
-  const lastThinkingIndex = useMemo(() => {
-    for (let i = renderBlocks.length - 1; i >= 0; i -= 1) {
-      if (renderBlocks[i].kind === "thinking") return i;
-    }
-    return -1;
-  }, [renderBlocks]);
-
-  let subagentIndex = -1;
-  return (
-    <>
-      {renderBlocks.map((block, index) => {
-        if (block.kind === "content") {
-          return <ContentBlockView key={block.id} block={block} />;
-        }
-        if (block.kind === "subagent") {
-          subagentIndex += 1;
-          return <SubagentCard key={block.id} subagent={subagentBlockToItem(block)} index={subagentIndex} />;
-        }
-        const isLast = index === lastThinkingIndex;
-        const isLastBlock = index === renderBlocks.length - 1;
-        const isLiveActive = isStreaming && !timeline.terminal && isLastBlock;
-        const expandKey = `${runId}:${block.id}`;
-        const open = expandedThinking[expandKey] ?? isLiveActive;
-        return (
-          <ThinkingBlockView
-            key={block.id}
-            block={block}
-            runId={runId}
-            isLiveActive={isLiveActive}
-            doneStatus={
-              timeline.terminal && isLast
-                ? timeline.terminalStatus
-                : !isLastBlock
-                  ? "completed"
-                  : undefined
-            }
-            fallbackDurationSeconds={isLast ? fallbackThinkingSeconds : null}
-            open={open}
-            onOpenChange={() => onToggleThinking(expandKey, !open)}
-          />
-        );
-      })}
-    </>
-  );
-}
+CoTBlock.displayName = "CoTBlock";

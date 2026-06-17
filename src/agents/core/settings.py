@@ -5,6 +5,7 @@ import re
 import secrets
 from pathlib import Path
 
+import httpx
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -213,6 +214,56 @@ class RuntimeModelsSettings(BaseSettings):
     read_aloud_voice: str = Field("alloy", validation_alias="READ_ALOUD_VOICE")
     read_aloud_format: str = Field("mp3", validation_alias="READ_ALOUD_FORMAT")
     realtime: str = Field("gpt-realtime", validation_alias="OPENAI_REALTIME_MODEL")
+    realtime_voices: frozenset[str] = Field(
+        default=frozenset(
+            {"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}
+        ),
+        validation_alias="REALTIME_SUPPORTED_VOICES",
+    )
+
+    @field_validator("realtime_voices", mode="before")
+    @classmethod
+    def _parse_realtime_voices(cls, v: object) -> object:
+        if isinstance(v, frozenset):
+            return v
+        items = _parse_csv(v)
+        return frozenset(item.lower() for item in items) if items else v
+
+
+class RealtimeSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    api_url: str = Field(
+        "https://api.openai.com/v1/realtime/calls", validation_alias="OPENAI_REALTIME_API_URL"
+    )
+    connect_timeout_seconds: float = Field(15.0, validation_alias="REALTIME_CONNECT_TIMEOUT_SECONDS")
+    read_timeout_seconds: float = Field(60.0, validation_alias="REALTIME_READ_TIMEOUT_SECONDS")
+    write_timeout_seconds: float = Field(60.0, validation_alias="REALTIME_WRITE_TIMEOUT_SECONDS")
+    pool_timeout_seconds: float = Field(15.0, validation_alias="REALTIME_POOL_TIMEOUT_SECONDS")
+    error_body_max_chars: int = Field(1000, validation_alias="REALTIME_ERROR_BODY_MAX_CHARS")
+
+    @property
+    def timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.connect_timeout_seconds,
+            read=self.read_timeout_seconds,
+            write=self.write_timeout_seconds,
+            pool=self.pool_timeout_seconds,
+        )
+
+
+class GenerationSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    title_candidate_count: int = Field(4, validation_alias="TITLE_CANDIDATE_COUNT")
+    title_min_candidates: int = Field(3, validation_alias="TITLE_MIN_CANDIDATES")
+    title_max_len: int = Field(120, validation_alias="TITLE_MAX_LEN")
+    title_temperature: float = Field(1.0, validation_alias="TITLE_TEMPERATURE")
+    title_max_tokens: int = Field(128, validation_alias="TITLE_MAX_TOKENS")
+    suggestion_count: int = Field(10, validation_alias="SUGGESTION_COUNT")
+    suggestion_max_len: int = Field(160, validation_alias="SUGGESTION_MAX_LEN")
+    suggestion_temperature: float = Field(0.8, validation_alias="SUGGESTION_TEMPERATURE")
+    suggestion_max_tokens: int = Field(320, validation_alias="SUGGESTION_MAX_TOKENS")
 
 
 class HRWorkflowSettings(BaseSettings):
@@ -326,6 +377,8 @@ class Settings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     registry: AgentRegistrySettings = Field(default_factory=AgentRegistrySettings)
     runtime_models: RuntimeModelsSettings = Field(default_factory=RuntimeModelsSettings)
+    realtime: RealtimeSettings = Field(default_factory=RealtimeSettings)
+    generation: GenerationSettings = Field(default_factory=GenerationSettings)
     workflows: WorkflowsSettings = Field(default_factory=WorkflowsSettings)
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)

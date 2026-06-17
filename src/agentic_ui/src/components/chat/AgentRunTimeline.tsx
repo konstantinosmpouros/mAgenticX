@@ -1,4 +1,4 @@
-import { TimelineBlocks } from "@/components/chat/message_parts/TimelineBlocks";
+import { TimelineSequence } from "@/components/chat/message_parts/TimelineSequence";
 import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 import { cn } from "@/lib/utils";
 import type { RunTimeline } from "@/lib/types";
@@ -47,7 +47,7 @@ export function AgentRunTimeline({
 
   return (
     <div className={cn("flex w-full flex-col gap-3", className)}>
-      <TimelineBlocks
+      <TimelineSequence
         timeline={timeline}
         runId={runId}
         isStreaming={isStreaming}

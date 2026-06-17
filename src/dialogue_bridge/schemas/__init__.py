@@ -343,6 +343,8 @@ class MessageOut(BaseModel):
     attachments: List[AttachmentOut] = Field(default_factory=list)
     thinking: Optional[List[str]] = Field(None, validation_alias="reasoning_steps")
     thinkingTime: Optional[int] = Field(None, validation_alias="reasoning_time_seconds")
+    inputTokens: Optional[int] = Field(None, validation_alias="input_tokens")
+    outputTokens: Optional[int] = Field(None, validation_alias="output_tokens")
     error: Optional[bool] = Field(None, validation_alias="is_error")
     errorMessage: Optional[str] = Field(None, validation_alias="error_message")
     # Final run lifecycle status of an assistant message (completed/cancelled/
@@ -645,6 +647,8 @@ class InferenceRunOut(BaseModel):
     rawEvents: list[dict] = Field(default_factory=list)
     plan: Optional[dict] = None
     subagents: Optional[dict] = None
+    inputTokens: Optional[int] = None
+    outputTokens: Optional[int] = None
     errorMessage: Optional[str] = None
     startedAt: datetime
     completedAt: Optional[datetime] = None

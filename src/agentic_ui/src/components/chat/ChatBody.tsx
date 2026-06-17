@@ -120,6 +120,7 @@ export default function ChatBody({
   const previousScrollTopRef = React.useRef(0);
   const programmaticScrollUntilRef = React.useRef(0);
   const scrollFrameRef = React.useRef<number | null>(null);
+  const suppressFollowRef = React.useRef(false);
   const [isPinnedToBottom, setIsPinnedToBottom] = React.useState(true);
   const [showJumpToBottom, setShowJumpToBottom] = React.useState(false);
   const streamingMessageId = React.useMemo(() => {
@@ -176,6 +177,15 @@ export default function ChatBody({
     const viewport = viewportRef.current;
     if (!viewport) return;
 
+    // Skip the auto-follow for the render caused by a manual branch switch — the
+    // message list changed because the user navigated siblings, not because the
+    // stream appended, so keep their scroll position instead of jumping.
+    if (suppressFollowRef.current) {
+      suppressFollowRef.current = false;
+      setShowJumpToBottom(getDistanceFromBottom(viewport) > JUMP_BUTTON_DISTANCE);
+      return;
+    }
+
     const distance = getDistanceFromBottom(viewport);
     const shouldFollow = isStreaming && (isPinnedToBottom || distance <= AUTO_FOLLOW_DISTANCE);
     if (!shouldFollow) {
@@ -191,6 +201,16 @@ export default function ChatBody({
     setIsPinnedToBottom(true);
     scrollToBottom("smooth");
   }, [scrollToBottom]);
+
+  const handleSelectBranch = React.useCallback(
+    (parentId: string | null, branchIndex: number) => {
+      // Flag the imminent message-list change as a manual branch switch so the
+      // follow effect skips its auto-scroll (preserves the user's position).
+      suppressFollowRef.current = true;
+      onSelectBranch?.(parentId, branchIndex);
+    },
+    [onSelectBranch]
+  );
 
   const handleWheel = React.useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
@@ -323,7 +343,7 @@ export default function ChatBody({
                       parentId,
                       options: branchOptions,
                       selectionIndex: branchSelection,
-                      onSelectBranch,
+                      onSelectBranch: handleSelectBranch,
                     }}
                   />
                 </div>

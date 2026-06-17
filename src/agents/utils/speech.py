@@ -3,16 +3,14 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import HTTPException, status
-from openai import OpenAI
 
+from core.clients import get_openai_client
 from core.settings import settings
 from core.error_handling import provider_error_handler
 from observability import get_logger
 from schemas import ReadAloudRequest
 
 logger = get_logger(__name__)
-
-_OPENAI_CLIENT = OpenAI(api_key=settings.api_keys.openai.get_secret_value()) if settings.api_keys.openai else OpenAI()
 
 
 def _normalize_voice(voice: str | None) -> str:
@@ -21,7 +19,7 @@ def _normalize_voice(voice: str | None) -> str:
 
 
 def _generate_speech_sync(text: str, voice: str) -> bytes:
-    response = _OPENAI_CLIENT.audio.speech.create(
+    response = get_openai_client().audio.speech.create(
         model=settings.runtime_models.read_aloud,
         voice=voice,
         input=text,

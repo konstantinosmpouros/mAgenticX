@@ -8,6 +8,7 @@ import {
   SubAgentPayloadSchema,
   TASK_SUBAGENT_EVENT_TYPE,
   TaskSubAgentPayloadSchema,
+  TOKEN_USAGE_EVENT_TYPE,
 } from "./agui";
 import { parseHitlInterrupt } from "./hitl";
 import type {
@@ -649,6 +650,13 @@ function applyEvent(session: Session, event: RawEvent): void {
     if (PLAN_EVENT_NAMES.has(name)) {
       const parsed = PlanSnapshotSchema.safeParse(event.value);
       if (parsed.success) session.state.plan = parsed.data;
+      return;
+    }
+
+    if (name === TOKEN_USAGE_EVENT_TYPE) {
+      // Collect-only: per-message token usage is persisted on the message DTO
+      // (MessageOut.inputTokens/outputTokens). The live timeline neither folds
+      // nor renders it yet — explicit no-op so it isn't an unhandled event.
       return;
     }
 

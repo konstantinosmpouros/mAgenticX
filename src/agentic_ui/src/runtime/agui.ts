@@ -8,6 +8,7 @@ export const PLAN_SNAPSHOT_EVENT_TYPE = "PLAN_SNAPSHOT" as const;
 export const TASK_SUBAGENT_EVENT_TYPE = "TASK_SUBAGENT" as const;
 export const SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT" as const;
 export const BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT" as const;
+export const TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE" as const;
 
 export const PLAN_SNAPSHOT_EVENT_NAMES = [
   PLAN_SNAPSHOT_EVENT_TYPE,
@@ -107,6 +108,25 @@ export const BeforeAgentCustomEventSchema = CustomEventSchema.extend({
 });
 
 
+// ------------------------------------------------------
+// Token Usage Types (collect-only — per-AI-message token counts)
+// ------------------------------------------------------
+export const TokenUsagePayloadSchema = z.object({
+  input_tokens: z.number().nullish(),
+  output_tokens: z.number().nullish(),
+  total_tokens: z.number().nullish(),
+  input_token_details: MetadataSchema.nullish(),
+  output_token_details: MetadataSchema.nullish(),
+  message_id: z.string().nullish(),
+});
+export type TokenUsageEvent = z.infer<typeof TokenUsagePayloadSchema>;
+
+export const TokenUsageCustomEventSchema = CustomEventSchema.extend({
+  name: z.literal(TOKEN_USAGE_EVENT_TYPE),
+  value: TokenUsagePayloadSchema,
+});
+
+
 
 // ------------------------------------------------------
 // Union of all custom events for AGUI
@@ -117,6 +137,7 @@ export const CustomAguiEventSchema = z.union([
   TaskSubAgentCustomEventSchema,
   SubAgentCustomEventSchema,
   BeforeAgentCustomEventSchema,
+  TokenUsageCustomEventSchema,
 ]);
 
 export type PlanSnapshotCustomEvent = z.infer<typeof PlanSnapshotCustomEventSchema>;
@@ -124,4 +145,5 @@ export type HITLInterruptCustomEvent = z.infer<typeof HITLInterruptCustomEventSc
 export type TaskSubAgentCustomEvent = z.infer<typeof TaskSubAgentCustomEventSchema>;
 export type SubAgentCustomEvent = z.infer<typeof SubAgentCustomEventSchema>;
 export type BeforeAgentCustomEvent = z.infer<typeof BeforeAgentCustomEventSchema>;
+export type TokenUsageCustomEvent = z.infer<typeof TokenUsageCustomEventSchema>;
 export type CustomAguiEvent = z.infer<typeof CustomAguiEventSchema>;

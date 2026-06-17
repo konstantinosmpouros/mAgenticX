@@ -373,6 +373,14 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `RAG_BASE_URL` | agents | RAG service base URL |
 | `AGENTS_SERVICE_URL` | dialogue_bridge | Agents runtime base URL |
 | `DISABLED_AGENT_SLUGS` | agents | Comma-separated slugs to skip at startup |
+| `REALTIME_SUPPORTED_VOICES` | agents | Comma-separated allowed realtime voices (defaults to the OpenAI set) |
+| `OPENAI_REALTIME_API_URL` | agents | OpenAI Realtime calls endpoint (default `https://api.openai.com/v1/realtime/calls`) |
+| `REALTIME_{CONNECT,READ,WRITE,POOL}_TIMEOUT_SECONDS` | agents | Realtime-session httpx timeouts (defaults 15 / 60 / 60 / 15) |
+| `REALTIME_ERROR_BODY_MAX_CHARS` | agents | Cap on logged upstream error-body length (default 1000) |
+| `TITLE_CANDIDATE_COUNT` / `TITLE_MIN_CANDIDATES` / `TITLE_MAX_LEN` | agents | Title generation: requested count (also templated into the prompt), minimum usable, char cap (defaults 4 / 3 / 120) |
+| `TITLE_TEMPERATURE` / `TITLE_MAX_TOKENS` | agents | Title model sampling params (defaults 1.0 / 128) |
+| `SUGGESTION_COUNT` / `SUGGESTION_MAX_LEN` | agents | Suggestion count (also templated into the prompt) and char cap (defaults 10 / 160) |
+| `SUGGESTION_TEMPERATURE` / `SUGGESTION_MAX_TOKENS` | agents | Suggestion model sampling params (defaults 0.8 / 320) |
 | `CORS_ALLOWED_ORIGINS` | dialogue_bridge | Allowed browser origins |
 
 ---

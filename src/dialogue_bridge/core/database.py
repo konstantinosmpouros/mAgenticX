@@ -253,6 +253,13 @@ class MessageTable(Base):
     reasoning_steps = Column(JSON, nullable=True)          # array[str]
     reasoning_time_seconds = Column(Integer, nullable=True)
 
+    # Per-AI-message token usage, summed across every model call + sub-agent in
+    # the turn (the true billed consumption — each call re-sends context).
+    # Populated only on AI messages produced by an inference run; NULL on user
+    # messages and historical rows.
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+
     # error info
     is_error = Column(Boolean, nullable=False, server_default="false")
     error_message = Column(Text, nullable=True)

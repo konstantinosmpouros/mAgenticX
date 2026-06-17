@@ -98,6 +98,8 @@ erDiagram
         string agent_name
         json reasoning_steps
         int reasoning_time_seconds
+        int input_tokens
+        int output_tokens
         boolean is_error
         text error_message
         json raw_events
@@ -307,6 +309,8 @@ Every chat turn — both user and AI — is a row in this table. The `parent_mes
 | `agent_name` | `String` | Yes | `NULL` | Denormalized agent label captured at run time, so a deactivated/removed agent still renders in the message action bar (mirrors `conversations.agent_name`). |
 | `reasoning_steps` | `JSON` | Yes | `NULL` | Array of thought strings accumulated during inference |
 | `reasoning_time_seconds` | `Integer` | Yes | `NULL` | Thinking duration in whole seconds |
+| `input_tokens` | `Integer` | Yes | `NULL` | Per-message input tokens, summed across all model calls + sub-agents in the turn (true billed consumption — each call re-sends context). AI-run messages only; `NULL` on user/historical rows. Added in migration `0004`. |
+| `output_tokens` | `Integer` | Yes | `NULL` | Per-message output tokens, summed across the turn. AI-run messages only; `NULL` otherwise. Migration `0004`. |
 | `is_error` | `Boolean` | No | `false` | `true` when the inference run that produced this message failed |
 | `error_message` | `Text` | Yes | `NULL` | Error detail when `is_error=true` |
 | `raw_events` | `JSON` | Yes | `NULL` | The **full per-run AG-UI event log** (every event, seq-stamped, with consecutive text/tool-args deltas coalesced and oversized `TOOL_CALL_RESULT` content truncated + flagged). The UI replays this into the rendered run timeline. Rows persisted before the timeline rebuild contain only `CUSTOM` events — the UI's legacy fold covers them. |

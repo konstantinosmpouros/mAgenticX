@@ -17,8 +17,7 @@ from fastapi import Depends, FastAPI, UploadFile, File, HTTPException, status
 from contextlib import asynccontextmanager
 from fastapi.responses import StreamingResponse
 
-from openai import OpenAI
-
+from core.clients import get_openai_client
 from core.settings import settings
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.types import Command
@@ -84,14 +83,11 @@ from core.error_handling import provider_error_handler
 
 configure_logging()
 logger = get_logger(__name__)
-_OPENAI_CLIENT = OpenAI(api_key=settings.api_keys.openai.get_secret_value()) if settings.api_keys.openai else OpenAI()
-
-_REALTIME_VOICES = {"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}
 
 
 def _normalize_realtime_voice(voice: str | None) -> str:
     selected = (voice or settings.runtime_models.read_aloud_voice or "alloy").strip().lower()
-    return selected if selected in _REALTIME_VOICES else "alloy"
+    return selected if selected in settings.runtime_models.realtime_voices else "alloy"
 
 
 def _make_loop_exception_handler(old_handler=None):
@@ -192,7 +188,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> TranscriptionRespons
     
     try:
         logger.info("dictation_provider_started", "Dictation provider request started", provider="openai", model=stt_model)
-        transcription = _OPENAI_CLIENT.audio.transcriptions.create(
+        transcription = get_openai_client().audio.transcriptions.create(
             model=stt_model,
             file=audio_stream,
         )
@@ -529,19 +525,19 @@ async def create_realtime_session(req: RealtimeSessionRequest) -> RealtimeSessio
         "sdp": (None, req.sdp),
         "session": (None, json.dumps(session_config)),
     }
-    timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=15.0)
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=settings.realtime.timeout) as client:
             response = await client.post(
-                "https://api.openai.com/v1/realtime/calls",
+                settings.realtime.api_url,
                 headers={"Authorization": f"Bearer {api_key}"},
                 files=multipart_fields,
             )
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        upstream_body = exc.response.text[:1000]
+        max_chars = settings.realtime.error_body_max_chars
+        upstream_body = exc.response.text[:max_chars]
         try:
-            upstream_body = json.dumps(exc.response.json(), separators=(",", ":"))[:1000]
+            upstream_body = json.dumps(exc.response.json(), separators=(",", ":"))[:max_chars]
         except ValueError:
             pass
         provider_error_handler.raise_provider_error(

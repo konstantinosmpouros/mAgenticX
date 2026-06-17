@@ -9,6 +9,7 @@ PLAN_SNAPSHOT_EVENT_TYPE = "PLAN_SNAPSHOT"
 TASK_SUBAGENT_EVENT_TYPE = "TASK_SUBAGENT"
 SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT"
 BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT"
+TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE"
 
 
 # ------------------------------------------------------------------
@@ -69,3 +70,20 @@ class BeforeAgentEvent(BaseModel):
     """
     message: str
     metadata: Optional[Dict[str, Any]] = None
+
+
+# ------------------------------------------------------------------
+# Token usage event
+# ------------------------------------------------------------------
+class TokenUsageEvent(BaseModel):
+    """Per-AI-message token usage, pulled from ``AIMessage.usage_metadata``.
+
+    Emitted once per settled AI message (main agent or sub-agent). The bridge
+    sums these across the whole run — message_id lets it dedupe defensively.
+    """
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    input_token_details: Optional[Dict[str, Any]] = None
+    output_token_details: Optional[Dict[str, Any]] = None
+    message_id: Optional[str] = None

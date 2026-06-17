@@ -343,6 +343,8 @@ export type MessageOut = {
     attachments: AttachmentOut[];
     thinking?: string[];
     thinkingTime?: number;
+    inputTokens?: number;
+    outputTokens?: number;
     error?: boolean;
     errorMessage?: string;
     streamingStatus?: string | null;
@@ -438,6 +440,8 @@ export type InferenceRun = {
     rawEvents?: Record<string, any>[];
     plan?: Record<string, any> | null;
     subagents?: Record<string, any> | null;
+    inputTokens?: number | null;
+    outputTokens?: number | null;
     pendingInterrupts?: number;
     errorMessage?: string | null;
     startedAt: Date;

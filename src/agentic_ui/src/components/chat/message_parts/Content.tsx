@@ -1,7 +1,16 @@
-import React, { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Response } from "@/components/ui/ai-elements/response";
 import { Textarea } from "@/components/ui/textarea";
-import type { MessageOut } from "@/lib/types";
+import type { ContentBlock, MessageOut } from "@/lib/types";
+import { normalizeBulletMarkdown } from "@/lib/utils";
+
+// ContentBlockView — a timeline content block rendered as markdown.
+export const ContentBlockView = memo(({ block }: { block: ContentBlock }) => {
+  const normalized = normalizeBulletMarkdown(block.text);
+  if (!normalized.trim()) return null;
+  return <Response>{normalized}</Response>;
+});
+ContentBlockView.displayName = "ContentBlockView";
 
 type MessageContentProps = {
   message: MessageOut;
@@ -22,19 +31,10 @@ export function MessageContent({
   onCancelEdit,
   onSubmitEdit,
 }: MessageContentProps) {
-  const normalizedContent = useMemo(() => {
-    const raw = message.content ?? "";
-    return raw
-      .split("\n")
-      .map((line) => {
-        const bulletMatch = line.match(/^(\s*)•\s*/);
-        if (!bulletMatch) return line;
-        const [, indent] = bulletMatch;
-        const rest = line.slice(bulletMatch[0].length);
-        return `${indent}- ${rest}`;
-      })
-      .join("\n");
-  }, [message.content]);
+  const normalizedContent = useMemo(
+    () => normalizeBulletMarkdown(message.content ?? ""),
+    [message.content],
+  );
 
   if (isEditing) {
     return (

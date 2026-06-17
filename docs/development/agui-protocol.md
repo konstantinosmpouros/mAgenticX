@@ -101,6 +101,7 @@ All custom events share a wrapper shape:
 | `TASK_SUBAGENT` | `TaskSubAgentEvent` | Orchestrator delegated a task to a sub-agent |
 | `SUBAGENT_EVENT` | `SubAgentEvent` | An AG-UI event emitted by a sub-agent, wrapped with task context |
 | `BEFORE_AGENT_EVENT` | `BeforeAgentEvent` | Pre-execution message injected by `PatchToolCallsMiddleware` into a sub-agent |
+| `TOKEN_USAGE` | `TokenUsageEvent` | Per-AI-message token usage (input/output), one per settled `AIMessage`; namespace-attributed for sub-agents |
 | `HITL_INTERRUPT` | `HITLInterruptEvent` | Graph paused — waiting for human input |
 | `BRIDGE_HITL_RESOLVED` | `{interrupt_id, decision, reason}` | **Bridge-synthesized** (never emitted by the agents service): appended to the event log when `/resume` is accepted, so resolution state survives reloads. The client reducer flips the matching approval's status on it. |
 
@@ -148,6 +149,21 @@ Emitted once when the orchestrator calls the `task` tool. `task_id` is the LangG
 ```
 
 Every standard AG-UI event emitted by a sub-agent is re-emitted wrapped in this envelope, so the client can route sub-agent output to the correct task card without knowing the LangGraph namespace structure.
+
+#### `TokenUsageEvent`
+
+```json
+{
+  "input_tokens": 5300,
+  "output_tokens": 7,
+  "total_tokens": 5307,
+  "input_token_details": { "cache_read": 0 },
+  "output_token_details": { "reasoning": 0 },
+  "message_id": "lc_run--..."
+}
+```
+
+Emitted once per **settled** `AIMessage` (read from `updates`-mode `usage_metadata` in `_handle_updates_payload`), for the main agent and each sub-agent — sub-agent usage is namespace-wrapped in a `SUBAGENT_EVENT`. The bridge sums input/output across the whole run (all model calls + sub-agents + resume legs), deduping by `message_id`, and persists the totals on `messages.input_tokens` / `messages.output_tokens`. **Collect-only:** the numbers reach the UI on the message DTO but nothing renders them yet.
 
 #### `HITLInterruptEvent`
 
@@ -559,7 +575,7 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Custom event type constants | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, etc. |
-| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent` |
+| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent` |
 | AG-UI event emission | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `AGUIEmitter` — all public methods |
 | Namespace attachment | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `_attach_namespace()` |
 | LangGraph → AG-UI translation | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |

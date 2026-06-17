@@ -11,13 +11,10 @@ from utils import make_merge_with_template
 
 logger = get_logger(__name__)
 
-_SUGGESTION_COUNT = 10
-_SUGGESTION_MAX_LEN = 160
-
 SUGGESTIONS_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
     ("system", (
         "You generate short, useful starter suggestions for a chat composer. "
-        "Return exactly 10 distinct suggestions as a JSON list in the `suggestions` field. "
+        f"Return exactly {settings.generation.suggestion_count} distinct suggestions as a JSON list in the `suggestions` field. "
         "Use the supplied recent conversation context and selected agent context when available. "
         "Each suggestion must be a direct user prompt, one sentence, practical, and no longer than 16 words. "
         "Avoid numbered prefixes, quotation marks, emojis, markdown, sensitive personal data, and duplicate intent."
@@ -28,8 +25,8 @@ SUGGESTIONS_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
 _suggestions_prompt_merge = RunnableLambda(make_merge_with_template(SUGGESTIONS_PROMPT_TEMPLATE))
 _suggestions_chain = _suggestions_prompt_merge | init_chat_model(
     settings.runtime_models.suggestions,
-    temperature=0.8,
-    max_tokens=320,
+    temperature=settings.generation.suggestion_temperature,
+    max_tokens=settings.generation.suggestion_max_tokens,
 ).with_structured_output(ConversationSuggestions)
 
 
@@ -41,14 +38,14 @@ def _normalize_suggestions(raw_suggestions: list[str]) -> list[str]:
         suggestion = (raw_suggestion or "").strip().strip("-").strip()
         if not suggestion:
             continue
-        if len(suggestion) > _SUGGESTION_MAX_LEN:
-            suggestion = suggestion[:_SUGGESTION_MAX_LEN].rstrip()
+        if len(suggestion) > settings.generation.suggestion_max_len:
+            suggestion = suggestion[:settings.generation.suggestion_max_len].rstrip()
         key = suggestion.casefold()
         if key in seen:
             continue
         seen.add(key)
         cleaned.append(suggestion)
-        if len(cleaned) == _SUGGESTION_COUNT:
+        if len(cleaned) == settings.generation.suggestion_count:
             break
 
     return cleaned
@@ -72,7 +69,7 @@ async def generate_suggestions(req: SuggestionsRequest) -> ConversationSuggestio
         )
 
     suggestions = _normalize_suggestions(result.suggestions)
-    if len(suggestions) < _SUGGESTION_COUNT:
+    if len(suggestions) < settings.generation.suggestion_count:
         logger.warning(
             "suggestion_generation_invalid_candidates",
             "Suggestion model returned too few usable candidates",

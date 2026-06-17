@@ -10,14 +10,11 @@ from utils import make_merge_with_template
 from schemas import TitleRequest, ConversationTitle
 
 logger = get_logger(__name__)
-_TITLE_CANDIDATE_COUNT = 4
-_TITLE_MIN_CANDIDATES = 3
-_TITLE_MAX_LEN = 120
 
 TITLE_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
     ("system", (
         "You write concise, human-readable chat titles suitable for a sidebar list. "
-        "Return exactly 4 distinct title options for the provided user message as a JSON list in the `titles` field. "
+        f"Return exactly {settings.generation.title_candidate_count} distinct title options for the provided user message as a JSON list in the `titles` field. "
         "Each title should capture the main intent in 3 to 5 words. "
         "Avoid quotation marks, emojis, numbered prefixes, and trailing punctuation. "
         "Use common phrases that a user would understand at a glance."
@@ -28,8 +25,8 @@ TITLE_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
 _title_prompt_merge = RunnableLambda(make_merge_with_template(TITLE_PROMPT_TEMPLATE))
 _title_chain = _title_prompt_merge | init_chat_model(
     settings.runtime_models.title,
-    temperature=1,
-    max_tokens=128,
+    temperature=settings.generation.title_temperature,
+    max_tokens=settings.generation.title_max_tokens,
 ).with_structured_output(ConversationTitle)
 
 
@@ -41,14 +38,14 @@ def _normalize_title_candidates(raw_titles: list[str]) -> list[str]:
         title = (raw_title or "").strip()
         if not title:
             continue
-        if len(title) > _TITLE_MAX_LEN:
-            title = title[:_TITLE_MAX_LEN].rstrip()
+        if len(title) > settings.generation.title_max_len:
+            title = title[:settings.generation.title_max_len].rstrip()
         key = title.casefold()
         if key in seen:
             continue
         seen.add(key)
         cleaned.append(title)
-        if len(cleaned) == _TITLE_CANDIDATE_COUNT:
+        if len(cleaned) == settings.generation.title_candidate_count:
             break
 
     return cleaned
@@ -71,7 +68,7 @@ async def generate_title(req: TitleRequest) -> ConversationTitle:
         )
 
     titles = _normalize_title_candidates(result.titles)
-    if len(titles) < _TITLE_MIN_CANDIDATES:
+    if len(titles) < settings.generation.title_min_candidates:
         logger.warning(
             "title_generation_invalid_candidates",
             "Title model returned too few usable title candidates",

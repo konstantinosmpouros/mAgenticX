@@ -36,6 +36,7 @@ import {
   useInitialSessionState,
   useUISnapshotPersistence,
 } from "@/hooks/useSessionEffects";
+import { useActiveRunBranchSnap } from "@/hooks/useActiveRunBranchSnap";
 
 // Handlers (modularized)
 import {
@@ -267,25 +268,12 @@ export function ChatInterface({
     void stopInferenceRun(activeConversationRun?.id ?? currentConversation?.activeRunId ?? null);
   }, [activeConversationRun?.id, currentConversation?.activeRunId, stopInferenceRun]);
 
-  // Snap branch selections to the active run's path once per run. Covers the
-  // session-restore case where the conversation detail arrives before
-  // useInferenceRuns has hydrated `runsByConversation`: handleConversationSelect
-  // ran its snap with an empty map (no-op), and we have to wait for the run to
-  // appear before pinning the visible branch. After this initial snap the user
-  // is free to navigate branches manually — the ref guard prevents re-snapping
-  // for the same run id.
-  const snappedRunIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!currentConversation || !activeConversationRun) return;
-    if (snappedRunIdRef.current === activeConversationRun.id) return;
-    const derived = deriveBranchSelectionsForActiveRun(currentConversation);
-    if (!derived) return;
-    setBranchSelections((prev) => {
-      const aligned = Object.entries(derived).every(([key, value]) => prev[key] === value);
-      return aligned ? prev : { ...prev, ...derived };
-    });
-    snappedRunIdRef.current = activeConversationRun.id;
-  }, [currentConversation, activeConversationRun, deriveBranchSelectionsForActiveRun]);
+  useActiveRunBranchSnap({
+    currentConversation,
+    activeConversationRun,
+    deriveBranchSelectionsForActiveRun,
+    setBranchSelections,
+  });
 
   const { requestPersist } = useUISnapshotPersistence({
     userId,
@@ -414,11 +402,6 @@ export function ChatInterface({
   useEffect(() => {
     setMyRegistrySkills(mySkills);
   }, [mySkills]);
-
-  // Reset branch selections on conversation change
-  useEffect(() => {
-    setBranchSelections({});
-  }, [currentConversation?.id]);
 
   const hydratedSharedTokenRef = useRef<string | null>(null);
   useEffect(() => {

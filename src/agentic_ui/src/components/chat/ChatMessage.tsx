@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import { Check, X as CloseIcon } from "lucide-react";
 import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
 import { MessageAttachments } from "./message_parts/MessageAttachments";
-import { MessageContent } from "./message_parts/MessageContent";
+import { MessageContent } from "./message_parts/Content";
 import { PlanSidePanel, SubagentsSidePanel } from "./message_parts/RunSidePanels";
 import { AgentRunTimeline } from "./AgentRunTimeline";
 import { useRunTimeline } from "@/runtime";

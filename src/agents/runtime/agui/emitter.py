@@ -21,6 +21,10 @@ from runtime.agui.events import (
     SubAgentEvent,
     BEFORE_AGENT_EVENT_TYPE,
     BeforeAgentEvent,
+
+    # Per-AI-message token usage
+    TOKEN_USAGE_EVENT_TYPE,
+    TokenUsageEvent,
 )
 from ag_ui.core import (
     EventType,
@@ -292,5 +296,31 @@ class AGUIEmitter:
             type=EventType.CUSTOM,
             name=BEFORE_AGENT_EVENT_TYPE,
             value=payload.model_dump(),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Token usage (custom event) ----------
+    def token_usage(
+        self,
+        usage_metadata: Dict[str, Any],
+        *,
+        message_id: Optional[str] = None,
+        writer: Any = None,
+        namespace: Optional[str] = None,
+    ) -> CustomEvent:
+        """Emit per-AI-message token usage from ``AIMessage.usage_metadata``."""
+        payload = TokenUsageEvent(
+            input_tokens=usage_metadata.get("input_tokens"),
+            output_tokens=usage_metadata.get("output_tokens"),
+            total_tokens=usage_metadata.get("total_tokens"),
+            input_token_details=usage_metadata.get("input_token_details"),
+            output_token_details=usage_metadata.get("output_token_details"),
+            message_id=message_id,
+        )
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=TOKEN_USAGE_EVENT_TYPE,
+            value=payload.model_dump(exclude_none=True),
         )
         return self._emit(custom_event, writer, namespace)
