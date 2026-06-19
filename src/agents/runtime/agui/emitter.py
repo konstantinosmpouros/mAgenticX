@@ -166,14 +166,16 @@ class AGUIEmitter:
         )
         return self._emit(tool_args, writer, namespace)
 
-    def tool_call_result(self, tool_call_id: str, output: str | dict, writer: Any = None, *, thread_id: Optional[str] = None, namespace: Optional[str] = None) -> Optional[bytes]:
-        # Final result wrapper
+    def tool_call_result(self, tool_call_id: str, output: str | dict, writer: Any = None, *, thread_id: Optional[str] = None, namespace: Optional[str] = None, error: bool = False) -> Optional[bytes]:
+        # Final result wrapper. `error=True` rides as an extra field (the event
+        # model allows extras) so the UI renders the tool step as failed.
         message_id = thread_id or tool_call_id
         tool_results = ToolCallResultEvent(
             type=EventType.TOOL_CALL_RESULT,
             tool_call_id=tool_call_id,
             message_id=message_id,
             content=output if isinstance(output, str) else json.dumps(output, ensure_ascii=False),
+            **({"error": True} if error else {}),
         )
         return self._emit(tool_results, writer, namespace)
 

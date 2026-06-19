@@ -12,6 +12,7 @@ from langgraph.types import Command
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_or_create_checkpointer
+from runtime.tool_error_middleware import ToolErrorMiddleware
 from runtime.filesystem import (
     conversation_root as _conversation_root,
     ensure_user_agent_filesystem,
@@ -269,23 +270,61 @@ class DeepAgent(BaseAgent, ABC):
 
 
     def _build_workspace_permissions(self) -> list[FilesystemPermission]:
-        """Permission rules over the built-in filesystem tools. The only control
-        the backend layer can't provide is making ``/skills/`` read-only (it is a
-        writable FilesystemBackend), so that is all this enforces.
+        """Explicit write-deny rules over the built-in filesystem tools, shared by
+        every deep agent (defined here in the base, never per-agent).
 
-        Confinement is structural, not rule-based: the CompositeBackend routes
-        every other path to a per-(user, agent, conversation) FilesystemBackend
-        or the ephemeral, agent-scoped StateBackend, none of which can reach the
-        host or another user (and ``virtual_mode`` blocks ``..``/absolute-path
-        escapes). So there is deliberately NO catch-all deny — one would also
-        block the agent from reading deepagents' own ``/large_tool_results/``
-        eviction area. ``{,/**}`` matches the mount root, the root with a
-        trailing slash, and everything beneath it.
+        Confinement is primarily structural: the CompositeBackend routes every
+        path to a per-(user, agent, conversation) FilesystemBackend or the
+        ephemeral, agent-scoped StateBackend, none of which can reach the host or
+        another user (``virtual_mode`` blocks ``..``/absolute-path escapes). On
+        top of that, these rules make the agent-facing surface explicitly
+        read-only where it should never write:
+
+        - ``/skills/`` — the user manages the skill library via the UI.
+        - ``/large_tool_results/`` and ``/conversation_history/`` —
+          deepagents-managed bookkeeping (offload eviction + archive). The model
+          may READ offloaded results but must not write/tamper with them; the
+          library's own offload writes go through the backend, not these tools,
+          so they are unaffected.
+
+        Writes stay open where the agent legitimately needs them —
+        ``/conversation/`` (artifacts) and ``/memories/AGENT.md`` (durable
+        memory). There is deliberately NO catch-all deny: a read-deny would block
+        the agent from reading its offloaded ``/large_tool_results/``. Every path
+        must map to a mounted route (deepagents' ``_all_paths_scoped_to_routes``
+        guard); ``{,/**}`` matches the mount root, the root with a trailing
+        slash, and everything beneath it.
+
+        Caveat: deepagents does not yet support tool-level permissions once the
+        backend provides command execution (``SandboxBackendProtocol``) — revisit
+        this method when the execute tool is enabled.
         """
         return [
             FilesystemPermission(operations=["write"], paths=["/skills{,/**}"], mode="deny"),
+            FilesystemPermission(operations=["write"], paths=["/large_tool_results{,/**}"], mode="deny"),
+            FilesystemPermission(operations=["write"], paths=["/conversation_history{,/**}"], mode="deny"),
         ]
 
+
+    @staticmethod
+    def _inject_tool_error_middleware(subagents: SubAgentsT) -> SubAgentsT:
+        """Prepend ToolErrorMiddleware to each sub-agent spec. The parent's
+        ``create_deep_agent(middleware=...)`` does not reach sub-agents — they
+        compile with only their own middleware list — so the policy has to be
+        injected per spec here, keeping it owned by the base (concrete agents'
+        ``register_subagents()`` stay untouched). Pre-compiled sub-agents (a
+        ``runnable`` entry) can't take middleware and pass through unchanged.
+        """
+        if not isinstance(subagents, (list, tuple)):
+            return subagents
+        augmented: list[Any] = []
+        for spec in subagents:
+            if isinstance(spec, dict) and "runnable" not in spec:
+                existing = list(spec.get("middleware") or [])
+                augmented.append({**spec, "middleware": [ToolErrorMiddleware(), *existing]})
+            else:
+                augmented.append(spec)
+        return augmented
 
     def build_deep_agent(
         self,
@@ -309,8 +348,11 @@ class DeepAgent(BaseAgent, ABC):
             name=self.name,
             tools=self.tools,
             system_prompt=system_prompt,
-            subagents=subagents,
+            subagents=self._inject_tool_error_middleware(subagents),
             interrupt_on=interrupt_on,
+            # A tool exception becomes an error ToolMessage instead of aborting
+            # the run; injected into sub-agents too (see _inject_tool_error_middleware).
+            middleware=[ToolErrorMiddleware()],
             # Fixed filesystem — same mounts + permissions for every deep agent.
             memory=self.agent_md_paths,
             skills=self.skills_paths,

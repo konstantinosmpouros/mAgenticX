@@ -58,15 +58,12 @@ async def init_message(
         conversation_id=conv.id,
         parent_message_id=parent_message_id,
         sender=payload.sender,
-        type=payload.type,
         content=payload.content,
         reasoning_steps=payload.thinking,
         reasoning_time_seconds=payload.thinkingTime,
         is_error=bool(payload.error) if payload.error is not None else False,
         error_message=payload.errorMessage,
         raw_events=payload.rawEvents,
-        plan=payload.plan,
-        subagents=payload.subagents,
     )
     db.add(msg)
     await db.flush()  # Assign msg.id for attachment inserts.
@@ -194,7 +191,6 @@ async def clone_branch_to_conversation(
             conversation_id=forked_conv.id,
             parent_message_id=message_id_map.get(source_message.parent_message_id),
             sender=source_message.sender,
-            type=source_message.type,
             content=source_message.content,
             liked=source_message.liked,
             agent_id=source_message.agent_id,
@@ -204,8 +200,6 @@ async def clone_branch_to_conversation(
             is_error=source_message.is_error,
             error_message=source_message.error_message,
             raw_events=deepcopy(source_message.raw_events),
-            plan=deepcopy(source_message.plan),
-            subagents=deepcopy(source_message.subagents),
             created_at=source_message.created_at,
             updated_at=source_message.updated_at,
         )
@@ -252,7 +246,6 @@ def _message_to_share_snapshot(message: MessageTable) -> dict:
         "parentMessageId": message.parent_message_id,
         "content": message.content,
         "sender": message.sender,
-        "type": message.type,
         "liked": message.liked,
         "created_at": message.created_at.isoformat() if message.created_at else None,
         "updated_at": message.updated_at.isoformat() if message.updated_at else None,
@@ -262,8 +255,6 @@ def _message_to_share_snapshot(message: MessageTable) -> dict:
         "error": message.is_error,
         "errorMessage": message.error_message,
         "rawEvents": deepcopy(message.raw_events) or [],
-        "plan": deepcopy(message.plan),
-        "subagents": deepcopy(message.subagents),
     }
 
 

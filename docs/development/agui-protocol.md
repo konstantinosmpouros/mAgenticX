@@ -76,7 +76,7 @@ All events are SSE frames with a `data:` prefix containing a JSON object. Every 
 | `TEXT_MESSAGE_END` | `message_id` | Text response complete |
 | `TOOL_CALL_START` | `tool_call_id`, `tool_call_name` | Agent is about to invoke a tool |
 | `TOOL_CALL_ARGS` | `tool_call_id`, `delta: str (JSON)` | Arguments for the tool call |
-| `TOOL_CALL_RESULT` | `tool_call_id`, `message_id`, `content` | Tool returned a result |
+| `TOOL_CALL_RESULT` | `tool_call_id`, `message_id`, `content`, `error?: bool` | Tool returned a result; `error: true` when the tool raised (see tool-error handling below) |
 | `TOOL_CALL_END` | `tool_call_id` | Tool call complete |
 | `RUN_ERROR` | `message: str` | Fatal error — stream will not continue |
 
@@ -370,18 +370,16 @@ The dialogue bridge parses frames via `_parse_sse_bytes()` and feeds each event 
 
 **Log coalescing** (`_append_raw` / `_coalesce_key`): consecutive `TEXT_MESSAGE_CHUNK`/`TEXT_MESSAGE_CONTENT` (same `messageId` + namespace) and `TOOL_CALL_ARGS` (same `toolCallId`) merge into one stored event with a concatenated `delta`, keeping the `seq` of the last merged wire event and gaining `timestampEnd`. `SUBAGENT_EVENT` envelopes merge one level down when they share a `task_id` with mergeable inner deltas. `THINKING_TEXT_MESSAGE_CONTENT` is **never coalesced** — each thinking event is one discrete thought step, and merging would make the hydrated view flatter than the live one. `TOOL_CALL_RESULT` content is truncated at `settings.inference.tool_result_max_chars` with a `"truncated": true` flag.
 
-Alongside the log, `apply_event()` maintains flat aggregates used for previews / search / voice / export and the pause decision — never for the timeline:
+Alongside the log, `apply_event()` maintains a few flat aggregates used for previews / search / voice / export and the pause decision — never for the timeline. Plan and sub-agent state are **not** aggregated: they are reconstructed by the UI from the `PLAN_SNAPSHOT` / `TASK_SUBAGENT` / `SUBAGENT_EVENT` entries in `raw_events`, so the bridge keeps no `self.plan`/`self.subagents` and no `messages.plan`/`messages.subagents` columns.
 
 ```mermaid
 flowchart TD
     A["apply_event(event)"] --> S["seq-stamp event\n(+ truncate TOOL_CALL_RESULT)"]
     S --> B{event.type}
     B -->|"CUSTOM"| C{event.name}
-    C -->|"PLAN_SNAPSHOT"| D["self.plan = value"]
-    C -->|"TASK_SUBAGENT"| E["push_subagent_event('tasks', value)"]
-    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)"]
-    C -->|"BEFORE_AGENT_EVENT"| G["push_subagent_event('beforeAgent', value)"]
-    C -->|"HITL_INTERRUPT"| H["push_subagent_event('interrupts', value)\nregister_interrupt(value)"]
+    C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)\nelif inner is TOKEN_USAGE:\n_accumulate_usage(inner.value)"]
+    C -->|"HITL_INTERRUPT"| H["register_interrupt(value)"]
+    C -->|"TOKEN_USAGE"| N["_accumulate_usage(value)"]
     B -->|"THINKING_START"| I["thinking_start = perf_counter()\nthinking_end = 0.0"]
     B -->|"THINKING_TEXT_MESSAGE_CONTENT"| J["thoughts.append(delta)"]
     B -->|"TOOL_CALL_START"| K["thoughts.append('[tool] {name}')"]
@@ -391,8 +389,6 @@ flowchart TD
 ```
 
 `thinking_duration_seconds()` computes the elapsed time from `first_event_ts` (or `thinking_start`) to `thinking_end` (or now). This value is stored on the `MessageTable` row as `thinkingTime` and used as the fallback duration label on legacy timelines.
-
-`push_subagent_event(key, value)` appends to the list at `self.subagents[key]`, creating the dict and the list lazily. The keys used are `"tasks"`, `"beforeAgent"`, and `"interrupts"` — the old heavyweight `"events"` key is no longer accumulated, because the full log already carries every `SUBAGENT_EVENT` and the UI folds sub-agent panels from it.
 
 `pending_interrupt_ids` (exposed as the `pending_interrupts` count) is what the inference manager inspects after the upstream `/stream` call ends to decide whether the run is genuinely terminal or paused on a HITL checkpoint. It is a set of **interrupt identities** keyed by `interrupt.id`, never a bare counter: a sub-agent interrupt is delivered twice (top-level `HITL_INTERRUPT` with namespace metadata + the same event wrapped in `SUBAGENT_EVENT`), so `register_interrupt` makes the second envelope a no-op, and each resume round-trip (see below) removes exactly one identity — the payload's `interrupt_id`, or the oldest pending entry as a fallback. A counter here double-counts every sub-agent pause, drifts upward across resume legs, and leaves the bridge waiting for a resume after the run has actually finished.
 
@@ -542,7 +538,7 @@ Legacy messages persisted before the full-log change carry CUSTOM-only logs; `fo
 
 ### Sub-Agent Events
 
-Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` events in the log — each delegation becomes a Subagent block whose nested blocks reuse the same Thinking/Content primitives. The persisted `message.subagents` dict (`tasks` / `beforeAgent` / `interrupts`) remains as a flat aggregate for non-timeline consumers; the old `events` key is no longer written.
+Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` events in the log — each delegation becomes a Subagent block whose nested blocks reuse the same Thinking/Content primitives. There is no separate persisted sub-agent aggregate: the `messages.subagents` column was removed, since `raw_events` already carries every event the fold needs.
 
 ---
 
@@ -560,9 +556,11 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 - **HITL pre-empts everything.** When `__interrupt__` appears in an updates payload, all other node updates in that dict are skipped. If a graph node emits both a tool call and an interrupt in the same update (unusual but possible), the tool call start/args events are not emitted. The agent graph still has the tool call recorded in its checkpoint; it will re-emit when the human resumes.
 
-- **The `BEFORE_AGENT_EVENT` marker anchors namespace binding, not display.** In 0.6.10 the `PatchToolCallsMiddleware.before_agent` node update arrives stamped with the sub-agent's namespace but with an **empty body** — so the normalizer uses its namespace + arrival order (not its content) to trigger the bind, and emits a `BEFORE_AGENT_EVENT` with an empty `message`. The bridge stores it in `subagents["beforeAgent"]`; the current UI does not render it.
+- **The `BEFORE_AGENT_EVENT` marker anchors namespace binding, not display.** In 0.6.10 the `PatchToolCallsMiddleware.before_agent` node update arrives stamped with the sub-agent's namespace but with an **empty body** — so the normalizer uses its namespace + arrival order (not its content) to trigger the bind, and emits a `BEFORE_AGENT_EVENT` with an empty `message`. It rides `raw_events` like any other event; the current UI does not render it.
 
 - **`RUN_ERROR` bypasses the normalizer.** When `agent.astream()` raises an unhandled exception, `BaseAgent._encode_run_error()` directly encodes a `RUN_ERROR` SSE frame without going through the normalizer. The bridge forwards it to the client, which marks the run as failed and displays an error state.
+
+- **A failing tool no longer escalates to `RUN_ERROR` (deep agents).** The base `DeepAgent` installs a `ToolErrorMiddleware` (in `runtime/tool_error_middleware.py`, wired in `build_deep_agent` and injected into every sub-agent spec) whose `wrap_tool_call`/`awrap_tool_call` catches any tool exception and returns a `ToolMessage(status="error")` instead of raising. The model sees the error and can recover, and the normalizer emits a normal `TOOL_CALL_RESULT` with `error: true` (the flag rides as an extra field — `ToolCallResultEvent` allows extras). The UI fold maps `error: true` to the `output-error` tool state (red/failed step in both the CoT and the sub-agent container). Only non-tool exceptions still reach `RUN_ERROR`. (LangGraph non-deep agents are not covered — they would use `ToolNode(handle_tool_errors=True)`.)
 
 - **The namespace field injected by `_attach_namespace()` is not part of the AG-UI spec.** It is a platform extension added by re-encoding the SSE frame with an extra JSON field. Clients that use a strict AG-UI parser may reject these frames. The bridge's `_parse_sse_bytes()` parses them correctly because it uses plain JSON decoding.
 

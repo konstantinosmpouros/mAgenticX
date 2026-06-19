@@ -208,7 +208,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           isPrivate: isPrivateMode,
           message: {
             sender: 'user',
-            type: attachments.length > 0 ? 'file' : 'text',
             content: currentMessage || undefined,
             attachments: apiAttachments,
             parentMessageId: null,
@@ -226,7 +225,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           message: {
             parentMessageId: null,
             sender: 'user',
-            type: attachments.length > 0 ? 'file' : 'text',
             content: currentMessage || undefined,
             attachments: apiAttachments,
           },
@@ -249,7 +247,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         const messagePayload: MessageIn = {
           parentMessageId: lastPersistedMessageId,
           sender: 'user',
-          type: attachments.length > 0 ? 'file' : 'text',
           content: currentMessage || undefined,
           attachments: apiAttachments,
         };
@@ -368,7 +365,6 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
       setIsSendingMessage?.(true);
       const payload: MessageIn = {
         sender: 'user',
-        type: 'text',
         parentMessageId: parentId,
         content: trimmed,
       };

@@ -91,7 +91,6 @@ async def createConversation(
         is_private=payload.isPrivate,
         attachment_count=len(payload.firstMessage.attachments),
         sender=payload.firstMessage.sender,
-        message_type=payload.firstMessage.type,
     ) as operation:
         conv = await init_conv(
             db=db,

@@ -59,7 +59,6 @@ async def addMessageToConversation(
         failure_message="Message creation failed",
         parent_message_id=parent_message_id,
         sender=payload.sender,
-        message_type=payload.type,
         attachment_count=len(payload.attachments),
     ) as operation:
         # 1) Persist the new message and capture it

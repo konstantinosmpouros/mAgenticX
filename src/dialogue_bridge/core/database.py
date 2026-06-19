@@ -215,7 +215,6 @@ class ConversationTable(Base):
 
 
 MessageSenderEnum = Enum("user", "ai", name="message_sender_enum")
-MessageTypeEnum = Enum("text", "file", "image", "audio", "tool", name="message_type_enum")
 
 
 class MessageTable(Base):
@@ -243,7 +242,6 @@ class MessageTable(Base):
     parent_message_id = Column(String, ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
 
     sender = Column(MessageSenderEnum, nullable=False)
-    type = Column(MessageTypeEnum, nullable=False, server_default="text")
     content = Column(Text, nullable=True)                  # may be NULL for pure file messages
 
     # User feedback: nullable boolean => None (no feedback), True (like), False (dislike)
@@ -266,10 +264,6 @@ class MessageTable(Base):
 
     # Raw AGUI events sequence for replay/debugging
     raw_events = Column(JSON, nullable=True)           # array of raw AGUI event dicts in order
-
-    # Agent plan and subagent state snapshots
-    plan = Column(JSON, nullable=True)                 # last PlanSnapshot state
-    subagents = Column(JSON, nullable=True)            # subagent events keyed by task_id
 
     # Which agent produced this message. Set on AI messages (the run record);
     # NULL on user messages. agent_name is denormalized so a deactivated or

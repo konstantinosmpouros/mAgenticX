@@ -151,7 +151,6 @@ async def create_conversation_from_share_record(
             conversation_id=conv.id,
             parent_message_id=message_id_map.get(item.get("parentMessageId")),
             sender=item.get("sender") or "ai",
-            type=item.get("type") or "text",
             content=item.get("content"),
             liked=item.get("liked"),
             reasoning_steps=deepcopy(item.get("thinking")),
@@ -159,8 +158,6 @@ async def create_conversation_from_share_record(
             is_error=bool(item.get("error")),
             error_message=item.get("errorMessage"),
             raw_events=deepcopy(item.get("rawEvents")) or [],
-            plan=deepcopy(item.get("plan")),
-            subagents=deepcopy(item.get("subagents")),
             created_at=created_at,
             updated_at=updated_at,
         )

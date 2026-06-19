@@ -14,7 +14,7 @@ export type SubagentInterrupt = {
 export type SubagentTool = {
   id: string;
   name: string;
-  status?: "running" | "completed";
+  status?: "running" | "completed" | "error";
   args?: string;
   result?: string;
 };
@@ -298,12 +298,14 @@ function ToolCallItem({
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
-              toolCall.status === "completed"
-                ? "bg-emerald-500/[0.12] text-emerald-500"
-                : "bg-sky-500/[0.12] text-sky-500"
+              toolCall.status === "error"
+                ? "bg-destructive/[0.12] text-destructive"
+                : toolCall.status === "completed"
+                  ? "bg-emerald-500/[0.12] text-emerald-500"
+                  : "bg-sky-500/[0.12] text-sky-500"
             )}
           >
-            {toolCall.status === "completed" ? "completed" : "running"}
+            {toolCall.status === "error" ? "failed" : toolCall.status === "completed" ? "completed" : "running"}
           </span>
         </span>
       </DisclosureButton>

@@ -115,8 +115,6 @@ def _message_payload_from_runtime(runtime: "InferenceRunRuntime", *, error: bool
         "is_error": error,
         "error_message": error_message,
         "raw_events": deepcopy(runtime.raw_events) or [],
-        "plan": deepcopy(runtime.plan),
-        "subagents": deepcopy(runtime.subagents),
     }
 
 
@@ -164,8 +162,6 @@ class InferenceRunRuntime:
         self.content = ""
         self.thoughts: list[str] = []
         self.raw_events: list[dict[str, Any]] = []
-        self.plan: dict[str, Any] | None = None
-        self.subagents: dict[str, list[Any]] | None = None
         self.first_event_ts = 0.0
         self.thinking_start = 0.0
         self.thinking_end = 0.0
@@ -216,12 +212,6 @@ class InferenceRunRuntime:
         elif self.pending_interrupt_ids:
             self.pending_interrupt_ids.pop(0)
 
-    def push_subagent_event(self, key: str, value: Any) -> None:
-        current = self.subagents or {}
-        existing = current.get(key)
-        current[key] = [*(existing if isinstance(existing, list) else []), value]
-        self.subagents = current
-
     def thinking_duration_seconds(self) -> int | None:
         if not (self.thinking_start or self.first_event_ts):
             return None
@@ -265,8 +255,8 @@ class InferenceRunRuntime:
 
         Every event lands in ``raw_events`` (the durable per-run log the UI
         replays into its timeline); consecutive delta events are coalesced on
-        append. Aggregates (``content``/``thoughts``/``plan``/``subagents``)
-        are kept only for previews, search, voice read-aloud and export.
+        append. Aggregates (``content``/``thoughts``) are kept only for
+        previews, search, voice read-aloud and export.
         """
         event_type = event.get("type")
         if not self.first_event_ts:
@@ -288,11 +278,7 @@ class InferenceRunRuntime:
         if event_type == "CUSTOM":
             name = event.get("name")
             value = event.get("value")
-            if name == "PLAN_SNAPSHOT" and isinstance(value, dict):
-                self.plan = value
-            elif name == "TASK_SUBAGENT":
-                self.push_subagent_event("tasks", value)
-            elif name == "SUBAGENT_EVENT":
+            if name == "SUBAGENT_EVENT":
                 # A subagent that emits __interrupt__ surfaces BOTH as a
                 # top-level HITL_INTERRUPT (namespace in metadata) and as
                 # SUBAGENT_EVENT(value={..., event: CUSTOM HITL_INTERRUPT}).
@@ -307,10 +293,7 @@ class InferenceRunRuntime:
                             self.register_interrupt(inner.get("value"))
                         elif inner_name == "TOKEN_USAGE":
                             self._accumulate_usage(inner.get("value"))
-            elif name == "BEFORE_AGENT_EVENT":
-                self.push_subagent_event("beforeAgent", value)
             elif name == "HITL_INTERRUPT":
-                self.push_subagent_event("interrupts", value)
                 self.register_interrupt(value)
             elif name == "TOKEN_USAGE":
                 self._accumulate_usage(value)
@@ -846,8 +829,6 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         run.reasoning_steps = payload["reasoning_steps"]
         run.reasoning_time_seconds = payload["reasoning_time_seconds"]
         run.raw_events = payload["raw_events"]
-        run.plan = payload["plan"]
-        run.subagents = payload["subagents"]
         run.input_tokens = runtime.input_tokens or None
         run.output_tokens = runtime.output_tokens or None
         run.is_error = is_error
@@ -903,8 +884,6 @@ def build_run_out_from_message(message: MessageTable, *, user_id: str) -> Infere
         content=message.content,
         thinking=message.reasoning_steps,
         rawEvents=message.raw_events or [],
-        plan=message.plan,
-        subagents=message.subagents,
         inputTokens=message.input_tokens,
         outputTokens=message.output_tokens,
         errorMessage=message.error_message,
@@ -1085,7 +1064,6 @@ async def create_inference_run_record(
         conversation_id=conversation.id,
         parent_message_id=parent_message_id,
         sender="ai",
-        type="text",
         content="",
         raw_events=[],
         agent_id=agent.id,

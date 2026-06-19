@@ -388,6 +388,7 @@ class AGUIStreamNormalizer:
         """Emit tool result/end for tool messages we previously opened."""
         tool_call_id = getattr(msg, "tool_call_id", None)
         tool_output = getattr(msg, "content", "")
+        is_error = getattr(msg, "status", None) == "error"
 
         if not tool_call_id:
             return
@@ -407,6 +408,7 @@ class AGUIStreamNormalizer:
                     thread_id=self.thread_id,
                     output=tool_output,
                     namespace=ns_label,
+                    error=is_error,
                 ),
             )
             self._push(

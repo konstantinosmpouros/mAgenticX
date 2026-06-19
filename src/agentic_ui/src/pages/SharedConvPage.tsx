@@ -136,7 +136,6 @@ export default function SharedConversationPage() {
         sharedConversationToken: token,
         message: {
           sender: "user",
-          type: "text",
           content,
           parentMessageId: null,
         },

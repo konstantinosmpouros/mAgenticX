@@ -12,6 +12,7 @@ import type {
 import { cn } from "@/lib/utils";
 import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
+import { ConversationRail } from "./message_parts/ConversationRail";
 
 const AUTO_FOLLOW_DISTANCE = 96;
 const JUMP_BUTTON_DISTANCE = 160;
@@ -117,6 +118,7 @@ export default function ChatBody({
   scrollResetKey,
 }: ChatBody) {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
+  const columnRef = React.useRef<HTMLDivElement | null>(null);
   const previousScrollTopRef = React.useRef(0);
   const programmaticScrollUntilRef = React.useRef(0);
   const scrollFrameRef = React.useRef<number | null>(null);
@@ -255,6 +257,7 @@ export default function ChatBody({
     <div className="relative min-h-0 flex-1 overflow-hidden">
       <ScrollArea className="h-full" onScroll={handleScroll} onWheel={handleWheel} viewportRef={viewportRef}>
         <div
+          ref={columnRef}
           className={`w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth ${
             isClearing ? 'messages-clearing' : ''
           }`}
@@ -300,7 +303,7 @@ export default function ChatBody({
                   : branchSelections[branchRootKey] ?? 0;
 
               return (
-                <div key={message.id} className="animate-fade-in-fast space-y-2">
+                <div key={message.id} data-message-id={message.id} className="animate-fade-in-fast space-y-2">
                   <ChatMessage
                     message={message}
                     isEditing={isEditingMessage}
@@ -356,6 +359,9 @@ export default function ChatBody({
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
+      {!loadingConversation && (
+        <ConversationRail messages={messages} viewportRef={viewportRef} columnRef={columnRef} />
+      )}
       <button
         type="button"
         aria-label="Jump to latest message"

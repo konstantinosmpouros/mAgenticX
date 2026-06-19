@@ -35,8 +35,6 @@ def apply_ai_message_update(message: MessageTable, payload: MessageUpdate) -> No
         message.is_error = bool(payload.error)
     message.error_message = payload.errorMessage
     message.raw_events = payload.rawEvents
-    message.plan = payload.plan
-    message.subagents = payload.subagents
 
 
 def toggle_message_reaction(message: MessageTable, reaction: bool) -> None:

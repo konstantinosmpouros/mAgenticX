@@ -299,7 +299,7 @@ function applyToolEvent(
     const chunk = String(event.content ?? "");
     updateToolAt(block, path.item, (tool) => ({
       ...tool,
-      state: "output-available",
+      state: event.error ? "output-error" : "output-available",
       result: tool.result ? `${tool.result}\n\n${chunk}` : chunk,
       resultTruncated: Boolean(event.truncated) || tool.resultTruncated,
       endedAt: eventEndTimestamp(event),
@@ -931,7 +931,12 @@ export function subagentBlockToItem(block: SubagentBlock): SubagentItem {
         tools.push({
           id: item.id,
           name: item.name,
-          status: item.state === "output-available" || item.state === "output-error" ? "completed" : "running",
+          status:
+            item.state === "output-error"
+              ? "error"
+              : item.state === "output-available"
+                ? "completed"
+                : "running",
           args: item.argsText || undefined,
           result: item.result,
         });

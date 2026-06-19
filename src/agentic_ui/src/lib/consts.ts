@@ -185,7 +185,6 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   parentMessageId: message.parentMessageId ?? message.parent_message_id ?? undefined,
   content: message.content ?? "",
   sender: message.sender,
-  type: message.type,
   liked: message.liked ?? undefined,
   agentId: message.agentId ?? message.agent_id ?? null,
   agentName: message.agentName ?? message.agent_name ?? null,
@@ -200,8 +199,6 @@ export const transformMessage = (message: Record<string, any>): MessageOut => ({
   errorMessage: message.errorMessage ?? undefined,
   streamingStatus: message.streamingStatus ?? message.streaming_status ?? null,
   rawEvents: message.rawEvents ?? message.raw_events ?? [],
-  plan: message.plan ?? undefined,
-  subagents: message.subagents ?? undefined,
 });
 
 
@@ -276,8 +273,6 @@ export const transformInferenceRun = (run: Record<string, any>): InferenceRun =>
   content: run.content ?? null,
   thinking: Array.isArray(run.thinking) ? run.thinking : null,
   rawEvents: Array.isArray(run.rawEvents ?? run.raw_events) ? (run.rawEvents ?? run.raw_events) : [],
-  plan: run.plan ?? null,
-  subagents: run.subagents ?? null,
   inputTokens: run.inputTokens ?? run.input_tokens ?? null,
   outputTokens: run.outputTokens ?? run.output_tokens ?? null,
   pendingInterrupts: typeof run.pendingInterrupts === "number" ? run.pendingInterrupts : undefined,

@@ -334,7 +334,6 @@ export type MessageOut = {
     parentMessageId?: string | null;
     content?: string;
     sender: string;
-    type: string;
     liked?: boolean;
     agentId?: string | null;
     agentName?: string | null;
@@ -349,8 +348,6 @@ export type MessageOut = {
     errorMessage?: string;
     streamingStatus?: string | null;
     rawEvents?: Record<string, any>[];  // defaults to [] on the backend
-    plan?: PlanSnapshot;
-    subagents?: Record<string, any>;
 };
 
 // Backend attachment type from API response
@@ -379,7 +376,6 @@ export type AttachmentIn = {
 // Message input for API requests
 export type MessageIn = {
     sender: string;
-    type: string;
     parentMessageId?: string | null;
     content?: string;
     attachments?: AttachmentIn[];
@@ -388,8 +384,6 @@ export type MessageIn = {
     error?: boolean;
     errorMessage?: string;
     rawEvents?: Record<string, any>[];  // defaults to [] on the backend
-    plan?: PlanSnapshot;
-    subagents?: Record<string, any>;
 };
 
 // Message update payload (used to finalise AI placeholders)
@@ -400,8 +394,6 @@ export type MessageUpdate = {
     error?: boolean;
     errorMessage?: string;
     rawEvents?: Record<string, any>[];  // defaults to [] on the backend
-    plan?: PlanSnapshot;
-    subagents?: Record<string, any>;
 };
 
 // Conversation creation payload
@@ -438,8 +430,6 @@ export type InferenceRun = {
     content?: string | null;
     thinking?: string[] | null;
     rawEvents?: Record<string, any>[];
-    plan?: Record<string, any> | null;
-    subagents?: Record<string, any> | null;
     inputTokens?: number | null;
     outputTokens?: number | null;
     pendingInterrupts?: number;

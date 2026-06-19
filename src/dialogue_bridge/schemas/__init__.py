@@ -6,7 +6,6 @@ from datetime import datetime
 from core.settings import settings
 
 Senders = Literal["user", "ai"]
-Types = Literal["text", "file", "image", "audio", "tool"]
 
 
 #-------------------------------------------
@@ -334,7 +333,6 @@ class MessageOut(BaseModel):
     parentMessageId: Optional[str] = Field(None, validation_alias="parent_message_id")
     content: Optional[str] = None
     sender: Senders
-    type: Types
     liked: Optional[bool] = Field(None, validation_alias="liked")
     agentId: Optional[str] = Field(None, validation_alias="agent_id")
     agentName: Optional[str] = Field(None, validation_alias="agent_name")
@@ -356,8 +354,6 @@ class MessageOut(BaseModel):
     @classmethod
     def _coerce_raw_events(cls, v):
         return v if v is not None else []
-    plan: Optional[dict] = Field(None, validation_alias="plan")
-    subagents: Optional[dict] = Field(None, validation_alias="subagents")
 
 class ConversationDetail(BaseModel):
     """
@@ -443,7 +439,6 @@ class MessageIn(BaseModel):
     """
     parentMessageId: Optional[str] = None
     sender: Senders
-    type: Types
     content: Optional[str] = None
     attachments: List[AttachmentIn] = Field(default_factory=list)
 
@@ -453,8 +448,6 @@ class MessageIn(BaseModel):
     error: Optional[bool] = None
     errorMessage: Optional[str] = None
     rawEvents: List[dict] = Field(default_factory=list)
-    plan: Optional[dict] = None
-    subagents: Optional[dict] = None
 
     @model_validator(mode="after")
     def _require_content_or_attachment(self):
@@ -645,8 +638,6 @@ class InferenceRunOut(BaseModel):
     content: Optional[str] = None
     thinking: Optional[list[str]] = None
     rawEvents: list[dict] = Field(default_factory=list)
-    plan: Optional[dict] = None
-    subagents: Optional[dict] = None
     inputTokens: Optional[int] = None
     outputTokens: Optional[int] = None
     errorMessage: Optional[str] = None
@@ -725,8 +716,6 @@ class MessageUpdate(BaseModel):
     error: Optional[bool] = None
     errorMessage: Optional[str] = None
     rawEvents: List[dict] = Field(default_factory=list)
-    plan: Optional[dict] = None
-    subagents: Optional[dict] = None
 
     @model_validator(mode="after")
     def _require_content(self):

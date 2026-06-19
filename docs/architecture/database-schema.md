@@ -91,7 +91,6 @@ erDiagram
         string conversation_id FK
         string parent_message_id FK
         enum sender
-        enum type
         text content
         boolean liked
         string agent_id FK
@@ -103,8 +102,6 @@ erDiagram
         boolean is_error
         text error_message
         json raw_events
-        json plan
-        json subagents
         string streaming_status
         json streaming_message_path
         json streaming_enabled_tools
@@ -302,7 +299,6 @@ Every chat turn — both user and AI — is a row in this table. The `parent_mes
 | `conversation_id` | `String` | No | — | FK → `conversations.id` CASCADE, INDEXED |
 | `parent_message_id` | `String` | Yes | `NULL` | FK → `messages.id` SET NULL, INDEXED — self-reference for branching |
 | `sender` | `MessageSenderEnum` | No | — | `"user"` or `"ai"` (Postgres enum `message_sender_enum`) |
-| `type` | `MessageTypeEnum` | No | `"text"` | `"text"`, `"file"`, `"image"`, `"audio"`, or `"tool"` (Postgres enum `message_type_enum`) |
 | `content` | `Text` | Yes | `NULL` | Message body; `NULL` for placeholder rows created before inference completes |
 | `liked` | `Boolean` | Yes | `NULL` | Three-state: `NULL` = not rated, `true` = liked, `false` = disliked |
 | `agent_id` | `String` | Yes | `NULL` | FK → `agents.id` SET NULL, INDEXED — the agent that produced this message. Set on AI run messages; `NULL` on user messages. Per-message attribution lets one conversation mix agents. |
@@ -313,9 +309,7 @@ Every chat turn — both user and AI — is a row in this table. The `parent_mes
 | `output_tokens` | `Integer` | Yes | `NULL` | Per-message output tokens, summed across the turn. AI-run messages only; `NULL` otherwise. Migration `0004`. |
 | `is_error` | `Boolean` | No | `false` | `true` when the inference run that produced this message failed |
 | `error_message` | `Text` | Yes | `NULL` | Error detail when `is_error=true` |
-| `raw_events` | `JSON` | Yes | `NULL` | The **full per-run AG-UI event log** (every event, seq-stamped, with consecutive text/tool-args deltas coalesced and oversized `TOOL_CALL_RESULT` content truncated + flagged). The UI replays this into the rendered run timeline. Rows persisted before the timeline rebuild contain only `CUSTOM` events — the UI's legacy fold covers them. |
-| `plan` | `JSON` | Yes | `NULL` | Last `PlanSnapshot` received during inference (`{items: [{content, status}]}`) |
-| `subagents` | `JSON` | Yes | `NULL` | Sub-agent aggregate groups: `{tasks, beforeAgent, interrupts}` on new rows (the heavyweight `events` key is no longer accumulated — `raw_events` carries every `SUBAGENT_EVENT`); old rows keep their persisted `events` lists |
+| `raw_events` | `JSON` | Yes | `NULL` | The **full per-run AG-UI event log** (every event, seq-stamped, with consecutive text/tool-args deltas coalesced and oversized `TOOL_CALL_RESULT` content truncated + flagged). The UI replays this into the rendered run timeline — including the agent plan (from `PLAN_SNAPSHOT` events) and sub-agent activity (from `SUBAGENT_EVENT`), which are no longer persisted as their own columns. Rows persisted before the timeline rebuild contain only `CUSTOM` events — the UI's legacy fold covers them. |
 | `streaming_status` | `String` | Yes | `NULL` | INDEXED (partial, `IS NOT NULL`) — `"queued"`, `"running"`, `"cancelling"`, `"completed"`, `"cancelled"`, `"failed"`. `NULL` on user messages and on AI messages that were not produced by a detached run. |
 | `streaming_message_path` | `JSON` | Yes | `NULL` | Ordered list of message IDs representing the branch path the agent saw as history when the run was started |
 | `streaming_enabled_tools` | `JSON` | Yes | `NULL` | Snapshot of `{serverId, toolName}` tool preferences captured at run start |
