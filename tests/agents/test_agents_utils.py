@@ -324,7 +324,7 @@ async def test_mcp_session_context_unconfigured(agents_service, monkeypatch):
 # ===========================================================================
 def test_normalize_title_candidates_dedup_truncate_and_filter(agents_service):
     t = agents_service.title
-    long_title = "x" * (t._TITLE_MAX_LEN + 50)
+    long_title = "x" * (t.settings.generation.title_max_len + 50)
     raw = [
         "  Sales review  ",
         "",
@@ -336,8 +336,8 @@ def test_normalize_title_candidates_dedup_truncate_and_filter(agents_service):
     ]
     cleaned = t._normalize_title_candidates(raw)
     assert cleaned[0] == "Sales review"
-    assert len(cleaned) == t._TITLE_CANDIDATE_COUNT
-    assert all(len(item) <= t._TITLE_MAX_LEN for item in cleaned)
+    assert len(cleaned) == t.settings.generation.title_candidate_count
+    assert all(len(item) <= t.settings.generation.title_max_len for item in cleaned)
 
 
 async def test_generate_title_success(agents_service, monkeypatch):
@@ -378,23 +378,23 @@ async def test_generate_title_provider_error_raises_502(agents_service, monkeypa
 # ===========================================================================
 def test_normalize_suggestions_strips_dedup_and_caps(agents_service):
     s = agents_service.suggestions
-    long_one = "y" * (s._SUGGESTION_MAX_LEN + 20)
-    raw = ["- Try this -", "", "Try this", long_one] + [f"Idea {i}" for i in range(s._SUGGESTION_COUNT)]
+    long_one = "y" * (s.settings.generation.suggestion_max_len + 20)
+    raw = ["- Try this -", "", "Try this", long_one] + [f"Idea {i}" for i in range(s.settings.generation.suggestion_count)]
     cleaned = s._normalize_suggestions(raw)
     assert cleaned[0] == "Try this"
-    assert len(cleaned) == s._SUGGESTION_COUNT
-    assert all(len(item) <= s._SUGGESTION_MAX_LEN for item in cleaned)
+    assert len(cleaned) == s.settings.generation.suggestion_count
+    assert all(len(item) <= s.settings.generation.suggestion_max_len for item in cleaned)
 
 
 async def test_generate_suggestions_success(agents_service, monkeypatch):
     s = agents_service.suggestions
-    full = [f"Suggestion number {i}" for i in range(s._SUGGESTION_COUNT)]
+    full = [f"Suggestion number {i}" for i in range(s.settings.generation.suggestion_count)]
     result = agents_service.schemas.ConversationSuggestions(suggestions=full)
     monkeypatch.setattr(s, "_suggestions_chain", _FakeAsyncChain(result=result))
 
     req = agents_service.schemas.SuggestionsRequest(user_input=[{"role": "user", "content": "ideas"}])
     out = await s.generate_suggestions(req)
-    assert len(out.suggestions) == s._SUGGESTION_COUNT
+    assert len(out.suggestions) == s.settings.generation.suggestion_count
 
 
 async def test_generate_suggestions_too_few_raises_502(agents_service, monkeypatch):
@@ -436,7 +436,7 @@ def _patch_speech_client(monkeypatch, sp, response):
             speech=SimpleNamespace(create=lambda **kwargs: response)
         )
     )
-    monkeypatch.setattr(sp, "_OPENAI_CLIENT", fake_client)
+    monkeypatch.setattr(sp, "get_openai_client", lambda: fake_client)
 
 
 def test_generate_speech_sync_bytes_content(agents_service, monkeypatch):

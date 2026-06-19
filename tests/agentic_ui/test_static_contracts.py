@@ -76,7 +76,7 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
 
 def test_inference_runtime_starts_normal_flows_through_backend_start_api():
     runtime_source = (UI_ROOT / "src" / "runtime" / "inference.ts").read_text(encoding="utf-8")
-    hook_source = (UI_ROOT / "src" / "hooks" / "useInferenceRuns.ts").read_text(encoding="utf-8")
+    hook_source = (UI_ROOT / "src" / "runtime" / "useInferenceRuns.ts").read_text(encoding="utf-8")
     api_source = (UI_ROOT / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 
     assert "createConversation" not in runtime_source

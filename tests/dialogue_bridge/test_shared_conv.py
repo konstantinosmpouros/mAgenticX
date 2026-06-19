@@ -24,10 +24,9 @@ from core.database import (
     MessageTable,
     b64_encode,
 )
+from core.settings import settings
 from schemas import MessageIn
 from utils.shared_conv import (
-    DEFAULT_SHARE_TTL_DAYS,
-    MAX_SHARE_TTL_DAYS,
     build_share_list_item,
     create_conversation_from_share_record,
     load_active_share,
@@ -82,7 +81,7 @@ def test_parse_snapshot_datetime_none_and_invalid():
 def test_resolve_expires_defaults_to_30_days():
     now = datetime(2026, 1, 1)
     resolved = resolve_share_expires_at(None, now=now)
-    assert resolved == now + timedelta(days=DEFAULT_SHARE_TTL_DAYS)
+    assert resolved == now + timedelta(days=settings.share.default_ttl_days)
 
 
 def test_resolve_expires_passthrough_within_bounds():
@@ -100,7 +99,7 @@ def test_resolve_expires_strips_tzinfo():
 
 def test_resolve_expires_beyond_max_raises_422():
     now = datetime(2026, 1, 1)
-    too_far = now + timedelta(days=MAX_SHARE_TTL_DAYS + 1)
+    too_far = now + timedelta(days=settings.share.max_ttl_days + 1)
     with pytest.raises(HTTPException) as exc:
         resolve_share_expires_at(too_far, now=now)
     assert exc.value.status_code == 422

@@ -136,7 +136,7 @@ async def test_generate_title_dedupes_and_truncates(monkeypatch):
     monkeypatch.setattr(titles_mod.random, "randrange", lambda n: n - 1)
     title = await generate_conversation_title(_text_message())
     # "Same"/"same" collapse to one, so the candidates are [Same, Other, <trunc>]
-    assert len(title) == titles_mod._TITLE_MAX_LEN
+    assert len(title) == titles_mod.settings.generation.title_max_len
 
 
 async def test_generate_title_insufficient_candidates_returns_none(monkeypatch):

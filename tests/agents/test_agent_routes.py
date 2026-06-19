@@ -62,7 +62,7 @@ async def test_agents_manifest_route_returns_sorted_manifests(client, agents_ser
 
 
 async def test_dictation_route_transcribes_audio(client, agents_service, internal_headers, monkeypatch):
-    monkeypatch.setattr(agents_service.main, "_OPENAI_CLIENT", _FakeOpenAIClient())
+    monkeypatch.setattr(agents_service.main, "get_openai_client", lambda: _FakeOpenAIClient())
 
     response = await client.post(
         "/dictate/transcribe",
