@@ -205,7 +205,7 @@ Files that don't match any known type are shown as an unsupported preview with a
 
 Attachments belong to messages, not conversations. The FK chain is:
 
-```
+```text
 conversation → messages → attachments → blobs
 ```
 
@@ -252,6 +252,7 @@ When a recipient forks from a share (`/continue`), the base64 data is decoded an
 Attachments are **not indexed for retrieval**. Uploading a PDF or Excel file does not add its content to ChromaDB or make it queryable via the RAG endpoints. The `rag_service` has no knowledge of the `attachments` or `blobs` tables.
 
 The RAG system operates on two separate data sources:
+
 - ChromaDB collections populated out-of-band (not from user uploads)
 - Excel workbooks loaded from the `rag_service/data/` directory at startup
 

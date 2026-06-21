@@ -231,8 +231,11 @@ async def test_preview_token_issues_valid_hmac_token_for_docx(
     assert payload["expiresIn"] == 60
 
     secret = os.environ["SESSION_TOKEN_SECRET"]
-    resolved_blob_id = validate_docx_preview_token(payload["token"], secret)
-    assert resolved_blob_id == attachment["blob_id"]
+    resolved = validate_docx_preview_token(payload["token"], secret)
+    assert resolved == (
+        attachment["blob_id"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 async def test_preview_token_returns_404_for_wrong_blob(
@@ -274,7 +277,12 @@ async def test_public_blob_serves_docx_with_valid_token(
     )
 
     secret = os.environ["SESSION_TOKEN_SECRET"]
-    token = generate_docx_preview_token(attachment["blob_id"], secret, ttl=60)
+    token = generate_docx_preview_token(
+        attachment["blob_id"],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        secret,
+        ttl=60,
+    )
 
     response = await client.get(f"/v1/attachments/public/{token}")
 
@@ -296,17 +304,20 @@ async def test_public_blob_rejects_invalid_token(client):
 def test_generate_and_validate_docx_preview_token_roundtrip():
     secret = "test-secret-key"
     blob_id = "blob-abc-123"
-    token = generate_docx_preview_token(blob_id, secret, ttl=60)
-    assert validate_docx_preview_token(token, secret) == blob_id
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    token = generate_docx_preview_token(blob_id, mime, secret, ttl=60)
+    assert validate_docx_preview_token(token, secret) == (blob_id, mime)
 
 
 def test_validate_docx_preview_token_rejects_wrong_secret():
-    token = generate_docx_preview_token("blob-xyz", "correct-secret", ttl=60)
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    token = generate_docx_preview_token("blob-xyz", mime, "correct-secret", ttl=60)
     assert validate_docx_preview_token(token, "wrong-secret") is None
 
 
 def test_validate_docx_preview_token_rejects_tampered_payload():
-    token = generate_docx_preview_token("blob-xyz", "secret", ttl=60)
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    token = generate_docx_preview_token("blob-xyz", mime, "secret", ttl=60)
     padded = token + "=" * (-len(token) % 4)
     raw = base64.urlsafe_b64decode(padded.encode()).decode()
     parts = raw.split(":")

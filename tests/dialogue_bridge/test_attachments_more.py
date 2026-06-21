@@ -75,9 +75,10 @@ async def _drain(response: StreamingResponse) -> bytes:
 def test_validate_token_expired_returns_none(monkeypatch):
     secret = "ttl-secret"
     # Issue a token that expired one second ago by freezing time during generation.
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     real_time = time.time
     monkeypatch.setattr(time, "time", lambda: real_time() - 120)
-    token = generate_docx_preview_token("blob-1", secret, ttl=60)
+    token = generate_docx_preview_token("blob-1", mime, secret, ttl=60)
     monkeypatch.setattr(time, "time", real_time)
     assert validate_docx_preview_token(token, secret) is None
 
@@ -88,8 +89,9 @@ def test_validate_token_garbage_returns_none():
 
 def test_validate_token_valid_within_ttl():
     secret = "ttl-secret"
-    token = generate_docx_preview_token("blob-xyz", secret, ttl=60)
-    assert validate_docx_preview_token(token, secret) == "blob-xyz"
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    token = generate_docx_preview_token("blob-xyz", mime, secret, ttl=60)
+    assert validate_docx_preview_token(token, secret) == ("blob-xyz", mime)
 
 
 # ---------------------------------------------------------------------------
