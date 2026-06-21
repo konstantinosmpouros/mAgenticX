@@ -20,28 +20,46 @@ from schemas import ImageOut
 logger = get_logger(__name__)
 
 
+# File types the Microsoft Office Online viewer handles — the only types for
+# which a public, session-less preview token may be minted. Anything else
+# (notably text/html) must never be served inline from the public endpoint.
+# Keyed by extension because the stored MIME is whatever the browser reported at
+# upload (often non-canonical — octet-stream / x-zip — for OOXML files), so the
+# extension is the reliable signal and mirrors how the UI routes previews.
+OFFICE_PREVIEW_MIME_BY_EXT = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xlsm": "application/vnd.ms-excel.sheet.macroenabled.12",
+    "ppt": "application/vnd.ms-powerpoint",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+OFFICE_PREVIEW_MIMES = frozenset(OFFICE_PREVIEW_MIME_BY_EXT.values())
+
+
 def generate_docx_preview_token(
-    blob_id: str, secret: str, ttl: int = settings.attachments.docx_preview_token_ttl_seconds
+    blob_id: str, mime: str, secret: str, ttl: int = settings.attachments.docx_preview_token_ttl_seconds
 ) -> str:
     expiry = int(time.time()) + ttl
-    payload = f"{blob_id}:{expiry}"
+    payload = f"{blob_id}:{mime}:{expiry}"
     sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     raw = f"{payload}:{sig}"
     return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
 
-def validate_docx_preview_token(token: str, secret: str) -> str | None:
+def validate_docx_preview_token(token: str, secret: str) -> tuple[str, str] | None:
     try:
         padded = token + "=" * (-len(token) % 4)
         raw = base64.urlsafe_b64decode(padded.encode()).decode()
-        blob_id, expiry_str, sig = raw.rsplit(":", 2)
+        blob_id, mime, expiry_str, sig = raw.rsplit(":", 3)
         if int(expiry_str) < time.time():
             return None
-        payload = f"{blob_id}:{expiry_str}"
+        payload = f"{blob_id}:{mime}:{expiry_str}"
         expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(sig, expected):
             return None
-        return blob_id
+        if mime.lower() not in OFFICE_PREVIEW_MIMES:
+            return None
+        return blob_id, mime
     except Exception:
         return None
 

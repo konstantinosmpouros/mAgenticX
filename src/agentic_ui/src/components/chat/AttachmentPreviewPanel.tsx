@@ -4,7 +4,6 @@ import { Download, X } from "lucide-react";
 import {
   fetchAttachmentPreviewBlob,
   fetchDocxPreviewToken,
-  getAttachmentPreviewUrl,
 } from "@/lib/api";
 import type { AttachmentOut, MessageOut } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -192,17 +191,30 @@ export default function AttachmentPreviewPanel({
           return;
         }
 
-        setState({
-          status: "ready",
-          meta,
-          descriptor,
-          previewUrl: getAttachmentPreviewUrl({
+        setState({ status: "loading", meta, descriptor });
+        try {
+          const pdfBytes = await fetchAttachmentPreviewBlob({
             userId,
             conversationId,
             messageId: preview.message.id,
             blobId: meta.blobId,
-          }),
-        });
+          });
+          if (cancelled) return;
+          // Force the object-URL MIME to application/pdf so the iframe always
+          // renders through the browser's PDF viewer and can never execute a
+          // blob whose stored bytes are HTML/SVG — a same-origin stored-XSS guard.
+          objectUrl = URL.createObjectURL(new Blob([pdfBytes], { type: "application/pdf" }));
+          setState({ status: "ready", meta, descriptor, previewUrl: objectUrl });
+        } catch (error) {
+          if (!cancelled) {
+            setState({
+              status: "error",
+              meta,
+              descriptor,
+              error: error instanceof Error ? error.message : "Preview failed.",
+            });
+          }
+        }
         return;
       }
 

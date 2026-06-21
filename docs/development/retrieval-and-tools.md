@@ -213,6 +213,7 @@ flowchart TD
 
 | Check | Rejection reason |
 | --- | --- |
+| Contains a SQL comment (`--`, `/*`, `*/`) | Comment-based evasion of the forbidden-token denylist |
 | Contains `;` after stripping trailing | Multiple statements |
 | First token not `SELECT` or `WITH` | Non-read operation |
 | Contains `INSERT`, `UPDATE`, `DELETE`, `DROP`, `CREATE`, `ALTER`, `TRUNCATE`, `COPY`, `ATTACH`, `DETACH`, `PRAGMA`, `VACUUM`, `CALL`, or `EXECUTE` | Write/admin operation |
@@ -341,7 +342,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 
 - **Plan snapshot deduplication uses JSON fingerprinting.** Because LangGraph may replay the same `AIMessage` across checkpointing boundaries, the normalizer compares a JSON hash of the todos list against `_last_plan_fingerprint`. The same plan items from two different chunks produces one `PLAN_SNAPSHOT` event. A plan with a single item changed produces a new event.
 
-- **SQL validation is string-pattern based, not a full parser.** A sufficiently obfuscated query (e.g., hex-encoded string literals containing SQL keywords, or comment injection) could in principle evade the forbidden-token regex. The DuckDB instance only contains read-only copies of Excel data, so the blast radius of a bypass is limited to data exfiltration within the DuckDB process — no persistent writes are possible.
+- **SQL validation rejects comments outright; the DuckDB engine lock is the load-bearing control.** Comments (`--`, `/*`, `*/`) are rejected before any matching, closing the comment-splitting evasion (e.g. `read/**/_csv`) of the forbidden-token denylist. A sufficiently obfuscated query (e.g., hex-encoded string literals containing SQL keywords) could still in principle slip past the string-pattern denylist — but the DuckDB instance is configured `enable_external_access=false` + `disabled_filesystems` + `lock_configuration`, so even a bypassed query cannot reach the filesystem or escape the in-memory read-only Excel copies. No persistent writes are possible.
 
 - **OpenAI embeddings are called by the RAG service, not the agents service.** If `OPENAI_API_KEY` is missing from the RAG service's environment, the Chroma retriever will fail on the first call. The RAG service does not validate the key at startup.
 

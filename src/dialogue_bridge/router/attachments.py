@@ -9,6 +9,8 @@ from schemas import DocxPreviewTokenOut, ImageOut
 from utils import validate_userId
 from utils.attachments import (
     _get_attachment_blob_row,
+    OFFICE_PREVIEW_MIMES,
+    OFFICE_PREVIEW_MIME_BY_EXT,
     encode_disposition,
     generate_docx_preview_token,
     get_public_docx_blob,
@@ -88,7 +90,7 @@ async def getDocxPreviewToken(
     db: AsyncSession = Depends(get_db),
 ):
     set_context(user_id=user_id)
-    await _get_attachment_blob_row(
+    row = await _get_attachment_blob_row(
         user_id=user_id,
         conversation_id=conversation_id,
         message_id=message_id,
@@ -96,9 +98,24 @@ async def getDocxPreviewToken(
         db=db,
         include_data=False,
     )
+    # Resolve to a canonical Office MIME by extension first (reliable), falling
+    # back to the stored MIME only when it is already canonical — mirrors the
+    # UI's "by mime OR extension" preview routing, so a legitimate Office file
+    # is never refused just because the browser reported a non-canonical upload
+    # MIME (octet-stream / x-zip for OOXML).
+    file_name = row["file_name"] or ""
+    ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    stored_mime = (row["mime_type"] or "").lower()
+    mime = OFFICE_PREVIEW_MIME_BY_EXT.get(ext) or (stored_mime if stored_mime in OFFICE_PREVIEW_MIMES else None)
+    if not mime:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Preview tokens are only issued for Office documents.",
+        )
     ttl = settings.attachments.docx_preview_token_ttl_seconds
     token = generate_docx_preview_token(
         blob_id,
+        mime,
         settings.session.token_secret.get_secret_value(),
         ttl=ttl,
     )
@@ -111,21 +128,27 @@ async def getDocxPreviewToken(
     summary="Serve raw DOCX blob for Microsoft Office Online Viewer (token-authenticated, no session required)",
 )
 async def getPublicBlobForViewer(token: str, db: AsyncSession = Depends(get_db)):
-    blob_id = validate_docx_preview_token(token, settings.session.token_secret.get_secret_value())
-    if not blob_id:
+    validated = validate_docx_preview_token(token, settings.session.token_secret.get_secret_value())
+    if not validated:
         raise HTTPException(status_code=401, detail="Preview link is invalid or has expired.")
+    blob_id, mime = validated
 
     row = await get_public_docx_blob(db, blob_id)
     if not row:
         raise HTTPException(status_code=404, detail="Blob not found.")
 
     logger.info("docx_public_blob_served", "Served DOCX blob for Office Viewer", blob_id=blob_id)
+    # Serve under the token-bound MIME (already allow-listed to Office types),
+    # never the stored mime — with nosniff + a locked-down CSP so the blob can
+    # never render as executable HTML on the app origin.
     return Response(
         content=row["data"],
-        media_type=row["mime_type"],
+        media_type=mime,
         headers={
             "Content-Disposition": encode_disposition(row["file_name"], "inline"),
             "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox;",
         },
     )
 

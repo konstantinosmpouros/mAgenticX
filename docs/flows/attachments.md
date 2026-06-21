@@ -143,16 +143,18 @@ Same as download but `Content-Disposition: inline`. Used for in-browser renderin
 
 ### `GET /v1/attachments/preview-token/{userId}/{convId}/{msgId}/{blobId}`
 
-Issues a short-lived (60-second) HMAC-SHA256 signed token bound to a specific `blobId`. The token is URL-safe base64 and encodes the blob ID, expiry timestamp, and signature. Used by the frontend to construct a Microsoft Office Online Viewer URL for Word, Excel, and PowerPoint previews.
+Issues a short-lived (60-second) HMAC-SHA256 signed token bound to a specific `blobId` **and its MIME type**. The token is URL-safe base64 and encodes the blob ID, MIME type, expiry timestamp, and signature. A token is issued **only for Office documents** — resolved by file extension (`docx`, `xlsx`, `xlsm`, `ppt`, `pptx`), falling back to a stored MIME that is already canonical; any other type returns `415`. (Extension-first because browsers frequently report a non-canonical upload MIME — `octet-stream`/`x-zip` — for OOXML files.) Used by the frontend to construct a Microsoft Office Online Viewer URL for Word, Excel, and PowerPoint previews.
 
 ### `GET /v1/attachments/public/{token}`
 
-No session authentication required — token validation only. Validates the HMAC token, looks up the blob by the embedded `blobId`, and returns the raw file bytes. This endpoint is intentionally public so that Microsoft's viewer servers can fetch the document from outside the user's session. The `Cache-Control: no-store` response header prevents caching.
+No session authentication required — token validation only. Validates the HMAC token, looks up the blob by the embedded `blobId`, and returns the bytes **under the MIME bound into the token** (re-checked against the Office allowlist), never the stored MIME. This endpoint is intentionally public so that Microsoft's viewer servers can fetch the document from outside the user's session. Responses carry `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and a locked-down `Content-Security-Policy` (`default-src 'none'; sandbox;`) so a blob can never render as executable HTML on the app origin.
 
 | Property | Value |
 | --- | --- |
 | Token TTL | 60 seconds |
 | Signature | HMAC-SHA256 using `SESSION_TOKEN_SECRET` |
+| MIME allowlist | Token issued only for Office documents — resolved by extension (`docx`/`xlsx`/`xlsm`/`ppt`/`pptx`) or a canonical stored MIME, else `415`; the canonical MIME is signed into the token and re-checked on serve |
+| Response hardening | `X-Content-Type-Options: nosniff` + `Content-Security-Policy: default-src 'none'; sandbox;` — blob can't render as HTML on the app origin |
 | No-session scope | Token validates ownership transitively — only tokens issued for blobs the user owns can be generated |
 
 ### `GET /v1/attachments/images/{userId}`
@@ -190,7 +192,7 @@ Files that don't match any known type are shown as an unsupported preview with a
 2. Registry determines `previewKind` and size limit
 3. If file exceeds the size limit for its kind, shows "File too large to preview" with a download button
 4. For text kinds: `fetchAttachmentPreviewBlob()` fetches the blob, decodes as UTF-8, passes to the appropriate renderer
-5. For PDF: uses the preview URL as `<iframe src={...}>` — no separate fetch needed
+5. For PDF: `fetchAttachmentPreviewBlob()` fetches the bytes, then renders them as an object URL whose MIME is **forced** to `application/pdf` (`URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }))`) used as the `<iframe src>`. Forcing the type guarantees the iframe renders through the browser's PDF viewer and can never execute a blob whose stored bytes are HTML/SVG — a same-origin stored-XSS guard.
 6. For Word / Excel / PowerPoint (`.docx`, `.xlsx`/`.xlsm`, `.ppt`/`.pptx`): calls `fetchDocxPreviewToken()` → `/preview-token/...` to get a 60-second signed token, constructs a `/api/v1/attachments/public/{token}` URL, then embeds it in `https://view.officeapps.live.com/op/embed.aspx?src=...` as an `<iframe>`
 
 `PreviewChrome.tsx` wraps every renderer with consistent controls: close button, download button, and filename display.

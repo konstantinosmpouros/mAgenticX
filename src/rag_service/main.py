@@ -44,6 +44,14 @@ def _validate_read_only_sql(sql: str) -> str:
     cleaned = cleaned[:-1].strip() if cleaned.endswith(";") else cleaned
     if not cleaned:
         raise HTTPException(status_code=400, detail="SQL query is required.")
+    # Reject SQL comments outright. Analytical queries never need them, and
+    # comment-splitting (e.g. read/**/_csv) is the documented way to slip a
+    # forbidden token past the denylist below — with no comments it cannot be
+    # evaded. The DuckDB engine lock (enable_external_access=false +
+    # disabled_filesystems + lock_configuration in core/duck_db.py) remains the
+    # load-bearing control; this is defense-in-depth on top of it.
+    if "--" in cleaned or "/*" in cleaned or "*/" in cleaned:
+        raise HTTPException(status_code=400, detail="SQL comments are not allowed.")
     if ";" in cleaned:
         raise HTTPException(status_code=400, detail="Only a single read-only SQL statement is allowed.")
 
