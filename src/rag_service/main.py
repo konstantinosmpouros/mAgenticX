@@ -73,6 +73,11 @@ register_exception_handlers(app)
 app.add_middleware(RequestLoggingMiddleware)
 
 
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
 # --------------------------------------------------------------------------------------
 # RAG APIs
 # --------------------------------------------------------------------------------------

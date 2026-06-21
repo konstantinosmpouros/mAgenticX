@@ -28,7 +28,7 @@ export function ConversationRail({ messages, viewportRef, columnRef }: Conversat
       aria-label="Conversation messages"
       className={cn(
         "pointer-events-none absolute right-4 top-1/2 z-20 flex max-h-[60vh] -translate-y-1/2",
-        "flex-col items-end justify-center gap-1 overflow-hidden",
+        "flex-col items-end justify-center gap-0.5 overflow-hidden",
         "transition-opacity duration-300 ease-out motion-reduce:transition-none",
         hidden ? "opacity-0" : "opacity-100"
       )}
@@ -48,7 +48,7 @@ export function ConversationRail({ messages, viewportRef, columnRef }: Conversat
             onClick={() => scrollToMessage(message.id)}
             disabled={hidden}
             className={cn(
-              "group pointer-events-auto flex h-4 items-center justify-end focus-visible:outline-none",
+              "group pointer-events-auto flex h-3 items-center justify-end focus-visible:outline-none",
               hidden && "pointer-events-none"
             )}
           >

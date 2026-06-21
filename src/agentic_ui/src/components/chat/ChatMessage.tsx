@@ -14,6 +14,7 @@ import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
 
 type ChatMessageProps = {
   message: MessageOut;
+  showMessageTokenUsage?: boolean;
   isEditing: boolean;
   editingDraft?: string;
   editingBusy?: boolean;
@@ -63,6 +64,7 @@ type ChatMessageProps = {
 
 export function ChatMessage({
   message,
+  showMessageTokenUsage = false,
   isEditing,
   editingDraft,
   editingBusy,
@@ -228,6 +230,7 @@ export function ChatMessage({
                 <div className="flex w-full flex-wrap items-center gap-2">
                   <AIActionBar
                     message={message}
+                    showMessageTokenUsage={showMessageTokenUsage}
                     copiedId={copiedId}
                     onCopy={onCopy}
                     onLike={onLike}

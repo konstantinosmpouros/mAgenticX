@@ -575,7 +575,7 @@ From `src/docker-compose-mcp.yaml`:
 
 These are implementation facts worth knowing before extending the service:
 
-- There is no `/health` endpoint.
+- There is a lightweight unauthenticated `/health` endpoint (returns `{"status": "ok"}`); it is excluded from the request access log and exists only for the container healthcheck.
 - Agent registry discovery happens at import time, not lazily per request.
 - `/tools` caches manifests, but live tool instances are still loaded for each stream request.
 - LangGraph and deep-agent checkpoints are in memory only.

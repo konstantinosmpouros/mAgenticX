@@ -18,6 +18,7 @@ export type PreferencesHandlers = {
   resolvedPreferences: UserPreferences;
   handleToggleToolPreference: (tool: ToolMetadata) => Promise<void>;
   handleToggleSuggestionsEnabled: () => Promise<void>;
+  handleToggleShowMessageTokenUsage: () => Promise<void>;
   handleSelectVoiceModeVoice: (voice: RealtimeVoice) => Promise<void>;
   handleSelectVoiceModeLanguage: (language: VoiceModeLanguage) => Promise<void>;
 };
@@ -50,6 +51,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       tools: { disabled: [] },
       prefersAgenticChat: false,
       suggestionsEnabled: true,
+      showMessageTokenUsage: false,
       voiceModeVoice: DEFAULT_REALTIME_VOICE,
       voiceModeLanguage: DEFAULT_VOICE_MODE_LANGUAGE,
     }),
@@ -123,6 +125,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
       voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
       voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
     };
@@ -155,6 +158,39 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false),
+      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
+      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
+      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
+    };
+    setUserPreferences(nextPrefs);
+    setIsSavingPreferences(true);
+    try {
+      const saved = await updateUserPreferences(userId, nextPrefs);
+      setUserPreferences(saved);
+      persistUIState();
+    } catch (error) {
+      setUserPreferences(prevPrefs);
+      toast({
+        title: 'Could not update preferences',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
+  const handleToggleShowMessageTokenUsage = async () => {
+    if (!userId) {
+      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
+    const prevPrefs = resolvedPreferences;
+    const nextPrefs: UserPreferences = {
+      tools: resolvedPreferences.tools ?? { disabled: [] },
+      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      showMessageTokenUsage: !(resolvedPreferences.showMessageTokenUsage === true),
       voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
       voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
     };
@@ -189,6 +225,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
       voiceModeVoice: nextVoice,
       voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
     };
@@ -223,6 +260,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
       voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
       voiceModeLanguage: nextLanguage,
     };
@@ -250,6 +288,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     resolvedPreferences,
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
+    handleToggleShowMessageTokenUsage,
     handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage,
   };

@@ -130,6 +130,11 @@ app.add_middleware(RequestLoggingMiddleware)
 add_pagination(app)
 
 
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
 # Include API routers
 app.include_router(
     auth_router,

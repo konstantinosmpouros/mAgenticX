@@ -34,6 +34,7 @@ async def get_user_preferences(
         "tools": row.tools if isinstance(row.tools, dict) else {},
         "prefers_agentic_chat": bool(row.prefers_agentic_chat),
         "suggestions_enabled": bool(row.suggestions_enabled),
+        "show_message_token_usage": bool(row.show_message_token_usage),
         "voice_mode_voice": normalize_realtime_voice(row.voice_mode_voice),
         "voice_mode_language": normalize_voice_mode_language(row.voice_mode_language),
     }
@@ -61,6 +62,7 @@ async def upsert_user_preferences(
         existing.tools = payload.tools.model_dump(mode="json", by_alias=True)
         existing.prefers_agentic_chat = bool(payload.prefersAgenticChat)
         existing.suggestions_enabled = bool(payload.suggestionsEnabled)
+        existing.show_message_token_usage = bool(payload.showMessageTokenUsage)
         existing.voice_mode_voice = voice_mode_voice
         existing.voice_mode_language = voice_mode_language
     else:
@@ -70,6 +72,7 @@ async def upsert_user_preferences(
                 tools=payload.tools.model_dump(mode="json", by_alias=True),
                 prefers_agentic_chat=bool(payload.prefersAgenticChat),
                 suggestions_enabled=bool(payload.suggestionsEnabled),
+                show_message_token_usage=bool(payload.showMessageTokenUsage),
                 voice_mode_voice=voice_mode_voice,
                 voice_mode_language=voice_mode_language,
             )
@@ -89,6 +92,7 @@ async def upsert_user_preferences(
         tools=payload.tools,
         prefersAgenticChat=bool(payload.prefersAgenticChat),
         suggestionsEnabled=bool(payload.suggestionsEnabled),
+        showMessageTokenUsage=bool(payload.showMessageTokenUsage),
         voiceModeVoice=voice_mode_voice,
         voiceModeLanguage=voice_mode_language,
     )

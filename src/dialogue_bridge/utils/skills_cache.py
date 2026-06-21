@@ -14,9 +14,10 @@ environment. Three key families live here:
   assignment set (``skills_user_agent_ttl_seconds``, default 2 h;
   invalidated by assignment mutations + cascade on pool delete).
 
-The Redis client is created lazily on first use, sharing the connection
-configuration that ``utils.event_log.RedisEventLog`` already uses for the
-inference event stream.
+The Redis client is created lazily on first use via the shared
+``core.redis.create_redis_client`` factory — the same one
+``utils.event_log.RedisEventLog`` uses — so TLS trust and credentials can
+never drift between the two connection pools.
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ from typing import Any, List
 
 import redis.asyncio as aioredis
 
+from core.redis import create_redis_client
 from core.settings import settings
 from observability import get_logger
 
@@ -74,13 +76,7 @@ class SkillsCache:
             return self._client
         async with self._lock:
             if self._client is None:
-                password = settings.redis.password.get_secret_value() or None
-                self._client = aioredis.from_url(
-                    settings.redis.url,
-                    password=password,
-                    encoding="utf-8",
-                    decode_responses=True,
-                )
+                self._client = create_redis_client()
         return self._client
 
     async def get_global(self) -> List[dict[str, Any]] | None:

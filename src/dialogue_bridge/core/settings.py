@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import secrets
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
@@ -70,6 +71,32 @@ class DatabaseSettings(BaseSettings):
     pool_recycle: int = Field(1800, validation_alias="DATABASE_POOL_RECYCLE")
     pool_size: int = Field(5, validation_alias="DATABASE_POOL_SIZE")
     max_overflow: int = Field(20, validation_alias="DATABASE_MAX_OVERFLOW")
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def _inject_password(cls, value: object) -> object:
+        """Splice a file/env-resolved password into a password-less DATABASE_URL.
+
+        Lets the DB password come from a mounted secret (`DATABASE_PASSWORD_FILE`,
+        e.g. a Swarm secret) instead of being inlined in the URL. An inline
+        password in the URL always wins, so local dev (`...://admin:admin@...`
+        with no `*_FILE` set) is untouched.
+        """
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if not isinstance(raw, str) or "://" not in raw:
+            return value
+        password = _resolve_file_backed_secret("DATABASE_PASSWORD")
+        if not password:
+            return raw
+        scheme, sep, rest = raw.partition("://")
+        authority, slash, tail = rest.partition("/")
+        if "@" not in authority:
+            return raw
+        userinfo, at, hostport = authority.rpartition("@")
+        if ":" in userinfo:  # inline password already present — leave it
+            return raw
+        userinfo = f"{userinfo}:{quote(password, safe='')}"
+        return f"{scheme}{sep}{userinfo}{at}{hostport}{slash}{tail}"
     # When True (default) the lifespan startup runs ``alembic upgrade head``
     # before the app accepts traffic. Set False to skip migrations on startup —
     # useful as an emergency knob if a buggy migration takes down the API and

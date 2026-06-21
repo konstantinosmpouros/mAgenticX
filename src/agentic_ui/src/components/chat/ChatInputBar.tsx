@@ -18,6 +18,8 @@ import StarBorder from "@/components/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/components/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/components/ui/ai-elements/suggestion";
+import { ConversationUsagePanel } from "@/components/chat/ConversationUsagePanel";
+import type { ConversationUsage } from "@/lib/types";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
 export type ChatInputMode = "chat" | "voice";
@@ -91,6 +93,13 @@ type ChatInputBarProps = {
     hitlTakeover?: React.ReactNode;
     starterSuggestions?: string[];
     onStarterSuggestionSelect?: (suggestion: string) => void;
+
+    // Conversation token-usage panel (shown next to "+" only when a conversation
+    // is open). Null/undefined hides the gauge button.
+    conversationUsage?: ConversationUsage | null;
+    showMessageTokenUsage?: boolean;
+    onToggleMessageTokenUsage?: () => void;
+    preferencesSaving?: boolean;
 };
 
 // Random welcome quotes (use {agent} to inject the agent's name)
@@ -154,6 +163,10 @@ export function ChatInputBar(props: ChatInputBarProps) {
         hitlTakeover,
         starterSuggestions = [],
         onStarterSuggestionSelect,
+        conversationUsage,
+        showMessageTokenUsage = false,
+        onToggleMessageTokenUsage,
+        preferencesSaving = false,
     } = props;
 
 
@@ -825,24 +838,35 @@ export function ChatInputBar(props: ChatInputBarProps) {
 
                                     {/* Action Buttons */}
                                     <div className="flex items-center justify-between gap-3">
-                                        <Tooltip delayDuration={0}>
-                                            <TooltipTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
-                                                    onClick={() => fileInputRef.current?.click()}
-                                                    aria-label="Attach files"
+                                        <div className="flex items-center gap-1">
+                                            <Tooltip delayDuration={0}>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="w-10 h-10 rounded-full hover:bg-[hsl(var(--hover-surface))] transition-smooth cursor-pointer flex items-center justify-center active:bg-[hsl(var(--hover-surface-strong))] active:scale-110 focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        aria-label="Attach files"
+                                                    >
+                                                        <Plus size={24} className="text-muted-foreground active:text-white" />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent
+                                                    side="top"
+                                                    align="center"
                                                 >
-                                                    <Plus size={24} className="text-muted-foreground active:text-white" />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent
-                                                side="top"
-                                                align="center"
-                                            >
-                                                <p>Attach files & photos</p>
-                                            </TooltipContent>
-                                        </Tooltip>
+                                                    <p>Attach files & photos</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+
+                                            {!isMessagesEmpty && conversationUsage ? (
+                                                <ConversationUsagePanel
+                                                    usage={conversationUsage}
+                                                    showMessageTokenUsage={showMessageTokenUsage}
+                                                    onToggleMessageTokenUsage={() => onToggleMessageTokenUsage?.()}
+                                                    disabled={preferencesSaving}
+                                                />
+                                            ) : null}
+                                        </div>
 
                                         {dictationStatus === "idle" ? (
                                             <div className="flex items-center gap-2">

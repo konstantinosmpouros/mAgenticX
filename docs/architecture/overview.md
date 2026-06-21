@@ -352,6 +352,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `SESSION_ACCESS_TTL_SECONDS` | dialogue_bridge | Access token lifetime |
 | `SESSION_REFRESH_TTL_SECONDS` | dialogue_bridge | Refresh token lifetime |
 | `TRUSTED_PROXY_SECRET` | all services | Internal service authentication |
+| `REQUIRE_TLS` | agents, rag_service, dialogue_bridge, chat_postgres, agentic_ui | TLS-entrypoint gate; defaults to `true` (fail closed — refuse to start in plaintext if certs are missing/unreadable). Set `false` only as an emergency escape hatch. Not used in local dev (the TLS entrypoints are a prod-only override). |
 | `VAULT_URL` | dialogue_bridge | HashiCorp Vault base URL |
 | `REDIS_URL` | dialogue_bridge | Redis connection URL (default `redis://redis:6379/0`) |
 | `REDIS_PASSWORD_FILE` / `REDIS_PASSWORD` | dialogue_bridge, redis | Redis AUTH password (file-mounted secret in prod, env var in local dev) |

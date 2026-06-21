@@ -482,10 +482,14 @@ export async function getUserPreferences(userId: string) {
     typeof data?.suggestionsEnabled === "boolean"
       ? data.suggestionsEnabled
       : true;
+  const showMessageTokenUsage =
+    typeof data?.showMessageTokenUsage === "boolean"
+      ? data.showMessageTokenUsage
+      : false;
   const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
   const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
 
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, voiceModeVoice, voiceModeLanguage };
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, voiceModeVoice, voiceModeLanguage };
 }
 
 
@@ -510,9 +514,13 @@ export async function updateUserPreferences(userId: string, prefs: any) {
     typeof data?.suggestionsEnabled === "boolean"
       ? data.suggestionsEnabled
       : true;
+  const showMessageTokenUsage =
+    typeof data?.showMessageTokenUsage === "boolean"
+      ? data.showMessageTokenUsage
+      : false;
   const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
   const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, voiceModeVoice, voiceModeLanguage };
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, voiceModeVoice, voiceModeLanguage };
 }
 
 

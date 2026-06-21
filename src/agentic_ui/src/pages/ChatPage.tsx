@@ -20,6 +20,7 @@ import type {
   ToolMetadata,
   UserPreferences } from "@/lib/types";
 import { usePreferencesHandlers } from "@/handlers/preferences";
+import { computeConversationUsage } from "@/lib/utils";
 import { useProfilePanel } from "@/hooks/useProfilePanel";
 import {
   useEnsureDefaultAgentEffect,
@@ -361,6 +362,7 @@ export function ChatInterface({
     resolvedPreferences,
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
+    handleToggleShowMessageTokenUsage,
     handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage,
   } = usePreferencesHandlers({
@@ -434,6 +436,9 @@ export function ChatInterface({
     setBranchSelections,
     rootKey: ROOT_BRANCH_KEY,
   });
+
+  // Per-conversation token usage for the input-bar usage panel (AI messages only).
+  const conversationUsage = useMemo(() => computeConversationUsage(activeMessages), [activeMessages]);
 
   // Reset message editing state on conversation change
   useEffect(() => {
@@ -1256,6 +1261,7 @@ export function ChatInterface({
     return (
       <ChatBody
         messages={activeMessages}
+        showMessageTokenUsage={resolvedPreferences.showMessageTokenUsage === true}
         loadingConversation={loadingConversation}
         isClearing={isClearing}
         expandedThinking={expandedThinking}
@@ -1423,6 +1429,10 @@ export function ChatInterface({
                 mode={voiceSession.isActive ? "voice" : "chat"}
                 voiceBarVisible={voiceBarReady}
                 chatBarVisible={chatBarReady}
+                conversationUsage={currentConversation ? conversationUsage : null}
+                showMessageTokenUsage={resolvedPreferences.showMessageTokenUsage === true}
+                onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
+                preferencesSaving={isSavingPreferences}
                 // Centered empty state
                 isMessagesEmpty={isMessagesEmpty}
                 positionClass={
@@ -1559,6 +1569,7 @@ export function ChatInterface({
                 onRevokeSharedConversation={handleRevokeSharedConversation}
                 onToggleToolPreference={handleToggleToolPreference}
                 onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
+                onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
                 onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
                 onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
                 preferencesSaving={isSavingPreferences}

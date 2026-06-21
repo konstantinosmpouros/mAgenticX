@@ -194,8 +194,20 @@ export type UserPreferences = {
     };
     prefersAgenticChat?: boolean;
     suggestionsEnabled?: boolean;
+    showMessageTokenUsage?: boolean;
     voiceModeVoice?: RealtimeVoice;
     voiceModeLanguage?: VoiceModeLanguage;
+};
+
+// Aggregate token usage for one conversation's active branch (AI messages only),
+// computed client-side from message.inputTokens/outputTokens.
+export type ConversationUsage = {
+    totalInput: number;
+    totalOutput: number;
+    totalTokens: number;
+    aiMessageCount: number;
+    avgInput: number;
+    avgOutput: number;
 };
 
 export type VoiceModeStatus = "closed" | "connecting" | "listening" | "thinking" | "speaking" | "muted" | "error";

@@ -48,6 +48,7 @@ type PersonalizationTabProps = {
     userPreferences: UserPreferences;
     preferencesSaving?: boolean;
     onToggleSuggestionsEnabled?: () => void;
+    onToggleMessageTokenUsage?: () => void;
     onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
     onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
 };
@@ -57,6 +58,7 @@ export default function PersonalizationTab({
     userPreferences,
     preferencesSaving = false,
     onToggleSuggestionsEnabled,
+    onToggleMessageTokenUsage,
     onSelectVoiceModeVoice,
     onSelectVoiceModeLanguage,
 }: PersonalizationTabProps) {
@@ -73,6 +75,7 @@ export default function PersonalizationTab({
         typeof userPreferences?.prefersAgenticChat === "boolean" ? userPreferences.prefersAgenticChat : undefined;
     const displayPrefersAgentic = fmtBoolean(prefersAgentic);
     const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
+    const showMessageTokenUsage = userPreferences?.showMessageTokenUsage === true;
     const voiceModeVoice = normalizeRealtimeVoice(userPreferences?.voiceModeVoice);
     const selectedVoiceModeVoice =
         REALTIME_VOICES.find((voice) => voice.id === voiceModeVoice) ?? REALTIME_VOICES[0];
@@ -235,6 +238,41 @@ export default function PersonalizationTab({
                                             className={cn(
                                                 "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
                                                 suggestionsEnabled ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                                            )}
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-5 py-4">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-foreground">
+                                        Per-message token usage
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Show how many input and output tokens each assistant message used, in its action bar.
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-3">
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={showMessageTokenUsage}
+                                        aria-disabled={preferencesSaving}
+                                        onClick={() => !preferencesSaving && onToggleMessageTokenUsage?.()}
+                                        className={cn(
+                                            "relative inline-flex h-7 w-12 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                            showMessageTokenUsage
+                                                ? "border-primary/40 bg-primary/20"
+                                                : "border-transparent bg-background/80",
+                                            preferencesSaving && "cursor-not-allowed opacity-60"
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
+                                                showMessageTokenUsage ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
                                             )}
                                         />
                                     </button>

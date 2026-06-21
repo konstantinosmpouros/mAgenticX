@@ -247,6 +247,11 @@ class UserPreferences(BaseModel):
         validation_alias=AliasChoices("suggestions_enabled", "suggestionsEnabled"),
         serialization_alias="suggestionsEnabled",
     )
+    showMessageTokenUsage: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("show_message_token_usage", "showMessageTokenUsage"),
+        serialization_alias="showMessageTokenUsage",
+    )
     voiceModeVoice: str = Field(
         default="alloy",
         validation_alias=AliasChoices("voice_mode_voice", "voiceModeVoice"),

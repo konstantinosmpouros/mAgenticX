@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { AttachmentIn, AuthResponse, FileAttachment, SkillTreeNode } from "./types";
+import type { AttachmentIn, AuthResponse, ConversationUsage, FileAttachment, MessageOut, SkillTreeNode } from "./types";
 import {
   DEFAULT_REALTIME_VOICE,
   DEFAULT_VOICE_MODE_LANGUAGE,
@@ -257,6 +257,36 @@ export const skillMatchesTokens = (
     .toLowerCase()
     .replace(/[-_./]/g, "");
   return tokens.every((tok) => haystack.includes(tok));
+};
+
+// Compact token count for dense UI chips: 1234 → "1.2K", 2_500_000 → "2.5M".
+export const formatCompactTokens = (value: number): string =>
+  new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
+    Math.max(0, Math.round(value)),
+  );
+
+// Aggregate token usage across a conversation's active branch. Only AI messages
+// carry token counts, so user messages are ignored and averages divide by the
+// AI-message count (guarded against zero).
+export const computeConversationUsage = (messages: MessageOut[]): ConversationUsage => {
+  let totalInput = 0;
+  let totalOutput = 0;
+  let aiMessageCount = 0;
+  for (const message of messages) {
+    if (message.sender !== "ai") continue;
+    if (typeof message.inputTokens !== "number" && typeof message.outputTokens !== "number") continue;
+    totalInput += message.inputTokens ?? 0;
+    totalOutput += message.outputTokens ?? 0;
+    aiMessageCount += 1;
+  }
+  return {
+    totalInput,
+    totalOutput,
+    totalTokens: totalInput + totalOutput,
+    aiMessageCount,
+    avgInput: aiMessageCount ? Math.round(totalInput / aiMessageCount) : 0,
+    avgOutput: aiMessageCount ? Math.round(totalOutput / aiMessageCount) : 0,
+  };
 };
 
 // The agents occasionally emit "•" bullets, which Streamdown doesn't treat as

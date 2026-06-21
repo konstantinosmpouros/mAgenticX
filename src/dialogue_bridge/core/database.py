@@ -155,6 +155,7 @@ class UserPreferencesTable(Base):
     tools = Column(JSON, nullable=False, default=dict)
     prefers_agentic_chat = Column(Boolean, nullable=False, server_default="false")
     suggestions_enabled = Column(Boolean, nullable=False, server_default="true")
+    show_message_token_usage = Column(Boolean, nullable=False, server_default="false")
     voice_mode_voice = Column(String, nullable=False, server_default="alloy")
     voice_mode_language = Column(String, nullable=False, server_default="english")
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

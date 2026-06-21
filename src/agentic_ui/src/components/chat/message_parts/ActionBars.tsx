@@ -1,6 +1,8 @@
 ﻿import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Bot, Copy, Check, ListTodo, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
+import { TbGauge } from "react-icons/tb";
+import { formatCompactTokens } from "@/lib/utils";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { motion, useAnimationControls } from "framer-motion";
 import type { TargetAndTransition, Transition } from "framer-motion";
@@ -62,6 +64,7 @@ type AIActionBarProps = BaseActionBarProps & {
   onOpenPlan?: () => void;
   onOpenSubagents?: () => void;
   subagentCount?: number;
+  showMessageTokenUsage?: boolean;
 };
 
 type UserActionBarProps = BaseActionBarProps & {
@@ -156,11 +159,15 @@ export const AIActionBar = ({
   onOpenPlan,
   onOpenSubagents,
   subagentCount = 0,
+  showMessageTokenUsage = false,
 }: AIActionBarProps) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const likePulse = useAnimationControls();
   const dislikePulse = useAnimationControls();
   const isSpeaking = speakingMessageId === message.id;
+  const usageVisible =
+    showMessageTokenUsage &&
+    (typeof message.inputTokens === "number" || typeof message.outputTokens === "number");
 
   useEffect(() => {
     if (!moreMenuOpen) return;
@@ -182,7 +189,7 @@ export const AIActionBar = ({
 
   return (
   <div className="flex w-full flex-wrap items-center gap-2">
-    {(timestampLabel || agentName) && (
+    {(timestampLabel || agentName || usageVisible) && (
       <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
         {timestampLabel ? <span>{timestampLabel}</span> : null}
         {agentName ? (
@@ -190,6 +197,24 @@ export const AIActionBar = ({
             {AgentIcon ? <AgentIcon className="h-4 w-4" /> : null}
             <span>{agentName}</span>
           </span>
+        ) : null}
+        {usageVisible ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <span className="flex cursor-help items-center gap-1" aria-label="Token usage for this message">
+                <TbGauge className="h-4 w-4" aria-hidden="true" />
+                <span className="tabular-nums">
+                  {formatCompactTokens((message.inputTokens ?? 0) + (message.outputTokens ?? 0))}
+                </span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center">
+              <div className="text-xs leading-relaxed">
+                <p>Input: {(message.inputTokens ?? 0).toLocaleString()} tokens</p>
+                <p>Output: {(message.outputTokens ?? 0).toLocaleString()} tokens</p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
         ) : null}
       </div>
     )}

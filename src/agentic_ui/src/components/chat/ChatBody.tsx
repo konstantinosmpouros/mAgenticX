@@ -20,6 +20,7 @@ const USER_SCROLL_UP_DELTA = 14;
 
 type ChatBody = {
   messages: MessageOut[];
+  showMessageTokenUsage?: boolean;
   loadingConversation: boolean;
   isClearing: boolean;
   expandedThinking: Record<string, boolean>;
@@ -71,6 +72,7 @@ type ChatBody = {
 
 export default function ChatBody({
   messages,
+  showMessageTokenUsage = false,
   loadingConversation,
   isClearing,
   expandedThinking,
@@ -306,6 +308,7 @@ export default function ChatBody({
                 <div key={message.id} data-message-id={message.id} className="animate-fade-in-fast space-y-2">
                   <ChatMessage
                     message={message}
+                    showMessageTokenUsage={showMessageTokenUsage}
                     isEditing={isEditingMessage}
                     editingDraft={editingDraft}
                     editingBusy={editingBusy}

@@ -17,6 +17,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable
 
 import redis.asyncio as aioredis
 
+from core.redis import create_redis_client
 from core.settings import settings
 from observability import get_logger
 
@@ -43,23 +44,7 @@ class RedisEventLog:
             return self._client
         async with self._lock:
             if self._client is None:
-                password = settings.redis.password.get_secret_value() or None
-                connect_kwargs: dict[str, Any] = dict(
-                    password=password,
-                    encoding="utf-8",
-                    decode_responses=True,
-                )
-                # `rediss://` (prod) → verify the Redis server certificate
-                # against the internal CA, the same trust root used for every
-                # other inter-service TLS connection. Plain `redis://` (local
-                # dev) skips this and connects without TLS.
-                if settings.redis.url.startswith("rediss://"):
-                    connect_kwargs.update(
-                        ssl_ca_certs=settings.tls.ca_cert_path,
-                        ssl_cert_reqs="required",
-                        ssl_check_hostname=True,
-                    )
-                self._client = aioredis.from_url(settings.redis.url, **connect_kwargs)
+                self._client = create_redis_client()
         return self._client
 
     async def append(self, run_id: str, event: dict[str, Any]) -> str:

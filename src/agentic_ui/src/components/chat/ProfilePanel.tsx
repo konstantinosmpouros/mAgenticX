@@ -64,6 +64,7 @@ type ProfilePanelProps = {
     onRevokeSharedConversation?: (share: ConversationShareListItem) => void;
     onToggleToolPreference?: (tool: ToolMetadata) => void;
     onToggleSuggestionsEnabled?: () => void;
+    onToggleMessageTokenUsage?: () => void;
     onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
     onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
     preferencesSaving?: boolean;
@@ -109,6 +110,7 @@ export default function ProfilePanel({
     onRevokeSharedConversation,
     onToggleToolPreference,
     onToggleSuggestionsEnabled,
+    onToggleMessageTokenUsage,
     onSelectVoiceModeVoice,
     onSelectVoiceModeLanguage,
     preferencesSaving = false,
@@ -224,6 +226,7 @@ export default function ProfilePanel({
                                             userPreferences={userPreferences}
                                             preferencesSaving={preferencesSaving}
                                             onToggleSuggestionsEnabled={onToggleSuggestionsEnabled}
+                                            onToggleMessageTokenUsage={onToggleMessageTokenUsage}
                                             onSelectVoiceModeVoice={onSelectVoiceModeVoice}
                                             onSelectVoiceModeLanguage={onSelectVoiceModeLanguage}
                                         />

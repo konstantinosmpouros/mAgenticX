@@ -16,9 +16,15 @@ from core.proxy import resolve_client_ip
 
 logger = logging.getLogger("agents.request")
 
+# Health-probe paths the container healthcheck hits every 30s — answered but
+# never logged, to keep the access log free of probe noise.
+_SILENT_PATHS = frozenset({"/health"})
+
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.url.path in _SILENT_PATHS:
+            return await call_next(request)
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         client_ip = resolve_client_ip(request)
         path_params = request.scope.get("path_params") or {}
