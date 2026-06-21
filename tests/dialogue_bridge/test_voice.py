@@ -67,7 +67,6 @@ async def test_realtime_voice_event_persists_transcript(client, seeded_user, con
     assert response.status_code == 201
     payload = response.json()
     assert payload["message"]["sender"] == "ai"
-    assert payload["message"]["type"] == "audio"
     assert payload["message"]["content"] == "Spoken answer"
     assert payload["message"]["parentMessageId"] == conversation["message_ids"][-1]
     assert payload["message"]["rawEvents"] == [{"type": "response.audio_transcript.done"}]

@@ -78,7 +78,6 @@ def _msg(
         conversation_id="conv-1",
         parent_message_id=parent_message_id,
         sender=sender,
-        type="text",
         content=content,
     )
     message.created_at = created_at if created_at is not None else utcnow()
@@ -256,7 +255,6 @@ async def _seed_lineage(session_factory, seeded_user, seeded_agent):
         user_msg = MessageTable(
             conversation_id=conversation.id,
             sender="user",
-            type="text",
             content="What is up?",
         )
         session.add(user_msg)
@@ -266,7 +264,6 @@ async def _seed_lineage(session_factory, seeded_user, seeded_agent):
             conversation_id=conversation.id,
             parent_message_id=user_msg.id,
             sender="ai",
-            type="text",
             content="Plenty is up.",
             agent_id=seeded_agent.id,
             agent_name=seeded_agent.name,
@@ -330,7 +327,6 @@ async def test_select_scoped_messages_message_mode_single(session_factory, seede
         ai_msg = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="standalone answer",
         )
         session.add(ai_msg)
@@ -499,7 +495,6 @@ async def _seed_endpoint_conversation(session_factory, seeded_user, seeded_agent
         user_msg = MessageTable(
             conversation_id=conversation.id,
             sender="user",
-            type="text",
             content="Question for the endpoint",
         )
         session.add(user_msg)
@@ -508,7 +503,6 @@ async def _seed_endpoint_conversation(session_factory, seeded_user, seeded_agent
             conversation_id=conversation.id,
             parent_message_id=user_msg.id,
             sender="ai",
-            type="text",
             content=content,
             agent_id=seeded_agent.id,
             agent_name=seeded_agent.name,

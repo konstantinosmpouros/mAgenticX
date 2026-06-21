@@ -23,7 +23,6 @@ async def _seed_branch(db_session_factory, seeded_user, seeded_agent):
         user_message = MessageTable(
             conversation_id=conversation.id,
             sender="user",
-            type="text",
             content="Question",
         )
         session.add(user_message)
@@ -33,13 +32,11 @@ async def _seed_branch(db_session_factory, seeded_user, seeded_agent):
             conversation_id=conversation.id,
             parent_message_id=user_message.id,
             sender="ai",
-            type="text",
             content="Final answer",
             agent_id=seeded_agent.id,
             agent_name=seeded_agent.name,
             reasoning_steps=["Looked up context"],
             raw_events=[{"type": "RUN_FINISHED"}],
-            plan={"status": "done"},
         )
         session.add(ai_message)
         await session.commit()
@@ -66,7 +63,6 @@ async def _seed_sibling_branches(db_session_factory, seeded_user, seeded_agent):
         user_message = MessageTable(
             conversation_id=conversation.id,
             sender="user",
-            type="text",
             content="Question",
         )
         session.add(user_message)
@@ -76,14 +72,12 @@ async def _seed_sibling_branches(db_session_factory, seeded_user, seeded_agent):
             conversation_id=conversation.id,
             parent_message_id=user_message.id,
             sender="ai",
-            type="text",
             content="Visible answer",
         )
         sibling_ai = MessageTable(
             conversation_id=conversation.id,
             parent_message_id=user_message.id,
             sender="ai",
-            type="text",
             content="Hidden sibling answer",
         )
         session.add_all([visible_ai, sibling_ai])

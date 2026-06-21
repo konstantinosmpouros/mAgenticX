@@ -166,7 +166,6 @@ def conversation_factory(session_factory, seeded_user, seeded_agent):
                 message = MessageTable(
                     conversation_id=conversation.id,
                     sender=payload.get("sender", "user"),
-                    type=payload.get("type", "text"),
                     content=payload.get("content"),
                     parent_message_id=payload.get("parent_message_id"),
                 )

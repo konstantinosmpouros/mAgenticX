@@ -44,10 +44,9 @@ def test_runtime_increments_pending_on_top_level_hitl():
         "value": {"thread_id": "thread-1", "interrupt": {"question": "Continue?"}},
     })
     assert runtime.pending_interrupts == 1
-    assert runtime.subagents is not None
-    assert runtime.subagents.get("interrupts") == [
-        {"thread_id": "thread-1", "interrupt": {"question": "Continue?"}}
-    ]
+    # The interrupt is folded into the durable event log; there's no separate
+    # `subagents` aggregate anymore — the UI reducer reconstructs it on replay.
+    assert runtime.raw_events[-1]["name"] == "HITL_INTERRUPT"
 
 
 def test_runtime_increments_pending_on_subagent_wrapped_hitl():
@@ -180,7 +179,6 @@ async def streaming_message(session_factory, seeded_user, seeded_agent):
         ai_message = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="",
             streaming_status="running",
             streaming_started_at=_utcnow(),

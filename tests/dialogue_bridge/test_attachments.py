@@ -33,7 +33,6 @@ async def _seed_attachment(
         message = MessageTable(
             conversation_id=conversation.id,
             sender="user",
-            type="image" if mime_type.startswith("image/") else "file",
             content=file_name,
         )
         session.add(message)

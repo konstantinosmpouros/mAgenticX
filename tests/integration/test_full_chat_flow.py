@@ -50,8 +50,6 @@ async def test_create_run_and_finalize_chat_flow(client, seeded_user, seeded_age
             "thinking": ["Read request", "Prepared answer"],
             "thinkingTime": 3,
             "rawEvents": [{"type": "RUN_FINISHED"}],
-            "plan": {"status": "done"},
-            "subagents": {},
         },
     )
 

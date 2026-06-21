@@ -2,6 +2,7 @@ services:
   vectordb: # 8000
     image: chromadb/chroma:0.6.3
     container_name: vectordb
+    command: ["--workers $${CHROMA_WORKERS} --host $${CHROMA_HOST_ADDR} --port $${CHROMA_HOST_PORT} --proxy-headers --log-config $${CHROMA_LOG_CONFIG} --timeout-keep-alive $${CHROMA_TIMEOUT_KEEP_ALIVE} --no-access-log"]
     environment:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/chroma/chroma
@@ -240,7 +241,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.9.2
+    image: konstantinosmpouros/agentic_ui:v0.9.3
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:
@@ -267,7 +268,7 @@ services:
         max-size: "20m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3

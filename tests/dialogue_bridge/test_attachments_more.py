@@ -40,7 +40,6 @@ async def _seed_blob(*, session_factory, seeded_user, seeded_agent, file_name, m
         message = MessageTable(
             conversation_id=conversation.id,
             sender="user",
-            type="file",
             content=file_name,
         )
         session.add(message)

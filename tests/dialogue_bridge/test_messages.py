@@ -56,8 +56,6 @@ async def test_update_ai_message_persists_streaming_metadata(
             "error": False,
             "errorMessage": None,
             "rawEvents": [{"type": "token", "value": "Completed"}],
-            "plan": {"steps": 2},
-            "subagents": {"worker-1": {"status": "done"}},
         },
     )
 
@@ -67,8 +65,6 @@ async def test_update_ai_message_persists_streaming_metadata(
     assert payload["message"]["thinking"] == ["Step 1", "Step 2"]
     assert payload["message"]["thinkingTime"] == 7
     assert payload["message"]["rawEvents"] == [{"type": "token", "value": "Completed"}]
-    assert payload["message"]["plan"] == {"steps": 2}
-    assert payload["message"]["subagents"] == {"worker-1": {"status": "done"}}
     assert payload["summary"]["lastMessage"] == "Completed response"
 
 

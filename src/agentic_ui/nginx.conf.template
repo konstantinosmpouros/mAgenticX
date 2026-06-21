@@ -160,6 +160,14 @@ server {
     proxy_send_timeout 300s;
   }
 
+  # Liveness probe for the container healthcheck — answered with a bare 200 and
+  # kept out of the access log so the 30s wget probe doesn't spam it.
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
   # Single Page App routing + static assets
   location / {
     try_files $uri $uri/ /index.html;

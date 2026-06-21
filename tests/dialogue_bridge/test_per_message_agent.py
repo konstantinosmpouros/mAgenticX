@@ -53,7 +53,7 @@ async def _seed_completed_turn(session_factory, user, agent):
         session.add(conversation)
         await session.flush()
 
-        user_message = MessageTable(conversation_id=conversation.id, sender="user", type="text", content="hello")
+        user_message = MessageTable(conversation_id=conversation.id, sender="user", content="hello")
         session.add(user_message)
         await session.flush()
 
@@ -61,7 +61,6 @@ async def _seed_completed_turn(session_factory, user, agent):
             conversation_id=conversation.id,
             parent_message_id=user_message.id,
             sender="ai",
-            type="text",
             content="answer from the first agent",
             agent_id=agent.id,
             agent_name=agent.name,

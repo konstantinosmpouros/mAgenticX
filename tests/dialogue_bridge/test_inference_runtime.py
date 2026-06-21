@@ -112,15 +112,18 @@ def test_apply_sets_first_event_ts_once():
 # ---------------------------------------------------------------------------
 # InferenceRunRuntime.apply_event — CUSTOM events
 # ---------------------------------------------------------------------------
-def test_apply_plan_snapshot_sets_plan_and_appends_raw_event():
+def test_apply_plan_snapshot_folds_into_raw_events():
     runtime = InferenceRunRuntime()
     plan = {"items": [{"content": "do thing", "status": "pending"}]}
     runtime.apply_event({"type": "CUSTOM", "name": "PLAN_SNAPSHOT", "value": plan})
-    assert runtime.plan == plan
+    # Plan state is no longer a runtime aggregate; it lives only in the durable
+    # event log the UI reducer replays into its timeline.
     assert runtime.raw_events[-1]["name"] == "PLAN_SNAPSHOT"
+    assert runtime.raw_events[-1]["value"] == plan
+    assert not hasattr(runtime, "plan")
 
 
-def test_apply_task_subagent_records_task_and_raw_event():
+def test_apply_task_subagent_folds_into_raw_events():
     runtime = InferenceRunRuntime()
     runtime.apply_event({"type": "TEXT_MESSAGE_CHUNK", "delta": "12345"})
     runtime.apply_event({
@@ -128,12 +131,11 @@ def test_apply_task_subagent_records_task_and_raw_event():
         "name": "TASK_SUBAGENT",
         "value": {"task_id": "t1", "subagent_type": "writer"},
     })
-    tasks = runtime.subagents["tasks"]
-    assert tasks[0]["task_id"] == "t1"
-    assert tasks[0]["subagent_type"] == "writer"
-    # the event is also folded into the durable log the UI replays
+    # Subagent/task state is reconstructed UI-side from the raw log; the runtime
+    # keeps no `subagents` aggregate.
     assert runtime.raw_events[-1]["name"] == "TASK_SUBAGENT"
     assert runtime.raw_events[-1]["value"]["task_id"] == "t1"
+    assert not hasattr(runtime, "subagents")
 
 
 def test_apply_subagent_event_folds_into_raw_events_without_interrupt():
@@ -143,42 +145,27 @@ def test_apply_subagent_event_folds_into_raw_events_without_interrupt():
         "name": "SUBAGENT_EVENT",
         "value": {"task_id": "t1", "event": {"type": "TEXT_MESSAGE_CHUNK", "delta": "hi"}},
     })
-    # SUBAGENT_EVENT envelopes land in the raw log; they no longer populate a
-    # `subagents` aggregate (the UI reducer reconstructs the timeline instead).
-    assert runtime.subagents is None
     assert runtime.raw_events[-1]["name"] == "SUBAGENT_EVENT"
     assert runtime.raw_events[-1]["value"]["task_id"] == "t1"
     assert runtime.pending_interrupts == 0
 
 
-def test_apply_before_agent_event_appends():
+def test_apply_before_agent_event_folds_into_raw_events():
     runtime = InferenceRunRuntime()
     runtime.apply_event({
         "type": "CUSTOM",
         "name": "BEFORE_AGENT_EVENT",
         "value": {"task_id": "t1", "phase": "start"},
     })
-    assert runtime.subagents["beforeAgent"] == [{"task_id": "t1", "phase": "start"}]
+    assert runtime.raw_events[-1]["name"] == "BEFORE_AGENT_EVENT"
+    assert runtime.raw_events[-1]["value"] == {"task_id": "t1", "phase": "start"}
 
 
 def test_apply_unknown_custom_name_only_records_raw_event():
     runtime = InferenceRunRuntime()
     runtime.apply_event({"type": "CUSTOM", "name": "SOMETHING_ELSE", "value": {"x": 1}})
-    assert runtime.subagents is None
-    assert runtime.plan is None
     assert runtime.raw_events[-1]["name"] == "SOMETHING_ELSE"
-
-
-# ---------------------------------------------------------------------------
-# push_subagent_event
-# ---------------------------------------------------------------------------
-def test_push_subagent_event_accumulates_under_key():
-    runtime = InferenceRunRuntime()
-    runtime.push_subagent_event("tasks", {"a": 1})
-    runtime.push_subagent_event("tasks", {"b": 2})
-    runtime.push_subagent_event("events", {"c": 3})
-    assert runtime.subagents["tasks"] == [{"a": 1}, {"b": 2}]
-    assert runtime.subagents["events"] == [{"c": 3}]
+    assert runtime.raw_events[-1]["value"] == {"x": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -213,14 +200,12 @@ def test_message_payload_from_runtime_success():
     runtime.first_event_ts = 10.0
     runtime.thinking_end = 12.0
     runtime.raw_events = [{"type": "CUSTOM"}]
-    runtime.plan = {"items": []}
-    runtime.subagents = {"tasks": []}
     payload = _message_payload_from_runtime(runtime, error=False, error_message=None)
     assert payload["content"] == "answer"
     assert payload["reasoning_steps"] == ["t1"]
     assert payload["is_error"] is False
     assert payload["reasoning_time_seconds"] == 2
-    assert payload["plan"] == {"items": []}
+    assert payload["raw_events"] == [{"type": "CUSTOM"}]
 
 
 def test_message_payload_from_runtime_error():
@@ -248,7 +233,6 @@ async def test_build_run_out_from_message(session_factory, seeded_user, seeded_a
         message = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="final",
             streaming_status="completed",
             streaming_enabled_tools=[{"server_id": "s", "tool_name": "t"}],
@@ -283,7 +267,6 @@ async def _make_conversation_with_user_message(session_factory, seeded_user, see
         user_message = MessageTable(
             conversation_id=conversation.id,
             sender="user",
-            type="text",
             content="hi",
         )
         session.add(user_message)
@@ -344,7 +327,6 @@ async def test_create_inference_run_record_conflict_when_active_exists(session_f
         active = MessageTable(
             conversation_id=conv_id,
             sender="ai",
-            type="text",
             content="",
             streaming_status="running",
             streaming_started_at=ir._now(),
@@ -383,8 +365,7 @@ async def test_create_inference_run_record_too_many_active_429(session_factory, 
             MessageTable(
                 conversation_id=other.id,
                 sender="ai",
-                type="text",
-                content="",
+                    content="",
                 streaming_status="running",
                 streaming_started_at=ir._now(),
             )
@@ -423,7 +404,6 @@ async def test_request_run_cancel_no_live_task_marks_cancelled(session_factory, 
         run = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="partial",
             streaming_status="running",
             streaming_started_at=ir._now(),
@@ -456,7 +436,6 @@ async def test_request_run_cancel_with_live_task_sets_cancelling(session_factory
         run = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="",
             streaming_status="running",
             streaming_started_at=ir._now(),
@@ -483,7 +462,6 @@ async def test_request_run_cancel_noop_when_terminal(session_factory, seeded_use
         run = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="done",
             streaming_status="completed",
         )
@@ -511,7 +489,6 @@ async def _seed_active_run(session_factory, seeded_user, seeded_agent, status="r
         run = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="",
             streaming_status=status,
             streaming_started_at=ir._now(),
@@ -621,7 +598,6 @@ async def test_fail_stale_queued_runs(session_factory, seeded_user, seeded_agent
         stale = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="",
             streaming_status="queued",
             streaming_started_at=stale_start,
@@ -682,7 +658,6 @@ async def test_load_run_and_load_message(session_factory, seeded_user, seeded_ag
         message = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="hi",
             streaming_status="completed",
         )
@@ -715,7 +690,6 @@ async def _seed_terminal_run(session_factory, seeded_user, seeded_agent):
         run = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="final answer",
             streaming_status="completed",
             raw_events=[],
@@ -766,7 +740,6 @@ async def _seed_running_run(session_factory, seeded_user, seeded_agent):
         run = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="",
             streaming_status="running",
             streaming_started_at=ir._now(),
@@ -809,7 +782,6 @@ async def test_fail_stale_queued_runs_skips_recent(session_factory, seeded_user,
         recent = MessageTable(
             conversation_id=conversation.id,
             sender="ai",
-            type="text",
             content="",
             streaming_status="queued",
             streaming_started_at=ir._now(),
