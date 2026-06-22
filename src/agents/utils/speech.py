@@ -18,6 +18,11 @@ def _normalize_voice(voice: str | None) -> str:
     return selected or "alloy"
 
 
+def normalize_realtime_voice(voice: str | None) -> str:
+    selected = (voice or settings.runtime_models.read_aloud_voice or "alloy").strip().lower()
+    return selected if selected in settings.runtime_models.realtime_voices else "alloy"
+
+
 def _generate_speech_sync(text: str, voice: str) -> bytes:
     response = get_openai_client().audio.speech.create(
         model=settings.runtime_models.read_aloud,

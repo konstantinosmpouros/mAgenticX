@@ -37,3 +37,30 @@ async def release_checkpoint_unless_paused(agent: Any, run_id: str) -> None:
             exc_info=True,
         )
     release_namespace_bindings(run_id)
+
+
+async def emit_checkpoint_committed(
+    agent: Any, thread_id: str, agent_logger: Any, request_context: Any
+) -> Any:
+    """Read the durable checkpoint head this run produced and encode it as a
+    terminal AG-UI CHECKPOINT_COMMITTED frame (or None). The bridge persists
+    ``(thread_id, checkpoint_id)`` on the assistant message so the next turn
+    resumes and edit/retry fork from this head."""
+    if not thread_id:
+        return None
+    try:
+        aget_state = getattr(getattr(agent, "compiled", None), "aget_state", None)
+        if aget_state is None:
+            return None
+        snapshot = await aget_state(agent.run_config)
+        cfg = getattr(snapshot, "config", None) or {}
+        checkpoint_id = (cfg.get("configurable") or {}).get("checkpoint_id")
+        return agent.agui_emitter.checkpoint_committed(thread_id=thread_id, checkpoint_id=checkpoint_id)
+    except Exception:
+        agent_logger.warning(
+            "checkpoint_commit_emit_failed",
+            "Failed to read/emit committed checkpoint head",
+            context=request_context,
+            exc_info=True,
+        )
+        return None

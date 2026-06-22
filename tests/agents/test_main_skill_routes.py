@@ -241,7 +241,7 @@ class _FakeAsyncClient:
 
 
 async def test_realtime_session_success(client, agents_service, internal_headers, monkeypatch):
-    monkeypatch.setattr(agents_service.main.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient())
+    monkeypatch.setattr(agents_service.router_voice.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient())
 
     response = await client.post(
         "/realtime/session",
@@ -255,7 +255,7 @@ async def test_realtime_session_success(client, agents_service, internal_headers
 
 
 async def test_realtime_session_normalizes_unknown_voice(client, agents_service, internal_headers, monkeypatch):
-    monkeypatch.setattr(agents_service.main.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient())
+    monkeypatch.setattr(agents_service.router_voice.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient())
 
     response = await client.post(
         "/realtime/session",
@@ -281,7 +281,7 @@ async def test_realtime_session_upstream_http_error_502(client, agents_service, 
     request = httpx.Request("POST", "https://api.openai.com/v1/realtime/calls")
     err_response = httpx.Response(400, request=request, json={"error": "bad offer"})
     exc = httpx.HTTPStatusError("bad", request=request, response=err_response)
-    monkeypatch.setattr(agents_service.main.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient(raise_exc=exc))
+    monkeypatch.setattr(agents_service.router_voice.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient(raise_exc=exc))
 
     response = await client.post(
         "/realtime/session",
@@ -294,7 +294,7 @@ async def test_realtime_session_upstream_http_error_502(client, agents_service, 
 async def test_realtime_session_request_error_502(client, agents_service, internal_headers, monkeypatch):
     request = httpx.Request("POST", "https://api.openai.com/v1/realtime/calls")
     exc = httpx.ConnectError("unreachable", request=request)
-    monkeypatch.setattr(agents_service.main.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient(raise_exc=exc))
+    monkeypatch.setattr(agents_service.router_voice.httpx, "AsyncClient", lambda *a, **k: _FakeAsyncClient(raise_exc=exc))
 
     response = await client.post(
         "/realtime/session",
@@ -369,21 +369,21 @@ def _resume_env(agents_service, monkeypatch, agent_cls=_FakeResumeAgent, has_cp=
     if not has_cp and agent_cls is _FakeResumeAgent:
         agent_cls = _NoInterruptResumeAgent
     registry = {"omni": SimpleNamespace(cls=agent_cls, manifest={})}
-    monkeypatch.setattr(agents_service.main, "AGENT_REGISTRY", registry)
-    monkeypatch.setattr(agents_service.main, "mcp_session_context", lambda: _FakeSessionContext())
+    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
+    monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
 
     async def fake_load_mcp_tools(session):
         return [{"name": "sql_query"}]
 
-    monkeypatch.setattr(agents_service.main, "load_mcp_tools", fake_load_mcp_tools)
+    monkeypatch.setattr(agents_service.router_inference, "load_mcp_tools", fake_load_mcp_tools)
     # The durable saver is wired in the lifespan (not run under ASGITransport),
     # so force the readiness probe true.
-    monkeypatch.setattr(agents_service.main, "has_checkpointer_initialized", lambda: True)
+    monkeypatch.setattr(agents_service.router_inference, "has_checkpointer_initialized", lambda: True)
 
     async def fake_release_unless_paused(agent, run_id):
         return None
 
-    monkeypatch.setattr(agents_service.main, "release_checkpoint_unless_paused", fake_release_unless_paused)
+    monkeypatch.setattr(agents_service.router_inference, "release_checkpoint_unless_paused", fake_release_unless_paused)
 
 
 async def test_resume_requires_thread_id_400(client, agents_service, internal_headers, monkeypatch):

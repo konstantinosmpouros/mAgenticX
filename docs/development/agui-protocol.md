@@ -225,9 +225,13 @@ Legacy two-tuple `(msg, meta)` messages mode chunks are also handled by extracti
 
 Used for streaming token-by-token output. The payload is a single message object.
 
+**Summarization suppression.** deepagents/langchain compresses history via an internal LLM call. LangGraph streams that call's tokens on the `messages` channel (it carries no `nostream` tag), stamped `metadata.lc_source == "summarization"` on both the streamed chunks and the final aggregated message. That output is internal context bookkeeping — a `SESSION INTENT / SUMMARY / ARTIFACTS / NEXT STEPS` block — never the assistant's reply, so `_handle_messages_payload` returns early and drops any chunk carrying that marker. The guard runs **before** sub-agent wrapping, so it covers the orchestrator, sub-agents, and the manual `compact_conversation` tool (all route through the same summary model call). The compaction itself still happens; only its rendering is suppressed.
+
 ```mermaid
 flowchart TD
-    A["messages chunk"] --> B["_msg_kind(payload)"]
+    A["messages chunk"] --> Z{"metadata.lc_source\n== summarization?"}
+    Z -->|Yes| Y["return [] (suppress)"]
+    Z -->|No| B["_msg_kind(payload)"]
     B -->|"tool"| C["_emit_tool_message_result()"]
     B -->|"ai"| D["_extract_text_delta()"]
     D -->|empty| E["return []"]

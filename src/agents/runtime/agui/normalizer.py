@@ -161,6 +161,18 @@ class AGUIStreamNormalizer:
             - ToolMessage => tool results (result/end) ONLY if tool_call_id is pending and not ignored
         """
         out: List[bytes] = []
+
+        # deepagents/langchain summarization compresses history via an internal
+        # LLM call. LangGraph streams that call's tokens on the messages channel
+        # (it carries no `nostream` tag) stamped metadata.lc_source=="summarization"
+        # — both the streamed chunks and the final aggregated message. It is
+        # internal context bookkeeping, never the assistant's reply, so drop it
+        # before it renders as a "SESSION INTENT/SUMMARY/..." response. Runs
+        # before sub-agent wrapping in handle_chunk, so it covers the
+        # orchestrator, sub-agents, and the manual compact_conversation tool.
+        if isinstance(metadata, dict) and metadata.get("lc_source") == "summarization":
+            return out
+
         ns_label = self._resolve_namespace_label(namespace)
 
         kind = self._msg_kind(payload)

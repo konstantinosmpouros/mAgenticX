@@ -442,6 +442,24 @@ class FilesystemSettings(BaseSettings):
     input_max_files: int = Field(10, validation_alias="INPUT_MAX_FILES")
 
 
+class SummarizationSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    # Deep-agent context compaction thresholds. These fire LATER than
+    # deepagents' stock defaults (0.85 of the window / 170k tokens) and keep a
+    # larger recent window, so summarization stays rare in normal use. The
+    # fraction knobs apply to models that expose a token-window profile (e.g.
+    # openai:gpt-5 → 272k max_input_tokens → trigger at 0.92·272k ≈ 250k); the
+    # token/message knobs are the fallback for profile-less models, where a
+    # fraction trigger is invalid. The middleware's ContextOverflowError path
+    # still force-compacts if a provider rejects an over-budget request, so a
+    # high trigger cannot cause a hard failure — only a (cheap) late retry.
+    trigger_fraction: float = Field(0.92, validation_alias="SUMMARIZATION_TRIGGER_FRACTION")
+    keep_fraction: float = Field(0.30, validation_alias="SUMMARIZATION_KEEP_FRACTION")
+    trigger_tokens: int = Field(200000, validation_alias="SUMMARIZATION_TRIGGER_TOKENS")
+    keep_messages: int = Field(20, validation_alias="SUMMARIZATION_KEEP_MESSAGES")
+
+
 # ---------------------------------------------------------------------------
 # Top-level settings
 # ---------------------------------------------------------------------------
@@ -463,6 +481,7 @@ class Settings(BaseSettings):
     workflows: WorkflowsSettings = Field(default_factory=WorkflowsSettings)
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
+    summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":

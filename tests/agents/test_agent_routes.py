@@ -53,7 +53,7 @@ async def test_agents_manifest_route_returns_sorted_manifests(client, agents_ser
         "z-agent": SimpleNamespace(manifest={"id": "2", "slug": "z-agent", "name": "Z Agent", "type": "langgraph", "description": "Zed", "icon": "z"}),
         "a-agent": SimpleNamespace(manifest={"id": "1", "slug": "a-agent", "name": "A Agent", "type": "langgraph", "description": "Alpha", "icon": "a"}),
     }
-    monkeypatch.setattr(agents_service.main, "AGENT_REGISTRY", registry)
+    monkeypatch.setattr(agents_service.router_catalog, "AGENT_REGISTRY", registry)
 
     response = await client.get("/agents", headers=internal_headers)
 
@@ -62,7 +62,7 @@ async def test_agents_manifest_route_returns_sorted_manifests(client, agents_ser
 
 
 async def test_dictation_route_transcribes_audio(client, agents_service, internal_headers, monkeypatch):
-    monkeypatch.setattr(agents_service.main, "get_openai_client", lambda: _FakeOpenAIClient())
+    monkeypatch.setattr(agents_service.router_voice, "get_openai_client", lambda: _FakeOpenAIClient())
 
     response = await client.post(
         "/dictate/transcribe",
@@ -108,12 +108,12 @@ async def test_stream_route_forwards_chunks_from_agent_runtime(
             manifest={"id": "1", "slug": "demo-agent", "name": "Demo Agent", "type": "langgraph", "description": "Demo", "icon": "bot"},
         )
     }
-    monkeypatch.setattr(agents_service.main, "AGENT_REGISTRY", registry)
-    monkeypatch.setattr(agents_service.main, "mcp_session_context", lambda: _FakeSessionContext())
+    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
+    monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
     async def fake_load_mcp_tools(session):
         return [{"name": "sql_query"}]
 
-    monkeypatch.setattr(agents_service.main, "load_mcp_tools", fake_load_mcp_tools)
+    monkeypatch.setattr(agents_service.router_inference, "load_mcp_tools", fake_load_mcp_tools)
 
     response = await client.post(
         "/agents/demo-agent/stream",
@@ -141,7 +141,7 @@ async def test_stream_route_returns_400_when_agent_initialization_fails(
             manifest={"id": "1", "slug": "bad-agent", "name": "Bad Agent", "type": "langgraph", "description": "Bad", "icon": "bot"},
         )
     }
-    monkeypatch.setattr(agents_service.main, "AGENT_REGISTRY", registry)
+    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
 
     response = await client.post(
         "/agents/bad-agent/stream",
@@ -165,13 +165,13 @@ async def test_stream_route_encodes_runtime_errors(
             manifest={"id": "1", "slug": "demo-agent", "name": "Demo Agent", "type": "langgraph", "description": "Demo", "icon": "bot"},
         )
     }
-    monkeypatch.setattr(agents_service.main, "AGENT_REGISTRY", registry)
-    monkeypatch.setattr(agents_service.main, "mcp_session_context", lambda: _FakeSessionContext())
+    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
+    monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
 
     async def fake_load_mcp_tools(session):
         return []
 
-    monkeypatch.setattr(agents_service.main, "load_mcp_tools", fake_load_mcp_tools)
+    monkeypatch.setattr(agents_service.router_inference, "load_mcp_tools", fake_load_mcp_tools)
 
     response = await client.post(
         "/agents/demo-agent/stream",

@@ -10,12 +10,12 @@ async def test_tools_route_uses_cached_manifests(client, agents_service, interna
         description="Run a SQL query",
         parameter_count=1,
     )
-    monkeypatch.setattr(agents_service.main, "get_cached_tool_manifests", lambda: [manifest])
+    monkeypatch.setattr(agents_service.router_catalog, "get_cached_tool_manifests", lambda: [manifest])
 
     async def should_not_refresh():
         raise AssertionError("list_mcp_tools should not run when cache is warm")
 
-    monkeypatch.setattr(agents_service.main, "list_mcp_tools", should_not_refresh)
+    monkeypatch.setattr(agents_service.router_catalog, "list_mcp_tools", should_not_refresh)
 
     response = await client.get("/tools", headers=internal_headers)
 
@@ -32,13 +32,13 @@ async def test_tools_route_refreshes_cache_when_empty(client, agents_service, in
     )
     cache_state = {"items": []}
 
-    monkeypatch.setattr(agents_service.main, "get_cached_tool_manifests", lambda: cache_state["items"])
+    monkeypatch.setattr(agents_service.router_catalog, "get_cached_tool_manifests", lambda: cache_state["items"])
 
     async def fake_refresh():
         cache_state["items"] = [manifest]
         return []
 
-    monkeypatch.setattr(agents_service.main, "list_mcp_tools", fake_refresh)
+    monkeypatch.setattr(agents_service.router_catalog, "list_mcp_tools", fake_refresh)
 
     response = await client.get("/tools", headers=internal_headers)
 
@@ -47,12 +47,12 @@ async def test_tools_route_refreshes_cache_when_empty(client, agents_service, in
 
 
 async def test_tools_route_returns_502_when_gateway_fails(client, agents_service, internal_headers, monkeypatch):
-    monkeypatch.setattr(agents_service.main, "get_cached_tool_manifests", lambda: [])
+    monkeypatch.setattr(agents_service.router_catalog, "get_cached_tool_manifests", lambda: [])
 
     async def fake_refresh():
-        raise agents_service.main.MCPToolsClientError("gateway unavailable")
+        raise agents_service.mcp_tools.MCPToolsClientError("gateway unavailable")
 
-    monkeypatch.setattr(agents_service.main, "list_mcp_tools", fake_refresh)
+    monkeypatch.setattr(agents_service.router_catalog, "list_mcp_tools", fake_refresh)
 
     response = await client.get("/tools", headers=internal_headers)
 

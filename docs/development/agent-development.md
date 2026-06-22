@@ -409,6 +409,27 @@ All three are created automatically if they do not exist. `FilesystemBackend(roo
 | `load_memory()` | Returns `None` | Using a persistent memory backend |
 | `load_agent_md()` | Auto-discovers `./AGENT.md` | Multiple or non-standard instruction files |
 | `register_subagents()` | Returns `None` | Agent has specialist sub-agents |
+| `default_middleware(model, backend)` | `ToolErrorMiddleware` + configurable summarization | Add, drop, or reconfigure the agent's middleware stack |
+
+#### 7b. Customize the middleware stack
+
+Deep-agent middleware lives in [`src/agents/runtime/middlewares/`](../../src/agents/runtime/middlewares/) — **one module per middleware**:
+
+- `tool_error.py` — `ToolErrorMiddleware`: a tool exception becomes an error `ToolMessage` instead of aborting the run (also injected into every sub-agent via `_inject_tool_error_middleware`).
+- `summarization.py` — `ConfigurableSummarizationMiddleware` + `build_summarization_middleware()` + `exclude_stock_summarization()`.
+
+The stack is **per implementation**. The base `build_deep_agent()` uses `self.default_middleware(model, backend)` unless you pass an explicit `middleware=[...]`, so a concrete agent customizes the stack by overriding `default_middleware` or by passing a list:
+
+```python
+def default_middleware(self, model, backend):
+    base = super().default_middleware(model, backend)   # [ToolError, summarization]
+    return [*base, MyPolicyMiddleware()]                # add one
+    # or return [ToolErrorMiddleware()]                 # opt out of summarization entirely
+```
+
+**Configurable summarization.** `create_deep_agent` always auto-injects deepagents' own stock `SummarizationMiddleware` and exposes no way to tune its trigger. So `build_deep_agent` calls `exclude_stock_summarization(model)` — which registers a `HarnessProfile(excluded_middleware={"SummarizationMiddleware"})` for that model spec (additive/idempotent) — and `default_middleware` adds `build_summarization_middleware(model, backend)` in its place. The replacement is a thin subclass (`ConfigurableSummarizationMiddleware`) with a distinct `.name`, so the exclusion drops **only** the stock instance and leaves ours; it inherits all stock behaviour (history offload to `/conversation_history/`, `ContextOverflowError` fallback, tool-arg truncation). Thresholds come from `SummarizationSettings` in `core/settings.py` and fire **later** than deepagents' stock 0.85-of-window / 170k-token defaults (fraction knobs for profile-bearing models like `openai:gpt-5`, an absolute-token fallback for profile-less ones). The exclusion is keyed to the model spec, so sub-agents on a different model keep their own stock summarizer.
+
+> The summarization model call streams its tokens on the `messages` channel tagged `metadata.lc_source == "summarization"`. The AG-UI normalizer drops those so the compaction summary never renders as the assistant's reply — see [agui-protocol.md § Messages Mode](agui-protocol.md).
 
 #### 8. Reserved tool names
 
@@ -755,7 +776,10 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 | --- | --- | --- |
 | Base agent class | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
 | LangGraph agent base | [src/agents/runtime/langgraph_agent.py](../../src/agents/runtime/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
-| Deep agent base | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent`, lifecycle hooks, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` |
+| Deep agent base | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` |
+| Agent middleware | [src/agents/runtime/middlewares/](../../src/agents/runtime/middlewares/) | `tool_error.py` (`ToolErrorMiddleware`), `summarization.py` (`ConfigurableSummarizationMiddleware`, `build_summarization_middleware()`, `exclude_stock_summarization()`) |
+| Shared tools | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | Custom tool definitions attached via `attach_tools()` |
+| Summarization settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `SummarizationSettings` — `SUMMARIZATION_TRIGGER_FRACTION`, `_KEEP_FRACTION`, `_TRIGGER_TOKENS`, `_KEEP_MESSAGES` |
 | Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` |
 | Copy-on-fork seeding | [src/agents/runtime/checkpointer/fork.py](../../src/agents/runtime/checkpointer/fork.py) | `seed_thread_from_checkpoint()` |
 | Checkpointer lifespan + setup | [src/agents/main.py](../../src/agents/main.py) | `_lifespan` — pool open, `set_checkpointer`, `.setup()` |

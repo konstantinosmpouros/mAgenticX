@@ -1,8 +1,8 @@
-from utils.checkpointer import release_checkpoint_unless_paused
+from utils.checkpointer import emit_checkpoint_committed, release_checkpoint_unless_paused
 from utils.prompts import normalise_user_input, make_merge_with_template
 from utils.title import generate_title
 from utils.suggestions import generate_suggestions
-from utils.speech import generate_read_aloud_audio
+from utils.speech import generate_read_aloud_audio, normalize_realtime_voice
 from utils.skills import (
     disable_user_agent_skill,
     enable_user_agent_skill,
@@ -22,6 +22,8 @@ from utils.mcp_tools import (
 
 __all__ = [
     "release_checkpoint_unless_paused",
+    "emit_checkpoint_committed",
+    "normalize_realtime_voice",
     "normalise_user_input",
     "make_merge_with_template",
     "generate_title",

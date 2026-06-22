@@ -186,6 +186,50 @@ def test_messages_other_kind_ignored(agents_service):
 
 
 # ----------------------------------------------------------------------------
+# messages mode — summarization suppression
+#
+# deepagents/langchain compresses history via an internal LLM call whose tokens
+# stream on the messages channel tagged metadata.lc_source=="summarization". It
+# must never render as the assistant's reply (the "SESSION INTENT/SUMMARY/..."
+# leak). The normalizer drops any messages-mode chunk carrying that marker.
+# ----------------------------------------------------------------------------
+def test_summarization_ai_chunk_suppressed(agents_service):
+    norm = _norm(agents_service)
+    chunk = (
+        "messages",
+        AIMessageChunk(content="## SESSION INTENT\nSummarize the PDF."),
+        {"langgraph_node": "model", "lc_source": "summarization"},
+    )
+    assert norm.handle_chunk(chunk) == []
+
+
+def test_summarization_then_real_answer_only_emits_answer(agents_service):
+    norm = _norm(agents_service)
+    # internal summarization stream — suppressed
+    norm.handle_chunk(
+        ("messages", AIMessageChunk(content="## SUMMARY\nstuff"), {"lc_source": "summarization"})
+    )
+    # the real reply that follows — must still render, starting cleanly
+    out = norm.handle_chunk(
+        ("messages", AIMessageChunk(content="Here is the real answer."), {"langgraph_node": "model"})
+    )
+    assert _types(out) == ["TEXT_MESSAGE_START", "TEXT_MESSAGE_CHUNK"]
+    assert _decode(out[-1])["delta"] == "Here is the real answer."
+
+
+def test_summarization_suppressed_in_subagent_namespace(agents_service):
+    norm = _norm(agents_service)
+    chunk = (
+        ("tools:sub-1",),
+        "messages",
+        AIMessageChunk(content="## NEXT STEPS\nkeep going"),
+        {"langgraph_node": "model", "lc_source": "summarization"},
+    )
+    # Guard runs before sub-agent wrapping, so nothing is emitted/wrapped.
+    assert norm.handle_chunk(chunk) == []
+
+
+# ----------------------------------------------------------------------------
 # messages mode — ToolMessage results
 # ----------------------------------------------------------------------------
 def test_tool_message_result_only_if_pending(agents_service):

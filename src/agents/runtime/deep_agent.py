@@ -12,7 +12,11 @@ from langgraph.types import Command
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
-from runtime.tool_error_middleware import ToolErrorMiddleware
+from runtime.middlewares import (
+    ToolErrorMiddleware,
+    build_summarization_middleware,
+    exclude_stock_summarization,
+)
 from runtime.filesystem import (
     conversation_root as _conversation_root,
     ensure_user_agent_filesystem,
@@ -355,6 +359,28 @@ class DeepAgent(BaseAgent, ABC):
                 augmented.append(spec)
         return augmented
 
+
+    def default_middleware(self, model: Any, backend: Any) -> list[Any]:
+        """The middleware stack every deep agent gets unless it overrides this.
+
+        Override in a concrete agent to add, drop, or reconfigure middleware —
+        e.g. a different summarization trigger, an extra policy layer, or no
+        summarization at all (return a list without it). ``model`` is the same
+        value passed to ``build_deep_agent``; ``backend`` is the shared
+        CompositeBackend factory so the summarizer offloads to the same
+        per-conversation disk as the agent's filesystem tools.
+
+        - ``ToolErrorMiddleware`` — a tool exception becomes an error
+          ToolMessage instead of aborting the run (also injected into
+          sub-agents via ``_inject_tool_error_middleware``).
+        - configurable summarization — replaces deepagents' stock summarizer
+          (dropped in ``build_deep_agent``) with our env-tuned thresholds.
+        """
+        return [
+            ToolErrorMiddleware(),
+            build_summarization_middleware(model, backend),
+        ]
+
     def build_deep_agent(
         self,
         *,
@@ -362,6 +388,7 @@ class DeepAgent(BaseAgent, ABC):
         system_prompt: Any = None,
         subagents: SubAgentsT = None,
         interrupt_on: dict[str, Any] | None = None,
+        middleware: Optional[List[Any]] = None,
     ) -> Any:
         """Assemble the runnable with the fixed, plug-and-play filesystem wiring
         injected from the base — memory, skills, the per-(user, agent,
@@ -371,7 +398,18 @@ class DeepAgent(BaseAgent, ABC):
         this from ``register_agent()`` and supply only what differs: model,
         system prompt, sub-agents, and HITL gating. Agent-specific tools come
         from ``self.tools`` (populate them via ``attach_tools()``).
+
+        Middleware is per-implementation: ``middleware`` defaults to
+        ``default_middleware(model, backend)``; pass an explicit list (or
+        override ``default_middleware``) to customise the stack. deepagents
+        always auto-injects its own stock ``SummarizationMiddleware``, so we
+        drop it here — our tuned summarizer in the stack becomes the only one
+        (and if the stack carries none, the agent simply runs without
+        auto-compaction).
         """
+        backend = self._build_composite_backend()
+        stack = middleware if middleware is not None else self.default_middleware(model, backend)
+        exclude_stock_summarization(model if isinstance(model, str) else "")
         return create_deep_agent(
             model=model,
             name=self.name,
@@ -379,13 +417,11 @@ class DeepAgent(BaseAgent, ABC):
             system_prompt=system_prompt,
             subagents=self._inject_tool_error_middleware(subagents),
             interrupt_on=interrupt_on,
-            # A tool exception becomes an error ToolMessage instead of aborting
-            # the run; injected into sub-agents too (see _inject_tool_error_middleware).
-            middleware=[ToolErrorMiddleware()],
+            middleware=stack,
             # Fixed filesystem — same mounts + permissions for every deep agent.
             memory=self.agent_md_paths,
             skills=self.skills_paths,
-            backend=self._build_composite_backend(),
+            backend=backend,
             permissions=self._build_workspace_permissions(),
             context_schema=self.context,
             checkpointer=self.checkpointer,

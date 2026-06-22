@@ -14,7 +14,7 @@ async def test_generate_conversation_title_route_returns_model_output(
             titles=["Quarterly sales review", "Sales by region", "Revenue trend analysis"]
         )
 
-    monkeypatch.setattr(agents_service.main, "generate_title", fake_generate_title)
+    monkeypatch.setattr(agents_service.router_generation, "generate_title", fake_generate_title)
 
     response = await client.post(
         "/titles/generate",
@@ -37,7 +37,7 @@ async def test_generate_conversation_title_route_surfaces_failures(
     async def fake_generate_title(req):
         raise HTTPException(status_code=502, detail="Failed to generate title: model error")
 
-    monkeypatch.setattr(agents_service.main, "generate_title", fake_generate_title)
+    monkeypatch.setattr(agents_service.router_generation, "generate_title", fake_generate_title)
 
     response = await client.post(
         "/titles/generate",

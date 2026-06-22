@@ -49,6 +49,14 @@ def _load_agents_service(monkeypatch):
 
     return SimpleNamespace(
         main=main_module,
+        # Route handlers live in router/*.py; endpoint deps (AGENT_REGISTRY,
+        # generate_title, list_mcp_tools, httpx, …) are looked up in the router
+        # module's namespace, so tests patch there, not on `main`.
+        router_catalog=importlib.import_module("router.catalog"),
+        router_generation=importlib.import_module("router.generation"),
+        router_voice=importlib.import_module("router.voice"),
+        router_inference=importlib.import_module("router.inference"),
+        router_skills=importlib.import_module("router.skills"),
         schemas=schemas_module,
         prompts=prompts_module,
         title=title_module,

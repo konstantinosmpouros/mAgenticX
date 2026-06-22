@@ -14,7 +14,7 @@ async def test_generate_conversation_suggestions_route_returns_model_output(
             suggestions=["Review revenue", "Compare regions"]
         )
 
-    monkeypatch.setattr(agents_service.main, "generate_suggestions", fake_generate_suggestions)
+    monkeypatch.setattr(agents_service.router_generation, "generate_suggestions", fake_generate_suggestions)
 
     response = await client.post(
         "/suggestions/generate",
@@ -35,7 +35,7 @@ async def test_generate_conversation_suggestions_route_surfaces_failures(
     async def fake_generate_suggestions(req):
         raise HTTPException(status_code=502, detail="Suggestion generation returned an invalid response.")
 
-    monkeypatch.setattr(agents_service.main, "generate_suggestions", fake_generate_suggestions)
+    monkeypatch.setattr(agents_service.router_generation, "generate_suggestions", fake_generate_suggestions)
 
     response = await client.post(
         "/suggestions/generate",
@@ -58,7 +58,7 @@ async def test_read_aloud_route_streams_audio(
         assert req.voice == "alloy"
         return b"audio-bytes"
 
-    monkeypatch.setattr(agents_service.main, "generate_read_aloud_audio", fake_generate_read_aloud_audio)
+    monkeypatch.setattr(agents_service.router_voice, "generate_read_aloud_audio", fake_generate_read_aloud_audio)
 
     response = await client.post(
         "/speech/read-aloud",
@@ -81,7 +81,7 @@ async def test_read_aloud_route_surfaces_validation_failure(
     async def fake_generate_read_aloud_audio(req):
         raise HTTPException(status_code=400, detail="Text is required for read-aloud audio.")
 
-    monkeypatch.setattr(agents_service.main, "generate_read_aloud_audio", fake_generate_read_aloud_audio)
+    monkeypatch.setattr(agents_service.router_voice, "generate_read_aloud_audio", fake_generate_read_aloud_audio)
 
     response = await client.post(
         "/speech/read-aloud",
