@@ -263,6 +263,23 @@ class MessageTable(Base):
     is_error = Column(Boolean, nullable=False, server_default="false")
     error_message = Column(Text, nullable=True)
 
+    # ------------------------------------------------------------------
+    # Durable checkpointer lineage (agents-service AsyncPostgresSaver).
+    # Set only on AI messages produced by an inference run; NULL on user
+    # messages and on AI messages that predate this migration (those branches
+    # have no durable checkpoint and take the full-history cold-seed path on
+    # their next turn, then become full-fidelity).
+    #
+    # checkpoint_thread_id — the per-branch LangGraph thread this run resumed
+    #   from / created. Shared across every run that linearly extends the same
+    #   root->leaf branch; a fresh id is minted on new/edit/retry/shared_continue.
+    # checkpoint_id — the durable checkpoint head this run committed (captured
+    #   from the agent's CHECKPOINT_COMMITTED event). The next `send` resumes
+    #   from here; edit/retry fork from the target ancestor's head.
+    # ------------------------------------------------------------------
+    checkpoint_thread_id = Column(String, nullable=True, index=True)
+    checkpoint_id = Column(String, nullable=True)
+
     # Raw AGUI events sequence for replay/debugging
     raw_events = Column(JSON, nullable=True)           # array of raw AGUI event dicts in order
 

@@ -11,7 +11,7 @@ from langgraph.types import Command
 
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
-from runtime.checkpointer import get_or_create_checkpointer
+from runtime.checkpointer import get_checkpointer
 from runtime.tool_error_middleware import ToolErrorMiddleware
 from runtime.filesystem import (
     conversation_root as _conversation_root,
@@ -128,10 +128,15 @@ class DeepAgent(BaseAgent, ABC):
         self.sub_agents: SubAgentsT = None
         self.agent: Any = None
 
-        # AGUI components
+        # AGUI components. The normalizer stamps AG-UI message_id + keys its
+        # sub-agent namespace bindings on the per-RUN id (the assistant message
+        # id), NOT the checkpointer thread_id — which is now branch-scoped and
+        # shared across a branch's runs. Read run_id from context; fall back to
+        # the LangGraph thread_id for thread-less / legacy callers.
         self.agui_emitter: AGUIEmitter = AGUIEmitter()
         self.agui_normalizer: AGUIStreamNormalizer = AGUIStreamNormalizer(
-            thread_id=self.run_config.get("configurable", {}).get("thread_id", "")
+            thread_id=self.context.get("run_id")
+            or self.run_config.get("configurable", {}).get("thread_id", "")
         )
 
 
@@ -204,18 +209,22 @@ class DeepAgent(BaseAgent, ABC):
         live runtime. Three FilesystemBackends are mounted at structurally
         disjoint roots so no route can resolve into another's tree:
 
-            /memories/     → <user_root>/memory/                          (AGENT.md only)
-            /skills/       → <user_root>/agents/<self.name>/skills/       (user-enabled skills)
-            /conversation/ → <user_root>/agents/<self.name>/<conv_id>/    (this chat only)
-            default        → StateBackend(rt)                             (ephemeral scratch)
+            /memories/            → <user_root>/memory/                       (AGENT.md only)
+            /skills/              → <user_root>/agents/<self.name>/skills/    (user-enabled skills)
+            /conversation/input/  → <conv_id>/input/                          (user uploads, read-only)
+            /conversation/output/ → <conv_id>/output/                         (agent artifacts, read-write)
+            /conversation/        → <user_root>/agents/<self.name>/<conv_id>/ (this chat only)
+            default               → StateBackend(rt)                          (ephemeral scratch)
 
         Per-conversation isolation: ``/conversation/`` is rooted at a
         single ``<conv_id>`` directory, so files written in one chat are
         not visible from the next. The agent persists durable
         cross-conversation context by editing ``/memories/AGENT.md``
-        directly. (Future: split ``/conversation/`` into ``input/``
-        read-only + ``output/`` read-write subdirectories for uploaded
-        files vs agent-generated artifacts.)
+        directly. ``input/`` holds user-uploaded files (the bridge seeds them
+        before each run and the agent reads them on demand — write-denied);
+        ``output/`` is where the agent writes generated artifacts. Both are
+        subdirs of ``<conv_id>`` so they also surface under ``/conversation/``;
+        the dedicated longer-prefix routes give the write-deny a clean target.
 
         The central skills registry is intentionally **not mounted**. It is
         a user-facing catalogue browsed via the ProfilePanel Skills tab —
@@ -236,6 +245,13 @@ class DeepAgent(BaseAgent, ABC):
         conversation_history_path = conv_path / "conversation_history"
         large_tool_results_path.mkdir(parents=True, exist_ok=True)
         conversation_history_path.mkdir(parents=True, exist_ok=True)
+        # input/ (read-only user uploads, seeded by the bridge) + output/
+        # (read-write agent artifacts). Subdirs of conv_path → longer-prefix
+        # routes win over the /conversation/ mount they overlap.
+        input_path = conv_path / "input"
+        output_path = conv_path / "output"
+        input_path.mkdir(parents=True, exist_ok=True)
+        output_path.mkdir(parents=True, exist_ok=True)
 
         def factory(rt: Any) -> CompositeBackend:
             return CompositeBackend(
@@ -246,6 +262,12 @@ class DeepAgent(BaseAgent, ABC):
                     ),
                     "/skills/": FilesystemBackend(
                         root_dir=str(skills_path), virtual_mode=True
+                    ),
+                    "/conversation/input/": FilesystemBackend(
+                        root_dir=str(input_path), virtual_mode=True
+                    ),
+                    "/conversation/output/": FilesystemBackend(
+                        root_dir=str(output_path), virtual_mode=True
                     ),
                     "/conversation/": FilesystemBackend(
                         root_dir=str(conv_path), virtual_mode=True
@@ -287,13 +309,17 @@ class DeepAgent(BaseAgent, ABC):
           library's own offload writes go through the backend, not these tools,
           so they are unaffected.
 
+        - ``/conversation/input/`` — user uploads are read-only; the agent
+          writes generated artifacts to ``/conversation/output/`` instead.
+
         Writes stay open where the agent legitimately needs them —
-        ``/conversation/`` (artifacts) and ``/memories/AGENT.md`` (durable
-        memory). There is deliberately NO catch-all deny: a read-deny would block
-        the agent from reading its offloaded ``/large_tool_results/``. Every path
-        must map to a mounted route (deepagents' ``_all_paths_scoped_to_routes``
-        guard); ``{,/**}`` matches the mount root, the root with a trailing
-        slash, and everything beneath it.
+        ``/conversation/output/`` and ``/conversation/`` (artifacts) and
+        ``/memories/AGENT.md`` (durable memory). There is deliberately NO
+        catch-all deny: a read-deny would block the agent from reading its
+        offloaded ``/large_tool_results/`` or its uploaded ``/conversation/input/``.
+        Every path must map to a mounted route (deepagents'
+        ``_all_paths_scoped_to_routes`` guard); ``{,/**}`` matches the mount
+        root, the root with a trailing slash, and everything beneath it.
 
         Caveat: deepagents does not yet support tool-level permissions once the
         backend provides command execution (``SandboxBackendProtocol``) — revisit
@@ -303,6 +329,9 @@ class DeepAgent(BaseAgent, ABC):
             FilesystemPermission(operations=["write"], paths=["/skills{,/**}"], mode="deny"),
             FilesystemPermission(operations=["write"], paths=["/large_tool_results{,/**}"], mode="deny"),
             FilesystemPermission(operations=["write"], paths=["/conversation_history{,/**}"], mode="deny"),
+            # User uploads are read-only; the agent writes artifacts to
+            # /conversation/output/ instead.
+            FilesystemPermission(operations=["write"], paths=["/conversation/input{,/**}"], mode="deny"),
         ]
 
 
@@ -476,7 +505,9 @@ class DeepAgent(BaseAgent, ABC):
         """
         thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
         if self.checkpointer is None and thread_id:
-            self.checkpointer = await get_or_create_checkpointer(thread_id)
+            # Bind the process-wide durable saver (shared across all threads).
+            # Thread-less runs fall back to an ephemeral MemorySaver in build().
+            self.checkpointer = get_checkpointer()
         self.build()
 
 

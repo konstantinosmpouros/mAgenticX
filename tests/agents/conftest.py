@@ -65,6 +65,7 @@ def _load_agents_service(monkeypatch):
         # runtime
         base_agent=importlib.import_module("runtime.base_agent"),
         checkpointer_store=importlib.import_module("runtime.checkpointer.store"),
+        checkpointer_fork=importlib.import_module("runtime.checkpointer.fork"),
         checkpointer_util=importlib.import_module("utils.checkpointer"),
         # skill registry + filesystem
         user_registry=importlib.import_module("runtime.skill_registry.user_registry"),

@@ -548,8 +548,10 @@ In `["messages", "updates"]` mode, call the `write_todos` tool instead — the n
 In `["messages", "updates"]` mode, HITL is handled automatically: any `__interrupt__` in the LangGraph update payload becomes a `HITL_INTERRUPT` custom event. The graph must be compiled with a `checkpointer`:
 
 ```python
-# LangGraph agents: the InMemorySaver is created automatically in build()
-self.memory_saver = InMemorySaver()
+# LangGraph agents: build() compiles against the checkpointer automatically.
+# When the bridge supplies a branch thread_id (the normal case) that is the
+# shared durable AsyncPostgresSaver (get_checkpointer()); a thread-less custom
+# call falls back to an ephemeral InMemorySaver.
 graph.compile(checkpointer=self.memory_saver)
 
 # In a node:
@@ -600,8 +602,8 @@ class OmniAgent(DeepAgent):
 
 When the user approves/rejects, the bridge POSTs `AgentResumeRequest{thread_id, interrupt_id, decision, reason, value}` to `/agents/{slug}/resume`. The endpoint:
 
-1. Reads the cached `InMemorySaver` for `thread_id` from `runtime/checkpointer/store.py` (it was populated by the original `/stream` call's `build()`).
-2. Calls `compiled_graph.get_state(config)` to inspect `snapshot.interrupts`.
+1. Compiles a fresh agent against the shared durable `AsyncPostgresSaver` (`get_checkpointer()` from `runtime/checkpointer/store.py`) and selects the paused state via `run_config.configurable.thread_id` — the same thread the original `/stream` leg wrote. There is no per-thread cache to look up; the saver is process-wide and the thread is durable in the `agent_runtime` DB.
+2. Calls `compiled_graph.aget_state(config)` to inspect `snapshot.interrupts`.
 3. Verifies `snapshot.interrupts[0].id == req.interrupt_id` (when supplied); 409s on a stale click.
 4. Computes `decision_count = len(snapshot.interrupts[0].value.action_requests)` so the resume payload has the exact length the middleware validates against.
 5. Builds `Command(resume={"decisions": [<decision_dict>] * decision_count})` and feeds it to `agent.astream(payload={"messages": []}, command=resume_command)`.
@@ -611,11 +613,18 @@ Decision dicts:
 - **Approve:** `{"type": "approve"}`. Tool executes. The `reason`/`value` from the bridge are not used — LangChain's `ApproveDecision` has no `message` slot.
 - **Reject:** `{"type": "reject", "message": req.reason or "User rejected this action."}`. The middleware injects a `ToolMessage(content=<message>)` instead of running the tool, then **lets the agent loop continue** — reject is non-terminal in LangChain. The default message is non-optional; without it the middleware raises `KeyError: 'message'`.
 
-#### Process-level checkpointer cache
+#### Durable Postgres checkpointer
 
-Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), so the in-memory `InMemorySaver` would normally be garbage-collected between calls. [`runtime/checkpointer/store.py`](../../src/agents/runtime/checkpointer/store.py) keeps one shared `InMemorySaver` per `thread_id` (default 256-entry LRU), so the resume call can rehydrate the same checkpoint the original stream wrote to. Both `LangGraphAgent.build()` and `DeepAgent.build()` look up `thread_id` in this cache before creating a new saver. The cache is process-local; for multi-replica deploys, swap to `PostgresSaver` from `langgraph-checkpoint-postgres`.
+Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), but they all compile against **one shared process-wide `AsyncPostgresSaver`** opened in `main._lifespan` over a long-lived `psycopg_pool.AsyncConnectionPool` and installed via `set_checkpointer()`. [`runtime/checkpointer/store.py`](../../src/agents/runtime/checkpointer/store.py) is just the accessor: `set_checkpointer()` / `get_checkpointer()` / `has_checkpointer_initialized()`. There is no per-thread cache and no LRU — checkpoints live durably in the `agent_runtime` Postgres database, keyed by `thread_id`. `.setup()` runs once at startup (advisory-locked). At-rest encryption (`EncryptedSerializer`) is enabled in prod via `LANGGRAPH_AES_KEY_FILE`. Both `LangGraphAgent.build()` and `DeepAgent.build()` compile against this shared saver.
 
-`thread_id` is `run.id` (set by the bridge), so each run owns an isolated checkpoint — branches, edits, and retries never share state. The checkpoint is treated as scratch space, not durable history: `/stream` releases any stale entry on entry (clean start), and at the end of every `/stream` / `/resume` leg [`utils.release_checkpoint_unless_paused`](../../src/agents/utils/checkpointer.py) probes `compiled.get_state(run_config).interrupts` — it keeps the saver only while a HITL interrupt is parked (so the next `/resume` can rehydrate) and calls `release_checkpointer(thread_id)` on any non-HITL terminal (completion, error, cancel). The 256-entry LRU is just a backstop for the case where a release is missed (e.g. hard cancel).
+**`thread_id` and `run_id` are now two distinct ids.** Previously a single `run.id` was the checkpoint key, the AG-UI `message_id`, and the namespace-binding key. They are now split:
+
+- **`run_config.configurable.thread_id`** is a **branch-scoped `checkpoint_thread_id`** — durable and **shared across every run on a branch** (a continue resumes the same thread; an edit/retry mints a fresh one). This is the LangGraph checkpoint key.
+- **`context.run_id`** is the per-run assistant-message id. The normalizer uses it for the AG-UI `message_id` and for the in-process `_THREAD_NAMESPACE_BINDINGS` key.
+
+**Copy-on-fork for edit/retry.** A fresh thread does not start empty: the bridge passes `fork_from: {thread_id, checkpoint_id}` in the stream config, and `/stream` seeds the new thread from the parent branch's committed checkpoint via [`runtime/checkpointer/fork.py`](../../src/agents/runtime/checkpointer/fork.py) `seed_thread_from_checkpoint()` (`aget_state` → `aupdate_state`) before running — so the new branch inherits the parent's state without mutating it.
+
+**Threads persist; the stream no longer wipes them.** Durable threads have no TTL and are reaped only on conversation delete (`adelete_thread`), so the old "release stale entry on `/stream` entry" line was removed — a re-issued run must keep its committed history. At the end of every `/stream` / `/resume` leg [`utils.release_checkpoint_unless_paused`](../../src/agents/utils/checkpointer.py) now probes `compiled.aget_state(run_config).interrupts` (async, since the saver is async) and **only drops the in-process namespace-binding cache** (keyed by `run_id`) when not paused — it **never deletes the Postgres checkpoint**.
 
 ---
 
@@ -654,10 +663,10 @@ Both `LangGraphAgent.build()` and `DeepAgent.build()` are called lazily on the f
 flowchart TD
     A["astream() called"] --> B{graph is None?}
     B -->|No| C["skip build — graph already compiled"]
-    B -->|Yes| D["memory_saver = InMemorySaver()"]
+    B -->|Yes| D["checkpointer = get_checkpointer()\n(durable AsyncPostgresSaver;\nephemeral InMemorySaver if no thread_id)"]
     D --> E["register_agents_and_nodes()"]
     E --> F{self.state and self.nodes defined?}
-    F -->|Yes| G["graph = StateGraph(self.state)\nregister_graph_nodes(graph)\nregister_graph_edges(graph)\ngraph.compile(checkpointer=memory_saver)"]
+    F -->|Yes| G["graph = StateGraph(self.state)\nregister_graph_nodes(graph)\nregister_graph_edges(graph)\ngraph.compile(checkpointer=checkpointer)"]
     F -->|No| H["graph = self.agents (direct agent, no StateGraph)"]
     G & H --> C
 ```
@@ -690,9 +699,9 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 - **`self.tools` is empty until `attach_tools()` is called.** `build()` runs after `attach_tools()` in the stream endpoint, so `register_agent()` and `register_nodes()` see the fully populated `self.tools` list. Do not access `self.tools` in `__init__` or class-level code — it will be empty.
 
-- **`run_config` defaults to a random `thread_id` if not provided.** HITL resume requires a `thread_id` that is stable across a run's `/stream` + `/resume` legs — the bridge sends `run.id` (not `conversation_id`), which satisfies that while keeping each run's checkpoint isolated from other branches/retries. If a custom client omits `run_config`, each stream call gets a fresh ephemeral graph state with no memory of prior turns.
+- **`run_config.configurable.thread_id` is the branch-scoped checkpoint key, not the run id.** The bridge sends a durable **`checkpoint_thread_id`** that is shared by every run on a branch, so HITL resume rehydrates the same paused state and a continue resumes the branch's prior turns. Edit/retry mint a fresh thread (seeded copy-on-fork). If a custom client omits `run_config`, `build()` falls back to an ephemeral `InMemorySaver` and the run has no durable memory of prior turns. The per-run identity the normalizer needs (AG-UI `message_id`, namespace bindings) comes from a separate `context.run_id`, **not** from `thread_id`.
 
-- **The normalizer's `thread_id` is fixed at construction time.** `AGUIStreamNormalizer(thread_id=...)` is initialized in `__init__`, using the `thread_id` from the config received at instantiation. Changing `run_config.configurable.thread_id` after construction has no effect on the normalizer.
+- **The normalizer keys AG-UI ids on `run_id`, not the checkpoint `thread_id`.** `AGUIStreamNormalizer` takes the per-run `run_id` (the assistant message id) at construction and uses it for the `message_id` it stamps on text events and as the `_THREAD_NAMESPACE_BINDINGS` key. Because the checkpoint `thread_id` is now shared across a branch's runs, it would be the wrong key for per-run AG-UI identity — that is exactly why the two ids were split.
 
 - **`stream_mode="custom"` bypasses the normalizer entirely.** In custom mode, `astream()` forwards str/bytes chunks directly as SSE. If you emit AG-UI events via the writer in custom mode, they go directly to the bridge. If you also return structured dicts (e.g., LangGraph `add_messages` reducer output), they are encoded as bytes and forwarded verbatim — they will not be parsed as AG-UI events.
 
@@ -746,7 +755,12 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 | --- | --- | --- |
 | Base agent class | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
 | LangGraph agent base | [src/agents/runtime/langgraph_agent.py](../../src/agents/runtime/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
-| Deep agent base | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent`, lifecycle hooks, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()` |
+| Deep agent base | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent`, lifecycle hooks, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` |
+| Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` |
+| Copy-on-fork seeding | [src/agents/runtime/checkpointer/fork.py](../../src/agents/runtime/checkpointer/fork.py) | `seed_thread_from_checkpoint()` |
+| Checkpointer lifespan + setup | [src/agents/main.py](../../src/agents/main.py) | `_lifespan` — pool open, `set_checkpointer`, `.setup()` |
+| Checkpointer settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `CheckpointerSettings` — `AGENT_RUNTIME_DATABASE_URL`, `LANGGRAPH_STRICT_MSGPACK`, `LANGGRAPH_AES_KEY_FILE` |
+| Namespace-cache release | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` (RAM cache only; never deletes Postgres) |
 | Agent discovery | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `_discover_agents()`, `AGENT_REGISTRY`, `AgentDefinition` |
 | Tool cache key logic | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `build_tool_cache_key()`, `_TOOL_SERVER_OVERRIDES`, `mcp_session_context()` |
 | AG-UI event emitter | [src/agents/runtime/protocols/agui/emitter.py](../../src/agents/runtime/protocols/agui/emitter.py) | `AGUIEmitter` — all emit methods |

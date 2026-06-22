@@ -55,12 +55,18 @@ services:
       - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
       - SKILLS_REGISTRY_GLOBAL_ROOT=/var/agents/skills_registry/global
       - SKILLS_REGISTRY_USERS_ROOT=/var/agents/skills_registry/users
+      # Durable LangGraph checkpointer — separate DB on the same Postgres
+      # instance. Dev is plaintext (no TLS, no encryption); prod wires TLS +
+      # an AES key (see docker-compose-denis.yaml).
+      - AGENT_RUNTIME_DATABASE_URL=postgresql://admin:admin@chat_postgres:5432/agent_runtime
+      - LANGGRAPH_STRICT_MSGPACK=true
     volumes:
       - agents_filesystem:/var/agents/filesystem
       - skills_registry_global:/var/agents/skills_registry/global
       - skills_registry_users:/var/agents/skills_registry/users
     depends_on:
       - rag_service
+      - chat_postgres
     restart: unless-stopped
     ports:
       - "8003:8003"

@@ -3,6 +3,7 @@ from utils.agents import (
     fetch_tools_from_agents_service,
     get_agent_by_id,
     get_cached_agents,
+    reap_conversation_runtime,
     sync_agents_with_service,
 )
 from utils.conversations import (
@@ -78,6 +79,7 @@ __all__ = [
     "transcribe_dictation_audio",
     "get_agent_by_id",
     "get_cached_agents",
+    "reap_conversation_runtime",
     "sync_agents_with_service",
     "prepare_inference_history",
     "validate_convId",

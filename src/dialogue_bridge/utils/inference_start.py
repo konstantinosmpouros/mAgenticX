@@ -96,6 +96,7 @@ async def start_inference_flow(
         message_path=message_path,
         enabled_tools=payload.enabledTools,
         agent=agent,
+        mode=mode,
     )
     conversation_id = conversation.id
     assistant_message_id = assistant_message.id

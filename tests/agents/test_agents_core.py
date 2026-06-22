@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -543,77 +544,28 @@ def test_settings_builds_with_proxy_secret(agents_service):
 
 
 # ---------------------------------------------------------------------------
-# runtime/checkpointer/store.py
+# runtime/checkpointer/store.py  (shared durable-saver accessor)
 # ---------------------------------------------------------------------------
-async def test_get_or_create_checkpointer_empty_thread_id(agents_service):
+def test_set_and_get_checkpointer(agents_service):
     store = agents_service.checkpointer_store
-    saver = await store.get_or_create_checkpointer("")
-    # Ephemeral saver — not registered in the cache.
-    assert saver is not None
-    assert await store.has_checkpointer("") is False
+    sentinel = object()
+    store.set_checkpointer(sentinel)
+    assert store.has_checkpointer_initialized() is True
+    assert store.get_checkpointer() is sentinel
+    # The accessor is the same handle every call (single process-wide saver).
+    assert store.get_checkpointer() is sentinel
 
 
-async def test_get_or_create_checkpointer_hit_and_miss(agents_service):
+def test_get_checkpointer_uninitialized_raises(agents_service, monkeypatch):
     store = agents_service.checkpointer_store
-    thread_id = "thread-hit-miss"
-    await store.release_checkpointer(thread_id)
-
-    created = await store.get_or_create_checkpointer(thread_id)
-    assert await store.has_checkpointer(thread_id) is True
-
-    again = await store.get_or_create_checkpointer(thread_id)
-    assert again is created
-
-    await store.release_checkpointer(thread_id)
-
-
-async def test_release_checkpointer(agents_service):
-    store = agents_service.checkpointer_store
-    thread_id = "thread-release"
-    await store.get_or_create_checkpointer(thread_id)
-    assert await store.has_checkpointer(thread_id) is True
-
-    await store.release_checkpointer(thread_id)
-    assert await store.has_checkpointer(thread_id) is False
-
-    # Releasing a missing thread is a no-op.
-    await store.release_checkpointer(thread_id)
-    # Empty thread id is an early-return no-op.
-    await store.release_checkpointer("")
-
-
-async def test_has_checkpointer_empty_thread_id(agents_service):
-    store = agents_service.checkpointer_store
-    assert await store.has_checkpointer("") is False
-
-
-async def test_get_or_create_checkpointer_lru_eviction(agents_service, monkeypatch):
-    store = agents_service.checkpointer_store
-
-    # Shrink the cap so eviction is cheap to exercise.
-    monkeypatch.setattr(store, "_MAX_ENTRIES", 3)
-    store._cache.clear()
-
-    a = await store.get_or_create_checkpointer("a")
-    await store.get_or_create_checkpointer("b")
-    await store.get_or_create_checkpointer("c")
-
-    # Touch "a" so "b" becomes the LRU entry.
-    touched = await store.get_or_create_checkpointer("a")
-    assert touched is a
-
-    # Adding a 4th unique entry evicts the LRU ("b").
-    await store.get_or_create_checkpointer("d")
-    assert await store.has_checkpointer("b") is False
-    assert await store.has_checkpointer("a") is True
-    assert await store.has_checkpointer("c") is True
-    assert await store.has_checkpointer("d") is True
-
-    store._cache.clear()
+    monkeypatch.setattr(store, "_checkpointer", None)
+    assert store.has_checkpointer_initialized() is False
+    with pytest.raises(RuntimeError):
+        store.get_checkpointer()
 
 
 # ---------------------------------------------------------------------------
-# utils/checkpointer.py
+# utils/checkpointer.py  (namespace-cache release — never deletes Postgres)
 # ---------------------------------------------------------------------------
 class _FakeSnapshot:
     def __init__(self, interrupts: Any) -> None:
@@ -621,12 +573,14 @@ class _FakeSnapshot:
 
 
 class _FakeCompiled:
+    """Stubs the async ``aget_state`` the durable saver exposes."""
+
     def __init__(self, snapshot: Any = None, raises: bool = False) -> None:
         self._snapshot = snapshot
         self._raises = raises
         self.calls: list[Any] = []
 
-    def get_state(self, run_config: Any) -> Any:
+    async def aget_state(self, run_config: Any) -> Any:
         self.calls.append(run_config)
         if self._raises:
             raise RuntimeError("probe failure")
@@ -639,14 +593,10 @@ class _FakeAgent:
         self.run_config = run_config
 
 
-async def test_release_checkpoint_unless_paused_empty_thread(agents_service, monkeypatch):
+async def test_release_checkpoint_unless_paused_empty_run_id(agents_service, monkeypatch):
     util = agents_service.checkpointer_util
     released: list[str] = []
-
-    async def fake_release(thread_id: str) -> None:
-        released.append(thread_id)
-
-    monkeypatch.setattr(util, "release_checkpointer", fake_release)
+    monkeypatch.setattr(util, "release_namespace_bindings", lambda run_id: released.append(run_id))
     await util.release_checkpoint_unless_paused(object(), "")
     assert released == []
 
@@ -654,67 +604,111 @@ async def test_release_checkpoint_unless_paused_empty_thread(agents_service, mon
 async def test_release_checkpoint_unless_paused_keeps_on_pending_interrupt(agents_service, monkeypatch):
     util = agents_service.checkpointer_util
     released: list[str] = []
-
-    async def fake_release(thread_id: str) -> None:
-        released.append(thread_id)
-
-    monkeypatch.setattr(util, "release_checkpointer", fake_release)
+    monkeypatch.setattr(util, "release_namespace_bindings", lambda run_id: released.append(run_id))
 
     agent = _FakeAgent(
         compiled=_FakeCompiled(snapshot=_FakeSnapshot(interrupts=["pending"])),
         run_config={"configurable": {"thread_id": "t1"}},
     )
-    await util.release_checkpoint_unless_paused(agent, "t1")
+    await util.release_checkpoint_unless_paused(agent, "run-1")
     assert released == []
 
 
 async def test_release_checkpoint_unless_paused_releases_when_no_interrupt(agents_service, monkeypatch):
     util = agents_service.checkpointer_util
     released: list[str] = []
-
-    async def fake_release(thread_id: str) -> None:
-        released.append(thread_id)
-
-    monkeypatch.setattr(util, "release_checkpointer", fake_release)
+    monkeypatch.setattr(util, "release_namespace_bindings", lambda run_id: released.append(run_id))
 
     agent = _FakeAgent(
         compiled=_FakeCompiled(snapshot=_FakeSnapshot(interrupts=[])),
         run_config={"configurable": {"thread_id": "t2"}},
     )
-    await util.release_checkpoint_unless_paused(agent, "t2")
-    assert released == ["t2"]
+    await util.release_checkpoint_unless_paused(agent, "run-2")
+    assert released == ["run-2"]
 
 
 async def test_release_checkpoint_unless_paused_releases_on_probe_failure(agents_service, monkeypatch):
     util = agents_service.checkpointer_util
     released: list[str] = []
-
-    async def fake_release(thread_id: str) -> None:
-        released.append(thread_id)
-
-    monkeypatch.setattr(util, "release_checkpointer", fake_release)
+    monkeypatch.setattr(util, "release_namespace_bindings", lambda run_id: released.append(run_id))
 
     agent = _FakeAgent(
         compiled=_FakeCompiled(raises=True),
         run_config={"configurable": {"thread_id": "t3"}},
     )
-    await util.release_checkpoint_unless_paused(agent, "t3")
-    assert released == ["t3"]
+    await util.release_checkpoint_unless_paused(agent, "run-3")
+    assert released == ["run-3"]
 
 
-async def test_release_checkpoint_unless_paused_no_get_state(agents_service, monkeypatch):
+async def test_release_checkpoint_unless_paused_no_aget_state(agents_service, monkeypatch):
     util = agents_service.checkpointer_util
     released: list[str] = []
+    monkeypatch.setattr(util, "release_namespace_bindings", lambda run_id: released.append(run_id))
 
-    async def fake_release(thread_id: str) -> None:
-        released.append(thread_id)
-
-    monkeypatch.setattr(util, "release_checkpointer", fake_release)
-
-    # Agent without a `.compiled.get_state` → falls straight to release.
+    # Agent without a `.compiled.aget_state` → falls straight to release.
     agent = _FakeAgent(compiled=None, run_config={})
-    await util.release_checkpoint_unless_paused(agent, "t4")
-    assert released == ["t4"]
+    await util.release_checkpoint_unless_paused(agent, "run-4")
+    assert released == ["run-4"]
+
+
+# ---------------------------------------------------------------------------
+# runtime/checkpointer/fork.py  (copy-on-fork seeding)
+# ---------------------------------------------------------------------------
+class _ForkGraph:
+    """Stub graph: records aupdate_state calls; aget_state returns canned snapshots."""
+
+    def __init__(self, states: dict[tuple, Any]) -> None:
+        # keyed by (thread_id, checkpoint_id|None)
+        self._states = states
+        self.updated: list[tuple[str, Any]] = []
+
+    async def aget_state(self, config: Any) -> Any:
+        cfg = config["configurable"]
+        return self._states.get((cfg["thread_id"], cfg.get("checkpoint_id")))
+
+    async def aupdate_state(self, config: Any, values: Any) -> None:
+        self.updated.append((config["configurable"]["thread_id"], values))
+
+
+async def test_fork_seeds_empty_target_from_source(agents_service):
+    fork = agents_service.checkpointer_fork
+    src_values = {"messages": ["m1", "m2"], "files": {"/x": 1}}
+    graph = _ForkGraph(
+        {
+            ("new", None): SimpleNamespace(values={}),          # target empty
+            ("src", "cp-9"): SimpleNamespace(values=src_values),  # source at fork point
+        }
+    )
+    ok = await fork.seed_thread_from_checkpoint(
+        graph=graph, source_thread_id="src", source_checkpoint_id="cp-9", target_thread_id="new"
+    )
+    assert ok is True
+    assert graph.updated == [("new", src_values)]
+
+
+async def test_fork_skips_when_target_already_seeded(agents_service):
+    fork = agents_service.checkpointer_fork
+    graph = _ForkGraph({("new", None): SimpleNamespace(values={"messages": ["existing"]})})
+    ok = await fork.seed_thread_from_checkpoint(
+        graph=graph, source_thread_id="src", source_checkpoint_id="cp-9", target_thread_id="new"
+    )
+    assert ok is True
+    assert graph.updated == []  # never re-seeds a non-empty target
+
+
+async def test_fork_returns_false_on_empty_source(agents_service):
+    fork = agents_service.checkpointer_fork
+    graph = _ForkGraph(
+        {
+            ("new", None): SimpleNamespace(values={}),
+            ("src", "cp-9"): SimpleNamespace(values={}),  # nothing to copy
+        }
+    )
+    ok = await fork.seed_thread_from_checkpoint(
+        graph=graph, source_thread_id="src", source_checkpoint_id="cp-9", target_thread_id="new"
+    )
+    assert ok is False
+    assert graph.updated == []
 
 
 # ---------------------------------------------------------------------------

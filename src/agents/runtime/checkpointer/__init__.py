@@ -1,18 +1,16 @@
-"""Per-thread checkpointer cache used by the LangGraph agents.
+"""Accessor for the process-wide durable LangGraph checkpointer.
 
-Existing callers import ``runtime.checkpointer.has_checkpointer`` and
-``runtime.checkpointer.get_or_create_checkpointer`` directly. Re-export both
-from the package root so the move from a flat ``checkpointer.py`` to a
-``checkpointer/`` package is invisible to importers.
+``main._lifespan`` builds one ``AsyncPostgresSaver`` and installs it via
+``set_checkpointer``; the agent runtime reads it via ``get_checkpointer``.
 """
 from runtime.checkpointer.store import (
-    get_or_create_checkpointer,
-    has_checkpointer,
-    release_checkpointer,
+    get_checkpointer,
+    has_checkpointer_initialized,
+    set_checkpointer,
 )
 
 __all__ = [
-    "get_or_create_checkpointer",
-    "has_checkpointer",
-    "release_checkpointer",
+    "get_checkpointer",
+    "has_checkpointer_initialized",
+    "set_checkpointer",
 ]

@@ -12,11 +12,15 @@ directly.
 from runtime.filesystem.agent_md_template import AGENT_MD_TEMPLATE
 from runtime.filesystem.provisioner import (
     agent_root,
+    conversation_input_root,
+    conversation_output_root,
     conversation_root,
+    delete_conversation_files,
     disable_skill,
     ensure_user_agent_filesystem,
     list_enabled_skills,
     memory_root,
+    seed_input_files,
     skills_root,
     user_root,
 )
@@ -24,11 +28,15 @@ from runtime.filesystem.provisioner import (
 __all__ = [
     "AGENT_MD_TEMPLATE",
     "agent_root",
+    "conversation_input_root",
+    "conversation_output_root",
     "conversation_root",
+    "delete_conversation_files",
     "disable_skill",
     "ensure_user_agent_filesystem",
     "list_enabled_skills",
     "memory_root",
+    "seed_input_files",
     "skills_root",
     "user_root",
 ]

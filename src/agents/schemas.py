@@ -46,6 +46,32 @@ class AgentResumeRequest(BaseModel):
     decisions: Optional[List[ResumeActionDecision]] = None
 
 
+class InputFileIn(BaseModel):
+    """One user-uploaded file to seed into a conversation's read-only input/."""
+    filename: str
+    mime: str = ""
+    base64: str
+    size: int = 0
+
+
+class SeedInputFilesRequest(BaseModel):
+    """Bridge → agents: persist these files into the conversation's input/ dir."""
+    files: List[InputFileIn]
+
+
+class SeedInputFilesResponse(BaseModel):
+    """Virtual paths the agent can read (``/conversation/input/<name>``)."""
+    written: List[str]
+
+
+class ReapConversationRequest(BaseModel):
+    """Bridge → agents: reap a conversation's durable checkpoint threads and its
+    per-(user, agent) filesystem dir on conversation delete. ``thread_ids`` are
+    the distinct ``checkpoint_thread_id``s the bridge recorded for the
+    conversation's runs (it owns that relational metadata)."""
+    thread_ids: List[str] = []
+
+
 class TitleRequest(BaseModel):
     """Structured payload for generating a conversation title from the first user message."""
     user_input: List[Dict[str, Any]]

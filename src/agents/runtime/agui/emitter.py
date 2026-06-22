@@ -25,6 +25,10 @@ from runtime.agui.events import (
     # Per-AI-message token usage
     TOKEN_USAGE_EVENT_TYPE,
     TokenUsageEvent,
+
+    # Durable checkpoint head marker
+    CHECKPOINT_COMMITTED_EVENT_TYPE,
+    CheckpointCommittedEvent,
 )
 from ag_ui.core import (
     EventType,
@@ -326,3 +330,21 @@ class AGUIEmitter:
             value=payload.model_dump(exclude_none=True),
         )
         return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Durable checkpoint head (custom event) ----------
+    def checkpoint_committed(
+        self,
+        *,
+        thread_id: str,
+        checkpoint_id: Optional[str],
+        writer: Any = None,
+    ) -> Optional[bytes]:
+        """Emit the durable checkpoint head this run produced (terminal marker)."""
+        payload = CheckpointCommittedEvent(thread_id=thread_id, checkpoint_id=checkpoint_id)
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=CHECKPOINT_COMMITTED_EVENT_TYPE,
+            value=payload.model_dump(),
+        )
+        return self._emit(custom_event, writer, None)

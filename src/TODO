@@ -54,6 +54,10 @@
 
 - Chart can be visualized with [shadcn/charts](https://www.shadcn.io/charts) and the agent can have a custom tool like the todo tool in order to represent the chart and create a custom AGUI event for the interaction with the chart.
 
+## Bugs
+
+- l have the same bug with the session intent that l had before in the chatbot in the work. Its a normalizer bug.
+
 ## Security
 
 Findings from the full security audit (2026-06-10). Overall posture is strong — opaque HMAC-hashed session tokens (no JWT), constant-time CSRF + trusted-proxy comparison, parameterized SQL, consistent IDOR scoping, enforced deep-agent filesystem isolation, no committed keys/`.env`. The items below are the real action items, ordered by severity. Most cluster around the MCP gateway (the one unauthenticated/plaintext/privileged edge), two production credential mistakes, and inline-preview/header gaps in the UI.

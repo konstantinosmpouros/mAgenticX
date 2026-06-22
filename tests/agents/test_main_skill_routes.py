@@ -325,8 +325,13 @@ class _FakeCompiled:
     def __init__(self, interrupts):
         self._interrupts = interrupts
 
-    def get_state(self, config):
-        return SimpleNamespace(interrupts=self._interrupts)
+    async def aget_state(self, config):
+        # Durable saver is async; carry a config so the terminal
+        # CHECKPOINT_COMMITTED emission can read a checkpoint_id.
+        return SimpleNamespace(
+            interrupts=self._interrupts,
+            config={"configurable": {"checkpoint_id": "cp-1"}},
+        )
 
 
 class _FakeResumeAgent:
@@ -353,7 +358,16 @@ class _FakeResumeAgent:
         return f"data: error {exc}\n\n".encode("utf-8")
 
 
+class _NoInterruptResumeAgent(_FakeResumeAgent):
+    """Durable checkpoint exists but no interrupt is parked → resume 409s."""
+    interrupts: list = []
+
+
 def _resume_env(agents_service, monkeypatch, agent_cls=_FakeResumeAgent, has_cp=True):
+    # has_cp=False ⇒ the checkpoint has no pending interrupt (409), modelled by
+    # an agent whose aget_state returns empty interrupts.
+    if not has_cp and agent_cls is _FakeResumeAgent:
+        agent_cls = _NoInterruptResumeAgent
     registry = {"omni": SimpleNamespace(cls=agent_cls, manifest={})}
     monkeypatch.setattr(agents_service.main, "AGENT_REGISTRY", registry)
     monkeypatch.setattr(agents_service.main, "mcp_session_context", lambda: _FakeSessionContext())
@@ -362,18 +376,11 @@ def _resume_env(agents_service, monkeypatch, agent_cls=_FakeResumeAgent, has_cp=
         return [{"name": "sql_query"}]
 
     monkeypatch.setattr(agents_service.main, "load_mcp_tools", fake_load_mcp_tools)
+    # The durable saver is wired in the lifespan (not run under ASGITransport),
+    # so force the readiness probe true.
+    monkeypatch.setattr(agents_service.main, "has_checkpointer_initialized", lambda: True)
 
-    async def fake_has_checkpointer(thread_id):
-        return has_cp
-
-    monkeypatch.setattr(agents_service.main, "has_checkpointer", fake_has_checkpointer)
-
-    async def fake_release(thread_id):
-        return None
-
-    monkeypatch.setattr(agents_service.main, "release_checkpointer", fake_release)
-
-    async def fake_release_unless_paused(agent, thread_id):
+    async def fake_release_unless_paused(agent, run_id):
         return None
 
     monkeypatch.setattr(agents_service.main, "release_checkpoint_unless_paused", fake_release_unless_paused)
@@ -418,7 +425,8 @@ async def test_resume_approve_streams(client, agents_service, internal_headers, 
         json={"config": {"run_config": {"configurable": {}}}, "thread_id": "t-1", "decision": "approve"},
     )
     assert response.status_code == 200
-    assert response.text == "data: resumed\n\n"
+    # The resume stream now ends with a terminal CHECKPOINT_COMMITTED frame.
+    assert "data: resumed\n\n" in response.text
     cmd = _FakeResumeAgent.captured_command["command"]
     assert cmd.resume["decisions"][0]["type"] == "approve"
 

@@ -4,6 +4,7 @@ import os
 import re
 import secrets
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
@@ -126,6 +127,79 @@ class TlsSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
     ca_cert_path: str | None = Field(None, validation_alias="INTERNAL_CA_CERT_PATH")
+
+
+class CheckpointerSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    # psycopg3 conninfo for the durable LangGraph AsyncPostgresSaver. This is a
+    # SEPARATE database (`agent_runtime`) on the SAME Postgres instance as the
+    # bridge's chat_db. NOTE: this is a raw psycopg conninfo (driver
+    # ``postgresql://``), NOT the SQLAlchemy/asyncpg ``postgresql+asyncpg://``
+    # form the bridge uses — TLS is expressed as ``sslmode=...&sslrootcert=...``
+    # query params, not an ssl SSLContext kwarg. The dev default points at the
+    # docker-compose Postgres; prod overrides via env with a password-less URL +
+    # AGENT_RUNTIME_DATABASE_PASSWORD_FILE.
+    url: SecretStr = Field(
+        default=SecretStr("postgresql://admin:admin@chat_postgres:5432/agent_runtime"),
+        validation_alias="AGENT_RUNTIME_DATABASE_URL",
+    )
+    pool_min_size: int = Field(2, validation_alias="AGENT_RUNTIME_POOL_MIN_SIZE")
+    pool_max_size: int = Field(20, validation_alias="AGENT_RUNTIME_POOL_MAX_SIZE")
+    pool_max_idle: int = Field(300, validation_alias="AGENT_RUNTIME_POOL_MAX_IDLE")
+    pool_timeout: float = Field(30.0, validation_alias="AGENT_RUNTIME_POOL_TIMEOUT")
+    # Run ``AsyncPostgresSaver.setup()`` (idempotent DDL) on startup. Emergency
+    # opt-out mirroring the bridge's RUN_MIGRATIONS_ON_STARTUP knob.
+    setup_on_startup: bool = Field(True, validation_alias="AGENT_RUNTIME_SETUP_ON_STARTUP")
+    # Strict msgpack deserialization allow-list (blocks the JsonPlusSerializer
+    # RCE class, CVE-2025-64439). Exported into the env the langgraph lib reads.
+    strict_msgpack: bool = Field(True, validation_alias="LANGGRAPH_STRICT_MSGPACK")
+    # Optional AES key for EncryptedSerializer (at-rest encryption of checkpoint
+    # blobs). File-backed via LANGGRAPH_AES_KEY_FILE. Empty => no encryption.
+    aes_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def _inject_password_and_tls(cls, value: object) -> object:
+        """Splice a file/env password into a password-less conninfo and append
+        TLS params when an internal CA is configured.
+
+        - Password from ``AGENT_RUNTIME_DATABASE_PASSWORD_FILE`` (Swarm secret)
+          is spliced into the userinfo when the URL carries none (prod). An
+          inline password (dev ``admin:admin``) always wins.
+        - When ``INTERNAL_CA_CERT_PATH`` is set and the URL has no ``sslmode``,
+          append ``sslmode=verify-full&sslrootcert=<ca>`` so prod is TLS;
+          dev (no CA) stays plaintext.
+        """
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if not isinstance(raw, str) or "://" not in raw:
+            return value
+
+        password = _resolve_file_backed_secret("AGENT_RUNTIME_DATABASE_PASSWORD")
+        if password:
+            scheme, sep, rest = raw.partition("://")
+            authority, slash, tail = rest.partition("/")
+            if "@" in authority:
+                userinfo, at, hostport = authority.rpartition("@")
+                if ":" not in userinfo:  # no inline password — splice the secret
+                    userinfo = f"{userinfo}:{quote(password, safe='')}"
+                    raw = f"{scheme}{sep}{userinfo}{at}{hostport}{slash}{tail}"
+
+        ca_path = os.getenv("INTERNAL_CA_CERT_PATH")
+        if ca_path and "sslmode" not in raw:
+            sep = "&" if "?" in raw else "?"
+            raw = f"{raw}{sep}sslmode=verify-full&sslrootcert={ca_path}"
+        return raw
+
+    @field_validator("aes_key", mode="before")
+    @classmethod
+    def _load_aes_key(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        resolved = _resolve_file_backed_secret("LANGGRAPH_AES_KEY")
+        return resolved or ""
 
 
 class ProxySettings(BaseSettings):
@@ -361,6 +435,12 @@ class FilesystemSettings(BaseSettings):
         validation_alias="SKILLS_REGISTRY_USERS_ROOT",
     )
 
+    # Server-side caps for the conversation input/ seeding endpoint (defence in
+    # depth — the bridge already enforces these at upload). Mirror the bridge's
+    # AttachmentSettings defaults: 25 MB/file, 10 files/turn.
+    input_max_file_bytes: int = Field(26214400, validation_alias="INPUT_MAX_FILE_BYTES")
+    input_max_files: int = Field(10, validation_alias="INPUT_MAX_FILES")
+
 
 # ---------------------------------------------------------------------------
 # Top-level settings
@@ -373,6 +453,7 @@ class Settings(BaseSettings):
     rag: RagSettings = Field(default_factory=RagSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     tls: TlsSettings = Field(default_factory=TlsSettings)
+    checkpointer: CheckpointerSettings = Field(default_factory=CheckpointerSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     registry: AgentRegistrySettings = Field(default_factory=AgentRegistrySettings)

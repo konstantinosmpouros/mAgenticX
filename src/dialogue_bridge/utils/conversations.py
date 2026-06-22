@@ -187,6 +187,12 @@ async def clone_branch_to_conversation(
 
     message_id_map: dict[str, str] = {}
     for source_message in branch:
+        # NOTE: deliberately does NOT copy checkpoint_thread_id / checkpoint_id.
+        # The fork is a brand-new conversation with its own durable checkpoint
+        # thread — carrying the source's thread ids would make the fork resume
+        # or fork against another conversation's (and potentially another
+        # user's) live checkpoint. Leaving them NULL makes the fork's first run
+        # cold-seed a fresh, isolated thread (full-history reconstruction).
         cloned_message = MessageTable(
             conversation_id=forked_conv.id,
             parent_message_id=message_id_map.get(source_message.parent_message_id),

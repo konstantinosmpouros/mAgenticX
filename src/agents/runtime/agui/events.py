@@ -10,6 +10,7 @@ TASK_SUBAGENT_EVENT_TYPE = "TASK_SUBAGENT"
 SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT"
 BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT"
 TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE"
+CHECKPOINT_COMMITTED_EVENT_TYPE = "CHECKPOINT_COMMITTED"
 
 
 # ------------------------------------------------------------------
@@ -87,3 +88,18 @@ class TokenUsageEvent(BaseModel):
     input_token_details: Optional[Dict[str, Any]] = None
     output_token_details: Optional[Dict[str, Any]] = None
     message_id: Optional[str] = None
+
+
+# ------------------------------------------------------------------
+# Checkpoint-committed event
+# ------------------------------------------------------------------
+class CheckpointCommittedEvent(BaseModel):
+    """Terminal marker carrying the durable checkpoint head this run produced.
+
+    Emitted once at the end of a /stream or /resume leg so the bridge can
+    persist ``(thread_id, checkpoint_id)`` on the assistant message — the next
+    turn resumes from this head and edit/retry fork from it. Rides the normal
+    SSE pipe and lands in ``raw_events`` so it survives reconnection.
+    """
+    thread_id: str
+    checkpoint_id: Optional[str] = None

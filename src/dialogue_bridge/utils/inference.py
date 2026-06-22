@@ -6,6 +6,35 @@ from observability import EventLogger
 from core.database import MessageTable
 
 
+def nearest_committed_ai(messages: list[MessageTable], start_message_id: str | None) -> MessageTable | None:
+    """Walk parent links from ``start_message_id`` (inclusive) and return the
+    nearest AI message that committed a durable checkpoint — i.e. carries both
+    ``checkpoint_thread_id`` and ``checkpoint_id``. Returns None when no such
+    ancestor exists (a brand-new conversation, a pre-migration branch, or a
+    shared-continue copy).
+
+    This single walk drives both branch-thread allocation (``send`` inherits
+    the nearest committed ancestor's thread; everything else mints fresh) and
+    the per-turn delta-vs-fork-vs-full decision in the run task.
+    """
+    if not start_message_id:
+        return None
+    lookup = {message.id: message for message in messages}
+    current = lookup.get(start_message_id)
+    seen: set[str] = set()
+    while current is not None and current.id not in seen:
+        seen.add(current.id)
+        if (
+            current.sender == "ai"
+            and getattr(current, "checkpoint_thread_id", None)
+            and getattr(current, "checkpoint_id", None)
+        ):
+            return current
+        parent_id = current.parent_message_id
+        current = lookup.get(parent_id) if parent_id else None
+    return None
+
+
 def build_path_to_message(messages: list[MessageTable], message_id: str) -> list[MessageTable]:
     """Return the parent-linked lineage ending at a message in this conversation."""
     lookup = {message.id: message for message in messages}
@@ -95,10 +124,15 @@ def prepare_inference_history(
     messages: list[MessageTable],
     message_ids: list[str] | None,
     enabled_tools_count: int,
+    include_input_paths: bool = False,
 ) -> tuple[list[MessageTable], list[dict]]:
     """
     Resolve the message branch for inference, strip any trailing empty AI
     placeholder, serialise the final message list, and emit the branch log.
+
+    ``include_input_paths`` references non-image attachments by their
+    ``/conversation/input/`` path (deep agents, which have a filesystem); when
+    False they are listed by filename only (LangGraph agents, no filesystem).
     """
     history_messages = list(validate_and_order_message_path(messages, message_ids))
     placeholder_stripped = False
@@ -114,7 +148,10 @@ def prepare_inference_history(
             placeholder_stripped = True
             history_messages = history_messages[:-1]
 
-    history = [serialise_message_with_images_for_agent(message) for message in history_messages]
+    history = [
+        serialise_message_with_images_for_agent(message, include_input_paths=include_input_paths)
+        for message in history_messages
+    ]
     logger.info(
         "inference_branch_resolved",
         "Inference branch resolved",
@@ -128,11 +165,14 @@ def prepare_inference_history(
     return history_messages, history
 
 
-def serialise_message_with_images_for_agent(msg: MessageTable) -> dict:
+def serialise_message_with_images_for_agent(msg: MessageTable, *, include_input_paths: bool = False) -> dict:
     """
     Convert a MessageTable (with attachments) into a LangChain message with multimodal content.
-    - Images are embedded as data-URLs
-    - Other attachments are listed by name in a text block
+    - Images are embedded as data-URLs (so a vision model sees them this turn)
+    - Other attachments are listed in a text block. When ``include_input_paths``
+      is set (deep agents, which have a filesystem) the note references the
+      file's ``/conversation/input/<name>`` path so the agent can ``read_file``
+      it; otherwise (LangGraph agents) it is listed by filename only.
     """
     role = "user" if msg.sender == "user" else "ai"
     text_content = (msg.content or "").strip()
@@ -168,7 +208,11 @@ def serialise_message_with_images_for_agent(msg: MessageTable) -> dict:
             name = getattr(attachment, "file_name", None)
             if name:
                 # Non-image attachments are summarized as text bullets.
-                label = f"{name} ({attachment.mime_type})" if getattr(attachment, "mime_type", None) else name
+                mime_label = getattr(attachment, "mime_type", None)
+                label = f"{name} ({mime_label})" if mime_label else name
+                if include_input_paths:
+                    # Point the agent at the on-disk copy it can read on demand.
+                    label = f"{label} — /conversation/input/{name}"
                 other_attachment_notes.append(label)
 
     if other_attachment_notes:

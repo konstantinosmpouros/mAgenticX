@@ -10,7 +10,7 @@ from sqlalchemy.sql import func
 
 from core.settings import settings
 from core.tls import get_httpx_verify
-from core.database import AgentTable
+from core.database import AgentTable, MessageTable
 from core.proxy import internal_service_headers
 from core.error_handling import upstream_error_handler
 
@@ -81,6 +81,34 @@ def build_agent_resume_url(agent: AgentTable) -> str:
             detail="Agent configuration is incomplete. Please try another agent or try again later.",
         )
     return f"{AGENTS_SERVICE_URL.rstrip('/')}/agents/{slug}/resume"
+
+
+def build_agent_input_files_url(agent: AgentTable, user_id: str, conversation_id: str) -> str:
+    """PUT endpoint that seeds user-uploaded files into a conversation's input/ dir."""
+    slug = _require_agent_slug(agent)
+    base = AGENTS_SERVICE_URL.rstrip("/")
+    return f"{base}/agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files"
+
+
+def build_agent_reap_url(agent_slug: str, user_id: str, conversation_id: str) -> str:
+    """POST endpoint that reaps a conversation's checkpoint threads + filesystem dir."""
+    base = AGENTS_SERVICE_URL.rstrip("/")
+    return f"{base}/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/reap"
+
+
+def _require_agent_slug(agent: AgentTable) -> str:
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent metadata unavailable for this conversation",
+        )
+    slug = getattr(agent, "slug", None)
+    if not slug:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Agent configuration is incomplete. Please try another agent or try again later.",
+        )
+    return slug
 
 
 async def _load_active_agents(db: AsyncSession) -> List[AgentTable]:
@@ -221,6 +249,53 @@ async def get_agent_by_id(agent_id: str) -> AgentTable | None:
     if agent is not None and getattr(agent, "is_active", True):
         return agent
     return None
+
+
+async def reap_conversation_runtime(db: AsyncSession, user_id: str, conversation_id: str) -> None:
+    """Best-effort: drop a conversation's durable checkpoint threads + per-agent
+    filesystem dirs on the agents service. Call BEFORE deleting the conversation
+    row (it reads the AI messages' agent_id + checkpoint_thread_id). Never
+    raises — a cleanup miss leaves reapable orphans, it must not block delete.
+
+    Threads are grouped by the agent that produced them so each agent reaps its
+    own threads and its own per-(user, agent, conversation) filesystem dir
+    (a conversation may mix agents).
+    """
+    result = await db.execute(
+        select(MessageTable.agent_id, MessageTable.checkpoint_thread_id).where(
+            MessageTable.conversation_id == conversation_id,
+            MessageTable.sender == "ai",
+        )
+    )
+    threads_by_agent: Dict[str, set[str]] = {}
+    for agent_id, thread_id in result.all():
+        if not agent_id:
+            continue
+        bucket = threads_by_agent.setdefault(agent_id, set())
+        if thread_id:
+            bucket.add(thread_id)
+    if not threads_by_agent:
+        return
+
+    timeout = settings.http.agents_timeout
+    headers = internal_service_headers(get_context().get("request_id"))
+    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        for agent_id, thread_ids in threads_by_agent.items():
+            agent = await get_agent_by_id(agent_id)
+            if agent is None or not getattr(agent, "slug", None):
+                continue
+            url = build_agent_reap_url(agent.slug, str(user_id), str(conversation_id))
+            try:
+                resp = await client.post(url, json={"thread_ids": sorted(thread_ids)}, headers=headers)
+                resp.raise_for_status()
+            except Exception:
+                logger.warning(
+                    "conversation_reap_failed",
+                    "Failed to reap agent runtime for a deleted conversation",
+                    exc_info=True,
+                    conversation_id=conversation_id,
+                    agent_slug=agent.slug,
+                )
 
 
 async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:

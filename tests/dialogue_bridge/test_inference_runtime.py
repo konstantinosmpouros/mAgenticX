@@ -292,6 +292,7 @@ async def test_create_inference_run_record_success(session_factory, seeded_user,
             message_path=None,
             enabled_tools=[ToolPreference(server_id="srv", tool_name="tool")],
             agent=seeded_agent,
+            mode="send",
         )
         await session.commit()
         assert run.streaming_status == "queued"
@@ -316,6 +317,7 @@ async def test_create_inference_run_record_bad_parent_400(session_factory, seede
                 message_path=None,
                 enabled_tools=None,
                 agent=seeded_agent,
+                mode="send",
             )
         assert getattr(exc.value, "status_code", None) == 400
 
@@ -345,6 +347,7 @@ async def test_create_inference_run_record_conflict_when_active_exists(session_f
                 message_path=None,
                 enabled_tools=None,
                 agent=seeded_agent,
+                mode="send",
             )
         assert getattr(exc.value, "status_code", None) == 409
 
@@ -384,6 +387,7 @@ async def test_create_inference_run_record_too_many_active_429(session_factory, 
                 message_path=None,
                 enabled_tools=None,
                 agent=seeded_agent,
+                mode="send",
             )
         assert getattr(exc.value, "status_code", None) == 429
 

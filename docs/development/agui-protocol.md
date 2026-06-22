@@ -103,6 +103,7 @@ All custom events share a wrapper shape:
 | `BEFORE_AGENT_EVENT` | `BeforeAgentEvent` | Pre-execution message injected by `PatchToolCallsMiddleware` into a sub-agent |
 | `TOKEN_USAGE` | `TokenUsageEvent` | Per-AI-message token usage (input/output), one per settled `AIMessage`; namespace-attributed for sub-agents |
 | `HITL_INTERRUPT` | `HITLInterruptEvent` | Graph paused — waiting for human input |
+| `CHECKPOINT_COMMITTED` | `{thread_id, checkpoint_id}` | Terminal event emitted by the agent once its durable LangGraph checkpoint is written. The bridge captures it in `apply_event` and `_finish_run` persists `checkpoint_id` on the AI message, so the branch's next turn can resume/fork from the right head. Carries the branch-scoped checkpoint `thread_id`, not the run id. |
 | `BRIDGE_HITL_RESOLVED` | `{interrupt_id, decision, reason}` | **Bridge-synthesized** (never emitted by the agents service): appended to the event log when `/resume` is accepted, so resolution state survives reloads. The client reducer flips the matching approval's status on it. |
 
 #### `PlanSnapshot`
@@ -169,7 +170,7 @@ Emitted once per **settled** `AIMessage` (read from `updates`-mode `usage_metada
 
 ```json
 {
-  "thread_id": "run-uuid (the assistant message id)",
+  "thread_id": "checkpoint-thread-uuid (branch-scoped LangGraph thread)",
   "interrupt": { "id": "<langgraph-interrupt-id>", "value": { "action_requests": [...], "review_configs": [...] } },
   "metadata": { "namespace": "researcher" }
 }
@@ -177,7 +178,7 @@ Emitted once per **settled** `AIMessage` (read from `updates`-mode `usage_metada
 
 When the LangGraph graph hits an `__interrupt__` node, no other events from that chunk are emitted — the HITL event is the entire output of that update cycle.
 
-**Dedup contract:** `thread_id` is the run-level LangGraph thread (`run.id`) — every HITL within a run shares the same value, so it is **not** a unique identifier. The bridge and UI dedupe by `interrupt.id`, which is the LangGraph interrupt's unique id captured at the normalizer. Using `thread_id` as a dedup key silently drops every interrupt after the first; this is the bug fix that switched the chain to `interrupt.id`.
+**Dedup contract:** `thread_id` is the branch-scoped LangGraph checkpoint thread (`checkpoint_thread_id`) — every HITL within a run shares it (and it is shared across the whole branch), so it is **not** a unique identifier. The bridge and UI dedupe by `interrupt.id`, which is the LangGraph interrupt's unique id captured at the normalizer. Using `thread_id` as a dedup key silently drops every interrupt after the first; this is the bug fix that switched the chain to `interrupt.id`.
 
 **Interrupt value shape (LangChain HITL middleware):** `value` is a serialized `HITLRequest` — `{"action_requests": [<one per pending tool call>], "review_configs": [...]}`. The agents-side `/resume` endpoint reads `action_requests` length from the checkpoint snapshot (not from the wire event) to size the resume `Command(resume={"decisions": [...]})` so its length matches what the middleware expects.
 
@@ -354,7 +355,7 @@ flowchart TD
 
 **Order-based binding.** Because the namespace uuid carries no link to the task call, binding is by **order**: the first time a sub-agent namespace is seen, it is bound to the *oldest still-unbound* `task` tool_call_id in `_pending_tasks` (insertion-ordered = task-call order). The bind is anchored by the `PatchToolCallsMiddleware.before_agent` marker, which 0.6.10 emits **stamped with the sub-agent's namespace** the moment the gated `task` is approved (its body is empty, so there is nothing to content-match — the namespace + arrival order is the signal). `_resolve_namespace_label()` also binds lazily on the first metadata-bearing chunk if the marker was missed. `task` is HITL-gated, so sub-agents start sequentially and FIFO is exact; two parallel sub-agents of the *same* type are the residual ambiguity (each still binds to a distinct task — no drop or collision).
 
-**Binding persists across HITL resume (`_THREAD_NAMESPACE_BINDINGS`).** A fresh `AGUIStreamNormalizer` is built per request, so without persistence a `/resume` leg would start with an empty `_namespace_task_labels`. That is fatal when a **sub-agent's own tool** is gated: on resume the orchestrator does not re-emit the `task` call (the sub-agent is mid-flight), so `_pending_tasks` is empty and the sub-agent's continuation would fall back to the raw namespace id — orphaning it into a new task card. The module-level `_THREAD_NAMESPACE_BINDINGS` store (keyed by `thread_id`) is rehydrated in `__init__` and written through on every bind, so the mapping survives the paused→resume boundary. It is dropped by `release_namespace_bindings(thread_id)` on the same lifecycle as the checkpointer cache — on a fresh `/stream` start and on a non-paused terminal (via `release_checkpoint_unless_paused`). The client mirrors this with a stable-namespace route (see Phase 8).
+**Binding persists across HITL resume (`_THREAD_NAMESPACE_BINDINGS`).** A fresh `AGUIStreamNormalizer` is built per request, so without persistence a `/resume` leg would start with an empty `_namespace_task_labels`. That is fatal when a **sub-agent's own tool** is gated: on resume the orchestrator does not re-emit the `task` call (the sub-agent is mid-flight), so `_pending_tasks` is empty and the sub-agent's continuation would fall back to the raw namespace id — orphaning it into a new task card. The module-level `_THREAD_NAMESPACE_BINDINGS` store (keyed by `run_id`, the per-run assistant-message id passed as `context.run_id` — **not** the branch-scoped checkpoint `thread_id`) is rehydrated in `__init__` and written through on every bind, so the mapping survives the paused→resume boundary. It is dropped by `release_namespace_bindings(run_id)` when a run ends not-paused (via `release_checkpoint_unless_paused`); the durable Postgres checkpoint is left untouched. The client mirrors this with a stable-namespace route (see Phase 8).
 
 If no task is pending and the namespace is unbound, `_namespace_task_id()` falls back to a deterministic id derived from the tuple — the first part after a `:` separator, or the first non-empty element.
 
@@ -380,6 +381,7 @@ flowchart TD
     C -->|"SUBAGENT_EVENT"| F["if inner is HITL_INTERRUPT:\nregister_interrupt(inner.value)\nelif inner is TOKEN_USAGE:\n_accumulate_usage(inner.value)"]
     C -->|"HITL_INTERRUPT"| H["register_interrupt(value)"]
     C -->|"TOKEN_USAGE"| N["_accumulate_usage(value)"]
+    C -->|"CHECKPOINT_COMMITTED"| CC["capture checkpoint_id\n(persisted by _finish_run)"]
     B -->|"THINKING_START"| I["thinking_start = perf_counter()\nthinking_end = 0.0"]
     B -->|"THINKING_TEXT_MESSAGE_CONTENT"| J["thoughts.append(delta)"]
     B -->|"TOOL_CALL_START"| K["thoughts.append('[tool] {name}')"]
@@ -418,8 +420,8 @@ sequenceDiagram
     Task->>Task: pop payload; pending_interrupts -= 1
     Task->>Redis: XADD events frame carrying CUSTOM BRIDGE_HITL_RESOLVED<br/>(also appended to raw_events — resolution survives reloads)
     Task->>Agents: POST /agents/{slug}/resume<br/>AgentResumeRequest{thread_id, interrupt_id, decision, value, reason}
-    Agents->>Agents: has_checkpointer(thread_id)?
-    Agents->>Agents: rehydrate cached InMemorySaver
+    Agents->>Agents: compile against shared AsyncPostgresSaver; select thread_id
+    Agents->>Agents: aget_state(config) — read durable paused state
     Agents->>Agents: verify snapshot.interrupts[0].id == req.interrupt_id
     Agents->>Agents: size decisions[] = len(action_requests)
     Agents->>Agents: graph.astream(Command(resume=...), config)
@@ -431,9 +433,9 @@ sequenceDiagram
     end
     Note over Task: Run can pause again; the loop in _run re-enters this flow.
 
-    alt no cached checkpoint
-        Agents-->>Task: 409 Conflict (no paused checkpoint)
-        Task->>Bridge: _finish_run("failed", "no paused checkpoint")
+    alt no pending interrupt for thread
+        Agents-->>Task: 409 Conflict (no paused interrupt)
+        Task->>Bridge: _finish_run("failed", "no paused interrupt")
         Bridge->>Redis: terminal XADD + EXPIRE
     end
     alt interrupt_id mismatch
@@ -449,7 +451,7 @@ sequenceDiagram
 | `approve` | `{"type": "approve"}` | Tool executes. `reason`/`value` are dropped — `ApproveDecision` has no `message` slot. |
 | `reject` | `{"type": "reject", "message": req.reason or "User rejected this action."}` | Tool does **not** execute; a `ToolMessage` with `content=<message>` is appended in its place and the agent loop continues, so the agent can react to the rejection. `message` is mandatory — the default text prevents a `KeyError` when the user rejects without typing a reason. |
 
-The checkpointer cache is process-local in the agents service (single-replica). Switching to a Postgres-backed checkpointer is a drop-in if multi-replica is ever required; nothing else in the resume flow needs to change. The sub-agent namespace→task binding store (`_THREAD_NAMESPACE_BINDINGS`, Phase 5) shares this exact lifecycle and single-replica assumption — it is rehydrated on each resume leg so a sub-agent's post-approval output keeps its original task card, and released alongside the checkpointer when the run truly ends.
+The checkpoint itself is now durable and shared: every `/stream` and `/resume` request compiles against one process-wide `AsyncPostgresSaver` over the `agent_runtime` database, so resume reads the paused state with `aget_state` (no per-thread cache to rehydrate). The sub-agent namespace→task binding store (`_THREAD_NAMESPACE_BINDINGS`, Phase 5) is the remaining **in-process** state: it is keyed by `run_id` (the per-run assistant-message id, **not** the branch-scoped checkpoint `thread_id`), rehydrated on each resume leg so a sub-agent's post-approval output keeps its original task card, and dropped by `release_namespace_bindings(run_id)` when the run ends not-paused (via `release_checkpoint_unless_paused`, which no longer touches the durable checkpoint).
 
 ---
 
@@ -548,11 +550,11 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 - **`TEXT_MESSAGE_CONTENT` and `TEXT_MESSAGE_CHUNK` both accumulate to `content`.** The bridge accumulates both event types via `content += delta`. A well-behaved agent emits one or the other, not both — but the accumulator does not prevent double-counting if a buggy agent emits both for the same text.
 
-- **The `message_id` in `TEXT_MESSAGE_START` is the `thread_id`, not a per-message UUID.** `AGUIStreamNormalizer.thread_id` is the LangGraph `configurable.thread_id`, which equals the run id (the assistant message id). All text events in one run share the same `message_id`. Consumers that expect a unique per-message ID will be surprised; the bridge's log coalescing leans on it as part of the text merge key.
+- **The `message_id` in `TEXT_MESSAGE_START` is the per-run `run_id`, not a per-text-message UUID.** `AGUIStreamNormalizer` is constructed with `context.run_id` (the assistant message id) — its constructor parameter is still named `thread_id`, but the bridge now feeds it `run_id`, **not** the branch-scoped checkpoint `thread_id` (the latter rides `RUN_STARTED`/`RUN_FINISHED` as their own `thread_id` field). All text events in one run share this single `message_id`. Consumers that expect a unique per-message ID will be surprised; the bridge's log coalescing leans on it as part of the text merge key.
 
 - **`TOOL_CALL_ARGS` serializes args as a JSON string, not an object.** The `delta` field in `ToolCallArgsEvent` is `json.dumps({"name": name, "args": args or {}})`. Clients must JSON-parse the `delta` field to access the arguments dict.
 
-- **Sub-agent namespace binding is order-based, and persists across resume.** Binding maps a namespace to the oldest unbound `task` tool_call_id (`_bind_namespace_to_next_task`), since the LangGraph namespace uuid carries no link to the call id. FIFO is exact while `task` is HITL-gated (sequential starts); two concurrent sub-agents of the *same* type are the residual ambiguity (each still binds to a distinct task — never dropped or collided). The binding is persisted per `thread_id` in `_THREAD_NAMESPACE_BINDINGS` and rehydrated on every `/resume` leg, which is what keeps a sub-agent whose **own tool** was HITL-gated from orphaning its post-approval continuation into a new task card. Only if no task is pending and the namespace is genuinely unknown does it fall back to a generated `task_id` (`_namespace_task_id`) that matches no `TASK_SUBAGENT` — the orphan case.
+- **Sub-agent namespace binding is order-based, and persists across resume.** Binding maps a namespace to the oldest unbound `task` tool_call_id (`_bind_namespace_to_next_task`), since the LangGraph namespace uuid carries no link to the call id. FIFO is exact while `task` is HITL-gated (sequential starts); two concurrent sub-agents of the *same* type are the residual ambiguity (each still binds to a distinct task — never dropped or collided). The binding is persisted per `run_id` in `_THREAD_NAMESPACE_BINDINGS` (the per-run assistant-message id, not the branch-scoped checkpoint `thread_id`) and rehydrated on every `/resume` leg, which is what keeps a sub-agent whose **own tool** was HITL-gated from orphaning its post-approval continuation into a new task card. Only if no task is pending and the namespace is genuinely unknown does it fall back to a generated `task_id` (`_namespace_task_id`) that matches no `TASK_SUBAGENT` — the orphan case.
 
 - **HITL pre-empts everything.** When `__interrupt__` appears in an updates payload, all other node updates in that dict are skipped. If a graph node emits both a tool call and an interrupt in the same update (unusual but possible), the tool call start/args events are not emitted. The agent graph still has the tool call recorded in its checkpoint; it will re-emit when the human resumes.
 
@@ -572,8 +574,8 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Custom event type constants | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, etc. |
-| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent` |
+| Custom event type constants | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, `CHECKPOINT_COMMITTED_EVENT_TYPE`, etc. |
+| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `CheckpointCommittedEvent` |
 | AG-UI event emission | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `AGUIEmitter` — all public methods |
 | Namespace attachment | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `_attach_namespace()` |
 | LangGraph → AG-UI translation | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
@@ -583,7 +585,9 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 | Tool call correlation sets | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_pending_tool_call_ids`, `_started_tool_call_ids`, `_finished_tool_call_ids`, `_ignored_tool_call_ids` |
 | Plan snapshot deduplication | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_fingerprint()`, `_last_plan_fingerprint` |
 | Sub-agent namespace binding | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_bind_namespace_to_next_task()`, `_resolve_namespace_label()`, `_namespace_task_id()` |
-| Namespace binding persistence across resume | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_THREAD_NAMESPACE_BINDINGS`, `release_namespace_bindings()` (cleared via `utils/checkpointer.py` + `main.py`) |
+| Namespace binding persistence across resume | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`), `release_namespace_bindings()` (cleared via `utils/checkpointer.py` `release_checkpoint_unless_paused()`) |
+| Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `get_checkpointer()` — single process-wide `AsyncPostgresSaver` resume reads via `aget_state` |
+| `CHECKPOINT_COMMITTED` capture (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()`, `_finish_run()` persisting `checkpoint_id` |
 | Sub-agent event wrapping | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_wrap_subagent_events_if_needed()` |
 | Protocol package exports | [src/agents/runtime/agui/\_\_init\_\_.py](../../src/agents/runtime/agui/__init__.py) | All exported symbols |
 | Bridge log keeping | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()`, `_append_raw()`, `_coalesce_key()`, `_truncate_tool_result()` |

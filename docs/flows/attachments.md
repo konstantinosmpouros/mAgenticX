@@ -256,7 +256,47 @@ The RAG system operates on two separate data sources:
 - ChromaDB collections populated out-of-band (not from user uploads)
 - Excel workbooks loaded from the `rag_service/data/` directory at startup
 
-If an agent needs to reason about the content of an uploaded file, that content must be passed as text in the message body. File-to-text extraction is not automated.
+Attachments still reach **deep agents** out-of-band of RAG — as files on the agent's conversation filesystem and (for images) inline base64 in the message — never through ChromaDB. See Phase 7 below. Automatic file-to-text extraction / chunking into the vector store is not performed.
+
+---
+
+## Phase 7 — Attachments and the Agent Filesystem
+
+Beyond chat display, uploaded files are made available to **deep agents** at inference time. The chat_db blob is the durable system of record; the agent gets a disk-backed copy seeded onto its conversation filesystem for the turn. Uploads live **on disk, not in the LangGraph checkpoint** — the durable checkpoint stores graph state only, never blob bytes.
+
+### Input / output filesystem split
+
+`DeepAgent._build_composite_backend()` splits the per-conversation mount into two routes (`runtime/deep_agent.py`):
+
+| Route | Mode | Contents |
+| --- | --- | --- |
+| `/conversation/input/` | read-only (write-denied via `FilesystemPermission`) | User-uploaded files seeded for this conversation |
+| `/conversation/output/` | read-write | Agent-produced artifacts |
+
+The write-deny on `input/` keeps the agent from clobbering the user's uploads; artifacts go to `output/`. Omni's system prompt (`deep_agents/omni_agent/system_prompts.py`) instructs the agent to write to `/conversation/output/`. `ensure_user_agent_filesystem()` mkdirs both `input/` and `output/`.
+
+### Seeding flow (chat_db blob → bridge → agents input/)
+
+```mermaid
+sequenceDiagram
+    participant D as dialogue_bridge (_run)
+    participant PG as chat_postgres (blobs)
+    participant A as agents service
+
+    Note over D: new turn for a deep agent, before /stream
+    D->>PG: SELECT attachment blobs for the new user message
+    D->>A: PUT /agents/{slug}/users/{userId}/conversations/{convId}/input-files\n{ files: [{ name, bytes }] }
+    A->>A: seed_input_files() → write into /conversation/input/
+    D->>A: POST /agents/{slug}/stream
+```
+
+- The bridge's `_run` seeds **only the new turn's attachments** (deep agents only) before streaming, via `build_agent_input_files_url()` (`utils/agents.py`) → `PUT .../input-files`. The agents endpoint calls `seed_input_files()` (`runtime/filesystem/provisioner.py`), which writes the bytes under `conversation_input_root()`.
+- The serialiser `serialise_message_with_images_for_agent()` still **inlines images as base64** in the message content (vision on the upload turn). For deep agents it additionally references each **non-image** file by its `/conversation/input/<name>` path (flag `include_input_paths=True`) so the agent can open it with its filesystem tools.
+- **LangGraph agents have no filesystem** — they are not seeded; they receive message content only (inline images, no input-path references).
+
+### Cleanup
+
+The conversation filesystem (`input/` + `output/`) is removed by `delete_conversation_files()` during the conversation-delete reap (see [conversation-management.md](conversation-management.md)). There is no per-turn cleanup; seeded input files accumulate for the life of the conversation.
 
 ---
 
@@ -280,7 +320,11 @@ If an agent needs to reason about the content of an uploaded file, that content 
 
 - **Byte-range support is on download and preview, not images.** The `/download` and `/preview` endpoints support `Range` headers; the `/images` batch endpoint does not. Large images retrieved via the gallery are served in full.
 
-- **Deletion is permanent and cascades immediately.** There is no soft-delete or recycle bin for attachments. Deleting a message or conversation immediately removes all associated attachments and blobs from the database with no recovery path.
+- **Deletion is permanent and cascades immediately.** There is no soft-delete or recycle bin for attachments. Deleting a message or conversation immediately removes all associated attachments and blobs from the database with no recovery path. The disk-backed agent copies under `/conversation/input/` and `/conversation/output/` are not on the DB cascade — they are removed by the separate conversation-delete reap call to the agents service.
+
+- **Seeded files are disk-backed, not checkpointed.** Uploads are written to the agent's `/conversation/input/` on disk and referenced by path; they are never serialized into the durable LangGraph checkpoint. A resumed run re-reads them from disk, so input files must remain present for the life of the conversation.
+
+- **Only deep agents get filesystem seeding.** LangGraph agents have no `CompositeBackend` mount, so they never receive input-path references — they only see inline images and any text the message already carries.
 
 ---
 
@@ -291,6 +335,10 @@ If an agent needs to reason about the content of an uploaded file, that content 
 | DB tables | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `AttachmentTable`, `BlobTable`, FK cascade definitions |
 | Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-token, public, images endpoints |
 | Upload persistence | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `init_attachments()`, `clone_branch_to_conversation()` |
+| Agent filesystem seeding (bridge) | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) | `build_agent_input_files_url()`, `serialise_message_with_images_for_agent(include_input_paths=...)` |
+| Input/output backend split | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `_build_composite_backend()`, `/conversation/input/` write-deny `FilesystemPermission` |
+| Filesystem provisioner | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `seed_input_files()`, `delete_conversation_files()`, `conversation_input_root()`, `conversation_output_root()`, `ensure_user_agent_filesystem()` |
+| Input-files seed endpoint | [src/agents/main.py](../../src/agents/main.py) | `PUT /agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files` |
 | Share snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |
 | Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut`, `DocxPreviewTokenOut` |
 | HMAC token helpers | [src/dialogue_bridge/utils/attachments.py](../../src/dialogue_bridge/utils/attachments.py) | `generate_docx_preview_token()`, `validate_docx_preview_token()` |

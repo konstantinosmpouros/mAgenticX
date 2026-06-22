@@ -1,65 +1,45 @@
-"""Process-level cache of LangGraph in-memory checkpointers keyed by thread_id.
+"""Process-level handle to the durable LangGraph checkpointer.
 
-The agents service runs as a single replica (see the deployment plan). Both
-``/agents/{slug}/stream`` and ``/agents/{slug}/resume`` create a fresh agent
-instance per request, so without a shared store the paused LangGraph
-checkpoint from a HITL-interrupted stream would be lost before the resume
-request can pick it back up.
+The agents service runs a single shared ``AsyncPostgresSaver`` over a
+long-lived ``psycopg_pool.AsyncConnectionPool`` (opened in the FastAPI
+lifespan). Every ``/agents/{slug}/stream`` and ``/agents/{slug}/resume``
+request builds a fresh agent instance, but they all compile against this one
+saver; the thread is selected per-request via
+``run_config.configurable.thread_id`` — the standard AsyncPostgresSaver model.
 
-This cache keeps one ``InMemorySaver`` per ``thread_id`` for the lifetime of
-the process. When a run terminates without a pending interrupt the bridge can
-call :func:`release_checkpointer` to free the entry; otherwise the LRU eviction
-caps total memory growth.
+Threads persist indefinitely (no TTL); a conversation's threads are reaped
+only when the conversation is deleted. This module is just the accessor that
+``main._lifespan`` populates and the agent runtime reads — kept separate so
+the agent classes never import ``main`` (avoids the import cycle).
+
+The saver type is intentionally left as ``Any`` here so importing this module
+does not require ``langgraph-checkpoint-postgres`` / ``psycopg`` to be present
+(the heavy deps are imported lazily inside the lifespan).
 """
 
 from __future__ import annotations
 
-import asyncio
-from collections import OrderedDict
-from typing import Final
+from typing import Any, Optional
 
-from langgraph.checkpoint.memory import InMemorySaver
-
-# Bound to avoid unbounded growth if release_checkpointer is never called.
-# A typical single-tenant install never reaches this; very high-throughput
-# deployments should switch to a Postgres-backed checkpointer instead.
-_MAX_ENTRIES: Final[int] = 256
-
-_cache: "OrderedDict[str, InMemorySaver]" = OrderedDict()
-_lock: asyncio.Lock = asyncio.Lock()
+_checkpointer: Optional[Any] = None
 
 
-async def get_or_create_checkpointer(thread_id: str) -> InMemorySaver:
-    """Return the cached checkpointer for ``thread_id``, creating it if absent."""
-    if not thread_id:
-        # No thread_id → no resume possible. Return an ephemeral saver that
-        # nothing else can look up; the caller will GC it with the agent.
-        return InMemorySaver()
-
-    async with _lock:
-        saver = _cache.get(thread_id)
-        if saver is None:
-            saver = InMemorySaver()
-            _cache[thread_id] = saver
-            if len(_cache) > _MAX_ENTRIES:
-                # Evict the least-recently-used entry to keep memory bounded.
-                _cache.popitem(last=False)
-        else:
-            _cache.move_to_end(thread_id)
-        return saver
+def set_checkpointer(checkpointer: Any) -> None:
+    """Install the process-wide saver. Called once from the lifespan."""
+    global _checkpointer
+    _checkpointer = checkpointer
 
 
-async def release_checkpointer(thread_id: str) -> None:
-    """Drop the cached checkpointer for ``thread_id`` (call after terminal status)."""
-    if not thread_id:
-        return
-    async with _lock:
-        _cache.pop(thread_id, None)
+def get_checkpointer() -> Any:
+    """Return the shared saver. Raises if the lifespan hasn't wired it yet."""
+    if _checkpointer is None:
+        raise RuntimeError(
+            "Durable checkpointer is not initialized. The FastAPI lifespan must "
+            "call set_checkpointer() before any agent run."
+        )
+    return _checkpointer
 
 
-async def has_checkpointer(thread_id: str) -> bool:
-    """Cheap probe used by the resume endpoint to fail fast on unknown threads."""
-    if not thread_id:
-        return False
-    async with _lock:
-        return thread_id in _cache
+def has_checkpointer_initialized() -> bool:
+    """Cheap probe: is the shared saver wired? (Not a per-thread existence check.)"""
+    return _checkpointer is not None

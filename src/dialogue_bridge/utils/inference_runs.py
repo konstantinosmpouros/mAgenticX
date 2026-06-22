@@ -1,9 +1,11 @@
 import asyncio
+import base64
 import json
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator
+from uuid import uuid4
 
 import httpx
 from fastapi import HTTPException, status
@@ -24,10 +26,20 @@ from core.settings import settings
 from core.tls import get_httpx_verify
 from observability import get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
-from utils.agents import build_agent_resume_url, build_agent_stream_url, get_agent_by_id
+from utils.agents import (
+    build_agent_input_files_url,
+    build_agent_resume_url,
+    build_agent_stream_url,
+    get_agent_by_id,
+)
 from utils.conversations import _preview
 from utils.event_log import event_log
-from utils.inference import prepare_inference_history, resolve_inference_message_path
+from utils.inference import (
+    nearest_committed_ai,
+    prepare_inference_history,
+    resolve_inference_message_path,
+    serialise_message_with_images_for_agent,
+)
 from utils.validators import validate_convId_full
 
 ACTIVE_RUN_STATUSES = {"queued", "running", "cancelling"}
@@ -81,6 +93,38 @@ def _tool_preferences_to_json(items: list[ToolPreference] | None) -> list[dict[s
     if not items:
         return []
     return [{"server_id": item.server_id, "tool_name": item.tool_name} for item in items]
+
+
+def _collect_input_files(message: MessageTable) -> list[dict[str, Any]]:
+    """Read a user message's attachment bytes into the seed-endpoint payload.
+
+    Must run while the DB session is open (accesses ``attachment.blob.data``).
+    Returns base64-encoded files for the agents-service input/ seeding endpoint.
+    """
+    files: list[dict[str, Any]] = []
+    for attachment in (getattr(message, "attachments", None) or []):
+        blob = getattr(attachment, "blob", None)
+        data = getattr(blob, "data", None) if blob is not None else None
+        if data is None:
+            continue
+        raw = data.tobytes() if isinstance(data, memoryview) else bytes(data)
+        files.append(
+            {
+                "filename": attachment.file_name,
+                "mime": attachment.mime_type or "",
+                "base64": base64.b64encode(raw).decode("ascii"),
+                "size": getattr(attachment, "size_bytes", None) or len(raw),
+            }
+        )
+    return files
+
+
+async def _seed_input_files(url: str, files: list[dict[str, Any]]) -> None:
+    """PUT the new turn's attachments into the deep agent's input/ before streaming."""
+    timeout = settings.http.inference_timeout
+    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        resp = await client.put(url, json={"files": files}, headers=internal_service_headers(None))
+        resp.raise_for_status()
 
 
 def _parse_sse_bytes(buffer: str, chunk: bytes) -> tuple[str, list[dict[str, Any]]]:
@@ -182,6 +226,10 @@ class InferenceRunRuntime:
         self.input_tokens = 0
         self.output_tokens = 0
         self._counted_usage_ids: set[str] = set()
+        # The durable checkpoint head the agent committed this run (captured
+        # from the terminal CHECKPOINT_COMMITTED event). Persisted on the AI
+        # message by _finish_run so the next turn resumes / forks from it.
+        self.produced_checkpoint_id: str | None = None
 
     def _accumulate_usage(self, value: Any) -> None:
         if not isinstance(value, dict):
@@ -249,9 +297,11 @@ class InferenceRunRuntime:
                     return
         self.raw_events.append(stored)
 
-    def apply_event(self, event: dict[str, Any]) -> dict[str, Any]:
+    def apply_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
         """Fold one upstream AG-UI event into the run state and return the
-        seq-stamped wire event for the delta frame.
+        seq-stamped wire event for the delta frame, or ``None`` for events that
+        are captured internally but must not be persisted/streamed (e.g.
+        CHECKPOINT_COMMITTED).
 
         Every event lands in ``raw_events`` (the durable per-run log the UI
         replays into its timeline); consecutive delta events are coalesced on
@@ -297,6 +347,17 @@ class InferenceRunRuntime:
                 self.register_interrupt(value)
             elif name == "TOKEN_USAGE":
                 self._accumulate_usage(value)
+            elif name == "CHECKPOINT_COMMITTED":
+                # Internal bridge<->agent metadata: capture the durable head but
+                # do NOT persist it into raw_events (it is not a render event,
+                # and it would carry the internal thread/checkpoint uuids into
+                # share snapshots + conversation clones). Suppressed from the
+                # wire and the durable log by returning None below.
+                if isinstance(value, dict):
+                    committed = value.get("checkpoint_id")
+                    if committed:
+                        self.produced_checkpoint_id = str(committed)
+                return None
         elif event_type == "THINKING_START":
             self.thinking_start = time.perf_counter()
             self.thinking_end = 0.0
@@ -478,42 +539,130 @@ class InferenceRunManager:
                 agent_url = build_agent_stream_url(agent)
                 resume_url = build_agent_resume_url(agent)
                 enabled_tools = run.streaming_enabled_tools or []
-                history_messages, history = prepare_inference_history(
-                    logger=logger,
-                    messages=conversation.messages,
-                    message_ids=run.streaming_message_path,
-                    enabled_tools_count=len(enabled_tools),
+                # Deep agents have a per-conversation filesystem; LangGraph
+                # agents do not. Only deep agents get files seeded into input/
+                # and the input/ path references in serialised attachments.
+                is_deep_agent = getattr(agent, "type", "") == "deep agent"
+
+                # Decide how to feed the agent this turn against its durable
+                # checkpoint thread (re-derived from the message tree):
+                #   delta_resume — the branch thread already has committed state
+                #     (a `send` continuing the leaf) → send only the new message.
+                #   delta_fork — a fresh branch thread (edit/retry) whose fork
+                #     point is a committed ancestor on the parent branch → send
+                #     the new message + fork_from so the agent seeds the new
+                #     thread from that checkpoint before running.
+                #   full_seed — no committed checkpoint to resume/fork from (new
+                #     conversation, pre-migration branch, shared_continue, or a
+                #     fork target that never committed) → send the full
+                #     reconstructed history, seeding a fresh checkpoint. The next
+                #     turn on this branch is then delta.
+                # thread_id is branch-scoped (shared across a branch's runs);
+                # run.id stays the per-run id (run_id below) the agents-service
+                # normalizer uses for AG-UI message_id + namespace bindings.
+                thread_id = run.checkpoint_thread_id or str(run.id)
+                parent_user_message = next(
+                    (m for m in conversation.messages if m.id == run.parent_message_id), None
                 )
+                committed_ancestor = nearest_committed_ai(conversation.messages, run.parent_message_id)
+                fork_from: dict[str, str] | None = None
+
+                if (
+                    parent_user_message is not None
+                    and committed_ancestor is not None
+                    and committed_ancestor.checkpoint_thread_id == thread_id
+                ):
+                    payload_mode = "delta_resume"
+                elif parent_user_message is not None and committed_ancestor is not None:
+                    payload_mode = "delta_fork"
+                    fork_from = {
+                        "thread_id": committed_ancestor.checkpoint_thread_id,
+                        "checkpoint_id": committed_ancestor.checkpoint_id,
+                    }
+                else:
+                    payload_mode = "full_seed"
+
+                if payload_mode == "full_seed":
+                    _history_messages, history = prepare_inference_history(
+                        logger=logger,
+                        messages=conversation.messages,
+                        message_ids=run.streaming_message_path,
+                        enabled_tools_count=len(enabled_tools),
+                        include_input_paths=is_deep_agent,
+                    )
+                    sent_messages = len(history)
+                else:
+                    history = [
+                        serialise_message_with_images_for_agent(
+                            parent_user_message, include_input_paths=is_deep_agent
+                        )
+                    ]
+                    sent_messages = 1
+
+                # Capture the new turn's attachments (bytes) while the session is
+                # open, to seed into the deep agent's input/ before streaming.
+                seed_files = (
+                    _collect_input_files(parent_user_message)
+                    if (is_deep_agent and parent_user_message is not None)
+                    else []
+                )
+                seed_url = (
+                    build_agent_input_files_url(agent, str(user_id), str(run.conversation_id))
+                    if seed_files
+                    else None
+                )
+
                 logger.info(
                     "inference_run_started",
                     "Detached inference run started",
                     run_id=run.id,
                     conversation_id=run.conversation_id,
-                    history_messages=len(history_messages),
+                    thread_id=thread_id,
+                    payload_mode=payload_mode,
+                    forked=fork_from is not None,
+                    sent_messages=sent_messages,
                 )
                 # Shared config block forwarded to both the initial /stream call
-                # and any subsequent /resume calls; the thread_id is what keys
-                # the agents-service checkpointer cache so resume can rehydrate.
-                # Keyed by run.id (NOT conversation_id) so each run gets an
-                # isolated checkpoint: a conversation-scoped key let the agent
-                # rehydrate the union of every branch + retry in the
-                # conversation. run.id is stable across this run's stream and
-                # all its resume legs (this config is built once) yet unique per
-                # run, so branches and retries never share checkpoint state.
+                # and any /resume legs. thread_id keys the durable saver (branch-
+                # scoped); run_id is the per-run identity for the AG-UI layer.
                 base_request_config: dict[str, Any] = {
                     "run_config": {
-                        "configurable": {"thread_id": str(run.id)},
+                        "configurable": {"thread_id": thread_id},
                     },
                     "context": {
                         "user_id": str(user_id),
                         "conversation_id": str(run.conversation_id),
+                        "run_id": str(run.id),
                     },
                     "tools": enabled_tools or None,
                 }
+                if fork_from is not None:
+                    # Consumed by /stream only (idempotent seed before the run);
+                    # /resume ignores it.
+                    base_request_config["fork_from"] = fork_from
                 request_payload: dict[str, Any] = {
                     "messages": history,
                     "config": base_request_config,
                 }
+
+            # Deliver the new turn's attachments to the deep agent's input/ dir
+            # before streaming. Prior turns' files already persist on the volume,
+            # so only this message's files are seeded. A seed failure fails the
+            # run (the agent can't read files that aren't there).
+            if seed_url and seed_files:
+                try:
+                    await _seed_input_files(seed_url, seed_files)
+                except Exception:
+                    logger.error(
+                        "input_files_seed_failed",
+                        "Failed to seed attachment files to the agent filesystem",
+                        exc_info=True,
+                        run_id=run_id,
+                        file_count=len(seed_files),
+                    )
+                    await _mark_run_failed(run_id, runtime, "Failed to deliver attachments to the agent.")
+                    await self._publish_snapshot(run_id, "terminal")
+                    return
 
             cancel_waiter = asyncio.create_task(cancel_event.wait())
             # First leg: the initial /stream call. Subsequent legs (if any) come
@@ -673,7 +822,9 @@ class InferenceRunManager:
                             await _mark_run_failed(run_id, runtime, str(event.get("message") or "Agent stream failed."))
                             await self._publish_snapshot(run_id, "terminal")
                             return "failed"
-                        new_events.append(runtime.apply_event(event))
+                        applied = runtime.apply_event(event)
+                        if applied is not None:
+                            new_events.append(applied)
                     if new_events:
                         await self._publish_delta(run_id, run_meta, runtime, new_events)
         return "completed"
@@ -720,7 +871,9 @@ class InferenceRunManager:
                                 await _mark_run_failed(run_id, runtime, str(event.get("message") or "Agent resume failed."))
                                 await self._publish_snapshot(run_id, "terminal")
                                 return "failed"
-                            new_events.append(runtime.apply_event(event))
+                            applied = runtime.apply_event(event)
+                            if applied is not None:
+                                new_events.append(applied)
                         if new_events:
                             await self._publish_delta(run_id, run_meta, runtime, new_events)
             except httpx.HTTPStatusError as exc:
@@ -833,6 +986,11 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
         run.output_tokens = runtime.output_tokens or None
         run.is_error = is_error
         run.error_message = error_message
+        # Advance the branch head so the next turn resumes / forks from the
+        # state this run committed. Only overwrite when the agent actually
+        # reported a head (keep any prior value otherwise).
+        if runtime.produced_checkpoint_id:
+            run.checkpoint_id = runtime.produced_checkpoint_id
         run.updated_at = _now()
 
         conversation = await db.get(ConversationTable, run.conversation_id)
@@ -1021,12 +1179,19 @@ async def create_inference_run_record(
     message_path: list[str] | None,
     enabled_tools: list[ToolPreference] | None,
     agent: AgentTable,
+    mode: str,
 ) -> MessageTable:
     """Create the AI placeholder message that represents the run.
 
     After the inference_runs-table collapse the run *is* the assistant message —
     the returned row carries both the streaming_* lifecycle columns and the
     final content/raw_events fields once the run terminates.
+
+    ``mode`` drives durable-checkpointer branch allocation: ``send`` continues
+    the leaf branch (inherit the nearest committed AI ancestor's
+    ``checkpoint_thread_id``); every other mode (new/edit/retry/shared_continue)
+    starts a fresh branch thread. The per-turn delta-vs-fork-vs-full decision is
+    re-derived in ``_run`` from the message tree.
     """
     await _fail_stale_queued_runs_for_conversation(db, conversation.id)
 
@@ -1059,6 +1224,20 @@ async def create_inference_run_record(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Parent message does not belong to this conversation.")
 
     parent_path = resolve_inference_message_path(conversation.messages, parent_message_id, message_path)
+
+    # Branch-thread allocation. `send` continues the same linear branch, so it
+    # resumes the nearest committed ancestor's thread; new/edit/retry/
+    # shared_continue each start a fresh branch (a sibling row or a new
+    # conversation) on its own thread, which `_run` seeds via copy-on-fork or a
+    # full-history cold seed.
+    if mode == "send":
+        committed_ancestor = nearest_committed_ai(conversation.messages, parent_message_id)
+        checkpoint_thread_id = (
+            committed_ancestor.checkpoint_thread_id if committed_ancestor is not None else str(uuid4())
+        )
+    else:
+        checkpoint_thread_id = str(uuid4())
+
     now = _now()
     assistant_message = MessageTable(
         conversation_id=conversation.id,
@@ -1071,6 +1250,7 @@ async def create_inference_run_record(
         streaming_status="queued",
         streaming_enabled_tools=_tool_preferences_to_json(enabled_tools),
         streaming_started_at=now,
+        checkpoint_thread_id=checkpoint_thread_id,
     )
     db.add(assistant_message)
     try:

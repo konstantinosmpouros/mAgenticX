@@ -9,7 +9,7 @@ from langgraph.types import Command
 
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import BaseAgent
-from runtime.checkpointer import get_or_create_checkpointer
+from runtime.checkpointer import get_checkpointer
 from observability import get_logger
 
 logger = get_logger(__name__)
@@ -43,10 +43,15 @@ class LangGraphAgent(BaseAgent, ABC):
         self.graph = None
         self.memory_saver: InMemorySaver | None = None  # created lazily at build time
         
-        # AGUI components
+        # AGUI components. The normalizer stamps AG-UI message_id + keys its
+        # sub-agent namespace bindings on the per-RUN id (the assistant message
+        # id), NOT the checkpointer thread_id — which is now branch-scoped and
+        # shared across a branch's runs. Read run_id from context; fall back to
+        # the LangGraph thread_id for thread-less / legacy callers.
         self.agui_emitter: AGUIEmitter = AGUIEmitter()
         self.agui_normalizer: AGUIStreamNormalizer = AGUIStreamNormalizer(
-            thread_id=self.run_config.get("configurable", {}).get("thread_id", "")
+            thread_id=self.context.get("run_id")
+            or self.run_config.get("configurable", {}).get("thread_id", "")
         )
 
 
@@ -133,7 +138,11 @@ class LangGraphAgent(BaseAgent, ABC):
         """
         thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
         if self.memory_saver is None and thread_id:
-            self.memory_saver = await get_or_create_checkpointer(thread_id)
+            # Bind the process-wide durable saver. The thread is selected at
+            # astream time via config=self.run_config — one shared saver, many
+            # threads. Thread-less runs fall back to an ephemeral InMemorySaver
+            # in build().
+            self.memory_saver = get_checkpointer()
         self.build()
 
 

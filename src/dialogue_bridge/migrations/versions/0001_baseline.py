@@ -34,17 +34,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # Enum names referenced by messages.sender / messages.type. Declared once so
-# upgrade/downgrade share the same Postgres type identifiers.
+# upgrade/downgrade share the same Postgres type identifiers. The enums are
+# created/dropped IMPLICITLY by create_table("messages")/drop_table — each is
+# used by exactly one table, so it is emitted exactly once. We deliberately do
+# NOT also call .create() explicitly: that double-created the type (CREATE TYPE
+# ... already exists) on a real `alembic upgrade`. The bug stayed latent because
+# every existing environment was `alembic stamp 0001_baseline`'d (this upgrade
+# never ran) until a from-scratch migrate exposed it. (Note: sa.Enum's
+# create_type kwarg is postgresql.ENUM-specific and a no-op on generic sa.Enum,
+# so it cannot suppress the implicit create — dropping the explicit call does.)
 _MESSAGE_SENDER_ENUM = sa.Enum("user", "ai", name="message_sender_enum")
 _MESSAGE_TYPE_ENUM = sa.Enum("text", "file", "image", "audio", "tool", name="message_type_enum")
 
 
 def upgrade() -> None:
-    # ------------------------------------------------------------------
-    # Enums
-    # ------------------------------------------------------------------
-    _MESSAGE_SENDER_ENUM.create(op.get_bind(), checkfirst=True)
-    _MESSAGE_TYPE_ENUM.create(op.get_bind(), checkfirst=True)
+    # Enums are created implicitly by create_table("messages") below (each is
+    # used by exactly one table → emitted once). No explicit .create() here —
+    # see the module-level note on the double-create bug.
 
     # ------------------------------------------------------------------
     # agents
@@ -388,6 +394,5 @@ def downgrade() -> None:
     op.drop_table("users")
 
     op.drop_table("agents")
-
-    _MESSAGE_TYPE_ENUM.drop(op.get_bind(), checkfirst=True)
-    _MESSAGE_SENDER_ENUM.drop(op.get_bind(), checkfirst=True)
+    # Enums are dropped implicitly by drop_table("messages") above; no explicit
+    # .drop() (mirrors the implicit create in upgrade()).

@@ -44,7 +44,9 @@ The event log is durable across container restarts (Redis is its own service) bu
 | `retry` | Create no user message; retry an AI response | Original AI message's parent user message |
 | `shared_continue` | Clone a full shared snapshot into the user workspace and append the first continuation message | New continuation user message |
 
-**Per-message agent.** The agent is a per-message property, not a per-conversation one. `start_inference_flow` resolves the agent for each run and `create_inference_run_record` stamps it onto the AI placeholder (`messages.agent_id` + denormalized `agent_name`) while updating `conversations.agent_id` as a last-used pointer. Resolution by mode: `new`/`send` use the client-supplied `agentId` (the currently-selected agent — `send` now requires it); `edit`/`retry` ignore any client `agentId` and inherit the original branch's agent server-side (the AI message being retried, or the original reply to the user message being edited), falling back to the conversation's agent if that agent was deactivated. The detached task then resolves `get_agent_by_id(run.agent_id or conversation.agent_id)` and builds `/agents/{slug}/stream|resume` from it — so one conversation can mix agents, each run isolated by its run-scoped `thread_id`.
+**Per-message agent.** The agent is a per-message property, not a per-conversation one. `start_inference_flow` resolves the agent for each run and `create_inference_run_record(mode=...)` stamps it onto the AI placeholder (`messages.agent_id` + denormalized `agent_name`) while updating `conversations.agent_id` as a last-used pointer. Resolution by mode: `new`/`send` use the client-supplied `agentId` (the currently-selected agent — `send` now requires it); `edit`/`retry` ignore any client `agentId` and inherit the original branch's agent server-side (the AI message being retried, or the original reply to the user message being edited), falling back to the conversation's agent if that agent was deactivated. The detached task then resolves `get_agent_by_id(run.agent_id or conversation.agent_id)` and builds `/agents/{slug}/stream|resume` from it — so one conversation can mix agents.
+
+**Checkpoint thread vs run id.** `create_inference_run_record` also allocates the run's durable LangGraph checkpoint thread (`messages.checkpoint_thread_id`) by mode: `send` inherits the branch leaf's thread, `new` mints one, `edit`/`retry` mint a fresh thread seeded copy-on-fork from the parent branch's checkpoint. The checkpoint `thread_id` is therefore **branch-scoped** (shared by every run on a branch), distinct from `run.id` (the per-run assistant-message id used for the WebSocket path, Redis key, and AG-UI `message_id`). See [Delta-Payload Inference](#delta-payload-inference--durable-checkpoint-resume) below.
 
 The response is always:
 
@@ -276,6 +278,24 @@ This matters for branching: editing and retrying should create siblings, not ove
 
 ---
 
+## Delta-Payload Inference & Durable Checkpoint Resume
+
+The agents service keeps a **durable LangGraph checkpoint** per branch (an `AsyncPostgresSaver` over the `agent_runtime` database — see [agent-development.md](../development/agent-development.md)). Because the branch's graph state survives across turns, the bridge no longer re-sends the full reconstructed conversation on every turn. `InferenceRunManager._run` ([`inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py)) chooses a payload mode, re-derived from the message tree via `nearest_committed_ai` ([`inference.py`](../../src/dialogue_bridge/utils/inference.py)):
+
+| Payload mode | When | What the bridge sends to `/agents/{slug}/stream` |
+| --- | --- | --- |
+| `delta_resume` | `send` on a branch whose leaf AI ancestor already committed a checkpoint on the run's `checkpoint_thread_id` | **Only the new user message** + `configurable.thread_id = checkpoint_thread_id`; the agent resumes its durable checkpoint |
+| `delta_fork` | `edit`/`retry` where the parent branch has a committed checkpoint | The new message + `fork_from: {thread_id, checkpoint_id}`; `/stream` seeds the fresh thread from the parent's checkpoint (`seed_thread_from_checkpoint`) before running |
+| `full_seed` | No committed checkpoint to resume/fork from — new conversation, a pre-migration branch, `shared_continue`, or a never-committed fork target | The **full reconstructed history** (`prepare_inference_history`) as the cold seed; the branch becomes checkpoint-backed once this run commits |
+
+`prepare_inference_history` (full reconstruction) is now used **only** on the `full_seed` path — it is the cold-start fallback, not the every-turn default. The agents `/stream` endpoint no longer wipes the checkpoint at stream start (durable threads must survive a re-issued run).
+
+### Capture-back — `CHECKPOINT_COMMITTED`
+
+So the bridge can record which durable checkpoint a run produced (for the next turn's resume/fork), the agent emits a **terminal AG-UI custom event** `CHECKPOINT_COMMITTED {thread_id, checkpoint_id}` (emitter method `checkpoint_committed`, type `CHECKPOINT_COMMITTED` in [`events.py`](../../src/agents/runtime/agui/events.py)). `InferenceRunRuntime.apply_event` captures it, and `_finish_run` persists `checkpoint_id` (alongside the already-stamped `checkpoint_thread_id`) on the AI message row. A branch's leaf AI message therefore always carries the head its next turn resumes from.
+
+---
+
 ## Phase 2 - Detached Task Lifecycle
 
 `InferenceRunManager.launch(run_id)` creates an `asyncio.Task` for `_run(run_id, cancel_event)` and stores the task and cancellation event in memory. The task:
@@ -393,7 +413,7 @@ Multiple observers per run are supported natively — Redis Streams fan out read
 
 `_finish_run()` is the only durable Postgres write after start. In one transaction it updates:
 
-- AI `MessageTable` row: `content`, `reasoning_steps`, `reasoning_time_seconds`, `raw_events`, `plan`, `subagents`, `is_error`, `error_message`, `streaming_status`, `streaming_completed_at`
+- AI `MessageTable` row: `content`, `reasoning_steps`, `reasoning_time_seconds`, `raw_events`, `plan`, `subagents`, `is_error`, `error_message`, `streaming_status`, `streaming_completed_at`, and `checkpoint_id` (the durable checkpoint head captured from the terminal `CHECKPOINT_COMMITTED` event; `checkpoint_thread_id` was already stamped at run creation)
 - `ConversationTable`: clears `active_assistant_message_id` (if pointing at this message), updates `last_message_preview` and `last_message_at`
 
 After commit, the task emits one final terminal event to the Redis stream and applies `EXPIRE` with `terminal_ttl_seconds` (default 3600). Connected WebSocket observers receive the terminal frame and close cleanly. Late reconnects within the TTL window can still replay the full backlog from Redis; reconnects after expiry get a one-shot Postgres snapshot from `stream_run_events`. The UI treats terminal `streaming_status` as authoritative and clears `activeRunId`/`isStreaming` even if an older summary still contains active flags.
@@ -472,8 +492,8 @@ sequenceDiagram
     Task->>Task: pop payload, resolve_interrupt(interrupt_id)
     Task->>Redis: XADD events frame with CUSTOM BRIDGE_HITL_RESOLVED<br/>{interrupt_id, decision, reason} — also appended to raw_events
     Task->>Agents: POST /agents/{slug}/resume<br/>AgentResumeRequest{thread_id, interrupt_id, decision, value, reason}
-    Agents->>Agents: rehydrate InMemorySaver from cache
-    Agents->>Agents: verify pending interrupt id matches request
+    Agents->>Agents: compile against shared AsyncPostgresSaver; select thread_id
+    Agents->>Agents: aget_state → verify pending interrupt id matches request
     Agents->>Agents: build Command(resume={"decisions": [...]})
     Agents->>Agents: graph.astream(command, config)
     Agents-->>Task: AG-UI SSE frames (resumed run)
@@ -482,14 +502,14 @@ sequenceDiagram
     Note over Task: loop again if another interrupt arrives,<br/>otherwise normal terminal flow
 ```
 
-The agents service maintains a process-level `dict[thread_id, InMemorySaver]` (`runtime/checkpointer/store.py`) so the resume request — which creates a fresh agent instance — can rehydrate the same checkpointer the original `/stream` call wrote to. The cache uses LRU eviction at 256 entries; if a thread is reaped before resume (process restart or extreme load), the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
+The agents service compiles every `/stream` and `/resume` request against **one process-wide `AsyncPostgresSaver`** (accessor in `runtime/checkpointer/store.py`: `get_checkpointer()`), opened in the FastAPI lifespan over a durable connection pool. The resume request — which creates a fresh agent instance — just selects the same `thread_id` and `aget_state` returns the paused state from the `agent_runtime` database. If the targeted interrupt is no longer pending (advanced/duplicate click) the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
 
-**`thread_id` is the run id, not the conversation id.** The bridge sets `configurable.thread_id = str(run.id)` ([`inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py)), so every run — every branch, edit, and retry — gets an isolated checkpoint. `run.id` is stable across a single run's `/stream` call and all its `/resume` legs (the config block is built once), yet unique per run, so a later run can never rehydrate a prior branch's accumulated messages. Keying by `conversation_id` was the source of the "agent sees every branch" / "deleted skill still visible" bug.
+**`thread_id` is the branch-scoped `checkpoint_thread_id`, not `run.id`.** The bridge sets `configurable.thread_id = run.checkpoint_thread_id` ([`inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py)) — durable and **shared by every run on a branch**, so a continue resumes the branch's prior state and a HITL resume rehydrates the same paused checkpoint. Edit/retry mint a fresh thread (seeded copy-on-fork from the parent), keeping sibling branches isolated. The per-run identity — AG-UI `message_id`, the `_THREAD_NAMESPACE_BINDINGS` key, the WebSocket/Redis run key — is `run.id`, passed separately as `context.run_id`. (Keying the checkpoint by `conversation_id` was the original "agent sees every branch" bug; keying it by `run.id` then prevented any cross-turn resume, which the branch-scoped thread now restores without leaking across branches.)
 
-**Checkpoint lifecycle — kept only while paused on HITL, else discarded.** The checkpoint is scratch space, not durable history:
+**Checkpoint lifecycle — durable, reaped only on conversation delete.** The checkpoint is durable history, not scratch space:
 
-- `/stream` releases any existing entry for the thread on entry (clean start — a re-issued run never inherits a half-written checkpoint), then builds a fresh saver.
-- At the end of every `/stream` and `/resume` leg, the agents service probes `compiled.get_state(run_config).interrupts` via `utils.release_checkpoint_unless_paused`. If an interrupt is parked → **keep** the checkpointer so the next `/resume` can rehydrate. Otherwise (normal completion, error, or cancel) → `release_checkpointer(thread_id)`. On a multi-interrupt run the saver survives each paused leg and is freed only when the final leg drains the queue. This works identically for DeepAgent and stateful LangGraphAgent; a stateless LangGraph chain has no `get_state` and is simply released.
+- `/stream` no longer releases anything on entry — a re-issued run must keep its committed checkpoint so it can resume.
+- At the end of every `/stream` and `/resume` leg, the agents service probes `compiled.aget_state(run_config).interrupts` via `utils.release_checkpoint_unless_paused`. This now manages **only the in-process namespace-binding cache** (keyed by `run_id`): if an interrupt is parked → keep the bindings so the next `/resume` rehydrates them; otherwise drop them. It **never deletes the Postgres checkpoint**. Threads are removed only by the conversation-delete reap (`adelete_thread`).
 
 ### Decision payload shape
 
@@ -508,13 +528,13 @@ Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph inte
 - Bridge → agents: `ResumeInferenceRunBody.interruptId` (`api.ts`) → `InferenceRunResumeIn.interruptId` → `_do_resume` body field `interrupt_id` → `AgentResumeRequest.interrupt_id`.
 - Agents: [`main.py`](../../src/agents/main.py) compares `req.interrupt_id` against `snapshot.interrupts[0].id` and returns 409 if the user's clicked card is no longer pending (e.g., a duplicate click after the run advanced).
 
-Why this matters: every HITL within a single run shares that run's `thread_id` (now `run.id`). Deduping on `thread_id` would silently drop every interrupt after the first in a multi-interrupt run — exactly the "second HITL never shows" bug.
+Why this matters: every HITL within a single run shares that run's checkpoint `thread_id` (now the branch-scoped `checkpoint_thread_id`). Deduping on `thread_id` would silently drop every interrupt after the first in a multi-interrupt run — exactly the "second HITL never shows" bug.
 
 ### Failure modes
 
 - **Cancel during wait** — the `cancel_waiter` wins the race, `_finish_run("cancelled")` runs, terminal Redis event published, WebSocket closes.
 - **No paused task on the bridge** (e.g., bridge process restart, run already terminated) — `request_resume` returns False, route returns 409.
-- **No cached checkpoint on the agents service** — `_do_resume` catches the 409 from `/agents/{slug}/resume`, marks the run failed.
+- **No pending interrupt on the agents service** — if `aget_state` finds no parked interrupt for the thread (e.g. already drained), `/agents/{slug}/resume` returns 409; `_do_resume` catches it and marks the run failed.
 - **Stale interrupt click** — agents `/resume` returns 409 ("targeted interrupt is no longer pending") if `req.interrupt_id` doesn't match `snapshot.interrupts[0].id`.
 - **Multiple interrupts in one run** — the loop in `_run` simply runs again. Each resume call decrements the counter and re-enters `_do_resume`. The UI surfaces the next card because dedup is by `interruptId`, not `threadId`.
 - **Reject is non-terminal** — after `_do_resume` returns "completed" following a reject, `_run` checks `pending_interrupts`. If the agent emitted another HITL in response to the rejection it loops; otherwise it falls into normal terminal completion.
@@ -573,7 +593,9 @@ The original shared conversation is not mutated. The copied conversation belongs
 ## Sharp Edges and Behavioral Notes
 
 - **Start is atomic; launch is not part of the DB transaction.** The AI placeholder commits before `launch()`. If launch fails, the bridge marks the message `streaming_status='failed'` so the conversation is not left active.
-- **The run id is the assistant message id.** There is no separate `inference_runs` table — every reference to `run_id` in URLs, WebSocket frames, Redis stream keys, and runtime caches is the AI `messages.id`.
+- **The run id is the assistant message id.** There is no separate `inference_runs` table — every reference to `run_id` in URLs, WebSocket frames, Redis stream keys, and runtime caches is the AI `messages.id`. The LangGraph checkpoint key is a **different** id — the branch-scoped `checkpoint_thread_id` — shared across a branch's runs.
+
+- **The bridge sends a delta payload, not the full history, when a branch is checkpoint-backed.** `delta_resume`/`delta_fork` send only the new user message (+ the durable `thread_id` or `fork_from`); the agent resumes/seeds from its `agent_runtime` checkpoint. Full reconstruction (`full_seed`) is the cold-start fallback only — a branch with no committed checkpoint yet (new conversation, pre-migration branch, `shared_continue`, never-committed fork target).
 - **One active stream per conversation.** The backend pre-checks, and the partial unique index `uq_messages_one_active_stream_per_conversation` enforces active statuses `queued`, `running`, and `cancelling`.
 - **Streaming has no intermediate DB writes.** Per-chunk durability lives in Redis Streams (`MAXLEN ~ 20000` delta frames). A refresh during a live run doesn't even need the backlog: the fresh-subscribe snapshot frame carries the full coalesced log from the in-process runtime, and only new deltas tail after it. Terminal commits the final state to Postgres.
 - **Reconnect is transparent up to 1 h after terminal.** The WebSocket client resumes with `since=<lastSeenSeq>`; the Redis stream is kept alive for `terminal_ttl_seconds` (default 3600 s) after `streaming_status` flips terminal.
@@ -603,8 +625,12 @@ The original shared conversation is not mutated. The copied conversation belongs
 | HITL resume path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.pending_interrupts`, `InferenceRunManager.request_resume()`, `_do_resume()`, `request_run_resume()` |
 | Bridge resume route | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `resumeInferenceRun()` route |
 | Agents resume endpoint | [src/agents/main.py](../../src/agents/main.py) | `resume_agent()` route |
-| Agents checkpointer cache | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `get_or_create_checkpointer()`, `release_checkpointer()`, `has_checkpointer()` |
-| Checkpoint release lifecycle | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` |
+| Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` — single process-wide `AsyncPostgresSaver` |
+| Copy-on-fork seeding | [src/agents/runtime/checkpointer/fork.py](../../src/agents/runtime/checkpointer/fork.py) | `seed_thread_from_checkpoint()` (used by `/stream` on `fork_from`) |
+| Namespace-cache release | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` — drops the per-`run_id` namespace cache only; never deletes Postgres |
+| Payload-mode decision + thread allocation | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_run()` (delta_resume / delta_fork / full_seed), `create_inference_run_record(mode=...)` |
+| Committed-ancestor lookup | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `nearest_committed_ai()`, `prepare_inference_history()` |
+| Conversation reap (checkpoints + filesystem) | [src/agents/main.py](../../src/agents/main.py) | `reap_conversation()` route |
 | Run shape builder | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `build_run_out_from_message()` |
 | Orphaned-run cleanup | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `cleanup_orphaned_inference_runs()` |
 | Shared clone helper | [src/dialogue_bridge/utils/shared_conv.py](../../src/dialogue_bridge/utils/shared_conv.py) | `create_conversation_from_share_record()` |

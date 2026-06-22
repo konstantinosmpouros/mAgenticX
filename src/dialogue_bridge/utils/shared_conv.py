@@ -147,6 +147,10 @@ async def create_conversation_from_share_record(
             continue
         created_at = parse_snapshot_datetime(item.get("created_at")) or now
         updated_at = parse_snapshot_datetime(item.get("updated_at")) or created_at
+        # No checkpoint_thread_id / checkpoint_id: a continued share is a new
+        # conversation owned by (potentially) a different user. It must NEVER
+        # reference the original owner's durable checkpoint thread. NULL here
+        # means the first run cold-seeds a fresh, isolated thread.
         imported = MessageTable(
             conversation_id=conv.id,
             parent_message_id=message_id_map.get(item.get("parentMessageId")),

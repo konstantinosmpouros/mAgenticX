@@ -21,8 +21,9 @@ from core.clients import get_openai_client
 from core.settings import settings
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.types import Command
-from runtime.agui.normalizer import release_namespace_bindings
-from runtime.checkpointer import has_checkpointer, release_checkpointer
+from runtime.checkpointer import get_checkpointer, has_checkpointer_initialized, set_checkpointer
+from runtime.checkpointer.fork import seed_thread_from_checkpoint
+from runtime.filesystem import delete_conversation_files, seed_input_files
 
 from observability import (
     RequestLoggingMiddleware,
@@ -50,6 +51,9 @@ from schemas import (
     SkillManifestEntry,
     CustomSkillCreate,
     UserSkillDetail,
+    SeedInputFilesRequest,
+    SeedInputFilesResponse,
+    ReapConversationRequest,
 )
 from utils import (
     release_checkpoint_unless_paused,
@@ -118,11 +122,80 @@ def _make_loop_exception_handler(old_handler=None):
         loop.default_exception_handler(context)
     return handler
 
+async def _init_durable_checkpointer(app: FastAPI) -> None:
+    """Open the persistent psycopg pool and wire the shared AsyncPostgresSaver.
+
+    Heavy deps (psycopg, langgraph-checkpoint-postgres) are imported lazily here
+    so importing ``main`` (e.g. in unit tests that never run the lifespan) does
+    not require them. The pool is long-lived and shared across all requests;
+    each request selects its thread via ``run_config.configurable.thread_id``.
+    """
+    from psycopg.rows import dict_row
+    from psycopg_pool import AsyncConnectionPool
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    cfg = settings.checkpointer
+
+    # The langgraph lib reads this from the environment; mirror the setting so a
+    # missing compose env can't silently disable the strict allow-list.
+    if cfg.strict_msgpack:
+        os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
+
+    conn_kwargs = {
+        "autocommit": True,           # required: setup() + CREATE INDEX CONCURRENTLY
+        "row_factory": dict_row,      # required: reads must be dict rows
+        "prepare_threshold": None,    # pgbouncer-safe; no server-side prepared stmts
+    }
+    pool = AsyncConnectionPool(
+        conninfo=cfg.url.get_secret_value(),
+        min_size=cfg.pool_min_size,
+        max_size=cfg.pool_max_size,
+        max_idle=cfg.pool_max_idle,
+        timeout=cfg.pool_timeout,
+        open=False,
+        kwargs=conn_kwargs,
+    )
+    await pool.open()
+    await pool.wait()
+    app.state.checkpointer_pool = pool
+
+    serde = None
+    aes_key = cfg.aes_key.get_secret_value()
+    if aes_key:
+        from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
+
+        os.environ.setdefault("LANGGRAPH_AES_KEY", aes_key)
+        serde = EncryptedSerializer.from_pycryptodome_aes()
+
+    if cfg.setup_on_startup:
+        # Serialize concurrent multi-replica setup() (the index migrations use
+        # CREATE INDEX CONCURRENTLY, which can't run in a txn block and would
+        # collide). Single-replica today, so this is belt-and-suspenders.
+        async with pool.connection() as conn:
+            await conn.execute("SELECT pg_advisory_lock(hashtext('langgraph_setup'))")
+            try:
+                await AsyncPostgresSaver(conn).setup()
+            finally:
+                await conn.execute("SELECT pg_advisory_unlock(hashtext('langgraph_setup'))")
+
+    checkpointer = AsyncPostgresSaver(pool) if serde is None else AsyncPostgresSaver(pool, serde=serde)
+    app.state.checkpointer = checkpointer
+    set_checkpointer(checkpointer)
+    logger.info(
+        "checkpointer_initialized",
+        "Durable AsyncPostgresSaver initialized",
+        encrypted=serde is not None,
+        setup_ran=cfg.setup_on_startup,
+        pool_max_size=cfg.pool_max_size,
+    )
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
     old = loop.get_exception_handler()
     loop.set_exception_handler(_make_loop_exception_handler(old))
+    pool = None
     try:
         logger.info("service_startup", "Agents service startup initiated")
         # Bootstrap the global skills registry volume from the image seed,
@@ -131,8 +204,14 @@ async def _lifespan(app: FastAPI):
         seed_global_registry()
         rebuild_global_manifest()
         reconcile_all_user_manifests()
+        # Durable checkpointer — fail fast and loud if agent_runtime is
+        # unreachable; cross-turn resume depends on it.
+        await _init_durable_checkpointer(app)
+        pool = app.state.checkpointer_pool
         yield
     finally:
+        if pool is not None:
+            await pool.close()
         loop.set_exception_handler(old)
         logger.info("service_shutdown", "Agents service shutdown completed")
         shutdown_logging()
@@ -462,6 +541,67 @@ async def disable_skill_for_user_agent(agent_slug: str, user_id: str, skill_name
 
 
 # ------------------------------------------------------------------
+# Per-conversation input files (user uploads) + cleanup
+# ------------------------------------------------------------------
+@app.put(
+    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/input-files",
+    response_model=SeedInputFilesResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def seed_conversation_input_files(
+    agent_slug: str, user_id: str, conversation_id: str, payload: SeedInputFilesRequest
+) -> SeedInputFilesResponse:
+    """Persist user-uploaded files into the conversation's read-only ``input/``.
+
+    Called by the bridge before a deep-agent run when the new user turn carries
+    attachments. Idempotent (overwrite by filename); 422 on a bad/oversized file.
+    """
+    try:
+        written = seed_input_files(
+            user_id=user_id,
+            agent_slug=agent_slug,
+            conversation_id=conversation_id,
+            files=payload.files,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return SeedInputFilesResponse(written=written)
+
+
+@app.post(
+    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/reap",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def reap_conversation(
+    agent_slug: str, user_id: str, conversation_id: str, payload: ReapConversationRequest
+) -> None:
+    """Reap a conversation on delete: drop its durable checkpoint threads and
+    its per-(user, agent) filesystem dir (input/output/artifacts). Called
+    best-effort by the bridge, which owns the thread-id metadata. Idempotent —
+    unknown threads / missing dirs are no-ops."""
+    checkpointer = get_checkpointer()
+    for thread_id in payload.thread_ids:
+        if not thread_id:
+            continue
+        try:
+            await checkpointer.adelete_thread(thread_id)
+        except Exception:
+            logger.warning(
+                "checkpoint_thread_reap_failed",
+                "Failed to delete a checkpoint thread during conversation reap",
+                exc_info=True,
+                thread_id=thread_id,
+            )
+    try:
+        delete_conversation_files(user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+
+# ------------------------------------------------------------------
 # Title Generation Endpoint
 # ------------------------------------------------------------------
 @app.post("/titles/generate", response_model=ConversationTitle, status_code=status.HTTP_200_OK, dependencies=[Depends(require_internal_caller)])
@@ -574,6 +714,31 @@ async def create_realtime_session(req: RealtimeSessionRequest) -> RealtimeSessio
 
 
 
+async def _emit_checkpoint_committed(agent, thread_id, agent_logger, request_context):
+    """Read the durable checkpoint head this run produced and encode it as a
+    terminal AG-UI CHECKPOINT_COMMITTED frame (or None). The bridge persists
+    ``(thread_id, checkpoint_id)`` on the assistant message so the next turn
+    resumes and edit/retry fork from this head."""
+    if not thread_id:
+        return None
+    try:
+        aget_state = getattr(getattr(agent, "compiled", None), "aget_state", None)
+        if aget_state is None:
+            return None
+        snapshot = await aget_state(agent.run_config)
+        cfg = getattr(snapshot, "config", None) or {}
+        checkpoint_id = (cfg.get("configurable") or {}).get("checkpoint_id")
+        return agent.agui_emitter.checkpoint_committed(thread_id=thread_id, checkpoint_id=checkpoint_id)
+    except Exception:
+        agent_logger.warning(
+            "checkpoint_commit_emit_failed",
+            "Failed to read/emit committed checkpoint head",
+            context=request_context,
+            exc_info=True,
+        )
+        return None
+
+
 # ------------------------------------------------------------------
 # Agent Interaction Endpoint
 # ------------------------------------------------------------------
@@ -623,15 +788,16 @@ async def stream_agent(agent_slug: str, req: Request):
     agent_logger.info("agent_initialization_completed", "Agent initialization completed", agent_type=type(agent).__name__)
     request_context = get_context()
     stream_thread_id = configurable.get("thread_id") or ""
+    # Per-run identity (assistant message id) used for the namespace-binding
+    # cache; distinct from the branch-scoped checkpoint thread_id.
+    run_id = context_data.get("run_id") or stream_thread_id
+    # Edit/retry forks: seed this (fresh) branch thread from the parent branch's
+    # checkpoint at the fork point before running the delta. Continue/new omit it.
+    fork_from = req.config.get("fork_from") if isinstance(req.config, dict) else None
 
-    # Stream agent responses
+    # Stream agent responses. NOTE: durable threads — a fresh /stream must NOT
+    # wipe the checkpoint; resume relies on it persisting across turns.
     async def event_stream():
-        # Clean start: a fresh /stream run must never inherit a checkpoint left
-        # by a prior attempt on the same thread_id. /resume is the only path
-        # that continues an existing checkpoint.
-        if stream_thread_id:
-            await release_checkpointer(stream_thread_id)
-            release_namespace_bindings(stream_thread_id)
         try:
             agent_logger.info("agent_stream_started", "Agent stream execution started", context=request_context)
             async with mcp_session_context() as session:
@@ -640,8 +806,21 @@ async def stream_agent(agent_slug: str, req: Request):
                 agent_logger.info("mcp_tools_loaded", "Loaded live MCP tools for agent stream", context=request_context, live_tool_count=len(live_tools))
                 agent.attach_tools(live_tools)
                 agent_logger.info("agent_tools_attached", "Agent tools attached for stream", context=request_context, attached_tool_count=len(getattr(agent, "tools_names", [])))
+                if isinstance(fork_from, dict) and stream_thread_id:
+                    # Build with tools first (deep agents compile against self.tools),
+                    # then seed the new thread from the fork-point checkpoint.
+                    await agent.ensure_built()
+                    await seed_thread_from_checkpoint(
+                        graph=agent.compiled,
+                        source_thread_id=str(fork_from.get("thread_id") or ""),
+                        source_checkpoint_id=fork_from.get("checkpoint_id"),
+                        target_thread_id=stream_thread_id,
+                    )
                 async for chunk in agent.astream(payload={"messages": req.messages}):
                     yield chunk
+            committed = await _emit_checkpoint_committed(agent, stream_thread_id, agent_logger, request_context)
+            if committed is not None:
+                yield committed
             agent_logger.info("agent_stream_completed", "Agent stream execution completed", context=request_context)
         except asyncio.CancelledError:
             agent_logger.info("agent_stream_cancelled", "Agent stream execution cancelled", context=request_context)
@@ -651,9 +830,9 @@ async def stream_agent(agent_slug: str, req: Request):
             yield agent._encode_run_error(exc)
         finally:
             try:
-                await release_checkpoint_unless_paused(agent, stream_thread_id)
+                await release_checkpoint_unless_paused(agent, run_id)
             except Exception:
-                agent_logger.warning("checkpoint_release_failed", "Failed to release checkpoint after stream", context=request_context, exc_info=True)
+                agent_logger.warning("checkpoint_release_failed", "Failed to release namespace cache after stream", context=request_context, exc_info=True)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -666,12 +845,13 @@ async def stream_agent(agent_slug: str, req: Request):
 async def resume_agent(agent_slug: str, req: AgentResumeRequest):
     """Resume a LangGraph run paused on a ``__interrupt__`` HITL event.
 
-    Looks up the per-thread checkpointer cached at stream time, instantiates a
-    fresh agent bound to it, builds a ``Command(resume=...)`` from the bridge's
-    decision payload, and streams the resulting AG-UI events back. Stream
-    framing and error encoding mirror the regular ``/stream`` endpoint so the
-    bridge can plumb resume output through the same Redis stream + WebSocket
-    observer pipeline.
+    Instantiates a fresh agent bound to the shared durable saver on the run's
+    branch thread, reads the paused checkpoint (``aget_state``), builds a
+    ``Command(resume=...)`` from the bridge's decision payload, and streams the
+    resulting AG-UI events back. Stream framing and error encoding mirror the
+    regular ``/stream`` endpoint so the bridge can plumb resume output through
+    the same Redis stream + WebSocket observer pipeline. Because the checkpoint
+    is durable, this now works even across an agents-service restart.
     """
     context_data = req.config.get("context", {}) if isinstance(req.config, dict) else {}
     run_config = req.config.get("run_config", {}) if isinstance(req.config, dict) else {}
@@ -698,12 +878,12 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="thread_id is required to resume a paused run.",
         )
-    if not await has_checkpointer(effective_thread_id):
-        # The run either never paused or was reaped from the cache (LRU/eviction
-        # or process restart). The bridge handles 409 by failing the run.
+    if not has_checkpointer_initialized():
+        # Saver not wired (startup race) — distinct from "no paused interrupt",
+        # which is detected below from the durable checkpoint itself.
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="No paused checkpoint found for this thread.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Checkpointer is not ready.",
         )
 
     definition = AGENT_REGISTRY.get(agent_slug, None)
@@ -714,8 +894,8 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         )
 
     try:
-        # Force the thread_id onto the run_config so the agent's lazy
-        # checkpointer lookup hits the same cache entry as the original stream.
+        # Force the thread_id onto the run_config so the agent binds the shared
+        # durable saver to the SAME branch thread the original stream used.
         resume_config = dict(req.config)
         run_config_in = dict(resume_config.get("run_config") or {})
         configurable_in = dict(run_config_in.get("configurable") or {})
@@ -746,12 +926,11 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
     # raises a ValueError if the count is wrong, so we read it back from the
     # saved checkpoint instead of guessing.
     try:
-        # Rehydrate the per-thread checkpointer + build the graph via the base-
-        # class helper so we can read the saved state before issuing the
-        # resume command. astream() calls the same helper, so this work is
-        # not duplicated when the event stream below kicks off.
+        # Build the graph bound to the durable saver, then read the saved state
+        # (async — AsyncPostgresSaver has no sync get_state) before issuing the
+        # resume command. astream() reuses the same built graph.
         await agent.ensure_built()
-        snapshot = agent.compiled.get_state(agent.run_config)
+        snapshot = await agent.compiled.aget_state(agent.run_config)
         pending_interrupts = list(snapshot.interrupts or [])
     except Exception as exc:
         agent_logger.warning(
@@ -842,6 +1021,8 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         per_action=req.decisions is not None,
     )
 
+    resume_run_id = context_data.get("run_id") or effective_thread_id
+
     async def event_stream():
         try:
             agent_logger.info("agent_resume_started", "Agent resume execution started", context=request_context)
@@ -850,6 +1031,9 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
                 agent.attach_tools(live_tools)
                 async for chunk in agent.astream(payload={"messages": []}, command=resume_command):
                     yield chunk
+            committed = await _emit_checkpoint_committed(agent, effective_thread_id, agent_logger, request_context)
+            if committed is not None:
+                yield committed
             agent_logger.info("agent_resume_completed", "Agent resume execution completed", context=request_context)
         except asyncio.CancelledError:
             agent_logger.info("agent_resume_cancelled", "Agent resume execution cancelled", context=request_context)
@@ -858,11 +1042,12 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             agent_logger.error("agent_resume_failed", "Agent resume execution failed", context=request_context, exc_info=True)
             yield agent._encode_run_error(exc)
         finally:
-            # Resume drained the interrupt → release. Resume re-paused on another
-            # interrupt → keep for the next /resume.
+            # Resume drained the interrupt → drop the namespace cache. Resume
+            # re-paused on another interrupt → keep it for the next /resume.
+            # The durable checkpoint is never deleted here.
             try:
-                await release_checkpoint_unless_paused(agent, effective_thread_id)
+                await release_checkpoint_unless_paused(agent, resume_run_id)
             except Exception:
-                agent_logger.warning("checkpoint_release_failed", "Failed to release checkpoint after resume", context=request_context, exc_info=True)
+                agent_logger.warning("checkpoint_release_failed", "Failed to release namespace cache after resume", context=request_context, exc_info=True)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

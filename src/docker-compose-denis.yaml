@@ -83,11 +83,24 @@ services:
       - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
       - SKILLS_REGISTRY_GLOBAL_ROOT=/var/agents/skills_registry/global
       - SKILLS_REGISTRY_USERS_ROOT=/var/agents/skills_registry/users
+      # Durable LangGraph checkpointer. Password-less URL — the secret is
+      # spliced in and `sslmode=verify-full&sslrootcert=$INTERNAL_CA_CERT_PATH`
+      # is appended by core/settings.py. The `agent_runtime` DB must exist on
+      # chat_postgres (one-time `CREATE DATABASE agent_runtime` — see runbook).
+      - AGENT_RUNTIME_DATABASE_URL=postgresql://admin@chat_postgres:5432/agent_runtime
+      - AGENT_RUNTIME_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
+      - LANGGRAPH_STRICT_MSGPACK=true
+      # At-rest encryption of checkpoint blobs. Create the swarm secret with a
+      # 16/24/32-byte key; if absent, encryption is skipped (boot still succeeds).
+      - LANGGRAPH_AES_KEY_FILE=/run/secrets/agent_runtime_aes_key
     secrets:
       - openai_api_key
       - trusted_proxy_secret
+      - postgres_password
+      - agent_runtime_aes_key
     depends_on:
       - rag_service
+      - chat_postgres
     restart: unless-stopped
     volumes:
       - /opt/magenticx/agents/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
@@ -306,6 +319,9 @@ secrets:
   postgres_password:
     external: true
     name: magenticx_postgres_password
+  agent_runtime_aes_key:
+    external: true
+    name: magenticx_agent_runtime_aes_key
 
 
 

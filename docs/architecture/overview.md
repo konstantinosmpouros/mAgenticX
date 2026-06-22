@@ -13,7 +13,7 @@ This document describes the full mAgenticX platform: every service, its port, it
 | agents | `agents` | **8003** | FastAPI — LangGraph + DeepAgents runtime |
 | rag_service | `rag_service` | **8001** | FastAPI — Chroma vector retrieval + DuckDB SQL |
 | vectordb | `vectordb` | **8000** | ChromaDB 0.6.3 — vector store |
-| chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16.3 — relational store |
+| chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16.3 — relational store (`chat_db` + `agent_runtime` DBs) |
 | redis | `redis` | **6379** | Redis 7.4 — per-run Redis Streams as the inference event log |
 | mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — optional, via `docker-compose-mcp.yaml` |
 | vault | `vault` | **8004** | HashiCorp Vault 1.21 — optional, via `docker-compose-hashicorp.yaml` |
@@ -50,9 +50,10 @@ flowchart TB
     nginx -->|"rewrite /api/ → /v1/"| bridge
     bridge -->|"SSE stream"| agents
     bridge -->|"REST"| vault
-    bridge --- pg
+    bridge -->|"chat_db"| pg
     bridge -->|"XADD / XREAD inference event log"| redis
 
+    agents -->|"agent_runtime (AsyncPostgresSaver)"| pg
     agents -->|"REST"| rag
     agents -->|"SSE"| mcp
     agents -->|"REST"| OpenAI["OpenAI API"]
@@ -155,6 +156,7 @@ Without Vault, the bridge can fall back to a local JWT signing mode (configurabl
 
 - Discovers and registers all agent classes at startup
 - Runs inference for a given agent slug and conversation history
+- Persists durable LangGraph checkpoints in its own `agent_runtime` Postgres database (a single process-wide `AsyncPostgresSaver` over a long-lived connection pool, opened in the FastAPI lifespan) so a branch's run state survives across turns and process restarts
 - Integrates MCP tools from `mcp_gateway`
 - Calls `rag_service` for retrieval and structured data queries
 - Streams AG-UI protocol events over SSE
@@ -222,7 +224,12 @@ ChromaDB runs as a standalone HTTP server on port 8000. `rag_service` connects t
 
 ### chat_postgres (PostgreSQL)
 
-PostgreSQL 16.3 stores all relational data: users, sessions, conversations, messages (including `streaming_*` columns that carry the inference-run lifecycle), attachments, blobs, sharing metadata, and reports. `dialogue_bridge` connects via SQLAlchemy (async) with `asyncpg`. The full schema is documented in `docs/architecture/database-schema.md`.
+PostgreSQL 16.3 runs **two databases on the same instance**:
+
+- **`chat_db`** — all of `dialogue_bridge`'s relational data: users, sessions, conversations, messages (including `streaming_*` columns that carry the inference-run lifecycle, plus the `checkpoint_thread_id` / `checkpoint_id` lineage columns that map a branch onto its durable checkpoint), attachments, blobs, sharing metadata, and reports. The bridge connects via SQLAlchemy (async) with `asyncpg`. The full schema is documented in `docs/architecture/database-schema.md`.
+- **`agent_runtime`** — owned by the **agents** service, holding the LangGraph `AsyncPostgresSaver` checkpoint tables (managed entirely by `langgraph-checkpoint-postgres` via `.setup()`, advisory-locked, at agents-service startup). The agents service connects with `psycopg` over a `psycopg_pool.AsyncConnectionPool`. Threads persist indefinitely — no TTL — and are reaped only when a conversation is deleted.
+
+The `agent_runtime` DB is created automatically on a fresh volume (dev: `chat_postgres` mounts `./postgres-init/create-agent-runtime.sql`); an **existing** volume needs a one-time manual `createdb -U admin agent_runtime` (dev) / `CREATE DATABASE agent_runtime` (prod) before the agents service can start.
 
 ### redis (Inference Event Log)
 
@@ -372,6 +379,11 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `HTTP_<PROFILE>_{CONNECT,READ,WRITE,POOL}_SECONDS` | dialogue_bridge | Upstream httpx timeouts per profile (`AGENTS`, `GENERATION`, `SKILLS`, `VOICE`, `INFERENCE`) |
 | `MCP_GATEWAY_URL` | agents | MCP gateway SSE endpoint |
 | `RAG_BASE_URL` | agents | RAG service base URL |
+| `AGENT_RUNTIME_DATABASE_URL` | agents | psycopg conninfo for the `agent_runtime` checkpoint DB (password-less in prod — TLS + password auto-injected by settings) |
+| `AGENT_RUNTIME_DATABASE_PASSWORD_FILE` | agents | File-mounted Postgres password (Swarm `postgres_password` secret) injected into `AGENT_RUNTIME_DATABASE_URL` at settings load; unset in local dev |
+| `AGENT_RUNTIME_SETUP_ON_STARTUP` | agents | Run the checkpointer `.setup()` (table create/migrate) at startup; defaults `true` |
+| `LANGGRAPH_STRICT_MSGPACK` | agents | Strict msgpack (de)serialization for checkpoint payloads; defaults `true` |
+| `LANGGRAPH_AES_KEY_FILE` | agents | File-mounted AES key (Swarm `agent_runtime_aes_key` secret) enabling at-rest `EncryptedSerializer` for checkpoints; empty/unset disables encryption (local dev) |
 | `AGENTS_SERVICE_URL` | dialogue_bridge | Agents runtime base URL |
 | `DISABLED_AGENT_SLUGS` | agents | Comma-separated slugs to skip at startup |
 | `REALTIME_SUPPORTED_VOICES` | agents | Comma-separated allowed realtime voices (defaults to the OpenAI set) |
@@ -406,7 +418,9 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 
 - **Postgres is the only stateful service in the core compose.** ChromaDB state lives in a Docker volume (`./vectorstores/chroma_db_openai/`). PostgreSQL state lives in a named volume (`chat_postgres_data`). Both must be backed up for full disaster recovery.
 
-- **The agents service is stateless between requests.** No conversation state is held in memory in the agents process. The full message history is sent on every inference request by `dialogue_bridge`, which reads it from PostgreSQL.
+- **The agents service holds no in-process conversation state, but it is no longer stateless across turns.** No per-conversation Python state lives in the agents process between requests, but graph state is now persisted durably in the `agent_runtime` Postgres checkpoint DB keyed by a per-branch `thread_id`. As a result the bridge no longer re-sends the full message history every turn for a branch with a committed checkpoint — on a continue it sends only the new user message plus the branch's `checkpoint_thread_id` and the agent resumes from its durable checkpoint (full history is sent only as the cold-seed path when a branch has no committed checkpoint yet). See [inference-streaming.md](../flows/inference-streaming.md).
+
+- **The agents service now depends on Postgres at startup.** Its lifespan opens the `AsyncPostgresSaver` connection pool and runs `.setup()` before serving; the dev compose adds `depends_on: chat_postgres` to the agents service. If the `agent_runtime` DB does not exist (existing volume, missing one-time `createdb`), the agents service fails to start.
 
 ---
 

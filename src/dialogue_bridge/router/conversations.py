@@ -36,6 +36,7 @@ from utils import (
     get_share_for_owner,
     init_conv,
     list_owned_shares,
+    reap_conversation_runtime,
     resolve_conversation_title,
     set_conversation_archive_state,
     validate_convId,
@@ -402,6 +403,10 @@ async def deleteConversation(
 ):
     """Delete a conversation entirely (cascades to messages & attachments rows)."""
     set_context(user_id=user_id, conversation_id=conversation_id)
+    # Reap the agents-service runtime (durable checkpoint threads + per-agent
+    # filesystem dirs) BEFORE the rows are gone — it reads agent_id +
+    # checkpoint_thread_id off the AI messages. Best-effort; never blocks delete.
+    await reap_conversation_runtime(db, user_id, conversation_id)
     await db.delete(current_conv)
     await db.commit()
     logger.info("conversation_deleted", "Conversation deleted", conversation_id=conversation_id, agent_id=current_conv.agent_id)
