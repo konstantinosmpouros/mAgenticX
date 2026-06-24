@@ -17,7 +17,7 @@ from observability import get_context, get_logger
 
 from core.proxy import internal_service_headers
 from core.settings import settings
-from core.tls import get_httpx_verify
+from core.tls import get_httpx_client_cert, get_httpx_verify
 from core.error_handling import upstream_error_handler
 
 from utils.agents import get_agent_by_id
@@ -106,7 +106,7 @@ async def list_skills(*, bypass_cache: bool = False) -> List[Dict[str, Any]]:
     params = {"bypass_cache": "true"} if bypass_cache else None
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.get(
@@ -178,7 +178,7 @@ async def list_user_skills(*, user_id: str, bypass_cache: bool = False) -> List[
     upstream_headers = internal_service_headers(request_id)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.get(_user_pool_url(user_id), headers=upstream_headers),
@@ -223,7 +223,7 @@ async def get_user_skill_detail(*, user_id: str, skill_name: str) -> Dict[str, A
     url = _user_pool_item_url(user_id, skill_name)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.get(url, headers=upstream_headers),
@@ -279,7 +279,7 @@ async def add_global_skill_to_user_pool(*, user_id: str, skill_name: str) -> Non
     url = _user_pool_global_add_url(user_id, skill_name)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(url, headers=upstream_headers),
@@ -333,7 +333,7 @@ async def create_custom_skill_in_pool(
     url = _user_pool_custom_create_url(user_id)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(url, headers=upstream_headers, json=payload),
@@ -411,7 +411,7 @@ async def remove_skill_from_user_pool(*, user_id: str, skill_name: str) -> None:
     url = _user_pool_item_url(user_id, skill_name)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.delete(url, headers=upstream_headers),
@@ -472,7 +472,7 @@ async def get_user_agent_skills(*, user_id: str, agent_id: str) -> List[str]:
     upstream_headers = internal_service_headers(request_id)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.get(
@@ -538,7 +538,7 @@ async def _proxy_skill_mutation(
     upstream_headers = internal_service_headers(request_id)
 
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.request(method, url, headers=upstream_headers),

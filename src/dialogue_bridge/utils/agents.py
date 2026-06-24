@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from core.settings import settings
-from core.tls import get_httpx_verify
+from core.tls import get_httpx_client_cert, get_httpx_verify
 from core.database import AgentTable, MessageTable
 from core.proxy import internal_service_headers
 from core.error_handling import upstream_error_handler
@@ -128,7 +128,7 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
     upstream_headers = internal_service_headers(request_id)
     try:
         # Pull the latest agent manifests from the agents service.
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.get(_AGENTS_DISCOVERY_ENDPOINT, headers=upstream_headers),
@@ -279,7 +279,7 @@ async def reap_conversation_runtime(db: AsyncSession, user_id: str, conversation
 
     timeout = settings.http.agents_timeout
     headers = internal_service_headers(get_context().get("request_id"))
-    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
         for agent_id, thread_ids in threads_by_agent.items():
             agent = await get_agent_by_id(agent_id)
             if agent is None or not getattr(agent, "slug", None):
@@ -305,7 +305,7 @@ async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
     upstream_headers = internal_service_headers(request_id)
     try:
         # Forward the request to the MCP-backed agents service.
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.get(_AGENTS_TOOLS_ENDPOINT, headers=upstream_headers),

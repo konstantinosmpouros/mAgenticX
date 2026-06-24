@@ -140,6 +140,8 @@ All routes are mounted under the `/v1/` prefix by FastAPI's app router.
 
 All backend-to-backend HTTP calls require the `X-Internal-Proxy-Secret` header (value from `TRUSTED_PROXY_SECRET` env var). The `require_internal_caller` FastAPI dependency validates this on every internal endpoint. nginx injects the header automatically for browser → bridge traffic. The bridge injects it manually when calling the agents service.
 
+In production this application-layer credential is backed by **transport-layer mutual TLS** on the three HTTP service hops — `agentic_ui → dialogue_bridge`, `dialogue_bridge → agents`, and `agents → rag_service`. Each server requires a client certificate signed by the internal CA (`entrypoint-tls.sh` adds `--ssl-cert-reqs 2 --ssl-ca-certs ca.crt` to uvicorn when `REQUIRE_MTLS` is true, default `true`); each caller presents its own service cert (nginx `proxy_ssl_certificate`, Python services via httpx `cert=get_httpx_client_cert()`). So a peer is authenticated cryptographically by its cert, not only by the shared header. `chat_postgres`, `redis`, and `vault` stay password/token-over-verified-TLS (not mTLS); `agents → mcp_gateway` remains plaintext. `REQUIRE_MTLS=false` is the escape hatch and the zero-downtime rollout lever (deploy cert-presenting clients first, then flip enforcement on).
+
 ### Vault Integration
 
 When Vault is deployed, `dialogue_bridge` calls `vault:8004` to authenticate user credentials (userpass backend) and receive short-lived JWT access tokens. The bridge issues HttpOnly cookies to the browser; it never exposes raw tokens.
@@ -360,6 +362,8 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `SESSION_REFRESH_TTL_SECONDS` | dialogue_bridge | Refresh token lifetime |
 | `TRUSTED_PROXY_SECRET` | all services | Internal service authentication |
 | `REQUIRE_TLS` | agents, rag_service, dialogue_bridge, chat_postgres, agentic_ui | TLS-entrypoint gate; defaults to `true` (fail closed — refuse to start in plaintext if certs are missing/unreadable). Set `false` only as an emergency escape hatch. Not used in local dev (the TLS entrypoints are a prod-only override). |
+| `REQUIRE_MTLS` | agents, rag_service, dialogue_bridge | Mutual-TLS gate on the HTTP service hops; defaults to `true` (uvicorn requires a CA-signed client cert). Set `false` as the emergency escape hatch / zero-downtime rollout lever. Prod-only (TLS entrypoints don't run in local dev). |
+| `INTERNAL_CLIENT_CERT_PATH` / `INTERNAL_CLIENT_KEY_PATH` | agents, dialogue_bridge | Client cert + key the service presents on outbound internal calls (mTLS). Unset in local dev → no client cert. |
 | `VAULT_URL` | dialogue_bridge | HashiCorp Vault base URL |
 | `REDIS_URL` | dialogue_bridge | Redis connection URL (default `redis://redis:6379/0`) |
 | `REDIS_PASSWORD_FILE` / `REDIS_PASSWORD` | dialogue_bridge, redis | Redis AUTH password (file-mounted secret in prod, env var in local dev) |

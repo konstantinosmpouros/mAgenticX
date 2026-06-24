@@ -127,6 +127,10 @@ class TlsSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
     ca_cert_path: str | None = Field(None, validation_alias="INTERNAL_CA_CERT_PATH")
+    # Wrapped in SecretStr (the key is private material) so the paths cannot surface
+    # in a settings repr/dump; the CA cert is public, so ca_cert_path stays str.
+    client_cert_path: SecretStr | None = Field(None, validation_alias="INTERNAL_CLIENT_CERT_PATH")
+    client_key_path: SecretStr | None = Field(None, validation_alias="INTERNAL_CLIENT_KEY_PATH")
 
 
 class CheckpointerSettings(BaseSettings):

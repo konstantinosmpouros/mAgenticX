@@ -38,13 +38,19 @@ ssl_protocols       TLSv1.2 TLSv1.3;
 ssl_ciphers         HIGH:!aNULL:!MD5;
 EOF
 
-  # Add upstream SSL verification if the CA cert is also present
+  # Add upstream SSL verification if the CA cert is also present. Also present
+  # this service's own cert as a client certificate so the upstream
+  # (dialogue_bridge) can mutually authenticate us (mTLS). proxy_ssl_certificate
+  # is only sent when the upstream requests it, so it is harmless when the bridge
+  # runs with REQUIRE_MTLS=false (one-way TLS).
   if [ -r "$CA_CERT" ]; then
     cat >> "$TLS_INC" <<EOF
 proxy_ssl_trusted_certificate $CA_CERT;
 proxy_ssl_verify              on;
 proxy_ssl_verify_depth        2;
 proxy_ssl_server_name         on;
+proxy_ssl_certificate         $TLS_CERT;
+proxy_ssl_certificate_key     $TLS_KEY;
 EOF
   fi
 elif [ "$REQUIRE_TLS" = "true" ]; then

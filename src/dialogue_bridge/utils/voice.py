@@ -8,7 +8,7 @@ from core.database import AgentTable, ConversationTable, UserPreferencesTable
 from core.error_handling import upstream_error_handler
 from core.proxy import internal_service_headers
 from core.settings import settings
-from core.tls import get_httpx_verify
+from core.tls import get_httpx_client_cert, get_httpx_verify
 from utils.validators import validate_convId_full
 
 
@@ -110,7 +110,7 @@ async def create_realtime_session_with_agents(
     }
     timeout = settings.http.voice_timeout
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             response = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(_REALTIME_SESSION_ENDPOINT, json=payload, headers=headers),

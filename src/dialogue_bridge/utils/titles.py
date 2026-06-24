@@ -5,7 +5,7 @@ import httpx
 
 from schemas import MessageIn, TitleOut
 from observability import get_context, get_logger
-from core.tls import get_httpx_verify
+from core.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
 from core.proxy import internal_service_headers
 from core.error_handling import upstream_error_handler
@@ -90,7 +90,7 @@ async def generate_conversation_title(message: MessageIn) -> Optional[str]:
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
     try:
-        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             response = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(_TITLE_ENDPOINT, json=payload, headers=upstream_headers),

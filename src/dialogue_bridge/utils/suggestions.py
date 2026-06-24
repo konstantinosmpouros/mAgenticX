@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from core.database import ConversationTable
 from core.proxy import internal_service_headers
-from core.tls import get_httpx_verify
+from core.tls import get_httpx_client_cert, get_httpx_verify
 from observability import get_context, get_logger
 from schemas import SuggestionsOut
 from core.settings import settings
@@ -92,7 +92,7 @@ async def generate_conversation_suggestions(
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
     try:
-        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=settings.http.generation_timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             response = await upstream_error_handler.run_with_retries(
                 logger,
                 lambda: client.post(_SUGGESTIONS_ENDPOINT, json=payload, headers=upstream_headers),

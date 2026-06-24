@@ -8,7 +8,7 @@ import httpx
 from pydantic import BaseModel
 
 from core.settings import settings
-from core.tls import get_httpx_verify
+from core.tls import get_httpx_client_cert, get_httpx_verify
 from observability import get_context
 from core.proxy import internal_service_headers
 from langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
@@ -161,7 +161,7 @@ def build_orthodox_nodes(*, agents: OrthodoxAgents, agui: AGUIEmitter) -> Orthod
         async def fetch_single(query: str):
             request_id = get_context().get("request_id")
             headers = internal_service_headers(request_id)
-            async with httpx.AsyncClient(verify=get_httpx_verify(), timeout=httpx.Timeout(REQUEST_TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT_SECONDS)) as client:
+            async with httpx.AsyncClient(verify=get_httpx_verify(), cert=get_httpx_client_cert(), timeout=httpx.Timeout(REQUEST_TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT_SECONDS)) as client:
                 resp = await client.post(
                     ENDPOINT,
                     json={"query": query, "k": RETRIEVE_TOP_K},

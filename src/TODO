@@ -30,10 +30,7 @@
 ## Agentic UI
 
 - Chart can be visualized with [shadcn/charts](https://www.shadcn.io/charts) and the agent can have a custom tool like the todo tool in order to represent the chart and create a custom AGUI event for the interaction with the chart.
-
-## Bugs
-
-- l have the same bug with the session intent that l had before in the chatbot in the work. Its a normalizer bug.
+- Check for context and usage if we can use this one from [shadcn](https://www.shadcn.io/ai/context).
 
 ## Security
 
@@ -47,8 +44,4 @@ Findings from the full security audit (2026-06-10). Overall posture is strong �
 
 ### Medium
 
-- MCP gateway runs `privileged: true` (dind) — `src/docker-compose-denis-mcp.yaml:6`. Container-escape-to-host risk on the shared VM, mitigated by network isolation (only on the `mcp_gateway` overlay, no host ports). Fix: pin MCP server images by digest in the catalog, document the catalog as a trust boundary, and explore rootless-dind. Also carries the residual from the High batch: the dind image cannot terminate TLS, so agents→gateway stays plaintext HTTP on the overlay (host-allowlisted + trust header, but not encrypted) — revisit if the gateway ever gains TLS support or moves behind an mTLS sidecar.
-
-### Low / hardening
-
-- CSP allows `'unsafe-inline'` for scripts — `src/agentic_ui/nginx.conf.template:34`. Move to a nonce/hash-based CSP (Vite bundles are hashable) and drop `'unsafe-inline'` for `script-src`.
+- MCP gateway runs `privileged: true` (dind) — `src/docker-compose-denis-mcp.yaml`. Digest-pinning of the active server images + catalog trust-boundary docs are done (`src/mcp_gateway/README.md`). Open residual is architectural: `privileged` is required by the dind variant (Swarm strips its caps), and the dind image can't terminate TLS, so `agents → mcp_gateway` stays plaintext on the overlay (host-allowlisted + trust header). Revisit with a TLS sidecar / mTLS or rootless-dind.

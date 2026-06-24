@@ -23,7 +23,7 @@ from core.database import (
 )
 from core.proxy import internal_service_headers
 from core.settings import settings
-from core.tls import get_httpx_verify
+from core.tls import get_httpx_client_cert, get_httpx_verify
 from observability import get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
 from utils.agents import (
@@ -122,7 +122,7 @@ def _collect_input_files(message: MessageTable) -> list[dict[str, Any]]:
 async def _seed_input_files(url: str, files: list[dict[str, Any]]) -> None:
     """PUT the new turn's attachments into the deep agent's input/ before streaming."""
     timeout = settings.http.inference_timeout
-    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
         resp = await client.put(url, json={"files": files}, headers=internal_service_headers(None))
         resp.raise_for_status()
 
@@ -808,7 +808,7 @@ class InferenceRunManager:
     ) -> str:
         sse_buffer = ""
         timeout = settings.http.inference_timeout
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             headers = internal_service_headers(None)
             headers["Accept"] = "text/event-stream"
             async with client.stream("POST", agent_url, json=request_payload, headers=headers) as response:
@@ -856,7 +856,7 @@ class InferenceRunManager:
             "decisions": resume_payload.get("decisions"),
         }
         timeout = settings.http.inference_timeout
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify()) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             headers = internal_service_headers(None)
             headers["Accept"] = "text/event-stream"
             try:
