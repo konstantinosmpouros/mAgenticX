@@ -128,6 +128,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin@chat_postgres:5432/chat_db
       - VAULT_URL=http://vault:8004
+      - VAULT_ROLE_ID=${VAULT_ROLE_ID:-}
+      - VAULT_SECRET_ID=${VAULT_SECRET_ID:-}
       - AGENTS_SERVICE_URL=http://agents:8003
       - SESSION_TOKEN_SECRET=${SESSION_TOKEN_SECRET}
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}

@@ -1,21 +1,83 @@
-import hashlib
-import hmac
+from __future__ import annotations
+
+import asyncio
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
+import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Request, Response, status
 from observability import get_logger, set_context
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from core.redis import create_redis_client
 from core.settings import settings
-from core.database import SessionTable, UserTable, get_db
-from core.proxy import resolve_client_ip
+from core.jwt_tokens import (
+    ACCESS_TYPE,
+    REFRESH_TYPE,
+    IssuedTokens,
+    TokenError,
+    mint_tokens,
+    verify as verify_token,
+)
 
 logger = get_logger(__name__)
+
+
+_LOGOUT_KEY_PREFIX = "auth:logout:sid:"
+
+
+class LogoutDenylist:
+    """Redis-backed instant-logout list keyed by session id (``sid``).
+
+    Stateless auth verifies a JWT by signature alone, so to make logout — and a
+    stolen-token replay after logout — take effect immediately we record the
+    logged-out ``sid`` here until the token would expire on its own. The list is
+    empty in the normal case; it is shared infra (Redis), so it never logs anyone
+    out when a request lands on a different VM. Both operations fail SAFE:
+    ``is_revoked`` fails OPEN (Redis down → request still served on a valid
+    signature) and ``revoke`` is best-effort (logout already cleared the cookies).
+    """
+
+    def __init__(self) -> None:
+        self._client: aioredis.Redis | None = None
+        self._lock = asyncio.Lock()
+
+    async def _get_client(self) -> aioredis.Redis:
+        if self._client is not None:
+            return self._client
+        async with self._lock:
+            if self._client is None:
+                self._client = create_redis_client()
+        return self._client
+
+    async def revoke(self, sid: str, ttl_seconds: int) -> None:
+        if not sid or ttl_seconds <= 0:
+            return
+        try:
+            client = await self._get_client()
+            await client.setex(f"{_LOGOUT_KEY_PREFIX}{sid}", ttl_seconds, "1")
+        except Exception:
+            logger.warning(
+                "logout_denylist_write_failed",
+                "Could not record logout in the denylist; cookies were still cleared",
+            )
+
+    async def is_revoked(self, sid: str) -> bool:
+        if not sid:
+            return False
+        try:
+            client = await self._get_client()
+            return bool(await client.exists(f"{_LOGOUT_KEY_PREFIX}{sid}"))
+        except Exception:
+            logger.warning(
+                "logout_denylist_unavailable",
+                "Logout denylist check failed; allowing the request (fail-open)",
+            )
+            return False
+
+
+logout_denylist = LogoutDenylist()
 
 SESSION_COOKIE_SECURE = settings.session.secure
 SESSION_COOKIE_SAMESITE = settings.session.samesite
@@ -25,57 +87,43 @@ SESSION_REFRESH_COOKIE_NAME = settings.session.refresh_cookie_name
 CSRF_COOKIE_NAME = settings.session.csrf_cookie_name
 CSRF_HEADER_NAME = settings.session.csrf_header_name
 
-ACCESS_TTL_SECONDS = settings.session.access_ttl_seconds
-REFRESH_TTL_SECONDS = settings.session.refresh_ttl_seconds
-SESSION_MAX_PER_USER = settings.session.max_per_user
-
-_TOKEN_SECRET = settings.session.token_secret  # SecretStr; unwrap only inside hashing helpers below
-
 
 class SessionAuthenticationError(Exception):
     """Raised when a session token cannot be validated."""
 
 
 @dataclass(slots=True)
-class IssuedSession:
-    session_id: str
-    access_token: str
-    refresh_token: str
-    csrf_token: str
-    access_ttl: int
-    refresh_ttl: int
+class AuthContext:
+    """Identity resolved from a verified access/refresh JWT — no DB row.
+
+    ``id`` is the login session id (``sid``): stable across refresh for one
+    device login and the key used by the instant-logout denylist.
+    """
+
+    id: str
+    user_id: str
+    is_active: bool
+    expires_at: datetime
+    login_at: Optional[int] = None
+
+
+@dataclass(slots=True)
+class AuthUser:
+    """Lightweight authenticated user derived from JWT claims (no DB load)."""
+
+    id: str
+    is_active: bool
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _hash_token(token: str) -> str:
-    key = _TOKEN_SECRET.get_secret_value().encode("utf-8")
-    digest = hmac.new(key, token.encode("utf-8"), hashlib.sha256)
-    return digest.hexdigest()
+def _claim_expiry(exp: int) -> datetime:
+    return datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
 
 
-def _hash_optional_metadata(value: str | None) -> str | None:
-    if not value:
-        return None
-    key = _TOKEN_SECRET.get_secret_value().encode("utf-8")
-    return hmac.new(key, value.encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def _extract_client_ip(request: Request | None) -> str | None:
-    if request is None:
-        return None
-    return resolve_client_ip(request)
-
-
-def _cookie_domain() -> str | None:
-    if SESSION_ACCESS_COOKIE_NAME.startswith("__Host-"):
-        return None
-    return SESSION_COOKIE_DOMAIN
-
-
-def build_auth_response(user: UserTable, ttl_seconds: int) -> dict:
+def build_auth_response(user, ttl_seconds: int) -> dict:
     return {
         "authenticated": True,
         "user_id": user.id,
@@ -84,13 +132,18 @@ def build_auth_response(user: UserTable, ttl_seconds: int) -> dict:
     }
 
 
-def issue_session_cookies(response: Response, issued: IssuedSession) -> None:
+def _cookie_domain() -> str | None:
+    if SESSION_ACCESS_COOKIE_NAME.startswith("__Host-"):
+        return None
+    return SESSION_COOKIE_DOMAIN
+
+
+def issue_session_cookies(response: Response, issued: IssuedTokens) -> None:
     cookie_domain = _cookie_domain()
     response.set_cookie(
         key=SESSION_ACCESS_COOKIE_NAME,
         value=issued.access_token,
         max_age=issued.access_ttl,
-        expires=issued.access_ttl,
         httponly=True,
         secure=SESSION_COOKIE_SECURE,
         samesite=SESSION_COOKIE_SAMESITE,
@@ -101,7 +154,6 @@ def issue_session_cookies(response: Response, issued: IssuedSession) -> None:
         key=SESSION_REFRESH_COOKIE_NAME,
         value=issued.refresh_token,
         max_age=issued.refresh_ttl,
-        expires=issued.refresh_ttl,
         httponly=True,
         secure=SESSION_COOKIE_SECURE,
         samesite=SESSION_COOKIE_SAMESITE,
@@ -112,7 +164,6 @@ def issue_session_cookies(response: Response, issued: IssuedSession) -> None:
         key=CSRF_COOKIE_NAME,
         value=issued.csrf_token,
         max_age=issued.refresh_ttl,
-        expires=issued.refresh_ttl,
         httponly=False,
         secure=SESSION_COOKIE_SECURE,
         samesite=SESSION_COOKIE_SAMESITE,
@@ -153,196 +204,67 @@ def _get_refresh_token_from_request(request: Request) -> Optional[str]:
     return token.strip() if token else None
 
 
-async def _enforce_session_limit(db: AsyncSession, user_id: str) -> None:
-    now = utcnow()
-    stmt = (
-        select(SessionTable)
-        .where(
-            SessionTable.user_id == user_id,
-            SessionTable.revoked_at.is_(None),
-            SessionTable.refresh_expires_at > now,
-        )
-        .order_by(SessionTable.created_at.asc())
-    )
-    result = await db.execute(stmt)
-    active_sessions = result.scalars().all()
-
-    overflow = len(active_sessions) - SESSION_MAX_PER_USER + 1  # +1 to make room for the new one
-    if overflow > 0:
-        revoked_sessions = active_sessions[:overflow]
-        for session in revoked_sessions:
-            session.revoked_at = now
-        logger.info("session_limit_enforced", "Session limit enforced by revoking older sessions", user_id=user_id, revoked_sessions=len(revoked_sessions), session_limit=SESSION_MAX_PER_USER)
+async def mint_login_session(user) -> IssuedTokens:
+    """Mint a brand-new session (fresh sid) for a freshly authenticated user."""
+    return await mint_tokens(user.id, is_active=user.is_active)
 
 
-async def create_user_session(
-    db: AsyncSession,
-    user: UserTable,
-    request: Request | None = None,
-) -> IssuedSession:
-    await _enforce_session_limit(db, user.id)
-
-    access_token = secrets.token_urlsafe(48)
-    refresh_token = secrets.token_urlsafe(64)
-    csrf_token = secrets.token_urlsafe(32)
-    now = utcnow()
-
-    session = SessionTable(
-        user_id=user.id,
-        access_token_hash=_hash_token(access_token),
-        refresh_token_hash=_hash_token(refresh_token),
-        access_expires_at=now + timedelta(seconds=ACCESS_TTL_SECONDS),
-        refresh_expires_at=now + timedelta(seconds=REFRESH_TTL_SECONDS),
-        user_agent_hash=_hash_optional_metadata(request.headers.get("user-agent") if request else None),
-        ip_hash=_hash_optional_metadata(_extract_client_ip(request)),
-        last_used_at=now,
-        last_refreshed_at=now,
-    )
-    db.add(session)
-    await db.commit()
-    logger.info("session_created", "User session created", user_id=user.id, session_id=session.id, access_ttl=ACCESS_TTL_SECONDS, refresh_ttl=REFRESH_TTL_SECONDS)
-    return IssuedSession(
-        session_id=session.id,
-        access_token=access_token,
-        refresh_token=refresh_token,
-        csrf_token=csrf_token,
-        access_ttl=ACCESS_TTL_SECONDS,
-        refresh_ttl=REFRESH_TTL_SECONDS,
-    )
+async def rotate_session(ctx: AuthContext, *, is_active: bool = True) -> IssuedTokens:
+    """Rotate the access + refresh pair, preserving the original sid and login_at
+    so the denylist still covers this login and the 10-day refresh cap doesn't slide."""
+    return await mint_tokens(ctx.user_id, sid=ctx.id, login_at=ctx.login_at, is_active=is_active)
 
 
-async def _load_session_by_hash(
-    db: AsyncSession,
-    *,
-    access_token: str | None = None,
-    refresh_token: str | None = None,
-) -> SessionTable | None:
-    if not access_token and not refresh_token:
-        return None
-
-    stmt = select(SessionTable).options(selectinload(SessionTable.user))
-    if access_token:
-        stmt = stmt.where(SessionTable.access_token_hash == _hash_token(access_token))
-    elif refresh_token:
-        h = _hash_token(refresh_token)
-        stmt = stmt.where(
-            (SessionTable.refresh_token_hash == h) | (SessionTable.prev_refresh_token_hash == h)
-        )
-
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
-
-
-def _ensure_session_usable(session: SessionTable | None, *, for_refresh: bool) -> SessionTable:
-    if session is None:
-        raise SessionAuthenticationError("Session not found.")
-    if session.revoked_at is not None:
-        raise SessionAuthenticationError("Session has been revoked.")
-
-    now = utcnow()
-    expiry = session.refresh_expires_at if for_refresh else session.access_expires_at
-    if expiry <= now:
-        raise SessionAuthenticationError("Session has expired.")
-    return session
-
-
-async def get_access_session(request: Request, db: AsyncSession) -> SessionTable:
-    token = _get_access_token_from_request(request)
+async def _resolve(request: Request, token: str | None, expected_type: str) -> AuthContext:
     if not token:
-        raise SessionAuthenticationError("Missing access token.")
-    session = await _load_session_by_hash(db, access_token=token)
-    return _ensure_session_usable(session, for_refresh=False)
-
-
-async def get_refresh_session(request: Request, db: AsyncSession) -> SessionTable:
-    token = _get_refresh_token_from_request(request)
-    if not token:
-        raise SessionAuthenticationError("Missing refresh token.")
-    session = await _load_session_by_hash(db, refresh_token=token)
-    _ensure_session_usable(session, for_refresh=True)
-    if session.prev_refresh_token_hash == _hash_token(token):
-        session.revoked_at = utcnow()
-        await db.commit()
-        logger.warning("refresh_token_reuse_detected", "Refresh token reuse detected — session revoked", user_id=session.user_id, session_id=session.id)
-        raise SessionAuthenticationError("Refresh token has already been used.")
-    return session
-
-
-async def rotate_user_session(
-    db: AsyncSession,
-    session: SessionTable,
-    request: Request | None = None,
-) -> IssuedSession:
-    _ensure_session_usable(session, for_refresh=True)
-
-    access_token = secrets.token_urlsafe(48)
-    refresh_token = secrets.token_urlsafe(64)
-    csrf_token = secrets.token_urlsafe(32)
-    now = utcnow()
-
-    session.access_token_hash = _hash_token(access_token)
-    session.prev_refresh_token_hash = session.refresh_token_hash
-    session.refresh_token_hash = _hash_token(refresh_token)
-    session.access_expires_at = now + timedelta(seconds=ACCESS_TTL_SECONDS)
-    session.refresh_expires_at = now + timedelta(seconds=REFRESH_TTL_SECONDS)
-    session.last_used_at = now
-    session.last_refreshed_at = now
-    session.user_agent_hash = _hash_optional_metadata(request.headers.get("user-agent") if request else None)
-    session.ip_hash = _hash_optional_metadata(_extract_client_ip(request))
-
-    await db.commit()
-    await db.refresh(session)
-    logger.info("session_rotated", "User session rotated", user_id=session.user_id, session_id=session.id, access_ttl=ACCESS_TTL_SECONDS, refresh_ttl=REFRESH_TTL_SECONDS)
-    return IssuedSession(
-        session_id=session.id,
-        access_token=access_token,
-        refresh_token=refresh_token,
-        csrf_token=csrf_token,
-        access_ttl=ACCESS_TTL_SECONDS,
-        refresh_ttl=REFRESH_TTL_SECONDS,
-    )
-
-
-async def revoke_session(session: SessionTable, db: AsyncSession) -> None:
-    if session.revoked_at is None:
-        session.revoked_at = utcnow()
-        await db.commit()
-        logger.info("session_revoked", "User session revoked", user_id=session.user_id, session_id=session.id)
-
-
-def access_ttl_for_session(session: SessionTable) -> int:
-    remaining = int((session.access_expires_at - utcnow()).total_seconds())
-    return max(0, remaining)
-
-
-async def require_session(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-) -> SessionTable:
+        raise SessionAuthenticationError("Missing token.")
     try:
-        session = await get_access_session(request, db)
+        claims = await verify_token(token, expected_type)
+    except TokenError as exc:
+        raise SessionAuthenticationError(str(exc)) from exc
+    sid = claims["sid"]
+    if await logout_denylist.is_revoked(sid):
+        raise SessionAuthenticationError("Session has been logged out.")
+    is_active = bool(claims.get("act", True))
+    if expected_type == ACCESS_TYPE and not is_active:
+        raise SessionAuthenticationError("User is inactive.")
+    return AuthContext(
+        id=sid,
+        user_id=claims["sub"],
+        is_active=is_active,
+        expires_at=_claim_expiry(int(claims["exp"])),
+        login_at=claims.get("lat"),
+    )
+
+
+def access_ttl_for_session(ctx: AuthContext) -> int:
+    return max(0, int((ctx.expires_at - utcnow()).total_seconds()))
+
+
+async def require_session(request: Request) -> AuthContext:
+    try:
+        ctx = await _resolve(request, _get_access_token_from_request(request), ACCESS_TYPE)
     except SessionAuthenticationError as exc:
         logger.warning("access_session_invalid", "Access session validation failed", error=str(exc), failure_reason="access_session_invalid")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
-    set_context(user_id=session.user_id, session_id=session.id)
-    if session.user is None or not session.user.is_active:
-        await revoke_session(session, db)
-        logger.warning("access_session_inactive_user", "Access session belongs to an inactive user")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
-    return session
+    set_context(user_id=ctx.user_id, session_id=ctx.id)
+    # Shared with the request-logging middleware (contextvars set here don't
+    # propagate back to it under Starlette), so the access log line carries the
+    # same session/user as the business logs.
+    request.state.session_id = ctx.id
+    request.state.user_id = ctx.user_id
+    return ctx
 
 
-async def require_current_user(
-    session: SessionTable = Depends(require_session),
-) -> UserTable:
-    return session.user
+async def require_current_user(ctx: AuthContext = Depends(require_session)) -> AuthUser:
+    return AuthUser(id=ctx.user_id, is_active=ctx.is_active)
 
 
 async def require_bound_user_id(
     user_id: str,
-    current_user: UserTable = Depends(require_current_user),
-) -> UserTable:
+    current_user: AuthUser = Depends(require_current_user),
+) -> AuthUser:
     if user_id != current_user.id:
         logger.warning("user_scope_mismatch", "Authenticated user attempted to access another user scope", requested_user_id=user_id, authenticated_user_id=current_user.id)
         raise HTTPException(
@@ -352,70 +274,79 @@ async def require_bound_user_id(
     return current_user
 
 
-async def authenticate_websocket_user(
-    websocket_cookies: dict[str, str] | object,
-    user_id: str,
-    db: AsyncSession,
-) -> UserTable | None:
-    """Validate a WebSocket connection's session cookie and user binding.
-
-    Returns the bound :class:`UserTable` on success or ``None`` on any failure
-    (missing cookie, invalid session, inactive user, user-scope mismatch). The
-    caller is responsible for closing the WebSocket with an appropriate code.
-
-    Unlike the REST dependency chain, this helper does NOT raise — exceptions
-    inside the WS upgrade phase result in protocol-level errors that are hard
-    to inspect from the browser. Returning ``None`` lets the route emit a clean
-    close frame with a descriptive code.
-    """
-    # ``websocket_cookies`` accepts either a plain dict or starlette's
-    # MutableHeaders/cookies mapping; we only need ``.get(name)``.
-    cookies_get = getattr(websocket_cookies, "get", None)
-    if cookies_get is None:
-        return None
-    token = cookies_get(SESSION_ACCESS_COOKIE_NAME) or ""
-    token = token.strip()
-    if not token:
-        return None
+async def require_refresh_session(request: Request) -> AuthContext:
     try:
-        session = await _load_session_by_hash(db, access_token=token)
-        _ensure_session_usable(session, for_refresh=False)
-    except SessionAuthenticationError:
-        return None
-    if session.user is None or not session.user.is_active:
-        try:
-            await revoke_session(session, db)
-        except Exception:
-            pass
-        return None
-    if session.user_id != user_id:
-        logger.warning(
-            "ws_user_scope_mismatch",
-            "WebSocket caller attempted to access another user scope",
-            requested_user_id=user_id,
-            authenticated_user_id=session.user_id,
-        )
-        return None
-    set_context(user_id=session.user_id, session_id=session.id)
-    return session.user
-
-
-async def require_refresh_session(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-) -> SessionTable:
-    try:
-        session = await get_refresh_session(request, db)
+        ctx = await _resolve(request, _get_refresh_token_from_request(request), REFRESH_TYPE)
     except SessionAuthenticationError as exc:
         logger.warning("refresh_session_invalid", "Refresh session validation failed", error=str(exc), failure_reason="refresh_session_invalid")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
-    set_context(user_id=session.user_id, session_id=session.id)
-    if session.user is None or not session.user.is_active:
-        await revoke_session(session, db)
-        logger.warning("refresh_session_inactive_user", "Refresh session belongs to an inactive user")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
-    return session
+    set_context(user_id=ctx.user_id, session_id=ctx.id)
+    request.state.session_id = ctx.id
+    request.state.user_id = ctx.user_id
+    return ctx
+
+
+async def revoke_current_session(request: Request) -> str | None:
+    """Instant logout: read the caller's access (or refresh) token, and denylist
+    its sid for the full refresh lifetime so neither token survives — including a
+    copy exfiltrated before logout. Best-effort; returns the sid or None."""
+    for getter, token_type in (
+        (_get_access_token_from_request, ACCESS_TYPE),
+        (_get_refresh_token_from_request, REFRESH_TYPE),
+    ):
+        token = getter(request)
+        if not token:
+            continue
+        try:
+            claims = await verify_token(token, token_type)
+        except TokenError:
+            continue
+        sid = claims.get("sid")
+        if not sid:
+            continue
+        set_context(user_id=claims.get("sub"), session_id=sid)
+        # Cover the maximum refresh lifetime — the denylist entry auto-expires.
+        await logout_denylist.revoke(sid, settings.jwt.refresh_ttl_seconds)
+        return sid
+    return None
+
+
+async def authenticate_websocket_user(
+    websocket_cookies: dict[str, str] | object,
+    user_id: str,
+) -> AuthUser | None:
+    """Validate a WebSocket connection's access JWT cookie and user binding.
+
+    Returns the bound :class:`AuthUser` on success or ``None`` on any failure.
+    Unlike the REST dependency chain this does NOT raise — the caller emits a
+    clean close frame with a descriptive code.
+    """
+    cookies_get = getattr(websocket_cookies, "get", None)
+    if cookies_get is None:
+        return None
+    token = (cookies_get(SESSION_ACCESS_COOKIE_NAME) or "").strip()
+    if not token:
+        return None
+    try:
+        claims = await verify_token(token, ACCESS_TYPE)
+    except TokenError:
+        return None
+    sid = claims.get("sid")
+    if not sid or await logout_denylist.is_revoked(sid):
+        return None
+    if not claims.get("act", True):
+        return None
+    if claims.get("sub") != user_id:
+        logger.warning(
+            "ws_user_scope_mismatch",
+            "WebSocket caller attempted to access another user scope",
+            requested_user_id=user_id,
+            authenticated_user_id=claims.get("sub"),
+        )
+        return None
+    set_context(user_id=claims["sub"], session_id=sid)
+    return AuthUser(id=claims["sub"], is_active=bool(claims.get("act", True)))
 
 
 async def require_csrf_protection(request: Request) -> None:

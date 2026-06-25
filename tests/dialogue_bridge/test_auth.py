@@ -1,36 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from router import auth as auth_router
-from core.auth_client import VaultAuthError
-
-
-@dataclass
-class _FakeVaultAuthResult:
-    vault_user_id: str
-    username: str
-    client_token_ttl: int | None
-    client_token_renewable: bool
+import core.auth_providers as auth_providers
+from core.auth_providers import AuthIdentity
+from core.vault import VaultAuthError
 
 
-class _SuccessfulVaultAuthenticator:
-    async def authenticate(self, username: str, password: str):
-        return _FakeVaultAuthResult(
-            vault_user_id=f"vault::{username}",
-            username=username,
-            client_token_ttl=300,
-            client_token_renewable=False,
-        )
+class _SuccessfulProvider:
+    name = "vault"
+
+    async def authenticate(self, payload):
+        username = payload["username"]
+        return AuthIdentity(subject=f"vault::{username}", username=username, provider="vault")
 
 
-class _RejectingVaultAuthenticator:
-    async def authenticate(self, username: str, password: str):
+class _RejectingProvider:
+    name = "vault"
+
+    async def authenticate(self, payload):
         raise VaultAuthError("bad credentials", status_code=401)
 
 
 async def test_login_creates_session_and_session_endpoint_returns_user(client, monkeypatch):
-    monkeypatch.setattr(auth_router, "_vault_authenticator", _SuccessfulVaultAuthenticator())
+    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _SuccessfulProvider())
 
     login_response = await client.post(
         "/v1/auth/login",
@@ -49,7 +40,7 @@ async def test_login_creates_session_and_session_endpoint_returns_user(client, m
 
 
 async def test_login_invalid_credentials_returns_401(client, monkeypatch):
-    monkeypatch.setattr(auth_router, "_vault_authenticator", _RejectingVaultAuthenticator())
+    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _RejectingProvider())
 
     response = await client.post(
         "/v1/auth/login",
@@ -61,7 +52,7 @@ async def test_login_invalid_credentials_returns_401(client, monkeypatch):
 
 
 async def test_refresh_rotates_session_and_logout_revokes_it(client, monkeypatch):
-    monkeypatch.setattr(auth_router, "_vault_authenticator", _SuccessfulVaultAuthenticator())
+    monkeypatch.setitem(auth_providers._PROVIDERS, "vault", _SuccessfulProvider())
 
     login_response = await client.post(
         "/v1/auth/login",

@@ -130,13 +130,6 @@ class UserTable(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    sessions = relationship(
-        "SessionTable",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
     # one-to-many back-reference
     conversations = relationship(
         "ConversationTable",
@@ -381,28 +374,6 @@ class BlobTable(Base):
 
     # Back-reference for the 1:1 relationship
     attachment = relationship("AttachmentTable", back_populates="blob", uselist=False)
-
-
-class SessionTable(Base):
-    __tablename__ = "sessions"
-
-    id = Column(String, primary_key=True, default=gen_uuid)
-    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    access_token_hash = Column(String, nullable=False, unique=True, index=True)
-    refresh_token_hash = Column(String, nullable=False, unique=True, index=True)
-    prev_refresh_token_hash = Column(String, nullable=True, index=True)
-    access_expires_at = Column(DateTime, nullable=False)
-    refresh_expires_at = Column(DateTime, nullable=False)
-    revoked_at = Column(DateTime, nullable=True)
-    user_agent_hash = Column(String, nullable=True)
-    ip_hash = Column(String, nullable=True)
-    last_used_at = Column(DateTime, nullable=True)
-    last_refreshed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    user = relationship("UserTable", back_populates="sessions")
-
 
 
 # -------------------------------------------------------------------------------

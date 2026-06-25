@@ -1,6 +1,10 @@
 # Authentication Flow
 
-The platform uses HashiCorp Vault as the identity authority and the dialogue bridge as the session authority. Vault validates credentials and returns a stable entity identity; the bridge then issues its own application session — three HttpOnly cookies — and never touches Vault again for the lifetime of that session. The raw tokens are never stored anywhere; the database holds only HMAC-SHA256 hashes, so a full database dump cannot be used to forge sessions.
+The platform uses HashiCorp Vault as both the **identity authority** (it verifies credentials at login) and the **cryptographic signer** of session tokens (it holds the RS256 private key and signs JWTs via its Transit engine — the key never leaves Vault). The dialogue bridge is a thin **token issuer**: after Vault confirms the credential, the bridge mints a short-lived access JWT and a longer-lived refresh JWT, both signed by Vault, and hands them to the browser as HttpOnly cookies.
+
+Sessions are **stateless**. There is no session row in the database; every request is authorised by verifying the JWT signature against Vault's public key (cached in-process) — no per-request database or Vault call. This is what lets the bridge scale horizontally behind a gateway: any instance on any VM can validate any token on its own. The only shared state is a small Redis **logout denylist** that makes sign-out (and a stolen-token replay) take effect instantly; it is empty in the normal case and fails open.
+
+> **Future-proofing:** because the *app* only ever verifies "a bridge-issued JWT", swapping the upstream credential check from Vault userpass to Keycloak/Entra ID later changes only the login step — the token format and every verifier stay the same.
 
 ---
 
@@ -10,14 +14,15 @@ The platform uses HashiCorp Vault as the identity authority and the dialogue bri
 flowchart LR
     Browser["Browser"]
     Bridge["dialogue_bridge\n(:8002)"]
-    Vault["HashiCorp Vault\n(:8004)"]
-    PG["Postgres"]
+    Vault["HashiCorp Vault\n(:8004)\nuserpass + Transit + AppRole"]
+    Redis["Redis\n(logout denylist)"]
 
     Browser -->|"POST /v1/auth/login"| Bridge
-    Bridge -->|"POST /v1/auth/userpass/login/{username}"| Vault
-    Vault -->|"client_token + entity_id"| Bridge
-    Bridge -->|"upsert user + create session"| PG
-    Bridge -->|"3 HttpOnly cookies"| Browser
+    Bridge -->|"userpass login (verify password)"| Vault
+    Bridge -->|"transit/sign (mint RS256 JWT, AppRole token)"| Vault
+    Bridge -->|"3 HttpOnly cookies (access + refresh + csrf)"| Browser
+    Bridge -.->|"verify: cached public key (no Vault, no DB)"| Bridge
+    Bridge -->|"logout: denylist sid · login: read pub key"| Redis
 ```
 
 ---
@@ -29,37 +34,34 @@ sequenceDiagram
     participant B as Browser
     participant Bridge as dialogue_bridge
     participant Vault as HashiCorp Vault
-    participant PG as Postgres
+    participant Redis as Redis
 
     B->>Bridge: POST /v1/auth/login {username, password}
     Note over Bridge: rate-limit check (per client IP)
     Bridge->>Vault: POST /v1/auth/userpass/login/{username} {password}
-    Vault-->>Bridge: {auth: {client_token, entity_id, lease_duration}}
-    Bridge->>Bridge: discard client_token, keep entity_id
-    Bridge->>PG: upsert UserTable (vault_user_id = entity_id)
-    Bridge->>Bridge: check user.is_active
-    Bridge->>PG: _enforce_session_limit — revoke oldest if over cap
-    Bridge->>Bridge: generate access_token, refresh_token, csrf_token
-    Bridge->>PG: INSERT SessionTable (hashed tokens only)
-    Bridge-->>B: Set-Cookie: session + refresh + csrf
+    Vault-->>Bridge: {auth: {entity_id, ...}}
+    Bridge->>Bridge: upsert UserTable (vault_user_id = entity_id), check is_active
+    Bridge->>Vault: transit/sign jwt-rs256 (access claims) + (refresh claims)
+    Vault-->>Bridge: RS256 signatures (private key never leaves Vault)
+    Bridge-->>B: Set-Cookie: access(8h) + refresh(10d) + csrf
     Bridge-->>B: AuthResponse {userId, tokenTtl}
 
-    Note over B,Bridge: Every authenticated request
-    B->>Bridge: request + session cookie (+ X-CSRF-Token for mutations)
-    Bridge->>Bridge: hash cookie token → lookup session by hash
-    Bridge->>Bridge: check not revoked, not expired, user.is_active
+    Note over B,Bridge: Every authenticated request — STATELESS
+    B->>Bridge: request + access cookie (+ X-CSRF-Token for mutations)
+    Bridge->>Bridge: verify RS256 signature (cached public key, by kid)
+    Bridge->>Bridge: check iss/aud/exp/nbf/typ + sub/sid present
+    Bridge->>Redis: EXISTS logout:sid? (fail-open)
     Bridge-->>B: response
 
-    Note over B,Bridge: Token refresh
+    Note over B,Bridge: Token refresh — STATELESS
     B->>Bridge: POST /v1/auth/session/refresh + refresh cookie + X-CSRF-Token
-    Bridge->>PG: lookup session by refresh_token_hash
-    Bridge->>Bridge: generate new access_token, refresh_token, csrf_token
-    Bridge->>PG: UPDATE session row (rotate all hashes + expiry)
-    Bridge-->>B: new Set-Cookie: session + refresh + csrf
+    Bridge->>Bridge: verify refresh JWT (typ=refresh) + denylist check
+    Bridge->>Vault: transit/sign new access + refresh (same sid, same login_at)
+    Bridge-->>B: new Set-Cookie: access + refresh + csrf
 
-    Note over B,Bridge: Sign out
-    B->>Bridge: POST /v1/auth/logout + session cookie + X-CSRF-Token
-    Bridge->>PG: session.revoked_at = now
+    Note over B,Bridge: Sign out — INSTANT, this device
+    B->>Bridge: POST /v1/auth/logout + cookie + X-CSRF-Token
+    Bridge->>Redis: SETEX logout:sid (until refresh would expire)
     Bridge-->>B: delete all 3 cookies, 204 No Content
 ```
 
@@ -67,7 +69,7 @@ sequenceDiagram
 
 ## Phase 1 — Vault Credential Validation
 
-The browser sends `POST /v1/auth/login` with `{username, password}`. The endpoint is rate-limited per client IP using SlowAPI — the limit and window are configured via `AUTH_RATE_LIMIT_MAX_ATTEMPTS` and `AUTH_RATE_LIMIT_WINDOW_SECONDS`. A `429` response includes a `Retry-After` header the UI uses to show a countdown.
+The browser sends `POST /v1/auth/login` with `{username, password}`. The endpoint is rate-limited per client IP using SlowAPI (`AUTH_RATE_LIMIT_MAX_ATTEMPTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`); a `429` carries a `Retry-After` header.
 
 `VaultAuthenticator.authenticate()` issues a single HTTP call to Vault's userpass backend:
 
@@ -76,201 +78,150 @@ POST {VAULT_URL}/v1/auth/{userpass_mount}/login/{username}
 Body: {"password": "..."}
 ```
 
-Vault returns an `auth` block containing a `client_token` and an `entity_id`. The bridge extracts only the `entity_id` (a stable UUID that Vault assigns to the identity regardless of credential changes) and immediately discards the `client_token`. The Vault token is never stored. The bridge does not keep a Vault session open after login.
-
-```mermaid
-flowchart TD
-    A["POST /v1/auth/login"] --> B{Rate limit OK?}
-    B -->|No| C["429 Too Many Requests + Retry-After"]
-    B -->|Yes| D["VaultAuthenticator.authenticate()"]
-    D --> E{Vault status}
-    E -->|400 / 401 / 403| F["401 Invalid username or password"]
-    E -->|5xx or unreachable| G["502 Bad Gateway"]
-    E -->|200| H["extract entity_id, discard client_token"]
-    H --> I["upsert_user_from_vault()"]
-```
+Vault returns an `auth` block; the bridge extracts the stable `entity_id` (used as `user.vault_user_id`) and discards everything else. The user's Vault token is **not** used to sign JWTs — the bridge signs with its own machine identity (see Phase 3).
 
 | Vault response field | How the bridge uses it |
 | --- | --- |
 | `auth.entity_id` | Stored as `user.vault_user_id` — stable user key across password changes |
-| `auth.client_token` | Discarded immediately after login |
-| `auth.lease_duration` | Ignored — bridge manages its own TTLs |
+| `auth.client_token` | Discarded |
+| `auth.lease_duration` | Ignored |
 
 ---
 
 ## Phase 2 — Local User Upsert
 
-After Vault confirms the identity, the bridge runs `upsert_user_from_vault()`. It looks up the user by `vault_user_id` (the Vault `entity_id`). If no row exists this is the user's first login and a new `UserTable` row is created. On subsequent logins the username and any available profile fields (email, display_name, department, role_title) are refreshed from the Vault metadata.
-
-The bridge then checks `user.is_active`. If a user has been disabled locally the login is rejected with `403` even after Vault accepted the credentials — the bridge is the access authority for the application layer.
-
-`user.last_login_at` is updated on every successful login and committed before the session is created.
+`upsert_user_from_vault()` looks the user up by `vault_user_id`. First login creates a `UserTable` row; later logins refresh the username. The bridge then enforces `user.is_active` — a locally disabled user is rejected with `403` even after Vault accepted the password. `user.last_login_at` is updated and committed.
 
 ---
 
-## Phase 3 — Session Creation and Cookie Issuance
+## Phase 3 — Token Minting (Vault-Transit-signed JWTs)
 
-`create_user_session()` handles session lifecycle before issuing tokens.
+Instead of creating a database session, the bridge mints two JWTs via `mint_tokens()`. Both are **RS256**, signed by Vault's Transit engine.
 
-**Session cap enforcement** — `_enforce_session_limit()` counts all non-revoked, non-expired sessions for the user (ordered by `created_at` ascending). If the count would exceed `SESSION_MAX_PER_USER` (default: `3`) after adding the new session, the oldest sessions are revoked silently to stay within the cap. This means signing in on a fourth device quietly expires the oldest session, signing that device out.
+### The bridge's Vault identity (AppRole)
 
-**Token generation** — three separate secrets are generated using `secrets.token_urlsafe`:
+To sign, the bridge needs its own Vault token. It authenticates as a machine via **AppRole** (`VAULT_ROLE_ID` / `VAULT_SECRET_ID`), caches the token, and re-authenticates automatically on expiry or a `401/403`. Its policy grants exactly two capabilities: `update transit/sign/jwt-rs256` and `read transit/keys/jwt-rs256`.
 
-| Token | Length | Purpose |
-| --- | --- | --- |
-| `access_token` | 48 bytes (64-char URL-safe) | Identifies the session on each request |
-| `refresh_token` | 64 bytes (86-char URL-safe) | Used only to rotate the session |
-| `csrf_token` | 32 bytes (43-char URL-safe) | Included in non-safe requests to prove browser origin |
+### Signing (`core/vault_service.py`)
 
-**Hash storage** — all three tokens are HMAC-SHA256 hashed with a server-side secret (`TOKEN_SECRET`) before being written to the database. The raw tokens exist only in the `Set-Cookie` headers sent to the browser. A database compromise cannot be used to forge sessions.
+The bridge builds the JWT signing input — `base64url(header) + "." + base64url(payload)` — and POSTs it to Transit:
 
-The metadata `user_agent_hash` and `ip_hash` are also HMAC-hashed and stored for auditing without persisting raw fingerprint data.
-
-```mermaid
-flowchart TD
-    A["create_user_session()"] --> B["_enforce_session_limit()"]
-    B --> C{Over cap?}
-    C -->|Yes| D["revoke oldest sessions"]
-    C -->|No| E["continue"]
-    D --> E
-    E --> F["secrets.token_urlsafe — access 48b, refresh 64b, csrf 32b"]
-    F --> G["HMAC-SHA256 hash all tokens"]
-    G --> H["INSERT SessionTable — hashes only, no raw tokens"]
-    H --> I["issue_session_cookies()"]
+```http
+POST transit/sign/jwt-rs256
+{ "input": "<std-base64 of signing input>",
+  "signature_algorithm": "pkcs1v15",   # RS256 == RSASSA-PKCS1-v1_5; Vault defaults to PSS, so this is mandatory
+  "hash_algorithm": "sha2-256",
+  "prehashed": false,
+  "marshaling_algorithm": "jws",        # emits base64url-no-pad — already the JWT 3rd segment
+  "key_version": <current version> }
 ```
 
-**Cookie issuance** — `issue_session_cookies()` sets three cookies:
+The response signature (`vault:v<N>:<sig>`) has its prefix stripped and is appended as the third segment. The **RSA private key never leaves Vault.** The JWT header `kid` is the Transit key version, so rotation is transparent: new tokens carry the new version; old tokens still verify against the older (still-published) public key.
 
-| Cookie | HttpOnly | JS-readable | Expiry | Purpose |
-| --- | --- | --- | --- | --- |
-| `mx_session` (or `__Host-mx_session`) | Yes | No | `ACCESS_TTL_SECONDS` (default: 900s / 15 min) | Access token |
-| `mx_refresh` (or `__Host-mx_refresh`) | Yes | No | `REFRESH_TTL_SECONDS` (default: 604800s / 7 days) | Refresh token |
-| `mx_csrf` (or `__Host-mx_csrf`) | **No** | **Yes** | `REFRESH_TTL_SECONDS` | CSRF value for double-submit |
+### Token model
 
-The CSRF cookie is intentionally **not** HttpOnly. JavaScript reads it and copies its value into the `X-CSRF-Token` request header on every mutation. An attacker's page cannot read a cookie it did not set, so it cannot forge the header — this is the double-submit pattern.
+| Token | TTL (default) | Claims |
+| --- | --- | --- |
+| **access** | 8 h (`JWT_ACCESS_TTL_SECONDS`) | `sub` (user id), `sid` (login/session id), `typ="access"`, `act` (is_active), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
+| **refresh** | 10 d absolute (`JWT_REFRESH_TTL_SECONDS`) | `sub`, `sid`, `typ="refresh"`, `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp` = `lat + 10d`, `jti` |
 
-When `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is configured, cookie names get the `__Host-` prefix. `__Host-` cookies must be `Secure`, must have no `Domain` attribute, and must have `Path=/`. This prevents subdomain-based cookie injection attacks entirely.
+`sid` is a per-login id shared by both tokens (and stable across refresh) — it is the key the logout denylist uses. The refresh `exp` is computed from the **original** `lat`, so refreshing does **not** slide the 10-day window: it is a hard cap.
+
+### Cookies
+
+`issue_session_cookies()` sets three cookies (unchanged transport from the previous design):
+
+| Cookie | HttpOnly | Expiry | Purpose |
+| --- | --- | --- | --- |
+| `mx_session` (or `__Host-mx_session`) | Yes | access TTL (8 h) | access JWT |
+| `mx_refresh` (or `__Host-mx_refresh`) | Yes | refresh TTL (≤10 d) | refresh JWT |
+| `mx_csrf` (or `__Host-mx_csrf`) | **No** | refresh TTL | CSRF double-submit value |
+
+`__Host-` prefixing applies when `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is set. The access JWT lives in an HttpOnly cookie — JavaScript cannot read it (XSS-safe), and it is still verified with **zero** server state.
 
 ---
 
-## Phase 4 — Per-Request Session Validation
+## Phase 4 — Per-Request Verification (stateless)
 
-Every protected endpoint depends on `require_session`. The dependency chain is:
+Every protected endpoint depends on `require_session`. There is **no database lookup and no Vault call** on this path.
 
 ```mermaid
 flowchart TD
     A["require_session"] --> B["_get_access_token_from_request()"]
-    B --> C{Bearer header present?}
-    C -->|Yes| D["use Bearer token"]
-    C -->|No| E["use session cookie value"]
-    D & E --> F["_load_session_by_hash()"]
-    F --> G["hash(token) → SELECT WHERE access_token_hash = hash"]
-    G --> H["_ensure_session_usable()"]
-    H --> I{Issues?}
-    I -->|Not found| J["401"]
-    I -->|Revoked| J
-    I -->|Expired| J
-    I -->|user.is_active = false| K["revoke_session() then 401"]
-    I -->|OK| L["return session to route handler"]
+    B --> C{"Bearer header? else cookie"}
+    C --> D["jwt_tokens.verify(token, 'access')"]
+    D --> E["parse kid → cached public key (Vault only on cache miss)"]
+    E --> F["RS256 verify + iss/aud/exp/nbf/iat + require sub/sid + typ==access"]
+    F -->|fail| G["401"]
+    F -->|ok| H["logout_denylist.is_revoked(sid)?"]
+    H -->|revoked| G
+    H -->|act=false| G
+    H -->|ok| I["AuthContext → set request.state + log context"]
 ```
 
-The token is hashed on every request before querying — the database index is on the hash column, so lookups are O(log n) without storing the raw credential. Bearer token support exists for API clients that cannot set cookies; when a Bearer token is present and no session cookie is set, the request is also exempt from CSRF checks (programmatic clients are not vulnerable to browser-based CSRF).
+`verify()` fails closed: the algorithm allow-list is **`RS256` only** (rejecting `alg:none` and HS/RS confusion), `iss`/`aud`/`exp`/`iat`/`nbf`/`sub` are required, and the `typ` claim must match — so an access token cannot be replayed at the refresh endpoint, or vice versa. Public keys are fetched from Vault once per key version and cached, so a Vault outage does not break verification of existing tokens.
 
-User-scoped endpoints additionally call `require_bound_user_id` which checks that the `user_id` path parameter matches `current_user.id`. This prevents one authenticated user from accessing another user's resources using a valid but differently-scoped token.
+`require_current_user` returns a lightweight `AuthUser(id, is_active)` built **from the claims** (no DB). User-scoped endpoints add `require_bound_user_id`, which checks the `user_id` path parameter equals the token's `sub`. The two auth endpoints that return the full profile (`GET /session`, refresh) load the `UserTable` row from Postgres explicitly — that is the only place a user row is read on the auth path.
 
 ---
 
 ## Phase 5 — CSRF Protection
 
-`require_csrf_protection` is applied as a FastAPI dependency on all state-mutating endpoints (POST, PATCH, DELETE).
-
-```mermaid
-flowchart TD
-    A["require_csrf_protection"] --> B{Method GET/HEAD/OPTIONS?}
-    B -->|Yes| C["pass — safe method"]
-    B -->|No| D{Bearer token + no session cookie?}
-    D -->|Yes| C
-    D -->|No| E["read X-CSRF-Token header"]
-    E --> F["read mx_csrf cookie"]
-    F --> G{secrets.compare_digest match?}
-    G -->|No| H["403 Invalid CSRF token"]
-    G -->|Yes| I["pass"]
-```
-
-`secrets.compare_digest` performs a constant-time comparison, preventing timing attacks. The check is skipped for Bearer-only clients because they cannot be targeted by cross-site form submissions — the browser will not automatically attach an Authorization header to a cross-origin request.
+Unchanged. `require_csrf_protection` runs on every state-mutating endpoint: it compares the `X-CSRF-Token` header against the `mx_csrf` cookie with `secrets.compare_digest` (constant-time). It is skipped for safe methods and for Bearer-only clients (which cannot be targeted by browser CSRF). Because the access JWT rides in a cookie, CSRF protection is still required.
 
 ---
 
-## Phase 6 — Token Refresh
+## Phase 6 — Token Refresh (stateless)
 
-Access tokens expire after 15 minutes by default. The browser calls `POST /v1/auth/session/refresh` using the refresh cookie (7-day TTL). This endpoint is CSRF-protected.
-
-`rotate_user_session()` updates the **same session row** — it does not create a new one. All three token hashes are replaced, and both expiry timestamps are extended from the current time. This means a session that is actively refreshed stays alive indefinitely; a session that goes unused for 7 days expires naturally.
+Access tokens expire after 8 hours. The browser calls `POST /v1/auth/session/refresh` with the refresh cookie (CSRF-protected). `require_refresh_session` verifies the refresh JWT (`typ=refresh`) and checks the denylist. `rotate_session()` then mints a **new** access + refresh pair via Transit, **preserving the original `sid` and `lat`** — so the denylist entry still covers the rotated tokens and the 10-day absolute cap does not slide. No database row is written.
 
 ```mermaid
 sequenceDiagram
     participant B as Browser
     participant Bridge as dialogue_bridge
-    participant PG as Postgres
+    participant Vault as Vault
 
-    B->>Bridge: POST /session/refresh + mx_refresh cookie + X-CSRF-Token header
-    Bridge->>PG: SELECT session WHERE refresh_token_hash = hash(cookie)
-    Bridge->>Bridge: _ensure_session_usable(for_refresh=True)
-    Bridge->>Bridge: generate new access_token, refresh_token, csrf_token
-    Bridge->>PG: UPDATE session — new hashes, new expiry timestamps
+    B->>Bridge: POST /session/refresh + mx_refresh cookie + X-CSRF-Token
+    Bridge->>Bridge: verify refresh JWT (typ=refresh) + denylist(sid)
+    Bridge->>Vault: transit/sign new access + refresh (same sid, same lat)
     Bridge-->>B: new Set-Cookie: mx_session + mx_refresh + mx_csrf
 ```
 
 ---
 
-## Phase 7 — Sign Out
+## Phase 7 — Sign Out (instant, per device)
 
-`POST /v1/auth/logout` is CSRF-protected and tries both the access and refresh cookies — whichever is present. `revoke_session()` sets `session.revoked_at = utcnow()`. The row is not deleted; revoked rows remain in the database for audit trail purposes.
+`POST /v1/auth/logout` is CSRF-protected. Logout works in two layers:
 
-`clear_session_cookies()` calls `delete_cookie()` for all three cookie names. If no valid session is found (e.g. already expired), the cookies are still cleared — logout always succeeds from the browser's perspective.
+1. **Cookie clear** — `clear_session_cookies()` deletes all three cookies, so that device immediately has no token. This alone logs the device out, with **zero server state**.
+2. **Denylist (theft defense)** — `revoke_current_session()` reads the caller's token, extracts its `sid`, and writes it to the Redis denylist for the full refresh lifetime. This kills any **copy** of the token (e.g. one exfiltrated before logout) instantly, on every VM.
+
+Logout always succeeds from the browser's perspective even if no valid token is present or Redis is unavailable (the denylist write is best-effort).
 
 ---
 
 ## Phase 8 — Client-Side Storage and Page Load Hydration
 
-The browser maintains two parallel stores that let the UI rehydrate instantly on page load without waiting for a network round-trip. Neither store holds any credential material — tokens live exclusively in the three HttpOnly cookies that the browser attaches automatically.
+The browser keeps two stores so the UI rehydrates instantly. **Neither holds any token** — tokens live only in the HttpOnly cookies.
 
 ### localStorage — `mx_auth_session`
 
-`saveSession()` writes a single JSON key (`mx_auth_session`) to `localStorage` immediately after a successful login or token refresh. The value is the `StoredSession` shape:
+`saveSession()` writes one JSON key after login/refresh:
 
-| Field | Type | Source | Purpose |
-| --- | --- | --- | --- |
-| `userId` | `string` | `AuthResponse.userId` | Primary key for IndexedDB lookup |
-| `expiresAt` | `number` (epoch ms) | `Date.now() + tokenTtl * 1000` | Drives the auto-refresh timer |
-| `user` | `{ id, name, email, createdAt, lastLoginAt }` | `AuthResponse` | Profile display without a network call |
-| `lastConversationId` | `string \| null` | Updated on navigation | Deep-link target on next page load |
-| `selectedAgent` | `string \| null` | Updated on agent change | Restores last-used agent |
-| `isPrivateMode` | `boolean` | Updated on toggle | Restores privacy preference |
+| Field | Source | Purpose |
+| --- | --- | --- |
+| `userId` | `AuthResponse.user_id` | IndexedDB key |
+| `expiresAt` | `Date.now() + tokenTtl * 1000` | drives the auto-refresh timer (tokenTtl is the access TTL, ~8 h) |
+| `user` | `AuthResponse.user` | profile display without a network call |
+| `lastConversationId`, `selectedAgent`, `isPrivateMode` | UI state | deep-link / restore |
 
-`loadSession()` reads the key synchronously and returns `null` if the key is absent or the stored `expiresAt` is already in the past. `clearSession()` removes the key. `updateSession()` does a read-merge-write cycle to update a subset of fields without overwriting the rest.
-
-**What is not stored here:** access tokens, refresh tokens, CSRF tokens — those are HttpOnly cookies and never accessible to JavaScript.
+`loadSession()` returns `null` if absent or expired; `clearSession()` removes it; `updateSession()` is a read-merge-write.
 
 ### IndexedDB — `mx_ui_state`
 
-For state too large or too structured for `localStorage`, the UI uses an IndexedDB database (`mx_ui_state`, version 2) with a single `state` object store keyed by `userId`. The value is a `UISnapshotSerializable`:
+A single `state` store keyed by `userId` holding a `UISnapshotSerializable` (agents, conversations, available tools, preferences, UI toggles). Icon components are stripped before storage and re-resolved on load. Bump the snapshot `version` and add a migration branch when the shape changes.
 
-| Field | Purpose |
-| --- | --- |
-| `agents` | List of `AgentSnapshot` objects — React icon components are stripped before storage and re-resolved after load |
-| `conversations` | Serialized conversation list for instant sidebar render |
-| `availableTools` | Tool definitions the agent runtime reported |
-| `userPreferences` | User-level settings (e.g. default model) |
-| `sidebarOpen`, `isVoiceMode`, `isPrivateMode` | UI toggle state |
-
-`selectedImage` is explicitly excluded from the snapshot — in-flight image attachments are not persisted.
-
-`AgentSnapshot` serialization strips React icon components (which are not JSON-safe) and stores only the icon key; `deserializeAgents()` re-resolves the key to the live icon component after load.
-
-`saveUISnapshot()` and `loadUISnapshot()` are async and operate on the IndexedDB connection pool managed by `getDB()`. `clearUISnapshot()` deletes the entry by `userId`.
-
-### Page Load Hydration Sequence
+### Page Load Hydration
 
 ```mermaid
 sequenceDiagram
@@ -280,77 +231,41 @@ sequenceDiagram
     participant IDB as IndexedDB
 
     App->>LS: loadSession() — synchronous read
-    note over App: if null or expired → show login
-    App->>API: POST /v1/auth/session/restore
+    note over App: if null/expired → show login
+    App->>API: restoreSession() → GET /session (falls back to /session/refresh on 401)
     API-->>App: AuthResponse {userId, tokenTtl, user}
-    App->>App: saveSession() — refresh expiresAt in LS
-    App->>IDB: loadUISnapshot(userId)
-    IDB-->>App: UISnapshotSerializable (agents, conversations, …)
-    App->>App: hydrate UI from snapshot — sidebar renders immediately
-    App->>API: GET /agents + GET /conversations + GET /tools (parallel)
-    API-->>App: fresh data — merge over snapshot
-    App->>App: restore lastConversationId if present
+    App->>App: saveSession() — refresh expiresAt
+    App->>IDB: loadUISnapshot(userId) → hydrate sidebar immediately
+    App->>API: GET /agents + /conversations + /tools (parallel) → merge
 ```
-
-1. **Synchronous localStorage read** (`useInitialSessionState`) — runs before the first render. If no session is found the app goes straight to the login page.
-2. **`restoreSession()` call** — validates the session cookies with the server. A `401` means the session has expired; cookies are cleared and the user is redirected to login. On `200` the response contains a fresh `tokenTtl` which is used to update `expiresAt` in localStorage.
-3. **IndexedDB snapshot** — loaded after the server confirms the session is valid. The snapshot hydrates the full UI state so the sidebar and agent list appear before the parallel network fetches complete.
-4. **Parallel API fetches** — agents, conversations, and available tools are all fetched simultaneously. Results are merged over the snapshot, replacing stale data.
-5. **Last conversation restore** — if `lastConversationId` is set and the conversation still exists, the app opens it directly.
 
 ### Auto-Refresh Scheduling
 
-`useSessionAutoRefreshEffect` registers a `setTimeout` that fires 2 minutes before `localStorage.expiresAt`. When it fires:
-
-1. `performRefresh()` calls `POST /v1/auth/session/refresh` (uses the refresh cookie — no credentials in the request body).
-2. On success the server rotates all three session cookies and returns a new `tokenTtl`.
-3. `saveSession()` is called with the updated `expiresAt`, which re-arms the timer for the next cycle.
-
-If the tab is inactive (e.g. the device slept through the refresh window), the next request will get a `401` from the bridge and trigger a logout + redirect.
-
-### UI Snapshot Persistence
-
-`useUISnapshotPersistence` watches the UI state and debounces writes to IndexedDB via a `requestPersist()` helper. Writes happen after any change to agents, conversations, tools, preferences, or UI toggles. The debounce avoids hammering IndexedDB on rapid state changes (e.g. streaming a long conversation).
+`useSessionAutoRefreshEffect` schedules a `setTimeout` to fire **10 minutes** before `expiresAt` (a 2-minute margin is too thin on an 8-hour token). It calls `POST /v1/auth/session/refresh`; on success the server rotates all three cookies and returns a fresh `tokenTtl`, which re-arms the timer. If the device slept through the window, the next request returns `401`, clearing local storage and redirecting to login.
 
 ### Logout Cleanup
 
-```mermaid
-flowchart TD
-    A["user triggers logout"] --> B["handleLogout()"]
-    B --> C["300ms delay — close profile drawer"]
-    C --> D["clearSession() — remove mx_auth_session from LS"]
-    D --> E["clearUISnapshot(userId) — delete IndexedDB entry"]
-    E --> F["fire-and-forget: logoutSession() → POST /v1/auth/logout"]
-    F --> G["full React state reset — redirect to /login"]
-```
-
-`logoutSession()` is intentionally fire-and-forget. The server will revoke the session and clear the cookies when it receives the request, but the UI does not wait for the response before resetting state. If the request fails (e.g. network drop), the local storage is still cleared and the user is redirected — on the next visit `restoreSession()` will return `401` and complete the cleanup.
+`handleLogout()` clears `mx_auth_session`, deletes the per-`userId` IndexedDB snapshot, fires `logoutSession()` (`POST /v1/auth/logout`) fire-and-forget, and resets React state to `/login`.
 
 ---
 
 ## Sharp Edges and Behavioral Notes
 
-- **Vault is only called at login.** After the initial credential check, the bridge's session system is completely independent of Vault. Vault downtime does not affect users who are already authenticated.
+- **Vault is needed to MINT a token, not to verify one.** Login and refresh call Vault (Transit sign). Per-request verification uses the cached public key — if Vault is down, existing sessions keep working and refreshing as long as the public key is cached; only brand-new logins fail.
 
-- **Raw tokens are never persisted.** A full Postgres dump exposes only HMAC hashes keyed by `TOKEN_SECRET`. Without the server secret, the hashes cannot be reversed or used to forge sessions.
+- **No database session state.** There is no `sessions` table lookup on any request, which is what makes the bridge horizontally scalable behind a gateway — any instance validates any token on its own. Moving a user between VMs never logs them out.
 
-- **The session cap silently expires the oldest session.** There is no warning to the user on the evicted device. The next request from that device will receive a `401` and be redirected to the login page.
+- **Instant logout requires shared state, by design.** A stateless token cannot be "un-issued", so per-device logout clears the cookie (zero state) and, for theft defense, denylists the `sid` in Redis. The denylist is checked per request (one O(1) `EXISTS`), **fails open** (Redis down → request still served on a valid signature; a *new* logout just isn't enforced until Redis recovers), and is empty in the common case.
 
-- **`__Host-` prefix is security-critical in production.** Without it and with a shared parent domain, a subdomain could set a cookie that overrides the session cookie. Always configure `SESSION_COOKIE_SECURE=true` in production environments without setting `SESSION_COOKIE_DOMAIN` to get `__Host-` prefix automatically.
+- **`signature_algorithm=pkcs1v15` is load-bearing.** Vault Transit defaults to PSS (= PS256). RS256 *is* PKCS#1 v1.5; minting with the default would produce tokens that fail `algorithms=["RS256"]` verification.
 
-- **Refresh rotates both tokens, not just the access token.** After a successful refresh, the old refresh token hash is no longer in the database — the browser's old refresh cookie becomes invalid immediately. This provides a basic refresh-token rotation guarantee: if an old refresh token is replayed, it will not find a matching hash and will return `401`.
+- **No refresh-token reuse detection.** Stateless refresh cannot detect replay of an old refresh token (that needs a server-side store). This is the accepted trade-off for statelessness; it is bounded by the short-ish access TTL, the absolute 10-day refresh cap, the instant-logout denylist, TLS, and HttpOnly/CSRF cookies. A future store could reinstate reuse detection.
 
-- **Logout does not require a valid session.** If the access token is expired but the refresh token is still valid, logout still works. If both are missing or invalid, the cookies are cleared anyway. This prevents a scenario where a user cannot log out of a browser with an expired session.
+- **`is_active` is read from the claim per request, and from the DB at login/refresh.** Mid-session deactivation therefore takes effect at the next refresh (≤8 h) or via an explicit denylist entry — there is no admin-disable path wired today.
 
-- **`user_agent_hash` and `ip_hash` are stored but not enforced.** They are available for auditing and anomaly detection but the session validation does not reject a request that comes from a different IP or user agent than the one at login time.
+- **`__Host-` prefix is security-critical in production.** Configure `SESSION_COOKIE_SECURE=true` with no `SESSION_COOKIE_DOMAIN`.
 
-- **There is no refresh-token replay detection yet.** If a refresh token is stolen and used before the legitimate client refreshes, both will succeed — the legitimate client's next refresh will then fail with `401`. This is noted in `src/TODO` as a planned improvement.
-
-- **localStorage is not a security boundary.** `mx_auth_session` holds profile data and navigation state but never tokens. Any XSS that can read localStorage can read the userId and expiresAt, but cannot forge requests without the HttpOnly cookies — so the exposure is data leakage, not session hijacking.
-
-- **IndexedDB is cleared per userId, not globally.** Switching users on the same browser triggers `clearUISnapshot(previousUserId)` and `saveUISnapshot(newUserId)` independently. Two users who share a browser will each have their own isolated snapshot entry.
-
-- **If the auto-refresh fires while the tab is in the background and the device clock drifted**, `expiresAt` may appear in the past on wake. The next API call gets `401`, which clears all local storage and redirects — the user must log in again even though the server session might still have been valid.
+- **localStorage is not a security boundary.** It holds profile/navigation data, never tokens. XSS reading it leaks data, not session control (the JWT is HttpOnly).
 
 ---
 
@@ -359,20 +274,15 @@ flowchart TD
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Vault credential check | [src/dialogue_bridge/core/auth_client.py](../../src/dialogue_bridge/core/auth_client.py) | `VaultAuthenticator.authenticate()` |
-| Session creation | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `create_user_session()`, `_enforce_session_limit()` |
-| Token hashing | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `_hash_token()` |
-| Cookie issuance | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `issue_session_cookies()` |
-| Per-request validation | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `require_session()`, `_load_session_by_hash()`, `_ensure_session_usable()` |
-| CSRF double-submit | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `require_csrf_protection()` |
-| Token rotation | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `rotate_user_session()` |
-| Session revocation | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `revoke_session()` |
+| Bridge Vault identity + Transit signing | [src/dialogue_bridge/core/vault_service.py](../../src/dialogue_bridge/core/vault_service.py) | `VaultServiceClient` — AppRole login, `sign()`, `public_key_pem()`, `current_sign_version()` |
+| JWT mint / verify | [src/dialogue_bridge/core/jwt_tokens.py](../../src/dialogue_bridge/core/jwt_tokens.py) | `mint_tokens()`, `verify()`, claim model |
+| Session deps + cookies | [src/dialogue_bridge/core/auth_session.py](../../src/dialogue_bridge/core/auth_session.py) | `require_session`, `require_current_user`, `require_refresh_session`, `require_csrf_protection`, `issue_session_cookies`, `revoke_current_session` |
+| Instant-logout denylist | [src/dialogue_bridge/core/logout_denylist.py](../../src/dialogue_bridge/core/logout_denylist.py) | `LogoutDenylist` (fail-open) |
+| Auth endpoints | [src/dialogue_bridge/router/auth.py](../../src/dialogue_bridge/router/auth.py) | `authenticate`, `session_me`, `refresh_session`, `logout` |
 | User upsert from Vault | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `upsert_user_from_vault()` |
-| Session DB model | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `SessionTable` |
-| Auth endpoints | [src/dialogue_bridge/router/auth.py](../../src/dialogue_bridge/router/auth.py) | `authenticate`, `refresh_session`, `logout`, `session_me` |
+| Settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `JWTSettings`, `VaultSettings` (AppRole + Transit) |
+| Vault setup runbook | [src/vault/vault_init.sh](../../src/vault/vault_init.sh) | Transit key + AppRole role + policy |
 | Rate limiting | [src/dialogue_bridge/core/rate_limit.py](../../src/dialogue_bridge/core/rate_limit.py) | `AUTHENTICATE_LIMIT`, `limiter` |
-| Session settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `SessionSettings` — TTLs, cookie names, domain, max_per_user |
-| localStorage session marker | [src/agentic_ui/src/lib/authStorage.ts](../../src/agentic_ui/src/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()`, `clearSession()`, `updateSession()` |
-| IndexedDB UI snapshot | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | `UISnapshotSerializable`, `saveUISnapshot()`, `loadUISnapshot()`, `clearUISnapshot()` |
-| Page load hydration | [src/agentic_ui/src/hooks/useSessionEffects.ts](../../src/agentic_ui/src/hooks/useSessionEffects.ts) | `useInitialSessionState`, `useAuthRehydrateEffect`, `useUISnapshotPersistence` |
-| Auto-refresh scheduling | [src/agentic_ui/src/hooks/useSessionEffects.ts](../../src/agentic_ui/src/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` |
-| Login / logout handlers | [src/agentic_ui/src/handlers/auth.ts](../../src/agentic_ui/src/handlers/auth.ts) | `handleLogin`, `handleLogout`, `handleLogoutLocal` |
+| localStorage marker | [src/agentic_ui/src/lib/authStorage.ts](../../src/agentic_ui/src/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |
+| Auto-refresh scheduling | [src/agentic_ui/src/hooks/useSessionEffects.ts](../../src/agentic_ui/src/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` (10-min buffer) |
+| Login / logout handlers | [src/agentic_ui/src/handlers/auth.ts](../../src/agentic_ui/src/handlers/auth.ts) | `handleLogin`, `handleLogout` |

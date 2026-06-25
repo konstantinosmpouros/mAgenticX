@@ -144,9 +144,7 @@ In production this application-layer credential is backed by **transport-layer m
 
 ### Vault Integration
 
-When Vault is deployed, `dialogue_bridge` calls `vault:8004` to authenticate user credentials (userpass backend) and receive short-lived JWT access tokens. The bridge issues HttpOnly cookies to the browser; it never exposes raw tokens.
-
-Without Vault, the bridge can fall back to a local JWT signing mode (configurable via `VAULT_URL` env var being unset).
+`dialogue_bridge` calls `vault:8004` to authenticate user credentials (userpass backend) **and** to sign the session JWTs via Vault's Transit engine — the RS256 private key never leaves Vault. The bridge authenticates to Vault as a machine via AppRole. Sessions are stateless: the bridge issues HttpOnly access + refresh cookies and verifies them per-request by signature against a cached public key (no DB or Vault call on the hot path). Vault is required for login/refresh, but not for verifying an already-issued token.
 
 ---
 
@@ -357,14 +355,19 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `ANTHROPIC_API_KEY` | agents | Claude model access (optional) |
 | `DATABASE_URL` | dialogue_bridge | async PostgreSQL connection string |
 | `DATABASE_POOL_SIZE` | dialogue_bridge | SQLAlchemy pool size |
-| `SESSION_TOKEN_SECRET` | dialogue_bridge | JWT signing key (non-Vault mode) |
-| `SESSION_ACCESS_TTL_SECONDS` | dialogue_bridge | Access token lifetime |
-| `SESSION_REFRESH_TTL_SECONDS` | dialogue_bridge | Refresh token lifetime |
+| `SESSION_TOKEN_SECRET` | dialogue_bridge | General-purpose HMAC key (e.g. DOCX-preview tokens); not used for auth sessions |
+| `JWT_ACCESS_TTL_SECONDS` | dialogue_bridge | Access JWT lifetime (default 28800 / 8 h) |
+| `JWT_REFRESH_TTL_SECONDS` | dialogue_bridge | Refresh JWT absolute lifetime (default 864000 / 10 d) |
 | `TRUSTED_PROXY_SECRET` | all services | Internal service authentication |
+| `LOG_REDACTION_SECRET_FILE` / `LOG_REDACTION_SECRET` | dialogue_bridge, agents, rag_service | Shared HMAC key (Swarm `magenticx_log_redaction_secret`) for hashing `user_id`/`session_id`/`client_ip` in logs. Same key across services so hashes correlate; falls back to a random per-process key if unset (correlation disabled). See [observability](../development/observability.md). |
+| `LOG_LEVEL` / `LOG_FORMAT` | all Python services | Log verbosity (default `INFO`) and output mode (`json` in prod, `console` in dev) |
 | `REQUIRE_TLS` | agents, rag_service, dialogue_bridge, chat_postgres, agentic_ui | TLS-entrypoint gate; defaults to `true` (fail closed — refuse to start in plaintext if certs are missing/unreadable). Set `false` only as an emergency escape hatch. Not used in local dev (the TLS entrypoints are a prod-only override). |
 | `REQUIRE_MTLS` | agents, rag_service, dialogue_bridge | Mutual-TLS gate on the HTTP service hops; defaults to `true` (uvicorn requires a CA-signed client cert). Set `false` as the emergency escape hatch / zero-downtime rollout lever. Prod-only (TLS entrypoints don't run in local dev). |
 | `INTERNAL_CLIENT_CERT_PATH` / `INTERNAL_CLIENT_KEY_PATH` | agents, dialogue_bridge | Client cert + key the service presents on outbound internal calls (mTLS). Unset in local dev → no client cert. |
-| `VAULT_URL` | dialogue_bridge | HashiCorp Vault base URL |
+| `VAULT_URL` | dialogue_bridge | HashiCorp Vault base URL (required for login + JWT signing) |
+| `VAULT_ROLE_ID_FILE` / `VAULT_ROLE_ID` | dialogue_bridge | AppRole role id for the bridge's Vault identity (file-mounted Swarm secret in prod) |
+| `VAULT_SECRET_ID_FILE` / `VAULT_SECRET_ID` | dialogue_bridge | AppRole secret id; pairs with the role id |
+| `VAULT_TRANSIT_JWT_KEY` | dialogue_bridge | Transit key that signs session JWTs (default `jwt-rs256`) |
 | `REDIS_URL` | dialogue_bridge | Redis connection URL (default `redis://redis:6379/0`) |
 | `REDIS_PASSWORD_FILE` / `REDIS_PASSWORD` | dialogue_bridge, redis | Redis AUTH password (file-mounted secret in prod, env var in local dev) |
 | `REDIS_STREAM_MAXLEN` | dialogue_bridge | Approximate cap on the per-run event stream (default 5000) |
@@ -418,7 +421,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 
 - **WebRTC audio never touches the bridge.** After the SDP exchange, all audio flows directly between the browser and OpenAI's Realtime API. The bridge is not in the media path and has no visibility into the audio stream.
 
-- **Vault is optional but changes the auth flow.** Without Vault, the bridge issues its own JWTs using `SESSION_TOKEN_SECRET`. With Vault, all token issuance goes through Vault. The two modes are not interchangeable — a deployment that starts with one mode cannot easily switch without invalidating all existing sessions.
+- **Vault is required for auth and is the JWT signer.** The bridge verifies credentials (userpass) and signs every session JWT via Vault Transit (private key never leaves Vault). Per-request verification is signature-only against a cached public key, so Vault being down does not affect already-issued tokens — only new logins/refreshes fail. There is no local-signing fallback.
 
 - **Postgres is the only stateful service in the core compose.** ChromaDB state lives in a Docker volume (`./vectorstores/chroma_db_openai/`). PostgreSQL state lives in a named volume (`chat_postgres_data`). Both must be backed up for full disaster recovery.
 

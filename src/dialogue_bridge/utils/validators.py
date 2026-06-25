@@ -8,16 +8,15 @@ from core.database import (
     AttachmentTable,
     ConversationTable,
     MessageTable,
-    UserTable,
     get_db,
 )
-from core.auth_session import require_bound_user_id
+from core.auth_session import AuthUser, require_bound_user_id
 
 
 async def validate_userId(
     user_id: str,
-    current_user: UserTable = Depends(require_bound_user_id),
-) -> UserTable:
+    current_user: AuthUser = Depends(require_bound_user_id),
+) -> AuthUser:
     """Ensure the caller's authenticated session authorizes access to the requested user."""
     set_context(user_id=user_id)
     return current_user

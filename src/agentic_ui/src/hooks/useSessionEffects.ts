@@ -446,7 +446,9 @@ export function useSessionAutoRefreshEffect(params: {
       return;
     }
 
-    const bufferMs = 2 * 60 * 1000;
+    // Refresh ~10 min before the 8-hour access token expires — a 2-min margin
+    // on an 8h token is too thin if the network is slow.
+    const bufferMs = 10 * 60 * 1000;
     const delay = remaining > bufferMs ? remaining - bufferMs : Math.max(remaining - 5000, 0);
 
     if (delay <= 0) {

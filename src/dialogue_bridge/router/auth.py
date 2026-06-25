@@ -2,37 +2,36 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from observability import get_logger, set_context
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import UserTable, get_db, upsert_user_from_vault
 from schemas import AuthRequest, AuthResponse
 from core.rate_limit import AUTHENTICATE_LIMIT, limiter
 from core.auth_session import (
+    AuthContext,
+    access_ttl_for_session,
     build_auth_response,
     clear_session_cookies,
-    create_user_session,
     issue_session_cookies,
+    mint_login_session,
     require_csrf_protection,
-    require_current_user,
     require_refresh_session,
     require_session,
-    rotate_user_session,
-    revoke_session,
-    get_access_session,
-    get_refresh_session,
-    SessionAuthenticationError,
-    access_ttl_for_session,
+    revoke_current_session,
+    rotate_session,
 )
-from core.auth_client import VaultAuthError, VaultAuthenticator
+from core.auth_providers import get_provider
+from core.vault import VaultAuthError
 
 
 router = APIRouter()
 logger = get_logger(__name__)
 
-try:
-    _vault_authenticator = VaultAuthenticator()
-except RuntimeError:
-    _vault_authenticator = None
+
+async def _load_user(db: AsyncSession, user_id: str) -> UserTable | None:
+    result = await db.execute(select(UserTable).where(UserTable.id == user_id))
+    return result.scalar_one_or_none()
 
 
 @router.post("/login", response_model=AuthResponse, status_code=status.HTTP_200_OK)
@@ -43,22 +42,11 @@ async def authenticate(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
-    """
-    Authenticate the user against Vault and issue bridge-managed session cookies.
-    """
-    if _vault_authenticator is None:
-        logger.error(
-            "auth_service_not_configured",
-            "Authentication service is not configured",
-            failure_reason="auth_service_not_configured",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication service is temporarily unavailable. Please try again later.",
-        )
-
+    """Authenticate the user against Vault and issue stateless, Vault-signed session JWTs."""
     try:
-        auth_result = await _vault_authenticator.authenticate(creds.username, creds.password)
+        identity = await get_provider("vault").authenticate(
+            {"username": creds.username, "password": creds.password}
+        )
     except VaultAuthError as exc:
         if exc.status_code in (400, 401, 403):
             logger.warning(
@@ -67,22 +55,30 @@ async def authenticate(
                 vault_status_code=exc.status_code,
                 failure_reason="invalid_credentials",
             )
-        else:
-            logger.error(
-                "auth_login_failed",
-                "Vault authentication failed",
-                exc_info=True,
-                vault_status_code=exc.status_code,
-                failure_reason="vault_unavailable",
-            )
-        if exc.status_code in (400, 401, 403):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password.",
             ) from exc
+        logger.error(
+            "auth_login_failed",
+            "Vault authentication failed",
+            exc_info=True,
+            vault_status_code=exc.status_code,
+            failure_reason="vault_unavailable",
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Authentication service is unavailable.",
+        ) from exc
+    except RuntimeError as exc:
+        logger.error(
+            "auth_service_not_configured",
+            "Authentication service is not configured",
+            failure_reason="auth_service_not_configured",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication service is temporarily unavailable. Please try again later.",
         ) from exc
     except Exception as exc:
         logger.exception("auth_unexpected_error", "Unexpected error during authentication", failure_reason="unexpected_error")
@@ -95,8 +91,8 @@ async def authenticate(
 
     user = await upsert_user_from_vault(
         db,
-        vault_user_id=auth_result.vault_user_id,
-        username=auth_result.username,
+        vault_user_id=identity.subject,
+        username=identity.username,
         metadata={"last_login_at": login_time},
     )
 
@@ -111,7 +107,7 @@ async def authenticate(
     await db.commit()
     await db.refresh(user)
 
-    issued = await create_user_session(db, user, request)
+    issued = await mint_login_session(user)
     set_context(user_id=user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
     logger.info("auth_login_succeeded", "User authenticated successfully")
@@ -120,27 +116,35 @@ async def authenticate(
 
 @router.get("/session", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 async def session_me(
-    current_user: UserTable = Depends(require_current_user),
-    session=Depends(require_session),
+    ctx: AuthContext = Depends(require_session),
+    db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
-    set_context(user_id=current_user.id, session_id=session.id)
+    user = await _load_user(db, ctx.user_id)
+    if user is None or not user.is_active:
+        logger.warning("session_me_user_invalid", "Session belongs to a missing or inactive user")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    set_context(user_id=ctx.user_id, session_id=ctx.id)
     logger.debug("session_me", "Session introspection succeeded")
-    return AuthResponse(**build_auth_response(current_user, access_ttl_for_session(session)))
+    return AuthResponse(**build_auth_response(user, access_ttl_for_session(ctx)))
 
 
 @router.post("/session/refresh", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 async def refresh_session(
-    request: Request,
     response: Response,
     _: None = Depends(require_csrf_protection),
-    session=Depends(require_refresh_session),
+    ctx: AuthContext = Depends(require_refresh_session),
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
-    issued = await rotate_user_session(db, session, request)
-    set_context(user_id=session.user.id, session_id=issued.session_id)
+    user = await _load_user(db, ctx.user_id)
+    if user is None or not user.is_active:
+        clear_session_cookies(response)
+        logger.warning("refresh_user_invalid", "Refresh belongs to a missing or inactive user")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    issued = await rotate_session(ctx, is_active=user.is_active)
+    set_context(user_id=user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
     logger.info("session_refresh_succeeded", "Session refresh succeeded")
-    return AuthResponse(**build_auth_response(session.user, issued.access_ttl))
+    return AuthResponse(**build_auth_response(user, issued.access_ttl))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -148,22 +152,9 @@ async def logout(
     request: Request,
     response: Response,
     _: None = Depends(require_csrf_protection),
-    db: AsyncSession = Depends(get_db),
 ) -> Response:
-    session = None
-    try:
-        session = await get_access_session(request, db)
-    except SessionAuthenticationError:
-        try:
-            session = await get_refresh_session(request, db)
-        except SessionAuthenticationError:
-            session = None
-
-    if session is not None:
-        set_context(user_id=session.user_id, session_id=session.id)
-        await revoke_session(session, db)
-
+    sid = await revoke_current_session(request)
     clear_session_cookies(response)
-    logger.info("logout_completed", "Logout completed", had_session=session is not None)
+    logger.info("logout_completed", "Logout completed", had_session=sid is not None)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 from core.settings import settings
+from observability.redaction import sanitize_for_logging
 
 
 def _timestamp() -> str:
@@ -22,9 +23,11 @@ class JsonFormatter(logging.Formatter):
             "event": getattr(record, "event", record.name.split(".")[-1]),
             "message": record.getMessage(),
             "request_id": getattr(record, "request_id", "-"),
+            "user_id": getattr(record, "user_id", "anonymous"),
+            "session_id": getattr(record, "session_id", "no-session"),
             "http_method": getattr(record, "http_method", None),
             "http_path": getattr(record, "http_path", None),
-            "fields": getattr(record, "event_data", {}) or {},
+            "fields": sanitize_for_logging(getattr(record, "event_data", {}) or {}),
         }
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
@@ -46,10 +49,17 @@ class ConsoleFormatter(logging.Formatter):
         request_id = getattr(record, "request_id", "-")
         if request_id and request_id != "-":
             parts.append(f"req={request_id}")
-        fields = getattr(record, "event_data", {}) or {}
-        for key, value in fields.items():
-            if value not in (None, "", {}, []):
-                parts.append(f"{key}={json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value}")
+        user_id = getattr(record, "user_id", "anonymous")
+        if user_id and user_id != "anonymous":
+            parts.append(f"user={user_id}")
+        session_id = getattr(record, "session_id", "no-session")
+        if session_id and session_id != "no-session":
+            parts.append(f"session={session_id}")
+        fields = sanitize_for_logging(getattr(record, "event_data", {}) or {})
+        if isinstance(fields, dict):
+            for key, value in fields.items():
+                if value not in (None, "", {}, []):
+                    parts.append(f"{key}={json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value}")
         line = " | ".join(parts)
         message = record.getMessage()
         if message:

@@ -3,8 +3,8 @@ from observability import get_logger, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth_session import require_csrf_protection
-from core.database import ConversationTable, MessageTable, UserPreferencesTable, UserTable, get_db
+from core.auth_session import AuthUser, require_csrf_protection
+from core.database import ConversationTable, MessageTable, UserPreferencesTable, get_db
 from schemas import DictationResponse, ReadAloudPreviewRequest
 from utils import (
     generate_read_aloud_audio,
@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 async def transcribe_dictation(
     user_id: str,
     audio: UploadFile = File(...),
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
 ) -> DictationResponse:
     """
@@ -71,7 +71,7 @@ async def readMessageAloud(
     user_id: str,
     conversation_id: str,
     message_id: str,
-    _current_user: UserTable = Depends(validate_userId),
+    _current_user: AuthUser = Depends(validate_userId),
     _current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -114,7 +114,7 @@ async def readMessageAloud(
 async def previewReadAloudVoice(
     user_id: str,
     payload: ReadAloudPreviewRequest,
-    _current_user: UserTable = Depends(validate_userId),
+    _current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
 ):
     set_context(user_id=user_id)

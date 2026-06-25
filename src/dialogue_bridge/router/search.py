@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, Query, status
 from observability import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import UserTable, get_db
+from core.database import get_db
+from core.auth_session import AuthUser
 from schemas import WorkspaceSearchResult
 from utils import validate_userId
 from utils.search import clean_search_query, search_workspace_data
@@ -22,7 +23,7 @@ async def searchWorkspace(
     user_id: str,
     q: str = Query("", min_length=0, max_length=200),
     limit: int = Query(20, ge=1, le=50),
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ):
     query = clean_search_query(q)
