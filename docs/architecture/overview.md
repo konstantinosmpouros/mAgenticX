@@ -361,6 +361,8 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | `SESSION_ACCESS_TTL_SECONDS` | dialogue_bridge | Access token lifetime |
 | `SESSION_REFRESH_TTL_SECONDS` | dialogue_bridge | Refresh token lifetime |
 | `TRUSTED_PROXY_SECRET` | all services | Internal service authentication |
+| `LOG_REDACTION_SECRET_FILE` / `LOG_REDACTION_SECRET` | dialogue_bridge, agents, rag_service | Shared HMAC key (Swarm `magenticx_log_redaction_secret`) for hashing `user_id`/`session_id`/`client_ip` in logs. Same key across services so hashes correlate; falls back to a random per-process key if unset (correlation disabled). See [observability](../development/observability.md). |
+| `LOG_LEVEL` / `LOG_FORMAT` | all Python services | Log verbosity (default `INFO`) and output mode (`json` in prod, `console` in dev) |
 | `REQUIRE_TLS` | agents, rag_service, dialogue_bridge, chat_postgres, agentic_ui | TLS-entrypoint gate; defaults to `true` (fail closed — refuse to start in plaintext if certs are missing/unreadable). Set `false` only as an emergency escape hatch. Not used in local dev (the TLS entrypoints are a prod-only override). |
 | `REQUIRE_MTLS` | agents, rag_service, dialogue_bridge | Mutual-TLS gate on the HTTP service hops; defaults to `true` (uvicorn requires a CA-signed client cert). Set `false` as the emergency escape hatch / zero-downtime rollout lever. Prod-only (TLS entrypoints don't run in local dev). |
 | `INTERNAL_CLIENT_CERT_PATH` / `INTERNAL_CLIENT_KEY_PATH` | agents, dialogue_bridge | Client cert + key the service presents on outbound internal calls (mTLS). Unset in local dev → no client cert. |

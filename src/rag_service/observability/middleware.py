@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import time
-import uuid
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from observability.context import clear_context, set_context
 from observability.events import get_logger
+from observability.redaction import sanitize_request_id
 
 
 logger = get_logger("rag_service.request")
@@ -21,9 +21,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path in _SILENT_PATHS:
             return await call_next(request)
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request_id = sanitize_request_id(request.headers.get("X-Request-ID"))
         set_context(
             request_id=request_id,
+            session_id=request.headers.get("X-Session-Id") or "no-session",
+            user_id=request.headers.get("X-User-Id") or "anonymous",
             http_method=request.method,
             http_path=request.url.path,
         )

@@ -24,7 +24,7 @@ from core.database import (
 from core.proxy import internal_service_headers
 from core.settings import settings
 from core.tls import get_httpx_client_cert, get_httpx_verify
-from observability import get_logger
+from observability import get_context, get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
 from utils.agents import (
     build_agent_input_files_url,
@@ -123,7 +123,7 @@ async def _seed_input_files(url: str, files: list[dict[str, Any]]) -> None:
     """PUT the new turn's attachments into the deep agent's input/ before streaming."""
     timeout = settings.http.inference_timeout
     async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-        resp = await client.put(url, json={"files": files}, headers=internal_service_headers(None))
+        resp = await client.put(url, json={"files": files}, headers=internal_service_headers(get_context().get("request_id")))
         resp.raise_for_status()
 
 
@@ -809,7 +809,7 @@ class InferenceRunManager:
         sse_buffer = ""
         timeout = settings.http.inference_timeout
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-            headers = internal_service_headers(None)
+            headers = internal_service_headers(get_context().get("request_id"))
             headers["Accept"] = "text/event-stream"
             async with client.stream("POST", agent_url, json=request_payload, headers=headers) as response:
                 response.raise_for_status()
@@ -857,7 +857,7 @@ class InferenceRunManager:
         }
         timeout = settings.http.inference_timeout
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-            headers = internal_service_headers(None)
+            headers = internal_service_headers(get_context().get("request_id"))
             headers["Accept"] = "text/event-stream"
             try:
                 async with client.stream("POST", resume_url, json=body, headers=headers) as response:

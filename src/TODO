@@ -4,6 +4,7 @@
 
 - Consider using a centralized logging solution like ELK or Datadog or loki with Grafana for better observability.
 - Add as services in denis: n8n, penpot, appflowy, and other open source tools that can be used by the agents and the users.
+- Make it a platform with org level and user-level permissions, so that users can have their own workspaces and agents, and orgs can have their own workspaces and agents along with admins.
 
 ## New Features
 

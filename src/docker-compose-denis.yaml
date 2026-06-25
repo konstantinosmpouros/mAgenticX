@@ -39,12 +39,19 @@ services:
       - RAG_PORT=8000
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
       - TRUSTED_PROXY_SECRET_FILE=/run/secrets/trusted_proxy_secret
+      - LOG_REDACTION_SECRET_FILE=/run/secrets/log_redaction_secret
     secrets:
       - openai_api_key
       - trusted_proxy_secret
+      - log_redaction_secret
     depends_on:
       - vectordb
     restart: unless-stopped
+    deploy:
+      update_config:
+        order: start-first
+        monitor: 30s
+        failure_action: pause
     volumes:
       - /opt/magenticx/rag_service/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
       - /opt/magenticx/rag_service/tls/tls.key:/app/tls/tls.key:ro
@@ -89,15 +96,22 @@ services:
       - AGENT_RUNTIME_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
       - LANGGRAPH_STRICT_MSGPACK=true
       - LANGGRAPH_AES_KEY_FILE=/run/secrets/agent_runtime_aes_key
+      - LOG_REDACTION_SECRET_FILE=/run/secrets/log_redaction_secret
     secrets:
       - openai_api_key
       - trusted_proxy_secret
       - postgres_password
       - agent_runtime_aes_key
+      - log_redaction_secret
     depends_on:
       - rag_service
       - chat_postgres
     restart: unless-stopped
+    deploy:
+      update_config:
+        order: start-first
+        monitor: 30s
+        failure_action: pause
     volumes:
       - /opt/magenticx/agents/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
       - /opt/magenticx/agents/tls/tls.key:/app/tls/tls.key:ro
@@ -219,16 +233,23 @@ services:
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
       - INTERNAL_CLIENT_CERT_PATH=/app/tls/tls.crt
       - INTERNAL_CLIENT_KEY_PATH=/app/tls/tls.key
+      - LOG_REDACTION_SECRET_FILE=/run/secrets/log_redaction_secret
     secrets:
       - session_token_secret
       - trusted_proxy_secret
       - redis_password
       - postgres_password
+      - log_redaction_secret
     depends_on:
       - agents
       - chat_postgres
       - redis
     restart: unless-stopped
+    deploy:
+      update_config:
+        order: start-first
+        monitor: 30s
+        failure_action: pause
     volumes:
       - /opt/magenticx/dialogue_bridge/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
       - /opt/magenticx/dialogue_bridge/tls/tls.key:/app/tls/tls.key:ro
@@ -320,6 +341,9 @@ secrets:
   agent_runtime_aes_key:
     external: true
     name: magenticx_agent_runtime_aes_key
+  log_redaction_secret:
+    external: true
+    name: magenticx_log_redaction_secret
 
 
 

@@ -326,6 +326,11 @@ async def require_session(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
     set_context(user_id=session.user_id, session_id=session.id)
+    # Shared with the request-logging middleware (contextvars set here don't
+    # propagate back to it under Starlette), so the access log line carries the
+    # same session/user as the business logs.
+    request.state.session_id = session.id
+    request.state.user_id = session.user_id
     if session.user is None or not session.user.is_active:
         await revoke_session(session, db)
         logger.warning("access_session_inactive_user", "Access session belongs to an inactive user")
@@ -411,6 +416,11 @@ async def require_refresh_session(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.") from exc
 
     set_context(user_id=session.user_id, session_id=session.id)
+    # Shared with the request-logging middleware (contextvars set here don't
+    # propagate back to it under Starlette), so the access log line carries the
+    # same session/user as the business logs.
+    request.state.session_id = session.id
+    request.state.user_id = session.user_id
     if session.user is None or not session.user.is_active:
         await revoke_session(session, db)
         logger.warning("refresh_session_inactive_user", "Refresh session belongs to an inactive user")

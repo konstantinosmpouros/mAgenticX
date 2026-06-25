@@ -47,12 +47,29 @@ def require_internal_caller(request: Request) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
-def internal_service_headers(request_id: str | None = None) -> dict[str, str]:
+def internal_service_headers(
+    request_id: str | None = None, session_id: str | None = None, user_id: str | None = None
+) -> dict[str, str]:
+    # Local imports avoid an import cycle (observability.middleware imports this module).
+    from observability.context import get_context
+    from observability.redaction import hash_session_id, hash_user_id
+
     headers: dict[str, str] = {
         TRUSTED_PROXY_HEADER_NAME: settings.proxy.trusted_proxy_secret.get_secret_value(),
     }
     if request_id:
         headers["X-Request-ID"] = request_id
+    # Forward the already-hashed session/user tokens (never the raw ids) so every
+    # internal hop logs the same h:<…> pseudonyms. Auto-derived from the request
+    # context when the caller omits them, so all hops carry them — not just inference.
+    if session_id is None:
+        session_id = hash_session_id(get_context().get("session_id"))
+    if session_id and session_id != "no-session":
+        headers["X-Session-Id"] = session_id
+    if user_id is None:
+        user_id = hash_user_id(get_context().get("user_id"))
+    if user_id and user_id != "anonymous":
+        headers["X-User-Id"] = user_id
     return headers
 
 

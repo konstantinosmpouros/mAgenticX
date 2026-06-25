@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-import uuid
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -9,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from observability.context import clear_context, set_context
 from observability.events import get_logger
 from observability.operations import elapsed_ms
-from observability.redaction import sanitize_for_logging
+from observability.redaction import sanitize_for_logging, sanitize_request_id
 from core.proxy import resolve_client_ip
 
 
@@ -24,7 +23,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path in _SILENT_PATHS:
             return await call_next(request)
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request_id = sanitize_request_id(request.headers.get("X-Request-ID"))
         client_ip = resolve_client_ip(request)
         path_params = request.scope.get("path_params") or {}
 
@@ -47,7 +46,17 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
-            set_context(status_code=response.status_code)
+            # Auth deps stash the resolved session/user on request.state (Starlette
+            # isolates the endpoint's contextvars from this middleware), so the
+            # access line carries the same identity as the business logs.
+            ctx_updates: dict = {"status_code": response.status_code}
+            resolved_session = getattr(request.state, "session_id", None)
+            if resolved_session:
+                ctx_updates["session_id"] = resolved_session
+            resolved_user = getattr(request.state, "user_id", None)
+            if resolved_user:
+                ctx_updates["user_id"] = resolved_user
+            set_context(**ctx_updates)
             logger.info(
                 "http_request_completed",
                 "HTTP request completed",

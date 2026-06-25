@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import re
 import sys
+import time
 
 PACKAGE_ROOT = Path(os.path.abspath(os.path.dirname(__file__)))
 sys.path.append(str(PACKAGE_ROOT))
@@ -16,6 +17,7 @@ from langchain_core.documents import Document
 from observability import (
     RequestLoggingMiddleware,
     configure_logging,
+    elapsed_ms,
     get_logger,
     register_exception_handlers,
 )
@@ -105,6 +107,7 @@ async def retrieve(request: Query, collection_name: str):
     )
     
     retriever = vectordb.as_retriever(search_kwargs={"k": request.k})
+    started_at = time.perf_counter()
     try:
         docs: list[Document] = await retriever.ainvoke(request.query)
     except Exception as exc:
@@ -116,11 +119,12 @@ async def retrieve(request: Query, collection_name: str):
             public_detail="Document retrieval is temporarily unavailable. Please try again.",
             collection_name=collection_name,
             k=request.k,
+            duration_ms=elapsed_ms(started_at),
         )
     if not docs:
-        logger.warning("retrieval_no_results", "Vector retrieval returned no documents", collection_name=collection_name, k=request.k)
+        logger.warning("retrieval_no_results", "Vector retrieval returned no documents", collection_name=collection_name, k=request.k, duration_ms=elapsed_ms(started_at))
         raise HTTPException(status_code=404, detail="No documents found")
-    logger.info("retrieval_completed", "Vector retrieval completed", collection_name=collection_name, k=request.k, document_count=len(docs))
+    logger.info("retrieval_completed", "Vector retrieval completed", collection_name=collection_name, k=request.k, document_count=len(docs), duration_ms=elapsed_ms(started_at))
     return {
         "query": request.query,
         "k": request.k,
@@ -157,6 +161,7 @@ async def query_sql(body: ExcelSQLQuery, table: str):
         raise HTTPException(status_code=404, detail="Table not found.")
     sql = _validate_read_only_sql(body.sql)
     _validate_sql_references_table(sql, table)
+    started_at = time.perf_counter()
     try:
         df = db.execute(sql).fetch_df()
     except Exception as exc:
@@ -167,9 +172,10 @@ async def query_sql(body: ExcelSQLQuery, table: str):
             message="DuckDB SQL query failed",
             public_detail="The SQL query could not be completed. Please check the query and try again.",
             table=table,
+            duration_ms=elapsed_ms(started_at),
         )
 
-    logger.info("sql_query_completed", "DuckDB SQL query completed", table=table, row_count=len(df), column_count=len(df.columns))
+    logger.info("sql_query_completed", "DuckDB SQL query completed", table=table, row_count=len(df), column_count=len(df.columns), duration_ms=elapsed_ms(started_at))
     return {
         "row_count": len(df),
         "data": df.to_dict(orient="records"),

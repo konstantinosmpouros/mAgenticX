@@ -390,7 +390,7 @@ class LoggingSettings(BaseSettings):
             return value
         if isinstance(value, str) and value:
             return value
-        return os.getenv("LOG_REDACTION_SECRET", "") or ""
+        return _resolve_file_backed_secret("LOG_REDACTION_SECRET") or ""
 
 
 class CorsSettings(BaseSettings):

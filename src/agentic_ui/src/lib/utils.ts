@@ -94,6 +94,12 @@ export function withSessionRequest(init: RequestInit = {}, opts: { csrf?: boolea
     const csrf = getCsrfToken();
     if (csrf) headers.set("X-CSRF-Token", csrf);
   }
+  // Correlation id for end-to-end tracing (UI → bridge → agents → rag). The
+  // backend re-validates and regenerates if missing/malformed, so this is
+  // best-effort origination, never trusted as-is.
+  if (!headers.has("X-Request-ID")) {
+    headers.set("X-Request-ID", crypto.randomUUID());
+  }
   return withCredentials({
     ...init,
     headers,

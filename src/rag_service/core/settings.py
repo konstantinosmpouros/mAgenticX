@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,25 @@ class AppSettings(BaseSettings):
     environment: str = Field("development", validation_alias="ENVIRONMENT")
     log_level: str = Field("INFO", validation_alias="LOG_LEVEL")
     log_format: str = Field("console", validation_alias="LOG_FORMAT")
+
+
+_DEFAULT_REDACTION_SECRET = "rag-log-redaction"
+
+
+class LoggingSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    redaction_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
+
+    @field_validator("redaction_secret", mode="before")
+    @classmethod
+    def _load_redaction_secret(cls, value: Any) -> Any:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        resolved = _resolve_file_backed_secret("LOG_REDACTION_SECRET_FILE", os.getenv("LOG_REDACTION_SECRET"))
+        return resolved or _DEFAULT_REDACTION_SECRET
 
 
 class RagSettings(BaseSettings):
@@ -77,6 +97,7 @@ class Settings(BaseSettings):
     rag: RagSettings = Field(default_factory=RagSettings)
     api_keys: ApiKeysSettings = Field(default_factory=ApiKeysSettings)
     proxy: ProxySettings = Field(default_factory=ProxySettings)
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":
@@ -85,6 +106,17 @@ class Settings(BaseSettings):
                 "TRUSTED_PROXY_SECRET must be set. "
                 "Refusing to start without an internal-caller shared secret."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _harden_redaction_secret(self) -> "Settings":
+        # An unconfigured (or default-sentinel) key must never reach a running
+        # process: fall back to a random per-process key so pseudonymization
+        # stays one-way. Provision the shared magenticx_log_redaction_secret in
+        # prod (LOG_REDACTION_SECRET_FILE) so hashes correlate across services
+        # and replicas.
+        if self.logging.redaction_secret.get_secret_value() in ("", _DEFAULT_REDACTION_SECRET):
+            object.__setattr__(self.logging, "redaction_secret", SecretStr(secrets.token_hex(32)))
         return self
 
 
