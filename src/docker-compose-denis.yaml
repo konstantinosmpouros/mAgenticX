@@ -225,6 +225,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://admin@chat_postgres:5432/chat_db?ssl=verify-full
       - DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
       - VAULT_URL=https://vault:8004
+      - VAULT_ROLE_ID_FILE=/run/secrets/vault_role_id
+      - VAULT_SECRET_ID_FILE=/run/secrets/vault_secret_id
       - AGENTS_SERVICE_URL=https://agents:8003
       - SESSION_TOKEN_SECRET_FILE=/run/secrets/session_token_secret
       - TRUSTED_PROXY_SECRET_FILE=/run/secrets/trusted_proxy_secret
@@ -240,6 +242,8 @@ services:
       - redis_password
       - postgres_password
       - log_redaction_secret
+      - vault_role_id
+      - vault_secret_id
     depends_on:
       - agents
       - chat_postgres
@@ -344,6 +348,12 @@ secrets:
   log_redaction_secret:
     external: true
     name: magenticx_log_redaction_secret
+  vault_role_id:
+    external: true
+    name: magenticx_vault_role_id
+  vault_secret_id:
+    external: true
+    name: magenticx_vault_secret_id
 
 
 

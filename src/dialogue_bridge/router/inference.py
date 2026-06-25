@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from observability import get_logger, set_context
 
-from core.database import SessionLocal, UserTable, get_db
+from core.database import SessionLocal, get_db
 from core.settings import settings
 from schemas import (
     InferenceStartPayload,
@@ -12,7 +12,7 @@ from schemas import (
     InferenceRunOut,
     InferenceRunResumeIn,
 )
-from core.auth_session import authenticate_websocket_user, require_csrf_protection
+from core.auth_session import AuthUser, authenticate_websocket_user, require_csrf_protection
 from core.rate_limit import INFERENCE_RATE_LIMIT, inference_user_key, limiter
 from utils import validate_userId
 from utils.inference_runs import (
@@ -53,7 +53,7 @@ async def startInferenceFlow(
     request: Request,
     user_id: str,
     payload: InferenceStartPayload,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> InferenceStartResponse:
@@ -75,7 +75,7 @@ async def startInferenceFlow(
 async def listInferenceRuns(
     user_id: str,
     status_filter: str | None = Query(default=None, alias="status"),
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ) -> list[InferenceRunOut]:
     """List inference runs for hydration; ``status=active`` returns queued/running/cancelling runs.
@@ -120,7 +120,7 @@ async def inference_run_websocket(
               stream entry was lost on this socket. Server closes cleanly
               afterwards.
     """
-    user = await authenticate_websocket_user(websocket.cookies, user_id, db)
+    user = await authenticate_websocket_user(websocket.cookies, user_id)
     if user is None:
         await websocket.close(code=_WS_UNAUTHORIZED, reason="Authentication required")
         return
@@ -204,7 +204,7 @@ async def inference_run_websocket(
 async def cancelInferenceRun(
     user_id: str,
     run_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> InferenceRunOut:
@@ -221,7 +221,7 @@ async def resumeInferenceRun(
     user_id: str,
     run_id: str,
     payload: InferenceRunResumeIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> InferenceRunOut:

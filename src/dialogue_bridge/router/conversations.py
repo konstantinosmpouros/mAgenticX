@@ -7,7 +7,7 @@ from observability import get_logger, logged_db_operation, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 
-from core.database import ConversationReportTable, ConversationShareTable, ConversationTable, get_db, UserTable
+from core.database import ConversationReportTable, ConversationShareTable, ConversationTable, get_db
 from schemas import (
     ConversationDetail,
     ConversationForkIn,
@@ -21,7 +21,7 @@ from schemas import (
     CreateConversationResponse,
     ConversationTitleUpdate,
 )
-from core.auth_session import require_csrf_protection
+from core.auth_session import AuthUser, require_csrf_protection
 from utils.attachments import encode_disposition
 from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_scoped_messages
 from utils import (
@@ -59,7 +59,7 @@ logger = get_logger(__name__)
 async def createConversation(
     user_id: str,
     payload: ConversationIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db)
 ) -> ConversationDetail:
@@ -129,7 +129,7 @@ async def forkConversation(
     user_id: str,
     conversation_id: str,
     payload: ConversationForkIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId_full),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -173,7 +173,7 @@ async def shareConversation(
     user_id: str,
     conversation_id: str,
     payload: ConversationShareIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId_full),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -242,7 +242,7 @@ async def exportConversationPdf(
     user_id: str,
     conversation_id: str,
     payload: ConversationPdfExportIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId_full),
     _: None = Depends(require_csrf_protection),
 ):
@@ -283,7 +283,7 @@ async def revokeConversationShare(
     user_id: str,
     conversation_id: str,
     share_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -309,7 +309,7 @@ async def revokeConversationShare(
 )
 async def getConvsSummary(
     user_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -330,7 +330,7 @@ async def getConvsSummary(
 )
 async def getArchivedConvsSummary(
     user_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -352,7 +352,7 @@ async def getConversationShares(
     user_id: str,
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=50),
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ):
     """Return share links owned by the authenticated user."""
@@ -378,7 +378,7 @@ async def getConversationShares(
 async def getConvDetails(
     user_id: str,
     conversation_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId_full),
 ):
     """Fetch one conversation (messages included) by user + conversation id."""
@@ -396,7 +396,7 @@ async def getConvDetails(
 async def deleteConversation(
     user_id: str,
     conversation_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -423,7 +423,7 @@ async def renameConversation(
     user_id: str,
     conversation_id: str,
     payload: ConversationTitleUpdate,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -446,7 +446,7 @@ async def renameConversation(
 async def archiveConversation(
     user_id: str,
     conversation_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -467,7 +467,7 @@ async def archiveConversation(
 async def unarchiveConversation(
     user_id: str,
     conversation_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -489,7 +489,7 @@ async def reportConversation(
     user_id: str,
     conversation_id: str,
     payload: ConversationReportIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),

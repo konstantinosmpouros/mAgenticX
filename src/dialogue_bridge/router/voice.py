@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from core.auth_session import require_csrf_protection
-from core.database import AttachmentTable, ConversationTable, MessageTable, UserTable, get_db
+from core.auth_session import AuthUser, require_csrf_protection
+from core.database import AttachmentTable, ConversationTable, MessageTable, get_db
 from core.settings import settings
 from schemas import (
     ConversationSummary,
@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 async def createRealtimeVoiceSession(
     user_id: str,
     payload: RealtimeVoiceSessionIn,
-    _current_user: UserTable = Depends(validate_userId),
+    _current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> RealtimeVoiceSessionOut:
@@ -89,7 +89,7 @@ async def createRealtimeVoiceSession(
 async def persistRealtimeVoiceConversationEvent(
     user_id: str,
     payload: RealtimeVoiceConversationEventIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateConversationResponse:
@@ -142,7 +142,7 @@ async def persistRealtimeVoiceConversationEvent(
 async def endRealtimeVoiceSession(
     user_id: str,
     payload: RealtimeVoiceEndIn,
-    _current_user: UserTable = Depends(validate_userId),
+    _current_user: AuthUser = Depends(validate_userId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ) -> RealtimeVoiceEndOut:

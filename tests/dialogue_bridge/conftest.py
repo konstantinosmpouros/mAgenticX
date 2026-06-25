@@ -11,6 +11,8 @@ import pytest
 import pytest_asyncio
 from fastapi_pagination import add_pagination
 from httpx import ASGITransport, AsyncClient
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -35,6 +37,7 @@ os.environ.setdefault("TRUSTED_PROXY_SECRET", "test-trusted-proxy-secret")
 os.environ.setdefault("AGENTS_SERVICE_URL", "http://agents.test")
 
 from main import app as bridge_app  # noqa: E402
+import core.jwt_tokens as _jwt_tokens  # noqa: E402
 from core.auth_session import require_csrf_protection  # noqa: E402
 from core.database import (  # noqa: E402
     AgentTable,
@@ -50,6 +53,35 @@ from utils.validators import validate_userId  # noqa: E402
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+class _FakeVaultTransit:
+    """Signs like Vault Transit under the bridge's exact params, so JWT mint +
+    jose verify work end to end without a live Vault."""
+
+    def __init__(self) -> None:
+        self._key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        self._pem = (
+            self._key.public_key()
+            .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+            .decode()
+        )
+
+    async def current_sign_version(self) -> int:
+        return 1
+
+    async def public_key_pem(self, version: int) -> str:
+        return self._pem
+
+    async def sign(self, signing_input: str, version: int) -> str:
+        sig = self._key.sign(signing_input.encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
+        return base64.urlsafe_b64encode(sig).rstrip(b"=").decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _mock_vault_transit(monkeypatch):
+    """Replace the real Vault Transit client so auth/JWT tests never need a live Vault."""
+    monkeypatch.setattr(_jwt_tokens, "vault_service", _FakeVaultTransit())
 
 
 @pytest_asyncio.fixture

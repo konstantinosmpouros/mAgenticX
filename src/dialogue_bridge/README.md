@@ -124,21 +124,18 @@ sequenceDiagram
     Bridge->>Vault: userpass login
     Vault-->>Bridge: client_token + entity_id
     Bridge->>Postgres: upsert user
-    Bridge->>Postgres: create session row
+    Bridge->>Vault: sign access + refresh JWTs (Transit)
     Bridge-->>Browser: access cookie + refresh cookie + csrf cookie
 ```
 
 ### 6.2 Session model
 
-Bridge sessions are stored in `SessionTable` with:
+Sessions are **stateless** — there is no session table. After Vault verifies the credential, the bridge issues two RS256 JWTs **signed by Vault Transit** (the private key never leaves Vault):
 
-- hashed access token
-- hashed refresh token
-- access expiry
-- refresh expiry
-- revoked timestamp
-- hashed user-agent
-- hashed client IP
+- access token (8 h) — verified by signature on every request; no DB or Vault call on the hot path
+- refresh token (10 d absolute cap) — rotates the pair, reusing the original login session id (`sid`)
+
+Per-request verification is signature-only against a cached public key. The only shared state is a fail-open Redis logout denylist keyed by `sid`.
 
 ### 6.3 Cookie and CSRF behavior
 
@@ -162,9 +159,9 @@ State-changing requests require CSRF validation unless the client is using beare
 | `/v1/auth/session/refresh` | `POST` | rotate session tokens |
 | `/v1/auth/logout` | `POST` | revoke session and clear cookies |
 
-### 6.5 Session limits
+### 6.5 Revocation
 
-When a user exceeds `SESSION_MAX_PER_USER`, older active sessions are revoked automatically to make room for the new one.
+Logout clears the device's cookies and denylists its session id in Redis, so a copy of the token stolen before logout is rejected instantly on the next request. There is no per-user session cap — stateless tokens carry no server-side session roster.
 
 ### 6.6 Authorization model
 
@@ -180,7 +177,6 @@ The bridge persists its own application state in Postgres through SQLAlchemy asy
 ```mermaid
 erDiagram
     UserTable ||--o| UserPreferencesTable : has
-    UserTable ||--o{ SessionTable : has
     UserTable ||--o{ ConversationTable : owns
     AgentTable ||--o{ ConversationTable : used_by
     ConversationTable ||--o{ MessageTable : contains

@@ -26,8 +26,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, status
 from observability import get_logger, set_context
 
-from core.auth_session import require_csrf_protection
-from core.database import UserTable
+from core.auth_session import AuthUser, require_csrf_protection, require_current_user
 from schemas import (
     CustomSkillCreateRequest,
     Skill,
@@ -62,8 +61,9 @@ async def get_skills(
             "'refresh' button. A normal page refresh leaves this false."
         ),
     ),
+    _: AuthUser = Depends(require_current_user),
 ) -> List[Skill]:
-    """Return every skill in the global catalog (admin-curated)."""
+    """Return every skill in the global catalog (admin-curated). Requires a valid session."""
     payload = await list_skills(bypass_cache=bypass_redis)
     logger.info(
         "skills_listed",
@@ -85,7 +85,7 @@ async def get_skills(
 async def get_user_pool(
     user_id: str,
     bypass_redis: bool = Query(default=False),
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
 ) -> List[UserSkill]:
     """Return the user's skill pool manifest (no content)."""
     set_context(user_id=user_id)
@@ -108,7 +108,7 @@ async def get_user_pool(
 async def get_user_skill(
     user_id: str,
     skill_name: str,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
 ) -> UserSkillDetail:
     """Return a single user-pool skill with its SKILL.md content (no cache)."""
     set_context(user_id=user_id)
@@ -123,7 +123,7 @@ async def get_user_skill(
 async def add_global_to_pool(
     user_id: str,
     skill_name: str,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
 ) -> None:
     """Append a global-skill reference to the user's pool."""
@@ -139,7 +139,7 @@ async def add_global_to_pool(
 async def create_custom_skill(
     user_id: str,
     payload: CustomSkillCreateRequest,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
 ) -> UserSkill:
     """Create a user-owned custom skill in the pool."""
@@ -157,7 +157,7 @@ async def create_custom_skill(
 async def remove_from_pool(
     user_id: str,
     skill_name: str,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
 ) -> None:
     """Remove a skill from the user's pool, cascading to per-agent assignments."""
@@ -173,7 +173,7 @@ async def remove_from_pool(
 async def get_enabled_skills_for_user_agent(
     user_id: str,
     agent_id: str,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
 ) -> List[str]:
     """Return the names of skills enabled for this (user, agent) pair.
 
@@ -198,7 +198,7 @@ async def enable_skill_for_user_agent(
     user_id: str,
     agent_id: str,
     skill_name: str,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
 ) -> None:
     """Enable ``skill_name`` for this (user, agent) pair.
@@ -221,7 +221,7 @@ async def disable_skill_for_user_agent(
     user_id: str,
     agent_id: str,
     skill_name: str,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
 ) -> None:
     """Disable ``skill_name`` for this (user, agent) pair.

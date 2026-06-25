@@ -114,9 +114,8 @@ class SessionSettings(BaseSettings):
     refresh_cookie_name: str | None = Field(None, validation_alias="SESSION_REFRESH_COOKIE_NAME")
     csrf_cookie_name: str | None = Field(None, validation_alias="SESSION_CSRF_COOKIE_NAME")
     csrf_header_name: str = Field("X-CSRF-Token", validation_alias="SESSION_CSRF_HEADER_NAME")
-    access_ttl_seconds: int = Field(900, validation_alias="SESSION_ACCESS_TTL_SECONDS")
-    refresh_ttl_seconds: int = Field(604800, validation_alias="SESSION_REFRESH_TTL_SECONDS")
-    max_per_user: int = Field(3, validation_alias="SESSION_MAX_PER_USER")
+    # General-purpose HMAC secret (used e.g. for short-lived DOCX-preview tokens);
+    # no longer used for auth sessions, which are now stateless Vault-signed JWTs.
     token_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
 
     @field_validator("token_secret", mode="before")
@@ -148,10 +147,61 @@ class VaultSettings(BaseSettings):
 
     addr: str | None = Field(None, validation_alias="VAULT_URL")
     userpass_mount: str = Field("userpass", validation_alias="VAULT_USERPASS_MOUNT")
-    oidc_role: str = Field("agenticx", validation_alias="VAULT_OIDC_ROLE")
-    oidc_path: str = Field("identity/oidc/token", validation_alias="VAULT_OIDC_PATH")
     namespace: str | None = Field(None, validation_alias="VAULT_NAMESPACE")
     timeout: float = Field(10.0, validation_alias="VAULT_HTTP_TIMEOUT")
+
+    # AppRole machine identity the bridge uses to sign session JWTs (and read the
+    # public keys) via the Transit engine. role_id/secret_id come from mounted
+    # secrets in prod (VAULT_ROLE_ID_FILE / VAULT_SECRET_ID_FILE).
+    approle_mount: str = Field("approle", validation_alias="VAULT_APPROLE_MOUNT")
+    role_id: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    secret_id: SecretStr = Field(default_factory=lambda: SecretStr(""))
+
+    # Transit engine + key that signs the JWTs; the RSA private key never leaves Vault.
+    transit_mount: str = Field("transit", validation_alias="VAULT_TRANSIT_MOUNT")
+    transit_jwt_key: str = Field("jwt-rs256", validation_alias="VAULT_TRANSIT_JWT_KEY")
+
+    @field_validator("role_id", mode="before")
+    @classmethod
+    def _load_role_id(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        return _resolve_file_backed_secret("VAULT_ROLE_ID") or ""
+
+    @field_validator("secret_id", mode="before")
+    @classmethod
+    def _load_secret_id(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        return _resolve_file_backed_secret("VAULT_SECRET_ID") or ""
+
+
+class JWTSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    issuer: str = Field("magenticx-bridge", validation_alias="JWT_ISSUER")
+    audience: str = Field("magenticx", validation_alias="JWT_AUDIENCE")
+    access_ttl_seconds: int = Field(28800, validation_alias="JWT_ACCESS_TTL_SECONDS")     # 8 hours
+    refresh_ttl_seconds: int = Field(864000, validation_alias="JWT_REFRESH_TTL_SECONDS")  # 10 days
+    leeway_seconds: int = Field(30, validation_alias="JWT_LEEWAY_SECONDS")
+    sign_version_cache_seconds: int = Field(60, validation_alias="JWT_SIGN_VERSION_CACHE_SECONDS")
+
+    @field_validator("leeway_seconds", "access_ttl_seconds", "refresh_ttl_seconds", mode="after")
+    @classmethod
+    def _bound_durations(cls, v: int, info) -> int:
+        bounds = {
+            "leeway_seconds": (0, 300),
+            "access_ttl_seconds": (60, 86400),
+            "refresh_ttl_seconds": (3600, 2592000),
+        }
+        lo, hi = bounds[info.field_name]
+        if v < lo or v > hi:
+            raise ValueError(f"{info.field_name} must be between {lo} and {hi} seconds.")
+        return v
 
 
 class TlsSettings(BaseSettings):
@@ -445,6 +495,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     session: SessionSettings = Field(default_factory=SessionSettings)
     vault: VaultSettings = Field(default_factory=VaultSettings)
+    jwt: JWTSettings = Field(default_factory=JWTSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     inference: InferenceSettings = Field(default_factory=InferenceSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
@@ -467,6 +518,23 @@ class Settings(BaseSettings):
                 "TRUSTED_PROXY_SECRET must be set. "
                 "Refusing to start without an internal-caller shared secret."
             )
+
+        if self.app.env not in {"development", "test"}:
+            missing = [
+                name
+                for name, present in (
+                    ("VAULT_URL", bool(self.vault.addr)),
+                    ("VAULT_ROLE_ID", bool(self.vault.role_id.get_secret_value())),
+                    ("VAULT_SECRET_ID", bool(self.vault.secret_id.get_secret_value())),
+                )
+                if not present
+            ]
+            if missing:
+                raise ValueError(
+                    "Stateless JWT auth requires Vault AppRole + Transit configuration; missing: "
+                    + ", ".join(missing)
+                    + "."
+                )
 
         if not self.session.token_secret.get_secret_value():
             if self.app.env not in {"development", "test"}:

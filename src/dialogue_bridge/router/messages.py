@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from observability import get_logger, logged_db_operation, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import ConversationTable, get_db, UserTable
+from core.database import ConversationTable, get_db
 from schemas import (
     ConversationSummary,
     MessageIn,
@@ -12,7 +12,7 @@ from schemas import (
     MessageUpdate,
     UpdateConversationResponse,
 )
-from core.auth_session import require_csrf_protection
+from core.auth_session import require_csrf_protection, AuthUser
 from utils import (
     _preview,
     apply_ai_message_update,
@@ -38,7 +38,7 @@ async def addMessageToConversation(
     user_id: str,
     conversation_id: str,
     payload: MessageIn,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -96,7 +96,7 @@ async def updateMessageInConversation(
     conversation_id: str,
     message_id: str,
     payload: MessageUpdate,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -149,7 +149,7 @@ async def likeMessage(
     user_id: str,
     conversation_id: str,
     message_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
@@ -177,7 +177,7 @@ async def dislikeMessage(
     user_id: str,
     conversation_id: str,
     message_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     current_conv: ConversationTable = Depends(validate_convId),
     _: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),

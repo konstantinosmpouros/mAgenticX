@@ -3,7 +3,8 @@ from fastapi_pagination import Page, Params
 from observability import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import get_db, UserTable
+from core.database import get_db
+from core.auth_session import AuthUser
 from core.settings import settings
 from schemas import DocxPreviewTokenOut, ImageOut
 from utils import validate_userId
@@ -33,7 +34,7 @@ async def downloadBlobStream(
     conversation_id: str,
     message_id: str,
     blob_id: str,
-    _current_user: UserTable = Depends(validate_userId),
+    _current_user: AuthUser = Depends(validate_userId),
     range_header: str | None = Header(default=None, alias="Range"),
     db: AsyncSession = Depends(get_db),
 ):
@@ -61,7 +62,7 @@ async def previewBlobInline(
     conversation_id: str,
     message_id: str,
     blob_id: str,
-    _current_user: UserTable = Depends(validate_userId),
+    _current_user: AuthUser = Depends(validate_userId),
     range_header: str | None = Header(default=None, alias="Range"),
     db: AsyncSession = Depends(get_db),
 ):
@@ -86,7 +87,7 @@ async def getDocxPreviewToken(
     conversation_id: str,
     message_id: str,
     blob_id: str,
-    _current_user: UserTable = Depends(validate_userId),
+    _current_user: AuthUser = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ):
     set_context(user_id=user_id)
@@ -161,7 +162,7 @@ async def getPublicBlobForViewer(token: str, db: AsyncSession = Depends(get_db))
 )
 async def getImagesBatch(
     user_id: str,
-    current_user: UserTable = Depends(validate_userId),
+    current_user: AuthUser = Depends(validate_userId),
     params: Params = Depends(),
     db: AsyncSession = Depends(get_db),
 ):

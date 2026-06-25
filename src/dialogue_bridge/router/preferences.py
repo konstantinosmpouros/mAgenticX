@@ -3,8 +3,8 @@ from observability import get_logger, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.auth_session import require_csrf_protection
-from core.database import UserPreferencesTable, UserTable, get_db
+from core.auth_session import AuthUser, require_csrf_protection
+from core.database import UserPreferencesTable, get_db
 from schemas import UserPreferences
 from utils import normalize_realtime_voice, normalize_voice_mode_language, validate_userId
 
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 @router.get("/{user_id}", response_model=UserPreferences, status_code=status.HTTP_200_OK)
 async def get_user_preferences(
     user_id: str,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -46,7 +46,7 @@ async def get_user_preferences(
 async def upsert_user_preferences(
     user_id: str,
     payload: UserPreferences,
-    _: UserTable = Depends(validate_userId),
+    _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
     db: AsyncSession = Depends(get_db),
 ):
