@@ -312,7 +312,7 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 
 - **Edit does not copy attachments.** If a user edits a message that had attachments, the new sibling message starts with no attachments. The user must re-attach any files they want in the edited version.
 
-- **Office preview requires public-internet reachability.** Word/Excel/PowerPoint preview embeds `https://view.officeapps.live.com`, which fetches the document via `/api/v1/attachments/public/{token}`. Microsoft's servers must be able to reach the public endpoint — this works in production (Dennis behind Cloudflare/NPM) but **not in local dev** (`localhost:8050` is unreachable from the public internet). Locally, Office previews show an empty iframe; download still works.
+- **Office preview requires public-internet reachability.** Word/Excel/PowerPoint preview embeds `https://view.officeapps.live.com`, which fetches the document via `/api/v1/attachments/public/{token}`. Microsoft's servers must be able to reach the public endpoint — this works in production (behind Cloudflare/NPM) but **not in local dev** (`localhost:8050` is unreachable from the public internet). Locally, Office previews show an empty iframe; download still works.
 
 - **Office preview token is single-use by intent, not by mechanism.** The 60-second TTL is the only expiry mechanism; the token is not revoked after first use. This window is sufficient for Microsoft's viewer to fetch the document during iframe load.
 

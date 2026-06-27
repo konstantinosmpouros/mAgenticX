@@ -47,15 +47,20 @@ def _build_pg_ssl_context() -> _ssl.SSLContext | None:
 
 _pg_ssl_context = _build_pg_ssl_context()
 
-engine = create_async_engine(
-    settings.database.url.get_secret_value(),
-    echo=settings.database.echo,
-    pool_pre_ping=settings.database.pool_pre_ping,
-    pool_recycle=settings.database.pool_recycle,
-    pool_size=settings.database.pool_size,
-    max_overflow=settings.database.max_overflow,
-    connect_args={"ssl": _pg_ssl_context} if _pg_ssl_context else {},
-)
+_db_url = settings.database.url.get_secret_value()
+_engine_kwargs: dict = {
+    "echo": settings.database.echo,
+    "pool_pre_ping": settings.database.pool_pre_ping,
+    "pool_recycle": settings.database.pool_recycle,
+    "connect_args": {"ssl": _pg_ssl_context} if _pg_ssl_context else {},
+}
+# SQLite (aiosqlite, used by the test suite) runs on NullPool, which rejects the
+# queue-pool sizing kwargs; only pass them for real pooled backends (Postgres).
+if not _db_url.startswith("sqlite"):
+    _engine_kwargs["pool_size"] = settings.database.pool_size
+    _engine_kwargs["max_overflow"] = settings.database.max_overflow
+
+engine = create_async_engine(_db_url, **_engine_kwargs)
 
 # Factory that returns AsyncSession objects
 SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(

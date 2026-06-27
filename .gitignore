@@ -18,6 +18,7 @@ notebooks/knowledge_base/
 
 src/vectorstores/
 src/vault/
+src/monitoring/
 src/mcp_gateway/mcp_secret.env
 
 data/
@@ -32,3 +33,4 @@ src/tls/chat_postgres/
 src/tls/vault/
 src/tls/npm/
 src/tls/redis/
+src/tls/monitoring/

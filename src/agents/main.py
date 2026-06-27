@@ -66,6 +66,50 @@ def _make_loop_exception_handler(old_handler=None):
     return handler
 
 
+async def _ensure_checkpointer_database(conninfo: str) -> None:
+    # Nothing else creates the checkpointer's database: POSTGRES_DB bootstraps
+    # only one DB on first init, and AsyncPostgresSaver.setup() creates tables,
+    # not the database. On a fresh Postgres volume agent_runtime is therefore
+    # absent and the pool can never connect — so create it idempotently via the
+    # postgres maintenance DB using the same, already-working credentials.
+    import psycopg
+    from psycopg import conninfo as conninfo_mod, sql
+
+    params = conninfo_mod.conninfo_to_dict(conninfo)
+    target_db = params.get("dbname")
+    if not target_db or target_db == "postgres":
+        return
+    admin_conninfo = conninfo_mod.make_conninfo(
+        **{**params, "dbname": "postgres", "connect_timeout": "5"}
+    )
+
+    last_error: Exception | None = None
+    for _ in range(10):
+        try:
+            async with await psycopg.AsyncConnection.connect(admin_conninfo, autocommit=True) as conn:
+                cursor = await conn.execute(
+                    "SELECT 1 FROM pg_database WHERE datname = %s", (target_db,)
+                )
+                if await cursor.fetchone():
+                    return
+                try:
+                    await conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(target_db)))
+                    logger.info(
+                        "checkpointer_database_created",
+                        "Created missing checkpointer database",
+                        database=target_db,
+                    )
+                except psycopg.errors.DuplicateDatabase:
+                    pass
+                return
+        except psycopg.OperationalError as exc:
+            last_error = exc
+            await asyncio.sleep(2)
+    raise RuntimeError(
+        f"Could not reach Postgres to ensure database {target_db!r} exists"
+    ) from last_error
+
+
 async def _init_durable_checkpointer(app: FastAPI) -> None:
     """Open the persistent psycopg pool and wire the shared AsyncPostgresSaver.
 
@@ -79,6 +123,8 @@ async def _init_durable_checkpointer(app: FastAPI) -> None:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
     cfg = settings.checkpointer
+
+    await _ensure_checkpointer_database(cfg.url.get_secret_value())
 
     # The langgraph lib reads this from the environment; mirror the setting so a
     # missing compose env can't silently disable the strict allow-list.

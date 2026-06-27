@@ -40,7 +40,7 @@ _DROP_FIELD_NAMES = {
     "page_content",
     "documents",
 }
-_HASHED_CONTEXT_FIELDS = {"client_ip", "session_id", "user_id"}
+_HASHED_CONTEXT_FIELDS = {"client_ip"}
 # Values that represent "no identifier" — logged as-is, never hashed.
 _BLANK_IDENTIFIERS = (None, "", "-", "no-session", "anonymous")
 _MAX_STRING_LENGTH = 256
@@ -49,9 +49,9 @@ _HASH_RE = re.compile(r"h:[0-9a-f]{16}")
 
 def _should_hash_field(key: str) -> bool:
     k = key.lower()
-    # client_ip / session_id, plus any user id field (user_id, userId,
-    # requested_user_id, authenticated_user_id, …) so identities are never raw.
-    return k in {"client_ip", "session_id"} or k.endswith("user_id") or k.endswith("userid")
+    # Only client_ip is hashed (it's a real IP). user_id / session_id are logged
+    # RAW so the logs correlate directly with the database.
+    return k == "client_ip"
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -87,18 +87,6 @@ def _hash_identifier(value: Any) -> str:
     # "h:"-prefixed value with any other char is re-hashed, so a forged header
     # cannot ride the passthrough to inject into the logs.
     return value if _is_hashed(value) else _stable_hash(value)
-
-
-def hash_session_id(raw: Any) -> str | None:
-    if raw in _BLANK_IDENTIFIERS:
-        return None
-    return _hash_identifier(raw)
-
-
-def hash_user_id(raw: Any) -> str | None:
-    if raw in _BLANK_IDENTIFIERS:
-        return None
-    return _hash_identifier(raw)
 
 
 def sanitize_context_value(key: str, value: Any) -> Any:

@@ -1,6 +1,6 @@
 # Observability — Logging, Redaction, and the Traceability Roadmap
 
-Every mAgenticX service emits **structured, event-oriented logs** through an in-house `observability/` package that is intentionally near-identical across `dialogue_bridge`, `agents`, and `rag_service`. Each log line is a single JSON object (or a human-readable console line in dev) carrying a stable `event` name, the request context (`request_id`, hashed `user_id`/`session_id`, `conversation_id`, …), and an arbitrary `fields` payload that is **sanitized before it is written** — secrets redacted, content omitted, identifiers HMAC-hashed. Logs go to stdout only; on the Dennis VM Docker's `json-file` driver rotates them on disk. This document is the authoritative reference for what each service logs today, how PII is kept out of the logs, and the phased plan to layer full OpenTelemetry traces + metrics on top of the existing Grafana/Prometheus stack so that one user action can be followed end-to-end. **Phases 0 and 1 of that plan are implemented; Phases 2–7 are the roadmap.**
+Every mAgenticX service emits **structured, event-oriented logs** through an in-house `observability/` package that is intentionally near-identical across `dialogue_bridge`, `agents`, and `rag_service`. Each log line is a single JSON object (or a human-readable console line in dev) carrying a stable `event` name, the request context (`request_id`, **raw** `user_id`/`session_id` that match the database, `conversation_id`, …), and an arbitrary `fields` payload that is **sanitized before it is written** — secrets redacted, content omitted, and the **client IP** HMAC-hashed. Logs go to stdout only; on the production VM Docker's `json-file` driver rotates them on disk. This document is the authoritative reference for what each service logs today, how PII is kept out of the logs, and the phased plan to layer full OpenTelemetry traces + metrics on top of the existing Grafana/Prometheus stack so that one user action can be followed end-to-end. **Phases 0 and 1 of that plan are implemented; Phases 2–7 are the roadmap.**
 
 ---
 
@@ -12,7 +12,7 @@ flowchart LR
     Bridge["dialogue_bridge\nobservability/ (queue logger)"]
     Agents["agents\nobservability/ (queue logger)"]
     Rag["rag_service\nobservability/ (stream logger)"]
-    Docker["Docker json-file driver\n(20–50MB × 3–5, on Dennis)"]
+    Docker["Docker json-file driver\n(20–50MB × 3–5, in production)"]
 
     UI -->|"X-Request-ID (partial today)"| Bridge
     Bridge -->|"X-Request-ID via internal_service_headers()"| Agents
@@ -33,7 +33,7 @@ A log call (`logger.info("event_name", **fields)`) flows through the same stages
 ```mermaid
 flowchart TD
     Call["EventLogger.info('event', **fields)"] --> Record["LogRecord\nextra={event, event_data}"]
-    Record --> Filter["RequestContextFilter\nbinds ContextVar fields\n+ hashes client_ip/session_id"]
+    Record --> Filter["RequestContextFilter\nbinds ContextVar fields\n+ hashes client_ip only"]
     Filter --> Fmt["Formatter\nJSON or console"]
     Fmt --> San["sanitize_for_logging(event_data)\ndrop / redact / hash / truncate"]
     San --> Out["stdout → Docker json-file"]
@@ -78,13 +78,13 @@ sequenceDiagram
 | `request_id` | ✅ (header or UUID) | ✅ | ✅ |
 | `client_ip` | ✅ (hashed) | ✅ (hashed) | ❌ |
 | `http_method` / `http_path` | ✅ | ✅ | ✅ |
-| `user_id` | ✅ (hashed, else `anonymous`) | ✅ (hashed, from `X-User-Id`) | ✅ (hashed, from `X-User-Id`) |
-| `session_id` | ✅ (hashed, else `no-session`) | ✅ (hashed, from `X-Session-Id`) | ✅ (hashed, from `X-Session-Id`) |
+| `user_id` | ✅ (raw, else `anonymous`) | ✅ (raw, from `X-User-Id`) | ✅ (raw, from `X-User-Id`) |
+| `session_id` | ✅ (raw, else `no-session`) | ✅ (raw, from `X-Session-Id`) | ✅ (raw, from `X-Session-Id`) |
 | `conversation_id` / `message_id` | ✅ | ✅ | ❌ |
 | `agent_slug` / `thread_id` | ❌ | ✅ | ❌ |
 | `status_code` | ✅ (post-response) | ✅ | ✅ |
 
-> **Both identities are masked.** `user_id` and `session_id` are the two correlation identities, and **both are HMAC-hashed** to `h:<16hex>` — never logged raw. Any user-id field is hashed, including audit fields like `requested_user_id`/`authenticated_user_id` (suffix-matched), so a raw user id never reaches the logs. `anonymous`/`no-session` are the blank sentinels (logged as-is). Filter "everything for a user" with `user=h:…`, "everything for a session" with `session=h:…`.
+> **Both identities are logged raw — by design, so logs join to the database.** `user_id` and `session_id` are the two correlation identities and are written **verbatim** (the exact value stored in Postgres), so any log line pivots straight to its DB row. **`client_ip` is the only context identifier still HMAC-hashed** to `h:<16hex>`. `anonymous`/`no-session` are the blank sentinels (logged as-is). Filter "everything for a user" with `user_id="<uuid>"`, "everything for a session" with `session_id="<uuid>"`. (Earlier revisions hashed both ids; that was reversed so the *User flow* and *Users & Sessions* dashboards can be keyed by the real DB id. The human-readable `username` is still **dropped** entirely — only the opaque id is logged.)
 
 **Cross-service `X-Request-ID` propagation** is the correlation seam, and as of the correlation fix it is **end-to-end**: one id, originated at the browser, flows through every hop so a single `X-Request-ID` traces a whole request `agentic_ui → dialogue_bridge → agents → rag_service`. The id is **untrusted input** — every service validates it via `sanitize_request_id()` (charset `[A-Za-z0-9._-]`, ≤128 chars) and regenerates a server-side UUID if it's missing or malformed, so a forged/oversized value cannot inject into the logs. It is correlation-only, never an auth input.
 
@@ -95,9 +95,9 @@ sequenceDiagram
 | `dialogue_bridge` agent-sync / thread-reap → `agents` | ✅ | passes `get_context().get("request_id")` |
 | `agents` retail-agent → `rag_service` | ✅ | passes `get_context().get("request_id")` |
 
-**Cross-service `session_id` AND `user_id` propagation** mirrors it, so a single `session=h:…` (or `user=h:…`) traces the whole flow too. The bridge resolves the raw session/user from the auth cookie and **never forwards them raw** — it forwards the *hashed* tokens as `X-Session-Id` / `X-User-Id` headers (`bridge → agents → rag`); agents/rag set them in context at request start, so every line (access + business) carries both. The forwarding is automatic: `internal_service_headers()` auto-derives session + user from the current request context, so **every** internal hop carries them (inference, title generation, catalog/agent sync, tools/skills fetch, voice, suggestions, and the HR/orthodox/retail rag retrievals) — not just inference. **One exception:** the unauthenticated global skills catalog endpoint `GET /api/v1/skills` (`get_skills`) has no auth dependency, so it has no session/user in context and its `skills_listed`/`skills_list_cache_hit` lines log `no-session`/`anonymous`. The hash is **idempotent and strict**: a canonical `h:<16hex>` passes through unchanged (all services log the same token), but any other value — including a forged `h:abc|inject` — is re-hashed, so `X-Session-Id` cannot inject into the logs. The bridge's own `http_request_started` line is the one exception (logged pre-auth → `no-session`); its paired `completed` line carries the session via `request.state`.
+**Cross-service `session_id` AND `user_id` propagation** mirrors it, so a single `session_id="<uuid>"` (or `user_id="<uuid>"`) traces the whole flow too. The bridge resolves the session/user from the auth cookie and forwards them **raw** as `X-Session-Id` / `X-User-Id` headers (`bridge → agents → rag`); agents/rag set them in context at request start, so every line (access + business) carries both. The forwarding is automatic: `internal_service_headers()` auto-derives session + user from the current request context, so **every** internal hop carries them (inference, title generation, catalog/agent sync, tools/skills fetch, voice, suggestions, and the HR/orthodox/retail rag retrievals) — not just inference. **One exception:** the unauthenticated global skills catalog endpoint `GET /api/v1/skills` (`get_skills`) has no auth dependency, so it has no session/user in context and its `skills_listed`/`skills_list_cache_hit` lines log `no-session`/`anonymous`. These headers are honored **only** from callers that clear the internal-proxy-secret gate (`require_internal_caller`), and the ids are server-issued (JWT `sub`/`sid`, DB UUIDs) — so logging them verbatim is safe and joins straight to the database; they are correlation/audit context, never an authorization input. The bridge's own `http_request_started` line is the one exception (logged pre-auth → `no-session`); its paired `completed` line carries the session via `request.state`.
 
-> Verified live: a single inference logged the same `req=cea88b76…` **and** `session=h:4acdd59f0e4e464c` in both `dialogue_bridge` (`/start` + access line) and `agents` (`/stream` lifecycle), with no `user_id` anywhere. The remaining step — upgrading these `X-Request-ID` / `X-Session-Id` headers to a W3C `traceparent` so the flow also draws a span tree in Tempo — is **Phase 3**.
+> A single inference now carries the same `request_id`, `session_id`, **and** `user_id` across both `dialogue_bridge` (`/start` + access line) and `agents` (`/stream` lifecycle) — all three written raw, so the chain joins directly to the DB conversation/session rows. The remaining step — upgrading these `X-Request-ID` / `X-Session-Id` headers to a W3C `traceparent` so the flow also draws a span tree in Tempo — is **Phase 3**.
 
 ---
 
@@ -162,13 +162,13 @@ Every event name below is a stable string emitted via `EventLogger`. The `http_r
 
 ## Phase D — Redaction & PII (the privacy contract)
 
-`sanitize_for_logging()` runs over every `event_data` payload (and `sanitize_context_value()` over context fields) **before** it reaches stdout. It applies four tiers, plus recursion into dicts/lists and a 256-char string cap. As of Phase 1 this is enforced in **all three** services with the **same secret**, so a given user/IP hashes to the same token everywhere — making cross-service correlation possible without ever storing the raw identifier.
+`sanitize_for_logging()` runs over every `event_data` payload (and `sanitize_context_value()` over context fields) **before** it reaches stdout. It applies four tiers, plus recursion into dicts/lists and a 256-char string cap. This is enforced in **all three** services. The one hashed identifier, `client_ip`, uses the **same secret** everywhere, so a given IP hashes to the same `h:<16hex>` token across services — correlatable without ever storing the raw IP. (`user_id`/`session_id` are deliberately **not** hashed — they are logged raw to match the database; see the privacy note below.)
 
 ```mermaid
 flowchart TD
     F["field key/value"] --> D{key in DROP set?}
     D -->|yes| O["'[OMITTED]'"]
-    D -->|no| H{key is client_ip / session_id?}
+    D -->|no| H{key is client_ip?}
     H -->|yes| HH["HMAC-SHA256 → 'h:<16hex>'"]
     H -->|no| S{key matches secret token?}
     S -->|yes| R["'[REDACTED]'"]
@@ -178,15 +178,17 @@ flowchart TD
 | Tier | Trigger (exact-match unless noted) | Result |
 | --- | --- | --- |
 | **Drop** | `username, title, file_name, filename, message_content, content, history, messages, prompt, completion, query, answer, text, input, output, delta, chunk, sql, page_content, documents` | `[OMITTED]` |
-| **Hash** | `client_ip`, `session_id` | `h:<HMAC-SHA256 prefix>` (one-way, correlatable) |
+| **Hash** | `client_ip` only | `h:<HMAC-SHA256 prefix>` (one-way, correlatable) |
 | **Redact** | key *contains* `password, token, authorization, cookie, secret, csrf, datab64, data_b64` | `[REDACTED]` |
 | **Truncate** | any string | first 256 chars + `...<truncated>` |
+
+> **Why `user_id`/`session_id` are not in the Hash tier.** They were originally hashed alongside `client_ip`, but that made the logs impossible to reconcile with the database (where those ids are stored raw) and broke the per-user / per-session Grafana dashboards (*User flow*, *Users & Sessions*). Hashing was removed for those two fields in `_should_hash_field` (now `return k == "client_ip"`); `client_ip` stays hashed — it is genuinely sensitive and never needs a DB join. The `username` field is still **dropped** entirely (`[OMITTED]`), so a human-readable handle never leaks; only the opaque DB id is logged.
 
 | Key fact | Value / detail |
 | --- | --- |
 | Shared secret | `magenticx_log_redaction_secret` Swarm secret → `LOG_REDACTION_SECRET_FILE=/run/secrets/log_redaction_secret` on all 3 services |
 | Resolution | each `core/settings.py` `LoggingSettings.redaction_secret` reads the file, then env `LOG_REDACTION_SECRET`, then falls back to a **random per-process key** (one-way; correlation disabled) |
-| Local dev | set `LOG_REDACTION_SECRET` in `src/.env` to make hashes correlate across the three local containers (optional) |
+| Local dev | set `LOG_REDACTION_SECRET` in `src/.env` to make the `client_ip` hash correlate across the three local containers (optional) |
 | Content stance | LLM prompts/completions and retrieved documents are **never** logged — the drop set blocks the field names and the upstream services don't pass raw content as log fields |
 
 ---
@@ -216,7 +218,7 @@ flowchart TD
 Three defects were closed:
 
 1. **`rag_service` had no redaction at all** — it logged `event_data` verbatim. Phase 1 ports `redaction.py` into it and routes both the JSON and console formatters through `sanitize_for_logging()`.
-2. **The HMAC key diverged across services** — `agents` used a random per-process key, `dialogue_bridge` fell back to the session-token secret, `rag_service` had none — so the same user hashed to three different tokens (or none). Phase 1 introduces a shared `magenticx_log_redaction_secret`, mounted as `LOG_REDACTION_SECRET_FILE` on all three, read by each `LoggingSettings`. With it provisioned, `user_id`/`session_id`/`client_ip` hash identically everywhere (verified: same secret → identical `h:…`, divergent random keys → different).
+2. **The HMAC key diverged across services** — `agents` used a random per-process key, `dialogue_bridge` fell back to the session-token secret, `rag_service` had none — so the same user hashed to three different tokens (or none). Phase 1 introduces a shared `magenticx_log_redaction_secret`, mounted as `LOG_REDACTION_SECRET_FILE` on all three, read by each `LoggingSettings`. With it provisioned, the hashed identifier(s) hash identically everywhere (verified: same secret → identical `h:…`, divergent random keys → different). (At the time Phase 1 hashed `user_id`/`session_id`/`client_ip`; those first two were later **unmasked** — only `client_ip` is hashed today, so the shared secret now governs `client_ip` correlation alone. See Phase D.)
 3. **`rag_service` retrieval had no timing** — Chroma and DuckDB latency were invisible. Phase 1 adds `duration_ms` to `retrieval_completed`/`sql_query_completed` (and the failure paths) via a backported `elapsed_ms`/`logged_operation` helper.
 
 The content drop-set was also expanded in all three services to cover LLM/RAG content keys (`prompt, completion, query, answer, text, input, output, delta, chunk, sql, page_content, documents`).
@@ -280,14 +282,14 @@ flowchart TD
 
 ## Sharp Edges and Behavioral Notes
 
-- **The redaction secret must be provisioned in prod, or correlation silently degrades.** Without `magenticx_log_redaction_secret`, each service hardens to a *random per-process* key — logs stay private but `user_id`/`session_id` hashes no longer match across services or survive a restart. This is fail-safe (never the reversible default), not fail-loud; provision the secret.
+- **The redaction secret must be provisioned in prod, or `client_ip` correlation silently degrades.** Without `magenticx_log_redaction_secret`, each service hardens to a *random per-process* key — the `client_ip` hash no longer matches across services or survives a restart (`user_id`/`session_id` are unaffected — they are logged raw). This is fail-safe (never the reversible default), not fail-loud; provision the secret.
 - **The inference hop inherits the id from the request task, not an explicit hand-off.** `_run`/`_do_stream` run in `asyncio.create_task` children of the `/start` request, so they inherit a *copy* of its context (including `request_id`) — that's why `get_context().get("request_id")` returns the right id in the detached run even though it executes after `/start` has returned and the middleware cleared its own context. If a run were ever launched outside a request context, `get_context()` returns `{}` and `internal_service_headers(None)` falls back to agents minting its own id (graceful degradation, not a crash).
 - **The correlation id is untrusted and validated everywhere.** `sanitize_request_id()` rejects anything outside `[A-Za-z0-9._-]{1,128}` (newlines, the `|` console delimiter, oversized values) and regenerates a server-side UUID — verified: a request with `X-Request-ID: evil|injected …` is dropped and replaced, never written to the log. The id is for correlation only and is never consulted for auth.
 - **`query`, `sql`, and `text` are in the drop set.** rag only ever logs `query_length`/`sql_length`, so nothing useful is lost there; in the bridge, request query-params logged under `query` now show as `[OMITTED]`. This is deliberate — those fields can carry user content or preview tokens.
 - **Exact-match drop keys.** The drop set matches the *whole* lowercased key, so `output_tokens` or `input_size` are **not** dropped — only a field literally named `output`/`input` is. Redact tokens (`password`, `secret`, …) use *substring* match instead.
 - **rag_service uses a direct StreamHandler, not the queue.** Its log volume is low and it has no long-lived event loop pressure like the streaming services, so it skips the `QueueHandler` indirection that bridge/agents use.
 - **`/health` is never logged** in any service — healthchecks would otherwise dominate the log at 30s intervals.
-- **Docker `json-file` is the only sink today.** Logs rotate at 20–50MB × 3–5 files on Dennis and are lost on volume loss; there is no aggregation until Phase 5 (Loki).
+- **Docker `json-file` is the only sink today.** Logs rotate at 20–50MB × 3–5 files in production and are lost on volume loss; there is no aggregation until Phase 5 (Loki).
 - **`agents` suppresses uvloop cancellation noise.** The event-loop exception handler swallows `CancelledError`/`BrokenPipeError`/`ConnectionResetError` (normal on client disconnect mid-stream) and only logs genuine `event_loop_exception`s.
 
 ---

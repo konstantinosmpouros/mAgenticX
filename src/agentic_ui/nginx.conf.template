@@ -25,6 +25,9 @@ server {
 
   server_name _;
 
+  # Hide the nginx version banner from responses (info-disclosure hardening).
+  server_tokens off;
+
   # Trust real client IP from NPM (which sits in front on the `proxy` docker network).
   # `set_real_ip_from` restricts honoring the header to connections from the proxy
   # network; anything else falls back to the actual TCP peer, so external clients

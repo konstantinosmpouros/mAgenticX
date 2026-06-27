@@ -36,6 +36,7 @@ services:
     restart: unless-stopped
     networks:
       - vault
+      - proxy
 
 volumes:
   data:
@@ -47,5 +48,7 @@ volumes:
 
 networks:
   vault:
+  proxy:
+    external: true
 
 

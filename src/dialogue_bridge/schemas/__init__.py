@@ -1,11 +1,27 @@
-from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices, field_validator, computed_field
+from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices, field_validator, computed_field, PlainSerializer
 import base64
-from typing import Any, List, Optional, Literal
-from datetime import datetime
+from typing import Annotated, Any, List, Optional, Literal
+from datetime import datetime, timezone
 
 from core.settings import settings
 
 Senders = Literal["user", "ai"]
+
+
+def _serialize_utc(value: datetime) -> str:
+    """Serialize a datetime as UTC ISO-8601 with a ``Z`` suffix.
+
+    Stored timestamps are naive UTC (Postgres ``Etc/UTC`` + naive ``DateTime``
+    columns). Without an explicit offset the browser's ``new Date(...)`` parses
+    them as *local* time and renders them unconverted; stamping UTC lets the
+    client show each timestamp in the viewing user's own timezone.
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+UTCDateTime = Annotated[datetime, PlainSerializer(_serialize_utc, return_type=str, when_used="json")]
 
 
 #-------------------------------------------
@@ -28,10 +44,10 @@ class UserProfile(BaseModel):
     avatarUrl: Optional[str] = Field(None, validation_alias="avatar_url")
     department: Optional[str] = None
     roleTitle: Optional[str] = Field(None, validation_alias="role_title")
-    lastLoginAt: Optional[datetime] = Field(None, validation_alias="last_login_at")
+    lastLoginAt: Optional[UTCDateTime] = Field(None, validation_alias="last_login_at")
     isActive: bool = Field(..., validation_alias="is_active")
-    createdAt: datetime = Field(..., validation_alias="created_at")
-    updatedAt: datetime = Field(..., validation_alias="updated_at")
+    createdAt: UTCDateTime = Field(..., validation_alias="created_at")
+    updatedAt: UTCDateTime = Field(..., validation_alias="updated_at")
 
 class AuthResponse(BaseModel):
     """Schema for user authentication response."""
@@ -64,8 +80,8 @@ class AgentFull(BaseModel):
     version: Optional[str] = None
     type: str = "langgraph agent"
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
 
 class AgentPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -88,7 +104,7 @@ class WorkspaceSearchResult(BaseModel):
     title: str
     subtitle: Optional[str] = None
     snippet: Optional[str] = None
-    updatedAt: Optional[datetime] = None
+    updatedAt: Optional[UTCDateTime] = None
 
 
 
@@ -288,13 +304,13 @@ class ConversationSummary(BaseModel):
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")
     isArchived: bool = Field(False, validation_alias="is_archived")
-    archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
+    archivedAt: Optional[UTCDateTime] = Field(None, validation_alias="archived_at")
     isReported: bool = Field(False, validation_alias="is_reported")
-    reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
+    reportedAt: Optional[UTCDateTime] = Field(None, validation_alias="reported_at")
     activeRunId: Optional[str] = Field(None, validation_alias="active_assistant_message_id")
     lastMessage: Optional[str] = Field(None, validation_alias="last_message_preview")
-    created_at: datetime = Field(..., validation_alias="created_at")
-    updated_at: datetime = Field(..., validation_alias="updated_at")
+    created_at: UTCDateTime = Field(..., validation_alias="created_at")
+    updated_at: UTCDateTime = Field(..., validation_alias="updated_at")
 
     @computed_field
     @property
@@ -314,7 +330,7 @@ class AttachmentOut(BaseModel):
     name: str = Field(..., validation_alias="file_name")
     mime: str = Field(..., validation_alias="mime_type")
     size: Optional[int] = Field(None, validation_alias="size_bytes")
-    timestamp: datetime = Field(..., validation_alias="created_at")
+    timestamp: UTCDateTime = Field(..., validation_alias="created_at")
 
     # keep ORM relation for computation but don't serialize it
     blob: Optional[BlobOut] = Field(None, validation_alias="blob", exclude=True)
@@ -341,8 +357,8 @@ class MessageOut(BaseModel):
     liked: Optional[bool] = Field(None, validation_alias="liked")
     agentId: Optional[str] = Field(None, validation_alias="agent_id")
     agentName: Optional[str] = Field(None, validation_alias="agent_name")
-    created_at: datetime = Field(..., validation_alias="created_at")
-    updated_at: datetime = Field(..., validation_alias="updated_at")
+    created_at: UTCDateTime = Field(..., validation_alias="created_at")
+    updated_at: UTCDateTime = Field(..., validation_alias="updated_at")
     attachments: List[AttachmentOut] = Field(default_factory=list)
     thinking: Optional[List[str]] = Field(None, validation_alias="reasoning_steps")
     thinkingTime: Optional[int] = Field(None, validation_alias="reasoning_time_seconds")
@@ -374,12 +390,12 @@ class ConversationDetail(BaseModel):
     title: Optional[str] = Field(None, validation_alias="title")
     isPrivate: bool = Field(..., validation_alias="is_private")
     isArchived: bool = Field(False, validation_alias="is_archived")
-    archivedAt: Optional[datetime] = Field(None, validation_alias="archived_at")
+    archivedAt: Optional[UTCDateTime] = Field(None, validation_alias="archived_at")
     isReported: bool = Field(False, validation_alias="is_reported")
-    reportedAt: Optional[datetime] = Field(None, validation_alias="reported_at")
+    reportedAt: Optional[UTCDateTime] = Field(None, validation_alias="reported_at")
     activeRunId: Optional[str] = Field(None, validation_alias="active_assistant_message_id")
-    created_at: datetime = Field(..., validation_alias="created_at")
-    updated_at: datetime = Field(..., validation_alias="updated_at")
+    created_at: UTCDateTime = Field(..., validation_alias="created_at")
+    updated_at: UTCDateTime = Field(..., validation_alias="updated_at")
     messages: List[MessageOut] = Field(default_factory=list)
 
     @computed_field
@@ -486,7 +502,7 @@ class ConversationShareIn(BaseModel):
     messageId: str
     mode: Literal["full", "branch", "message"] = "branch"
     branchPath: Optional[list[str]] = None
-    expiresAt: Optional[datetime] = None
+    expiresAt: Optional[UTCDateTime] = None
 
     @field_validator("branchPath", mode="before")
     @classmethod
@@ -534,9 +550,9 @@ class ConversationShareResponse(BaseModel):
     shareMode: Literal["full", "branch", "message"] = "branch"
     title: Optional[str] = None
     isActive: bool = True
-    revokedAt: Optional[datetime] = None
-    expiresAt: Optional[datetime] = None
-    createdAt: datetime
+    revokedAt: Optional[UTCDateTime] = None
+    expiresAt: Optional[UTCDateTime] = None
+    createdAt: UTCDateTime
 
 class ConversationShareListItem(BaseModel):
     """Owner-facing shared conversation link record."""
@@ -549,9 +565,9 @@ class ConversationShareListItem(BaseModel):
     title: Optional[str] = None
     isActive: bool
     status: Literal["active", "expired", "revoked"]
-    revokedAt: Optional[datetime] = None
-    expiresAt: Optional[datetime] = None
-    createdAt: datetime
+    revokedAt: Optional[UTCDateTime] = None
+    expiresAt: Optional[UTCDateTime] = None
+    createdAt: UTCDateTime
 
 class SharedConversationDetail(BaseModel):
     """Public read-only shared conversation snapshot."""
@@ -560,8 +576,8 @@ class SharedConversationDetail(BaseModel):
     shareMode: Literal["full", "branch", "message"] = "branch"
     agent: AgentPublic
     messages: List[MessageOut] = Field(default_factory=list)
-    expiresAt: Optional[datetime] = None
-    createdAt: datetime
+    expiresAt: Optional[UTCDateTime] = None
+    createdAt: UTCDateTime
 
 class CreateConversationResponse(BaseModel):
     """Response when creating a conversation: summary + full detail."""
@@ -646,10 +662,10 @@ class InferenceRunOut(BaseModel):
     inputTokens: Optional[int] = None
     outputTokens: Optional[int] = None
     errorMessage: Optional[str] = None
-    startedAt: datetime
-    completedAt: Optional[datetime] = None
-    cancelRequestedAt: Optional[datetime] = None
-    updatedAt: datetime
+    startedAt: UTCDateTime
+    completedAt: Optional[UTCDateTime] = None
+    cancelRequestedAt: Optional[UTCDateTime] = None
+    updatedAt: UTCDateTime
 
     @field_validator("messagePath", "enabledTools", "rawEvents", mode="before")
     @classmethod
@@ -747,7 +763,7 @@ class ImageOut(BaseModel):
     attachmentId: str = Field(..., validation_alias="attachment_id")
     fileName: str = Field(..., validation_alias="file_name")
     mime: str = Field(..., validation_alias="mime_type")
-    createdAt: datetime = Field(..., validation_alias="created_at")
+    createdAt: UTCDateTime = Field(..., validation_alias="created_at")
     dataB64: str
 
 
