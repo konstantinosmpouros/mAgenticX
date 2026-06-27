@@ -2,7 +2,7 @@ from fastapi import Request
 from slowapi import Limiter
 
 from core.settings import settings
-from core.proxy import resolve_client_ip
+from core.security.internal_trust import resolve_client_ip
 
 def _build_limit_string(max_attempts: int, window_seconds: int) -> str:
     if window_seconds <= 0:

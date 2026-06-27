@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.database import ConversationTable
-from core.proxy import internal_service_headers
-from core.tls import get_httpx_client_cert, get_httpx_verify
+from core.security.internal_trust import internal_service_headers
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from observability import get_context, get_logger
 from schemas import SuggestionsOut
 from core.settings import settings

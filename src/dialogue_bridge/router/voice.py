@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from core.auth_session import AuthUser, require_csrf_protection
+from core.auth.session import AuthUser, require_csrf_protection
 from core.database import AttachmentTable, ConversationTable, MessageTable, get_db
 from core.settings import settings
 from schemas import (

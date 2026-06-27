@@ -12,7 +12,7 @@ from schemas import (
     MessageUpdate,
     UpdateConversationResponse,
 )
-from core.auth_session import require_csrf_protection, AuthUser
+from core.auth.session import require_csrf_protection, AuthUser
 from utils import (
     _preview,
     apply_ai_message_update,

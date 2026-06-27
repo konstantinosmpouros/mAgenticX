@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from core.settings import settings
-from core.tls import get_httpx_client_cert, get_httpx_verify
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.database import AgentTable, MessageTable
-from core.proxy import internal_service_headers
+from core.security.internal_trust import internal_service_headers
 from core.error_handling import upstream_error_handler
 
 

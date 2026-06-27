@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import UserTable, get_db, upsert_user_from_vault
 from schemas import AuthRequest, AuthResponse
-from core.rate_limit import AUTHENTICATE_LIMIT, limiter
-from core.auth_session import (
+from core.security.rate_limit import AUTHENTICATE_LIMIT, limiter
+from core.auth.session import (
     AuthContext,
     access_ttl_for_session,
     build_auth_response,
@@ -21,8 +21,8 @@ from core.auth_session import (
     revoke_current_session,
     rotate_session,
 )
-from core.auth_providers import get_provider
-from core.vault import VaultAuthError
+from core.auth.providers import get_provider
+from core.auth.vault import VaultAuthError
 
 
 router = APIRouter()

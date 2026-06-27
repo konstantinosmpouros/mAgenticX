@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from jose import jwt as jose_jwt, JWTError
 
 from core.settings import settings
-from core.vault import VaultServiceError, vault_service
+from core.auth.vault import VaultServiceError, vault_service
 from observability import get_logger
 
 logger = get_logger(__name__)

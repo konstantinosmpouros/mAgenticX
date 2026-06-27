@@ -4,7 +4,7 @@ from observability import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from core.auth_session import AuthUser
+from core.auth.session import AuthUser
 from core.settings import settings
 from schemas import DocxPreviewTokenOut, ImageOut
 from utils import validate_userId

@@ -5,9 +5,9 @@ import httpx
 
 from schemas import MessageIn, TitleOut
 from observability import get_context, get_logger
-from core.tls import get_httpx_client_cert, get_httpx_verify
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
-from core.proxy import internal_service_headers
+from core.security.internal_trust import internal_service_headers
 from core.error_handling import upstream_error_handler
 from utils.conversations import _preview
 

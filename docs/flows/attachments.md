@@ -332,7 +332,7 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| DB tables | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `AttachmentTable`, `BlobTable`, FK cascade definitions |
+| DB tables | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `AttachmentTable`, `BlobTable`, FK cascade definitions |
 | Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-token, public, images endpoints |
 | Upload persistence | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `init_attachments()`, `clone_branch_to_conversation()` |
 | Agent filesystem seeding (bridge) | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) | `build_agent_input_files_url()`, `serialise_message_with_images_for_agent(include_input_paths=...)` |

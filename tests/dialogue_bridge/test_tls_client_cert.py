@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import SecretStr
 
 from core.settings import settings
-from core.tls import get_httpx_client_cert, get_httpx_verify
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
 
 
 def test_client_cert_none_when_unset(monkeypatch):

@@ -13,7 +13,7 @@ from utils import (
     sync_agents_with_service,
     validate_userId,
 )
-from core.auth_session import require_current_user, AuthUser
+from core.auth.session import require_current_user, AuthUser
 
 
 router = APIRouter()

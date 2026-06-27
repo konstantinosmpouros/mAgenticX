@@ -21,7 +21,7 @@ from observability import (
     register_exception_handlers,
 )
 from slowapi.middleware import SlowAPIMiddleware
-from core.rate_limit import limiter
+from core.security.rate_limit import limiter
 
 from router import (
     auth_router,

@@ -268,7 +268,7 @@ The agents service receives an `enabled_tools` list in every inference request c
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| DB table definition | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `UserPreferencesTable` class, column defaults |
+| DB table definition | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `UserPreferencesTable` class, column defaults |
 | Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `UserPreferences`, `ToolsPreferences`, `ToolPreference` |
 | Preferences router | [src/dialogue_bridge/router/preferences.py](../../src/dialogue_bridge/router/preferences.py) | GET and PUT handlers, upsert logic |
 | Voice normalization | [src/dialogue_bridge/utils/voice.py](../../src/dialogue_bridge/utils/voice.py) | `preferred_realtime_voice()`, `preferred_voice_mode_language()`, `normalize_*` functions |

@@ -447,7 +447,7 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | Agent discovery | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `_discover_agents()`, `DISABLED_AGENT_SLUGS` |
 | RAG service app | [src/rag_service/main.py](../../src/rag_service/main.py) | endpoint definitions, DuckDB table loading |
 | RAG settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | Chroma host/port, proxy secret |
-| Internal proxy trust | [src/dialogue_bridge/core/proxy.py](../../src/dialogue_bridge/core/proxy.py) | `require_internal_caller` dependency |
+| Internal proxy trust | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` dependency |
 | MCP tool catalog | [src/mcp_gateway/mcp_catalog.yaml](../../src/mcp_gateway/mcp_catalog.yaml) | list of registered MCP servers |
 | Frontend API client | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | all REST call definitions, base URL construction |
 | Frontend constants | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `API_BASE`, feature flags |

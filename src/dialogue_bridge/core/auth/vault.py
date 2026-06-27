@@ -9,7 +9,7 @@ from urllib.parse import quote
 import httpx
 
 from core.settings import settings
-from core.tls import get_httpx_verify
+from core.security.tls import get_httpx_verify
 from observability import get_logger
 
 logger = get_logger(__name__)

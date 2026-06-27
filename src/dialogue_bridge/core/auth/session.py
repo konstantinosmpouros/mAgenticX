@@ -12,7 +12,7 @@ from observability import get_logger, set_context
 
 from core.redis import create_redis_client
 from core.settings import settings
-from core.jwt_tokens import (
+from core.auth.tokens import (
     ACCESS_TYPE,
     REFRESH_TYPE,
     IssuedTokens,

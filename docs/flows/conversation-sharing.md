@@ -336,7 +336,7 @@ There are no endpoints to list or resolve reports via the public API. Report man
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| DB tables (shares + reports) | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `ConversationShareTable`, `ConversationReportTable` |
+| DB tables (shares + reports) | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `ConversationShareTable`, `ConversationReportTable` |
 | Public share endpoint | [src/dialogue_bridge/router/shared_conv.py](../../src/dialogue_bridge/router/shared_conv.py) | `getSharedConversation()` |
 | Shared inference continuation | [src/dialogue_bridge/utils/inference_start.py](../../src/dialogue_bridge/utils/inference_start.py) | `mode == "shared_continue"` |
 | Owner share endpoints | [src/dialogue_bridge/router/conversations.py](../../src/dialogue_bridge/router/conversations.py) | `shareConversation()`, `revokeConversationShare()`, `getConversationShares()`, `exportConversationPdf()` |

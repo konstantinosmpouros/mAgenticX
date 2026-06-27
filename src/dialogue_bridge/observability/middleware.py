@@ -9,7 +9,7 @@ from observability.context import clear_context, set_context
 from observability.events import get_logger
 from observability.operations import elapsed_ms
 from observability.redaction import sanitize_for_logging, sanitize_request_id
-from core.proxy import resolve_client_ip
+from core.security.internal_trust import resolve_client_ip
 
 
 logger = get_logger("dialogue_bridge.request")

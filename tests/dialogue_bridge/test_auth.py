@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import core.auth_providers as auth_providers
-from core.auth_providers import AuthIdentity
-from core.vault import VaultAuthError
+import core.auth.providers as auth_providers
+from core.auth.providers import AuthIdentity
+from core.auth.vault import VaultAuthError
 
 
 class _SuccessfulProvider:

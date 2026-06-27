@@ -21,7 +21,7 @@ from schemas import (
     CreateConversationResponse,
     ConversationTitleUpdate,
 )
-from core.auth_session import AuthUser, require_csrf_protection
+from core.auth.session import AuthUser, require_csrf_protection
 from utils.attachments import encode_disposition
 from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_scoped_messages
 from utils import (

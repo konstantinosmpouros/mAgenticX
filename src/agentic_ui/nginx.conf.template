@@ -44,6 +44,19 @@ server {
   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
   add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self' data:; connect-src 'self'; frame-src 'self' blob: https://view.officeapps.live.com; frame-ancestors 'none';" always;
 
+  # Deny every powerful browser feature we don't use; voice mode needs the mic
+  # (same-origin only), nothing else (camera/geolocation/payment/usb/sensors) is used.
+  add_header Permissions-Policy "geolocation=(), camera=(), payment=(), usb=(), accelerometer=(), gyroscope=(), magnetometer=(), microphone=(self)" always;
+
+  # Cross-origin isolation (Spectre-class / window.opener hardening). These apply
+  # to the app + /api/ responses; the attachments locations below re-declare their
+  # own add_header set, so CORP intentionally never reaches /attachments/public/
+  # (that stays cross-origin for the Office viewer). COOP same-origin would sever
+  # window.opener for popup OAuth — revisit (→ same-origin-allow-popups) if/when
+  # OIDC popups land.
+  add_header Cross-Origin-Opener-Policy "same-origin" always;
+  add_header Cross-Origin-Resource-Policy "same-origin" always;
+
   # Keep request bodies bounded; the app also validates lower logical limits.
   client_max_body_size 50M;
 

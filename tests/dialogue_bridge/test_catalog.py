@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.auth_session import require_current_user
+from core.auth.session import require_current_user
 from router import catalog as catalog_router
 
 

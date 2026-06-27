@@ -12,8 +12,8 @@ from schemas import (
     InferenceRunOut,
     InferenceRunResumeIn,
 )
-from core.auth_session import AuthUser, authenticate_websocket_user, require_csrf_protection
-from core.rate_limit import INFERENCE_RATE_LIMIT, inference_user_key, limiter
+from core.auth.session import AuthUser, authenticate_websocket_user, require_csrf_protection
+from core.security.rate_limit import INFERENCE_RATE_LIMIT, inference_user_key, limiter
 from utils import validate_userId
 from utils.inference_runs import (
     build_run_event_payload,

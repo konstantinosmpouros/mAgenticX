@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from core.vault import VaultAuthenticator
+from core.auth.vault import VaultAuthenticator
 
 
 @dataclass(slots=True)

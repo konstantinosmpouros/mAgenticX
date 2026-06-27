@@ -46,8 +46,3 @@ Findings from the full security audit (2026-06-10). Overall posture is strong �
 ### Medium
 
 - MCP gateway runs `privileged: true` (dind) — `src/docker-compose-denis-mcp.yaml`. Digest-pinning of the active server images + catalog trust-boundary docs are done (`src/mcp_gateway/README.md`). Open residual is architectural: `privileged` is required by the dind variant (Swarm strips its caps), and the dind image can't terminate TLS, so `agents → mcp_gateway` stays plaintext on the overlay (host-allowlisted + trust header). Revisit with a TLS sidecar / mTLS or rootless-dind.
-
-### Low / hardening
-
-- No `Permissions-Policy` header — add one in `src/agentic_ui/nginx.conf.template` denying unused powerful features (`geolocation=(), payment=(), usb=(), accelerometer=(), …`) and scoping `microphone=(self)` (voice mode) / `camera=()`.
-- No cross-origin isolation headers — add `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Resource-Policy: same-origin` to the main app responses in `src/agentic_ui/nginx.conf.template` (Spectre-class / `window.opener` hardening). Do NOT put CORP on the `^~ /api/v1/attachments/public/` location (intentionally cross-origin for the Office viewer); skip COEP (breaks the viewer iframe).

@@ -26,7 +26,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, status
 from observability import get_logger, set_context
 
-from core.auth_session import AuthUser, require_csrf_protection, require_current_user
+from core.auth.session import AuthUser, require_csrf_protection, require_current_user
 from schemas import (
     CustomSkillCreateRequest,
     Skill,

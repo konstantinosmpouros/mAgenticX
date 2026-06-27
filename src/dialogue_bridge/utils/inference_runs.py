@@ -21,9 +21,9 @@ from core.database import (
     MessageTable,
     SessionLocal,
 )
-from core.proxy import internal_service_headers
+from core.security.internal_trust import internal_service_headers
 from core.settings import settings
-from core.tls import get_httpx_client_cert, get_httpx_verify
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from observability import get_context, get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
 from utils.agents import (

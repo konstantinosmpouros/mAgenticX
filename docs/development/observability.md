@@ -307,7 +307,7 @@ flowchart TD
 | Redaction | [src/dialogue_bridge/observability/redaction.py](../../src/dialogue_bridge/observability/redaction.py) | `sanitize_for_logging`, `_stable_hash`, drop set |
 | DB operation timing | [src/dialogue_bridge/observability/operations.py](../../src/dialogue_bridge/observability/operations.py) | `logged_db_operation`, `elapsed_ms` |
 | Stream metrics | [src/dialogue_bridge/observability/stream_metrics.py](../../src/dialogue_bridge/observability/stream_metrics.py) | `StreamMetrics`, `first_byte_latency_ms` |
-| Cross-service headers | [src/dialogue_bridge/core/proxy.py](../../src/dialogue_bridge/core/proxy.py) | `internal_service_headers` (X-Request-ID injection) |
+| Cross-service headers | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `internal_service_headers` (X-Request-ID injection) |
 | agents run-lifecycle logs | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `agent_stream_*`, mcp + checkpoint events |
 | agents redaction | [src/agents/observability/redaction.py](../../src/agents/observability/redaction.py) | drop set, `_harden_redaction_secret` (settings) |
 | rag redaction (Phase 1) | [src/rag_service/observability/redaction.py](../../src/rag_service/observability/redaction.py) | ported sanitizer |

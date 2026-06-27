@@ -37,8 +37,8 @@ os.environ.setdefault("TRUSTED_PROXY_SECRET", "test-trusted-proxy-secret")
 os.environ.setdefault("AGENTS_SERVICE_URL", "http://agents.test")
 
 from main import app as bridge_app  # noqa: E402
-import core.jwt_tokens as _jwt_tokens  # noqa: E402
-from core.auth_session import require_csrf_protection  # noqa: E402
+import core.auth.tokens as _jwt_tokens  # noqa: E402
+from core.auth.session import require_csrf_protection  # noqa: E402
 from core.database import (  # noqa: E402
     AgentTable,
     Base,

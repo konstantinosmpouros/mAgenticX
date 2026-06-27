@@ -8,8 +8,8 @@ from fastapi.responses import StreamingResponse
 
 from core.settings import settings
 from core.error_handling import upstream_error_handler
-from core.proxy import internal_service_headers
-from core.tls import get_httpx_client_cert, get_httpx_verify
+from core.security.internal_trust import internal_service_headers
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from observability import get_context, get_logger
 from schemas import DictationResponse
 

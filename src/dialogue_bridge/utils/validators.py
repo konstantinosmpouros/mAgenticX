@@ -10,7 +10,7 @@ from core.database import (
     MessageTable,
     get_db,
 )
-from core.auth_session import AuthUser, require_bound_user_id
+from core.auth.session import AuthUser, require_bound_user_id
 
 
 async def validate_userId(

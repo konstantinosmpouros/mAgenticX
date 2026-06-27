@@ -347,7 +347,7 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 | --- | --- | --- |
 | Catalog endpoints | [src/dialogue_bridge/router/catalog.py](../../src/dialogue_bridge/router/catalog.py) | `GET /agents`, `GET /tools`, `GET /{userId}/suggestions` handlers |
 | Agent sync + cache | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) | `_AGENT_CACHE`, `get_cached_agents()`, `sync_agents_with_service()`, `prime_agent_cache()` |
-| Agent DB table | [src/dialogue_bridge/core/database.py](../../src/dialogue_bridge/core/database.py) | `AgentTable`, `is_active` column |
+| Agent DB table | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `AgentTable`, `is_active` column |
 | Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `AgentPublic`, `ToolManifest` |
 | Suggestion generation | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `generate_conversation_suggestions()` |
 | MCP catalog registry | [src/mcp_gateway/mcp_catalog.yaml](../../src/mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |

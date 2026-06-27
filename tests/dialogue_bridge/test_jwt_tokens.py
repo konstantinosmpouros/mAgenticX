@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.jwt_tokens import ACCESS_TYPE, REFRESH_TYPE, TokenError, mint_tokens, verify
+from core.auth.tokens import ACCESS_TYPE, REFRESH_TYPE, TokenError, mint_tokens, verify
 
 
 async def test_mint_and_verify_roundtrip():
