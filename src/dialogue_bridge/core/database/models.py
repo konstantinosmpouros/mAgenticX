@@ -247,6 +247,13 @@ class MessageTable(Base):
     streaming_completed_at = Column(DateTime, nullable=True)
     streaming_cancel_requested_at = Column(DateTime, nullable=True)
 
+    # Set on AI run messages produced by a scheduled-task fire; NULL on every
+    # other message. This is the durable "this run came from task X" tag — the
+    # source of truth for the panel's live-status query and per-task run history
+    # (Redis only carries the live frames and expires them). ondelete is SET NULL
+    # so deleting a task never deletes the runs/results it produced.
+    scheduled_task_id = Column(String, ForeignKey("scheduled_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -324,6 +331,90 @@ class BlobTable(Base):
 
     # Back-reference for the 1:1 relationship
     attachment = relationship("AttachmentTable", back_populates="blob", uselist=False)
+
+
+class ScheduledTaskTable(Base):
+    """A user-owned recurring/one-off agent job the scheduler fires headlessly.
+
+    A fire reuses the normal inference pipeline (``start_inference_flow`` +
+    ``inference_run_manager.launch``), so the produced result is just an AI
+    ``MessageTable`` row tagged with this task's id (``messages.scheduled_task_id``)
+    — there is no parallel result store. The columns here describe the *schedule*
+    (lifecycle, cadence, target), not a run; a run's own lifecycle stays on its
+    message's ``streaming_*`` columns.
+    """
+    __tablename__ = "scheduled_tasks"
+    __table_args__ = (
+        # The scheduler's hot poll: due active tasks. Partial so only firable
+        # rows are indexed (mirrors ix_messages_streaming_status's style).
+        Index(
+            "ix_scheduled_tasks_due",
+            "next_run_at",
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Agent attribution mirrors messages: SET NULL + denormalized name/slug so
+    # deactivating or deleting an agent never deletes the schedule. The slug is
+    # the rename-stable handle used to re-resolve the agent if its id goes NULL.
+    agent_id = Column(String, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_name = Column(String, nullable=True)
+    agent_slug = Column(String, nullable=True)
+
+    # Bound mode only: the dedicated conversation the task appends to (minted on
+    # the first fire, reused after). SET NULL so deleting the conversation doesn't
+    # delete the task — the next fire detects the gap and pauses with last_error.
+    conversation_id = Column(String, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    title = Column(String, nullable=True)
+    # The instruction fed to the agent on every fire (the synthetic user turn).
+    prompt = Column(Text, nullable=False)
+    # Tool list snapshot — enabledTools is client-computed, so a headless fire
+    # must carry its own frozen list (the backend never auto-filters tools).
+    enabled_tools = Column(JSON, nullable=True)
+    is_private = Column(Boolean, nullable=False, server_default="false")
+
+    # 'fresh' = new conversation each fire (isolated); 'bound' = one dedicated
+    # conversation, append each fire (cross-fire memory via the durable checkpointer).
+    target_mode = Column(String, nullable=False, server_default="fresh")
+
+    # 'one_off' | 'interval' | 'cron'. schedule_spec holds the kind's params:
+    #   one_off  -> {"run_at": "<iso>"}
+    #   interval -> {"interval_seconds": <int>}
+    #   cron     -> {"cron_expr": "<expr>"}
+    # timezone (IANA) makes a cron expression meaningful; stored next_run_at stays naive-UTC.
+    schedule_kind = Column(String, nullable=False)
+    schedule_spec = Column(JSON, nullable=False, default=dict)
+    timezone = Column(String, nullable=True)
+
+    # Schedule lifecycle, distinct from a run's streaming_status:
+    # 'active' | 'paused' | 'completed' | 'failed'.
+    status = Column(String, nullable=False, server_default="active")
+    # The scheduler's poll target (naive-UTC). Partial-indexed WHERE status='active'.
+    next_run_at = Column(DateTime, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    # Outcome of the most recent fire: completed | failed | cancelled | skipped.
+    last_run_status = Column(String, nullable=True)
+    # The AI message the most recent fire produced (NULL if it produced none —
+    # e.g. busy-skipped or the agent was gone). Plain String, not an FK, on
+    # purpose: an FK here would close a messages->scheduled_tasks->conversations
+    # ->messages cycle. The live status of the latest fire is derived by looking
+    # this message up (its streaming_status), so the task row never goes stale.
+    last_run_message_id = Column(String, nullable=True)
+    # Fire-time failures that never produce a message (agent gone, bound-conv
+    # deleted, watchdog timeout, busy-skip) so the UI can explain a stuck task.
+    last_error = Column(Text, nullable=True)
+
+    run_count = Column(Integer, nullable=False, server_default="0")
+    max_runs = Column(Integer, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 # -------------------------------------------------------------------------------

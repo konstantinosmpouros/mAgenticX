@@ -4,6 +4,32 @@ A conversation is the top-level container for every chat session — it owns a m
 
 ---
 
+## Client-side routing — the URL is the source of truth
+
+The browser URL decides which view is shown. `App.tsx` is a **layout route**: a persistent `ChatShell` ([pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx)) wraps an `<Outlet/>` and **never unmounts** across the chat routes; only the routed view inside it changes:
+
+| Route | View (in the shell's `<Outlet/>`) |
+| --- | --- |
+| `/` | [`ChatView`](../../src/agentic_ui/src/pages/ChatView.tsx) — empty **new-chat** state |
+| `/c/:conversationId` | `ChatView` — that conversation |
+| `/tasks` | [`TasksView`](../../src/agentic_ui/src/pages/TasksView.tsx) — the scheduled-tasks page (see [scheduled-tasks.md](scheduled-tasks.md)) |
+| `/login`, `/share/:token`, … | their own pages |
+
+The shell's workspace logic lives in the `useChatWorkspace` hook; shared state is in the Zustand `workspaceStore` and the per-render bundle is read by the views via `useChatWorkspaceContext()` (see [architecture/overview.md](../architecture/overview.md#state-architecture--routing)). `SharedConvPage` renders `<ChatShell><ChatView/></ChatShell>` directly for full shared conversations.
+
+**One generation-guarded effect in `useChatWorkspace` keyed on `useParams().conversationId` owns all conversation loading.** It is intentionally never blocked:
+
+- Every navigation bumps a `loadGenRef` counter; a slower, superseded `getConversationDetail` fetch drops its own result (`gen !== loadGenRef.current`). Rapid `A→B→C` switching always converges to the last route — there is **no `if (loadingConversation) return` guard** (that guard, plus the old click-handler `setTimeout` choreography, was the bug that made mid-animation switches silently stall).
+- No `:conversationId` (`/` or `/tasks`) → conversation-scoped state is erased synchronously (no timers). Leaving a conversation fully clears it; **Back re-fetches** from the route.
+- Selecting a sidebar row, New chat, fork, and open-task-result are all just `navigate(...)` calls; the effect reacts. Browser **back/forward work for free**.
+- A conversation created from `/` (first message sent) is promoted into the URL by a small effect (`navigate('/c/:id', { replace:true })`); the load effect short-circuits (id already current) instead of refetching.
+- **Voice mode is URL-less** — in-component state on whatever conversation is current; it is force-closed on every navigation (see [voice-mode.md](voice-mode.md)).
+- Background inference runs are **not** stopped on navigation (they persist in `useInferenceRuns`, keyed by conversation id); returning to `/c/:id` reattaches the live run via the branch-snap below.
+
+There is no `lastConversationId` auto-resume any more — refreshing on `/c/:id` resumes that conversation because the URL carries it; the bare `/` always loads empty.
+
+---
+
 ## Services Involved
 
 ```mermaid
@@ -128,11 +154,10 @@ A branch with no committed checkpoint yet (new conversation, pre-migration branc
 
 A run lives on a specific path through the message tree — `MessageTable.streaming_message_path` records the root-to-running-AI-message lineage, exposed to the frontend as `InferenceRun.messagePath`. When the user re-enters a conversation that has an active run, the run's branch may not be the default branch (e.g., they retried an AI message, putting the streaming reply on a sibling), so the default `branchSelections` (index 0 at every fork) would hide the running message.
 
-`useInferenceRuns.deriveBranchSelectionsForActiveRun(detail)` walks `run.messagePath` against the fetched `messages` list and returns the `{parentId → childIndex}` map that puts the running message on the visible path. It's called in three spots in [`pages/ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx) and [`handlers/conversations.ts`](../../src/agentic_ui/src/handlers/conversations.ts):
+`useInferenceRuns.deriveBranchSelectionsForActiveRun(detail)` walks `run.messagePath` against the fetched `messages` list and returns the `{parentId → childIndex}` map that puts the running message on the visible path. It's called in two spots in [`pages/ChatPage.tsx`](../../src/agentic_ui/src/pages/ChatPage.tsx):
 
-1. **`handleConversationSelect`** — clicking a sidebar row, right before `setCurrentConversation`. Combined with `hydrateConversationDetailFromLiveRun` (which overlays in-memory `rawEvents`/`content`/`plan`/`subagents`) the conversation opens on the running branch with the live state already populated.
-2. **Session restore on mount** — after restoring `lastConversationId` from the auth session, the same overlay + branch-snap runs.
-3. **`snappedRunIdRef`-guarded effect** — fires when `runsByConversation` populates *after* the conversation is already mounted (the race condition: on session restore the conversation detail can arrive before `getActiveInferenceRuns` does, so the first two snaps run with an empty map). The ref ensures the snap fires exactly once per run id — the user can then navigate branches manually without being snapped back.
+1. **The URL-driven load effect** — when the route's `:conversationId` resolves to a fetched detail, right before `setCurrentConversation`. Combined with `hydrateConversationDetailFromLiveRun` (which overlays in-memory `rawEvents`/`content`/`plan`/`subagents`) the conversation opens on the running branch with the live state already populated. This single effect covers both clicking a sidebar row and a fresh page load / refresh on `/c/:id` (the old separate "session restore on mount" path is gone).
+2. **`snappedRunIdRef`-guarded effect** — fires when `runsByConversation` populates *after* the conversation is already mounted (the race condition: on a refresh the conversation detail can arrive before `getActiveInferenceRuns` does, so the first snap runs with an empty map). The ref ensures the snap fires exactly once per run id — the user can then navigate branches manually without being snapped back.
 
 After the initial snap there is no further branch override, so a brand-new run (e.g., next user turn) gets its own one-time snap when its run id first appears in `runsByConversation`.
 
@@ -284,7 +309,7 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 - **`last_message_preview` is only updated when a preview exists.** The bridge checks `if preview` before updating `last_message_preview` on the conversation. An AI placeholder message with `content=NULL` does not update the preview; it remains the last user message's text until inference completes.
 
-- **`isPrivate` conversations are excluded from all listing endpoints.** `GET /{userId}` and `GET /{userId}/archived` both filter `is_private=False`. There is no endpoint to list private conversations in the current implementation — they can only be accessed by direct ID if the client already knows the ID (e.g., from `lastConversationId` in localStorage).
+- **`isPrivate` conversations are excluded from all listing endpoints.** `GET /{userId}` and `GET /{userId}/archived` both filter `is_private=False`. There is no endpoint to list private conversations in the current implementation — they can only be accessed by direct ID if the client already knows the ID (e.g., navigating straight to its `/c/:conversationId` URL).
 
 - **Share snapshots grow without bound.** `snapshot_json` is stored as a Postgres JSON column with no size cap. A conversation with 200 messages and large image attachments (base64-encoded inline) can produce a snapshot of tens of megabytes. There is no compression or external blob storage for snapshots.
 

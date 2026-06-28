@@ -5,7 +5,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { ChatInterface } from "./pages/ChatPage";
+import { ChatShell } from "./pages/ChatPage";
+import ChatView from "./pages/ChatView";
+import TasksView from "./pages/TasksView";
 import NotFound from "./pages/NotFound";
 import Architecture from "./pages/Architecture";
 import Login from "./pages/Login";
@@ -35,7 +37,15 @@ const App = () => {
           <Sonner />
           {consented ? (
             <Routes>
-              <Route path="/" element={<ChatInterface />} />
+              {/* Layout route: ChatShell is the persistent shell (sidebar,
+                  providers, modals) and never unmounts across these children.
+                  The URL is the single source of truth for which view renders
+                  in the shell's <Outlet/>. */}
+              <Route element={<ChatShell />}>
+                <Route path="/" element={<ChatView />} />
+                <Route path="/c/:conversationId" element={<ChatView />} />
+                <Route path="/tasks" element={<TasksView />} />
+              </Route>
               <Route path="/login" element={<Login />} />
               <Route path="/share/:token" element={<SharedConversationPage />} />
               <Route path="/architecture" element={<Architecture />} />

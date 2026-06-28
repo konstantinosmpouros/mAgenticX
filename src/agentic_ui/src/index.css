@@ -171,14 +171,8 @@ All colors MUST be HSL.
 .transition-smooth { transition: var(--transition-smooth); }
 .transition-slow { transition: var(--transition-slow); }
 
-/* Chat clearing animation */
 .messages-container {
   transition: opacity 0.4s ease, transform 0.4s ease;
-}
-
-.messages-clearing {
-  opacity: 0;
-  transform: scale(0.98);
 }
 
 @layer components {

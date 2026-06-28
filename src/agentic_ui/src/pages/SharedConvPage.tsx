@@ -284,7 +284,6 @@ export default function SharedConversationPage() {
             <ChatBody
               messages={detail.messages}
               loadingConversation={false}
-              isClearing={false}
               expandedThinking={expandedThinking}
               isImageFile={isImageFile}
               onDownloadAttachment={downloadAttachment}

@@ -2,6 +2,8 @@
 
 The platform has three distinct audio features that share infrastructure but serve different purposes: **dictation** (speech-to-text for composing messages), **read-aloud** (text-to-speech playback of AI responses), and **realtime voice** (a full-duplex WebRTC conversation with the agent using OpenAI's Realtime API). All three funnel through the dialogue bridge and then to the agents service, which holds the OpenAI API key and the actual provider calls.
 
+> **Realtime voice is URL-less.** It is in-component session state (`useChatVoiceMode`) layered over whatever conversation is current — it never has its own route. Any navigation (selecting another conversation, New chat, or opening the `/tasks` page) **force-closes** the session, so the WebRTC mic is always torn down rather than left running behind another view. See the routing model in [conversation-management.md](conversation-management.md).
+
 ---
 
 ## Services Involved

@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { PiWaveformBold } from "react-icons/pi";
+import { MdOutlineSchedule } from "react-icons/md";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTheme } from "next-themes";
 import { Loader } from "@/components/ui/shadcn-io/loader";
@@ -51,6 +52,8 @@ type ChatSidebarProps = {
   onNewChat: () => void;
   onOpenSearch: () => void;
   onVoiceMode?: () => void;
+  onOpenScheduledTasks?: () => void;
+  scheduledTasksRunningCount?: number;
   onOpenUserProfile: () => void;
   agents: Agent[];
   userProfile: UserProfile | null;
@@ -102,6 +105,8 @@ export default function ChatSidebar({
   onNewChat,
   onOpenSearch,
   onVoiceMode,
+  onOpenScheduledTasks,
+  scheduledTasksRunningCount = 0,
   onOpenUserProfile,
   agents,
   userProfile,
@@ -171,6 +176,13 @@ export default function ChatSidebar({
       setOpenMobile(false);
     }
   }, [onVoiceMode, isMobile, setOpenMobile]);
+
+  const handleScheduledTasksClick = React.useCallback(() => {
+    onOpenScheduledTasks?.();
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [onOpenScheduledTasks, isMobile, setOpenMobile]);
 
   const handleOpenProfile = React.useCallback(() => {
     onOpenUserProfile();
@@ -409,6 +421,30 @@ export default function ChatSidebar({
                 <PiWaveformBold className="!h-5 !w-5" />
               </div>
               <span className="text-md group-data-[collapsible=icon]:hidden">Voice mode</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              onClick={handleScheduledTasksClick}
+              className={cn(
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                "group-data-[collapsible=icon]:!h-10 group-data-[collapsible=icon]:!w-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:self-start"
+              )}
+              tooltip="Scheduled tasks"
+            >
+              <div className="relative grid size-9 flex-shrink-0 place-items-center rounded-lg">
+                <MdOutlineSchedule className="!h-5 !w-5" />
+                {scheduledTasksRunningCount > 0 ? (
+                  <span
+                    className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground"
+                    aria-label={`${scheduledTasksRunningCount} running`}
+                  >
+                    {scheduledTasksRunningCount}
+                  </span>
+                ) : null}
+              </div>
+              <span className="text-md group-data-[collapsible=icon]:hidden">Tasks</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

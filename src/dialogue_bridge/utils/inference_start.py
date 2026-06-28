@@ -68,6 +68,7 @@ async def start_inference_flow(
     db: AsyncSession,
     user: UserTable,
     payload: InferenceStartPayload,
+    scheduled_task_id: str | None = None,
 ) -> InferenceStartResponse:
     user_id = user.id
     mode = payload.mode
@@ -97,6 +98,7 @@ async def start_inference_flow(
         enabled_tools=payload.enabledTools,
         agent=agent,
         mode=mode,
+        scheduled_task_id=scheduled_task_id,
     )
     conversation_id = conversation.id
     assistant_message_id = assistant_message.id

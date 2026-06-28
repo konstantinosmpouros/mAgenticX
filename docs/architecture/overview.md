@@ -76,6 +76,15 @@ The browser application is a React 18 SPA built with Vite and served in producti
 - Opens a WebSocket per active inference run to observe streaming events, with automatic reconnect + cursor-based replay on transient failures
 - Initiates WebRTC signalling for realtime voice mode
 
+### State architecture & routing
+
+The chat workspace is a **layout-route shell + route views**, with shared state in a **Zustand store** (`src/agentic_ui/src/stores/workspaceStore.ts`):
+
+- **`ChatShell`** ([pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx)) is the persistent shell — sidebar, search, profile/dialog modals, and the chrome. It renders `<Outlet/>` and **never unmounts** across the chat routes. All workspace logic (state, hooks, handlers, effects) lives in the `useChatWorkspace` hook it calls.
+- **Route views** render in the Outlet: [`pages/ChatView.tsx`](../../src/agentic_ui/src/pages/ChatView.tsx) for `/` and `/c/:conversationId` (header + message body + composer), [`pages/TasksView.tsx`](../../src/agentic_ui/src/pages/TasksView.tsx) for `/tasks`. `SharedConvPage` renders the shell directly with `<ChatShell><ChatView/></ChatShell>` (the `children ?? <Outlet/>` slot) for full shared conversations.
+- **`workspaceStore` (Zustand)** holds the shared reactive data (auth/user, agents, conversations + pagination, the open conversation, selected agent, preferences, tools/skills, sidebar/profile UI) with **setState-compatible setters**, so the existing hooks and `create*Handlers` factories consume them unchanged. Consumers subscribe with selectors. The store also carries the per-render **workspace bundle** (`workspace` slice) that `ChatShell` writes each render and the views read via `useChatWorkspaceContext()` — one state mechanism, no parallel React context.
+- The **URL is the single source of truth** for the open conversation (see [conversation-management.md](../flows/conversation-management.md)). Voice mode is in-component state with no route.
+
 ### nginx Reverse Proxy
 
 nginx is the only publicly exposed port (8050). It does three things:
@@ -117,6 +126,7 @@ Key nginx settings:
 - Consumes the agents-service SSE stream from inside the detached `InferenceRunManager` task, accumulates the runtime state in memory, and appends each parsed event to Redis
 - Handles voice signalling (WebRTC SDP exchange with OpenAI Realtime API)
 - Serves TTS audio and dictation transcription
+- Runs the **Scheduled Tasks** loop: a single `asyncio` task started in the FastAPI lifespan that claims due jobs (`SELECT ... FOR UPDATE SKIP LOCKED`) and fires them headlessly through the same inference pipeline. The bridge stays single-replica (the in-process `InferenceRunManager` already assumes it); the SKIP-LOCKED claim guards against the deploy-overlap double-fire.
 
 ### Router Structure
 
@@ -135,6 +145,7 @@ All routes are mounted under the `/v1/` prefix by FastAPI's app router.
 | `attachments_router` | `/v1/attachments` | upload, download, preview |
 | `shared_conv_router` | `/v1/shared-conversations` | share snapshots (full / branch / message scope) |
 | `search_router` | `/v1/search` | full-text search across conversations |
+| `scheduled_tasks_router` | `/v1/scheduled-tasks` | list, create, update (pause/resume), delete scheduled tasks |
 
 ### Internal Trust Model
 

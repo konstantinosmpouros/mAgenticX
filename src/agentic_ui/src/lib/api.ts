@@ -26,6 +26,9 @@ import type {
   InferenceRunEvent,
   InferenceStartRequest,
   InferenceStartResponse,
+  ScheduledTask,
+  ScheduledTaskCreatePayload,
+  ScheduledTaskUpdatePayload,
   Skill,
   SkillFile,
   UserSkill,
@@ -50,6 +53,7 @@ import {
   transformSharedConversationDetail,
   transformMessage,
   transformInferenceRun,
+  transformScheduledTask,
   type RealtimeVoice,
 } from "./consts";
 
@@ -67,6 +71,7 @@ const VOICE_BASE_PATH = `${API_BASE_PATH}/voice`;
 const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;
 const SEARCH_BASE_PATH = `${API_BASE_PATH}/search`;
 const SKILLS_BASE_PATH = `${API_BASE_PATH}/skills`;
+const SCHEDULED_TASKS_BASE_PATH = `${API_BASE_PATH}/scheduled-tasks`;
 
 
 
@@ -1413,6 +1418,117 @@ export async function cancelInferenceRun(userId: string, runId: string): Promise
     throw new Error(`Failed to cancel inference run: ${res.status}`);
   }
   return transformInferenceRun(await res.json());
+}
+
+
+// ----------------------------------------------------------------------------
+// Scheduled tasks
+// ----------------------------------------------------------------------------
+export async function listScheduledTasks(userId: string): Promise<ScheduledTask[]> {
+  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch scheduled tasks: ${res.status}`);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data.map(transformScheduledTask) : [];
+}
+
+export async function createScheduledTask(
+  userId: string,
+  payload: ScheduledTaskCreatePayload,
+): Promise<ScheduledTask> {
+  const body: Record<string, unknown> = {
+    agentId: payload.agentId,
+    prompt: payload.prompt,
+    targetMode: payload.targetMode,
+    scheduleKind: payload.scheduleKind,
+  };
+  if (payload.title) body.title = payload.title;
+  if (payload.runAt) body.runAt = payload.runAt;
+  if (typeof payload.intervalSeconds === "number") body.intervalSeconds = payload.intervalSeconds;
+  if (payload.cronExpr) body.cronExpr = payload.cronExpr;
+  if (payload.timezone) body.timezone = payload.timezone;
+  if (typeof payload.isPrivate === "boolean") body.isPrivate = payload.isPrivate;
+  if (typeof payload.maxRuns === "number") body.maxRuns = payload.maxRuns;
+  if (payload.expiresAt) body.expiresAt = payload.expiresAt;
+  const enabledTools = serializeToolPreferences(payload.enabledTools);
+  if (enabledTools) body.enabledTools = enabledTools;
+
+  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, withSessionRequest({
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(body),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    const error = new Error(detail || `Failed to create scheduled task: ${res.status}`);
+    (error as any).status = res.status;
+    (error as any).detail = detail;
+    throw error;
+  }
+  return transformScheduledTask(await res.json());
+}
+
+export async function updateScheduledTask(
+  userId: string,
+  taskId: string,
+  payload: ScheduledTaskUpdatePayload,
+): Promise<ScheduledTask> {
+  const body: Record<string, unknown> = {};
+  if (typeof payload.title === "string") body.title = payload.title;
+  if (typeof payload.prompt === "string") body.prompt = payload.prompt;
+  if (payload.status) body.status = payload.status;
+  if (payload.agentId) body.agentId = payload.agentId;
+  if (payload.targetMode) body.targetMode = payload.targetMode;
+  if (typeof payload.isPrivate === "boolean") body.isPrivate = payload.isPrivate;
+  if (typeof payload.maxRuns === "number") body.maxRuns = payload.maxRuns;
+  if (payload.expiresAt) body.expiresAt = payload.expiresAt;
+  if (payload.scheduleKind) body.scheduleKind = payload.scheduleKind;
+  if (payload.runAt) body.runAt = payload.runAt;
+  if (typeof payload.intervalSeconds === "number") body.intervalSeconds = payload.intervalSeconds;
+  if (payload.cronExpr) body.cronExpr = payload.cronExpr;
+  if (payload.timezone) body.timezone = payload.timezone;
+  const enabledTools = serializeToolPreferences(payload.enabledTools);
+  if (enabledTools) body.enabledTools = enabledTools;
+
+  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, withSessionRequest({
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(body),
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    let detail: string | undefined;
+    try {
+      const data = await res.json();
+      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
+    } catch {
+      // ignore non-JSON error payloads
+    }
+    throw new Error(detail || `Failed to update scheduled task: ${res.status}`);
+  }
+  return transformScheduledTask(await res.json());
+}
+
+export async function deleteScheduledTask(userId: string, taskId: string): Promise<void> {
+  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, withSessionRequest({
+    method: "DELETE",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to delete scheduled task: ${res.status}`);
+  }
 }
 
 export type ResumeActionDecision = {

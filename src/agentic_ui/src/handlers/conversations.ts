@@ -64,10 +64,11 @@ type ConversationsCtx = {
   userId: string | null;
   setConversations: Dispatch<SetStateAction<ConversationSummary[]>>;
   currentConversation: ConversationDetail | null;
-  handleStopStreaming?: () => void;
-  closeVoiceMode?: () => void | Promise<void>;
-  agents: Agent[];
-  setInactiveAgentFallback: (agent: Agent | null) => void;
+  // The URL is the single source of truth for which conversation is shown.
+  // Selecting / creating / clearing a conversation only changes the route;
+  // a generation-guarded effect in ChatPage loads the conversation for the
+  // current route. Never block navigation on in-flight loads or animations.
+  navigate: (to: string) => void;
 
   convPage: number;
   setConvPage: Dispatch<SetStateAction<number>>;
@@ -86,24 +87,15 @@ type ConversationsCtx = {
   archivedPageSize: number;
 
   setLoadingConversation: (v: boolean) => void;
-  setIsClearing: (v: boolean) => void;
   setSelectedAgent: (v: string) => void;
   setCurrentConversation: Dispatch<SetStateAction<ConversationDetail | null>>;
   setBranchSelections?: Dispatch<SetStateAction<Record<string, number>>>;
   setIsPrivateMode: (v: boolean) => void;
-  setExpandedThinking: (v: Record<string, boolean>) => void;
   setAttachments: (v: File[] | ((prev: File[]) => File[])) => void;
   setCurrentMessage: (v: string) => void;
-  setThinkingState?: (v: any) => void;
   toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
   onSearch?: () => void;
   persistUIState: () => void;
-  // Compute branchSelections that puts the active run's path in view. The
-  // streaming assistant message can be on a non-default branch (e.g. user
-  // retried earlier, so the run lives under a sibling). Without this the
-  // conversation loads on the default branch and the HITL modal is invisible
-  // even though the run state is hydrated correctly.
-  deriveBranchSelectionsForActiveRun?: (detail: ConversationDetail | null) => Record<string, number> | null;
 };
 
 const LOAD_MORE_DELAY_MS = 1200;
@@ -124,10 +116,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     userId,
     setConversations,
     currentConversation,
-    handleStopStreaming,
-    closeVoiceMode,
-    agents,
-    setInactiveAgentFallback,
+    navigate,
     convPage,
     setConvPage,
     convHasMore,
@@ -144,109 +133,43 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     setArchivedConvIsLoading,
     archivedPageSize,
     setLoadingConversation,
-    setIsClearing,
     setSelectedAgent,
     setCurrentConversation,
     setBranchSelections,
     setIsPrivateMode,
-    setExpandedThinking,
     setAttachments,
     setCurrentMessage,
     toast,
     persistUIState,
-    deriveBranchSelectionsForActiveRun,
   } = ctx;
 
 
+  // Going back to the empty new-chat state is just navigating to root. The
+  // URL-driven load effect in ChatPage erases conversation state when there is
+  // no :conversationId in the route — no timers, no animation gating.
   const clearChatAndStopThinking = () => {
-    // Reuse one reset path so "new chat", delete-current, and title click behave identically.
-    // Clears only chat-bound state — selectedAgent is intentionally preserved
-    // so picking "New chat" keeps the user on the agent they were just using
-    // instead of snapping back to agents[0].
-    void closeVoiceMode?.();
-    handleStopStreaming?.();
-    setIsClearing(true);
-    setInactiveAgentFallback(null);
-    setTimeout(() => {
-      // Clear all transient chat state after the transition begins so the UI can animate cleanly.
-      ctx.setThinkingState?.(null);
-      setExpandedThinking({});
-      setAttachments([]);
-      setCurrentMessage('');
-      setCurrentConversation(null);
-      setIsPrivateMode(false);
-      // Clear the transition flag shortly after the state swap to avoid abrupt layout jumps.
-      setTimeout(() => setIsClearing(false), 150);
-      persistUIState();
-    }, 200);
+    navigate('/');
   };
 
 
   const handleTitleClick = () => {
     // The title acts as a shortcut back to the empty-state composer.
-    clearChatAndStopThinking();
+    navigate('/');
   };
 
 
   const handleNewChat = () => {
-    // "New chat" intentionally shares the exact same reset contract.
-    clearChatAndStopThinking();
+    // "New chat" === navigate to root (empty state).
+    navigate('/');
   };
 
 
-  const handleConversationSelect = async (conversation: ConversationSummary) => {
-    handleStopStreaming?.();
-    void closeVoiceMode?.();
-    if (!userId || (ctx as any).loadingConversation) return;
-    const CLEAR_DELAY_MS = 200;
-    setIsClearing(true);
-    setInactiveAgentFallback(null);
-    // Delay the loader slightly so the old conversation can fade out before the new one mounts.
-    setTimeout(() => setLoadingConversation(true), CLEAR_DELAY_MS);
-
-    setTimeout(async () => {
-      try {
-        // A mid-stream assistant message's DB row is an empty placeholder;
-        // its live state renders from the run timeline kept by
-        // useInferenceRuns, so the fetched detail mounts as-is.
-        const hydratedDetail = await getConversationDetail(userId, conversation.id);
-        // Snap branch selections onto the active run's path so the running
-        // (and possibly HITL-paused) assistant message is the visible branch.
-        // Stale persisted selections from earlier viewing would otherwise
-        // anchor the user on a sibling branch where the streaming message
-        // doesn't even render.
-        const activeRunBranchSelections =
-          deriveBranchSelectionsForActiveRun?.(hydratedDetail) ?? null;
-        setTimeout(() => {
-          // Apply the fetched detail only after the old chat has visually cleared.
-          setSelectedAgent(hydratedDetail.agent?.id || "");
-          if (activeRunBranchSelections) {
-            setBranchSelections?.(activeRunBranchSelections);
-          }
-          setCurrentConversation(hydratedDetail);
-          setIsPrivateMode(hydratedDetail.isPrivate || false);
-          setIsClearing(false);
-          setLoadingConversation(false);
-          persistUIState();
-        }, CLEAR_DELAY_MS);
-      } catch (error) {
-        console.error('Failed to load conversation:', error);
-        toast({ title: 'Failed to load conversation', description: 'There was an error loading the conversation. Please try again.', variant: 'destructive', duration: 3000 });
-        setSelectedAgent(conversation.agent?.id || "");
-        // Fall back to the summary row so the user still lands on a consistent conversation shell.
-        const fallbackDetail: ConversationDetail = {
-          ...conversation,
-          created_at: new Date(conversation.created_at) as any,
-          updated_at: new Date(conversation.updated_at) as any,
-          messages: [],
-        } as any;
-        setCurrentConversation(fallbackDetail);
-        setIsPrivateMode(conversation.isPrivate || false);
-        setIsClearing(false);
-        setLoadingConversation(false);
-        persistUIState();
-      }
-    }, CLEAR_DELAY_MS);
+  // Selecting a conversation only changes the URL. The generation-guarded load
+  // effect in ChatPage fetches it; the latest navigation always wins, so this
+  // is safe to call rapidly / mid-animation (the bug that caused the prior
+  // revert was a blocking `if (loadingConversation) return` guard here).
+  const handleConversationSelect = (conversation: ConversationSummary) => {
+    navigate('/c/' + conversation.id);
   };
 
 
@@ -265,6 +188,9 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       const summary = await forkConversation(userId, currentConversation.id, message.id);
       setConversations(prev => sortConversationSummaries([summary, ...prev.filter(c => c.id !== summary.id)]));
 
+      // Seed the fetched detail so the route's load effect short-circuits
+      // (currentConversation.id === :conversationId) instead of refetching,
+      // then push the new conversation's URL.
       const detail = await getConversationDetail(userId, summary.id);
       setSelectedAgent(detail.agent?.id || "");
       setCurrentConversation(detail);
@@ -272,6 +198,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setBranchSelections?.({});
       setCurrentMessage('');
       setAttachments([]);
+      navigate('/c/' + summary.id);
       toast({ title: 'Conversation forked', duration: 2000 });
       persistUIState();
     } catch (error) {

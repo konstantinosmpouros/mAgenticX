@@ -4,7 +4,6 @@ import { loadSession, clearSession, updateSession, saveSession } from '@/lib/aut
 import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
 import {
   getAgents,
-  getConversationDetail,
   getConversations,
   getSkills,
   getTools,
@@ -122,8 +121,6 @@ export function useAuthRehydrateEffect(params: {
         const needsSkills = Boolean(setAvailableSkills);
         let needsPreferences = Boolean(setUserPreferences);
         let needsConversations = true;
-        let conversationId: string | null =
-          typeof existing?.lastConversationId === 'string' ? existing.lastConversationId : null;
 
         try {
           const snapshot = await loadUISnapshot(restored.user.id);
@@ -153,11 +150,6 @@ export function useAuthRehydrateEffect(params: {
               Boolean(setAvailableTools) && !(snapshot.availableTools && snapshot.availableTools.length > 0);
             needsPreferences = Boolean(setUserPreferences) && !snapshot.userPreferences;
             needsConversations = true;
-
-            if (typeof snapshot.lastConversationId === 'string') {
-              conversationId = snapshot.lastConversationId;
-              updateSession({ lastConversationId: snapshot.lastConversationId });
-            }
           }
         } catch (error) {
           console.error('Failed to hydrate from snapshot', error);
@@ -228,21 +220,10 @@ export function useAuthRehydrateEffect(params: {
           await Promise.all(requests);
         }
 
-        if (conversationId && setCurrentConversation) {
-          setLoadingConversation?.(true);
-          try {
-            const detail = await getConversationDetail(restored.user.id, conversationId);
-            setSelectedAgent?.(detail.agent?.id || '');
-            setIsPrivateMode?.(Boolean(detail.isPrivate));
-            setCurrentConversation(detail);
-          } catch (error) {
-            console.error('Failed to hydrate conversation detail', error);
-          } finally {
-            setLoadingConversation?.(false);
-          }
-        } else {
-          setLoadingConversation?.(false);
-        }
+        // Conversation loading is URL-driven now (the route's :conversationId is
+        // the single source of truth); rehydrate no longer auto-loads a "last
+        // conversation". The chat view loads from the URL once authResolved flips.
+        setLoadingConversation?.(false);
 
         persistUIState?.();
         setConversationsLoading?.(false);

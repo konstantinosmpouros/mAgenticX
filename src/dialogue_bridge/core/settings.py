@@ -415,6 +415,24 @@ class RateLimitSettings(BaseSettings):
     inference_max_active_runs: int = Field(5, validation_alias="INFERENCE_MAX_ACTIVE_RUNS_PER_USER")
 
 
+class SchedulerSettings(BaseSettings):
+    model_config = _BASE_MODEL_CONFIG
+
+    # The in-process scheduler loop (FastAPI lifespan). Disable to run a bridge
+    # replica that serves traffic but never fires scheduled tasks.
+    enabled: bool = Field(True, validation_alias="SCHEDULER_ENABLED")
+    poll_interval_seconds: int = Field(30, validation_alias="SCHEDULER_POLL_INTERVAL_SECONDS")
+    # How many due tasks one tick claims (FOR UPDATE SKIP LOCKED) and fires.
+    claim_batch_size: int = Field(10, validation_alias="SCHEDULER_CLAIM_BATCH_SIZE")
+    # Wall-clock watchdog: a fired run exceeding this is cancelled and the fire
+    # marked failed. This is the guard against a headless run hanging forever on
+    # a HITL approval gate (the resume signal only ever comes from a live client).
+    run_timeout_seconds: int = Field(600, validation_alias="SCHEDULER_RUN_TIMEOUT_SECONDS")
+    max_tasks_per_user: int = Field(50, validation_alias="SCHEDULER_MAX_TASKS_PER_USER")
+    # Floor on recurring cadence so a task can't hammer the agents service.
+    min_interval_seconds: int = Field(300, validation_alias="SCHEDULER_MIN_INTERVAL_SECONDS")
+
+
 class LoggingSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -508,6 +526,7 @@ class Settings(BaseSettings):
     proxy: ProxySettings = Field(default_factory=ProxySettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
+    scheduler: SchedulerSettings = Field(default_factory=SchedulerSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     cors: CorsSettings = Field(default_factory=CorsSettings)
 

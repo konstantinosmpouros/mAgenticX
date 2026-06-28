@@ -22,7 +22,6 @@ type ChatBody = {
   messages: MessageOut[];
   showMessageTokenUsage?: boolean;
   loadingConversation: boolean;
-  isClearing: boolean;
   expandedThinking: Record<string, boolean>;
   isImageFile: (attachment: AttachmentLike) => boolean;
   onDownloadAttachment: (attachment: AttachmentLike, message: MessageOut) => void;
@@ -74,7 +73,6 @@ export default function ChatBody({
   messages,
   showMessageTokenUsage = false,
   loadingConversation,
-  isClearing,
   expandedThinking,
   isImageFile,
   onDownloadAttachment,
@@ -260,9 +258,7 @@ export default function ChatBody({
       <ScrollArea className="h-full" onScroll={handleScroll} onWheel={handleWheel} viewportRef={viewportRef}>
         <div
           ref={columnRef}
-          className={`w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth ${
-            isClearing ? 'messages-clearing' : ''
-          }`}
+          className="w-full max-w-3xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6 messages-container transition-smooth"
         >
           {loadingConversation && (
             <div className="space-y-4">

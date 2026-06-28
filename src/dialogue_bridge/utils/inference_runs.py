@@ -1037,6 +1037,7 @@ def build_run_out_from_message(message: MessageTable, *, user_id: str) -> Infere
         assistantMessageId=message.id,
         parentMessageId=message.parent_message_id,
         status=message.streaming_status or "completed",
+        scheduledTaskId=message.scheduled_task_id,
         messagePath=message.streaming_message_path or [],
         enabledTools=message.streaming_enabled_tools or [],
         content=message.content,
@@ -1180,6 +1181,7 @@ async def create_inference_run_record(
     enabled_tools: list[ToolPreference] | None,
     agent: AgentTable,
     mode: str,
+    scheduled_task_id: str | None = None,
 ) -> MessageTable:
     """Create the AI placeholder message that represents the run.
 
@@ -1251,6 +1253,7 @@ async def create_inference_run_record(
         streaming_enabled_tools=_tool_preferences_to_json(enabled_tools),
         streaming_started_at=now,
         checkpoint_thread_id=checkpoint_thread_id,
+        scheduled_task_id=scheduled_task_id,
     )
     db.add(assistant_message)
     try:

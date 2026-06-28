@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { useNavigate, useParams, useLocation, Outlet } from "react-router-dom";
+import { useReducedMotion } from "framer-motion";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Building2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -34,10 +34,11 @@ import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
   useSessionStateSyncEffect,
-  useInitialSessionState,
   useUISnapshotPersistence,
 } from "@/hooks/useSessionEffects";
 import { useActiveRunBranchSnap } from "@/hooks/useActiveRunBranchSnap";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
+import ChatView from "./ChatView";
 
 // Handlers (modularized)
 import {
@@ -70,14 +71,11 @@ import {
   HitlProvider,
   pendingTimelineInterrupts,
 } from "@/runtime";
-import { loadSession } from "@/lib/authStorage";
 import { getConversationDetail, getSkills, getSuggestions } from "@/lib/api";
 
 // Chat Interface component
-import ChatHeader from "@/components/chat/ChatHeader";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
-import { PlanCard } from "@/components/chat/message_parts/PlanningContainer";
 import { OVERLAY_HOST_ID } from "@/lib/overlay-host";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
@@ -85,9 +83,9 @@ import ReportConversationDialog from "@/components/chat/ReportPanel";
 import ShareConversationDialog from "@/components/chat/SharePanel";
 import ChatBody from "@/components/chat/ChatBody";
 import VoiceModeBody from "@/components/chat/VoiceModeBody";
-import { ChatInputBar, type DictationStatus } from "@/components/chat/ChatInputBar";
-import { HitlInputTakeover } from "@/components/chat/HitlInputTakeover";
+import { type DictationStatus } from "@/components/chat/ChatInputBar";
 import SearchPanel from "@/components/chat/SearchPanel";
+import { useScheduledTasks } from "@/hooks/useScheduledTasks";
 import { Loader } from "@/components/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/lib/uiStateStorage";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
@@ -124,46 +122,68 @@ type ChatInterfaceProps = {
 
 type ConversationBodyMode = "chat" | "voice";
 
-export function ChatInterface({
+// The entire chat-workspace body, extracted into a hook so the persistent
+// shell (ChatShell) and the route views (ChatView/TasksView) can share one
+// instance of all state/effects/handlers. It calls all hooks unconditionally
+// and returns the full bundle; the shell does the auth gate + chrome render.
+export function useChatWorkspace({
   sharedConversationToken,
   initialSharedConversation,
 }: ChatInterfaceProps = {}) {
-  // Initial session check
-  const { initialUserId, initialUserProfile, initialLoggedIn } = useInitialSessionState();
+  // ── Shared workspace state (Zustand store) ──────────────────────────────
+  // The shell (sidebar/header) and the route views both read these; selectors
+  // keep re-renders scoped to readers of each slice. Setters are
+  // setState-compatible, so the hooks/handlers below consume them unchanged.
+  const currentConversation = useWorkspaceStore((s) => s.currentConversation);
+  const selectedAgent = useWorkspaceStore((s) => s.selectedAgent);
+  const isPrivateMode = useWorkspaceStore((s) => s.isPrivateMode);
+  const agents = useWorkspaceStore((s) => s.agents);
+  const availableTools = useWorkspaceStore((s) => s.availableTools);
+  const availableSkills = useWorkspaceStore((s) => s.availableSkills);
+  const myRegistrySkills = useWorkspaceStore((s) => s.myRegistrySkills);
+  const userPreferences = useWorkspaceStore((s) => s.userPreferences);
+  const isSavingPreferences = useWorkspaceStore((s) => s.isSavingPreferences);
+  const inactiveAgentFallback = useWorkspaceStore((s) => s.inactiveAgentFallback);
+  const conversations = useWorkspaceStore((s) => s.conversations);
+  const conversationsLoading = useWorkspaceStore((s) => s.conversationsLoading);
+  const starterSuggestions = useWorkspaceStore((s) => s.starterSuggestions);
+  const convPage = useWorkspaceStore((s) => s.convPage);
+  const convHasMore = useWorkspaceStore((s) => s.convHasMore);
+  const convIsLoadingMore = useWorkspaceStore((s) => s.convIsLoadingMore);
+  const archivedConversations = useWorkspaceStore((s) => s.archivedConversations);
+  const archivedConvPage = useWorkspaceStore((s) => s.archivedConvPage);
+  const archivedConvHasMore = useWorkspaceStore((s) => s.archivedConvHasMore);
+  const archivedConvIsLoading = useWorkspaceStore((s) => s.archivedConvIsLoading);
+  const sharedConversations = useWorkspaceStore((s) => s.sharedConversations);
+  const sharedConvPage = useWorkspaceStore((s) => s.sharedConvPage);
+  const sharedConvHasMore = useWorkspaceStore((s) => s.sharedConvHasMore);
+  const sharedConvIsLoading = useWorkspaceStore((s) => s.sharedConvIsLoading);
+  const userProfile = useWorkspaceStore((s) => s.userProfile);
+  const isLoggedIn = useWorkspaceStore((s) => s.isLoggedIn);
+  const userId = useWorkspaceStore((s) => s.userId);
+  const authResolved = useWorkspaceStore((s) => s.authResolved);
+  const loadingConversation = useWorkspaceStore((s) => s.loadingConversation);
+  const activeProfileTab = useWorkspaceStore((s) => s.activeProfileTab);
+  const sidebarOpen = useWorkspaceStore((s) => s.sidebarOpen);
+  // Setters are stable for the store's lifetime — read once without subscribing.
+  const {
+    setCurrentConversation, setSelectedAgent, setIsPrivateMode, setAgents,
+    setAvailableTools, setAvailableSkills, setMyRegistrySkills, setUserPreferences,
+    setIsSavingPreferences, setInactiveAgentFallback, setConversations,
+    setConversationsLoading, setStarterSuggestions, setConvPage, setConvHasMore,
+    setConvIsLoadingMore, setArchivedConversations, setArchivedConvPage,
+    setArchivedConvHasMore, setArchivedConvIsLoading, setSharedConversations,
+    setSharedConvPage, setSharedConvHasMore, setSharedConvIsLoading,
+    setUserProfile, setIsLoggedIn, setUserId, setAuthResolved,
+    setLoadingConversation, setActiveProfileTab, setSidebarOpen,
+  } = useWorkspaceStore.getState();
 
-  // Main state variables
-  const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
+  // ── View-local state ────────────────────────────────────────────────────
   const [currentMessage, setCurrentMessage] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string>('');
-  const [isPrivateMode, setIsPrivateMode] = useState(false);
 
-  // Main variables use for storing info from the db and present it constantly
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [availableTools, setAvailableTools] = useState<ToolMetadata[]>([]);
-  const [availableSkills, setAvailableSkills] = useState<Skill[]>([]);
-  const [myRegistrySkills, setMyRegistrySkills] = useState<UserSkill[]>([]);
-  const [userPreferences, setUserPreferences] = useState<UserPreferences | null>(null);
-  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
-  const [inactiveAgentFallback, setInactiveAgentFallback] = useState<Agent | null>(null);
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [conversationsLoading, setConversationsLoading] = useState<boolean>(false);
-  const [starterSuggestions, setStarterSuggestions] = useState<string[]>([]);
-
-  // Conversation list pagination state (persist across sidebar open/close)
-  const [convPage, setConvPage] = useState<number>(1);
-  const [convHasMore, setConvHasMore] = useState<boolean>(true);
-  const [convIsLoadingMore, setConvIsLoadingMore] = useState<boolean>(false);
   const CONV_PAGE_SIZE = 10;
-  const [archivedConversations, setArchivedConversations] = useState<ConversationSummary[]>([]);
-  const [archivedConvPage, setArchivedConvPage] = useState<number>(1);
-  const [archivedConvHasMore, setArchivedConvHasMore] = useState<boolean>(true);
-  const [archivedConvIsLoading, setArchivedConvIsLoading] = useState<boolean>(false);
   const ARCHIVED_CONV_PAGE_SIZE = 10;
-  const [sharedConversations, setSharedConversations] = useState<ConversationShareListItem[]>([]);
-  const [sharedConvPage, setSharedConvPage] = useState<number>(1);
-  const [sharedConvHasMore, setSharedConvHasMore] = useState<boolean>(true);
-  const [sharedConvIsLoading, setSharedConvIsLoading] = useState<boolean>(false);
   const SHARED_CONV_PAGE_SIZE = 10;
 
   // Thinking variables (will be changed)
@@ -171,22 +191,12 @@ export function ChatInterface({
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
   const [showAiTransition, setShowAiTransition] = useState(false);
 
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(initialUserProfile);
-  // Login and authentication variables
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialLoggedIn);
-  const [userId, setUserId] = useState<string | null>(initialUserId);
-  const [authResolved, setAuthResolved] = useState(false);
-
   // Boolean variables for navigation
-  const [isClearing, setIsClearing] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const [loadingConversation, setLoadingConversation] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const { headerHasDivider, handleHeaderScrollState } = useHeaderDividerEffect();
 
   // UI components
-  const [activeProfileTab, setActiveProfileTab] = useState('profile');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -232,6 +242,18 @@ export function ChatInterface({
   const [editingDraft, setEditingDraft] = useState("");
   const [editingBusy, setEditingBusy] = useState(false);
   const navigate = useNavigate();
+  // The URL is the single source of truth for which view is shown:
+  //   "/"               → empty new-chat state
+  //   "/c/:id"          → that conversation
+  //   "/tasks"          → the scheduled-tasks page
+  // conversationId is undefined on "/" and "/tasks".
+  const { conversationId } = useParams();
+  const location = useLocation();
+  const isTasksRoute = location.pathname === "/tasks";
+  // Generation guard for the URL-driven conversation loader: every navigation
+  // bumps it so a slower, superseded fetch drops its own result. This is what
+  // makes switching conversations safe mid-animation (never blocked).
+  const loadGenRef = useRef(0);
 
   // Create toast wrapper for handlers
   const toastWrapper = useCallback((opts: { title: string; description?: string; variant?: string; duration?: number }) => {
@@ -323,6 +345,8 @@ export function ChatInterface({
     userId,
     onOpen: () => setSidebarDismissFloatingUiSignal((value) => value + 1),
   });
+
+  const scheduledTasks = useScheduledTasks({ userId, active: isTasksRoute });
 
   useEffect(() => {
     const title = resolveConversationTitle(currentConversation);
@@ -500,6 +524,7 @@ export function ChatInterface({
     toast: toastWrapper,
   });
 
+  const reduceMotion = useReducedMotion();
   const { voiceSession, handleVoiceMode } = useChatVoiceMode({
     toast: toastWrapper,
     userId,
@@ -508,6 +533,15 @@ export function ChatInterface({
     voiceModeLanguage: resolvedPreferences.voiceModeLanguage,
   });
   const isEmptyConversation = (currentConversation?.messages?.length ?? 0) === 0;
+
+  // Voice mode is in-component state (no URL) and runs on whatever conversation
+  // is current. From the tasks page there is no conversation surface, so leave
+  // it for "/" first; "/" ↔ "/tasks" doesn't change :conversationId, so the
+  // load effect won't re-close voice and race this start.
+  const triggerVoiceMode = useCallback(() => {
+    if (isTasksRoute) navigate("/");
+    handleVoiceMode();
+  }, [isTasksRoute, navigate, handleVoiceMode]);
 
   // Staged voice-mode transition (empty conversation only):
   //   forward (chat -> voice): chat-bar erases at center -> persona orb enters
@@ -752,47 +786,92 @@ export function ChatInterface({
   // Session state sync effect
   useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
 
-  // Hydrate last conversation effect
-  const hydratedConversationRef = useRef(false);
+  // ── URL-driven conversation loading ────────────────────────────────────
+  // The route's :conversationId is the single source of truth. This one effect
+  // replaces all previous load paths (the click-handler setTimeout
+  // choreography AND the old "hydrate last conversation" effect). The
+  // generation guard makes the latest navigation always win, so switching is
+  // never blocked by an in-flight load or animation — the exact bug that
+  // caused the earlier revert. There is intentionally NO "if (loading) return"
+  // guard. currentConversation is read but deliberately omitted from deps so
+  // navigating doesn't retrigger on every streamed message.
   useEffect(() => {
-    if (!authResolved || !isLoggedIn || !userId || sharedConversationToken) {
-      hydratedConversationRef.current = false;
+    if (!authResolved || !isLoggedIn || !userId || sharedConversationToken) return;
+    const gen = ++loadGenRef.current;
+    // Voice never survives a navigation between conversations/pages.
+    voiceSession.close();
+
+    if (!conversationId) {
+      // "/" or "/tasks" → erase conversation-scoped state synchronously.
+      setThinkingState(null);
+      setExpandedThinking({});
+      setAttachments([]);
+      setCurrentMessage("");
+      setInactiveAgentFallback(null);
+      setCurrentConversation(null);
+      setIsPrivateMode(false);
+      setLoadingConversation(false);
       return;
     }
-    if (hydratedConversationRef.current || currentConversation) return;
-    const sessionData = loadSession();
-    const lastConversationId = sessionData?.lastConversationId;
-    if (!lastConversationId) {
-      hydratedConversationRef.current = true;
-      return;
-    }
-    let cancelled = false;
-    hydratedConversationRef.current = true;
+
+    // Already showing this conversation (e.g. just created / forked) → no refetch.
+    if (currentConversation?.id === conversationId) return;
+
     setLoadingConversation(true);
-    (async () => {
-      try {
-        const hydratedDetail = await getConversationDetail(userId, lastConversationId);
-        if (cancelled) return;
-        // Pin branch selections to the running message's path so a non-
-        // default branch (e.g. retried message) doesn't hide the modal.
-        const activeRunBranchSelections = deriveBranchSelectionsForActiveRun(hydratedDetail);
-        setSelectedAgent(hydratedDetail.agent?.id || "");
-        if (activeRunBranchSelections) {
-          setBranchSelections(activeRunBranchSelections);
-        }
-        setCurrentConversation(hydratedDetail);
-        setIsPrivateMode(hydratedDetail.isPrivate || false);
+    getConversationDetail(userId, conversationId)
+      .then((detail) => {
+        if (gen !== loadGenRef.current) return; // superseded by a newer navigation
+        // Pin branch selections to the active run's path so a streaming /
+        // HITL-paused message isn't hidden on a sibling branch.
+        const activeRunBranchSelections = deriveBranchSelectionsForActiveRun(detail);
+        setSelectedAgent(detail.agent?.id || "");
+        if (activeRunBranchSelections) setBranchSelections(activeRunBranchSelections);
+        setCurrentConversation(detail);
+        setIsPrivateMode(detail.isPrivate || false);
+        setInactiveAgentFallback(null);
         requestPersist();
-      } catch (error) {
-        console.error('Failed to hydrate conversation', error);
-      } finally {
-        if (!cancelled) setLoadingConversation(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoggedIn, userId, currentConversation, setSelectedAgent, setCurrentConversation, setIsPrivateMode, requestPersist]);
+      })
+      .catch((error) => {
+        if (gen !== loadGenRef.current) return;
+        console.error("Failed to load conversation", error);
+        toastWrapper({
+          title: "Failed to load conversation",
+          description: "There was an error loading the conversation. Please try again.",
+          variant: "destructive",
+          duration: 3000,
+        });
+      })
+      .finally(() => {
+        if (gen === loadGenRef.current) setLoadingConversation(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, authResolved, isLoggedIn, userId, sharedConversationToken]);
+
+  // Promote a conversation created from the empty "/" state (first message
+  // sent) into the URL so it is linkable and survives refresh. It must fire
+  // ONLY when a conversation *newly appears* (null -> id) — i.e. a real
+  // creation. Guarding on the previous id is what prevents the New-chat bounce:
+  // clicking New chat on "/c/:id" navigates to "/", but on that render
+  // currentConversation is still the old conversation (the reset commits next
+  // render); without the null->id check this effect would see that stale id with
+  // no :conversationId and immediately navigate back to "/c/:id".
+  const lastConversationIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = currentConversation?.id ?? null;
+    const wasEmpty = lastConversationIdRef.current === null;
+    lastConversationIdRef.current = id;
+    if (id && wasEmpty && !id.startsWith("shared:") && !conversationId && !isTasksRoute) {
+      navigate("/c/" + id, { replace: true });
+    }
+  }, [currentConversation?.id, conversationId, isTasksRoute, navigate]);
+
+  // Entering the tasks page tears down any live voice session. The load effect
+  // only fires on :conversationId changes, and "/" ↔ "/tasks" keeps it null,
+  // so voice is closed here for that transition.
+  useEffect(() => {
+    if (isTasksRoute) voiceSession.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTasksRoute]);
 
   // Auth rehydration effect
   useAuthRehydrateEffect({
@@ -975,20 +1054,14 @@ export function ChatInterface({
     userId,
     setConversations,
     currentConversation,
-    handleStopStreaming: undefined,
-    closeVoiceMode: voiceSession.close,
-    agents,
-    setInactiveAgentFallback,
+    navigate,
     setLoadingConversation,
-    setIsClearing,
     setSelectedAgent,
     setCurrentConversation,
     setBranchSelections,
     setIsPrivateMode,
-    setExpandedThinking,
     setAttachments,
     setCurrentMessage,
-    setThinkingState,
     toast: toastWrapper,
     convPage,
     setConvPage,
@@ -1007,7 +1080,6 @@ export function ChatInterface({
     archivedPageSize: ARCHIVED_CONV_PAGE_SIZE,
     onSearch: openSearchPanel,
     persistUIState: requestPersist,
-    deriveBranchSelectionsForActiveRun,
   });
 
   useEffect(() => {
@@ -1263,7 +1335,6 @@ export function ChatInterface({
         messages={activeMessages}
         showMessageTokenUsage={resolvedPreferences.showMessageTokenUsage === true}
         loadingConversation={loadingConversation}
-        isClearing={isClearing}
         expandedThinking={expandedThinking}
         isImageFile={isImageFile}
         onDownloadAttachment={handleFileDownload}
@@ -1310,6 +1381,118 @@ export function ChatInterface({
     );
   };
 
+  // The hook returns the full workspace bundle. The shell (below) does the auth
+  // gate and renders the chrome; the route views consume slices of this.
+  return {
+    // auth / gate
+    authResolved, isLoggedIn, userId,
+    // store data
+    currentConversation, selectedAgent, isPrivateMode, agents, availableTools,
+    availableSkills, myRegistrySkills, userPreferences, isSavingPreferences,
+    inactiveAgentFallback, conversations, conversationsLoading, starterSuggestions,
+    convHasMore, convIsLoadingMore, archivedConversations, archivedConvIsLoading,
+    archivedConvHasMore, sharedConversations, sharedConvIsLoading, sharedConvHasMore,
+    userProfile, loadingConversation, activeProfileTab, sidebarOpen,
+    // view-local state
+    currentMessage, setCurrentMessage, attachments, thinkingState, showUserProfile,
+    selectedImage, selectedFilePreview, isAgentPickerOpen, setIsAgentPickerOpen,
+    isHeaderActionMenuOpen, setIsHeaderActionMenuOpen, setIsSidebarFloatingUiOpen,
+    sidebarDismissFloatingUiSignal, isReportDialogOpen, shareDialogUrl,
+    shareTargetMessage, shareMode, shareForceFullConversation, shareExpiresAt,
+    isCreatingShareLink, isExportingSharePdf, isShareCopyPulse, reportTargetMessageId,
+    reportTargetMessagePreview, reportConversationTitle, isSubmittingReport,
+    isPlanExpanded, setIsPlanExpanded, bodyTransition, voiceBarReady, chatBarReady,
+    dictationStatus, dictationRequestSignal, dictationCancelSignal,
+    // refs
+    agentTriggerRef, fileInputRef, textareaRef, composerContainerRef,
+    // hook outputs / context
+    headerHasDivider, navigate, isTasksRoute, reduceMotion, voiceSession, scheduledTasks,
+    resumeInferenceRunHandler, isInterruptResolved, resolvedPreferences,
+    enabledToolsForRequest, toolsWithStatus, toast, isSearchOpen, searchQuery,
+    searchResults, searchLoading, searchError, setSearchQuery, closeSearchPanel,
+    conversationUsage, activeConversationRun, pendingRunInterrupts, activeHitlInterrupt,
+    // profile/skills
+    skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading,
+    isSkillToggling, mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail,
+    ensureSkillDetail, handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill,
+    handleRemoveSkillFromPool,
+    // derived
+    AgentIcon, inputBarAgent, isMessagesEmpty, settledVoiceActive, isCurrentConversationBusy,
+    activePlan, showPlanningCard, canShareFullConversation, canTogglePrivateMode,
+    canShowStarterSuggestions, defaultSearchResults, emptyWrapperStyle, textareaMaxHeight,
+    renderConversationBody,
+    // handlers
+    handleSidebarOpenChange, handleOpenSearch, focusComposer, openAttachments, startDictation,
+    triggerVoiceMode, openAgentPicker, handleTogglePrivateMode, openProfilePanel,
+    closeProfilePanel, handleNewChat, dismissActiveUi, handleConversationSelect,
+    handleDeleteConversation, handleRenameConversation, handleArchiveConversation,
+    handleReportConversationFromSidebar, handleLoadMoreConversations, handleTitleClick,
+    handleSearchResultSelect, handleAgentChange, handleArchiveCurrentConversation,
+    handleUnarchiveCurrentConversation, handleReportCurrentConversation,
+    handleDeleteCurrentConversation, openFullConversationShareDialog,
+    handleToggleShowMessageTokenUsage, handlePaste, handleSendMessage, handleStopStreaming,
+    isImageFile, getImageUrl, handleImageClick, removeAttachment, handleFileUpload,
+    handleDictationSubmit, handleDictationStatusChange, handleStarterSuggestionSelect,
+    handleSetActiveProfileTab, handleLogout, handleRefreshSkills,
+    handleLoadMoreArchivedConversations, handleOpenArchivedConversation,
+    handleUnarchiveConversation, handleLoadMoreSharedConversations, handleOpenSharedConversation,
+    handleRevokeSharedConversation, handleToggleToolPreference, handleToggleSuggestionsEnabled,
+    handleSelectVoiceModeVoice, handleSelectVoiceModeLanguage, closeReportDialog,
+    handleSubmitConversationReport, handleShareModeChange, handleShareExpiresAtChange,
+    closeShareDialog, copyShareDialogUrl, handleCreateShareLink, handleDownloadSharePdf,
+    handleCloseFilePreview, handleFileDownload, handleCloseImagePreview,
+  };
+}
+
+// The full workspace bundle type, inferred from the hook. Consumed by the route
+// views via the store's useChatWorkspaceContext accessor.
+export type ChatWorkspace = ReturnType<typeof useChatWorkspace>;
+
+type ChatShellProps = ChatInterfaceProps & { children?: ReactNode };
+
+/**
+ * The persistent workspace shell — sidebar, search, profile/dialog modals, and
+ * the chrome around the routed views. Builds the workspace once via
+ * useChatWorkspace and provides it; renders `children` (the direct
+ * shared-conversation path) or `<Outlet/>` (the layout-route children
+ * ChatView/TasksView) in the content slot.
+ */
+export function ChatShell({ children, ...props }: ChatShellProps = {}) {
+  const ws = useChatWorkspace(props);
+  // Publish the per-render workspace bundle to the store so the route views can
+  // read it via useChatWorkspaceContext. Set during render (before children
+  // render) so views see the current-render value with no staleness; it is an
+  // external-store write (useSyncExternalStore-safe), not a React setState.
+  useWorkspaceStore.setState({ workspace: ws });
+  const {
+    authResolved, isLoggedIn, userId, sidebarOpen, handleSidebarOpenChange,
+    canTogglePrivateMode, handleOpenSearch, focusComposer, openAttachments, startDictation,
+    triggerVoiceMode, openAgentPicker, handleTogglePrivateMode, openProfilePanel, handleNewChat,
+    dismissActiveUi, conversations, currentConversation, handleConversationSelect,
+    handleDeleteConversation, handleRenameConversation, handleArchiveConversation,
+    handleReportConversationFromSidebar, handleLoadMoreConversations, handleTitleClick,
+    navigate, scheduledTasks, agents, userProfile, sidebarDismissFloatingUiSignal,
+    setIsSidebarFloatingUiOpen, convIsLoadingMore, conversationsLoading, convHasMore,
+    isSearchOpen, searchQuery, searchResults, defaultSearchResults, searchLoading, searchError,
+    setSearchQuery, closeSearchPanel, handleSearchResultSelect, resumeInferenceRunHandler,
+    isInterruptResolved, showUserProfile, closeProfilePanel, activeProfileTab,
+    handleSetActiveProfileTab, handleLogout, toolsWithStatus, availableSkills, handleRefreshSkills,
+    mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail, ensureSkillDetail,
+    handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill, handleRemoveSkillFromPool,
+    skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading, isSkillToggling,
+    resolvedPreferences, archivedConversations, archivedConvIsLoading, archivedConvHasMore,
+    handleLoadMoreArchivedConversations, handleOpenArchivedConversation, handleUnarchiveConversation,
+    sharedConversations, sharedConvIsLoading, sharedConvHasMore, handleLoadMoreSharedConversations,
+    handleOpenSharedConversation, handleRevokeSharedConversation, handleToggleToolPreference,
+    handleToggleSuggestionsEnabled, handleToggleShowMessageTokenUsage, handleSelectVoiceModeVoice,
+    handleSelectVoiceModeLanguage, isSavingPreferences, isReportDialogOpen, closeReportDialog,
+    handleSubmitConversationReport, isSubmittingReport, reportTargetMessageId,
+    reportTargetMessagePreview, reportConversationTitle, shareTargetMessage, isCreatingShareLink,
+    isExportingSharePdf, shareDialogUrl, isShareCopyPulse, shareMode, shareForceFullConversation,
+    shareExpiresAt, handleShareModeChange, handleShareExpiresAtChange, closeShareDialog,
+    copyShareDialogUrl, handleCreateShareLink, handleDownloadSharePdf, selectedFilePreview,
+    handleCloseFilePreview, handleFileDownload, selectedImage, handleCloseImagePreview,
+  } = ws;
   // Main Chat Interface
   if (!authResolved) {
     return (
@@ -1335,7 +1518,7 @@ export function ChatInterface({
           focusComposer,
           openAttachments,
           startDictation,
-          triggerVoiceMode: handleVoiceMode,
+          triggerVoiceMode,
           openAgentPicker,
           togglePrivateMode: handleTogglePrivateMode,
           openProfilePanel,
@@ -1355,7 +1538,9 @@ export function ChatInterface({
           onTitleClick={handleTitleClick}
           onNewChat={handleNewChat}
           onOpenSearch={handleOpenSearch}
-          onVoiceMode={handleVoiceMode}
+          onVoiceMode={triggerVoiceMode}
+          onOpenScheduledTasks={() => navigate("/tasks")}
+          scheduledTasksRunningCount={scheduledTasks.runningCount}
           onOpenUserProfile={() => openProfilePanel()}
           agents={agents}
           userProfile={userProfile}
@@ -1381,152 +1566,11 @@ export function ChatInterface({
           <TooltipProvider>
           <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isInterruptResolved }}>
             <div id={OVERLAY_HOST_ID} className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow">
-              {/* Header */}
-              <ChatHeader
-                agents={agents}
-                inactiveAgent={inactiveAgentFallback}
-                selectedAgent={selectedAgent}
-                onAgentChange={handleAgentChange}
-                agentTriggerRef={agentTriggerRef}
-                agentPickerOpen={isAgentPickerOpen}
-                onAgentPickerOpenChange={setIsAgentPickerOpen}
-                showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
-                isPrivateMode={isPrivateMode}
-                onTogglePrivate={handleTogglePrivateMode}
-                showBottomBorder={headerHasDivider}
-                showConversationActions={Boolean(currentConversation?.id)}
-                isConversationArchived={Boolean(currentConversation?.isArchived)}
-                isConversationReported={Boolean(currentConversation?.isReported)}
-                conversationActionsOpen={isHeaderActionMenuOpen}
-                onConversationActionsOpenChange={setIsHeaderActionMenuOpen}
-                onArchiveConversation={handleArchiveCurrentConversation}
-                onUnarchiveConversation={handleUnarchiveCurrentConversation}
-                onReportConversation={handleReportCurrentConversation}
-                onDeleteConversation={handleDeleteCurrentConversation}
-                onShareConversation={openFullConversationShareDialog}
-                canShareConversation={canShareFullConversation}
-                onNewChat={handleNewChat}
-                isStreaming={isCurrentConversationBusy}
-              />
-
-              {/* Chat Messages Container*/}
-              <div className="voice-chat-transition-shell relative flex flex-1 min-h-0 overflow-hidden">
-                {bodyTransition.exiting ? (
-                  <div
-                    className={`voice-chat-panel voice-chat-panel-${bodyTransition.exiting} voice-chat-panel-exit`}
-                    aria-hidden="true"
-                  >
-                    {renderConversationBody(bodyTransition.exiting)}
-                  </div>
-                ) : null}
-                <div className={`voice-chat-panel voice-chat-panel-${bodyTransition.current} voice-chat-panel-enter`}>
-                  {renderConversationBody(bodyTransition.current)}
-                </div>
-              </div>
-
-              {/* Input Area */}
-              <ChatInputBar
-                mode={voiceSession.isActive ? "voice" : "chat"}
-                voiceBarVisible={voiceBarReady}
-                chatBarVisible={chatBarReady}
-                conversationUsage={currentConversation ? conversationUsage : null}
-                showMessageTokenUsage={resolvedPreferences.showMessageTokenUsage === true}
-                onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
-                preferencesSaving={isSavingPreferences}
-                // Centered empty state
-                isMessagesEmpty={isMessagesEmpty}
-                positionClass={
-                  settledVoiceActive
-                    ? "sticky bottom-0 left-0 right-0 z-30 p-6"
-                    : isMessagesEmpty
-                    ? "absolute left-1/2 top-[35%] z-40 w-full p-6"
-                    : "sticky bottom-0 left-0 right-0 z-30 p-6"
-                }
-
-                // pass through your existing state/handlers/refs
-                attachments={attachments}
-                isPrivateMode={isPrivateMode}
-                thinkingActive={isCurrentConversationBusy && thinkingState?.isActive}
-                isStreaming={isCurrentConversationBusy}
-                currentMessage={currentMessage}
-                setCurrentMessage={setCurrentMessage}
-                handlePaste={handlePaste}
-                handleSendMessage={handleSendMessage}
-                handleStopStreaming={handleStopStreaming}
-                isImageFile={isImageFile}
-                getImageUrl={getImageUrl}
-                handleImageClick={handleImageClick}
-                removeAttachment={removeAttachment}
-                handleFileUpload={handleFileUpload}
-                fileInputRef={fileInputRef}
-                textareaRef={textareaRef}
-                containerRef={composerContainerRef}
-                emptyWrapperStyle={settledVoiceActive ? undefined : emptyWrapperStyle}
-                textareaMaxHeight={textareaMaxHeight}
-                onDictationSubmit={handleDictationSubmit}
-                onDictationStatusChange={handleDictationStatusChange}
-                dictationStatus={dictationStatus}
-                dictationRequestSignal={dictationRequestSignal}
-                dictationCancelSignal={dictationCancelSignal}
-                onVoiceMode={handleVoiceMode}
-                voiceStatus={voiceSession.status}
-                voiceMuted={voiceSession.muted}
-                onCloseVoiceMode={voiceSession.close}
-                onToggleVoiceMute={voiceSession.toggleMute}
-                onVoiceTextSubmit={voiceSession.sendText}
-
-                // UI deps
-                AgentIcon={AgentIcon}
-                Tooltip={Tooltip}
-                TooltipTrigger={TooltipTrigger}
-                TooltipContent={TooltipContent}
-                toast={toast}
-                currentAgent={inputBarAgent ?? undefined}
-                Textarea={Textarea}
-                topAccessory={
-                  showPlanningCard && activePlan ? (
-                    <PlanCard
-                      plan={activePlan}
-                      expanded={isPlanExpanded}
-                      onToggle={() => setIsPlanExpanded((prev) => !prev)}
-                      title="Deep agent execution plan"
-                      className="absolute bottom-[calc(100%-1px)] left-1/2 z-10 w-[min(100%,39rem)] -translate-x-1/2"
-                    />
-                  ) : null
-                }
-                hitlTakeover={
-                  activeHitlInterrupt && activeConversationRun ? (
-                    <HitlInputTakeover
-                      interrupt={{
-                        interruptId: activeHitlInterrupt.id,
-                        threadId: activeHitlInterrupt.threadId,
-                        content: activeHitlInterrupt.content,
-                      }}
-                      pendingCount={pendingRunInterrupts.length}
-                      onResolve={(decisions) =>
-                        resumeInferenceRunHandler(activeConversationRun.id, {
-                          interruptId: activeHitlInterrupt.id,
-                          threadId: activeHitlInterrupt.threadId,
-                          // Overall decision (legacy/back-compat field): approve
-                          // unless every action was rejected. Per-action outcomes
-                          // ride in `decisions`.
-                          decision: decisions.some((d) => d.decision === "approve") ? "approve" : "reject",
-                          reason: decisions.find((d) => d.decision === "reject" && d.reason)?.reason,
-                          decisions,
-                        })
-                      }
-                    />
-                  ) : null
-                }
-                starterSuggestions={canShowStarterSuggestions ? starterSuggestions : []}
-                onStarterSuggestionSelect={handleStarterSuggestionSelect}
-              />
-
-            {loadingConversation && (
-              <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-slate-950/35 backdrop-blur-md transition-opacity duration-200 animate-fade-in">
-                <Loader size={36} className="text-white/90" />
-              </div>
-            )}
+              {/* The routed view: ChatView ("/", "/c/:id") or TasksView ("/tasks"),
+                  or `children` when ChatShell is used directly (shared conversation).
+                  The chat surface + tasks page now live in pages/ChatView and
+                  pages/TasksView. */}
+              {children ?? <Outlet />}
 
               {/* User Profile Modal */}
               <ProfilePanel
@@ -1639,5 +1683,18 @@ export function ChatInterface({
         </SidebarInset>
       </SidebarProvider>
     </div>
+  );
+}
+
+/**
+ * Full standalone workspace = the shell wrapping ChatView directly (no router
+ * Outlet). Used by SharedConvPage to render a full shared conversation as a
+ * single component with props. The routed app uses ChatShell + <Outlet/> instead.
+ */
+export function ChatInterface(props: ChatInterfaceProps = {}) {
+  return (
+    <ChatShell {...props}>
+      <ChatView />
+    </ChatShell>
   );
 }

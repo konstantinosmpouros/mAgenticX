@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
 from core.settings import settings
 from utils.inference_runs import cleanup_orphaned_inference_runs
+from utils.scheduled_tasks import scheduler
 from observability import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -36,6 +37,7 @@ from router import (
     voice_router,
     search_router,
     skills_router,
+    scheduled_tasks_router,
 )
 
 configure_logging()
@@ -92,7 +94,12 @@ async def lifespan(app: FastAPI):
         )
     await cleanup_orphaned_inference_runs()
     logger.info("database_schema_ready", "Database schema is ready")
+    # Start the scheduled-tasks loop only after the schema is ready and orphaned
+    # runs are reaped (a restart-interrupted scheduled run is now 'failed', so the
+    # next fire's skip-if-running check sees it correctly).
+    scheduler.start()
     yield
+    await scheduler.stop()
     logger.info("service_shutdown", "Dialogue bridge shutdown completed")
 
 
@@ -195,4 +202,9 @@ app.include_router(
     skills_router,
     prefix=f"/v1/skills",
     tags=["Skills"],
+)
+app.include_router(
+    scheduled_tasks_router,
+    prefix=f"/v1/scheduled-tasks",
+    tags=["Scheduled Tasks"],
 )

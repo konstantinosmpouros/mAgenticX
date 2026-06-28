@@ -8,6 +8,7 @@ import type {
   InferenceRun,
   ConversationSummary,
   MessageOut,
+  ScheduledTask,
   SharedConversationDetail,
 } from "./types";
 
@@ -268,6 +269,7 @@ export const transformInferenceRun = (run: Record<string, any>): InferenceRun =>
   assistantMessageId: run.assistantMessageId ?? run.assistant_message_id ?? "",
   parentMessageId: run.parentMessageId ?? run.parent_message_id ?? null,
   status: run.status ?? "running",
+  scheduledTaskId: run.scheduledTaskId ?? run.scheduled_task_id ?? null,
   messagePath: Array.isArray(run.messagePath ?? run.message_path) ? (run.messagePath ?? run.message_path) : [],
   enabledTools: Array.isArray(run.enabledTools ?? run.enabled_tools) ? (run.enabledTools ?? run.enabled_tools) : [],
   content: run.content ?? null,
@@ -296,3 +298,46 @@ export const transformSharedConversationDetail = (
   expiresAt: detail.expiresAt ?? detail.expires_at ? toDate(detail.expiresAt ?? detail.expires_at) : null,
   createdAt: toDate(detail.createdAt ?? detail.created_at),
 });
+
+
+// Transform a scheduled task from backend to frontend type.
+export const transformScheduledTask = (task: Record<string, any>): ScheduledTask => {
+  const nextRunAt = task.nextRunAt ?? task.next_run_at;
+  const lastRunAt = task.lastRunAt ?? task.last_run_at;
+  const expiresAt = task.expiresAt ?? task.expires_at;
+  const spec = task.scheduleSpec ?? task.schedule_spec;
+  const tools = task.enabledTools ?? task.enabled_tools;
+  return {
+    id: task.id,
+    agentId: task.agentId ?? task.agent_id ?? null,
+    agentName: task.agentName ?? task.agent_name ?? null,
+    agentSlug: task.agentSlug ?? task.agent_slug ?? null,
+    conversationId: task.conversationId ?? task.conversation_id ?? null,
+    title: task.title ?? null,
+    prompt: task.prompt ?? "",
+    enabledTools: Array.isArray(tools)
+      ? tools.map((t: any) => ({
+          serverId: t.serverId ?? t.server_id ?? "",
+          toolName: t.toolName ?? t.tool_name ?? "",
+        }))
+      : [],
+    isPrivate: Boolean(task.isPrivate ?? task.is_private),
+    targetMode: task.targetMode ?? task.target_mode ?? "fresh",
+    scheduleKind: task.scheduleKind ?? task.schedule_kind ?? "interval",
+    scheduleSpec: spec && typeof spec === "object" ? spec : {},
+    timezone: task.timezone ?? null,
+    status: task.status ?? "active",
+    nextRunAt: nextRunAt ? toDate(nextRunAt) : null,
+    lastRunAt: lastRunAt ? toDate(lastRunAt) : null,
+    lastRunStatus: task.lastRunStatus ?? task.last_run_status ?? null,
+    lastRunMessageId: task.lastRunMessageId ?? task.last_run_message_id ?? null,
+    lastError: task.lastError ?? task.last_error ?? null,
+    runCount: task.runCount ?? task.run_count ?? 0,
+    maxRuns: task.maxRuns ?? task.max_runs ?? null,
+    expiresAt: expiresAt ? toDate(expiresAt) : null,
+    createdAt: toDate(task.createdAt ?? task.created_at),
+    updatedAt: toDate(task.updatedAt ?? task.updated_at),
+    liveStatus: task.liveStatus ?? task.live_status ?? null,
+    lastRunConversationId: task.lastRunConversationId ?? task.last_run_conversation_id ?? null,
+  };
+};
