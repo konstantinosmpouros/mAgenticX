@@ -66,13 +66,17 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "b", meta: true }],
-      win: [{ key: "b", ctrl: true }],
+      // Alt/Option + physical key (matched by `code`, not the produced character):
+      // sidesteps the heavily browser-reserved Ctrl/Cmd combos and stays correct on
+      // any keyboard layout. Use Left Alt — AltGr reports as Ctrl+Alt and won't match.
+      mac: [{ key: "b", code: "KeyB", alt: true }],
+      win: [{ key: "b", code: "KeyB", alt: true }],
     },
     labels: {
-      mac: "Cmd+B",
-      win: "Ctrl+B",
+      mac: "Option+B",
+      win: "Alt+B",
     },
+    availabilityNote: "In Firefox, Alt+B also opens the Bookmarks menu.",
   },
   {
     id: "chat.new",
@@ -83,20 +87,13 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [
-        { key: "n", code: "KeyN", meta: true },
-        { key: "x", code: "KeyX", meta: true, shift: true },
-      ],
-      win: [
-        { key: "n", code: "KeyN", ctrl: true },
-        { key: "x", code: "KeyX", ctrl: true, shift: true },
-      ],
+      mac: [{ key: "n", code: "KeyN", alt: true }],
+      win: [{ key: "n", code: "KeyN", alt: true }],
     },
     labels: {
-      mac: "Cmd+Shift+X",
-      win: "Ctrl+Shift+X",
+      mac: "Option+N",
+      win: "Alt+N",
     },
-    availabilityNote: "Browsers often reserve Cmd/Ctrl+N. Use Cmd/Ctrl+Shift+X in the web UI.",
   },
   {
     id: "search.open",
@@ -107,12 +104,12 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "k", meta: true }],
-      win: [{ key: "k", ctrl: true }],
+      mac: [{ key: "k", code: "KeyK", alt: true }],
+      win: [{ key: "k", code: "KeyK", alt: true }],
     },
     labels: {
-      mac: "Cmd+K",
-      win: "Ctrl+K",
+      mac: "Option+K",
+      win: "Alt+K",
     },
   },
   {
@@ -125,17 +122,17 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     allowInEditable: true,
     combos: {
       mac: [
-        { key: ",", code: "Comma", meta: true },
-        { key: ".", code: "Period", meta: true },
+        { key: ",", code: "Comma", alt: true },
+        { key: ".", code: "Period", alt: true },
       ],
       win: [
-        { key: ",", code: "Comma", ctrl: true },
-        { key: ".", code: "Period", ctrl: true },
+        { key: ",", code: "Comma", alt: true },
+        { key: ".", code: "Period", alt: true },
       ],
     },
     labels: {
-      mac: "Cmd+, or Cmd+.",
-      win: "Ctrl+, or Ctrl+.",
+      mac: "Option+, or Option+.",
+      win: "Alt+, or Alt+.",
     },
   },
   {
@@ -147,12 +144,12 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "/", code: "Slash", meta: true }],
-      win: [{ key: "/", code: "Slash", ctrl: true }],
+      mac: [{ key: "/", code: "Slash", alt: true }],
+      win: [{ key: "/", code: "Slash", alt: true }],
     },
     labels: {
-      mac: "Cmd+/",
-      win: "Ctrl+/",
+      mac: "Option+/",
+      win: "Alt+/",
     },
   },
   {
@@ -164,12 +161,12 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "l", meta: true }],
-      win: [{ key: "l", code: "KeyL", ctrl: true }],
+      mac: [{ key: "l", code: "KeyL", alt: true }],
+      win: [{ key: "l", code: "KeyL", alt: true }],
     },
     labels: {
-      mac: "Cmd+L",
-      win: "Ctrl+L",
+      mac: "Option+L",
+      win: "Alt+L",
     },
   },
   {
@@ -181,12 +178,14 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "u", meta: true }],
-      win: [{ key: "u", code: "KeyU", ctrl: true }],
+      // "A" for Attach. Moved off "U" because Alt+U is swallowed before the page
+      // sees it on some setups (OS/app hotkey or keyboard-layout quirk).
+      mac: [{ key: "a", code: "KeyA", alt: true }],
+      win: [{ key: "a", code: "KeyA", alt: true }],
     },
     labels: {
-      mac: "Cmd+U",
-      win: "Ctrl+U",
+      mac: "Option+A",
+      win: "Alt+A",
     },
   },
   {
@@ -198,12 +197,12 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "m", meta: true }],
-      win: [{ key: "m", code: "KeyM", ctrl: true }],
+      mac: [{ key: "j", code: "KeyJ", alt: true }],
+      win: [{ key: "j", code: "KeyJ", alt: true }],
     },
     labels: {
-      mac: "Cmd+M",
-      win: "Ctrl+M",
+      mac: "Option+J",
+      win: "Alt+J",
     },
   },
   {
@@ -215,12 +214,12 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "a", meta: true, shift: true }],
-      win: [{ key: "a", code: "KeyA", ctrl: true, shift: true }],
+      mac: [{ key: "g", code: "KeyG", alt: true }],
+      win: [{ key: "g", code: "KeyG", alt: true }],
     },
     labels: {
-      mac: "Cmd+Shift+A",
-      win: "Ctrl+Shift+A",
+      mac: "Option+G",
+      win: "Alt+G",
     },
   },
   {
@@ -232,12 +231,12 @@ export const SHORTCUTS: ShortcutDefinition[] = [
     implementation: "global",
     allowInEditable: true,
     combos: {
-      mac: [{ key: "p", meta: true, shift: true }],
-      win: [{ key: "p", ctrl: true, shift: true }],
+      mac: [{ key: "p", code: "KeyP", alt: true }],
+      win: [{ key: "p", code: "KeyP", alt: true }],
     },
     labels: {
-      mac: "Cmd+Shift+P",
-      win: "Ctrl+Shift+P",
+      mac: "Option+P",
+      win: "Alt+P",
     },
     availabilityNote: "Available only when the private toggle is visible.",
   },
