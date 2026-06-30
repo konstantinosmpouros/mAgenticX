@@ -171,6 +171,26 @@ export type CustomSkillCreatePayload = {
 };
 
 
+// One row in an agent's long-term memory — what the Memory inspector lists.
+// `name` is the slug (the entries/<name>.yml filename + AGENTS.md anchor);
+// `summary` is the one-line index text. Dates are ISO strings; provenance
+// points at the conversation the memory was saved from. Metadata only — the
+// full body arrives via MemoryDetail on click.
+export type MemorySummary = {
+    name: string;
+    summary: string;
+    createdAt: string | null;
+    updatedAt: string | null;
+    sourceConversationId: string | null;
+};
+
+
+// A memory row joined with its full stored body (click-to-preview).
+export type MemoryDetail = MemorySummary & {
+    content: string;
+};
+
+
 // Per-(user, agent) skill selection. Map shape is { [agentId]: Set<skillName> }
 // stored as plain object so it serialises cleanly through React state.
 // The bridge endpoint returns a plain string[] per (user, agent); the hook
@@ -195,6 +215,8 @@ export type UserPreferences = {
     prefersAgenticChat?: boolean;
     suggestionsEnabled?: boolean;
     showMessageTokenUsage?: boolean;
+    searchPastConvs?: boolean;
+    useMemory?: boolean;
     voiceModeVoice?: RealtimeVoice;
     voiceModeLanguage?: VoiceModeLanguage;
 };

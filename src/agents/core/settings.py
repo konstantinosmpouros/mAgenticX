@@ -291,6 +291,11 @@ class RuntimeModelsSettings(BaseSettings):
     read_aloud: str = Field("gpt-4o-mini-tts", validation_alias="READ_ALOUD_MODEL")
     read_aloud_voice: str = Field("alloy", validation_alias="READ_ALOUD_VOICE")
     read_aloud_format: str = Field("mp3", validation_alias="READ_ALOUD_FORMAT")
+    # Conversation-message embeddings for the bridge's pgvector store. 1536 dims
+    # keeps vectors within pgvector's HNSW/IVFFlat index limit (2000); changing
+    # either value requires re-embedding + a matching bridge migration.
+    embedding: str = Field("text-embedding-3-small", validation_alias="EMBEDDING_MODEL")
+    embedding_dimensions: int = Field(1536, validation_alias="EMBEDDING_DIMENSIONS")
     realtime: str = Field("gpt-realtime", validation_alias="OPENAI_REALTIME_MODEL")
     realtime_voices: frozenset[str] = Field(
         default=frozenset(
@@ -416,8 +421,8 @@ class FilesystemSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
     # Per-user filesystem root for CompositeBackend mounts. Bind-mounted from
-    # the host (or a Docker named volume) so AGENT.md and enabled skills
-    # survive container restarts and are shared across this user's agents.
+    # the host (or a Docker named volume) so each agent's memory (AGENTS.md +
+    # entries) and enabled skills survive container restarts.
     user_root: Path = Field(
         Path("/var/agents/filesystem"),
         validation_alias="AGENTS_FILESYSTEM_ROOT",
@@ -445,6 +450,11 @@ class FilesystemSettings(BaseSettings):
     input_max_file_bytes: int = Field(26214400, validation_alias="INPUT_MAX_FILE_BYTES")
     input_max_files: int = Field(10, validation_alias="INPUT_MAX_FILES")
 
+    # Hard cap on saved memories per (user, agent) — the `remember` tool refuses
+    # new entries beyond this (updates to existing ones always go through), so
+    # the AGENTS.md index never exceeds this many rows and stays context-cheap.
+    memory_max_entries: int = Field(60, validation_alias="MEMORY_MAX_ENTRIES")
+
 
 class SummarizationSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
@@ -464,6 +474,25 @@ class SummarizationSettings(BaseSettings):
     keep_messages: int = Field(20, validation_alias="SUMMARIZATION_KEEP_MESSAGES")
 
 
+class BridgeSettings(BaseSettings):
+    """Connection back to the dialogue_bridge for the rare agent → bridge call.
+
+    The bridge owns chat_db (incl. the pgvector message index), so the memory
+    tool reads it through the bridge's internal endpoint rather than touching
+    the DB directly. mTLS + the trusted-proxy header are applied by the caller.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    base_url: str = Field("https://dialogue_bridge:8002", validation_alias="DIALOGUE_BRIDGE_URL")
+    memory_search_path: str = Field("/v1/internal/memory/search", validation_alias="BRIDGE_MEMORY_SEARCH_PATH")
+    request_timeout_seconds: float = Field(20.0, validation_alias="BRIDGE_REQUEST_TIMEOUT_SECONDS")
+    connect_timeout_seconds: float = Field(10.0, validation_alias="BRIDGE_CONNECT_TIMEOUT_SECONDS")
+
+    @property
+    def memory_search_url(self) -> str:
+        return f"{self.base_url.rstrip('/')}{self.memory_search_path}"
+
+
 # ---------------------------------------------------------------------------
 # Top-level settings
 # ---------------------------------------------------------------------------
@@ -472,6 +501,7 @@ class Settings(BaseSettings):
 
     app: AppSettings = Field(default_factory=AppSettings)
     api_keys: ApiKeysSettings = Field(default_factory=ApiKeysSettings)
+    bridge: BridgeSettings = Field(default_factory=BridgeSettings)
     rag: RagSettings = Field(default_factory=RagSettings)
     mcp: McpSettings = Field(default_factory=McpSettings)
     tls: TlsSettings = Field(default_factory=TlsSettings)

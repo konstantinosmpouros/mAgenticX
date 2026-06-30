@@ -12,8 +12,10 @@ import PersonalizationTab from "./profile_parts/PersonalizationTab";
 import DataControlsTab from "./profile_parts/DataControlsTab";
 import McpServersTab from "./profile_parts/McpServersTab";
 import SkillsTab from "./profile_parts/SkillsTab";
+import MemoriesTab from "./profile_parts/MemoriesTab";
 import ShortcutsTab from "./profile_parts/ShortcutsTab";
 import HelpTab from "./profile_parts/HelpTab";
+import type { MemoriesHandlers } from "@/hooks/useMemories";
 
 type ProfilePanelProps = {
     open: boolean;
@@ -49,6 +51,10 @@ type ProfilePanelProps = {
     onToggleUserAgentSkill?: (agentId: string, skillName: string) => Promise<void>;
     isAgentSkillLoading?: (agentId: string) => boolean;
     isSkillToggling?: (agentId: string, skillName: string) => boolean;
+    // Per-(user, agent) long-term memory inspector (useMemories output). The
+    // Memories tab drills into a deep agent and lists/previews/deletes the
+    // memories it has saved about the user.
+    memoryInspector?: MemoriesHandlers;
     userPreferences: UserPreferences;
     archivedConversations: ConversationSummary[];
     archivedConversationsLoading?: boolean;
@@ -65,6 +71,8 @@ type ProfilePanelProps = {
     onToggleToolPreference?: (tool: ToolMetadata) => void;
     onToggleSuggestionsEnabled?: () => void;
     onToggleMessageTokenUsage?: () => void;
+    onToggleSearchPastConvs?: () => void;
+    onToggleUseMemory?: () => void;
     onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
     onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
     preferencesSaving?: boolean;
@@ -95,6 +103,7 @@ export default function ProfilePanel({
     onToggleUserAgentSkill,
     isAgentSkillLoading,
     isSkillToggling,
+    memoryInspector,
     userPreferences,
     archivedConversations,
     archivedConversationsLoading = false,
@@ -111,6 +120,8 @@ export default function ProfilePanel({
     onToggleToolPreference,
     onToggleSuggestionsEnabled,
     onToggleMessageTokenUsage,
+    onToggleSearchPastConvs,
+    onToggleUseMemory,
     onSelectVoiceModeVoice,
     onSelectVoiceModeLanguage,
     preferencesSaving = false,
@@ -144,6 +155,10 @@ export default function ProfilePanel({
             title: "Skills",
             description: "Your pool and the shared catalog.",
         },
+        memories: {
+            title: "Memories",
+            description: "Review and delete what each deep agent remembers about you.",
+        },
         shortcuts: {
             title: "Keyboard Shortcuts",
             description: "Browse the same shortcut registry the UI runtime uses.",
@@ -154,7 +169,9 @@ export default function ProfilePanel({
         },
     };
 
-    const activeSection = sectionMeta[normalizedActiveTab];
+    // Fall back to the profile section if a nav item ever lacks a meta entry,
+    // so a missing key degrades gracefully instead of crashing the panel.
+    const activeSection = sectionMeta[normalizedActiveTab] ?? sectionMeta.profile;
     const showActiveSectionEyebrow =
         Boolean(activeSection.eyebrow)
         && activeSection.eyebrow.trim().toLowerCase() !== activeSection.title.trim().toLowerCase();
@@ -227,6 +244,8 @@ export default function ProfilePanel({
                                             preferencesSaving={preferencesSaving}
                                             onToggleSuggestionsEnabled={onToggleSuggestionsEnabled}
                                             onToggleMessageTokenUsage={onToggleMessageTokenUsage}
+                                            onToggleSearchPastConvs={onToggleSearchPastConvs}
+                                            onToggleUseMemory={onToggleUseMemory}
                                             onSelectVoiceModeVoice={onSelectVoiceModeVoice}
                                             onSelectVoiceModeLanguage={onSelectVoiceModeLanguage}
                                         />
@@ -277,6 +296,10 @@ export default function ProfilePanel({
                                             isAgentSkillLoading={isAgentSkillLoading}
                                             isSkillToggling={isSkillToggling}
                                         />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "memories" && memoryInspector ? (
+                                        <MemoriesTab agents={agents} {...memoryInspector} />
                                     ) : null}
 
                                     {normalizedActiveTab === "shortcuts" ? <ShortcutsTab /> : null}

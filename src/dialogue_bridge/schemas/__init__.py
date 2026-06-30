@@ -107,6 +107,33 @@ class WorkspaceSearchResult(BaseModel):
     updatedAt: Optional[UTCDateTime] = None
 
 
+class MemorySearchRequest(BaseModel):
+    """Internal (agents → bridge) request: semantic search over a user's past
+    messages, backing the agent's `search_past_conversations` tool. `user_id`
+    is trusted because only internal callers (the agents service, with the
+    proxy secret) can reach this endpoint."""
+    user_id: str
+    query: str
+    limit: int = 5
+    # The current conversation, excluded so the tool surfaces *other* (old)
+    # conversations the agent doesn't already have in context.
+    exclude_conversation_id: Optional[str] = None
+
+
+class MemoryMessageMatch(BaseModel):
+    """One past message returned to the agent's memory-search tool.
+
+    ``createdAt``/``updatedAt`` are the matched **message's** timestamps."""
+    messageId: str
+    conversationId: str
+    conversationTitle: str
+    sender: Literal["user", "ai"]
+    content: str
+    score: float
+    createdAt: Optional[UTCDateTime] = None
+    updatedAt: Optional[UTCDateTime] = None
+
+
 
 # -------------------------------------------
 # MCP TOOLS DTO
@@ -176,6 +203,26 @@ class UserSkillDetail(BaseModel):
     category: str = ""
     content: str = ""
     files: List[SkillFile] = Field(default_factory=list)
+
+
+class MemoryEntry(BaseModel):
+    """One saved memory's metadata (no body) — a row in the Memory inspector.
+
+    Mirrors :class:`agents.schemas.MemoryEntry`. ``source_conversation_id`` is
+    the provenance pointer (the conversation the memory was saved from).
+    """
+
+    name: str
+    summary: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    source_conversation_id: Optional[str] = None
+
+
+class MemoryDetail(MemoryEntry):
+    """A saved memory with its full ``content`` — the inspector's click-to-preview."""
+
+    content: str = ""
 
 
 class CustomSkillCreateRequest(BaseModel):
@@ -267,6 +314,16 @@ class UserPreferences(BaseModel):
         default=False,
         validation_alias=AliasChoices("show_message_token_usage", "showMessageTokenUsage"),
         serialization_alias="showMessageTokenUsage",
+    )
+    searchPastConvs: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("search_past_convs", "searchPastConvs"),
+        serialization_alias="searchPastConvs",
+    )
+    useMemory: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("use_memory", "useMemory"),
+        serialization_alias="useMemory",
     )
     voiceModeVoice: str = Field(
         default="alloy",

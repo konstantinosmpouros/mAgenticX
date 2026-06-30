@@ -27,8 +27,10 @@ from runtime.skill_registry import (
     seed_global_registry,
 )
 from router.catalog import router as catalog_router
+from router.embeddings import router as embeddings_router
 from router.generation import router as generation_router
 from router.inference import router as inference_router
+from router.memories import router as memories_router
 from router.skills import router as skills_router
 from router.voice import router as voice_router
 
@@ -218,7 +220,9 @@ async def health():
 
 
 app.include_router(catalog_router)
+app.include_router(embeddings_router)
 app.include_router(generation_router)
 app.include_router(inference_router)
+app.include_router(memories_router)
 app.include_router(skills_router)
 app.include_router(voice_router)

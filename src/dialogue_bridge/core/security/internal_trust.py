@@ -1,7 +1,7 @@
 import ipaddress
 import secrets
 
-from fastapi import Request
+from fastapi import HTTPException, Request, status
 from core.settings import settings
 
 
@@ -40,6 +40,25 @@ def is_trusted_proxy_request(request: Request) -> bool:
     expected = settings.proxy.secret.get_secret_value()
     presented = request.headers.get(TRUSTED_PROXY_HEADER_NAME, "")
     return bool(presented) and secrets.compare_digest(presented, expected)
+
+
+def require_internal_caller(request: Request) -> None:
+    """FastAPI dependency for service-to-service-only endpoints (e.g. the
+    agents → bridge memory search). Rejects anything that doesn't present the
+    shared internal proxy secret.
+
+    SECURITY: nginx injects this same secret on browser traffic, so an endpoint
+    guarded by this dependency MUST ALSO be blocked at the nginx edge (see the
+    ``/api/v1/internal/`` deny in ``agentic_ui/nginx.conf.template``). The agents
+    service reaches these endpoints directly on the ``backend`` network, never
+    through nginx, so denying the path at nginx leaves them reachable only
+    server-to-server.
+    """
+    if not is_trusted_proxy_request(request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Internal caller required.",
+        )
 
 
 def internal_service_headers(

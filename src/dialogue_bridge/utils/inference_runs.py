@@ -20,6 +20,7 @@ from core.database import (
     ConversationTable,
     MessageTable,
     SessionLocal,
+    UserPreferencesTable,
 )
 from core.security.internal_trust import internal_service_headers
 from core.settings import settings
@@ -622,6 +623,20 @@ class InferenceRunManager:
                     forked=fork_from is not None,
                     sent_messages=sent_messages,
                 )
+                # Per-user memory prefs, loaded once and threaded into the run
+                # context. `search_past_convs` (opt-in) gates the deep agent's
+                # cross-conversation `search_past_conversations` tool; `use_memory`
+                # (on by default) gates its persistent memory (the /memories/
+                # AGENTS.md + entries mount and the `remember` tool). Both default
+                # to the no-row stance.
+                prefs_row = (
+                    await db.execute(
+                        select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id)
+                    )
+                ).scalar_one_or_none()
+                search_past_convs = bool(prefs_row.search_past_convs) if prefs_row else False
+                use_memory = bool(prefs_row.use_memory) if prefs_row else True
+
                 # Shared config block forwarded to both the initial /stream call
                 # and any /resume legs. thread_id keys the durable saver (branch-
                 # scoped); run_id is the per-run identity for the AG-UI layer.
@@ -633,6 +648,8 @@ class InferenceRunManager:
                         "user_id": str(user_id),
                         "conversation_id": str(run.conversation_id),
                         "run_id": str(run.id),
+                        "search_past_convs": search_past_convs,
+                        "use_memory": use_memory,
                     },
                     "tools": enabled_tools or None,
                 }

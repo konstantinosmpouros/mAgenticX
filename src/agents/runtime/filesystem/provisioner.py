@@ -7,13 +7,17 @@ tree that backs each user's shared ``AGENT.md`` memory and the per-agent
 *is* the "this skill is enabled for this user-agent pair" record — there is
 no database table mirroring the on-disk state.
 
-Layout (three structurally-isolated mounts the agent sees as siblings):
+Layout (structurally-isolated mounts the agent sees as siblings). Memory is
+per-(user, agent) — a sibling of ``skills/`` — so one agent's accumulated
+memory never bleeds into another's context:
 
     <filesystem_root>/<user_id>/
-    ├── memory/
-    │   └── AGENT.md                   ← CompositeBackend route /memories/
     └── agents/
         └── <agent_slug>/
+            ├── memory/                ← CompositeBackend route /memories/
+            │   ├── AGENTS.md          ← memory index (injected as always-on context)
+            │   └── entries/
+            │       └── <name>.yml     ← one memory each, read on demand
             ├── skills/                ← CompositeBackend route /skills/
             │   └── <skill_name>/SKILL.md
             └── <conversation_id>/     ← CompositeBackend route /conversation/
@@ -24,12 +28,13 @@ Each mount lives in a distinct, non-overlapping subtree so no
 
 * The ``/conversation/`` mount is bound to a *single* conversation's
   directory — files the agent writes in one chat are invisible to its
-  next chat. Cross-conversation persistence is the job of
-  ``/memories/AGENT.md``, which the agent edits explicitly.
+  next chat. Cross-conversation persistence is the job of the per-agent
+  ``/memories/`` tree (``AGENTS.md`` index + ``entries/*.yml``), which the
+  agent maintains via the ``remember`` tool.
 * The ``/skills/`` mount sees only the assigned-skill directories — not
   the conversation work area, not the global registry.
 * Other deep agents for the same user live at ``agents/<other_slug>/``,
-  which is not mounted into this agent's view.
+  which is not mounted into this agent's view — including their memory.
 
 Two jobs:
     1. Idempotently create the parent tree the first time a (user, agent) is
@@ -56,7 +61,7 @@ from typing import List
 
 from core.settings import settings
 from observability import get_logger
-from runtime.filesystem.agent_md_template import AGENT_MD_TEMPLATE
+from runtime.filesystem.agent_md_template import AGENTS_MD_TEMPLATE
 
 logger = get_logger(__name__)
 
@@ -89,14 +94,24 @@ def user_root(user_id: str) -> Path:
     return settings.filesystem.user_root / _safe_segment(user_id)
 
 
-def memory_root(user_id: str) -> Path:
-    """The ``/memories/`` mount root for this user.
+def memory_root(user_id: str, agent_slug: str) -> Path:
+    """The ``/memories/`` mount root for this (user, agent) pair.
 
-    Contains only the shared ``AGENT.md`` and any future user-level
-    cross-agent memory. Structurally isolated from ``agent_root`` — they
-    are siblings, not parent/child.
+    Holds the ``AGENTS.md`` memory index plus the ``entries/`` detail files.
+    Per-agent (a sibling of ``skills/`` under ``agent_root``) so one agent's
+    memory never surfaces in another agent's context.
     """
-    return user_root(user_id) / "memory"
+    return agent_root(user_id, agent_slug) / "memory"
+
+
+def memory_entries_root(user_id: str, agent_slug: str) -> Path:
+    """The ``entries/`` subdir holding one ``<name>.yml`` per saved memory."""
+    return memory_root(user_id, agent_slug) / "entries"
+
+
+def memory_index_path(user_id: str, agent_slug: str) -> Path:
+    """The ``AGENTS.md`` index file — injected as the agent's always-on memory."""
+    return memory_root(user_id, agent_slug) / "AGENTS.md"
 
 
 def agent_root(user_id: str, agent_slug: str) -> Path:
@@ -119,7 +134,7 @@ def conversation_root(user_id: str, agent_slug: str, conversation_id: str) -> Pa
 
     Per-conversation isolation: files the agent writes in conversation A
     are not visible in conversation B. Cross-conversation persistence
-    goes through ``/memories/AGENT.md`` instead.
+    goes through the per-(user, agent) ``/memories/`` tree instead.
     """
     return agent_root(user_id, agent_slug) / _safe_segment(conversation_id)
 
@@ -147,9 +162,9 @@ def ensure_user_agent_filesystem(
     Provisions:
 
     - ``<filesystem_root>/<user_id>/`` on first contact.
-    - ``<user_id>/memory/`` + seeds ``AGENT.md`` from the standard template
-      if it doesn't exist; never overwrites an existing file (the agent's
-      edits are sacred).
+    - ``<user_id>/agents/<agent_slug>/memory/`` (+ ``entries/``) and seeds the
+      ``AGENTS.md`` index from the standard template if it doesn't exist;
+      never overwrites an existing file (the agent's memory is sacred).
     - ``<user_id>/agents/<agent_slug>/skills/`` on first contact (empty —
       assignments are owned by the skill-registry layer).
     - ``<user_id>/agents/<agent_slug>/<conversation_id>/`` when
@@ -159,17 +174,18 @@ def ensure_user_agent_filesystem(
     root = user_root(user_id)
     root.mkdir(parents=True, exist_ok=True)
 
-    mem = memory_root(user_id)
-    mem.mkdir(parents=True, exist_ok=True)
+    mem = memory_root(user_id, agent_slug)
+    (mem / "entries").mkdir(parents=True, exist_ok=True)
 
-    agent_md = mem / "AGENT.md"
-    if not agent_md.exists():
-        agent_md.write_text(AGENT_MD_TEMPLATE, encoding="utf-8")
+    agents_md = memory_index_path(user_id, agent_slug)
+    if not agents_md.exists():
+        agents_md.write_text(AGENTS_MD_TEMPLATE, encoding="utf-8")
         logger.info(
-            "agent_md_template_seeded",
-            "Seeded AGENT.md from template for new user",
+            "agents_md_template_seeded",
+            "Seeded AGENTS.md memory index from template for new (user, agent)",
             user_id=user_id,
-            path=str(agent_md),
+            agent_slug=agent_slug,
+            path=str(agents_md),
         )
 
     skills_dir = skills_root(user_id, agent_slug)

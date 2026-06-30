@@ -320,7 +320,21 @@ Your persistent store is at `/filesystem/`. Before starting a task:
 - Always confirm before taking irreversible actions.
 ```
 
-`load_agent_md()` returns `["./AGENT.md"]` if the file exists in the agent's implementation directory. Pass `self.agent_md_paths` to `create_deep_agent(memory=...)`.
+##### Per-(user, agent) long-term memory
+
+Distinct from the static instructions above, each agent keeps **long-term memory scoped per (user, agent)** — one agent's memory never bleeds into another's. It follows the skills progressive-disclosure shape:
+
+```text
+<user_root>/agents/<slug>/memory/
+  AGENTS.md            ← index: one summary line per memory (always-on context)
+  entries/<name>.yml   ← full detail, read on demand
+```
+
+`load_agent_md()` returns `["/memories/AGENTS.md"]` (resolved through the CompositeBackend), passed to `create_deep_agent(memory=...)`, so only the compact index is injected; the agent `read_file`s an `entries/<name>.yml` when a summary looks relevant. The agent writes memory with the built-in **`remember`** tool (`name` + `summary` + `content` → writes the yml atomically and upserts the matching index line; idempotent by name). yml entries carry `created_at`/`updated_at`/`source_conversation_id` for future provenance work.
+
+Memory is **toggleable per run** via the user's `use_memory` preference (default on), which `BaseAgent.__init__` parses into `self.use_memory`. When off: `load_agent_md()` returns `[]`, `_build_composite_backend()` drops the `/memories/` mount, **and** the `remember` tool isn't attached — the agent runs with no persistent memory, no code change. The separate `search_past_conversations` recall tool (pgvector) is gated independently by `search_past_convs`. A `remember` made mid-conversation lands on disk immediately but is injected as context on the *next* conversation (the index is read at build time). See [user-preferences](../flows/user-preferences.md#agent-memory).
+
+The user inspects and corrects this memory in the **ProfilePanel → Memories tab**: drill into a deep agent, see its saved memories (name-sorted), click to preview content, and delete one. The agent owns *writes* (the `remember` tool); the user only reads + deletes. The read/delete operations live in `runtime/filesystem/memory.py` (`list_memories` / `read_memory` / `delete_memory` — delete drops both the `entries/<name>.yml` and its `AGENTS.md` row via the same `index_line_pattern` the write path uses), exposed by `router/memories.py` (`/agents/{slug}/users/{user_id}/memories[...]`, internal-caller gated) and proxied by the bridge's `/v1/memories` router (no cache). There is no create/update endpoint by design.
 
 #### 4. Create skills
 
@@ -407,7 +421,7 @@ All three are created automatically if they do not exist. `FilesystemBackend(roo
 | --- | --- | --- |
 | `load_skills()` | Auto-discovers `./skills/` | Skills are in a non-standard path |
 | `load_memory()` | Returns `None` | Using a persistent memory backend |
-| `load_agent_md()` | Auto-discovers `./AGENT.md` | Multiple or non-standard instruction files |
+| `load_agent_md()` | `["/memories/AGENTS.md"]` (per-(user,agent) memory index), or `[]` when `self.use_memory` is false | Rarely — memory is convention-driven |
 | `register_subagents()` | Returns `None` | Agent has specialist sub-agents |
 | `default_middleware(model, backend)` | `ToolErrorMiddleware` + configurable summarization | Add, drop, or reconfigure the agent's middleware stack |
 
@@ -776,9 +790,13 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 | --- | --- | --- |
 | Base agent class | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
 | LangGraph agent base | [src/agents/runtime/langgraph_agent.py](../../src/agents/runtime/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
-| Deep agent base | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` |
+| Deep agent base | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` (delegates to workspace) |
+| Filesystem layout (paths + provisioning) | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | path helpers (`memory_root()`, `skills_root()`, `conversation_root()`…), `ensure_user_agent_filesystem()`; deepagents-free |
+| Filesystem workspace (mounts + permissions) | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map), `WORKSPACE_WRITE_DENY` |
+| Memory store ops (list/read/delete + row format) | [src/agents/runtime/filesystem/memory.py](../../src/agents/runtime/filesystem/memory.py) | `index_line()` / `index_line_pattern()`, `list_memories()`, `read_memory()`, `delete_memory()` |
+| Memory inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) → bridge [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) (`/v1/memories`) → UI [MemoriesTab.tsx](../../src/agentic_ui/src/components/chat/profile_parts/MemoriesTab.tsx) + [useMemories.ts](../../src/agentic_ui/src/hooks/useMemories.ts) | list / preview / delete a (user, agent)'s memories |
 | Agent middleware | [src/agents/runtime/middlewares/](../../src/agents/runtime/middlewares/) | `tool_error.py` (`ToolErrorMiddleware`), `summarization.py` (`ConfigurableSummarizationMiddleware`, `build_summarization_middleware()`, `exclude_stock_summarization()`) |
-| Shared tools | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | Custom tool definitions attached via `attach_tools()` |
+| Shared tools | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | Custom tool definitions attached via `attach_tools()`; `remember.py` (per-agent memory write), `memory_search.py` (`search_past_conversations`) |
 | Summarization settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `SummarizationSettings` — `SUMMARIZATION_TRIGGER_FRACTION`, `_KEEP_FRACTION`, `_TRIGGER_TOKENS`, `_KEEP_MESSAGES` |
 | Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` |
 | Copy-on-fork seeding | [src/agents/runtime/checkpointer/fork.py](../../src/agents/runtime/checkpointer/fork.py) | `seed_thread_from_checkpoint()` |

@@ -34,6 +34,8 @@ import type {
   UserSkill,
   UserSkillDetail,
   CustomSkillCreatePayload,
+  MemorySummary,
+  MemoryDetail,
   ToolMetadata,
   ToolPreference,
   WorkspaceSearchResult,
@@ -71,6 +73,7 @@ const VOICE_BASE_PATH = `${API_BASE_PATH}/voice`;
 const SHARED_CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/shared-conversations`;
 const SEARCH_BASE_PATH = `${API_BASE_PATH}/search`;
 const SKILLS_BASE_PATH = `${API_BASE_PATH}/skills`;
+const MEMORIES_BASE_PATH = `${API_BASE_PATH}/memories`;
 const SCHEDULED_TASKS_BASE_PATH = `${API_BASE_PATH}/scheduled-tasks`;
 
 
@@ -283,6 +286,71 @@ export async function disableUserAgentSkill(
 }
 
 
+// Map a backend memory record (snake_case) to the camelCase frontend shape.
+function mapMemorySummary(raw: any): MemorySummary {
+  return {
+    name: String(raw?.name ?? ""),
+    summary: typeof raw?.summary === "string" ? raw.summary : "",
+    createdAt: raw?.created_at ?? null,
+    updatedAt: raw?.updated_at ?? null,
+    sourceConversationId: raw?.source_conversation_id ?? null,
+  };
+}
+
+
+// List the memories this agent has saved about the user (metadata only).
+export async function listAgentMemories(userId: string, agentId: string): Promise<MemorySummary[]> {
+  const url = `${MEMORIES_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}`;
+  const res = await fetch(url, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch agent memories: ${res.status}`);
+  }
+  const data = await res.json();
+  if (!Array.isArray(data)) return [];
+  return data.map(mapMemorySummary);
+}
+
+
+// Fetch one saved memory with its full content (click-to-preview).
+export async function getAgentMemory(
+  userId: string,
+  agentId: string,
+  name: string,
+): Promise<MemoryDetail> {
+  const url = `${MEMORIES_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(name)}`;
+  const res = await fetch(url, withSessionRequest({
+    headers: { "Accept": "application/json" },
+  }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to fetch memory ${name}: ${res.status}`);
+  }
+  const raw = await res.json();
+  return { ...mapMemorySummary(raw), content: typeof raw?.content === "string" ? raw.content : "" };
+}
+
+
+// Delete one of the agent's saved memories. 204 on success (idempotent).
+export async function deleteAgentMemory(
+  userId: string,
+  agentId: string,
+  name: string,
+): Promise<void> {
+  const url = `${MEMORIES_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(name)}`;
+  const res = await fetch(url, withSessionRequest({
+    method: "DELETE",
+    headers: { "Accept": "application/json" },
+  }, { csrf: true }));
+  if (!res.ok) {
+    if (res.status === 401) emitUnauthorized();
+    throw new Error(`Failed to delete memory ${name}: ${res.status}`);
+  }
+}
+
+
 // ---------------------------------------------------------------------------
 // Per-user skill pool (the user's personal registry of globals + customs)
 // ---------------------------------------------------------------------------
@@ -491,10 +559,18 @@ export async function getUserPreferences(userId: string) {
     typeof data?.showMessageTokenUsage === "boolean"
       ? data.showMessageTokenUsage
       : false;
+  const searchPastConvs =
+    typeof data?.searchPastConvs === "boolean"
+      ? data.searchPastConvs
+      : false;
+  const useMemory =
+    typeof data?.useMemory === "boolean"
+      ? data.useMemory
+      : true;
   const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
   const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
 
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, voiceModeVoice, voiceModeLanguage };
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, searchPastConvs, useMemory, voiceModeVoice, voiceModeLanguage };
 }
 
 
@@ -523,9 +599,17 @@ export async function updateUserPreferences(userId: string, prefs: any) {
     typeof data?.showMessageTokenUsage === "boolean"
       ? data.showMessageTokenUsage
       : false;
+  const searchPastConvs =
+    typeof data?.searchPastConvs === "boolean"
+      ? data.searchPastConvs
+      : false;
+  const useMemory =
+    typeof data?.useMemory === "boolean"
+      ? data.useMemory
+      : true;
   const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
   const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, voiceModeVoice, voiceModeLanguage };
+  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, searchPastConvs, useMemory, voiceModeVoice, voiceModeLanguage };
 }
 
 

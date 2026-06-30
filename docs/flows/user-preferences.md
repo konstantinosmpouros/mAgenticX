@@ -69,6 +69,8 @@ The `user_preferences` table has a one-to-one relationship with `users`. A row i
 | `tools` | JSON | `{}` | `{"disabled": [{server_id, tool_name}, ...]}` |
 | `prefers_agentic_chat` | Boolean | `false` | Reserved for future agentic-chat UX toggle |
 | `suggestions_enabled` | Boolean | `true` | Show/hide starter suggestion chips in the chat UI |
+| `search_past_convs` | Boolean | `false` | Opt-in: attach the deep-agent `search_past_conversations` memory tool. Migration `0011`. |
+| `use_memory` | Boolean | `true` | On by default: gates a deep agent's persistent memory (AGENT.md `/memories/` mount + future memory folder). Threaded into the run config; turn off to run agents without their stored memory. Migration `0012`. |
 | `voice_mode_voice` | String | `"alloy"` | OpenAI Realtime voice identity |
 | `voice_mode_language` | String | `"english"` | Language for realtime voice instructions |
 | `updated_at` | DateTime | `func.now()` | Auto-updated on every write |
@@ -92,6 +94,8 @@ class UserPreferences(BaseModel):
     tools: ToolsPreferences            # {"disabled": [...]}
     prefersAgenticChat: bool           # default: False
     suggestionsEnabled: bool           # default: True
+    searchPastConvs: bool              # default: False
+    useMemory: bool                    # default: True
     voiceModeVoice: str                # default: "alloy"
     voiceModeLanguage: str             # default: "english"
 ```
@@ -132,6 +136,14 @@ Tool preferences are **not** applied server-side automatically. The frontend rea
 ### Suggestions
 
 `suggestionsEnabled` is a boolean flag. When `false`, the frontend hides the starter suggestion chips that appear in empty conversations. The backend catalog suggestions endpoint (`GET /v1/catalog/suggestions`) is still called — the frontend simply does not render the result.
+
+### Search Past Conversations
+
+`searchPastConvs` is an opt-in (default `false`) that gates the deep-agent `search_past_conversations` memory tool. Unlike most preferences, it **is** applied server-side: when a run starts, the bridge reads it and threads it into the agents `/stream` request config under `context.search_past_convs`, and the deep agent attaches the tool only when it is true (see [conversation-embeddings](conversation-embeddings.md)). Off by default, so a user gets cross-conversation recall only after enabling it here.
+
+### Agent Memory
+
+`useMemory` is on by default (`true`) and gates a deep agent's **per-(user, agent) persistent memory**: the `/memories/` mount holding `AGENTS.md` (a compact index injected as always-on context) plus `entries/<name>.yml` detail files the agent reads on demand, and the built-in **`remember`** tool that writes them. Like `searchPastConvs`, it is applied server-side and **per run**: the bridge threads it into the agents `/stream` request config under `context.use_memory`, `BaseAgent.__init__` parses it into `self.use_memory`, and the deep-agent build dynamically includes or omits the memory wiring — when false, `load_agent_md()` returns `[]`, `_build_composite_backend()` drops the `/memories/` mount, and `remember` isn't attached. Turning it off lets a user run an agent with no stored memory, no agent code change. Distinct from `searchPastConvs`: this gates the agent's own memory (read + write), that one gates cross-conversation message search.
 
 ### Voice Mode Voice
 
@@ -212,6 +224,8 @@ The handlers are:
 | --- | --- |
 | `handleToggleToolPreference(tool)` | Adds or removes a tool from `tools.disabled` |
 | `handleToggleSuggestionsEnabled()` | Flips `suggestionsEnabled` |
+| `handleToggleSearchPastConvs()` | Flips `searchPastConvs` (memory-tool gate) |
+| `handleToggleUseMemory()` | Flips `useMemory` (agent persistent-memory gate) |
 | `handleSelectVoiceModeVoice(voice)` | Sets `voiceModeVoice` |
 | `handleSelectVoiceModeLanguage(language)` | Sets `voiceModeLanguage` |
 
@@ -223,7 +237,7 @@ There is no real-time cross-tab sync. If preferences are changed in a second tab
 
 ## Phase 6 — Backend Application of Preferences
 
-Preferences are read server-side only for voice sessions. Everything else (tools, suggestions) is managed entirely by the frontend.
+Preferences are read server-side for voice sessions, for the memory-tool gate (`search_past_convs`), and for the agent-memory gate (`use_memory`). Everything else (tools, suggestions) is managed entirely by the frontend.
 
 ### Voice Session
 
@@ -239,6 +253,14 @@ This means the browser can override preferences per-session by sending explicit 
 ### Tool Preferences in Inference
 
 The agents service receives an `enabled_tools` list in every inference request config. The `dialogue_bridge` does not apply tool preferences itself — the frontend is responsible for computing `enabledTools` (all tools minus `tools.disabled`) and sending it in the `InferenceRunStartPayload`.
+
+### Search-Past-Conversations Gate
+
+`search_past_convs` is the one boolean the bridge applies itself. In `inference_runs._run`, the bridge loads the user's preference row and includes `context.search_past_convs` in the agents `/stream` request config. The deep agent's `_builtin_tools()` attaches the `search_past_conversations` tool only when that flag is true. It is read **per run** (not cached), so toggling it takes effect on the user's next message.
+
+### Agent-Memory Gate
+
+`use_memory` is loaded from the same preference row in `inference_runs._run` and included as `context.use_memory` (default `true` when no row exists). `BaseAgent.__init__` parses it into `self.use_memory`; the deep agent's build reads that flag to include or omit its per-(user, agent) memory wiring — the `/memories/` mount (`AGENTS.md` index + `entries/*.yml`) and the `remember` write tool. Also read **per run**, so turning memory off applies on the next message. No `_WORKSPACE_WRITE_DENY` rule targets `/memories/`, so dropping that mount needs no permission change.
 
 ---
 

@@ -22,6 +22,7 @@ import type {
 import { usePreferencesHandlers } from "@/handlers/preferences";
 import { computeConversationUsage } from "@/lib/utils";
 import { useProfilePanel } from "@/hooks/useProfilePanel";
+import { useMemories } from "@/hooks/useMemories";
 import {
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
@@ -387,6 +388,8 @@ export function useChatWorkspace({
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
     handleToggleShowMessageTokenUsage,
+    handleToggleSearchPastConvs,
+    handleToggleUseMemory,
     handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage,
   } = usePreferencesHandlers({
@@ -421,6 +424,12 @@ export function useChatWorkspace({
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
   } = useProfilePanel({ userId, toast: toastWrapper, initialPool: myRegistrySkills, requestPersist });
+
+  // Per-(user, agent) long-term memory inspector for the ProfilePanel "Memories"
+  // tab — read + delete only (the agent owns writes via its `remember` tool).
+  // Not snapshot-persisted: memory lives on the agents filesystem, not the UI
+  // snapshot, so it needs no requestPersist plumbing.
+  const memoryInspector = useMemories({ userId, toast: toastWrapper });
 
   // Keep ChatPage's myRegistrySkills mirrored from the hook so the snapshot
   // persistence path sees the live pool. The hook is the source of truth;
@@ -1416,6 +1425,7 @@ export function useChatWorkspace({
     isSkillToggling, mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail,
     ensureSkillDetail, handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill,
     handleRemoveSkillFromPool,
+    memoryInspector,
     // derived
     AgentIcon, inputBarAgent, isMessagesEmpty, settledVoiceActive, isCurrentConversationBusy,
     activePlan, showPlanningCard, canShareFullConversation, canTogglePrivateMode,
@@ -1437,7 +1447,7 @@ export function useChatWorkspace({
     handleLoadMoreArchivedConversations, handleOpenArchivedConversation,
     handleUnarchiveConversation, handleLoadMoreSharedConversations, handleOpenSharedConversation,
     handleRevokeSharedConversation, handleToggleToolPreference, handleToggleSuggestionsEnabled,
-    handleSelectVoiceModeVoice, handleSelectVoiceModeLanguage, closeReportDialog,
+    handleToggleSearchPastConvs, handleToggleUseMemory, handleSelectVoiceModeVoice, handleSelectVoiceModeLanguage, closeReportDialog,
     handleSubmitConversationReport, handleShareModeChange, handleShareExpiresAtChange,
     closeShareDialog, copyShareDialogUrl, handleCreateShareLink, handleDownloadSharePdf,
     handleCloseFilePreview, handleFileDownload, handleCloseImagePreview,
@@ -1480,11 +1490,13 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail, ensureSkillDetail,
     handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill, handleRemoveSkillFromPool,
     skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading, isSkillToggling,
+    memoryInspector,
     resolvedPreferences, archivedConversations, archivedConvIsLoading, archivedConvHasMore,
     handleLoadMoreArchivedConversations, handleOpenArchivedConversation, handleUnarchiveConversation,
     sharedConversations, sharedConvIsLoading, sharedConvHasMore, handleLoadMoreSharedConversations,
     handleOpenSharedConversation, handleRevokeSharedConversation, handleToggleToolPreference,
-    handleToggleSuggestionsEnabled, handleToggleShowMessageTokenUsage, handleSelectVoiceModeVoice,
+    handleToggleSuggestionsEnabled, handleToggleShowMessageTokenUsage, handleToggleSearchPastConvs,
+    handleToggleUseMemory, handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage, isSavingPreferences, isReportDialogOpen, closeReportDialog,
     handleSubmitConversationReport, isSubmittingReport, reportTargetMessageId,
     reportTargetMessagePreview, reportConversationTitle, shareTargetMessage, isCreatingShareLink,
@@ -1598,6 +1610,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 onToggleUserAgentSkill={toggleUserAgentSkill}
                 isAgentSkillLoading={isAgentSkillLoading}
                 isSkillToggling={isSkillToggling}
+                memoryInspector={memoryInspector}
                 userPreferences={resolvedPreferences}
                 archivedConversations={archivedConversations}
                 archivedConversationsLoading={archivedConvIsLoading}
@@ -1614,6 +1627,8 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 onToggleToolPreference={handleToggleToolPreference}
                 onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
                 onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
+                onToggleSearchPastConvs={handleToggleSearchPastConvs}
+                onToggleUseMemory={handleToggleUseMemory}
                 onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
                 onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
                 preferencesSaving={isSavingPreferences}

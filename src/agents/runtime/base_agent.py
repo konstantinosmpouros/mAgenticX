@@ -70,6 +70,12 @@ class BaseAgent:
         # Resolve context parameters from config
         self.context: Dict[str, Any] = self.config.get("context", {})
 
+        # Per-run memory toggle, parsed from the run context (threaded from the
+        # user's `use_memory` preference by the bridge). On by default so an
+        # agent invoked without the flag keeps its always-on memory. Deep agents
+        # read this to include or omit their persistent-memory wiring.
+        self.use_memory: bool = bool(self.context.get("use_memory", True))
+
 
 
     # ---------------------------------------------------------------------

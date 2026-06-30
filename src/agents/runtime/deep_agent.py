@@ -4,24 +4,26 @@ from pathlib import Path
 from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence, Set
 from abc import abstractmethod, ABC
 
-from deepagents import create_deep_agent, FilesystemPermission
-from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents import create_deep_agent
+from deepagents.backends import CompositeBackend
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
+from runtime.tools.memory_search import build_memory_search_tool
+from runtime.tools.remember import build_remember_tool
 from runtime.middlewares import (
+    ConfigurableSummarizationMiddleware,
     ToolErrorMiddleware,
     build_summarization_middleware,
     exclude_stock_summarization,
 )
 from runtime.filesystem import (
-    conversation_root as _conversation_root,
+    WORKSPACE_WRITE_DENY,
+    build_workspace_backend,
     ensure_user_agent_filesystem,
-    memory_root as _memory_root,
-    skills_root as _skills_root,
 )
 from observability import get_logger
 
@@ -45,8 +47,36 @@ RESERVED_DEEPAGENT_TOOL_NAMES: Set[str] = {
 
     # delegation
     "task",
+
+    # built-in memory
+    "remember",
 }
 
+
+# Memory-usage instructions appended to a deep agent's system prompt **only when
+# memory is enabled** (see DeepAgent._memory_system_prompt). Kept out of the
+# agents' static prompts so a use_memory=False run never advertises a /memories/
+# mount it doesn't have. Describes the per-(user, agent) AGENTS.md index + entries
+# progressive-disclosure pattern and the `remember` write tool.
+_MEMORY_SYSTEM_PROMPT = """\
+## Your Long-Term Memory
+
+You have a persistent memory about THIS user, private to you and carried across
+every conversation you have with them:
+
+- `/memories/AGENTS.md` — your memory **index**, loaded into your context
+  automatically at the start of each conversation. Each row is
+  `- **<name>** — <summary>`, one per saved memory.
+- When a row looks relevant, read its full detail with
+  `read_file /memories/entries/<name>.yml`.
+- To save something durable (a preference, an ongoing project, a key person, a
+  decision, an important date), call the `remember` tool with a short `name`, a
+  one-line `summary`, and the full `content`. Re-using a `name` updates that
+  memory in place.
+
+Save only durable, reusable facts — never transient chatter. This memory is the
+only thing that outlives the current conversation (your `/conversation/`
+workspace does not carry over)."""
 
 
 class DeepAgent(BaseAgent, ABC):
@@ -62,14 +92,14 @@ class DeepAgent(BaseAgent, ABC):
 
         load_skills()        → self.skills_paths   (auto-discovered: ["./skills/"])
         load_memory()        → self.memory          (long-term memory store, if any)
-        load_agent_md()      → self.agent_md_paths  (auto-discovered: ["./AGENT.md"])
+        load_agent_md()      → self.agent_md_paths  (per-(user,agent): ["/memories/AGENTS.md"])
         register_subagents() → self.sub_agents       (nested agents, if any)
         register_agent()  ★  → self.agent            (the final runnable)
 
     Convention-based asset discovery (all paths relative to the concrete
     subclass file, resolved via inspect at runtime):
 
-        <impl_dir>/AGENT.md      — agent instructions file  (→ self.agent_md_paths)
+        /memories/AGENTS.md      — per-(user, agent) memory index (→ self.agent_md_paths)
         <impl_dir>/skills/       — skill subdirectories      (→ self.skills_paths)
         <impl_dir>/store/        — persistent file workspace (→ self.store_dir)
         <impl_dir>/memory/       — long-term memory root     (→ self.memory_dir)
@@ -97,18 +127,20 @@ class DeepAgent(BaseAgent, ABC):
     # Default streaming mode
     stream_mode: List[STREAMING_MODES] = ["messages", "updates"]
 
-    # Override BaseAgent default — every concrete subclass of ``DeepAgent``
-    # IS a deep agent. The bridge persists this in ``agents.type`` and the UI
-    # filters by it to show the per-user skill selection panel only here.
+    # Every concrete DeepAgent IS a deep agent; the bridge persists this in
+    # agents.type and the UI shows the skill panel only for it.
     type: AgentType = "deep agent"
 
-    # Static behaviour contract — concrete subclasses override the
-    # ``instructions`` string with their personality / orchestration prompt
-    # passed to ``create_deep_agent(system_prompt=...)``. Skill assignments
-    # are no longer seeded from the deep-agent class — they're owned by the
-    # user's pool (see ``runtime.skill_registry.user_registry``) and a fresh
-    # user's pool starts empty until they explicitly add skills via the UI.
+    # Concrete subclasses set this to their system prompt (passed to
+    # create_deep_agent(system_prompt=...)). Skills come from the user's pool.
     instructions: str = ""
+
+    # Middleware exposed on the instance so a subclass composes its stack via self
+    # (no imports). build_summarization_middleware is the configured factory.
+    tool_error_middleware = ToolErrorMiddleware
+    summarization_middleware = ConfigurableSummarizationMiddleware
+    build_summarization_middleware = staticmethod(build_summarization_middleware)
+
 
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         super().__init__(config=config)
@@ -116,27 +148,22 @@ class DeepAgent(BaseAgent, ABC):
         # Directory of the concrete subclass file — source assets live here
         self._impl_dir: Path = Path(inspect.getfile(type(self))).parent
 
-        # Per-request cache for the resolved per-user filesystem root. Set on
-        # first build call to avoid restating the directory across the
-        # ``load_skills`` / ``load_agent_md`` / ``register_agent`` hooks.
+        # Per-request cache of the resolved per-user filesystem root (set on
+        # first use; avoids re-resolving across the build hooks).
         self._user_filesystem_root: Optional[Path] = None
 
-        # Agent components — all populated during build()
+        # Agent components — populated during ensure_built()
         self.skills_paths: list[str] = []       # absolute path to skills/ — for create_deep_agent(skills=[...])
-        self.agent_md_paths: list[str] = []     # absolute path to AGENT.md — for create_deep_agent(memory=[...])
+        self.agent_md_paths: list[str] = []     # /memories/AGENTS.md — for create_deep_agent(memory=[...])
         self.memory: Any = None
-        # Lazy: created (or rehydrated from the thread-keyed cache) inside
-        # astream() so a HITL resume request picks up the paused checkpoint
-        # instead of starting a fresh saver every request.
+        # Bound lazily in ensure_built() so a HITL resume picks up the paused
+        # checkpoint instead of a fresh saver.
         self.checkpointer: MemorySaver | None = None
         self.sub_agents: SubAgentsT = None
         self.agent: Any = None
 
-        # AGUI components. The normalizer stamps AG-UI message_id + keys its
-        # sub-agent namespace bindings on the per-RUN id (the assistant message
-        # id), NOT the checkpointer thread_id — which is now branch-scoped and
-        # shared across a branch's runs. Read run_id from context; fall back to
-        # the LangGraph thread_id for thread-less / legacy callers.
+        # AGUI: the normalizer keys message_id / sub-agent namespaces on the
+        # per-run id (run_id), falling back to the LangGraph thread_id.
         self.agui_emitter: AGUIEmitter = AGUIEmitter()
         self.agui_normalizer: AGUIStreamNormalizer = AGUIStreamNormalizer(
             thread_id=self.context.get("run_id")
@@ -155,6 +182,7 @@ class DeepAgent(BaseAgent, ABC):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+
     @property
     def store_dir(self) -> Path:
         """Persistent file workspace: ``<impl_dir>/store/``."""
@@ -162,12 +190,19 @@ class DeepAgent(BaseAgent, ABC):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+
     @property
     def memory_dir(self) -> Path:
         """Long-term memory root: ``<impl_dir>/memory/``."""
         path = self._impl_dir / "memory"
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+
+    @property
+    def compiled(self) -> Any:
+        """The compiled runnable produced by ``build()``. ``None`` until built."""
+        return self.agent
 
 
 
@@ -180,8 +215,8 @@ class DeepAgent(BaseAgent, ABC):
         Reads ``user_id`` and ``conversation_id`` from ``self.context`` — the
         bridge stamps both on every request, and
         ``BaseAgent._validate_context_config`` rejects payloads that omit
-        either. The first call for a (user, agent) pair seeds ``AGENT.md``
-        from the standard template; the skills directory is created empty
+        either. The first call for a (user, agent) pair seeds the ``AGENTS.md``
+        memory index from the standard template; the skills directory is created empty
         (writes are owned by the skill-registry layer). The conversation
         directory is mkdir'd on every call but is a cheap no-op when it
         already exists.
@@ -203,183 +238,103 @@ class DeepAgent(BaseAgent, ABC):
         return self._user_filesystem_root
 
 
-    def _build_composite_backend(
-        self,
-    ) -> Callable[[Any], CompositeBackend]:
-        """Return a factory that mints a fresh ``CompositeBackend`` per tool call.
+    def _build_composite_backend(self) -> Callable[[Any], CompositeBackend]:
+        """Delegate to the filesystem workspace builder for this run's identity.
 
-        The deepagents library accepts ``backend=callable(ToolRuntime) -> Backend``
-        and invokes it on every tool call so ``StateBackend`` can bind to the
-        live runtime. Three FilesystemBackends are mounted at structurally
-        disjoint roots so no route can resolve into another's tree:
-
-            /memories/            → <user_root>/memory/                       (AGENT.md only)
-            /skills/              → <user_root>/agents/<self.name>/skills/    (user-enabled skills)
-            /conversation/input/  → <conv_id>/input/                          (user uploads, read-only)
-            /conversation/output/ → <conv_id>/output/                         (agent artifacts, read-write)
-            /conversation/        → <user_root>/agents/<self.name>/<conv_id>/ (this chat only)
-            default               → StateBackend(rt)                          (ephemeral scratch)
-
-        Per-conversation isolation: ``/conversation/`` is rooted at a
-        single ``<conv_id>`` directory, so files written in one chat are
-        not visible from the next. The agent persists durable
-        cross-conversation context by editing ``/memories/AGENT.md``
-        directly. ``input/`` holds user-uploaded files (the bridge seeds them
-        before each run and the agent reads them on demand — write-denied);
-        ``output/`` is where the agent writes generated artifacts. Both are
-        subdirs of ``<conv_id>`` so they also surface under ``/conversation/``;
-        the dedicated longer-prefix routes give the write-deny a clean target.
-
-        The central skills registry is intentionally **not mounted**. It is
-        a user-facing catalogue browsed via the ProfilePanel Skills tab —
-        the agent only ever sees the skills the user has explicitly
-        enabled, which arrive on disk via the bridge's PUT endpoint
-        copying registry directories into ``skills/``.
+        The mount layout (virtual routes → per-(user, agent, conversation)
+        roots) and its write-deny ladder live together in
+        ``runtime.filesystem.workspace`` — co-located because the permissions
+        target the mount routes and must stay in sync. The agent only decides
+        *policy* here: the resolved ``self.use_memory`` toggle (drops the
+        ``/memories/`` mount when off). Permissions are applied in
+        ``build_deep_agent`` via ``WORKSPACE_WRITE_DENY``.
         """
-        self._resolve_user_filesystem_root()  # ensure tree exists
         ctx = self.context
-        user_id = ctx["user_id"]
-        conversation_id = ctx["conversation_id"]
-        memory_path = _memory_root(user_id)
-        skills_path = _skills_root(user_id, self.name)
-        conv_path = _conversation_root(user_id, self.name, conversation_id)
-        # Per-conversation, on-disk homes for deepagents' offloaded artifacts.
-        # Created eagerly so `ls` works before the first offload write.
-        large_tool_results_path = conv_path / "large_tool_results"
-        conversation_history_path = conv_path / "conversation_history"
-        large_tool_results_path.mkdir(parents=True, exist_ok=True)
-        conversation_history_path.mkdir(parents=True, exist_ok=True)
-        # input/ (read-only user uploads, seeded by the bridge) + output/
-        # (read-write agent artifacts). Subdirs of conv_path → longer-prefix
-        # routes win over the /conversation/ mount they overlap.
-        input_path = conv_path / "input"
-        output_path = conv_path / "output"
-        input_path.mkdir(parents=True, exist_ok=True)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        def factory(rt: Any) -> CompositeBackend:
-            return CompositeBackend(
-                default=StateBackend(),
-                routes={
-                    "/memories/": FilesystemBackend(
-                        root_dir=str(memory_path), virtual_mode=True
-                    ),
-                    "/skills/": FilesystemBackend(
-                        root_dir=str(skills_path), virtual_mode=True
-                    ),
-                    "/conversation/input/": FilesystemBackend(
-                        root_dir=str(input_path), virtual_mode=True
-                    ),
-                    "/conversation/output/": FilesystemBackend(
-                        root_dir=str(output_path), virtual_mode=True
-                    ),
-                    "/conversation/": FilesystemBackend(
-                        root_dir=str(conv_path), virtual_mode=True
-                    ),
-                    # deepagents offloads to the top-level /large_tool_results/ and
-                    # /conversation_history/ prefixes (default artifacts_root="/").
-                    # Route them to per-conversation disk so they persist instead
-                    # of living on the ephemeral StateBackend default. These dirs
-                    # sit inside the conversation dir, so they are also reachable
-                    # under /conversation/ — a cosmetic overlap the planned
-                    # input/output restructure will remove.
-                    "/large_tool_results/": FilesystemBackend(
-                        root_dir=str(large_tool_results_path), virtual_mode=True
-                    ),
-                    "/conversation_history/": FilesystemBackend(
-                        root_dir=str(conversation_history_path), virtual_mode=True
-                    ),
-                },
-            )
-
-        return factory
-
-
-    def _build_workspace_permissions(self) -> list[FilesystemPermission]:
-        """Explicit write-deny rules over the built-in filesystem tools, shared by
-        every deep agent (defined here in the base, never per-agent).
-
-        Confinement is primarily structural: the CompositeBackend routes every
-        path to a per-(user, agent, conversation) FilesystemBackend or the
-        ephemeral, agent-scoped StateBackend, none of which can reach the host or
-        another user (``virtual_mode`` blocks ``..``/absolute-path escapes). On
-        top of that, these rules make the agent-facing surface explicitly
-        read-only where it should never write:
-
-        - ``/skills/`` — the user manages the skill library via the UI.
-        - ``/large_tool_results/`` and ``/conversation_history/`` —
-          deepagents-managed bookkeeping (offload eviction + archive). The model
-          may READ offloaded results but must not write/tamper with them; the
-          library's own offload writes go through the backend, not these tools,
-          so they are unaffected.
-
-        - ``/conversation/input/`` — user uploads are read-only; the agent
-          writes generated artifacts to ``/conversation/output/`` instead.
-
-        Writes stay open where the agent legitimately needs them —
-        ``/conversation/output/`` and ``/conversation/`` (artifacts) and
-        ``/memories/AGENT.md`` (durable memory). There is deliberately NO
-        catch-all deny: a read-deny would block the agent from reading its
-        offloaded ``/large_tool_results/`` or its uploaded ``/conversation/input/``.
-        Every path must map to a mounted route (deepagents'
-        ``_all_paths_scoped_to_routes`` guard); ``{,/**}`` matches the mount
-        root, the root with a trailing slash, and everything beneath it.
-
-        Caveat: deepagents does not yet support tool-level permissions once the
-        backend provides command execution (``SandboxBackendProtocol``) — revisit
-        this method when the execute tool is enabled.
-        """
-        return [
-            FilesystemPermission(operations=["write"], paths=["/skills{,/**}"], mode="deny"),
-            FilesystemPermission(operations=["write"], paths=["/large_tool_results{,/**}"], mode="deny"),
-            FilesystemPermission(operations=["write"], paths=["/conversation_history{,/**}"], mode="deny"),
-            # User uploads are read-only; the agent writes artifacts to
-            # /conversation/output/ instead.
-            FilesystemPermission(operations=["write"], paths=["/conversation/input{,/**}"], mode="deny"),
-        ]
-
-
-    @staticmethod
-    def _inject_tool_error_middleware(subagents: SubAgentsT) -> SubAgentsT:
-        """Prepend ToolErrorMiddleware to each sub-agent spec. The parent's
-        ``create_deep_agent(middleware=...)`` does not reach sub-agents — they
-        compile with only their own middleware list — so the policy has to be
-        injected per spec here, keeping it owned by the base (concrete agents'
-        ``register_subagents()`` stay untouched). Pre-compiled sub-agents (a
-        ``runnable`` entry) can't take middleware and pass through unchanged.
-        """
-        if not isinstance(subagents, (list, tuple)):
-            return subagents
-        augmented: list[Any] = []
-        for spec in subagents:
-            if isinstance(spec, dict) and "runnable" not in spec:
-                existing = list(spec.get("middleware") or [])
-                augmented.append({**spec, "middleware": [ToolErrorMiddleware(), *existing]})
-            else:
-                augmented.append(spec)
-        return augmented
+        return build_workspace_backend(
+            user_id=ctx["user_id"],
+            agent_slug=self.name,
+            conversation_id=ctx["conversation_id"],
+            use_memory=self.use_memory,
+        )
 
 
     def default_middleware(self, model: Any, backend: Any) -> list[Any]:
-        """The middleware stack every deep agent gets unless it overrides this.
+        """The middleware stack a deep agent gets unless it overrides this.
 
-        Override in a concrete agent to add, drop, or reconfigure middleware —
-        e.g. a different summarization trigger, an extra policy layer, or no
-        summarization at all (return a list without it). ``model`` is the same
-        value passed to ``build_deep_agent``; ``backend`` is the shared
-        CompositeBackend factory so the summarizer offloads to the same
-        per-conversation disk as the agent's filesystem tools.
-
-        - ``ToolErrorMiddleware`` — a tool exception becomes an error
-          ToolMessage instead of aborting the run (also injected into
-          sub-agents via ``_inject_tool_error_middleware``).
-        - configurable summarization — replaces deepagents' stock summarizer
-          (dropped in ``build_deep_agent``) with our env-tuned thresholds.
+        Override to add/drop/reconfigure middleware. ``ToolErrorMiddleware`` is
+        force-guaranteed by ``build_deep_agent`` regardless, so it's safe to omit
+        here. The summarizer replaces deepagents' stock one with env-tuned
+        thresholds and offloads to ``backend`` (the shared per-conversation disk).
         """
         return [
-            ToolErrorMiddleware(),
-            build_summarization_middleware(model, backend),
+            self.tool_error_middleware(),
+            self.build_summarization_middleware(model, backend),
         ]
+
+
+    def _builtin_tools(self) -> List[Any]:
+        """Built-in tools every deep agent gets regardless of the client's MCP
+        tool selection. Bound to this run's user/agent/conversation (read from
+        ``self.context``), which is safe because each request builds its own
+        agent instance + compiled graph — nothing is shared across users. All
+        are skipped when there is no user context (e.g. registry warmup).
+
+        Two independent preference gates:
+
+        * ``remember`` (write to this (user, agent)'s persistent memory) is
+          attached whenever ``self.use_memory`` is on — the same flag that
+          mounts the ``/memories/`` tree it writes to. No point letting an agent
+          save into a memory that isn't mounted.
+        * ``search_past_conversations`` (cross-conversation semantic recall via
+          the bridge's pgvector index) is **opt-in** via ``search_past_convs``.
+        """
+        ctx = self.context or {}
+        user_id = ctx.get("user_id")
+        if not user_id:
+            return []
+        conversation_id = ctx.get("conversation_id")
+        tools: List[Any] = []
+        if self.use_memory:
+            tools.append(
+                build_remember_tool(
+                    user_id=user_id,
+                    agent_slug=self.name,
+                    conversation_id=conversation_id,
+                )
+            )
+        if ctx.get("search_past_convs"):
+            tools.append(
+                build_memory_search_tool(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                )
+            )
+        return tools
+
+
+    @staticmethod
+    def _ensure_tool_error_middleware(stack: Optional[Sequence[Any]]) -> list[Any]:
+        """Return ``stack`` with ``ToolErrorMiddleware`` guaranteed (prepended if
+        missing, never duplicated). Applied by ``build_deep_agent`` to the agent
+        and every sub-agent so a tool error degrades to a ToolMessage instead of
+        aborting — whatever middleware a concrete agent sets.
+        """
+        items = list(stack or [])
+        if not any(isinstance(m, ToolErrorMiddleware) for m in items):
+            items.insert(0, ToolErrorMiddleware())
+        return items
+
+
+    def _memory_system_prompt(self) -> str:
+        """The memory-usage block appended to the system prompt when memory is on.
+
+        Empty when ``self.use_memory`` is off, so a run with memory disabled is
+        never told it has a ``/memories/`` mount it doesn't actually have (the
+        cause of the agent claiming access to ``/memories/AGENTS.md`` with the
+        toggle off). Override to customise the wording.
+        """
+        return _MEMORY_SYSTEM_PROMPT if self.use_memory else ""
+
 
     def build_deep_agent(
         self,
@@ -409,24 +364,45 @@ class DeepAgent(BaseAgent, ABC):
         """
         backend = self._build_composite_backend()
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
+        stack = self._ensure_tool_error_middleware(stack)  # guarantee on the main agent
         exclude_stock_summarization(model if isinstance(model, str) else "")
+
+        # Append the memory-usage instructions only when memory is enabled, so the
+        # agent is told about /memories/ exactly when the mount + remember tool
+        # are actually present (keep memory wording out of the static prompt).
+        memory_prompt = self._memory_system_prompt()
+        if memory_prompt:
+            system_prompt = f"{system_prompt}\n\n{memory_prompt}" if system_prompt else memory_prompt
+
+        # Sub-agents get the same guarantee separately (parent middleware doesn't
+        # reach them); pre-compiled "runnable" specs pass through untouched.
+        augmented_subagents: SubAgentsT = subagents
+        if isinstance(subagents, (list, tuple)):
+            augmented_subagents = [
+                {**spec, "middleware": self._ensure_tool_error_middleware(spec.get("middleware"))}
+                if isinstance(spec, dict) and "runnable" not in spec
+                else spec
+                for spec in subagents
+            ]
+
         return create_deep_agent(
             model=model,
             name=self.name,
-            tools=self.tools,
+            tools=self.tools + self._builtin_tools(),
             system_prompt=system_prompt,
-            subagents=self._inject_tool_error_middleware(subagents),
+            subagents=augmented_subagents,
             interrupt_on=interrupt_on,
             middleware=stack,
             # Fixed filesystem — same mounts + permissions for every deep agent.
             memory=self.agent_md_paths,
             skills=self.skills_paths,
             backend=backend,
-            permissions=self._build_workspace_permissions(),
+            permissions=list(WORKSPACE_WRITE_DENY),
             context_schema=self.context,
             checkpointer=self.checkpointer,
             store=None,
         )
+
 
 
     # ---------------------------------------------------------------------
@@ -458,15 +434,23 @@ class DeepAgent(BaseAgent, ABC):
 
 
     def load_agent_md(self) -> list[str]:
-        """The shared cross-agent user memory file.
+        """This (user, agent)'s memory index file.
 
-        Resolved through the CompositeBackend ``/memories/`` route, which
-        maps to ``<user_root>/AGENT.md``. The provisioner seeds this file
-        from the standard template on first run; the agent edits it via
-        ``edit_file`` over time to accumulate durable user facts.
+        Resolved through the CompositeBackend ``/memories/`` route, which maps
+        to ``<user_root>/agents/<self.name>/memory/AGENTS.md``. The provisioner
+        seeds it from the standard template on first run; the ``remember`` tool
+        maintains it (one summary line per memory, pointing at ``entries/``)
+        and deepagents' MemoryMiddleware injects it as always-on context.
+
+        Returns ``[]`` when memory is disabled for this run (``self.use_memory``
+        False, threaded from the user's preference) so ``create_deep_agent``
+        receives no always-on memory file — paired with omitting the
+        ``/memories/`` mount in ``_build_composite_backend``.
         """
+        if not self.use_memory:
+            return []
         self._resolve_user_filesystem_root()  # ensure file exists
-        return ["/memories/AGENT.md"]
+        return ["/memories/AGENTS.md"]
 
 
     def register_subagents(self) -> SubAgentsT:
@@ -504,53 +488,41 @@ class DeepAgent(BaseAgent, ABC):
 
 
     # ---------------------------------------------------------------------
-    # Build
-    # ---------------------------------------------------------------------
-    def build(self) -> None:
-        """Invoke lifecycle hooks in order and assemble the agent."""
-        if self.agent is None:
-            logger.info("deep_agent_build_started", "Deep agent build started", agent_slug=self.name)
-            if self.checkpointer is None:
-                self.checkpointer = MemorySaver()
-            self.skills_paths   = self.load_skills()
-            self.memory         = self.load_memory()
-            self.agent_md_paths = self.load_agent_md()
-            self.sub_agents     = self.register_subagents()
-            self.agent          = self.register_agent()
-            logger.info(
-                "deep_agent_build_completed",
-                "Deep agent build completed",
-                agent_slug=self.name,
-                skills_count=len(self.skills_paths),
-                agent_md_count=len(self.agent_md_paths),
-                has_memory=self.memory is not None,
-                has_subagents=self.sub_agents is not None,
-            )
-
-
-    # ---------------------------------------------------------------------
-    # Public lifecycle helpers (used by ``astream`` and HITL resume)
+    # Build (used by ``astream`` and the HITL resume endpoint)
     # ---------------------------------------------------------------------
     async def ensure_built(self) -> None:
-        """Rehydrate the per-thread checkpointer from cache and build the agent.
+        """Rehydrate the per-thread checkpointer, then run the lifecycle hooks in
+        order and assemble the agent.
 
-        Idempotent: safe to call multiple times. The HITL ``/resume`` endpoint
-        invokes this directly so it can read ``self.compiled.get_state(...)``
-        before issuing the resume command; ``astream`` also calls it to share
-        the same cache-then-build path.
+        Idempotent: safe to call multiple times — once ``self.agent`` exists it
+        returns immediately. The HITL ``/resume`` endpoint invokes this directly
+        so it can read ``self.compiled.get_state(...)`` before issuing the resume
+        command; ``astream`` calls it too, sharing the same build path.
         """
         thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
         if self.checkpointer is None and thread_id:
             # Bind the process-wide durable saver (shared across all threads).
-            # Thread-less runs fall back to an ephemeral MemorySaver in build().
+            # Thread-less runs fall back to the ephemeral MemorySaver below.
             self.checkpointer = get_checkpointer()
-        self.build()
-
-
-    @property
-    def compiled(self) -> Any:
-        """The compiled runnable produced by ``build()``. ``None`` until built."""
-        return self.agent
+        if self.agent is not None:
+            return
+        logger.info("deep_agent_build_started", "Deep agent build started", agent_slug=self.name)
+        if self.checkpointer is None:
+            self.checkpointer = MemorySaver()
+        self.skills_paths   = self.load_skills()
+        self.memory         = self.load_memory()
+        self.agent_md_paths = self.load_agent_md()
+        self.sub_agents     = self.register_subagents()
+        self.agent          = self.register_agent()
+        logger.info(
+            "deep_agent_build_completed",
+            "Deep agent build completed",
+            agent_slug=self.name,
+            skills_count=len(self.skills_paths),
+            agent_md_count=len(self.agent_md_paths),
+            has_memory=self.memory is not None,
+            has_subagents=self.sub_agents is not None,
+        )
 
 
 

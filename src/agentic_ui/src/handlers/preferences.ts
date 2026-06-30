@@ -19,6 +19,8 @@ export type PreferencesHandlers = {
   handleToggleToolPreference: (tool: ToolMetadata) => Promise<void>;
   handleToggleSuggestionsEnabled: () => Promise<void>;
   handleToggleShowMessageTokenUsage: () => Promise<void>;
+  handleToggleSearchPastConvs: () => Promise<void>;
+  handleToggleUseMemory: () => Promise<void>;
   handleSelectVoiceModeVoice: (voice: RealtimeVoice) => Promise<void>;
   handleSelectVoiceModeLanguage: (language: VoiceModeLanguage) => Promise<void>;
 };
@@ -52,6 +54,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       prefersAgenticChat: false,
       suggestionsEnabled: true,
       showMessageTokenUsage: false,
+      searchPastConvs: false,
+      useMemory: true,
       voiceModeVoice: DEFAULT_REALTIME_VOICE,
       voiceModeLanguage: DEFAULT_VOICE_MODE_LANGUAGE,
     }),
@@ -124,6 +128,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
         }),
       },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      searchPastConvs: resolvedPreferences.searchPastConvs === true,
+      useMemory: resolvedPreferences.useMemory !== false,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
       showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
       voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
@@ -157,6 +163,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     const nextPrefs: UserPreferences = {
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      searchPastConvs: resolvedPreferences.searchPastConvs === true,
+      useMemory: resolvedPreferences.useMemory !== false,
       suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false),
       showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
       voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
@@ -189,8 +197,78 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     const nextPrefs: UserPreferences = {
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      searchPastConvs: resolvedPreferences.searchPastConvs === true,
+      useMemory: resolvedPreferences.useMemory !== false,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
       showMessageTokenUsage: !(resolvedPreferences.showMessageTokenUsage === true),
+      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
+      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
+    };
+    setUserPreferences(nextPrefs);
+    setIsSavingPreferences(true);
+    try {
+      const saved = await updateUserPreferences(userId, nextPrefs);
+      setUserPreferences(saved);
+      persistUIState();
+    } catch (error) {
+      setUserPreferences(prevPrefs);
+      toast({
+        title: 'Could not update preferences',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
+  const handleToggleSearchPastConvs = async () => {
+    if (!userId) {
+      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
+    const prevPrefs = resolvedPreferences;
+    const nextPrefs: UserPreferences = {
+      tools: resolvedPreferences.tools ?? { disabled: [] },
+      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
+      searchPastConvs: !(resolvedPreferences.searchPastConvs === true),
+      useMemory: resolvedPreferences.useMemory !== false,
+      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
+      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
+    };
+    setUserPreferences(nextPrefs);
+    setIsSavingPreferences(true);
+    try {
+      const saved = await updateUserPreferences(userId, nextPrefs);
+      setUserPreferences(saved);
+      persistUIState();
+    } catch (error) {
+      setUserPreferences(prevPrefs);
+      toast({
+        title: 'Could not update preferences',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
+  const handleToggleUseMemory = async () => {
+    if (!userId) {
+      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      return;
+    }
+    const prevPrefs = resolvedPreferences;
+    const nextPrefs: UserPreferences = {
+      tools: resolvedPreferences.tools ?? { disabled: [] },
+      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
+      searchPastConvs: resolvedPreferences.searchPastConvs === true,
+      useMemory: !(resolvedPreferences.useMemory !== false),
       voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
       voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
     };
@@ -224,6 +302,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     const nextPrefs: UserPreferences = {
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      searchPastConvs: resolvedPreferences.searchPastConvs === true,
+      useMemory: resolvedPreferences.useMemory !== false,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
       showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
       voiceModeVoice: nextVoice,
@@ -259,6 +339,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     const nextPrefs: UserPreferences = {
       tools: resolvedPreferences.tools ?? { disabled: [] },
       prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+      searchPastConvs: resolvedPreferences.searchPastConvs === true,
+      useMemory: resolvedPreferences.useMemory !== false,
       suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
       showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
       voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
@@ -289,6 +371,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
     handleToggleShowMessageTokenUsage,
+    handleToggleSearchPastConvs,
+    handleToggleUseMemory,
     handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage,
   };

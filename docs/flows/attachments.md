@@ -266,7 +266,7 @@ Beyond chat display, uploaded files are made available to **deep agents** at inf
 
 ### Input / output filesystem split
 
-`DeepAgent._build_composite_backend()` splits the per-conversation mount into two routes (`runtime/deep_agent.py`):
+The workspace builder (`runtime/filesystem/workspace.py`, `build_workspace_backend()` — `DeepAgent._build_composite_backend()` delegates to it) splits the per-conversation mount into two routes:
 
 | Route | Mode | Contents |
 | --- | --- | --- |
@@ -336,7 +336,7 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 | Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-token, public, images endpoints |
 | Upload persistence | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `init_attachments()`, `clone_branch_to_conversation()` |
 | Agent filesystem seeding (bridge) | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) | `build_agent_input_files_url()`, `serialise_message_with_images_for_agent(include_input_paths=...)` |
-| Input/output backend split | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `_build_composite_backend()`, `/conversation/input/` write-deny `FilesystemPermission` |
+| Input/output backend split + permissions | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `build_workspace_backend()` (mount routes), `WORKSPACE_WRITE_DENY` (`/conversation/input/` write-deny) — `DeepAgent._build_composite_backend()` delegates here |
 | Filesystem provisioner | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `seed_input_files()`, `delete_conversation_files()`, `conversation_input_root()`, `conversation_output_root()`, `ensure_user_agent_filesystem()` |
 | Input-files seed endpoint | [src/agents/main.py](../../src/agents/main.py) | `PUT /agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files` |
 | Share snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |

@@ -49,6 +49,8 @@ type PersonalizationTabProps = {
     preferencesSaving?: boolean;
     onToggleSuggestionsEnabled?: () => void;
     onToggleMessageTokenUsage?: () => void;
+    onToggleSearchPastConvs?: () => void;
+    onToggleUseMemory?: () => void;
     onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
     onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
 };
@@ -59,6 +61,8 @@ export default function PersonalizationTab({
     preferencesSaving = false,
     onToggleSuggestionsEnabled,
     onToggleMessageTokenUsage,
+    onToggleSearchPastConvs,
+    onToggleUseMemory,
     onSelectVoiceModeVoice,
     onSelectVoiceModeLanguage,
 }: PersonalizationTabProps) {
@@ -76,6 +80,8 @@ export default function PersonalizationTab({
     const displayPrefersAgentic = fmtBoolean(prefersAgentic);
     const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
     const showMessageTokenUsage = userPreferences?.showMessageTokenUsage === true;
+    const searchPastConvs = userPreferences?.searchPastConvs === true;
+    const useMemory = userPreferences?.useMemory !== false;
     const voiceModeVoice = normalizeRealtimeVoice(userPreferences?.voiceModeVoice);
     const selectedVoiceModeVoice =
         REALTIME_VOICES.find((voice) => voice.id === voiceModeVoice) ?? REALTIME_VOICES[0];
@@ -273,6 +279,76 @@ export default function PersonalizationTab({
                                             className={cn(
                                                 "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
                                                 showMessageTokenUsage ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                                            )}
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-5 py-4">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-foreground">
+                                        Search past conversations
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Let deep agents semantically search your earlier conversations to recall and reference relevant past messages.
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-3">
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={searchPastConvs}
+                                        aria-disabled={preferencesSaving}
+                                        onClick={() => !preferencesSaving && onToggleSearchPastConvs?.()}
+                                        className={cn(
+                                            "relative inline-flex h-7 w-12 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                            searchPastConvs
+                                                ? "border-primary/40 bg-primary/20"
+                                                : "border-transparent bg-background/80",
+                                            preferencesSaving && "cursor-not-allowed opacity-60"
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
+                                                searchPastConvs ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                                            )}
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-5 py-4">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-foreground">
+                                        Agent memory
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Let deep agents keep and use persistent memory about you across conversations. Turn off to run agents without their stored memory.
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-3">
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={useMemory}
+                                        aria-disabled={preferencesSaving}
+                                        onClick={() => !preferencesSaving && onToggleUseMemory?.()}
+                                        className={cn(
+                                            "relative inline-flex h-7 w-12 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                            useMemory
+                                                ? "border-primary/40 bg-primary/20"
+                                                : "border-transparent bg-background/80",
+                                            preferencesSaving && "cursor-not-allowed opacity-60"
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
+                                                useMemory ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
                                             )}
                                         />
                                     </button>

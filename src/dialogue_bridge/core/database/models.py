@@ -23,8 +23,15 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
+from pgvector.sqlalchemy import Vector
 
 from core.database.engine import Base, gen_uuid
+
+
+# Embedding vector size. Must match the agents service EMBEDDING_DIMENSIONS and
+# the dimension baked into migration 0010 (the pgvector column type is fixed at
+# DDL time — changing this requires a new migration + a full re-embed).
+EMBEDDING_DIMENSIONS = 1536
 
 
 # -------------------------------------------------------------------------------
@@ -99,6 +106,14 @@ class UserPreferencesTable(Base):
     prefers_agentic_chat = Column(Boolean, nullable=False, server_default="false")
     suggestions_enabled = Column(Boolean, nullable=False, server_default="true")
     show_message_token_usage = Column(Boolean, nullable=False, server_default="false")
+    # Opt-in (default false): when true, deep agents get the cross-conversation
+    # `search_past_conversations` memory tool. Threaded into the run config so the
+    # agent only attaches the tool when this user has enabled it.
+    search_past_convs = Column(Boolean, nullable=False, server_default="false")
+    # On by default: when false, deep agents skip their persistent memory (the
+    # AGENT.md `/memories/` mount + future memory folder) for the run. Threaded
+    # into the run config so memory can be disabled per user without code change.
+    use_memory = Column(Boolean, nullable=False, server_default="true")
     voice_mode_voice = Column(String, nullable=False, server_default="alloy")
     voice_mode_language = Column(String, nullable=False, server_default="english")
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -415,6 +430,35 @@ class ScheduledTaskTable(Base):
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class MessageEmbeddingTable(Base):
+    """One semantic embedding per message (pgvector), used to find the most
+    relevant past conversations for a query — the foundation for cross-chat
+    retrieval and memory.
+
+    Kept in its own table (not a column on ``messages``) so the hot message
+    table stays lean and embeddings can be regenerated/versioned independently.
+    Populated asynchronously by the embedding sweeper (``utils/embeddings.py``),
+    never on the request path. Rows are created only for finalized, non-error
+    messages with non-empty content whose conversation is **not** private;
+    deleting a message cascades to its embedding.
+
+    The HNSW cosine index lives in migration 0010 (hand-written — autogenerate
+    cannot represent the ``vector_cosine_ops`` opclass).
+    """
+    __tablename__ = "message_embeddings"
+
+    message_id = Column(
+        String,
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    embedding = Column(Vector(EMBEDDING_DIMENSIONS), nullable=False)
+    # The model that produced this vector, so a future model swap can re-embed
+    # selectively rather than wiping the whole table.
+    model = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
 # -------------------------------------------------------------------------------

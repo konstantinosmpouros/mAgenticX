@@ -85,6 +85,7 @@ services:
     environment:
       - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
       - RAG_BASE_URL=https://rag_service:8001
+      - DIALOGUE_BRIDGE_URL=https://dialogue_bridge:8002
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - INTERNAL_CA_CERT_PATH=/app/tls/ca.crt
       - INTERNAL_CLIENT_CERT_PATH=/app/tls/tls.crt
@@ -140,7 +141,7 @@ services:
 
 
   chat_postgres: # 5432
-    image: postgres:16.3
+    image: pgvector/pgvector:pg16
     container_name: chat_postgres
     entrypoint: ["/bin/sh", "/var/lib/postgresql/tls/entrypoint-postgres-tls.sh"]
     command: ["postgres"]

@@ -161,6 +161,16 @@ server {
     proxy_send_timeout 3600s;
   }
 
+  # Service-to-service-only endpoints. The bridge guards these with the internal
+  # proxy secret, but nginx injects that same secret on browser traffic — so we
+  # MUST block the path at the edge or a browser could reach it. The agents
+  # service calls the bridge directly on the backend network, never through
+  # nginx, so denying here keeps /v1/internal/* server-to-server only.
+  # (^~ takes priority over the generic /api/ prefix below.)
+  location ^~ /api/v1/internal/ {
+    return 404;
+  }
+
   location /api/ {
     rewrite ^/api/(.*) /$1 break;
     proxy_pass $bff;

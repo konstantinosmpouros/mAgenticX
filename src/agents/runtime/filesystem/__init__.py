@@ -9,7 +9,7 @@ Re-exports the public surface so the bridge / agents-service / runtime can
 import from ``runtime.filesystem`` rather than reaching into ``provisioner``
 directly.
 """
-from runtime.filesystem.agent_md_template import AGENT_MD_TEMPLATE
+from runtime.filesystem.agent_md_template import AGENTS_MD_TEMPLATE
 from runtime.filesystem.provisioner import (
     agent_root,
     conversation_input_root,
@@ -19,15 +19,37 @@ from runtime.filesystem.provisioner import (
     disable_skill,
     ensure_user_agent_filesystem,
     list_enabled_skills,
+    memory_entries_root,
+    memory_index_path,
     memory_root,
     seed_input_files,
     skills_root,
     user_root,
 )
+from runtime.filesystem.memory import (
+    MEMORIES_HEADER,
+    delete_memory,
+    index_line,
+    index_line_pattern,
+    list_memories,
+    read_memory,
+)
+from runtime.filesystem.workspace import (
+    WORKSPACE_WRITE_DENY,
+    build_workspace_backend,
+)
 
 __all__ = [
-    "AGENT_MD_TEMPLATE",
+    "AGENTS_MD_TEMPLATE",
+    "MEMORIES_HEADER",
+    "WORKSPACE_WRITE_DENY",
     "agent_root",
+    "build_workspace_backend",
+    "delete_memory",
+    "index_line",
+    "index_line_pattern",
+    "list_memories",
+    "read_memory",
     "conversation_input_root",
     "conversation_output_root",
     "conversation_root",
@@ -35,6 +57,8 @@ __all__ = [
     "disable_skill",
     "ensure_user_agent_filesystem",
     "list_enabled_skills",
+    "memory_entries_root",
+    "memory_index_path",
     "memory_root",
     "seed_input_files",
     "skills_root",

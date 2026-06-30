@@ -35,6 +35,8 @@ async def get_user_preferences(
         "prefers_agentic_chat": bool(row.prefers_agentic_chat),
         "suggestions_enabled": bool(row.suggestions_enabled),
         "show_message_token_usage": bool(row.show_message_token_usage),
+        "search_past_convs": bool(row.search_past_convs),
+        "use_memory": bool(row.use_memory),
         "voice_mode_voice": normalize_realtime_voice(row.voice_mode_voice),
         "voice_mode_language": normalize_voice_mode_language(row.voice_mode_language),
     }
@@ -63,6 +65,8 @@ async def upsert_user_preferences(
         existing.prefers_agentic_chat = bool(payload.prefersAgenticChat)
         existing.suggestions_enabled = bool(payload.suggestionsEnabled)
         existing.show_message_token_usage = bool(payload.showMessageTokenUsage)
+        existing.search_past_convs = bool(payload.searchPastConvs)
+        existing.use_memory = bool(payload.useMemory)
         existing.voice_mode_voice = voice_mode_voice
         existing.voice_mode_language = voice_mode_language
     else:
@@ -73,6 +77,8 @@ async def upsert_user_preferences(
                 prefers_agentic_chat=bool(payload.prefersAgenticChat),
                 suggestions_enabled=bool(payload.suggestionsEnabled),
                 show_message_token_usage=bool(payload.showMessageTokenUsage),
+                search_past_convs=bool(payload.searchPastConvs),
+                use_memory=bool(payload.useMemory),
                 voice_mode_voice=voice_mode_voice,
                 voice_mode_language=voice_mode_language,
             )
@@ -93,6 +99,8 @@ async def upsert_user_preferences(
         prefersAgenticChat=bool(payload.prefersAgenticChat),
         suggestionsEnabled=bool(payload.suggestionsEnabled),
         showMessageTokenUsage=bool(payload.showMessageTokenUsage),
+        searchPastConvs=bool(payload.searchPastConvs),
+        useMemory=bool(payload.useMemory),
         voiceModeVoice=voice_mode_voice,
         voiceModeLanguage=voice_mode_language,
     )

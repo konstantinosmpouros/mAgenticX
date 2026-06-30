@@ -29,8 +29,10 @@ class OmniAgent(DeepAgent):
     capabilities.
 
     Demonstrates the full ``DeepAgent`` lifecycle:
-    - ``instructions``         — static system prompt (class attribute)
-    - ``/memories/AGENT.md``   — durable cross-agent user memory via CompositeBackend
+    - ``instructions``         — static system prompt (class attribute); the base
+                                 appends the memory block when ``use_memory`` is on
+    - ``/memories/AGENTS.md``  — per-(user, agent) memory index + ``entries/``,
+                                 mounted only when ``use_memory`` is on
     - ``/skills/``             — per-(user, agent) assigned skills, populated from
                                  the user's pool via the Skills tab Manage view
     - ``register_subagents()`` — declares researcher + writer sub-agents
@@ -44,8 +46,9 @@ class OmniAgent(DeepAgent):
     description = "General-purpose agent for research, writing, and file management"
     icon = "BrainCircuit"
 
-    # Replaces the bundled <impl_dir>/AGENT.md template; loaded via
-    # create_deep_agent(system_prompt=...) below.
+    # Static system prompt, loaded via create_deep_agent(system_prompt=...). The
+    # base appends memory-usage instructions when use_memory is on — this prompt
+    # itself stays memory-free so a memory-off run never advertises /memories/.
     instructions = OMNI_INSTRUCTIONS
 
     # ------------------------------------------------------------------

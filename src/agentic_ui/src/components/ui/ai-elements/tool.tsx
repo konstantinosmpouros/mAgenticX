@@ -15,8 +15,9 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
     <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
       Parameters
     </h4>
-    <div className="rounded-md bg-muted/50">
+    <div className="min-w-0 rounded-md bg-muted/50">
       <CodeBlock
+        className="[&_pre]:whitespace-pre-wrap [&_pre]:break-words"
         code={typeof input === "string" ? input : JSON.stringify(input, null, 2)}
         language="json"
       />
@@ -45,10 +46,20 @@ export const ToolOutput = ({
 
   if (typeof output === "object" && !isValidElement(output)) {
     Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+      <CodeBlock
+        className="[&_pre]:whitespace-pre-wrap [&_pre]:break-words"
+        code={JSON.stringify(output, null, 2)}
+        language="json"
+      />
     );
   } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
+    Output = (
+      <CodeBlock
+        className="[&_pre]:whitespace-pre-wrap [&_pre]:break-words"
+        code={output}
+        language="json"
+      />
+    );
   }
 
   return (
@@ -58,7 +69,7 @@ export const ToolOutput = ({
       </h4>
       <div
         className={cn(
-          "overflow-x-auto rounded-md text-xs [&_table]:w-full",
+          "min-w-0 overflow-x-auto rounded-md text-xs [&_table]:w-full",
           errorText
             ? "bg-destructive/10 text-destructive"
             : "bg-muted/50 text-foreground"

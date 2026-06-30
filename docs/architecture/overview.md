@@ -13,7 +13,7 @@ This document describes the full mAgenticX platform: every service, its port, it
 | agents | `agents` | **8003** | FastAPI — LangGraph + DeepAgents runtime |
 | rag_service | `rag_service` | **8001** | FastAPI — Chroma vector retrieval + DuckDB SQL |
 | vectordb | `vectordb` | **8000** | ChromaDB 0.6.3 — vector store |
-| chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16.3 — relational store (`chat_db` + `agent_runtime` DBs) |
+| chat_postgres | `chat_postgres` | **5432** | PostgreSQL 16 + **pgvector** (`pgvector/pgvector:pg16`) — relational store (`chat_db` + `agent_runtime` DBs); pgvector backs per-message conversation embeddings |
 | redis | `redis` | **6379** | Redis 7.4 — per-run Redis Streams as the inference event log |
 | mcp_gateway | `mcp_gateway` | **8005** | Docker MCP Gateway — optional, via `docker-compose-mcp.yaml` |
 | vault | `vault` | **8004** | HashiCorp Vault 1.21 — optional, via `docker-compose-hashicorp.yaml` |
@@ -151,6 +151,8 @@ All routes are mounted under the `/v1/` prefix by FastAPI's app router.
 
 All backend-to-backend HTTP calls require the `X-Internal-Proxy-Secret` header (value from `TRUSTED_PROXY_SECRET` env var). The `require_internal_caller` FastAPI dependency validates this on every internal endpoint. nginx injects the header automatically for browser → bridge traffic. The bridge injects it manually when calling the agents service.
 
+There is one **reverse hop**: the agents service calls the bridge's internal `POST /v1/internal/memory/search` for the `search_past_conversations` agent tool (the bridge owns the pgvector index — see [conversation-embeddings](../flows/conversation-embeddings.md)). Because nginx injects the proxy secret on *browser* traffic too, that endpoint is guarded by `require_internal_caller` **and** explicitly denied at the nginx edge (`location ^~ /api/v1/internal/ → 404`), so it is reachable only service-to-service on the `backend` network — never from a browser. The agents service authenticates with its existing internal client cert + proxy secret (no new credentials).
+
 In production this application-layer credential is backed by **transport-layer mutual TLS** on the three HTTP service hops — `agentic_ui → dialogue_bridge`, `dialogue_bridge → agents`, and `agents → rag_service`. Each server requires a client certificate signed by the internal CA (`entrypoint-tls.sh` adds `--ssl-cert-reqs 2 --ssl-ca-certs ca.crt` to uvicorn when `REQUIRE_MTLS` is true, default `true`); each caller presents its own service cert (nginx `proxy_ssl_certificate`, Python services via httpx `cert=get_httpx_client_cert()`). So a peer is authenticated cryptographically by its cert, not only by the shared header. `chat_postgres`, `redis`, and `vault` stay password/token-over-verified-TLS (not mTLS); `agents → mcp_gateway` remains plaintext. `REQUIRE_MTLS=false` is the escape hatch and the zero-downtime rollout lever (deploy cert-presenting clients first, then flip enforcement on).
 
 ### Vault Integration
@@ -235,9 +237,9 @@ ChromaDB runs as a standalone HTTP server on port 8000. `rag_service` connects t
 
 ### chat_postgres (PostgreSQL)
 
-PostgreSQL 16.3 runs **two databases on the same instance**:
+The image is **`pgvector/pgvector:pg16`** (official Postgres 16 + the `vector` extension; same PG16 base, so the data volume is unaffected by the swap from a stock `postgres:16` image). PostgreSQL runs **two databases on the same instance**:
 
-- **`chat_db`** — all of `dialogue_bridge`'s relational data: users, sessions, conversations, messages (including `streaming_*` columns that carry the inference-run lifecycle, plus the `checkpoint_thread_id` / `checkpoint_id` lineage columns that map a branch onto its durable checkpoint), attachments, blobs, sharing metadata, and reports. The bridge connects via SQLAlchemy (async) with `asyncpg`. The full schema is documented in `docs/architecture/database-schema.md`.
+- **`chat_db`** — all of `dialogue_bridge`'s relational data: users, sessions, conversations, messages (including `streaming_*` columns that carry the inference-run lifecycle, plus the `checkpoint_thread_id` / `checkpoint_id` lineage columns that map a branch onto its durable checkpoint), attachments, blobs, sharing metadata, reports, and the **`message_embeddings`** pgvector table (one embedding per message, powering semantic "most relevant conversations" search — see [conversation-embeddings](../flows/conversation-embeddings.md)). The bridge connects via SQLAlchemy (async) with `asyncpg`. The full schema is documented in `docs/architecture/database-schema.md`.
 - **`agent_runtime`** — owned by the **agents** service, holding the LangGraph `AsyncPostgresSaver` checkpoint tables (managed entirely by `langgraph-checkpoint-postgres` via `.setup()`, advisory-locked, at agents-service startup). The agents service connects with `psycopg` over a `psycopg_pool.AsyncConnectionPool`. Threads persist indefinitely — no TTL — and are reaped only when a conversation is deleted.
 
 The `agent_runtime` DB is created automatically on a fresh volume (dev: `chat_postgres` mounts `./postgres-init/create-agent-runtime.sql`); an **existing** volume needs a one-time manual `createdb -U admin agent_runtime` (dev) / `CREATE DATABASE agent_runtime` (prod) before the agents service can start.
@@ -363,6 +365,8 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | --- | --- | --- |
 | `OPENAI_API_KEY` | agents, rag_service | LLM + embedding API access |
 | `OPENAI_ORG` / `OPENAI_PROJ` | agents, rag_service | OpenAI org/project scope |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | agents | Conversation-embedding model + dims served by `POST /embed` (default `text-embedding-3-small` / `1536`) |
+| `EMBEDDINGS_ENABLED` | dialogue_bridge | Master switch for the embedding sweeper + semantic search (default `true`). Other `EMBEDDINGS_*` knobs tune batch size, sweep cadence, and result limits. |
 | `ANTHROPIC_API_KEY` | agents | Claude model access (optional) |
 | `DATABASE_URL` | dialogue_bridge | async PostgreSQL connection string |
 | `DATABASE_POOL_SIZE` | dialogue_bridge | SQLAlchemy pool size |

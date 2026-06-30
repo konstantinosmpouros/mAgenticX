@@ -17,6 +17,7 @@ erDiagram
     conversations }o--o| messages : "active_assistant_message_id"
     messages ||--o{ messages : "parent_message_id (branching)"
     messages ||--o{ attachments : "has"
+    messages ||--o| message_embeddings : "embedded as"
     messages }o--o| conversations : "forked_message_id"
     conversations }o--o| conversations : "forked_parent_id"
     attachments ||--o| blobs : "stored in"
@@ -120,6 +121,8 @@ erDiagram
         json tools
         boolean prefers_agentic_chat
         boolean suggestions_enabled
+        boolean search_past_convs
+        boolean use_memory
         string voice_mode_voice
         string voice_mode_language
         datetime updated_at
@@ -150,6 +153,13 @@ erDiagram
         datetime expires_at
         datetime created_at
         datetime updated_at
+    }
+
+    message_embeddings {
+        string message_id PK
+        vector embedding
+        string model
+        datetime created_at
     }
 ```
 
@@ -212,6 +222,8 @@ One row per user, created on first access. The `tools` JSON column stores enable
 | `tools` | `JSON` | No | `{}` | Tool preference dict — `{disabled: [{serverId, toolName}]}` |
 | `prefers_agentic_chat` | `Boolean` | No | `false` | Whether the user prefers agentic (tool-enabled) chat by default |
 | `suggestions_enabled` | `Boolean` | No | `true` | Whether the UI shows suggested follow-up questions |
+| `search_past_convs` | `Boolean` | No | `false` | Opt-in: when true, deep agents get the `search_past_conversations` memory tool. Threaded into the run config so the agent attaches the tool only when enabled. Migration `0011`. |
+| `use_memory` | `Boolean` | No | `true` | On by default: gates a deep agent's persistent memory (AGENT.md `/memories/` mount + future memory folder). Threaded into the run config as `context.use_memory`; the agent omits its memory wiring when false. Migration `0012`. |
 | `voice_mode_voice` | `String` | No | `"alloy"` | Selected TTS voice |
 | `voice_mode_language` | `String` | No | `"english"` | Selected voice mode language |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
@@ -415,6 +427,21 @@ A user-owned recurring or one-off agent job the bridge's in-process scheduler fi
 
 ---
 
+### `message_embeddings`
+
+One semantic embedding per message (**pgvector**), powering "most relevant conversations for a query" retrieval — the foundation for cross-chat search and memory. Kept in its own table (not a column on `messages`) so the hot message table stays lean and embeddings can be regenerated/versioned independently. Rows are written **only** by the bridge's background embedding sweeper (`utils/embeddings.py`), off the request path — never by the inference flow. A row exists only for a finalized, non-error message with non-empty content whose conversation is **not** private. Requires the `vector` extension (the Postgres image is `pgvector/pgvector:pg16`). Added in migration `0010`. See [docs/flows/conversation-embeddings.md](../flows/conversation-embeddings.md).
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `message_id` | `String` | No | — | **PK**, FK → `messages.id` CASCADE — one embedding per message; deleting the message drops the embedding |
+| `embedding` | `vector(1536)` | No | — | The message-content embedding. 1536 dims = `text-embedding-3-small`, kept ≤ 2000 so HNSW indexing is allowed. Must match agents `EMBEDDING_DIMENSIONS` + `MessageEmbeddingTable.EMBEDDING_DIMENSIONS`. |
+| `model` | `String` | No | — | The embedding model that produced the vector, so a future model swap can re-embed selectively rather than wiping the table |
+| `created_at` | `DateTime` | No | `func.now()` | When embedded (immutable — messages are append-only, so a vector is written once) |
+
+**HNSW index.** `ix_message_embeddings_hnsw` is a cosine HNSW index (`USING hnsw (embedding vector_cosine_ops)`) created by hand in the migration — autogenerate cannot represent the vector opclass. It serves the `embedding <=> :query` KNN ordering used by semantic search directly.
+
+---
+
 ## Constraint and Index Reference
 
 ### Partial Indexes
@@ -424,6 +451,12 @@ A user-owned recurring or one-off agent job the bridge's in-process scheduler fi
 | `uq_messages_one_active_stream_per_conversation` | `messages` | `conversation_id` | `streaming_status IN ('queued', 'running', 'cancelling')` | At most one active streaming AI message per conversation (UNIQUE) |
 | `ix_messages_streaming_status` | `messages` | `streaming_status` | `streaming_status IS NOT NULL` | Fast filter on the run-list endpoint without scanning user/non-streaming rows |
 | `ix_scheduled_tasks_due` | `scheduled_tasks` | `next_run_at` | `status = 'active'` | The scheduler's hot poll for due tasks; only firable rows are indexed |
+
+### Vector Indexes
+
+| Index name | Table | Type | Column / opclass | Purpose |
+| --- | --- | --- | --- | --- |
+| `ix_message_embeddings_hnsw` | `message_embeddings` | HNSW | `embedding vector_cosine_ops` | Approximate cosine KNN for semantic conversation search (`ORDER BY embedding <=> :query`). Hand-written in migration `0010` — autogenerate can't emit the opclass. |
 
 ### Named Unique Constraints
 
@@ -454,6 +487,7 @@ A user-owned recurring or one-off agent job the bridge's in-process scheduler fi
 | `conversations.active_assistant_message_id` | `messages.id` | SET NULL |
 | `messages.conversation_id` | `conversations.id` | CASCADE |
 | `messages.parent_message_id` | `messages.id` | SET NULL |
+| `message_embeddings.message_id` | `messages.id` | CASCADE |
 | `messages.agent_id` | `agents.id` | SET NULL — deleting an agent never deletes message history; `agent_name` preserves the label |
 | `messages.scheduled_task_id` | `scheduled_tasks.id` | SET NULL — deleting a task never deletes the runs/results it produced |
 | `conversation_reports.conversation_id` | `conversations.id` | CASCADE |

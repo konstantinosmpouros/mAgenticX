@@ -15,6 +15,7 @@ from fastapi_pagination import add_pagination
 from core.settings import settings
 from utils.inference_runs import cleanup_orphaned_inference_runs
 from utils.scheduled_tasks import scheduler
+from utils.embeddings import run_embedding_sweeper
 from observability import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -37,7 +38,9 @@ from router import (
     voice_router,
     search_router,
     skills_router,
+    memories_router,
     scheduled_tasks_router,
+    internal_memory_router,
 )
 
 configure_logging()
@@ -98,8 +101,17 @@ async def lifespan(app: FastAPI):
     # runs are reaped (a restart-interrupted scheduled run is now 'failed', so the
     # next fire's skip-if-running check sees it correctly).
     scheduler.start()
+    # Background embedding sweeper: backfills + keeps message embeddings current
+    # off the request path (no-op if EMBEDDINGS_ENABLED is false).
+    embedding_stop_event = asyncio.Event()
+    embedding_task = asyncio.create_task(run_embedding_sweeper(embedding_stop_event))
     yield
+    embedding_stop_event.set()
     await scheduler.stop()
+    try:
+        await asyncio.wait_for(embedding_task, timeout=10)
+    except asyncio.TimeoutError:
+        embedding_task.cancel()
     logger.info("service_shutdown", "Dialogue bridge shutdown completed")
 
 
@@ -204,7 +216,20 @@ app.include_router(
     tags=["Skills"],
 )
 app.include_router(
+    memories_router,
+    prefix=f"/v1/memories",
+    tags=["Memories"],
+)
+app.include_router(
     scheduled_tasks_router,
     prefix=f"/v1/scheduled-tasks",
     tags=["Scheduled Tasks"],
+)
+# Service-to-service only. Guarded by require_internal_caller AND denied at the
+# nginx edge (/api/v1/internal/) — reachable only by the agents service on the
+# backend network. Backs the agent's search_past_conversations tool.
+app.include_router(
+    internal_memory_router,
+    prefix=f"/v1/internal",
+    tags=["Internal"],
 )

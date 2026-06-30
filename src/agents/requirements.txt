@@ -20,5 +20,6 @@ python-multipart==0.0.26
 mcp==1.23.0
 langchain-mcp-adapters==0.1.13
 deepagents==0.6.10
+PyYAML==6.0.3  # directly used by the `remember` tool to (de)serialize memory entry yml
 langchain-text-splitters>=1.1.2 # not directly required, pinned by Snyk to avoid a vulnerability
 starlette==0.49.3 # pinned to a newer compatible release for FastAPI 0.135.x

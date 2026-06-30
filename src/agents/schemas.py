@@ -59,6 +59,20 @@ class SeedInputFilesRequest(BaseModel):
     files: List[InputFileIn]
 
 
+class EmbedRequest(BaseModel):
+    """Bridge → agents: a batch of texts to embed. The bridge has no OpenAI key
+    of its own, so it proxies embedding through this service (same pattern as
+    realtime voice). Order is preserved: response.embeddings[i] ↔ texts[i]."""
+    texts: List[str]
+
+
+class EmbedResponse(BaseModel):
+    """One embedding vector per input text, plus the model + dimensions used."""
+    embeddings: List[List[float]]
+    model: str
+    dimensions: int
+
+
 class SeedInputFilesResponse(BaseModel):
     """Virtual paths the agent can read (``/conversation/input/<name>``)."""
     written: List[str]
@@ -233,6 +247,26 @@ class UserSkillDetail(BaseModel):
     category: str = ""
     content: str = ""
     files: List[SkillFile] = Field(default_factory=list)
+
+
+class MemoryEntry(BaseModel):
+    """One saved memory's metadata (no body) — a row in the Memory inspector list.
+
+    Mirrors the `entries/<name>.yml` fields the `remember` tool writes, minus
+    ``content``. ``source_conversation_id`` is the provenance pointer.
+    """
+
+    name: str
+    summary: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    source_conversation_id: Optional[str] = None
+
+
+class MemoryDetail(MemoryEntry):
+    """A saved memory with its full ``content`` — the inspector's click-to-preview."""
+
+    content: str = ""
 
 
 @dataclass(frozen=True)

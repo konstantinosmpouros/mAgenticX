@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { HelpCircle, Keyboard, LogOut, Palette, ShieldCheck, Sparkles, User } from "lucide-react";
+import { Brain, HelpCircle, Keyboard, LogOut, Palette, ShieldCheck, Sparkles, User } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -14,6 +14,7 @@ export const NAV_ITEMS = [
     { id: "archived", label: "Data Controls", hint: "History and archive" },
     { id: "mcp", label: "MCP Servers", hint: "MCP tools and servers" },
     { id: "skills", label: "Skills", hint: "Available skill library" },
+    { id: "memories", label: "Memories", hint: "What agents remember about you" },
     { id: "shortcuts", label: "Shortcuts", hint: "Keyboard commands" },
     { id: "help", label: "Help", hint: "Docs and support" },
 ] as const;
@@ -128,6 +129,8 @@ export default function ProfileSidebar({ normalizedActiveTab, setActiveTab, onLo
                                     <McpIcon size={mobileProfileNav ? 17 : 20} variant={mcpVariant} />
                                 ) : item.id === "skills" ? (
                                     <Sparkles size={iconSize} />
+                                ) : item.id === "memories" ? (
+                                    <Brain size={iconSize} />
                                 ) : item.id === "shortcuts" ? (
                                     <Keyboard size={iconSize} />
                                 ) : (

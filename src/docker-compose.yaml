@@ -50,6 +50,9 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_BASE_URL=http://rag_service:8001
+      # Reverse hop for the memory-search tool (agent → bridge). HTTP in local
+      # dev (the bridge serves plaintext here); prod uses https (see denis compose).
+      - DIALOGUE_BRIDGE_URL=http://dialogue_bridge:8002
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
       - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
@@ -77,7 +80,7 @@ services:
 
 
   chat_postgres: # 5432
-    image: postgres:16.3
+    image: pgvector/pgvector:pg16  # Postgres 16 + pgvector (per-conversation message embeddings)
     container_name: chat_postgres
     environment:
       POSTGRES_USER: admin
