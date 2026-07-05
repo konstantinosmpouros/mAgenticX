@@ -536,13 +536,21 @@ export function ChatInputBar(props: ChatInputBarProps) {
             layout={animateWrapperPosition ? "position" : false}
             transition={{ layout: { duration: rm ? 0 : 0.42, ease: [0.22, 1, 0.36, 1] } }}
             transformTemplate={(_, generatedTransform) => {
-                // When the wrapper is in its centered (absolute top-[35%]) slot, we
-                // need translate(-50%, -50%) to truly center it. We can't bake this
-                // into the className because Framer Motion's layout animation writes
-                // to the same `transform` property and would override Tailwind's
-                // translate during the animation, snapping the bar off-center at the
-                // end. Composing both translations here keeps them in sync.
-                const centerOffset = isCenteredPosition ? "translate(-50%, -50%)" : "";
+                // Centered (absolute top-[35%]) slot. Once the wrapper height has been
+                // measured, `emptyWrapperStyle` pins the TOP edge via
+                // `top: calc(35% - centerAnchorOffset)`, so we translate on X ONLY —
+                // a -50% on Y would anchor the box by its vertical center and make it
+                // expand both up and down as the textarea auto-grows. The box must
+                // only ever grow downward from a fixed top. Before that first
+                // measurement (emptyWrapperStyle undefined) we fall back to a full
+                // translate(-50%, -50%) so the initial paint is already centered at
+                // 35% — both branches land the box in the same spot, so the switch
+                // is jump-free. We compose translateX here (not in the className)
+                // because Framer Motion's layout animation writes to `transform` and
+                // would otherwise clobber a Tailwind translate mid-animation.
+                const centerOffset = isCenteredPosition
+                    ? (emptyWrapperStyle ? "translateX(-50%)" : "translate(-50%, -50%)")
+                    : "";
                 const generated = generatedTransform || "";
                 return `${centerOffset} ${generated}`.trim();
             }}
@@ -557,7 +565,11 @@ export function ChatInputBar(props: ChatInputBarProps) {
                     width: "100%",
                     display: "flex",
                     flexDirection: "column",
-                    justifyContent: "flex-end",
+                    // Sticky-bottom bar grows/shrinks from the bottom (flex-end) so the
+                    // persona above it doesn't jump during the chat<->voice swap. The
+                    // centered empty-state instead top-anchors (flex-start) so the
+                    // height animation reveals new textarea lines DOWNWARD, never up.
+                    justifyContent: isCenteredPosition ? "flex-start" : "flex-end",
                 }}
             >
             <div ref={innerMeasureRef} style={{ width: "100%" }}>
@@ -678,7 +690,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                         style={{ transformOrigin: "center bottom" }}
                     >
                         {isMessagesEmpty && (
-                            <div className="text-center py-16">
+                            <div className="text-center py-8 md:py-16 pointer-events-none">
                                 {/* Random welcome quote */}
                                 <div className="min-h-[2.75rem] md:min-h-[3rem]">
                                     <AnimatePresence mode="wait" initial={false}>

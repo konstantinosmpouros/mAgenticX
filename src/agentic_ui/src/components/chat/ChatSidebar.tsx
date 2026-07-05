@@ -10,6 +10,7 @@ import {
   Trash2,
   Pencil,
   ArrowRight,
+  ChevronsUpDown,
 } from "lucide-react";
 import { PiWaveformBold } from "react-icons/pi";
 import { MdOutlineSchedule } from "react-icons/md";
@@ -121,7 +122,14 @@ export default function ChatSidebar({
   const rawProfileName =
     userProfile?.displayName ?? userProfile?.fullName ?? userProfile?.username ?? "";
   const profileName = rawProfileName.trim() || "Profile";
-  const profileInitial = profileName.charAt(0).toUpperCase() || "P";
+  // Two-letter avatar initials (e.g. "kostas mpouros" -> "km"): first letters of
+  // the first two name parts, or the first two characters of a single-token
+  // name. Case is preserved from the name as entered, matching the design.
+  const nameParts = profileName.split(/\s+/).filter(Boolean);
+  const profileInitials =
+    (nameParts.length >= 2
+      ? nameParts[0].charAt(0) + nameParts[1].charAt(0)
+      : profileName.slice(0, 2)) || "P";
   const profileEmail = (userProfile?.email ?? "Open profile").trim();
   const avatarUrl = userProfile?.avatarUrl || null;
   const [openActionMenuId, setOpenActionMenuId] = React.useState<string | null>(null);
@@ -693,10 +701,12 @@ export default function ChatSidebar({
               size="lg"
               onClick={handleOpenProfile}
               className={cn(
-                "gap-3 rounded-lg bg-transparent px-3 py-3 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
-                // Collapsed: drop to the shared px-1.5 lead so the avatar lands at the
-                // same centered x as the other icons (see SIDEBAR_WIDTH_ICON).
-                "group-data-[collapsible=icon]:!h-12 group-data-[collapsible=icon]:px-1.5",
+                // Frozen by construction, matching the Search/New chat/Voice/Tasks rows:
+                // a constant px-1.5 lead keeps the avatar pinned at the same x in both
+                // states (centered when collapsed, see SIDEBAR_WIDTH_ICON), so toggling
+                // the rail never shifts it.
+                "!flex items-center gap-1 rounded-lg bg-transparent px-1.5 py-2 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                "group-data-[collapsible=icon]:!h-12",
                 "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent"
               )}
               tooltip={{
@@ -708,17 +718,18 @@ export default function ChatSidebar({
                 ),
               }}
             >
-              <div className="sidebar-icon-badge flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-primary">
+              <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-sm font-semibold">{profileInitial}</span>
+                  <span className="text-sm font-semibold">{profileInitials}</span>
                 )}
               </div>
               <div className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
                 <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
                 <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
               </div>
+              <ChevronsUpDown className="ml-auto h-4 w-4 flex-shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

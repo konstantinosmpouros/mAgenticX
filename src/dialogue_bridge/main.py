@@ -24,6 +24,7 @@ from observability import (
 )
 from slowapi.middleware import SlowAPIMiddleware
 from core.security.rate_limit import limiter
+from core.security.user_rate_limit import UserRateLimitMiddleware
 
 from router import (
     auth_router,
@@ -142,6 +143,7 @@ app.add_middleware(
     max_age=settings.cors.max_age_seconds,
 )
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(UserRateLimitMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 
 

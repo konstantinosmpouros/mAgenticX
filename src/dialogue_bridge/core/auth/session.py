@@ -79,6 +79,86 @@ class LogoutDenylist:
 
 logout_denylist = LogoutDenylist()
 
+
+_REFRESH_CUR_PREFIX = "auth:refresh:cur:sid:"
+_REFRESH_USED_PREFIX = "auth:refresh:used:"
+
+
+class RefreshTokenGuard:
+    """Redis-backed refresh-token rotation + reuse detection.
+
+    Every refresh rotates the refresh token (new ``jti``); this tracks the single
+    currently-valid ``jti`` per session id (``sid``). Presenting an OLD refresh
+    ``jti`` — one already rotated away and past the grace window — means the token
+    was replayed (e.g. a stolen copy used after the legitimate client refreshed),
+    so the caller denylists the whole ``sid`` and kills the session. A short grace
+    window keeps the just-rotated-from ``jti`` valid briefly, so a legitimate
+    concurrent/retried refresh is never misread as reuse. Every operation fails
+    OPEN on a Redis error (same stance as the logout denylist) — it degrades to
+    "no reuse detection", never to a lockout.
+    """
+
+    def __init__(self) -> None:
+        self._client: aioredis.Redis | None = None
+        self._lock = asyncio.Lock()
+
+    async def _get_client(self) -> aioredis.Redis:
+        if self._client is not None:
+            return self._client
+        async with self._lock:
+            if self._client is None:
+                self._client = create_redis_client()
+        return self._client
+
+    async def register(self, sid: str, jti: str, ttl_seconds: int) -> None:
+        """Record ``jti`` as the current valid refresh token for ``sid`` (at login)."""
+        if not sid or not jti or ttl_seconds <= 0:
+            return
+        try:
+            client = await self._get_client()
+            await client.setex(f"{_REFRESH_CUR_PREFIX}{sid}", ttl_seconds, jti)
+        except Exception:
+            logger.warning("refresh_guard_register_failed", "Could not record refresh jti (fail-open)")
+
+    async def status(self, sid: str, presented_jti: str | None) -> str:
+        """Classify a presented refresh jti: ``ok`` | ``reuse`` | ``unknown`` (fail-open)."""
+        if not sid or not presented_jti:
+            return "unknown"
+        try:
+            client = await self._get_client()
+            current = await client.get(f"{_REFRESH_CUR_PREFIX}{sid}")
+            if current is None:
+                # No record (first refresh after deploy, key TTL-expired, or Redis
+                # was flushed). Cannot prove reuse → fail open.
+                return "unknown"
+            if presented_jti == current:
+                return "ok"
+            if await client.exists(f"{_REFRESH_USED_PREFIX}{sid}:{presented_jti}"):
+                # Just-rotated-from jti inside the grace window → legitimate
+                # concurrent/retried refresh, not a replay.
+                return "ok"
+            return "reuse"
+        except Exception:
+            logger.warning("refresh_guard_status_unavailable", "Refresh reuse check failed; allowing (fail-open)")
+            return "unknown"
+
+    async def rotate(
+        self, sid: str, old_jti: str | None, new_jti: str, ttl_seconds: int, grace_seconds: int
+    ) -> None:
+        """Advance the current jti to ``new_jti``; grace the ``old_jti`` briefly."""
+        if not sid or not new_jti or ttl_seconds <= 0:
+            return
+        try:
+            client = await self._get_client()
+            if old_jti and grace_seconds > 0:
+                await client.setex(f"{_REFRESH_USED_PREFIX}{sid}:{old_jti}", grace_seconds, "1")
+            await client.setex(f"{_REFRESH_CUR_PREFIX}{sid}", ttl_seconds, new_jti)
+        except Exception:
+            logger.warning("refresh_guard_rotate_failed", "Could not rotate refresh jti (fail-open)")
+
+
+refresh_guard = RefreshTokenGuard()
+
 SESSION_COOKIE_SECURE = settings.session.secure
 SESSION_COOKIE_SAMESITE = settings.session.samesite
 SESSION_COOKIE_DOMAIN = settings.session.domain
@@ -105,6 +185,7 @@ class AuthContext:
     is_active: bool
     expires_at: datetime
     login_at: Optional[int] = None
+    jti: Optional[str] = None
 
 
 @dataclass(slots=True)
@@ -234,6 +315,7 @@ async def _resolve(request: Request, token: str | None, expected_type: str) -> A
         is_active=is_active,
         expires_at=_claim_expiry(int(claims["exp"])),
         login_at=claims.get("lat"),
+        jti=claims.get("jti"),
     )
 
 
@@ -306,8 +388,8 @@ async def revoke_current_session(request: Request) -> str | None:
         if not sid:
             continue
         set_context(user_id=claims.get("sub"), session_id=sid)
-        # Cover the maximum refresh lifetime — the denylist entry auto-expires.
-        await logout_denylist.revoke(sid, settings.jwt.refresh_ttl_seconds)
+        # Cover the maximum session lifetime — the denylist entry auto-expires.
+        await logout_denylist.revoke(sid, settings.jwt.refresh_absolute_ttl_seconds)
         return sid
     return None
 

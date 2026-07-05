@@ -120,6 +120,12 @@ export default function ChatView() {
         isStreaming={isCurrentConversationBusy}
       />
 
+      {/* Region below the header — the positioning context (and flex column) for
+          the body + composer. Making THIS the containing block for the absolutely
+          positioned empty-state composer (instead of the whole shell, which
+          includes the header) is what makes it structurally impossible for the
+          centered greeting/composer to overlap the header and steal its clicks. */}
+      <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
       {/* Chat Messages Container*/}
       <div className="voice-chat-transition-shell relative flex flex-1 min-h-0 overflow-hidden">
         {bodyTransition.exiting ? (
@@ -232,6 +238,7 @@ export default function ChatView() {
         starterSuggestions={canShowStarterSuggestions ? starterSuggestions : []}
         onStarterSuggestionSelect={handleStarterSuggestionSelect}
       />
+      </div>
 
       {loadingConversation && (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-slate-950/35 backdrop-blur-md transition-opacity duration-200 animate-fade-in">

@@ -43,7 +43,7 @@ sequenceDiagram
     Bridge->>Bridge: upsert UserTable (vault_user_id = entity_id), check is_active
     Bridge->>Vault: transit/sign jwt-rs256 (access claims) + (refresh claims)
     Vault-->>Bridge: RS256 signatures (private key never leaves Vault)
-    Bridge-->>B: Set-Cookie: access(8h) + refresh(10d) + csrf
+    Bridge-->>B: Set-Cookie: access(8h) + refresh(rolling, ≤30d) + csrf
     Bridge-->>B: AuthResponse {userId, tokenTtl}
 
     Note over B,Bridge: Every authenticated request — STATELESS
@@ -123,9 +123,9 @@ The response signature (`vault:v<N>:<sig>`) has its prefix stripped and is appen
 | Token | TTL (default) | Claims |
 | --- | --- | --- |
 | **access** | 8 h (`JWT_ACCESS_TTL_SECONDS`) | `sub` (user id), `sid` (login/session id), `typ="access"`, `act` (is_active), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
-| **refresh** | 10 d absolute (`JWT_REFRESH_TTL_SECONDS`) | `sub`, `sid`, `typ="refresh"`, `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp` = `lat + 10d`, `jti` |
+| **refresh** | **rolling** — `exp = min(now + IDLE, lat + ABSOLUTE)`; defaults **7 d idle** (`JWT_REFRESH_IDLE_TTL_SECONDS`) / **30 d absolute** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) | `sub`, `sid`, `typ="refresh"`, `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
 
-`sid` is a per-login id shared by both tokens (and stable across refresh) — it is the key the logout denylist uses. The refresh `exp` is computed from the **original** `lat`, so refreshing does **not** slide the 10-day window: it is a hard cap.
+`sid` is a per-login id shared by both tokens (and stable across refresh) — the key the logout denylist and refresh-reuse detection use. The refresh window is **rolling**: each refresh slides `exp` forward by the idle window, but never past `lat + ABSOLUTE`. Net effect — an active user stays signed in up to the absolute cap; being idle longer than the idle window logs them out; the absolute cap forces a periodic full re-auth regardless of activity. The per-refresh `jti` is what makes rotation + reuse detection possible (Phase 6).
 
 ### Cookies
 
@@ -134,8 +134,8 @@ The response signature (`vault:v<N>:<sig>`) has its prefix stripped and is appen
 | Cookie | HttpOnly | Expiry | Purpose |
 | --- | --- | --- | --- |
 | `mx_session` (or `__Host-mx_session`) | Yes | access TTL (8 h) | access JWT |
-| `mx_refresh` (or `__Host-mx_refresh`) | Yes | refresh TTL (≤10 d) | refresh JWT |
-| `mx_csrf` (or `__Host-mx_csrf`) | **No** | refresh TTL | CSRF double-submit value |
+| `mx_refresh` (or `__Host-mx_refresh`) | Yes | rolling refresh TTL (≤ absolute cap, 30 d) | refresh JWT |
+| `mx_csrf` (or `__Host-mx_csrf`) | **No** | rolling refresh TTL | CSRF double-submit value |
 
 `__Host-` prefixing applies when `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is set. The access JWT lives in an HttpOnly cookie — JavaScript cannot read it (XSS-safe), and it is still verified with **zero** server state.
 
@@ -173,7 +173,11 @@ Unchanged. `require_csrf_protection` runs on every state-mutating endpoint: it c
 
 ## Phase 6 — Token Refresh (stateless)
 
-Access tokens expire after 8 hours. The browser calls `POST /v1/auth/session/refresh` with the refresh cookie (CSRF-protected). `require_refresh_session` verifies the refresh JWT (`typ=refresh`) and checks the denylist. `rotate_session()` then mints a **new** access + refresh pair via Transit, **preserving the original `sid` and `lat`** — so the denylist entry still covers the rotated tokens and the 10-day absolute cap does not slide. No database row is written.
+Access tokens expire after 8 hours. The browser calls `POST /v1/auth/session/refresh` with the refresh cookie (CSRF-protected). `require_refresh_session` verifies the refresh JWT (`typ=refresh`) and checks the denylist.
+
+**Refresh-token rotation + reuse detection.** Every refresh rotates the refresh token (fresh `jti`); the `RefreshTokenGuard` tracks the single currently-valid `jti` per `sid` in Redis. On refresh the presented `jti` is classified: the current one — or the just-rotated-from one inside a short grace window that tolerates a legitimate concurrent/retried refresh — is **ok**; an older, already-rotated `jti` replayed past the grace is **reuse** (a stolen refresh token replayed after the real client already rotated). Reuse **revokes the whole session** (denylist the `sid`) so neither the attacker's nor the victim's copy survives — both must re-authenticate. The guard **fails open** on a Redis error (degrades to no reuse detection, never a lockout), consistent with the logout denylist.
+
+`rotate_session()` mints a **new** access + refresh pair via Transit, preserving the original `sid` and `lat` (so the denylist still covers the session and the absolute cap is measured from the original login) while the refresh `exp` slides forward by the idle window. The new `jti` is then registered as current and the old one graced. No database row is written.
 
 ```mermaid
 sequenceDiagram
@@ -241,7 +245,7 @@ sequenceDiagram
 
 ### Auto-Refresh Scheduling
 
-`useSessionAutoRefreshEffect` schedules a `setTimeout` to fire **10 minutes** before `expiresAt` (a 2-minute margin is too thin on an 8-hour token). It calls `POST /v1/auth/session/refresh`; on success the server rotates all three cookies and returns a fresh `tokenTtl`, which re-arms the timer. If the device slept through the window, the next request returns `401`, clearing local storage and redirecting to login.
+`useSessionAutoRefreshEffect` schedules a `setTimeout` to fire **10 minutes** before `expiresAt` (a 2-minute margin is too thin on an 8-hour token). It calls `POST /v1/auth/session/refresh`; on success the server rotates all three cookies and returns a fresh `tokenTtl`, which re-arms the timer. Because browsers throttle/suspend timers in a backgrounded tab (and a slept device pauses them), the hook also re-evaluates on **`visibilitychange`/`focus`** (tab becomes visible): via the same scheduler it refreshes immediately if the access token already expired or is about to, otherwise re-arms the drifted timer — the "silent refresh on return" that keeps an active-but-returning user signed in. The network refresh is **cross-tab single-flight** (Web Locks): with several tabs open only one performs it and the rest pick up the rotated token, so tabs never rotate the refresh token concurrently (which would otherwise trip server-side reuse detection). A hard fallback remains: if a request still lands on an expired access token it `401`s and the app returns to login.
 
 ### Logout Cleanup
 
@@ -259,7 +263,7 @@ sequenceDiagram
 
 - **`signature_algorithm=pkcs1v15` is load-bearing.** Vault Transit defaults to PSS (= PS256). RS256 *is* PKCS#1 v1.5; minting with the default would produce tokens that fail `algorithms=["RS256"]` verification.
 
-- **No refresh-token reuse detection.** Stateless refresh cannot detect replay of an old refresh token (that needs a server-side store). This is the accepted trade-off for statelessness; it is bounded by the short-ish access TTL, the absolute 10-day refresh cap, the instant-logout denylist, TLS, and HttpOnly/CSRF cookies. A future store could reinstate reuse detection.
+- **Refresh-token rotation + reuse detection (Redis-backed).** Each refresh rotates the refresh token and records its `jti` per `sid`; replaying an already-rotated refresh token past a short grace window is treated as theft and **revokes the whole session**. Bounded server state (one key per active session, TTL = the absolute cap), and it **fails open** on a Redis outage — degrading to no reuse detection (the prior posture), never to a lockout. Concurrent refreshes can't false-trip it: the client refreshes **cross-tab single-flight** (Web Locks — only one tab across the origin calls `/session/refresh`; the others see the rotated token in the shared session marker and skip), so two tabs never diverge the tracked `jti`. The server-side grace window is the backstop for the rare browser without Web Locks.
 
 - **`is_active` is read from the claim per request, and from the DB at login/refresh.** Mid-session deactivation therefore takes effect at the next refresh (≤8 h) or via an explicit denylist entry — there is no admin-disable path wired today.
 

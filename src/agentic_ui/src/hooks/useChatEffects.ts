@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { Agent, ThinkingState } from '@/lib/types';
 import type { CSSProperties, RefObject } from 'react';
 
@@ -194,17 +194,43 @@ export function useCenteredComposerLayout({
     };
   }, [isMessagesEmpty, centerAnchorOffset]);
 
-  useEffect(() => {
+  // Track whether the composer is at rest (nothing typed / attached). While at
+  // rest, the centered anchor stays synced to the measured height via a
+  // ResizeObserver below, so the empty composer lands in the SAME centered spot
+  // whether it mounted on a hard refresh or via a client-side "New chat"
+  // transition. (The old one-shot getBoundingClientRect ran once, before the
+  // new-chat transition had settled, so it measured a shorter height and the box
+  // sat too low — refresh measured the full height and sat correctly.) Once the
+  // user starts typing we stop updating, freezing the top so the box only ever
+  // grows downward.
+  const composerRestingRef = useRef(true);
+  composerRestingRef.current = currentMessage.trim() === '' && attachmentsCount === 0;
+
+  useLayoutEffect(() => {
     if (!isMessagesEmpty) {
       setCenterAnchorOffset(null);
       return;
     }
-    if (centerAnchorOffset !== null) return;
     const el = containerRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setCenterAnchorOffset(rect.height / 2);
-  }, [isMessagesEmpty, centerAnchorOffset]);
+
+    const measure = () => {
+      // Frozen while the user is composing — don't re-center as the box grows.
+      if (!composerRestingRef.current) return;
+      const height = el.getBoundingClientRect().height;
+      if (height <= 0) return;
+      const next = height / 2;
+      setCenterAnchorOffset((prev) =>
+        prev !== null && Math.abs(prev - next) < 0.5 ? prev : next,
+      );
+    };
+
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isMessagesEmpty]);
 
   useEffect(() => {
     if (!isMessagesEmpty) {

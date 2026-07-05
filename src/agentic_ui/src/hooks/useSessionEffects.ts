@@ -341,6 +341,27 @@ export function useUISnapshotPersistence(params: {
 // ---------------------------------------------------------------------------
 // Session auto-refresh effect
 // ---------------------------------------------------------------------------
+// Refresh ~10 min before the access token expires; also the "already fresh"
+// threshold — if more time than this remains when a tab acquires the cross-tab
+// lock, another tab just refreshed, so this tab skips its own network call.
+const SESSION_REFRESH_BUFFER_MS = 10 * 60 * 1000;
+
+// Cross-tab single-flight for the network refresh. Only one tab across the origin
+// runs POST /session/refresh at a time (Web Locks API); a tab that acquires the
+// lock after another already refreshed sees the fresh session marker and skips.
+// This prevents two tabs from rotating the refresh token concurrently — which
+// would diverge the server-tracked jti and trip refresh-reuse detection (a false
+// "stolen token" logout). Stateless — pure client-side coordination, no server
+// state; degrades to a plain refresh where Web Locks is unavailable.
+async function withSessionRefreshLock<T>(run: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== "undefined" ? (navigator as any).locks : undefined;
+  if (!locks?.request) {
+    return run();
+  }
+  return locks.request("mx-session-refresh", run);
+}
+
+
 export function useSessionAutoRefreshEffect(params: {
   isLoggedIn: boolean;
   setIsLoggedIn: (v: boolean) => void;
@@ -364,30 +385,45 @@ export function useSessionAutoRefreshEffect(params: {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     try {
-      const result = await refreshSession();
-      const existing = loadSession();
-      const ttlMs =
-        typeof result.tokenTtl === 'number' && result.tokenTtl > 0
-          ? result.tokenTtl * 1000
-          : 60 * 60 * 1000;
-
-      const userToPersist = result.user ?? existing?.user ?? null;
-      if (userToPersist) {
-        saveSession(userToPersist, ttlMs);
-        if (existing) {
-          updateSession({
-            lastConversationId: existing.lastConversationId,
-            selectedAgent: existing.selectedAgent,
-            isPrivateMode: existing.isPrivateMode,
-          });
+      // Cross-tab single-flight. The network refresh + session-marker write both
+      // happen INSIDE the lock, so the next tab to acquire it observes the fresh
+      // expiry and skips — two tabs never rotate the refresh token concurrently.
+      const outcome = await withSessionRefreshLock(async () => {
+        const current = loadSession();
+        if (current && current.expiresAt - Date.now() > SESSION_REFRESH_BUFFER_MS) {
+          // Another tab already refreshed while we waited for the lock; its
+          // rotated token + fresh marker are shared with us. Skip the call.
+          return "already-fresh" as const;
         }
-        if (result.user) {
-          setUserProfile(result.user);
+        const result = await refreshSession();
+        const existing = loadSession();
+        const ttlMs =
+          typeof result.tokenTtl === 'number' && result.tokenTtl > 0
+            ? result.tokenTtl * 1000
+            : 60 * 60 * 1000;
+        const userToPersist = result.user ?? existing?.user ?? null;
+        if (userToPersist) {
+          saveSession(userToPersist, ttlMs);
+          if (existing) {
+            updateSession({
+              lastConversationId: existing.lastConversationId,
+              selectedAgent: existing.selectedAgent,
+              isPrivateMode: existing.isPrivateMode,
+            });
+          }
+        }
+        return result;
+      });
+
+      if (outcome !== "already-fresh") {
+        const existing = loadSession();
+        if (outcome.user) {
+          setUserProfile(outcome.user);
         } else if (existing?.user) {
           setUserProfile(existing.user);
         }
-        if (userToPersist.id) {
-          setUserId(userToPersist.id);
+        if (outcome.user?.id) {
+          setUserId(outcome.user.id);
         } else if (existing?.userId) {
           setUserId(existing.userId);
         }
@@ -452,8 +488,27 @@ export function useSessionAutoRefreshEffect(params: {
       return;
     }
     scheduleRefresh();
+
+    // Silent refresh on return. Browsers throttle (and a slept device pauses)
+    // timers in a backgrounded tab, so the scheduled refresh can drift or miss.
+    // When the tab becomes visible / regains focus we re-evaluate via the same
+    // scheduler: it refreshes immediately if the access token already expired or
+    // is about to, otherwise it just re-arms the (drifted) timer. This is what
+    // keeps an active-but-returning user signed in without a surprise logout,
+    // and with zero per-request coupling. Uses scheduleRef so it always runs the
+    // latest scheduler closure.
+    const onWake = () => {
+      if (document.visibilityState === "visible") {
+        scheduleRef.current();
+      }
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+
     return () => {
       clearTimer();
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
     };
   }, [isLoggedIn, scheduleRefresh, clearTimer]);
 }

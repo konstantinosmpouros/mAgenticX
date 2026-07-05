@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal
 from uuid import uuid4
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from core.settings import settings
 from core.tls import get_httpx_client_cert, get_httpx_verify
@@ -45,7 +45,34 @@ class HRPoliciesV1_State(BaseModel):
     
     summarization: str | None = None
     response: str | None = None
-    
+
+    @field_validator(
+        "message_id", "analysis_str", "reflection_str",
+        "formatted_docs_str", "summarization", "response",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_message_to_text(cls, v: Any) -> Any:
+        """Coerce a stored LangChain message (or content-block list) to plain text
+        before validation. An older summarization node checkpointed the raw
+        ``AIMessage`` into ``summarization`` (a ``str`` field), so forking such a
+        checkpoint would otherwise raise a ValidationError; this lets the poisoned
+        checkpoint self-heal on load. ``None``/``str`` pass through untouched."""
+        if v is None or isinstance(v, str):
+            return v
+        content = getattr(v, "content", v)
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            # LangChain content-block list -> concatenate the text parts.
+            parts = [
+                block if isinstance(block, str)
+                else (block.get("text", "") if isinstance(block, dict) else "")
+                for block in content
+            ]
+            return "".join(parts)
+        return str(content)
+
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
 

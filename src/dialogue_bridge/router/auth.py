@@ -8,13 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import UserTable, get_db, upsert_user_from_vault
 from schemas import AuthRequest, AuthResponse
 from core.security.rate_limit import AUTHENTICATE_LIMIT, limiter
+from core.settings import settings
 from core.auth.session import (
     AuthContext,
     access_ttl_for_session,
     build_auth_response,
     clear_session_cookies,
     issue_session_cookies,
+    logout_denylist,
     mint_login_session,
+    refresh_guard,
     require_csrf_protection,
     require_refresh_session,
     require_session,
@@ -108,6 +111,11 @@ async def authenticate(
     await db.refresh(user)
 
     issued = await mint_login_session(user)
+    # Record the refresh jti as the session's current one, so a later replay of an
+    # already-rotated (e.g. stolen) refresh token is detected on the next refresh.
+    await refresh_guard.register(
+        issued.session_id, issued.refresh_jti, settings.jwt.refresh_absolute_ttl_seconds
+    )
     set_context(user_id=user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
     logger.info("auth_login_succeeded", "User authenticated successfully")
@@ -135,12 +143,33 @@ async def refresh_session(
     ctx: AuthContext = Depends(require_refresh_session),
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
+    # Refresh-token reuse detection FIRST — a replayed old refresh token must not
+    # even touch the DB. An old jti presented past the grace window means the
+    # token was stolen/replayed → revoke the whole session so neither the
+    # attacker's nor the victim's copy survives; both are forced to re-authenticate.
+    if await refresh_guard.status(ctx.id, ctx.jti) == "reuse":
+        await logout_denylist.revoke(ctx.id, settings.jwt.refresh_absolute_ttl_seconds)
+        clear_session_cookies(response)
+        logger.warning(
+            "refresh_token_reuse_detected",
+            "Refresh token reuse detected — session revoked",
+            failure_reason="refresh_token_reuse",
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+
     user = await _load_user(db, ctx.user_id)
     if user is None or not user.is_active:
         clear_session_cookies(response)
         logger.warning("refresh_user_invalid", "Refresh belongs to a missing or inactive user")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
     issued = await rotate_session(ctx, is_active=user.is_active)
+    # Advance the tracked jti to the freshly-minted one and grace the old jti, so a
+    # legitimate concurrent/retried refresh in flight isn't misread as reuse.
+    await refresh_guard.rotate(
+        ctx.id, ctx.jti, issued.refresh_jti,
+        settings.jwt.refresh_absolute_ttl_seconds,
+        settings.jwt.refresh_reuse_grace_seconds,
+    )
     set_context(user_id=user.id, session_id=issued.session_id)
     issue_session_cookies(response, issued)
     logger.info("session_refresh_succeeded", "Session refresh succeeded")

@@ -186,17 +186,33 @@ class JWTSettings(BaseSettings):
     issuer: str = Field("magenticx-bridge", validation_alias="JWT_ISSUER")
     audience: str = Field("magenticx", validation_alias="JWT_AUDIENCE")
     access_ttl_seconds: int = Field(28800, validation_alias="JWT_ACCESS_TTL_SECONDS")     # 8 hours
-    refresh_ttl_seconds: int = Field(864000, validation_alias="JWT_REFRESH_TTL_SECONDS")  # 10 days
+    # Rolling refresh window. A refresh token lives IDLE seconds from issue and
+    # slides forward on every refresh, but its expiry never exceeds ABSOLUTE
+    # seconds from the original login. Net effect: an active user stays signed in
+    # up to ABSOLUTE; being idle longer than IDLE logs them out; ABSOLUTE forces a
+    # periodic full re-auth regardless of activity. IDLE should be <= ABSOLUTE; if
+    # it isn't, the absolute cap simply dominates (min() below stays correct).
+    refresh_idle_ttl_seconds: int = Field(604800, validation_alias="JWT_REFRESH_IDLE_TTL_SECONDS")            # 7 days
+    refresh_absolute_ttl_seconds: int = Field(2592000, validation_alias="JWT_REFRESH_ABSOLUTE_TTL_SECONDS")   # 30 days
+    # Grace during which the just-rotated-FROM refresh jti is still accepted, so a
+    # legitimate concurrent/retried refresh is not misread as stolen-token reuse.
+    refresh_reuse_grace_seconds: int = Field(30, validation_alias="JWT_REFRESH_REUSE_GRACE_SECONDS")
     leeway_seconds: int = Field(30, validation_alias="JWT_LEEWAY_SECONDS")
     sign_version_cache_seconds: int = Field(60, validation_alias="JWT_SIGN_VERSION_CACHE_SECONDS")
 
-    @field_validator("leeway_seconds", "access_ttl_seconds", "refresh_ttl_seconds", mode="after")
+    @field_validator(
+        "leeway_seconds", "access_ttl_seconds",
+        "refresh_idle_ttl_seconds", "refresh_absolute_ttl_seconds", "refresh_reuse_grace_seconds",
+        mode="after",
+    )
     @classmethod
     def _bound_durations(cls, v: int, info) -> int:
         bounds = {
             "leeway_seconds": (0, 300),
             "access_ttl_seconds": (60, 86400),
-            "refresh_ttl_seconds": (3600, 2592000),
+            "refresh_idle_ttl_seconds": (300, 2592000),           # 5 min .. 30 days
+            "refresh_absolute_ttl_seconds": (3600, 15552000),     # 1 h .. 180 days
+            "refresh_reuse_grace_seconds": (0, 300),
         }
         lo, hi = bounds[info.field_name]
         if v < lo or v > hi:
@@ -456,6 +472,11 @@ class RateLimitSettings(BaseSettings):
     auth_window_seconds: int = Field(60, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_attempts: int = Field(10, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
     inference_window_seconds: int = Field(60, validation_alias="INFERENCE_RATE_LIMIT_WINDOW_SECONDS")
+    # App-level per-user cap enforced by UserRateLimitMiddleware across the whole
+    # backend: one aggregate budget per authenticated user (per-IP fallback for
+    # unauthenticated requests), counted in Redis. Default 300 calls / 60s.
+    user_max_calls: int = Field(300, validation_alias="USER_RATE_LIMIT_MAX_CALLS")
+    user_window_seconds: int = Field(60, validation_alias="USER_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_active_runs: int = Field(5, validation_alias="INFERENCE_MAX_ACTIVE_RUNS_PER_USER")
 
 

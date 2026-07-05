@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from core.auth.tokens import ACCESS_TYPE, REFRESH_TYPE, TokenError, mint_tokens, verify
+from core.settings import settings
 
 
 async def test_mint_and_verify_roundtrip():
@@ -44,11 +45,17 @@ async def test_tampered_signature_rejected():
         await verify(f"{head}.{payload}.{sig[:-3]}AAA", ACCESS_TYPE)
 
 
-async def test_rotation_preserves_sid_and_absolute_cap():
+async def test_rotation_slides_within_absolute_cap():
+    """Rolling refresh: rotation preserves sid + original login time, slides the
+    expiry forward (never backward), and never past the absolute cap from login."""
     issued = await mint_tokens("user-4")
     refresh = await verify(issued.refresh_token, REFRESH_TYPE)
     rotated = await mint_tokens("user-4", sid=issued.session_id, login_at=refresh["lat"])
     rotated_refresh = await verify(rotated.refresh_token, REFRESH_TYPE)
+    # sid and the original login time (`lat`) are preserved across rotation.
     assert rotated_refresh["sid"] == issued.session_id
     assert rotated_refresh["lat"] == refresh["lat"]
-    assert rotated_refresh["exp"] == refresh["exp"]
+    # Rolling window: expiry only ever moves forward, and never beyond the
+    # absolute cap measured from the original login.
+    assert rotated_refresh["exp"] >= refresh["exp"]
+    assert rotated_refresh["exp"] <= refresh["lat"] + settings.jwt.refresh_absolute_ttl_seconds

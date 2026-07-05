@@ -30,6 +30,7 @@ class IssuedTokens:
     csrf_token: str
     access_ttl: int
     refresh_ttl: int
+    refresh_jti: str
 
 
 def _b64url(raw: bytes) -> str:
@@ -86,12 +87,20 @@ async def mint_tokens(
         "exp": issued + cfg.access_ttl_seconds,
         "jti": _new_id(),
     }
+    # Rolling refresh expiry: slide forward by the idle window on every mint, but
+    # never past the absolute cap measured from the ORIGINAL login. On first login
+    # login_at == issued, so exp = issued + idle; on rotation it re-slides, capped.
+    refresh_jti = _new_id()
+    refresh_exp = min(
+        issued + cfg.refresh_idle_ttl_seconds,
+        login_at + cfg.refresh_absolute_ttl_seconds,
+    )
     refresh_claims = {
         **base,
         "typ": REFRESH_TYPE,
         "lat": login_at,
-        "exp": login_at + cfg.refresh_ttl_seconds,
-        "jti": _new_id(),
+        "exp": refresh_exp,
+        "jti": refresh_jti,
     }
     access_token = await _sign(access_claims)
     refresh_token = await _sign(refresh_claims)
@@ -101,7 +110,8 @@ async def mint_tokens(
         refresh_token=refresh_token,
         csrf_token=_new_id() + _new_id(),
         access_ttl=cfg.access_ttl_seconds,
-        refresh_ttl=max(0, refresh_claims["exp"] - issued),
+        refresh_ttl=max(0, refresh_exp - issued),
+        refresh_jti=refresh_jti,
     )
 
 
