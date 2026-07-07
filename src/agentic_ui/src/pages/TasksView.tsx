@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 
-import ScheduledTasksPage from "@/components/chat/ScheduledTasksPage";
+import ScheduledTasksPage from "@/features/tasks/components/ScheduledTasksPage";
 
 import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
 

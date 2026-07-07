@@ -15,7 +15,7 @@ import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
 import ShortcutsTab from "./profile_parts/ShortcutsTab";
 import HelpTab from "./profile_parts/HelpTab";
-import type { MemoriesHandlers } from "@/hooks/useMemories";
+import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
 
 type ProfilePanelProps = {
     open: boolean;

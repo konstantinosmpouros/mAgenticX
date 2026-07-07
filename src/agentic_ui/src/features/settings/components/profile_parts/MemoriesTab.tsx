@@ -6,7 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/utils";
 import type { Agent } from "@/shared/lib/types";
-import type { MemoriesHandlers } from "@/hooks/useMemories";
+import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
 import { InfoCard, SkillHubRow, SoftPanel } from "./shared";
 
 // Props are the useMemories hook output (spread straight in by ProfilePanel)

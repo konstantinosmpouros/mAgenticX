@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
 import { createVoiceModeHandlers } from "@/handlers/voice";
-import { useRealtimeVoiceSession } from "@/hooks/useRealtimeVoiceSession";
+import { useRealtimeVoiceSession } from "@/features/voice/hooks/useRealtimeVoiceSession";
 
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 

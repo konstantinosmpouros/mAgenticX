@@ -21,8 +21,8 @@ import type {
   UserPreferences } from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/handlers/preferences";
 import { computeConversationUsage } from "@/shared/lib/utils";
-import { useProfilePanel } from "@/hooks/useProfilePanel";
-import { useMemories } from "@/hooks/useMemories";
+import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
+import { useMemories } from "@/features/settings/hooks/useMemories";
 import {
   useEnsureDefaultAgentEffect,
   useHeaderDividerEffect,
@@ -30,7 +30,7 @@ import {
   useStickyUserBarEffect,
   useSidebarInteractionEffect,
 } from "@/hooks/useChatEffects";
-import { useChatVoiceMode } from "@/hooks/useChatVoiceMode";
+import { useChatVoiceMode } from "@/features/voice/hooks/useChatVoiceMode";
 import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
@@ -76,17 +76,17 @@ import { getConversationDetail, getSkills, getSuggestions } from "@/shared/lib/a
 
 // Chat Interface component
 import ChatSidebar from "@/components/chat/ChatSidebar";
-import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
+import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/features/attachments/components/AttachmentPreviewPanel";
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
 import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
-import ProfilePanel from "@/components/chat/ProfilePanel";
-import ReportConversationDialog from "@/components/chat/ReportPanel";
-import ShareConversationDialog from "@/components/chat/SharePanel";
+import ProfilePanel from "@/features/settings/components/ProfilePanel";
+import ReportConversationDialog from "@/features/reporting/components/ReportPanel";
+import ShareConversationDialog from "@/features/sharing/components/SharePanel";
 import ChatBody from "@/components/chat/ChatBody";
-import VoiceModeBody from "@/components/chat/VoiceModeBody";
+import VoiceModeBody from "@/features/voice/components/VoiceModeBody";
 import { type DictationStatus } from "@/components/chat/ChatInputBar";
-import SearchPanel from "@/components/chat/SearchPanel";
-import { useScheduledTasks } from "@/hooks/useScheduledTasks";
+import SearchPanel from "@/features/search/components/SearchPanel";
+import { useScheduledTasks } from "@/features/tasks/hooks/useScheduledTasks";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";

@@ -1,7 +1,7 @@
 import { useTheme } from "next-themes";
 import { AppWindow, Archive, ExternalLink, MoonStar, Sparkles } from "lucide-react";
 
-import { useToolStatus } from "@/hooks/useToolStatus";
+import { useToolStatus } from "@/features/settings/hooks/useToolStatus";
 import type { ConversationSummary, HelpCard, ToolWithStatus, UserPreferences } from "@/shared/lib/types";
 import { InfoCard, SoftPanel } from "./shared";
 

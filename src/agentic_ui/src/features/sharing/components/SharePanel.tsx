@@ -2,7 +2,7 @@ import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { CalendarDays, Check, Copy, Download, Link2, Loader2, LockKeyhole, X } from "lucide-react";
 import type { ConversationShareMode, MessageOut } from "@/shared/lib/types";
-import { MessageContent } from "./message_parts/Content";
+import { MessageContent } from "@/components/chat/message_parts/Content";
 
 type ShareConversationDialogProps = {
   open: boolean;

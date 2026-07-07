@@ -32,11 +32,11 @@ import {
 import { SidebarTrigger } from "@/shared/ui/sidebar";
 import ScheduledTaskForm, {
   type ScheduledTaskFormInitial,
-} from "@/components/chat/scheduled_tasks_parts/ScheduledTaskForm";
+} from "@/features/tasks/components/scheduled_tasks_parts/ScheduledTaskForm";
 import {
   TASK_TEMPLATES,
   type ScheduledTaskTemplate,
-} from "@/components/chat/scheduled_tasks_parts/templates";
+} from "@/features/tasks/components/scheduled_tasks_parts/templates";
 
 type ScheduledTasksPageProps = {
   onClose: () => void;

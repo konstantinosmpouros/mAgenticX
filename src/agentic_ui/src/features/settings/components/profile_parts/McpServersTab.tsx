@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { ChevronDown } from "lucide-react";
 
-import { useToolStatus } from "@/hooks/useToolStatus";
+import { useToolStatus } from "@/features/settings/hooks/useToolStatus";
 import { cn } from "@/shared/lib/utils";
 import type { ToolMetadata, ToolWithStatus, UserPreferences } from "@/shared/lib/types";
 import { InfoCard, MetricCard, SoftPanel } from "./shared";
