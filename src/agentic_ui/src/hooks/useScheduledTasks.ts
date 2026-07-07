@@ -5,12 +5,12 @@ import {
   deleteScheduledTask,
   listScheduledTasks,
   updateScheduledTask,
-} from "@/lib/api";
+} from "@/shared/lib/api";
 import type {
   ScheduledTask,
   ScheduledTaskCreatePayload,
   ScheduledTaskUpdatePayload,
-} from "@/lib/types";
+} from "@/shared/lib/types";
 
 // A scheduled run is "live" while its latest fire message is still streaming.
 const RUNNING_STATUSES = new Set(["queued", "running", "cancelling"]);

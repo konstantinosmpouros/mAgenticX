@@ -3,8 +3,8 @@ import { useTheme } from "next-themes";
 import { ChevronDown } from "lucide-react";
 
 import { useToolStatus } from "@/hooks/useToolStatus";
-import { cn } from "@/lib/utils";
-import type { ToolMetadata, ToolWithStatus, UserPreferences } from "@/lib/types";
+import { cn } from "@/shared/lib/utils";
+import type { ToolMetadata, ToolWithStatus, UserPreferences } from "@/shared/lib/types";
 import { InfoCard, MetricCard, SoftPanel } from "./shared";
 import { McpIcon } from "./icons";
 

@@ -16,10 +16,10 @@ import { PiWaveformBold } from "react-icons/pi";
 import { MdOutlineSchedule } from "react-icons/md";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTheme } from "next-themes";
-import { Loader } from "@/components/ui/shadcn-io/loader";
+import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import type { Agent, ConversationSummary, UserProfile } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import type { Agent, ConversationSummary, UserProfile } from "@/shared/lib/types";
+import { cn } from "@/shared/lib/utils";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -34,8 +34,8 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
   useSidebar,
-} from "@/components/ui/sidebar";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/shared/ui/sidebar";
+import { Skeleton } from "@/shared/ui/skeleton";
 
 type ChatSidebarProps = {
   conversations: ConversationSummary[];

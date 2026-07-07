@@ -1,5 +1,5 @@
-import { cn } from "@/lib/utils";
-import { MCP_ICON_SRCS, type McpIconVariant } from "@/lib/consts";
+import { cn } from "@/shared/lib/utils";
+import { MCP_ICON_SRCS, type McpIconVariant } from "@/shared/lib/consts";
 
 export const McpIcon = ({
     size = 22,

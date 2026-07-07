@@ -1,7 +1,7 @@
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
 import { CalendarDays, Check, Copy, Download, Link2, Loader2, LockKeyhole, X } from "lucide-react";
-import type { ConversationShareMode, MessageOut } from "@/lib/types";
+import type { ConversationShareMode, MessageOut } from "@/shared/lib/types";
 import { MessageContent } from "./message_parts/Content";
 
 type ShareConversationDialogProps = {

@@ -1,8 +1,8 @@
 import { memo, useMemo } from "react";
-import { Response } from "@/components/ui/ai-elements/response";
-import { Textarea } from "@/components/ui/textarea";
-import type { ContentBlock, MessageOut } from "@/lib/types";
-import { normalizeBulletMarkdown } from "@/lib/utils";
+import { Response } from "@/shared/ui/ai-elements/response";
+import { Textarea } from "@/shared/ui/textarea";
+import type { ContentBlock, MessageOut } from "@/shared/lib/types";
+import { normalizeBulletMarkdown } from "@/shared/lib/utils";
 
 // ContentBlockView — a timeline content block rendered as markdown.
 export const ContentBlockView = memo(({ block }: { block: ContentBlock }) => {

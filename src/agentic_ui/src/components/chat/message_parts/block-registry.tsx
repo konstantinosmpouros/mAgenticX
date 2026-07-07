@@ -5,7 +5,7 @@ import type {
   ThinkingBlock,
   TimelineBlock,
   TimelineTerminalStatus,
-} from "@/lib/types";
+} from "@/shared/lib/types";
 import { subagentBlockToItem } from "@/runtime";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";

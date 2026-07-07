@@ -1,11 +1,11 @@
 import { useMemo, useCallback } from 'react';
 import type { FC, Dispatch, SetStateAction } from 'react';
-import type { MessageOut, ConversationDetail, ThinkingState } from "@/lib/types";
+import type { MessageOut, ConversationDetail, ThinkingState } from "@/shared/lib/types";
 import {
   likeMessage as apiLikeMessage,
   dislikeMessage as apiDislikeMessage,
   generateMessageReadAloudAudio,
-} from "@/lib/api";
+} from "@/shared/lib/api";
 
 // Message handlers cover chat actions that stay within the current UI shell
 // and do not start a brand new inference pipeline.

@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { ResumeInferenceRunBody } from "@/lib/api";
+import type { ResumeInferenceRunBody } from "@/shared/lib/api";
 
 // HITL approval flow plumbing shared across the chat tree. Provided once at
 // ChatPage level using the useInferenceRuns hook's resumeRun/isInterruptResolved

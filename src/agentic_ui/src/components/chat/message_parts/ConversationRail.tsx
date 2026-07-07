@@ -1,5 +1,5 @@
-import { cn } from "@/lib/utils";
-import type { MessageOut } from "@/lib/types";
+import { cn } from "@/shared/lib/utils";
+import type { MessageOut } from "@/shared/lib/types";
 import { useConversationRail } from "@/hooks/useConversationRail";
 
 type ConversationRailProps = {

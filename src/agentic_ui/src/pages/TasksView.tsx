@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 
 import ScheduledTasksPage from "@/components/chat/ScheduledTasksPage";
 
-import { useChatWorkspaceContext } from "@/stores/workspaceStore";
+import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
 
 /**
  * The scheduled-tasks page for the "/tasks" route. Fills the shell's content

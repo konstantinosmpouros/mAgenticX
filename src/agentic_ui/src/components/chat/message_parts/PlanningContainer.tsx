@@ -8,9 +8,9 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/shared/ui/scroll-area";
 import type { PlanItemStatus, PlanSnapshot } from "@/runtime/agui";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 
 const STATUS_STYLES: Record<
   PlanItemStatus,

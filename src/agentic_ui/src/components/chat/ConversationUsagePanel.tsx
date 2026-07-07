@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { TbGauge } from "react-icons/tb";
 
-import type { ConversationUsage } from "@/lib/types";
-import { formatCompactTokens } from "@/lib/utils";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Checkbox } from "@/components/ui/checkbox";
+import type { ConversationUsage } from "@/shared/lib/types";
+import { formatCompactTokens } from "@/shared/lib/utils";
+import { Popover, PopoverTrigger, PopoverContent } from "@/shared/ui/popover";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/shared/ui/tooltip";
+import { Checkbox } from "@/shared/ui/checkbox";
 
 // Dispatched by the global Escape/dismiss cascade (handlers/ui.ts) to close
 // transient popovers; the global capture-phase shortcut handler swallows the

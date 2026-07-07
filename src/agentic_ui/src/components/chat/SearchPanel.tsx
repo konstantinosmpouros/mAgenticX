@@ -1,8 +1,8 @@
 import * as React from "react";
 import { Bot, FileText, MessageSquare, Search, X } from "lucide-react";
 
-import type { WorkspaceSearchResult, WorkspaceSearchResultKind } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import type { WorkspaceSearchResult, WorkspaceSearchResultKind } from "@/shared/lib/types";
+import { cn } from "@/shared/lib/utils";
 
 type SearchPanelProps = {
   open: boolean;

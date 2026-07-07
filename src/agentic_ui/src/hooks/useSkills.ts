@@ -8,13 +8,13 @@ import {
   getMySkills,
   getUserAgentSkills,
   removeSkillFromPool,
-} from '@/lib/api';
+} from '@/shared/lib/api';
 import type {
   CustomSkillCreatePayload,
   UserAgentSkillSelection,
   UserSkill,
   UserSkillDetail,
-} from '@/lib/types';
+} from '@/shared/lib/types';
 
 // Owns three pieces of per-user skill state for the ProfilePanel "Skills" tab:
 //

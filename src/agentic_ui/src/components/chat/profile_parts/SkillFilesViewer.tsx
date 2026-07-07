@@ -9,8 +9,8 @@ import {
     Image as ImageIcon,
 } from "lucide-react";
 
-import { buildSkillFileTree, cn } from "@/lib/utils";
-import type { SkillFile, SkillTreeNode } from "@/lib/types";
+import { buildSkillFileTree, cn } from "@/shared/lib/utils";
+import type { SkillFile, SkillTreeNode } from "@/shared/lib/types";
 
 // Read-only counterpart to SkillBuilder — renders a skill's on-disk file tree
 // in the "My skills" expand view. Text files show inline; binary assets show

@@ -2,16 +2,16 @@ import { FormEvent, KeyboardEvent, memo, useEffect, useMemo, useState } from "re
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import { Check, Loader2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Card } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Button } from "@/shared/ui/button";
 import { VscEye, VscEyeClosed } from "react-icons/vsc";
-import ParticleNetwork from "@/components/ui/react_bits/bg_particle_network";
-import { authenticate, restoreSession } from "@/lib/api";
-import { loadSession, saveSession, updateSession } from "@/lib/authStorage";
-import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import type { AuthApiError } from "@/lib/types";
+import ParticleNetwork from "@/shared/ui/react_bits/bg_particle_network";
+import { authenticate, restoreSession } from "@/shared/lib/api";
+import { loadSession, saveSession, updateSession } from "@/shared/lib/authStorage";
+import { useToast } from "@/shared/hooks/use-toast";
+import { cn } from "@/shared/lib/utils";
+import type { AuthApiError } from "@/shared/lib/types";
 
 // Animated backdrop: a constellation network over a layered charcoal→magenta
 // vignette. Memoized so form state changes never re-mount the canvas.

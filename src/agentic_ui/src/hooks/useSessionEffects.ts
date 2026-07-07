@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
-import type { Agent, ConversationDetail, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/lib/types';
-import { loadSession, clearSession, updateSession, saveSession } from '@/lib/authStorage';
-import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/lib/uiStateStorage';
+import type { Agent, ConversationDetail, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/shared/lib/types';
+import { loadSession, clearSession, updateSession, saveSession } from '@/shared/lib/authStorage';
+import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/shared/lib/uiStateStorage';
 import {
   getAgents,
   getConversations,
@@ -10,8 +10,8 @@ import {
   refreshSession,
   getUserPreferences,
   restoreSession,
-} from '@/lib/api';
-import { sortByUpdatedAtDesc } from '@/lib/utils';
+} from '@/shared/lib/api';
+import { sortByUpdatedAtDesc } from '@/shared/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Initial session state helper

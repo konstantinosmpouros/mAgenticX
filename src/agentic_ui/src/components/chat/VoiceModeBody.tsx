@@ -1,7 +1,7 @@
 import { Radio } from "lucide-react";
-import { Persona, type PersonaState } from "@/components/ui/ai-elements/persona";
-import type { Agent, VoiceModeStatus } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { Persona, type PersonaState } from "@/shared/ui/ai-elements/persona";
+import type { Agent, VoiceModeStatus } from "@/shared/lib/types";
+import { cn } from "@/shared/lib/utils";
 
 type VoiceModeBodyProps = {
   status: VoiceModeStatus;

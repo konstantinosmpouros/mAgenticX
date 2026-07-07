@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
-import { StaticPageHeader } from "@/components/ui/static-page-header";
-import { cn } from "@/lib/utils";
+import { StaticPageHeader } from "@/shared/ui/static-page-header";
+import { cn } from "@/shared/lib/utils";
 
 const sections = [
     {

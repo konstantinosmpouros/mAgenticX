@@ -6,12 +6,12 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/shared/ui/sheet";
 import { PlanItems } from "./PlanningContainer";
 import { SubagentCard } from "./SubagentContainer";
 import { subagentBlockToItem } from "@/runtime";
 import type { PlanSnapshot } from "@/runtime/agui";
-import type { RunTimeline, SubagentBlock } from "@/lib/types";
+import type { RunTimeline, SubagentBlock } from "@/shared/lib/types";
 
 // Post-run side panels: once a run terminates, the plan card and the
 // sub-agent panels leave the message body and live behind two action-bar

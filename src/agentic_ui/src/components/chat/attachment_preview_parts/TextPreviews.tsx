@@ -3,9 +3,9 @@ import hljs from "highlight.js/lib/common";
 import Papa from "papaparse";
 import { Check, Copy } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
-import { cn } from "@/lib/utils";
+import { Button } from "@/shared/ui/button";
+import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
+import { cn } from "@/shared/lib/utils";
 
 type TextPreviewProps = {
   content: string;

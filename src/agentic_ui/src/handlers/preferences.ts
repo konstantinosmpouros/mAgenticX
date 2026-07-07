@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
-import { updateUserPreferences } from '@/lib/api';
-import type { ToolMetadata, ToolPreference, UserPreferences } from '@/lib/types';
+import { updateUserPreferences } from '@/shared/lib/api';
+import type { ToolMetadata, ToolPreference, UserPreferences } from '@/shared/lib/types';
 import {
   DEFAULT_REALTIME_VOICE,
   DEFAULT_VOICE_MODE_LANGUAGE,
   type RealtimeVoice,
   type VoiceModeLanguage,
-} from '@/lib/consts';
-import { normalizeRealtimeVoice, normalizeVoiceModeLanguage } from '@/lib/utils';
+} from '@/shared/lib/consts';
+import { normalizeRealtimeVoice, normalizeVoiceModeLanguage } from '@/shared/lib/utils';
 
 // Preferences handlers derive the tool toggle model shown in settings and persist changes optimistically.
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;

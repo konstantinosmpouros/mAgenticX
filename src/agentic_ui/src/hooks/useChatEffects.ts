@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { Agent, ThinkingState } from '@/lib/types';
+import type { Agent, ThinkingState } from '@/shared/lib/types';
 import type { CSSProperties, RefObject } from 'react';
 
 

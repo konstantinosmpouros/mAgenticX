@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import { useSkills } from "@/hooks/useSkills";
-import type { CustomSkillCreatePayload, UserSkill } from "@/lib/types";
+import type { CustomSkillCreatePayload, UserSkill } from "@/shared/lib/types";
 
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 

@@ -15,19 +15,19 @@ import {
   ChainOfThoughtContent,
   ChainOfThoughtHeader,
   ChainOfThoughtStep,
-} from "@/components/ui/ai-elements/chain-of-thought";
-import { ToolInput, ToolOutput } from "@/components/ui/ai-elements/tool";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
-import { MarkdownRenderer } from "@/components/ui/markdownRenderer";
+} from "@/shared/ui/ai-elements/chain-of-thought";
+import { ToolInput, ToolOutput } from "@/shared/ui/ai-elements/tool";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
+import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
+import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
 import { useHitl, parseHitlInterrupt } from "@/runtime";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import type {
   ThinkingBlock,
   TimelineHitlApproval,
   TimelineTerminalStatus,
   TimelineToolExecution,
-} from "@/lib/types";
+} from "@/shared/lib/types";
 
 // The CoT (chain-of-thought) object: one collapsible thinking block rendering
 // its ordered items — thoughts, tool executions (carrying their own HITL

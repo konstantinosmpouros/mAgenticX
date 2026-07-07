@@ -8,7 +8,7 @@ import {
   type ShortcutCombo,
   type ShortcutDefinition,
   type ShortcutRuntimeContext,
-} from "@/lib/shortcuts";
+} from "@/shared/lib/shortcuts";
 
 type UseKeyboardShortcutsArgs = {
   actions: ShortcutActionMap;

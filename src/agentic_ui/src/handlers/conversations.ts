@@ -1,7 +1,7 @@
 import { Building2 } from 'lucide-react';
-import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, getArchivedConversations, forkConversation } from '@/lib/api';
+import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, getArchivedConversations, forkConversation } from '@/shared/lib/api';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Agent, ConversationDetail, ConversationSummary, MessageOut } from '@/lib/types';
+import type { Agent, ConversationDetail, ConversationSummary, MessageOut } from '@/shared/lib/types';
 
 // Conversation handlers own chat navigation and sidebar state:
 // selecting threads, clearing the current chat, pagination, and row-level mutations.

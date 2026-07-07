@@ -2,9 +2,9 @@ import { type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-import { NA } from "@/lib/consts";
-import type { InfoRow } from "@/lib/types";
+import { cn } from "@/shared/lib/utils";
+import { NA } from "@/shared/lib/consts";
+import type { InfoRow } from "@/shared/lib/types";
 
 export const InfoCard = ({
     eyebrow,

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import type { ToolWithStatus, UserPreferences } from "@/lib/types";
+import type { ToolWithStatus, UserPreferences } from "@/shared/lib/types";
 
 const toolKey = (tool: ToolWithStatus) => {
     const prefix = tool.serverId && tool.serverId.length > 0 ? tool.serverId : "default";

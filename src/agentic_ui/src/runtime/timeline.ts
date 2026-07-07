@@ -25,7 +25,7 @@ import type {
   TimelineTerminalStatus,
   TimelineThought,
   TimelineToolExecution,
-} from "@/lib/types";
+} from "@/shared/lib/types";
 import type { SubagentItem } from "@/components/chat/message_parts/SubagentContainer";
 
 // The single fold from raw AG-UI events to the rendered timeline structure

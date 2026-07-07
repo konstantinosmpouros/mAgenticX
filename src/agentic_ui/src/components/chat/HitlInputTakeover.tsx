@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, ShieldAlert, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import { summariseInterrupt, type HitlInterrupt } from "@/components/chat/message_parts/HitlInterruptCard";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import { parseHitlInterrupt } from "@/runtime";
 
 export type HitlActionDecision = { decision: "approve" | "reject"; reason?: string };

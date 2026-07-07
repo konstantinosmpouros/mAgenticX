@@ -1,13 +1,13 @@
 import { useState } from "react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import {
     SHORTCUTS,
     detectShortcutPlatform,
     getShortcutLabel,
     type ShortcutCategory,
     type ShortcutPlatform,
-} from "@/lib/shortcuts";
+} from "@/shared/lib/shortcuts";
 import { InfoCard, SoftPanel } from "./shared";
 
 export default function ShortcutsTab() {

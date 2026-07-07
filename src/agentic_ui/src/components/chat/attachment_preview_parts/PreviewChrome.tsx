@@ -1,6 +1,6 @@
 import { Download, FileType2, Loader2, XCircle } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 
 type PreviewMessageProps = {
   title: string;

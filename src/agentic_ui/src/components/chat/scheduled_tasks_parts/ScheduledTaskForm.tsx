@@ -7,8 +7,8 @@ import type {
   ScheduleKind,
   TaskTargetMode,
   ToolPreference,
-} from "@/lib/types";
-import { cn } from "@/lib/utils";
+} from "@/shared/lib/types";
+import { cn } from "@/shared/lib/utils";
 
 // Pre-fill values shared by editing a task and importing a template.
 export type ScheduledTaskFormInitial = {

@@ -1,7 +1,7 @@
 import { Download, Eye, FileText } from "lucide-react";
-import type { AttachmentIn, FileAttachment, MessageOut } from "@/lib/types";
+import type { AttachmentIn, FileAttachment, MessageOut } from "@/shared/lib/types";
 import { classifyAttachmentPreview } from "@/components/chat/attachment_preview_parts";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
 
 export type AttachmentLike =
   | AttachmentIn

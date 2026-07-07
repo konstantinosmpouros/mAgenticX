@@ -13,13 +13,13 @@ import type { TargetAndTransition, Transition } from "framer-motion";
 // feel is consistent across the whole app.
 const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
 const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
-import SplitText from "@/components/ui/react_bits/split_text";
-import StarBorder from "@/components/ui/react_bits/star_border";
+import SplitText from "@/shared/ui/react_bits/split_text";
+import StarBorder from "@/shared/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
-import { Loader } from "@/components/ui/shadcn-io/loader";
-import { Suggestion, Suggestions } from "@/components/ui/ai-elements/suggestion";
+import { Loader } from "@/shared/ui/shadcn-io/loader";
+import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
 import { ConversationUsagePanel } from "@/components/chat/ConversationUsagePanel";
-import type { ConversationUsage } from "@/lib/types";
+import type { ConversationUsage } from "@/shared/lib/types";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
 export type ChatInputMode = "chat" | "voice";

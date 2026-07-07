@@ -1,13 +1,13 @@
-import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Textarea } from "@/shared/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
 import ChatHeader from "@/components/chat/ChatHeader";
 import { ChatInputBar } from "@/components/chat/ChatInputBar";
 import { PlanCard } from "@/components/chat/message_parts/PlanningContainer";
 import { HitlInputTakeover } from "@/components/chat/HitlInputTakeover";
-import { Loader } from "@/components/ui/shadcn-io/loader";
+import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import { useChatWorkspaceContext } from "@/stores/workspaceStore";
+import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
 
 /**
  * The conversation surface for routes "/" and "/c/:conversationId": header,

@@ -1,4 +1,4 @@
-import { PROFILE_PANEL_SHORTCUTS_TAB, type ShortcutActionMap } from "@/lib/shortcuts";
+import { PROFILE_PANEL_SHORTCUTS_TAB, type ShortcutActionMap } from "@/shared/lib/shortcuts";
 
 type ShortcutHandlersCtx = {
   toggleSidebar: () => void;

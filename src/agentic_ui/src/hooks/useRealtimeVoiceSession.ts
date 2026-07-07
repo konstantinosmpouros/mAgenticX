@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RealtimeVoice, VoiceModeLanguage } from "@/lib/consts";
-import type { VoiceModeStatus } from "@/lib/types";
+import type { RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
+import type { VoiceModeStatus } from "@/shared/lib/types";
 import {
   createRealtimeVoiceSession,
-} from "@/lib/api";
+} from "@/shared/lib/api";
 
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 

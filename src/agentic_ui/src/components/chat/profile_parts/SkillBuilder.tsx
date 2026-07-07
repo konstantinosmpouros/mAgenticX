@@ -14,9 +14,9 @@ import {
     Upload,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { buildSkillFileTree, cn } from "@/lib/utils";
-import type { CustomSkillCreatePayload, Skill, SkillTreeNode, UserSkill } from "@/lib/types";
+import { Button } from "@/shared/ui/button";
+import { buildSkillFileTree, cn } from "@/shared/lib/utils";
+import type { CustomSkillCreatePayload, Skill, SkillTreeNode, UserSkill } from "@/shared/lib/types";
 
 // The "create a custom skill" builder. A custom skill is a folder of files —
 // this lets the user author SKILL.md plus extra scripts/reference files and

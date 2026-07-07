@@ -1,4 +1,4 @@
-import { transcribeDictation } from "@/lib/api";
+import { transcribeDictation } from "@/shared/lib/api";
 import type { DictationStatus } from "@/components/chat/ChatInputBar";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 

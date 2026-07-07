@@ -1,4 +1,4 @@
-import type { ParsedHitlAction, ParsedHitlRequest } from "@/lib/types";
+import type { ParsedHitlAction, ParsedHitlRequest } from "@/shared/lib/types";
 
 // Parse a LangChain HITL interrupt payload into the human-readable parts.
 // `content` is the wrapped interrupt {id, value: {action_requests: [{action|

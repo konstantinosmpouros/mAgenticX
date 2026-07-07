@@ -1,8 +1,8 @@
-﻿import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+﻿import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/shared/ui/tooltip";
 import { Bot, Copy, Check, ListTodo, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
 import { TbGauge } from "react-icons/tb";
-import { formatCompactTokens } from "@/lib/utils";
+import { formatCompactTokens } from "@/shared/lib/utils";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { motion, useAnimationControls } from "framer-motion";
 import type { TargetAndTransition, Transition } from "framer-motion";
@@ -19,7 +19,7 @@ import { HiOutlineUpload } from "react-icons/hi";
 import { HiOutlineSpeakerWave } from "react-icons/hi2";
 import { BsStopCircleFill } from "react-icons/bs";
 import type { LucideIcon } from "lucide-react";
-import type { MessageOut } from "@/lib/types";
+import type { MessageOut } from "@/shared/lib/types";
 import { BranchControls } from "./BranchControls";
 
 type ToastHandler = (opts: {

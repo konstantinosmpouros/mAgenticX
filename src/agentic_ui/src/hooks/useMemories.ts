@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { deleteAgentMemory, getAgentMemory, listAgentMemories } from '@/lib/api';
-import type { MemoryDetail, MemorySummary } from '@/lib/types';
+import { deleteAgentMemory, getAgentMemory, listAgentMemories } from '@/shared/lib/api';
+import type { MemoryDetail, MemorySummary } from '@/shared/lib/types';
 
 // Owns the read + delete state for the ProfilePanel "Memories" tab. Memory is
 // per-(user, agent) on the agents-service filesystem; the bridge proxies. The

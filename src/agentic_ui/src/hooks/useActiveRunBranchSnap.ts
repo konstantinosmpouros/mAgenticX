@@ -1,5 +1,5 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import type { ConversationDetail, InferenceRun } from "@/lib/types";
+import type { ConversationDetail, InferenceRun } from "@/shared/lib/types";
 
 type UseActiveRunBranchSnapOptions = {
   currentConversation: ConversationDetail | null;

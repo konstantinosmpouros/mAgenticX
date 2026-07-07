@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { RealtimeVoice, VoiceModeLanguage } from "@/lib/consts";
+import type { RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
 import { createVoiceModeHandlers } from "@/handlers/voice";
 import { useRealtimeVoiceSession } from "@/hooks/useRealtimeVoiceSession";
 

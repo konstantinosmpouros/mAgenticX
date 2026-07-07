@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Check, Loader2, ShieldAlert, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/lib/utils";
 
 export type HitlInterrupt = {
   // LangGraph interrupt's unique id — distinguishes consecutive HITLs that

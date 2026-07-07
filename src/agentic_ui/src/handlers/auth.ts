@@ -1,8 +1,8 @@
-import type { Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/lib/types';
-import { authenticate, getAgents, getConversations, getMySkills, getSkills, getTools, getUserPreferences, logoutSession } from '@/lib/api';
-import { sortByUpdatedAtDesc } from '@/lib/utils';
-import { saveSession, clearSession, loadSession } from '@/lib/authStorage';
-import { setUnauthorizedSuppressed } from '@/lib/consts';
+import type { Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/shared/lib/types';
+import { authenticate, getAgents, getConversations, getMySkills, getSkills, getTools, getUserPreferences, logoutSession } from '@/shared/lib/api';
+import { sortByUpdatedAtDesc } from '@/shared/lib/utils';
+import { saveSession, clearSession, loadSession } from '@/shared/lib/authStorage';
+import { setUnauthorizedSuppressed } from '@/shared/lib/consts';
 
 // Auth handlers bridge API auth with local session persistence and a full chat-shell reset.
 type AuthCtx = {

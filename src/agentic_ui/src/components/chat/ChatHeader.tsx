@@ -1,10 +1,10 @@
-﻿import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+﻿import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Ghost, Archive, Flag, Trash2, MoreHorizontal, HelpCircle } from "lucide-react";
-import type { Agent } from "@/lib/types";
+import type { Agent } from "@/shared/lib/types";
 import React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger } from "@/shared/ui/sidebar";
 import { HiOutlineUpload } from "react-icons/hi";
 import { useTheme } from "next-themes";
 import { motion, useAnimationControls } from "framer-motion";

@@ -1,7 +1,7 @@
 import { TimelineSequence } from "@/components/chat/message_parts/TimelineSequence";
-import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
-import { cn } from "@/lib/utils";
-import type { RunTimeline } from "@/lib/types";
+import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
+import { cn } from "@/shared/lib/utils";
+import type { RunTimeline } from "@/shared/lib/types";
 
 type AgentRunTimelineProps = {
   timeline: RunTimeline;

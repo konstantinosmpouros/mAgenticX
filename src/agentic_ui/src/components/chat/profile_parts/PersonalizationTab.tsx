@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { MoonStar, Sparkles } from "lucide-react";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import {
     VoiceSelector,
     VoiceSelectorAttributes,
@@ -16,11 +16,11 @@ import {
     VoiceSelectorName,
     VoiceSelectorPreview,
     VoiceSelectorTrigger,
-} from "@/components/ui/ai-elements/voice-selector";
-import { cn, fmtBoolean, normalizeRealtimeVoice, normalizeVoiceModeLanguage } from "@/lib/utils";
-import { REALTIME_VOICES, VOICE_MODE_LANGUAGES, type RealtimeVoice, type VoiceModeLanguage } from "@/lib/consts";
-import { generateReadAloudPreviewAudio } from "@/lib/api";
-import type { UserPreferences, UserProfile } from "@/lib/types";
+} from "@/shared/ui/ai-elements/voice-selector";
+import { cn, fmtBoolean, normalizeRealtimeVoice, normalizeVoiceModeLanguage } from "@/shared/lib/utils";
+import { REALTIME_VOICES, VOICE_MODE_LANGUAGES, type RealtimeVoice, type VoiceModeLanguage } from "@/shared/lib/consts";
+import { generateReadAloudPreviewAudio } from "@/shared/lib/api";
+import type { UserPreferences, UserProfile } from "@/shared/lib/types";
 import { InfoCard, SoftPanel } from "./shared";
 import { VoiceGenderIcon } from "./icons";
 

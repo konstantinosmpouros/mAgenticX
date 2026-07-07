@@ -1,6 +1,6 @@
 import React from "react";
 import type { ComponentType } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/shared/ui/scroll-area";
 import { ArrowDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type {
@@ -8,8 +8,8 @@ import type {
   MessageOut,
   RunTimeline,
   ThinkingState,
-} from "@/lib/types";
-import { cn } from "@/lib/utils";
+} from "@/shared/lib/types";
+import { cn } from "@/shared/lib/utils";
 import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
 import { ConversationRail } from "./message_parts/ConversationRail";

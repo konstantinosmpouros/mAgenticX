@@ -1,5 +1,5 @@
-import { downloadConversationPdfExport, getConversationDetail, getSharedConversationLinks, revokeSharedConversationLink, shareConversation } from "@/lib/api";
-import type { ConversationDetail, ConversationShareListItem, ConversationShareMode, MessageOut } from "@/lib/types";
+import { downloadConversationPdfExport, getConversationDetail, getSharedConversationLinks, revokeSharedConversationLink, shareConversation } from "@/shared/lib/api";
+import type { ConversationDetail, ConversationShareListItem, ConversationShareMode, MessageOut } from "@/shared/lib/types";
 import type { Dispatch, SetStateAction } from "react";
 
 type ToastHandler = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;

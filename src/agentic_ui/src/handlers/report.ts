@@ -1,5 +1,5 @@
-import { reportConversation } from "@/lib/api";
-import type { ConversationDetail, ConversationReportPayload, ConversationSummary, MessageOut } from "@/lib/types";
+import { reportConversation } from "@/shared/lib/api";
+import type { ConversationDetail, ConversationReportPayload, ConversationSummary, MessageOut } from "@/shared/lib/types";
 import type { Dispatch, SetStateAction } from "react";
 
 type ToastHandler = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;

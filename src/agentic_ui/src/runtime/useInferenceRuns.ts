@@ -6,8 +6,8 @@ import {
   resumeInferenceRun,
   startInference,
   type ResumeInferenceRunBody,
-} from "@/lib/api";
-import { sortByUpdatedAtDesc } from "@/lib/utils";
+} from "@/shared/lib/api";
+import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
 import {
   createTimeline,
   foldTimeline,
@@ -23,7 +23,7 @@ import type {
   InferenceStartResponse,
   MessageOut,
   ThinkingState,
-} from "@/lib/types";
+} from "@/shared/lib/types";
 
 const ACTIVE_STATUSES = new Set(["queued", "running", "cancelling"]);
 

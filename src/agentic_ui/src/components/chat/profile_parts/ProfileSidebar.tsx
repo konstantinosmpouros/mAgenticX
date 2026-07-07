@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Brain, HelpCircle, Keyboard, LogOut, Palette, ShieldCheck, Sparkles, User } from "lucide-react";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { MCP_VARIANTS, MOBILE_PROFILE_NAV_BREAKPOINT, type McpIconVariant } from "@/lib/consts";
+import { ScrollArea } from "@/shared/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { cn } from "@/shared/lib/utils";
+import { MCP_VARIANTS, MOBILE_PROFILE_NAV_BREAKPOINT, type McpIconVariant } from "@/shared/lib/consts";
 import { McpIcon } from "./icons";
 
 export const NAV_ITEMS = [

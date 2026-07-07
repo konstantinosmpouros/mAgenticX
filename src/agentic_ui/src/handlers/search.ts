@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { searchWorkspace } from "@/lib/api";
-import type { Agent, ConversationSummary, WorkspaceSearchResult } from "@/lib/types";
+import { searchWorkspace } from "@/shared/lib/api";
+import type { Agent, ConversationSummary, WorkspaceSearchResult } from "@/shared/lib/types";
 
 const resolveConversationSummaryTitle = (conversation: ConversationSummary) => {
   const rawTitle = typeof conversation.title === "string" ? conversation.title.trim() : "";

@@ -5,8 +5,8 @@
   BranchPage,
   BranchPrevious,
   BranchSelector,
-} from "@/components/ui/shadcn-io/branch";
-import type { MessageOut } from "@/lib/types";
+} from "@/shared/ui/shadcn-io/branch";
+import type { MessageOut } from "@/shared/lib/types";
 
 type BranchControlsProps = {
   parentId: string | null;

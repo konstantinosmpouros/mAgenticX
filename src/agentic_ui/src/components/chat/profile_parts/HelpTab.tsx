@@ -2,7 +2,7 @@ import { useTheme } from "next-themes";
 import { AppWindow, Archive, ExternalLink, MoonStar, Sparkles } from "lucide-react";
 
 import { useToolStatus } from "@/hooks/useToolStatus";
-import type { ConversationSummary, HelpCard, ToolWithStatus, UserPreferences } from "@/lib/types";
+import type { ConversationSummary, HelpCard, ToolWithStatus, UserPreferences } from "@/shared/lib/types";
 import { InfoCard, SoftPanel } from "./shared";
 
 const HELP_CARDS: HelpCard[] = [

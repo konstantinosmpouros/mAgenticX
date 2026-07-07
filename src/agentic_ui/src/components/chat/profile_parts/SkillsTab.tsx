@@ -2,10 +2,10 @@ import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Bot, ChevronDown, FilePlus, Library, Loader2, Plus, RefreshCw, Search, Sparkles, X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn, skillMatchesTokens, tokenizeSkillQuery } from "@/lib/utils";
-import { CATALOG_BROWSE_LIMIT, CATALOG_RESULT_LIMIT } from "@/lib/consts";
+import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { cn, skillMatchesTokens, tokenizeSkillQuery } from "@/shared/lib/utils";
+import { CATALOG_BROWSE_LIMIT, CATALOG_RESULT_LIMIT } from "@/shared/lib/consts";
 import type {
     Agent,
     CustomSkillCreatePayload,
@@ -14,7 +14,7 @@ import type {
     UserAgentSkillSelection,
     UserSkill,
     UserSkillDetail,
-} from "@/lib/types";
+} from "@/shared/lib/types";
 import { InfoCard, SkillHubRow, SoftPanel } from "./shared";
 import SkillBuilder from "./SkillBuilder";
 import SkillFilesViewer from "./SkillFilesViewer";

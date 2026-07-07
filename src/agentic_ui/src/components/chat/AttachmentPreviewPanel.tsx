@@ -4,9 +4,9 @@ import { Download, X } from "lucide-react";
 import {
   fetchAttachmentPreviewBlob,
   fetchDocxPreviewToken,
-} from "@/lib/api";
-import type { AttachmentOut, MessageOut } from "@/lib/types";
-import { Button } from "@/components/ui/button";
+} from "@/shared/lib/api";
+import type { AttachmentOut, MessageOut } from "@/shared/lib/types";
+import { Button } from "@/shared/ui/button";
 import {
   classifyAttachmentPreview,
   CodeTextPreview,

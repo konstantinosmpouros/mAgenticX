@@ -21,15 +21,15 @@ import type {
   ScheduledTaskCreatePayload,
   ScheduledTaskUpdatePayload,
   ToolPreference,
-} from "@/lib/types";
-import { cn } from "@/lib/utils";
+} from "@/shared/lib/types";
+import { cn } from "@/shared/lib/utils";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+} from "@/shared/ui/tooltip";
+import { SidebarTrigger } from "@/shared/ui/sidebar";
 import ScheduledTaskForm, {
   type ScheduledTaskFormInitial,
 } from "@/components/chat/scheduled_tasks_parts/ScheduledTaskForm";

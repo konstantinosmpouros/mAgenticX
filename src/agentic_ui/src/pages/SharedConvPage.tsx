@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Building2, CalendarDays, Home, Send, ShieldCheck, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/shared/ui/button";
+import { Textarea } from "@/shared/ui/textarea";
 import ChatBody from "@/components/chat/ChatBody";
-import { getSharedConversation, startInference } from "@/lib/api";
+import { getSharedConversation, startInference } from "@/shared/lib/api";
 import { getInferenceStartErrorCopy } from "@/runtime";
-import type { MessageOut, SharedConversationDetail } from "@/lib/types";
+import type { MessageOut, SharedConversationDetail } from "@/shared/lib/types";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
-import { useToast } from "@/hooks/use-toast";
-import { isSessionValid, loadSession, updateSession } from "@/lib/authStorage";
+import { useToast } from "@/shared/hooks/use-toast";
+import { isSessionValid, loadSession, updateSession } from "@/shared/lib/authStorage";
 import { ChatInterface } from "./ChatPage";
 
 const b64ToBlob = (data: string, mime: string) => {

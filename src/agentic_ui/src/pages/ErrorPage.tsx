@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { AlertTriangle, Home, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 
 type ErrorPageProps = {
   error?: Error;

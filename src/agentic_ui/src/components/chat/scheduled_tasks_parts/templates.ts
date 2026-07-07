@@ -10,7 +10,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import type { ScheduleKind, TaskTargetMode } from "@/lib/types";
+import type { ScheduleKind, TaskTargetMode } from "@/shared/lib/types";
 
 /**
  * A starter scheduled-task definition the user can import from the Templates tab.

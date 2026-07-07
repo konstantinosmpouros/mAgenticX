@@ -1,10 +1,10 @@
 import { useMemo, useState, type UIEvent } from "react";
 import { Ban, Check, Copy, Link2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn, fmtDate } from "@/lib/utils";
-import type { ConversationShareListItem, ConversationSummary } from "@/lib/types";
+import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { cn, fmtDate } from "@/shared/lib/utils";
+import type { ConversationShareListItem, ConversationSummary } from "@/shared/lib/types";
 import { InfoCard, MetricCard, SoftPanel } from "./shared";
 
 type DataControlsTabProps = {

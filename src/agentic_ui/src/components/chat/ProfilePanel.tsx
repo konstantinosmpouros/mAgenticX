@@ -1,11 +1,11 @@
 import { X } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { safeText } from "@/lib/utils";
-import { NA, type RealtimeVoice, type VoiceModeLanguage } from "@/lib/consts";
-import { Agent, ConversationShareListItem, ConversationSummary, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/lib/types";
+import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
+import { ScrollArea } from "@/shared/ui/scroll-area";
+import { safeText } from "@/shared/lib/utils";
+import { NA, type RealtimeVoice, type VoiceModeLanguage } from "@/shared/lib/consts";
+import { Agent, ConversationShareListItem, ConversationSummary, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
 import ProfileSidebar, { NAV_ITEMS } from "./profile_parts/ProfileSidebar";
 import AccountTab from "./profile_parts/AccountTab";
 import PersonalizationTab from "./profile_parts/PersonalizationTab";

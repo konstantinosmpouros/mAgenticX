@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import { useNavigate, useParams, useLocation, Outlet } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/shared/ui/tooltip";
 import { Building2, X } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/shared/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type {
@@ -18,9 +18,9 @@ import type {
   UserSkill,
   UserProfile,
   ToolMetadata,
-  UserPreferences } from "@/lib/types";
+  UserPreferences } from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/handlers/preferences";
-import { computeConversationUsage } from "@/lib/utils";
+import { computeConversationUsage } from "@/shared/lib/utils";
 import { useProfilePanel } from "@/hooks/useProfilePanel";
 import { useMemories } from "@/hooks/useMemories";
 import {
@@ -38,7 +38,7 @@ import {
   useUISnapshotPersistence,
 } from "@/hooks/useSessionEffects";
 import { useActiveRunBranchSnap } from "@/hooks/useActiveRunBranchSnap";
-import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import ChatView from "./ChatView";
 
 // Handlers (modularized)
@@ -72,13 +72,13 @@ import {
   HitlProvider,
   pendingTimelineInterrupts,
 } from "@/runtime";
-import { getConversationDetail, getSkills, getSuggestions } from "@/lib/api";
+import { getConversationDetail, getSkills, getSuggestions } from "@/shared/lib/api";
 
 // Chat Interface component
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/components/chat/AttachmentPreviewPanel";
-import { OVERLAY_HOST_ID } from "@/lib/overlay-host";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
+import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
 import ProfilePanel from "@/components/chat/ProfilePanel";
 import ReportConversationDialog from "@/components/chat/ReportPanel";
 import ShareConversationDialog from "@/components/chat/SharePanel";
@@ -87,8 +87,8 @@ import VoiceModeBody from "@/components/chat/VoiceModeBody";
 import { type DictationStatus } from "@/components/chat/ChatInputBar";
 import SearchPanel from "@/components/chat/SearchPanel";
 import { useScheduledTasks } from "@/hooks/useScheduledTasks";
-import { Loader } from "@/components/ui/shadcn-io/loader";
-import { clearUISnapshot } from "@/lib/uiStateStorage";
+import { Loader } from "@/shared/ui/shadcn-io/loader";
+import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
 import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
 
 const ROOT_BRANCH_KEY = "__root__";

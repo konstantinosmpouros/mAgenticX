@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from "react";
-import type { RunTimeline, TimelineBlock } from "@/lib/types";
+import type { RunTimeline, TimelineBlock } from "@/shared/lib/types";
 import { BLOCK_REGISTRY, type BlockRenderContext } from "./block-registry";
 
 type TimelineSequenceProps = {

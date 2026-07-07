@@ -1,6 +1,6 @@
-import { cn, fmtBoolean, fmtDate, fmtDateTime, safeText } from "@/lib/utils";
-import { NA } from "@/lib/consts";
-import type { InfoRow, UserPreferences, UserProfile } from "@/lib/types";
+import { cn, fmtBoolean, fmtDate, fmtDateTime, safeText } from "@/shared/lib/utils";
+import { NA } from "@/shared/lib/consts";
+import type { InfoRow, UserPreferences, UserProfile } from "@/shared/lib/types";
 import { InfoRowsCard } from "./shared";
 
 type AccountTabProps = {

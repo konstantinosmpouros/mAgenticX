@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { foldTimeline } from "./timeline";
-import type { MessageOut, RunTimeline } from "@/lib/types";
+import type { MessageOut, RunTimeline } from "@/shared/lib/types";
 
 // Derive the timeline of a settled AI message by replaying its persisted raw
 // event log — memoized so the fold runs once per message state, not on every

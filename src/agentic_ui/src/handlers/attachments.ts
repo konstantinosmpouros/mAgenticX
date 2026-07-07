@@ -1,6 +1,6 @@
-import { validateAdd } from '@/lib/uploadGuards';
-import { downloadAttachment } from '@/lib/api';
-import type { ConversationDetail, MessageOut } from '@/lib/types';
+import { validateAdd } from '@/shared/lib/uploadGuards';
+import { downloadAttachment } from '@/shared/lib/api';
+import type { ConversationDetail, MessageOut } from '@/shared/lib/types';
 
 // Attachment handlers centralize the file lifecycle for the composer:
 // validate pending files, derive previews, and fetch persisted blobs.

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import type { Agent, MessageOut, RunTimeline, ThinkingState } from "@/lib/types";
+import { Card } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import type { Agent, MessageOut, RunTimeline, ThinkingState } from "@/shared/lib/types";
 import type { LucideIcon } from "lucide-react";
 import { Check, X as CloseIcon } from "lucide-react";
 import { AIActionBar, UserActionBar } from "./message_parts/ActionBars";
@@ -10,7 +10,7 @@ import { MessageContent } from "./message_parts/Content";
 import { PlanSidePanel, SubagentsSidePanel } from "./message_parts/RunSidePanels";
 import { AgentRunTimeline } from "./AgentRunTimeline";
 import { useRunTimeline } from "@/runtime";
-import { ShimmeringText } from "@/components/ui/shadcn-io/shimmering-text";
+import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 
 type ChatMessageProps = {
   message: MessageOut;

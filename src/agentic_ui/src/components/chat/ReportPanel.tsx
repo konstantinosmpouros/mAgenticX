@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Card } from "@/shared/ui/card";
+import { Button } from "@/shared/ui/button";
+import { Textarea } from "@/shared/ui/textarea";
 import { AlertTriangle, Check, Flag, Loader2, MessageSquareQuote, ShieldCheck, X } from "lucide-react";
 
 export const REPORT_REASONS = [

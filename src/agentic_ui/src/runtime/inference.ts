@@ -1,6 +1,6 @@
 import { getInferenceStartErrorCopy } from './inferenceErrors';
-import { convertFileAttachments } from '@/lib/utils';
-import { validateAttachmentsForUpload } from '@/lib/uploadGuards';
+import { convertFileAttachments } from '@/shared/lib/utils';
+import { validateAttachmentsForUpload } from '@/shared/lib/uploadGuards';
 import type {
   Agent,
   ConversationDetail,
@@ -10,9 +10,9 @@ import type {
   ToolPreference,
   InferenceStartRequest,
   InferenceStartResponse,
-} from '@/lib/types';
+} from '@/shared/lib/types';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
-import { updateSession } from '@/lib/authStorage';
+import { updateSession } from '@/shared/lib/authStorage';
 
 // Inference handlers own every flow that starts an agent run:
 // send, edit-submit, retry, and stop-streaming.
