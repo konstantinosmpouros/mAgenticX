@@ -6,7 +6,7 @@ import type {
   TimelineBlock,
   TimelineTerminalStatus,
 } from "@/shared/lib/types";
-import { subagentBlockToItem } from "@/runtime";
+import { subagentBlockToItem } from "@/features/inference";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
 import { SubagentCard } from "./SubagentContainer";

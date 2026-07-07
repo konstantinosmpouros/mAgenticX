@@ -26,7 +26,7 @@ import type {
   TimelineThought,
   TimelineToolExecution,
 } from "@/shared/lib/types";
-import type { SubagentItem } from "@/components/chat/message_parts/SubagentContainer";
+import type { SubagentItem } from "@/features/chat/components/message_parts/SubagentContainer";
 
 // The single fold from raw AG-UI events to the rendered timeline structure
 // [Thinking, Content, Subagent, Content, …]. Used incrementally on live WS

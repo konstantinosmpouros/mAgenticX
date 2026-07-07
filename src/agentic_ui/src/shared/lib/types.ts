@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import type { PlanSnapshot } from "@/runtime/agui";
+import type { PlanSnapshot } from "@/features/inference/agui";
 import type { RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
 
 // Wire-response contracts whose TypeScript shape is INFERRED from the Zod

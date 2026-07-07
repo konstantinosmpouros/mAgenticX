@@ -9,8 +9,8 @@ import {
 } from "@/shared/ui/sheet";
 import { PlanItems } from "./PlanningContainer";
 import { SubagentCard } from "./SubagentContainer";
-import { subagentBlockToItem } from "@/runtime";
-import type { PlanSnapshot } from "@/runtime/agui";
+import { subagentBlockToItem } from "@/features/inference";
+import type { PlanSnapshot } from "@/features/inference/agui";
 import type { RunTimeline, SubagentBlock } from "@/shared/lib/types";
 
 // Post-run side panels: once a run terminates, the plan card and the

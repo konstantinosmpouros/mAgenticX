@@ -19,7 +19,7 @@ import type {
   UserProfile,
   ToolMetadata,
   UserPreferences } from "@/shared/lib/types";
-import { usePreferencesHandlers } from "@/handlers/preferences";
+import { usePreferencesHandlers } from "@/features/settings/handlers/preferences";
 import { computeConversationUsage } from "@/shared/lib/utils";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
 import { useMemories } from "@/features/settings/hooks/useMemories";
@@ -29,15 +29,15 @@ import {
   useCenteredComposerLayout,
   useStickyUserBarEffect,
   useSidebarInteractionEffect,
-} from "@/hooks/useChatEffects";
+} from "@/features/chat/hooks/useChatEffects";
 import { useChatVoiceMode } from "@/features/voice/hooks/useChatVoiceMode";
 import {
   useAuthRehydrateEffect,
   useSessionAutoRefreshEffect,
   useSessionStateSyncEffect,
   useUISnapshotPersistence,
-} from "@/hooks/useSessionEffects";
-import { useActiveRunBranchSnap } from "@/hooks/useActiveRunBranchSnap";
+} from "@/features/auth/hooks/useSessionEffects";
+import { useActiveRunBranchSnap } from "@/features/chat/hooks/useActiveRunBranchSnap";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import ChatView from "./ChatView";
 
@@ -71,25 +71,25 @@ import {
   useInferenceRuns,
   HitlProvider,
   pendingTimelineInterrupts,
-} from "@/runtime";
+} from "@/features/inference";
 import { getConversationDetail, getSkills, getSuggestions } from "@/shared/lib/api";
 
 // Chat Interface component
-import ChatSidebar from "@/components/chat/ChatSidebar";
+import ChatSidebar from "@/features/chat/components/ChatSidebar";
 import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/features/attachments/components/AttachmentPreviewPanel";
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
 import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
 import ProfilePanel from "@/features/settings/components/ProfilePanel";
 import ReportConversationDialog from "@/features/reporting/components/ReportPanel";
 import ShareConversationDialog from "@/features/sharing/components/SharePanel";
-import ChatBody from "@/components/chat/ChatBody";
+import ChatBody from "@/features/chat/components/ChatBody";
 import VoiceModeBody from "@/features/voice/components/VoiceModeBody";
-import { type DictationStatus } from "@/components/chat/ChatInputBar";
+import { type DictationStatus } from "@/features/chat/components/ChatInputBar";
 import SearchPanel from "@/features/search/components/SearchPanel";
 import { useScheduledTasks } from "@/features/tasks/hooks/useScheduledTasks";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
-import type { AttachmentLike } from "@/components/chat/message_parts/MessageAttachments";
+import type { AttachmentLike } from "@/features/chat/components/message_parts/MessageAttachments";
 
 const ROOT_BRANCH_KEY = "__root__";
 const pickVisibleSuggestions = (suggestions: string[]) => {

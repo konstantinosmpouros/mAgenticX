@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 
-import { createShortcutHandlers } from "@/handlers/shortcuts";
+import { createShortcutHandlers } from "@/features/chat/handlers/shortcuts";
 import {
   detectShortcutPlatform,
   getGlobalShortcuts,

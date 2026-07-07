@@ -20,7 +20,7 @@ import { ToolInput, ToolOutput } from "@/shared/ui/ai-elements/tool";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
-import { useHitl, parseHitlInterrupt } from "@/runtime";
+import { useHitl, parseHitlInterrupt } from "@/features/inference";
 import { cn } from "@/shared/lib/utils";
 import type {
   ThinkingBlock,

@@ -28,7 +28,7 @@ import { useIsMobile } from "@/shared/hooks/use-mobile";
 import {
   useChatKeyboardShortcuts,
   type ChatKeyboardShortcutOptions,
-} from "@/hooks/useKeyboardShortcuts";
+} from "@/features/chat/hooks/useKeyboardShortcuts";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import {

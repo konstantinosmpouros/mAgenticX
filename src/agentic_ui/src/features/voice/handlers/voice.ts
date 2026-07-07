@@ -1,5 +1,5 @@
 import { transcribeDictation } from "@/shared/lib/api";
-import type { DictationStatus } from "@/components/chat/ChatInputBar";
+import type { DictationStatus } from "@/features/chat/components/ChatInputBar";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
 type VoiceModeCtx = {

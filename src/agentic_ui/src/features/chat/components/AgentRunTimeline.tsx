@@ -1,4 +1,4 @@
-import { TimelineSequence } from "@/components/chat/message_parts/TimelineSequence";
+import { TimelineSequence } from "@/features/chat/components/message_parts/TimelineSequence";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 import { cn } from "@/shared/lib/utils";
 import type { RunTimeline } from "@/shared/lib/types";

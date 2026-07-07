@@ -9,7 +9,7 @@ import { MessageAttachments } from "./message_parts/MessageAttachments";
 import { MessageContent } from "./message_parts/Content";
 import { PlanSidePanel, SubagentsSidePanel } from "./message_parts/RunSidePanels";
 import { AgentRunTimeline } from "./AgentRunTimeline";
-import { useRunTimeline } from "@/runtime";
+import { useRunTimeline } from "@/features/inference";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 
 type ChatMessageProps = {

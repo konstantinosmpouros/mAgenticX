@@ -1,10 +1,10 @@
 import { Textarea } from "@/shared/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
-import ChatHeader from "@/components/chat/ChatHeader";
-import { ChatInputBar } from "@/components/chat/ChatInputBar";
-import { PlanCard } from "@/components/chat/message_parts/PlanningContainer";
-import { HitlInputTakeover } from "@/components/chat/HitlInputTakeover";
+import ChatHeader from "@/features/chat/components/ChatHeader";
+import { ChatInputBar } from "@/features/chat/components/ChatInputBar";
+import { PlanCard } from "@/features/chat/components/message_parts/PlanningContainer";
+import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
 import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";

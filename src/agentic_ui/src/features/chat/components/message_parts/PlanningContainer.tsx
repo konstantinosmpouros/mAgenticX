@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { ScrollArea } from "@/shared/ui/scroll-area";
-import type { PlanItemStatus, PlanSnapshot } from "@/runtime/agui";
+import type { PlanItemStatus, PlanSnapshot } from "@/features/inference/agui";
 import { cn } from "@/shared/lib/utils";
 
 const STATUS_STYLES: Record<

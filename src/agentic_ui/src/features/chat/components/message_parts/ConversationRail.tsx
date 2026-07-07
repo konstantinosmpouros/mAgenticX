@@ -1,6 +1,6 @@
 import { cn } from "@/shared/lib/utils";
 import type { MessageOut } from "@/shared/lib/types";
-import { useConversationRail } from "@/hooks/useConversationRail";
+import { useConversationRail } from "@/features/chat/hooks/useConversationRail";
 
 type ConversationRailProps = {
   messages: MessageOut[];

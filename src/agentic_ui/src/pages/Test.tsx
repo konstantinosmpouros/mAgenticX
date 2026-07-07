@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { HitlInterruptCard, type HitlInterrupt } from "@/components/chat/message_parts/HitlInterruptCard";
+import { HitlInterruptCard, type HitlInterrupt } from "@/features/chat/components/message_parts/HitlInterruptCard";
 import { Button } from "@/shared/ui/button";
 
 // HITL demo fixtures — three interrupt shapes so we can eyeball how the card

@@ -18,7 +18,7 @@ import StarBorder from "@/shared/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
-import { ConversationUsagePanel } from "@/components/chat/ConversationUsagePanel";
+import { ConversationUsagePanel } from "@/features/chat/components/ConversationUsagePanel";
 import type { ConversationUsage } from "@/shared/lib/types";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
