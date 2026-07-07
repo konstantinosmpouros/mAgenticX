@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowLeft, Compass, Home, Sparkles } from "lucide-react";
+import { ArrowLeft, Home, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const NotFound = () => {
@@ -57,16 +57,6 @@ const NotFound = () => {
                     Return home
                   </Link>
                 </Button>
-                <Button
-                  variant="secondary"
-                  asChild
-                  className="border border-slate-200/80 bg-white/80 text-slate-800 hover:bg-white dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
-                >
-                  <Link to="/architecture">
-                    <Compass className="h-4 w-4" />
-                    Architecture guide
-                  </Link>
-                </Button>
               </div>
             </div>
 
@@ -117,21 +107,6 @@ const NotFound = () => {
                     <ArrowLeft className="h-4 w-4 text-fuchsia-400 transition group-hover:-translate-x-1 group-hover:text-fuchsia-500 dark:text-fuchsia-200" />
                   </Link>
 
-                  <Link
-                    to="/architecture"
-                    className="group flex items-center justify-between rounded-xl border border-white/60 bg-white/70 px-4 py-3 transition hover:-translate-y-0.5 hover:border-cyan-300/70 hover:shadow-lg hover:shadow-cyan-900/15 dark:border-white/10 dark:bg-white/5 dark:hover:border-cyan-200/30"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400/20 via-blue-500/15 to-indigo-500/20 text-cyan-600 dark:text-cyan-200">
-                        <Compass className="h-5 w-5" />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm font-semibold">Explore the map</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Review the architecture before diving back in.</p>
-                      </div>
-                    </div>
-                    <ArrowLeft className="h-4 w-4 text-cyan-500 transition group-hover:-translate-x-1 group-hover:text-cyan-600 dark:text-cyan-200" />
-                  </Link>
                 </div>
               </div>
             </div>

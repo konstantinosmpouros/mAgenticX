@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { AlertTriangle, Home, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Home, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type ErrorPageProps = {
@@ -99,22 +99,6 @@ const ErrorPage = ({ error, onRetry }: ErrorPageProps) => {
                       Retry
                     </Button>
                   </div>
-
-                  <Link
-                    to="/architecture"
-                    className="group flex items-center justify-between rounded-xl border border-white/60 bg-white/70 px-4 py-3 transition hover:-translate-y-0.5 hover:border-indigo-400/70 hover:shadow-lg hover:shadow-indigo-900/20 dark:border-white/10 dark:bg-white/5 dark:hover:border-indigo-300/30"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 via-fuchsia-500/15 to-cyan-400/20 text-indigo-500 dark:text-indigo-200">
-                        <Sparkles className="h-5 w-5" />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm font-semibold">Check the architecture</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Review system state before diving back in.</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-semibold text-indigo-400 transition group-hover:translate-x-1 group-hover:text-indigo-500 dark:text-indigo-200">Open</span>
-                  </Link>
                 </div>
               </div>
             </div>

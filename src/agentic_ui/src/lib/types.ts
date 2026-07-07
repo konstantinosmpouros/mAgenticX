@@ -2,6 +2,38 @@ import type { LucideIcon } from "lucide-react";
 import type { PlanSnapshot } from "@/runtime/agui";
 import type { RealtimeVoice, VoiceModeLanguage } from "@/lib/consts";
 
+// Wire-response contracts whose TypeScript shape is INFERRED from the Zod
+// schemas in `schemas.ts` (the single source of truth for these). Re-exported
+// here so the rest of the app keeps importing every type from `@/lib/types`,
+// while the runtime validator and the compile-time type can never drift apart.
+import type {
+  Skill,
+  UserSkill,
+  SkillFile,
+  UserSkillDetail,
+  MemorySummary,
+  MemoryDetail,
+  ToolMetadata,
+  DocxPreviewTokenResponse,
+  RealtimeVoiceSessionResponse,
+  WorkspaceSearchResult,
+  WorkspaceSearchResultKind,
+} from "./schemas";
+
+export type {
+  Skill,
+  UserSkill,
+  SkillFile,
+  UserSkillDetail,
+  MemorySummary,
+  MemoryDetail,
+  ToolMetadata,
+  DocxPreviewTokenResponse,
+  RealtimeVoiceSessionResponse,
+  WorkspaceSearchResult,
+  WorkspaceSearchResultKind,
+};
+
 
 // ------------------------------------------------------
 // Authentication Schemas
@@ -28,7 +60,6 @@ export type UserProfile = {
 
 export type AuthResponse = {
     authenticated: boolean;
-    user_id?: string;
     user?: UserProfile;
     tokenTtl?: number;
 };
@@ -75,14 +106,7 @@ export type Agent = {
 // ------------------------------------------------------
 // Tool Schemas
 // ------------------------------------------------------
-// Tool metadata fetched from the backend
-export type ToolMetadata = {
-    serverId: string;
-    toolName: string;
-    description: string;
-    parameterCount: number;
-};
-
+// `ToolMetadata` is inferred from `ToolMetadataSchema` (see re-export above).
 export type ToolWithStatus = ToolMetadata & { enabled?: boolean };
 
 // Profile panel — a documentation/support entry on the Help tab.
@@ -105,42 +129,8 @@ export type InfoRow = {
 export type SkillsSubView = "hub" | "global" | "mine" | "agents" | "create";
 
 
-// One entry in the global (admin-curated) skills catalog. The agent uses
-// `content` as the SKILL.md body; the UI shows `name` + `description` with
-// click-to-expand for the body. `category` is the parent folder in the
-// `<category>/<skill>/` global hierarchy — surfaced as a small label.
-export type Skill = {
-    name: string;
-    description: string;
-    content: string;
-    category: string;
-};
-
-
-// One entry in the user's personal skill pool — either a reference to a
-// global catalog skill (type="global") or a user-authored custom skill
-// (type="custom"). `source_path` is opaque on the frontend; only the agents
-// service interprets it. `category` mirrors the global hierarchy and is
-// empty for customs.
-export type UserSkill = {
-    name: string;
-    type: "global" | "custom";
-    description: string;
-    source_path: string;
-    category: string;
-};
-
-
-// One file inside a skill folder. `path` is relative to the skill root and
-// "/"-separated (e.g. "SKILL.md", "references/api.md"). `content` is UTF-8
-// text when `encoding` is "utf-8" or base64 when "base64" (binary assets).
-// `size` is the decoded byte length — present on reads, omitted on create.
-export type SkillFile = {
-    path: string;
-    content: string;
-    encoding: "utf-8" | "base64";
-    size?: number;
-};
+// `Skill`, `UserSkill`, `SkillFile`, `UserSkillDetail` are inferred from their
+// Zod schemas (see re-export above).
 
 
 // A node in a skill's folder tree, derived from a flat list of file paths.
@@ -153,15 +143,6 @@ export type SkillTreeNode = {
 };
 
 
-// User-pool entry joined with its file inventory. Returned by the detail
-// endpoint when the user expands a card. `content` is the SKILL.md body
-// (quick preview); `files` is the full on-disk tree.
-export type UserSkillDetail = UserSkill & {
-    content: string;
-    files: SkillFile[];
-};
-
-
 // Form payload for creating a user-owned custom skill. The folder is described
 // as a list of files; exactly one must be "SKILL.md".
 export type CustomSkillCreatePayload = {
@@ -171,24 +152,8 @@ export type CustomSkillCreatePayload = {
 };
 
 
-// One row in an agent's long-term memory — what the Memory inspector lists.
-// `name` is the slug (the entries/<name>.yml filename + AGENTS.md anchor);
-// `summary` is the one-line index text. Dates are ISO strings; provenance
-// points at the conversation the memory was saved from. Metadata only — the
-// full body arrives via MemoryDetail on click.
-export type MemorySummary = {
-    name: string;
-    summary: string;
-    createdAt: string | null;
-    updatedAt: string | null;
-    sourceConversationId: string | null;
-};
-
-
-// A memory row joined with its full stored body (click-to-preview).
-export type MemoryDetail = MemorySummary & {
-    content: string;
-};
+// `MemorySummary` and `MemoryDetail` are inferred from their Zod schemas
+// (see re-export above).
 
 
 // Per-(user, agent) skill selection. Map shape is { [agentId]: Set<skillName> }
@@ -242,11 +207,8 @@ export type RealtimeVoiceSessionRequest = {
     language?: VoiceModeLanguage;
 };
 
-export type RealtimeVoiceSessionResponse = {
-    sdp: string;
-    model: string;
-    voice: string;
-};
+// `RealtimeVoiceSessionResponse` is inferred from its Zod schema
+// (see re-export above).
 
 export type RealtimeVoiceConversationEventRequest = {
     conversationId: string;
@@ -349,18 +311,8 @@ export type SharedConversationDetail = {
     createdAt: Date;
 };
 
-export type WorkspaceSearchResultKind = "conversation" | "message" | "file" | "agent";
-
-export type WorkspaceSearchResult = {
-    kind: WorkspaceSearchResultKind;
-    id: string;
-    conversationId?: string | null;
-    agentId?: string | null;
-    title: string;
-    subtitle?: string | null;
-    snippet?: string | null;
-    updatedAt?: string | Date | null;
-};
+// `WorkspaceSearchResultKind` and `WorkspaceSearchResult` are inferred from
+// their Zod schemas (see re-export above).
 
 // Backend message type from API response
 export type MessageOut = {
@@ -732,10 +684,7 @@ export type DownloadAttachmentParams = {
     filename?: string;
 };
 
-export type DocxPreviewTokenResponse = {
-    token: string;
-    expiresIn: number;
-};
+// `DocxPreviewTokenResponse` is inferred from its Zod schema (see re-export above).
 
 
 

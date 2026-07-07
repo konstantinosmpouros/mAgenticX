@@ -1,7 +1,5 @@
 import type {
   Agent,
-  AgentPublic,
-  AuthApiError,
   AuthRequest,
   AuthResponse,
   ConversationDetail,
@@ -30,7 +28,6 @@ import type {
   ScheduledTaskCreatePayload,
   ScheduledTaskUpdatePayload,
   Skill,
-  SkillFile,
   UserSkill,
   UserSkillDetail,
   CustomSkillCreatePayload,
@@ -41,11 +38,27 @@ import type {
   WorkspaceSearchResult,
 } from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
+import { requestJson, requestVoid, requestBlob, requestRaw } from "./http";
+import {
+  DocxPreviewTokenSchema,
+  MemoryDetailSchema,
+  MemorySummaryListSchema,
+  RealtimeVoiceSessionResponseSchema,
+  SkillListSchema,
+  StringListSchema,
+  SuggestionsSchema,
+  ToolMetadataListSchema,
+  UserSkillListSchema,
+  UserSkillSchema,
+  UserSkillDetailSchema,
+  WireObjectArraySchema,
+  WireObjectSchema,
+  WorkspaceSearchResultListSchema,
+} from "./schemas";
 import {
   normalizeAuthResponse,
   normalizeRealtimeVoice,
   normalizeVoiceModeLanguage,
-  withSessionRequest,
 } from "./utils";
 import {
   mapIcon,
@@ -77,55 +90,28 @@ const MEMORIES_BASE_PATH = `${API_BASE_PATH}/memories`;
 const SCHEDULED_TASKS_BASE_PATH = `${API_BASE_PATH}/scheduled-tasks`;
 
 
-
-// Authenticate user credentials
+// Authenticate user credentials. A failed login is a credential error, not a
+// session expiry, so it must NOT emit the global unauthorized event; the
+// Retry-After header is captured so the form can show a rate-limit countdown.
 export async function authenticate(credentials: AuthRequest): Promise<AuthResponse> {
-  const res = await fetch(`${AUTH_BASE_PATH}/login`, withSessionRequest({
+  const data = await requestJson(`${AUTH_BASE_PATH}/login`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(credentials),
-  }));
-  if (!res.ok) {
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-
-    const retryAfterHeader = res.headers.get("Retry-After");
-    const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : undefined;
-
-    const error = new Error(detail || `Failed to authenticate: ${res.status}`) as AuthApiError;
-    error.status = res.status;
-    error.detail = detail;
-    if (Number.isFinite(retryAfterSeconds)) {
-      error.retryAfterSeconds = retryAfterSeconds;
-    }
-    throw error;
-  }
-  const data = await res.json();
+    body: credentials,
+    emitOn401: false,
+    captureRetryAfter: true,
+    fallbackMessage: "Failed to authenticate",
+  });
   return normalizeAuthResponse(data);
 }
 
 
-// Get current session info (used for session restoration and auth checks)
+// Get current session info (used for session restoration and auth checks). A 401
+// here is an expected "not signed in" answer, not an event-worthy expiry.
 export async function getSessionMe(): Promise<AuthResponse> {
-  const res = await fetch(`${AUTH_BASE_PATH}/session`, withSessionRequest({
-    headers: {
-      "Accept": "application/json",
-    },
-  }));
-  if (!res.ok) {
-    const error = new Error(`Failed to fetch current session: ${res.status}`);
-    (error as any).status = res.status;
-    throw error;
-  }
-  const data = await res.json();
+  const data = await requestJson(`${AUTH_BASE_PATH}/session`, {
+    emitOn401: false,
+    fallbackMessage: "Failed to fetch current session",
+  });
   return normalizeAuthResponse(data);
 }
 
@@ -135,7 +121,7 @@ export async function restoreSession(): Promise<AuthResponse | null> {
   try {
     return await getSessionMe();
   } catch (error) {
-    if ((error as any)?.status !== 401) {
+    if ((error as { status?: number })?.status !== 401) {
       throw error;
     }
   }
@@ -150,50 +136,44 @@ export async function restoreSession(): Promise<AuthResponse | null> {
 
 // Refresh user session
 export async function refreshSession(emitOnUnauthorized: boolean = true): Promise<AuthResponse> {
-  const res = await fetch(`${AUTH_BASE_PATH}/session/refresh`, withSessionRequest({
+  const data = await requestJson(`${AUTH_BASE_PATH}/session/refresh`, {
     method: "POST",
-    headers: {
-      "Accept": "application/json",
-    },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401 && emitOnUnauthorized) emitUnauthorized();
-    throw new Error(`Failed to refresh session: ${res.status}`);
-  }
-  const data = await res.json();
+    csrf: true,
+    emitOn401: emitOnUnauthorized,
+    fallbackMessage: "Failed to refresh session",
+  });
   return normalizeAuthResponse(data);
 }
 
 
-// Logout user session
+// Logout user session. A 401 means the session was already gone — treat it as a
+// successful logout rather than an error, and do not emit an unauthorized event.
 export async function logoutSession(): Promise<void> {
-  const res = await fetch(`${AUTH_BASE_PATH}/logout`, withSessionRequest({
+  await requestVoid(`${AUTH_BASE_PATH}/logout`, {
     method: "POST",
-  }, { csrf: true }));
-  if (!res.ok && res.status !== 401) {
-    throw new Error(`Failed to logout: ${res.status}`);
-  }
+    csrf: true,
+    ignoreStatuses: [401],
+    fallbackMessage: "Failed to logout",
+  });
 }
 
 
-// Fetch agents from backend via nginx proxy
+// Fetch agents from backend via nginx proxy. The wire shape is validated as an
+// array of objects; each row is coerced into the app `Agent` (icon name → the
+// Lucide component, snake/camel `is_active` reconciled).
 export async function getAgents(): Promise<Agent[]> {
-  const res = await fetch(`${CATALOG_BASE_PATH}/agents`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch agents: ${res.status}`);
-  }
-  const data = (await res.json()) as AgentPublic[];
+  const data = await requestJson(`${CATALOG_BASE_PATH}/agents`, {
+    schema: WireObjectArraySchema,
+    fallbackMessage: "Failed to fetch agents",
+  });
   return data.map((a) => ({
-    id: a.id,
-    name: a.name,
-    description: a.description,
-    icon: mapIcon(a.icon),
-    version: a.version,
-    type: typeof (a as any).type === "string" ? (a as any).type : undefined,
-    isActive: Boolean((a as any).isActive ?? (a as any).is_active ?? true),
+    id: String(a.id ?? ""),
+    name: typeof a.name === "string" ? a.name : "Unknown Agent",
+    description: typeof a.description === "string" ? a.description : "",
+    icon: mapIcon(typeof a.icon === "string" ? a.icon : null),
+    version: typeof a.version === "string" ? a.version : undefined,
+    type: typeof a.type === "string" ? a.type : undefined,
+    isActive: Boolean(a.isActive ?? a.is_active ?? true),
   }));
 }
 
@@ -209,23 +189,10 @@ export async function getAgents(): Promise<Agent[]> {
 // cache absorbs the load.
 export async function getSkills(options?: { bypassRedis?: boolean }): Promise<Skill[]> {
   const url = options?.bypassRedis ? `${SKILLS_BASE_PATH}?bypass_redis=true` : SKILLS_BASE_PATH;
-  const res = await fetch(url, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch skills: ${res.status}`);
-  }
-  const data = await res.json();
-  if (!Array.isArray(data)) {
-    return [];
-  }
-  return data.map((skill: any) => ({
-    name: typeof skill?.name === "string" ? skill.name : "unknown-skill",
-    description: typeof skill?.description === "string" ? skill.description : "",
-    content: typeof skill?.content === "string" ? skill.content : "",
-    category: typeof skill?.category === "string" ? skill.category : "",
-  }));
+  return requestJson(url, {
+    schema: SkillListSchema,
+    fallbackMessage: "Failed to fetch skills",
+  });
 }
 
 
@@ -235,18 +202,10 @@ export async function getSkills(options?: { bypassRedis?: boolean }): Promise<Sk
 // agents service (which is authoritative — the on-disk directory IS the state).
 export async function getUserAgentSkills(userId: string, agentId: string): Promise<string[]> {
   const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}`;
-  const res = await fetch(url, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch user-agent skills: ${res.status}`);
-  }
-  const data = await res.json();
-  if (!Array.isArray(data)) {
-    return [];
-  }
-  return data.map((entry: any) => String(entry));
+  return requestJson(url, {
+    schema: StringListSchema,
+    fallbackMessage: "Failed to fetch user-agent skills",
+  });
 }
 
 
@@ -257,14 +216,11 @@ export async function enableUserAgentSkill(
   skillName: string,
 ): Promise<void> {
   const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(skillName)}`;
-  const res = await fetch(url, withSessionRequest({
+  await requestVoid(url, {
     method: "PUT",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to enable skill ${skillName}: ${res.status}`);
-  }
+    csrf: true,
+    fallbackMessage: `Failed to enable skill ${skillName}`,
+  });
 }
 
 
@@ -275,42 +231,21 @@ export async function disableUserAgentSkill(
   skillName: string,
 ): Promise<void> {
   const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(skillName)}`;
-  const res = await fetch(url, withSessionRequest({
+  await requestVoid(url, {
     method: "DELETE",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to disable skill ${skillName}: ${res.status}`);
-  }
-}
-
-
-// Map a backend memory record (snake_case) to the camelCase frontend shape.
-function mapMemorySummary(raw: any): MemorySummary {
-  return {
-    name: String(raw?.name ?? ""),
-    summary: typeof raw?.summary === "string" ? raw.summary : "",
-    createdAt: raw?.created_at ?? null,
-    updatedAt: raw?.updated_at ?? null,
-    sourceConversationId: raw?.source_conversation_id ?? null,
-  };
+    csrf: true,
+    fallbackMessage: `Failed to disable skill ${skillName}`,
+  });
 }
 
 
 // List the memories this agent has saved about the user (metadata only).
 export async function listAgentMemories(userId: string, agentId: string): Promise<MemorySummary[]> {
   const url = `${MEMORIES_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}`;
-  const res = await fetch(url, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch agent memories: ${res.status}`);
-  }
-  const data = await res.json();
-  if (!Array.isArray(data)) return [];
-  return data.map(mapMemorySummary);
+  return requestJson(url, {
+    schema: MemorySummaryListSchema,
+    fallbackMessage: "Failed to fetch agent memories",
+  });
 }
 
 
@@ -321,15 +256,10 @@ export async function getAgentMemory(
   name: string,
 ): Promise<MemoryDetail> {
   const url = `${MEMORIES_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(name)}`;
-  const res = await fetch(url, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch memory ${name}: ${res.status}`);
-  }
-  const raw = await res.json();
-  return { ...mapMemorySummary(raw), content: typeof raw?.content === "string" ? raw.content : "" };
+  return requestJson(url, {
+    schema: MemoryDetailSchema,
+    fallbackMessage: `Failed to fetch memory ${name}`,
+  });
 }
 
 
@@ -340,39 +270,17 @@ export async function deleteAgentMemory(
   name: string,
 ): Promise<void> {
   const url = `${MEMORIES_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}/${encodeURIComponent(name)}`;
-  const res = await fetch(url, withSessionRequest({
+  await requestVoid(url, {
     method: "DELETE",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to delete memory ${name}: ${res.status}`);
-  }
+    csrf: true,
+    fallbackMessage: `Failed to delete memory ${name}`,
+  });
 }
 
 
 // ---------------------------------------------------------------------------
 // Per-user skill pool (the user's personal registry of globals + customs)
 // ---------------------------------------------------------------------------
-function normalizeUserSkill(raw: any): UserSkill {
-  return {
-    name: typeof raw?.name === "string" ? raw.name : "unknown-skill",
-    type: raw?.type === "custom" ? "custom" : "global",
-    description: typeof raw?.description === "string" ? raw.description : "",
-    source_path: typeof raw?.source_path === "string" ? raw.source_path : "",
-    category: typeof raw?.category === "string" ? raw.category : "",
-  };
-}
-
-function normalizeSkillFile(raw: any): SkillFile {
-  return {
-    path: typeof raw?.path === "string" ? raw.path : "",
-    content: typeof raw?.content === "string" ? raw.content : "",
-    encoding: raw?.encoding === "base64" ? "base64" : "utf-8",
-    size: typeof raw?.size === "number" ? raw.size : undefined,
-  };
-}
-
 
 // Fetch the user's pool manifest entries (no SKILL.md content). Read-through
 // cached on the bridge with a 5min TTL. ``bypassRedis: true`` forces an
@@ -383,18 +291,10 @@ export async function getMySkills(
 ): Promise<UserSkill[]> {
   const base = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}`;
   const url = options?.bypassRedis ? `${base}?bypass_redis=true` : base;
-  const res = await fetch(url, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    const error = new Error(`Failed to fetch my skills: ${res.status}`) as Error & { status?: number };
-    error.status = res.status;
-    throw error;
-  }
-  const data = await res.json();
-  if (!Array.isArray(data)) return [];
-  return data.map(normalizeUserSkill);
+  return requestJson(url, {
+    schema: UserSkillListSchema,
+    fallbackMessage: "Failed to fetch my skills",
+  });
 }
 
 
@@ -405,21 +305,10 @@ export async function getMySkillDetail(
   skillName: string,
 ): Promise<UserSkillDetail> {
   const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/${encodeURIComponent(skillName)}`;
-  const res = await fetch(url, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch skill detail ${skillName}: ${res.status}`);
-  }
-  const raw = await res.json();
-  return {
-    ...normalizeUserSkill(raw),
-    content: typeof raw?.content === "string" ? raw.content : "",
-    files: Array.isArray(raw?.files)
-      ? raw.files.map(normalizeSkillFile).filter((f: SkillFile) => f.path)
-      : [],
-  };
+  return requestJson(url, {
+    schema: UserSkillDetailSchema,
+    fallbackMessage: `Failed to fetch skill detail ${skillName}`,
+  });
 }
 
 
@@ -430,14 +319,11 @@ export async function addGlobalSkillToPool(
   skillName: string,
 ): Promise<void> {
   const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/global/${encodeURIComponent(skillName)}`;
-  const res = await fetch(url, withSessionRequest({
+  await requestVoid(url, {
     method: "POST",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to add global skill ${skillName} to pool: ${res.status}`);
-  }
+    csrf: true,
+    fallbackMessage: `Failed to add global skill ${skillName} to pool`,
+  });
 }
 
 
@@ -448,29 +334,16 @@ export async function createCustomSkill(
   payload: CustomSkillCreatePayload,
 ): Promise<UserSkill> {
   const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/custom`;
-  const res = await fetch(url, withSessionRequest({
+  return requestJson(url, {
     method: "POST",
-    headers: { "Accept": "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    if (res.status === 413) {
-      throw new Error(
-        `This skill is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). Use smaller files.`,
-      );
-    }
-    let detail = "";
-    try {
-      const errBody = await res.json();
-      detail = typeof errBody?.detail === "string" ? errBody.detail : "";
-    } catch {
-      // swallow — we'll throw a generic error
-    }
-    throw new Error(detail || `Failed to create custom skill: ${res.status}`);
-  }
-  const raw = await res.json();
-  return normalizeUserSkill(raw);
+    csrf: true,
+    body: payload,
+    schema: UserSkillSchema,
+    errorMessages: {
+      413: `This skill is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). Use smaller files.`,
+    },
+    fallbackMessage: "Failed to create custom skill",
+  });
 }
 
 
@@ -481,36 +354,20 @@ export async function removeSkillFromPool(
   skillName: string,
 ): Promise<void> {
   const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}/${encodeURIComponent(skillName)}`;
-  const res = await fetch(url, withSessionRequest({
+  await requestVoid(url, {
     method: "DELETE",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to remove skill ${skillName} from pool: ${res.status}`);
-  }
+    csrf: true,
+    fallbackMessage: `Failed to remove skill ${skillName} from pool`,
+  });
 }
 
 
 // Fetch available tools from backend
 export async function getTools(): Promise<ToolMetadata[]> {
-  const res = await fetch(`${CATALOG_BASE_PATH}/tools`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch tools: ${res.status}`);
-  }
-  const data = await res.json();
-  if (!Array.isArray(data)) {
-    return [];
-  }
-  return data.map((tool: any) => ({
-    serverId: typeof tool?.server_id === "string" ? tool.server_id : "",
-    toolName: typeof tool?.tool_name === "string" ? tool.tool_name : "unknown-tool",
-    description: typeof tool?.description === "string" ? tool.description : "",
-    parameterCount: Number.isFinite(tool?.parameter_count) ? Math.max(0, Number(tool.parameter_count)) : 0,
-  }));
+  return requestJson(`${CATALOG_BASE_PATH}/tools`, {
+    schema: ToolMetadataListSchema,
+    fallbackMessage: "Failed to fetch tools",
+  });
 }
 
 
@@ -524,129 +381,88 @@ export async function searchWorkspace(
     q: query,
     limit: String(limit),
   });
-  const res = await fetch(`${SEARCH_BASE_PATH}/${encodeURIComponent(userId)}?${params.toString()}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to search workspace: ${res.status}`);
-  }
-  const data = await res.json();
-  return Array.isArray(data) ? data as WorkspaceSearchResult[] : [];
+  return requestJson(`${SEARCH_BASE_PATH}/${encodeURIComponent(userId)}?${params.toString()}`, {
+    schema: WorkspaceSearchResultListSchema,
+    fallbackMessage: "Failed to search workspace",
+  });
+}
+
+
+// Map the raw preferences payload (mixed camelCase) into the app shape, applying
+// the same per-field defaults on both read and write so the two paths cannot
+// drift. Tool disable-list entries are passed through verbatim.
+function mapUserPreferences(data: unknown) {
+  const record = (data ?? {}) as Record<string, unknown>;
+  const toolsRecord = record.tools as { disabled?: unknown } | undefined;
+  const tools = Array.isArray(toolsRecord?.disabled) ? (toolsRecord.disabled as ToolPreference[]) : [];
+  const prefersAgenticChat =
+    typeof record.prefersAgenticChat === "boolean" ? record.prefersAgenticChat : false;
+  const suggestionsEnabled =
+    typeof record.suggestionsEnabled === "boolean" ? record.suggestionsEnabled : true;
+  const showMessageTokenUsage =
+    typeof record.showMessageTokenUsage === "boolean" ? record.showMessageTokenUsage : false;
+  const searchPastConvs =
+    typeof record.searchPastConvs === "boolean" ? record.searchPastConvs : false;
+  const useMemory = typeof record.useMemory === "boolean" ? record.useMemory : true;
+  const voiceModeVoice = normalizeRealtimeVoice(record.voiceModeVoice);
+  const voiceModeLanguage = normalizeVoiceModeLanguage(record.voiceModeLanguage);
+
+  return {
+    tools: { disabled: tools },
+    prefersAgenticChat,
+    suggestionsEnabled,
+    showMessageTokenUsage,
+    searchPastConvs,
+    useMemory,
+    voiceModeVoice,
+    voiceModeLanguage,
+  };
 }
 
 
 // Fetch user preferences
 export async function getUserPreferences(userId: string) {
-  const res = await fetch(`${PREFERENCES_BASE_PATH}/${userId}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch user preferences: ${res.status}`);
-  }
-  const data = await res.json();
-  const tools = Array.isArray(data?.tools?.disabled) ? (data.tools.disabled as any[]) : [];
-  const prefersAgenticChat =
-    typeof data?.prefersAgenticChat === "boolean"
-      ? data.prefersAgenticChat
-      : false;
-  const suggestionsEnabled =
-    typeof data?.suggestionsEnabled === "boolean"
-      ? data.suggestionsEnabled
-      : true;
-  const showMessageTokenUsage =
-    typeof data?.showMessageTokenUsage === "boolean"
-      ? data.showMessageTokenUsage
-      : false;
-  const searchPastConvs =
-    typeof data?.searchPastConvs === "boolean"
-      ? data.searchPastConvs
-      : false;
-  const useMemory =
-    typeof data?.useMemory === "boolean"
-      ? data.useMemory
-      : true;
-  const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
-  const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
-
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, searchPastConvs, useMemory, voiceModeVoice, voiceModeLanguage };
+  const data = await requestJson(`${PREFERENCES_BASE_PATH}/${userId}`, {
+    fallbackMessage: "Failed to fetch user preferences",
+  });
+  return mapUserPreferences(data);
 }
 
 
 // Update user preferences
-export async function updateUserPreferences(userId: string, prefs: any) {
-  const res = await fetch(`${PREFERENCES_BASE_PATH}/${userId}`, withSessionRequest({
+export async function updateUserPreferences(userId: string, prefs: unknown) {
+  const data = await requestJson(`${PREFERENCES_BASE_PATH}/${userId}`, {
     method: "PUT",
-    headers: { "Accept": "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(prefs),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to update user preferences: ${res.status}`);
-  }
-  const data = await res.json();
-  const tools = Array.isArray(data?.tools?.disabled) ? (data.tools.disabled as any[]) : [];
-  const prefersAgenticChat =
-    typeof data?.prefersAgenticChat === "boolean"
-      ? data.prefersAgenticChat
-      : false;
-  const suggestionsEnabled =
-    typeof data?.suggestionsEnabled === "boolean"
-      ? data.suggestionsEnabled
-      : true;
-  const showMessageTokenUsage =
-    typeof data?.showMessageTokenUsage === "boolean"
-      ? data.showMessageTokenUsage
-      : false;
-  const searchPastConvs =
-    typeof data?.searchPastConvs === "boolean"
-      ? data.searchPastConvs
-      : false;
-  const useMemory =
-    typeof data?.useMemory === "boolean"
-      ? data.useMemory
-      : true;
-  const voiceModeVoice = normalizeRealtimeVoice(data?.voiceModeVoice);
-  const voiceModeLanguage = normalizeVoiceModeLanguage(data?.voiceModeLanguage);
-  return { tools: { disabled: tools }, prefersAgenticChat, suggestionsEnabled, showMessageTokenUsage, searchPastConvs, useMemory, voiceModeVoice, voiceModeLanguage };
+    csrf: true,
+    body: prefs,
+    fallbackMessage: "Failed to update user preferences",
+  });
+  return mapUserPreferences(data);
 }
 
 
 // Fetch personalized starter suggestions for a new chat.
 export async function getSuggestions(userId: string, agentId?: string | null): Promise<string[]> {
   const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : "";
-  const res = await fetch(`${CATALOG_BASE_PATH}/${userId}/suggestions${query}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch suggestions: ${res.status}`);
-  }
-  const data = await res.json();
-  return Array.isArray(data?.suggestions)
-    ? data.suggestions.filter((suggestion: unknown): suggestion is string => typeof suggestion === "string" && suggestion.trim().length > 0)
-    : [];
+  return requestJson(`${CATALOG_BASE_PATH}/${userId}/suggestions${query}`, {
+    schema: SuggestionsSchema,
+    fallbackMessage: "Failed to fetch suggestions",
+  });
 }
 
 
-// Fetch conversations for a user
+// Fetch conversations for a user. The bridge returns either a bare array or a
+// Page shape ({ items, total, page, size }); both are accepted.
 export async function getConversations(
   userId: string,
   page: number = 1,
   size: number = 10,
 ): Promise<ConversationSummary[]> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}?page=${page}&size=${size}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch conversations: ${res.status}`);
-  }
-  // Backend returns a Page shape: { items, total, page, size }
-  const data = await res.json();
-  const items = Array.isArray(data) ? data : (data?.items ?? []);
-  return (items as any[]).map(transformConversationSummary);
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}?page=${page}&size=${size}`, {
+    fallbackMessage: "Failed to fetch conversations",
+  });
+  const items = Array.isArray(data) ? data : ((data as { items?: unknown[] })?.items ?? []);
+  return (items as Record<string, unknown>[]).map(transformConversationSummary);
 }
 
 
@@ -656,16 +472,11 @@ export async function getArchivedConversations(
   page: number = 1,
   size: number = 10,
 ): Promise<ConversationSummary[]> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/archived?page=${page}&size=${size}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch archived conversations: ${res.status}`);
-  }
-  const data = await res.json();
-  const items = Array.isArray(data) ? data : (data?.items ?? []);
-  return (items as any[]).map(transformConversationSummary);
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/archived?page=${page}&size=${size}`, {
+    fallbackMessage: "Failed to fetch archived conversations",
+  });
+  const items = Array.isArray(data) ? data : ((data as { items?: unknown[] })?.items ?? []);
+  return (items as Record<string, unknown>[]).map(transformConversationSummary);
 }
 
 
@@ -674,28 +485,21 @@ export async function getConversationDetail(
   userId: string,
   conversationId: string,
 ): Promise<ConversationDetail> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch conversation details: ${res.status}`);
-  }
-  const data = await res.json();
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}`, {
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to fetch conversation details",
+  });
   return transformConversationDetail(data);
 }
 
 
 // Delete a conversation
 export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}`, withSessionRequest({
+  await requestVoid(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}`, {
     method: "DELETE",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to delete conversation: ${res.status}`);
-  }
+    csrf: true,
+    fallbackMessage: "Failed to delete conversation",
+  });
 }
 
 
@@ -704,15 +508,12 @@ export async function archiveConversation(
   userId: string,
   conversationId: string,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/archive`, withSessionRequest({
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/archive`, {
     method: "PATCH",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to archive conversation: ${res.status}`);
-  }
-  const data = await res.json();
+    csrf: true,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to archive conversation",
+  });
   return transformConversationSummary(data);
 }
 
@@ -722,15 +523,12 @@ export async function unarchiveConversation(
   userId: string,
   conversationId: string,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/unarchive`, withSessionRequest({
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/unarchive`, {
     method: "PATCH",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to unarchive conversation: ${res.status}`);
-  }
-  const data = await res.json();
+    csrf: true,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to unarchive conversation",
+  });
   return transformConversationSummary(data);
 }
 
@@ -741,26 +539,13 @@ export async function reportConversation(
   conversationId: string,
   payload: ConversationReportPayload,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/report`, withSessionRequest({
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/report`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to report conversation: ${res.status}`);
-  }
-  const data = await res.json();
+    csrf: true,
+    body: payload,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to report conversation",
+  });
   return transformConversationSummary(data);
 }
 
@@ -771,19 +556,13 @@ export async function renameConversation(
   conversationId: string,
   title: string,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/title`, withSessionRequest({
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/title`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({ title }),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to rename conversation: ${res.status}`);
-  }
-  const data = await res.json();
+    csrf: true,
+    body: { title },
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to rename conversation",
+  });
   return transformConversationSummary(data);
 }
 
@@ -793,36 +572,23 @@ export async function createConversation(
   userId: string,
   payload: ConversationIn,
 ): Promise<CreateConversationResponse> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}`, withSessionRequest({
+  const data = (await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }, { csrf: true }));
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      emitUnauthorized();
-      throw new Error(`Failed to create conversation: ${res.status}`);
-    }
-    if (res.status === 413) {
-      // Show a friendly message tailored to the limits you set
-      throw new Error(
+    csrf: true,
+    body: payload,
+    schema: WireObjectSchema,
+    errorMessages: {
+      413:
         `Your message is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). ` +
         `Try smaller files or fewer attachments.`,
-      );
-    }
-    throw new Error(`Failed to create conversation: ${res.status}`);
-  }
+    },
+    fallbackMessage: "Failed to create conversation",
+  })) as Record<string, unknown>;
 
-  const data = await res.json();
-
-  const detail = transformConversationDetail(data.detail);
-  const summary = transformConversationSummary(data.summary);
-
-  return { detail, summary };
+  return {
+    detail: transformConversationDetail(data.detail as Record<string, unknown>),
+    summary: transformConversationSummary(data.summary as Record<string, unknown>),
+  };
 }
 
 
@@ -832,28 +598,13 @@ export async function forkConversation(
   conversationId: string,
   messageId: string,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/fork`, withSessionRequest({
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/fork`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({ messageId }),
-  }, { csrf: true }));
-
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to fork conversation: ${res.status}`);
-  }
-
-  const data = await res.json();
+    csrf: true,
+    body: { messageId },
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to fork conversation",
+  });
   return transformConversationSummary(data);
 }
 
@@ -867,33 +618,19 @@ export async function shareConversation(
   expiresAt?: Date | null,
   branchPath?: string[],
 ): Promise<ConversationShareResponse> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share`, withSessionRequest({
+  const data = (await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
+    csrf: true,
+    body: {
       messageId,
       mode,
       ...(branchPath?.length ? { branchPath } : {}),
       ...(expiresAt ? { expiresAt: expiresAt.toISOString() } : {}),
-    }),
-  }, { csrf: true }));
+    },
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to share conversation",
+  })) as Record<string, any>;
 
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to share conversation: ${res.status}`);
-  }
-
-  const data = await res.json();
   return {
     id: data.id,
     token: data.token,
@@ -932,30 +669,17 @@ export async function downloadConversationPdfExport(
   mode: ConversationShareMode = "full",
   branchPath?: string[],
 ): Promise<void> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share/export-pdf`, withSessionRequest({
+  const res = await requestRaw(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share/export-pdf`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/pdf",
-    },
-    body: JSON.stringify({
+    csrf: true,
+    accept: "application/pdf",
+    body: {
       messageId,
       mode,
       ...(branchPath?.length ? { branchPath } : {}),
-    }),
-  }, { csrf: true }));
-
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to export PDF: ${res.status}`);
-  }
+    },
+    fallbackMessage: "Failed to export PDF",
+  });
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -974,14 +698,9 @@ export async function getSharedConversationLinks(
   page: number = 1,
   size: number = 10,
 ): Promise<ConversationShareListItem[]> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/shares?page=${page}&size=${size}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch shared conversations: ${res.status}`);
-  }
-  const data = await res.json();
+  const data = await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}/shares?page=${page}&size=${size}`, {
+    fallbackMessage: "Failed to fetch shared conversations",
+  });
   if (!Array.isArray(data)) return [];
   return data.map((item: any) => ({
     id: item.id,
@@ -1005,39 +724,22 @@ export async function revokeSharedConversationLink(
   conversationId: string,
   shareId: string,
 ): Promise<void> {
-  const res = await fetch(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share/${shareId}`, withSessionRequest({
+  await requestVoid(`${CONVERSATIONS_BASE_PATH}/${userId}/${conversationId}/share/${shareId}`, {
     method: "DELETE",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to revoke shared conversation: ${res.status}`);
-  }
+    csrf: true,
+    fallbackMessage: "Failed to revoke shared conversation",
+  });
 }
 
 
-// Fetch a public read-only shared conversation snapshot.
+// Fetch a public read-only shared conversation snapshot. Unauthenticated: a 401
+// is a genuine access error to surface (with its status), not a session expiry.
 export async function getSharedConversation(token: string): Promise<SharedConversationDetail> {
-  const res = await fetch(`${SHARED_CONVERSATIONS_BASE_PATH}/${encodeURIComponent(token)}`, {
-    headers: {
-      "Accept": "application/json",
-    },
+  const data = await requestJson(`${SHARED_CONVERSATIONS_BASE_PATH}/${encodeURIComponent(token)}`, {
+    emitOn401: false,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to fetch shared conversation",
   });
-
-  if (!res.ok) {
-    const error = new Error(`Failed to fetch shared conversation: ${res.status}`) as Error & { status?: number };
-    error.status = res.status;
-    throw error;
-  }
-
-  const data = await res.json();
   return transformSharedConversationDetail(data);
 }
 
@@ -1047,45 +749,32 @@ export async function addMessageToConversation(
   conversationId: string,
   payload: MessageIn,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}`, withSessionRequest({
+  const data = (await requestJson(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }, { csrf: true }));
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      emitUnauthorized();
-      throw new Error(`Failed to add message: ${res.status}`);
-    }
-    if (res.status === 413) {
-      throw new Error(
+    csrf: true,
+    body: payload,
+    schema: WireObjectSchema,
+    errorMessages: {
+      413:
         `Your message is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). ` +
         `Try smaller files or fewer attachments.`,
-      );
-    }
-    throw new Error(`Failed to add message: ${res.status}`);
-  }
-
-  const data = await res.json();
+    },
+    fallbackMessage: "Failed to add message",
+  })) as Record<string, unknown>;
 
   if (data.detail) {
-    const detail = transformConversationDetail(data.detail);
+    const detail = transformConversationDetail(data.detail as Record<string, unknown>);
     const last = detail.messages[detail.messages.length - 1];
     return {
       message: last,
-      summary: transformConversationSummary(data.summary),
-    } as UpdateConversationResponse;
+      summary: transformConversationSummary(data.summary as Record<string, unknown>),
+    };
   }
 
-  const m = data.message;
   return {
-    message: transformMessage(m),
-    summary: transformConversationSummary(data.summary),
-  } as UpdateConversationResponse;
+    message: transformMessage(data.message as Record<string, unknown>),
+    summary: transformConversationSummary(data.summary as Record<string, unknown>),
+  };
 }
 
 
@@ -1096,28 +785,18 @@ export async function updateMessageInConversation(
   messageId: string,
   payload: MessageUpdate,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}`, withSessionRequest({
+  const data = (await requestJson(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }, { csrf: true }));
+    csrf: true,
+    body: payload,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to update message",
+  })) as Record<string, unknown>;
 
-  if (!res.ok) {
-    if (res.status === 401) {
-      emitUnauthorized();
-      throw new Error(`Failed to update message: ${res.status}`);
-    }
-    throw new Error(`Failed to update message: ${res.status}`);
-  }
-
-  const data = await res.json();
   return {
-    message: transformMessage(data.message),
-    summary: transformConversationSummary(data.summary),
-  } as UpdateConversationResponse;
+    message: transformMessage(data.message as Record<string, unknown>),
+    summary: transformConversationSummary(data.summary as Record<string, unknown>),
+  };
 }
 
 
@@ -1127,16 +806,13 @@ export async function likeMessage(
   conversationId: string,
   messageId: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/like`, withSessionRequest({
+  const data = await requestJson(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/like`, {
     method: "POST",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to like message: ${res.status}`);
-  }
-  const m = await res.json();
-  return transformMessage(m);
+    csrf: true,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to like message",
+  });
+  return transformMessage(data);
 }
 
 
@@ -1146,16 +822,13 @@ export async function dislikeMessage(
   conversationId: string,
   messageId: string,
 ): Promise<MessageOut> {
-  const res = await fetch(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/dislike`, withSessionRequest({
+  const data = await requestJson(`${MESSAGES_BASE_PATH}/${userId}/${conversationId}/${messageId}/dislike`, {
     method: "POST",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to dislike message: ${res.status}`);
-  }
-  const m = await res.json();
-  return transformMessage(m);
+    csrf: true,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to dislike message",
+  });
+  return transformMessage(data);
 }
 
 
@@ -1165,22 +838,12 @@ export async function generateMessageReadAloudAudio(
   conversationId: string,
   messageId: string,
 ): Promise<Blob> {
-  const res = await fetch(`${SPEECH_BASE_PATH}/read-aloud/${userId}/${conversationId}/${messageId}`, withSessionRequest({
+  return requestBlob(`${SPEECH_BASE_PATH}/read-aloud/${userId}/${conversationId}/${messageId}`, {
     method: "POST",
-    headers: { "Accept": "audio/mpeg,audio/*" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to generate read-aloud audio: ${res.status}`);
-  }
-  return await res.blob();
+    csrf: true,
+    accept: "audio/mpeg,audio/*",
+    fallbackMessage: "Failed to generate read-aloud audio",
+  });
 }
 
 
@@ -1190,19 +853,13 @@ export async function generateReadAloudPreviewAudio(
   voice: RealtimeVoice,
   text = "Hey! I am your AI speaker.",
 ): Promise<Blob> {
-  const res = await fetch(`${SPEECH_BASE_PATH}/read-aloud-preview/${userId}`, withSessionRequest({
+  return requestBlob(`${SPEECH_BASE_PATH}/read-aloud-preview/${userId}`, {
     method: "POST",
-    headers: {
-      "Accept": "audio/mpeg,audio/*",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ voice: normalizeRealtimeVoice(voice), text }),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to generate read-aloud preview: ${res.status}`);
-  }
-  return await res.blob();
+    csrf: true,
+    accept: "audio/mpeg,audio/*",
+    body: { voice: normalizeRealtimeVoice(voice), text },
+    fallbackMessage: "Failed to generate read-aloud preview",
+  });
 }
 
 
@@ -1241,12 +898,10 @@ export async function fetchAttachmentBlob({
   blobId,
 }: Omit<DownloadAttachmentParams, "filename">): Promise<Blob> {
   const url = `${ATTACHMENTS_BASE_PATH}/download/${userId}/${conversationId}/${messageId}/${blobId}`;
-  const res = await fetch(url, withSessionRequest());
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to download attachment: ${res.status}`);
-  }
-  return await res.blob();
+  return requestBlob(url, {
+    accept: null,
+    fallbackMessage: "Failed to download attachment",
+  });
 }
 
 
@@ -1268,12 +923,10 @@ export async function fetchAttachmentPreviewBlob({
   messageId,
   blobId,
 }: Omit<DownloadAttachmentParams, "filename">): Promise<Blob> {
-  const res = await fetch(getAttachmentPreviewUrl({ userId, conversationId, messageId, blobId }), withSessionRequest());
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to preview attachment: ${res.status}`);
-  }
-  return await res.blob();
+  return requestBlob(getAttachmentPreviewUrl({ userId, conversationId, messageId, blobId }), {
+    accept: null,
+    fallbackMessage: "Failed to preview attachment",
+  });
 }
 
 
@@ -1284,15 +937,10 @@ export async function fetchDocxPreviewToken({
   blobId,
 }: Omit<DownloadAttachmentParams, "filename">): Promise<DocxPreviewTokenResponse> {
   const segments = [userId, conversationId, messageId, blobId].map(encodeURIComponent);
-  const res = await fetch(
-    `${ATTACHMENTS_BASE_PATH}/preview-token/${segments.join("/")}`,
-    withSessionRequest(),
-  );
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to obtain preview token: ${res.status}`);
-  }
-  return await res.json() as DocxPreviewTokenResponse;
+  return requestJson(`${ATTACHMENTS_BASE_PATH}/preview-token/${segments.join("/")}`, {
+    schema: DocxPreviewTokenSchema,
+    fallbackMessage: "Failed to obtain preview token",
+  });
 }
 
 
@@ -1306,76 +954,48 @@ export async function transcribeDictation(
   const safeName = filename || "dictation.webm";
   formData.append("audio", audio, safeName);
 
-  const res = await fetch(`${SPEECH_BASE_PATH}/dictation/${userId}`, withSessionRequest({
+  const data = await requestJson(`${SPEECH_BASE_PATH}/dictation/${userId}`, {
     method: "POST",
-    headers: { "Accept": "application/json" },
+    csrf: true,
     body: formData,
-  }, { csrf: true }));
+    fallbackMessage: "Failed to transcribe dictation",
+  });
 
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to transcribe dictation: ${res.status}`);
-  }
-
-  const data = await res.json();
-  if (!data || typeof data.text !== "string") {
+  if (!data || typeof (data as { text?: unknown }).text !== "string") {
     throw new Error("Invalid dictation response.");
   }
 
-  return data.text;
+  return (data as { text: string }).text;
 }
 
 export async function createRealtimeVoiceSession(
   userId: string,
   payload: RealtimeVoiceSessionRequest,
 ): Promise<RealtimeVoiceSessionResponse> {
-  const res = await fetch(`${VOICE_BASE_PATH}/realtime/${userId}/session`, withSessionRequest({
+  return requestJson(`${VOICE_BASE_PATH}/realtime/${userId}/session`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to create realtime voice session: ${res.status}`);
-  }
-  const data = await res.json();
-  return {
-    sdp: data.sdp,
-    model: data.model,
-    voice: data.voice,
-  };
+    csrf: true,
+    body: payload,
+    schema: RealtimeVoiceSessionResponseSchema,
+    fallbackMessage: "Failed to create realtime voice session",
+  });
 }
 
 export async function persistRealtimeVoiceConversationEvent(
   userId: string,
   payload: RealtimeVoiceConversationEventRequest,
 ): Promise<UpdateConversationResponse> {
-  const res = await fetch(`${VOICE_BASE_PATH}/realtime/${userId}/conversation-event`, withSessionRequest({
+  const data = (await requestJson(`${VOICE_BASE_PATH}/realtime/${userId}/conversation-event`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(payload),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to persist realtime voice transcript: ${res.status}`);
-  }
-  const data = await res.json();
+    csrf: true,
+    body: payload,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to persist realtime voice transcript",
+  })) as Record<string, unknown>;
+
   return {
-    message: transformMessage(data.message),
-    summary: transformConversationSummary(data.summary),
+    message: transformMessage(data.message as Record<string, unknown>),
+    summary: transformConversationSummary(data.summary as Record<string, unknown>),
   };
 }
 
@@ -1383,20 +1003,14 @@ export async function endRealtimeVoiceSession(
   userId: string,
   conversationId: string,
 ): Promise<ConversationSummary> {
-  const res = await fetch(`${VOICE_BASE_PATH}/realtime/${userId}/end`, withSessionRequest({
+  const data = (await requestJson(`${VOICE_BASE_PATH}/realtime/${userId}/end`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({ conversationId }),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to end realtime voice session: ${res.status}`);
-  }
-  const data = await res.json();
-  return transformConversationSummary(data.summary);
+    csrf: true,
+    body: { conversationId },
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to end realtime voice session",
+  })) as Record<string, unknown>;
+  return transformConversationSummary(data.summary as Record<string, unknown>);
 }
 
 
@@ -1449,59 +1063,38 @@ export async function startInference(
     body.enabledTools = enabledTools;
   }
 
-  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, withSessionRequest({
+  const data = (await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify(body),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore body parse issues
-    }
-    const error = new Error(detail || `Failed to start inference: ${res.status}`);
-    (error as any).status = res.status;
-    (error as any).detail = detail;
-    throw error;
-  }
-  const data = await res.json();
+    csrf: true,
+    body,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to start inference",
+  })) as Record<string, unknown>;
+
   return {
-    detail: transformConversationDetail(data.detail),
-    summary: transformConversationSummary(data.summary),
-    run: transformInferenceRun(data.run),
-    message: transformMessage(data.message),
+    detail: transformConversationDetail(data.detail as Record<string, unknown>),
+    summary: transformConversationSummary(data.summary as Record<string, unknown>),
+    run: transformInferenceRun(data.run as Record<string, unknown>),
+    message: transformMessage(data.message as Record<string, unknown>),
   };
 }
 
 export async function getActiveInferenceRuns(userId: string): Promise<InferenceRun[]> {
-  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}?status=active`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch active inference runs: ${res.status}`);
-  }
-  const data = await res.json();
-  return Array.isArray(data) ? data.map(transformInferenceRun) : [];
+  const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}?status=active`, {
+    schema: WireObjectArraySchema,
+    fallbackMessage: "Failed to fetch active inference runs",
+  });
+  return data.map(transformInferenceRun);
 }
 
 export async function cancelInferenceRun(userId: string, runId: string): Promise<InferenceRun> {
-  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/cancel`, withSessionRequest({
+  const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/cancel`, {
     method: "POST",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to cancel inference run: ${res.status}`);
-  }
-  return transformInferenceRun(await res.json());
+    csrf: true,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to cancel inference run",
+  });
+  return transformInferenceRun(data);
 }
 
 
@@ -1509,15 +1102,11 @@ export async function cancelInferenceRun(userId: string, runId: string): Promise
 // Scheduled tasks
 // ----------------------------------------------------------------------------
 export async function listScheduledTasks(userId: string): Promise<ScheduledTask[]> {
-  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, withSessionRequest({
-    headers: { "Accept": "application/json" },
-  }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to fetch scheduled tasks: ${res.status}`);
-  }
-  const data = await res.json();
-  return Array.isArray(data) ? data.map(transformScheduledTask) : [];
+  const data = await requestJson(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, {
+    schema: WireObjectArraySchema,
+    fallbackMessage: "Failed to fetch scheduled tasks",
+  });
+  return data.map(transformScheduledTask);
 }
 
 export async function createScheduledTask(
@@ -1541,26 +1130,14 @@ export async function createScheduledTask(
   const enabledTools = serializeToolPreferences(payload.enabledTools);
   if (enabledTools) body.enabledTools = enabledTools;
 
-  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, withSessionRequest({
+  const data = await requestJson(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify(body),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    const error = new Error(detail || `Failed to create scheduled task: ${res.status}`);
-    (error as any).status = res.status;
-    (error as any).detail = detail;
-    throw error;
-  }
-  return transformScheduledTask(await res.json());
+    csrf: true,
+    body,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to create scheduled task",
+  });
+  return transformScheduledTask(data);
 }
 
 export async function updateScheduledTask(
@@ -1585,34 +1162,22 @@ export async function updateScheduledTask(
   const enabledTools = serializeToolPreferences(payload.enabledTools);
   if (enabledTools) body.enabledTools = enabledTools;
 
-  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, withSessionRequest({
+  const data = await requestJson(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify(body),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch {
-      // ignore non-JSON error payloads
-    }
-    throw new Error(detail || `Failed to update scheduled task: ${res.status}`);
-  }
-  return transformScheduledTask(await res.json());
+    csrf: true,
+    body,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to update scheduled task",
+  });
+  return transformScheduledTask(data);
 }
 
 export async function deleteScheduledTask(userId: string, taskId: string): Promise<void> {
-  const res = await fetch(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, withSessionRequest({
+  await requestVoid(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, {
     method: "DELETE",
-    headers: { "Accept": "application/json" },
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    throw new Error(`Failed to delete scheduled task: ${res.status}`);
-  }
+    csrf: true,
+    fallbackMessage: "Failed to delete scheduled task",
+  });
 }
 
 export type ResumeActionDecision = {
@@ -1641,31 +1206,21 @@ export async function resumeInferenceRun(
   runId: string,
   body: ResumeInferenceRunBody,
 ): Promise<InferenceRun> {
-  const res = await fetch(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/resume`, withSessionRequest({
+  const data = await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/${runId}/resume`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({
+    csrf: true,
+    body: {
       interruptId: body.interruptId,
       threadId: body.threadId,
       decision: body.decision,
       reason: body.reason ?? null,
       value: body.value ?? null,
       decisions: body.decisions ?? null,
-    }),
-  }, { csrf: true }));
-  if (!res.ok) {
-    if (res.status === 401) emitUnauthorized();
-    let detail: string | undefined;
-    try {
-      const data = await res.json();
-      detail = typeof data === "object" && data !== null ? (data as any).detail : undefined;
-    } catch { /* ignore */ }
-    const error = new Error(detail || `Failed to resume inference run: ${res.status}`);
-    (error as any).status = res.status;
-    (error as any).detail = detail;
-    throw error;
-  }
-  return transformInferenceRun(await res.json());
+    },
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to resume inference run",
+  });
+  return transformInferenceRun(data);
 }
 
 // Reconnect backoff schedule for the inference WebSocket client. After this

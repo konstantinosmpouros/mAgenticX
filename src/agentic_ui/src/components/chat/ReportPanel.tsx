@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, Flag, Loader2, MessageSquareQuote, ShieldCheck, X } from "lucide-react";
+import { AlertTriangle, Check, Flag, Loader2, MessageSquareQuote, ShieldCheck, X } from "lucide-react";
 
 export const REPORT_REASONS = [
   "Unsafe",
@@ -64,140 +63,156 @@ export default function ReportConversationDialog({
   return (
     <div className="fixed inset-0 z-[60] flex min-h-[100dvh] items-center justify-center px-4 py-6">
       <div
-        className="absolute inset-0 z-0 bg-black/65 backdrop-blur-sm animate-in fade-in-0 duration-200"
+        className="absolute inset-0 z-0 bg-black/80 backdrop-blur-md animate-in fade-in-0 duration-200"
         onClick={submitting ? undefined : onClose}
       />
-      <div className="relative z-10 w-full max-w-xl animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
-        <Card className="relative overflow-hidden rounded-lg border border-border/70 bg-card text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+      <div className="relative z-10 w-full max-w-[40rem] animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
+        <Card className="relative overflow-hidden rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20" />
           <Button
             size="icon"
             variant="ghost"
             aria-label="Close report dialog"
             onClick={onClose}
             disabled={submitting}
-            className="absolute right-4 top-4 z-20 h-9 w-9 rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-0 focus-visible:outline-none"
+            className="absolute right-5 top-5 z-20 h-9 w-9 rounded-full text-white/65 shadow-sm transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-0 focus-visible:outline-none"
           >
             <X size={18} />
           </Button>
 
-          <div className="border-b border-border/70 bg-gradient-to-br from-muted/55 via-card to-primary/10 px-5 pb-5 pt-6 md:px-6">
-            <div className="pr-12">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-[inset_0_1px_0_hsl(var(--background)/0.35)]">
-                  <Flag size={20} />
-                </div>
-                <div className="min-w-0">
-                  <div className="mb-1 inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background/65 px-2 py-1 text-[0.7rem] font-medium text-muted-foreground">
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                    <span>{contextLabel}</span>
-                  </div>
-                  <h3 className="text-xl font-semibold tracking-tight">{dialogTitle}</h3>
-                </div>
+          <div className="px-5 pt-6 md:px-7 md:pt-7">
+            <div className="flex items-start gap-4 border-b border-white/10 pb-5 pr-12">
+              <div className="mt-1 hidden h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/[0.12] bg-white/[0.06] text-white/80 sm:flex">
+                <Flag className="h-5 w-5" />
               </div>
-
-              <p className="text-[0.78rem] text-muted-foreground">
-                {isMessageReport
-                  ? "This report will be attached to the selected assistant response."
-                  : "This report will be attached to the conversation as a whole."}
-              </p>
-              {conversationTitle ? (
-                <div className="mt-3 rounded-lg border border-border/70 bg-background/55 px-3 py-2 text-sm">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Conversation
-                  </p>
-                  <p className="mt-1 truncate font-medium text-foreground/90">{conversationTitle}</p>
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/45">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400/90" />
+                  <span>{contextLabel}</span>
                 </div>
-              ) : null}
+                <h3 className="text-2xl font-semibold leading-tight tracking-tight md:text-[2rem]">
+                  {dialogTitle}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-white/55">
+                  {isMessageReport
+                    ? "This report will be attached to the selected assistant response."
+                    : "This report will be attached to the conversation as a whole."}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-5 p-5 md:p-6">
-            {previewText ? (
-              <div className="rounded-lg border border-border/70 bg-muted/35 p-4">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <MessageSquareQuote className="h-4 w-4" />
-                  <span>Selected response</span>
+          <div className="px-5 py-5 md:px-7">
+            {conversationTitle ? (
+              <div className="mb-4 rounded-2xl border border-white/[0.12] bg-white/[0.045] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/45">
+                  Conversation
                 </div>
-                <p className="line-clamp-4 text-sm leading-6 text-foreground/85">
-                  {previewText}
-                </p>
+                <p className="truncate font-medium text-white/90">{conversationTitle}</p>
               </div>
             ) : null}
 
-            <div className="grid gap-5">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Reason
-                  </label>
-                  {!reason ? (
-                    <span className="inline-flex items-center gap-1.5 text-[0.72rem] text-muted-foreground">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      Required
-                    </span>
-                  ) : null}
+            {previewText ? (
+              <div className="relative mb-4 overflow-hidden rounded-2xl border border-white/[0.12] bg-[#252525] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/15" />
+                <div className="mb-2 flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/48">
+                  <MessageSquareQuote className="h-3.5 w-3.5" />
+                  <span>Selected response</span>
                 </div>
-                <Select value={reason} onValueChange={setReason} disabled={submitting}>
-                  <SelectTrigger className="h-11 rounded-lg border-border/70 bg-background/80 shadow-sm transition-colors hover:bg-background focus:ring-1 focus:ring-primary/35">
-                    <SelectValue placeholder="Choose a reason" />
-                  </SelectTrigger>
-                  <SelectContent className="z-[70] rounded-lg border border-border/70 bg-popover text-popover-foreground shadow-lg">
-                    {REPORT_REASONS.map((option) => (
-                      <SelectItem key={option} value={option} className="text-sm">
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <p className="line-clamp-4 text-sm leading-6 text-white/85">{previewText}</p>
               </div>
+            ) : null}
 
-              <div className="space-y-2">
-                <label className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Details
-                </label>
-                <Textarea
-                  value={details}
-                  onChange={(event) => setDetails(event.target.value)}
-                  placeholder="Add any context that would help us review this faster."
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/45">
+                Reason
+              </span>
+              {!reason ? (
+                <span className="inline-flex items-center gap-1.5 text-[0.72rem] text-white/45">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Required
+                </span>
+              ) : null}
+            </div>
+            <div
+              role="radiogroup"
+              aria-label="Report reason"
+              className="mb-4 grid grid-cols-2 gap-1 rounded-2xl border border-white/[0.12] bg-white/[0.045] p-1.5 text-xs font-semibold text-white/62 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:grid-cols-4"
+            >
+              {REPORT_REASONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  aria-checked={reason === option}
                   disabled={submitting}
-                  className="min-h-[8.5rem] resize-none rounded-lg border-border/70 bg-background/80 leading-6 shadow-sm transition-colors placeholder:text-muted-foreground/70 hover:bg-background focus-visible:ring-1 focus-visible:ring-primary/35"
-                  maxLength={2000}
-                />
-                <p className="text-right text-[0.68rem] tabular-nums text-muted-foreground">
-                  {details.length}/2000
-                </p>
-              </div>
+                  onClick={() => setReason(option)}
+                  className={`h-10 rounded-xl px-2 transition disabled:pointer-events-none disabled:opacity-50 ${
+                    reason === option
+                      ? "bg-white text-black shadow-[0_8px_24px_rgba(0,0,0,0.28)]"
+                      : "hover:bg-white/[0.08] hover:text-white"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
             </div>
 
-            <div className="flex flex-col-reverse gap-3 border-t border-border/70 pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-5 text-muted-foreground">
-                Reports are reviewed with conversation context.
+            <div className="rounded-2xl border border-white/[0.12] bg-white/[0.045] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <label
+                htmlFor="report-details"
+                className="mb-2 block text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/48"
+              >
+                Details
+              </label>
+              <Textarea
+                id="report-details"
+                value={details}
+                onChange={(event) => setDetails(event.target.value)}
+                placeholder="Add any context that would help us review this faster."
+                disabled={submitting}
+                maxLength={2000}
+                className="min-h-[8.5rem] resize-none rounded-xl border-white/[0.13] bg-black/24 leading-6 text-white shadow-none transition placeholder:text-white/40 hover:border-white/25 focus-visible:border-white/40 focus-visible:ring-1 focus-visible:ring-white/25 focus-visible:ring-offset-0 disabled:opacity-50"
+              />
+              <p className="mt-2 text-right text-[0.68rem] tabular-nums text-white/40">
+                {details.length}/2000
               </p>
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={onClose}
-                  disabled={submitting}
-                  className="h-10 rounded-md px-4 text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => void handleSubmit()}
-                  disabled={!reason || submitting}
-                  className="h-10 rounded-md px-4 font-semibold shadow-[0_8px_24px_hsl(var(--primary)/0.18)]"
-                >
-                  {submitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Flag className="h-4 w-4" />
-                  )}
-                  {submitting ? "Submitting..." : "Submit report"}
-                </Button>
-              </div>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 px-5 pb-6 md:px-7 md:pb-7">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={!reason || submitting}
+                className="h-11 min-w-[8.75rem] rounded-full bg-white px-5 text-sm font-semibold text-black shadow-lg shadow-white/10 transition-all duration-300 hover:scale-[1.03] hover:bg-white/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+              >
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : reason ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Flag className="h-4 w-4" />
+                )}
+                {submitting ? "Submitting..." : "Submit report"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={submitting}
+                className="h-11 rounded-full border-white/[0.14] bg-white/[0.06] px-5 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.03] hover:bg-white/[0.1] hover:text-white active:scale-95"
+              >
+                Cancel
+              </Button>
+            </div>
+
+            <img
+              src="/logo2_white_magentaX.png"
+              alt="mAgenticX logo"
+              className="h-9 w-9 object-contain opacity-95 md:h-10 md:w-10"
+            />
           </div>
         </Card>
       </div>

@@ -9,7 +9,6 @@ import { ChatShell } from "./pages/ChatPage";
 import ChatView from "./pages/ChatView";
 import TasksView from "./pages/TasksView";
 import NotFound from "./pages/NotFound";
-import Architecture from "./pages/Architecture";
 import Login from "./pages/Login";
 import SharedConversationPage from "./pages/SharedConvPage";
 import Test from "./pages/Test";
@@ -48,7 +47,6 @@ const App = () => {
               </Route>
               <Route path="/login" element={<Login />} />
               <Route path="/share/:token" element={<SharedConversationPage />} />
-              <Route path="/architecture" element={<Architecture />} />
               <Route path="/terms" element={<TermsAndConditions />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/test" element={<Test />} />

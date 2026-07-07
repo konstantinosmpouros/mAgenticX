@@ -7,12 +7,6 @@ import { InfoCard, SoftPanel } from "./shared";
 
 const HELP_CARDS: HelpCard[] = [
     {
-        title: "Architecture Docs",
-        desc: "Open the internal architecture page for services, flows, and deployment topology.",
-        href: "/architecture",
-        external: true,
-    },
-    {
         title: "Support",
         desc: "Reach the team for operational or product help when something blocks your workflow.",
     },
