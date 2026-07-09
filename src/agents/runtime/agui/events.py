@@ -11,6 +11,7 @@ SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT"
 BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT"
 TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE"
 CHECKPOINT_COMMITTED_EVENT_TYPE = "CHECKPOINT_COMMITTED"
+PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT"
 
 
 # ------------------------------------------------------------------
@@ -103,3 +104,26 @@ class CheckpointCommittedEvent(BaseModel):
     """
     thread_id: str
     checkpoint_id: Optional[str] = None
+
+
+# ------------------------------------------------------------------
+# Present-artifact event
+# ------------------------------------------------------------------
+class PresentArtifactEvent(BaseModel):
+    """A user-facing deliverable the agent has explicitly designated.
+
+    Emitted when the orchestrator calls the ``present_artifact`` tool to hand a
+    finished document to the user — the ONE intentional act that promotes a file
+    out of the agent's scratch/helper docs into something the user sees. Carries
+    display metadata only; the bytes stay on the agents-service volume until the
+    bridge reads them back by ``path`` at run finalize and persists them as a
+    generated attachment. Rides the normal SSE pipe and lands in ``raw_events``
+    so the artifact card survives reconnection.
+    """
+    artifact_id: str
+    path: str
+    filename: str
+    title: str
+    summary: Optional[str] = None
+    mime: Optional[str] = None
+    status: Literal["ready"] = "ready"

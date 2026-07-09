@@ -1,4 +1,5 @@
 import json
+import mimetypes
 from typing import Any, List, Optional, Tuple, Dict
 from runtime.agui.emitter import AGUIEmitter
 
@@ -379,6 +380,40 @@ class AGUIStreamNormalizer:
                                 "description": description,
                                 "subagent_type": subagent_type,
                             }
+                        self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
+                        continue
+
+                    if tc_name == "present_artifact":
+                        # An explicitly-designated deliverable → the artifact
+                        # card. Emitted ONLY for the top-level orchestrator
+                        # (namespace is None); a sub-agent's present call is
+                        # treated as scratch and never surfaced — the
+                        # orchestrator re-presents the final doc. The raw
+                        # ToolMessage result is suppressed from the wire either
+                        # way (the card is the UI, and the model still gets the
+                        # tool result). Metadata comes from the tool-call ARGS;
+                        # the byte size is unknown here (the bridge fills it in
+                        # when it reads the file back at finalize).
+                        if namespace is None and isinstance(tc_args, dict):
+                            raw_path = str(tc_args.get("path", "")).strip()
+                            title = str(tc_args.get("title", "")).strip()
+                            if raw_path and title:
+                                filename = raw_path.rstrip("/").rsplit("/", 1)[-1]
+                                summary_arg = tc_args.get("summary")
+                                summary = str(summary_arg).strip() if summary_arg else None
+                                self._end_thinking_if_needed(out, ns_label)
+                                self._push(
+                                    out,
+                                    self.emitter.present_artifact(
+                                        artifact_id=tc_id,
+                                        path=raw_path,
+                                        filename=filename,
+                                        title=title,
+                                        summary=summary,
+                                        mime=mimetypes.guess_type(filename)[0],
+                                        namespace=ns_label,
+                                    ),
+                                )
                         self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
                         continue
 

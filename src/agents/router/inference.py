@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.types import Command
@@ -10,9 +10,11 @@ from core.proxy import require_internal_caller
 from observability import get_context, get_logger, set_context
 from runtime.checkpointer import get_checkpointer, has_checkpointer_initialized
 from runtime.checkpointer.fork import seed_thread_from_checkpoint
-from runtime.filesystem import delete_conversation_files, seed_input_files
+from runtime.filesystem import delete_conversation_files, read_output_files, seed_input_files
 from schemas import (
     AgentResumeRequest,
+    OutputFileOut,
+    ReadOutputFilesResponse,
     ReapConversationRequest,
     Request,
     SeedInputFilesRequest,
@@ -46,7 +48,7 @@ async def stream_agent(agent_slug: str, req: Request):
         "agent_stream_request_received",
         "Agent stream request received",
         input_messages=len(req.messages),
-        configured_tools=len(req.config.get("tools", []) if isinstance(req.config, dict) else []),
+        configured_tools=len((req.config.get("tools") or []) if isinstance(req.config, dict) else []),
     )
     try:
         # Check if the agent is disabled
@@ -366,6 +368,40 @@ async def seed_conversation_input_files(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return SeedInputFilesResponse(written=written)
+
+
+@router.get(
+    "/agents/{agent_slug}/users/{user_id}/conversations/{conversation_id}/output-files",
+    response_model=ReadOutputFilesResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_internal_caller)],
+)
+async def read_conversation_output_files(
+    agent_slug: str,
+    user_id: str,
+    conversation_id: str,
+    paths: list[str] = Query(default_factory=list),
+) -> ReadOutputFilesResponse:
+    """Read agent-presented deliverables from the conversation's ``output/`` dir.
+
+    Called by the bridge at run finalize with the exact virtual paths the agent
+    designated via ``present_artifact``, so it can persist them as generated
+    attachments. Internal-only; every path is guarded to the output/ mount, and
+    absent/oversized/off-mount paths come back in ``missing`` (not an error) so a
+    partially-cleaned-up run still captures what it can. 422 only on a bad
+    request shape (e.g. too many paths)."""
+    try:
+        files, missing = read_output_files(
+            user_id=user_id,
+            agent_slug=agent_slug,
+            conversation_id=conversation_id,
+            paths=paths,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return ReadOutputFilesResponse(
+        files=[OutputFileOut(**f) for f in files], missing=missing
+    )
 
 
 @router.post(

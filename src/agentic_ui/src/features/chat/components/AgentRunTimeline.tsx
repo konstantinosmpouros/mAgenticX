@@ -1,7 +1,7 @@
 import { TimelineSequence } from "@/features/chat/components/message_parts/TimelineSequence";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
 import { cn } from "@/shared/lib/utils";
-import type { RunTimeline } from "@/shared/lib/types";
+import type { AttachmentOut, MessageOut, RunTimeline } from "@/shared/lib/types";
 
 type AgentRunTimelineProps = {
   timeline: RunTimeline;
@@ -11,6 +11,10 @@ type AgentRunTimelineProps = {
   expandedThinking: Record<string, boolean>;
   onToggleThinking: (key: string, next?: boolean) => void;
   className?: string;
+  // Threaded down to inline artifact blocks (present_artifact deliverables).
+  message?: MessageOut;
+  onDownloadAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
+  onPreviewAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
 };
 
 // AgentRunTimeline renders the whole body of an assistant message as the
@@ -28,6 +32,9 @@ export function AgentRunTimeline({
   expandedThinking,
   onToggleThinking,
   className,
+  message,
+  onDownloadAttachment,
+  onPreviewAttachment,
 }: AgentRunTimelineProps) {
   if (!timeline.blocks.length) {
     if (!isStreaming) return null;
@@ -55,6 +62,9 @@ export function AgentRunTimeline({
         fallbackThinkingSeconds={fallbackThinkingSeconds}
         expandedThinking={expandedThinking}
         onToggleThinking={onToggleThinking}
+        message={message}
+        onDownloadAttachment={onDownloadAttachment}
+        onPreviewAttachment={onPreviewAttachment}
       />
     </div>
   );

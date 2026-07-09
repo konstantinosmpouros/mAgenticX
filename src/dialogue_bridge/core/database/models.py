@@ -327,6 +327,16 @@ class AttachmentTable(Base):
     mime_type = Column(String, nullable=False)
     size_bytes = Column(Integer, nullable=True)
 
+    # Provenance: "upload" for user-attached files, "generated" for a deliverable
+    # the agent designated via present_artifact. The frontend renders the two
+    # differently (generated files carry the agent-supplied title/summary and
+    # left-align on the assistant message). Defaults to "upload" so every
+    # pre-existing row is unambiguous.
+    origin = Column(String, nullable=False, server_default="upload")
+    # Agent-supplied display metadata — populated for generated artifacts only.
+    title = Column(String, nullable=True)
+    summary = Column(String, nullable=True)
+
     # Blob file
     blob_id = Column(String, ForeignKey("blobs.id", ondelete="CASCADE"), nullable=True, index=True)
 

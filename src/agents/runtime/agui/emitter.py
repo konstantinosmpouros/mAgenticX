@@ -29,6 +29,10 @@ from runtime.agui.events import (
     # Durable checkpoint head marker
     CHECKPOINT_COMMITTED_EVENT_TYPE,
     CheckpointCommittedEvent,
+
+    # Agent-designated deliverable
+    PRESENT_ARTIFACT_EVENT_TYPE,
+    PresentArtifactEvent,
 )
 from ag_ui.core import (
     EventType,
@@ -328,6 +332,42 @@ class AGUIEmitter:
             type=EventType.CUSTOM,
             name=TOKEN_USAGE_EVENT_TYPE,
             value=payload.model_dump(exclude_none=True),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Present artifact (custom event) ----------
+    def present_artifact(
+        self,
+        *,
+        artifact_id: str,
+        path: str,
+        filename: str,
+        title: str,
+        summary: Optional[str] = None,
+        mime: Optional[str] = None,
+        writer: Any = None,
+        namespace: Optional[str] = None,
+    ) -> CustomEvent:
+        """Create a present-artifact custom event and optionally emit it.
+
+        Synthesized by the normalizer when the orchestrator calls the
+        ``present_artifact`` tool — the tool itself never emits (deep agents
+        don't stream the custom channel). Metadata-only: the bridge fetches the
+        bytes by ``path`` at finalize.
+        """
+        payload = PresentArtifactEvent(
+            artifact_id=artifact_id,
+            path=path,
+            filename=filename,
+            title=title,
+            summary=summary,
+            mime=mime,
+        )
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=PRESENT_ARTIFACT_EVENT_TYPE,
+            value=payload.model_dump(),
         )
         return self._emit(custom_event, writer, namespace)
 

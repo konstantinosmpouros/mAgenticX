@@ -4,6 +4,8 @@ import {
   HITLInterruptPayloadSchema,
   PLAN_SNAPSHOT_EVENT_NAMES,
   PlanSnapshotSchema,
+  PRESENT_ARTIFACT_EVENT_TYPE,
+  PresentArtifactPayloadSchema,
   SUBAGENT_EVENT_TYPE,
   SubAgentPayloadSchema,
   TASK_SUBAGENT_EVENT_TYPE,
@@ -12,6 +14,7 @@ import {
 } from "./agui";
 import { parseHitlInterrupt } from "./hitl";
 import type {
+  ArtifactBlock,
   ContentBlock,
   PendingToolRetool,
   RunTimeline,
@@ -201,6 +204,45 @@ function ensureContent(session: Session, ts?: number): ContentBlock {
   fold.openContentIndex = session.state.blocks.length - 1;
   session.clonedBlocks.add(fold.openContentIndex);
   return block;
+}
+
+function pushArtifactBlock(
+  session: Session,
+  data: {
+    artifact_id?: string | null;
+    path?: string | null;
+    filename?: string | null;
+    title?: string | null;
+    summary?: string | null;
+    mime?: string | null;
+  },
+  ts?: number,
+): void {
+  const path = typeof data.path === "string" ? data.path : "";
+  const filename =
+    (typeof data.filename === "string" && data.filename) ||
+    path.replace(/\/+$/, "").split("/").pop() ||
+    "";
+  if (!filename) return; // nothing renderable — skip like any malformed event
+  // Interleave at the log position (same discipline as a sub-agent panel):
+  // close both open blocks so any later orchestrator text starts a fresh
+  // content block *below* the artifact card, giving the "text → file → text"
+  // flow the agent emitted.
+  const fold = session.state.fold;
+  closeThinking(session, ts);
+  fold.openContentIndex = null;
+  const block: ArtifactBlock = {
+    kind: "artifact",
+    id: nextBlockId(session),
+    artifactId: typeof data.artifact_id === "string" ? data.artifact_id : "",
+    path,
+    filename,
+    title: data.title || undefined,
+    summary: data.summary || undefined,
+    mime: data.mime || undefined,
+  };
+  session.state.blocks.push(block);
+  session.clonedBlocks.add(session.state.blocks.length - 1);
 }
 
 // ------------------------------------------------------
@@ -657,6 +699,13 @@ function applyEvent(session: Session, event: RawEvent): void {
       // Collect-only: per-message token usage is persisted on the message DTO
       // (MessageOut.inputTokens/outputTokens). The live timeline neither folds
       // nor renders it yet — explicit no-op so it isn't an unhandled event.
+      return;
+    }
+
+    if (name === PRESENT_ARTIFACT_EVENT_TYPE) {
+      const parsed = PresentArtifactPayloadSchema.safeParse(event.value);
+      if (!parsed.success) return;
+      pushArtifactBlock(session, parsed.data, eventTimestamp(event));
       return;
     }
 

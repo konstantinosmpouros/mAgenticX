@@ -187,6 +187,9 @@ export function ChatMessage({
               fallbackThinkingSeconds={message.thinkingTime ?? null}
               expandedThinking={expandedThinking}
               onToggleThinking={onToggleThinking}
+              message={message}
+              onDownloadAttachment={onDownloadAttachment}
+              onPreviewAttachment={onPreviewAttachment}
             />
           ) : null}
 

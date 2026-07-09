@@ -319,16 +319,19 @@ A third, plain (non-partial) index `ix_messages_checkpoint_thread_id` on `checkp
 
 ### `attachments`
 
-Metadata for every file attached to a message. The binary data lives in the `blobs` table; `attachments` is the linkage record. One message can have up to 10 attachments (validated by Pydantic, not a DB constraint). Total size per message is capped at 25 MB.
+Metadata for every file attached to a message. The binary data lives in the `blobs` table; `attachments` is the linkage record. One message can have up to 10 attachments (validated by Pydantic, not a DB constraint). Total size per message is capped at 25 MB. An attachment is either a **user upload** (`origin = 'upload'`) or an **agent-generated deliverable** (`origin = 'generated'`) — the latter is written onto the *assistant* message at run finalize when a deep agent designates an output file via the `present_artifact` tool (see [conversation-management / attachments flow](../flows/attachments.md)).
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | `String` | No | `gen_uuid()` | PK |
 | `message_id` | `String` | No | — | FK → `messages.id` CASCADE, INDEXED |
 | `blob_id` | `String` | Yes | `NULL` | FK → `blobs.id` CASCADE, INDEXED — `NULL` only during a brief window between attachment record creation and blob upload |
-| `file_name` | `String` | No | — | Original filename from upload |
-| `mime_type` | `String` | No | — | MIME type declared by the uploader |
+| `file_name` | `String` | No | — | Original filename (upload) or the presented file's basename (generated) |
+| `mime_type` | `String` | No | — | MIME type declared by the uploader, or guessed from the generated file's extension |
 | `size_bytes` | `Integer` | Yes | `NULL` | File size in bytes |
+| `origin` | `String` | No | `'upload'` | `'upload'` (user-attached) \| `'generated'` (present_artifact deliverable). Added in migration `0013`; backfilled to `'upload'` for all pre-existing rows |
+| `title` | `String` | Yes | `NULL` | Agent-supplied display title — generated artifacts only |
+| `summary` | `String` | Yes | `NULL` | Agent-supplied one-line description — generated artifacts only |
 | `created_at` | `DateTime` | No | `func.now()` | — |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
 

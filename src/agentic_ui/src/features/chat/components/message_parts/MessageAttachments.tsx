@@ -34,6 +34,7 @@ type AttachmentRecord = {
   mime?: string;
   mime_type?: string;
   name?: string;
+  origin?: string;
   size?: number;
   size_bytes?: number;
   url?: string;
@@ -93,6 +94,14 @@ const normalizeAttachment = (
   }).previewable;
 
   return { attachment, isImage, imageUrl, fileName, typeLabel, isPreviewable };
+}
+
+// Files the agent presented via present_artifact (origin === "generated") are
+// rendered inline in the run timeline as artifact cards (see ArtifactCard), not
+// in this top-of-message stack — which stays dedicated to user uploads.
+function isGeneratedAttachment(attachment: AttachmentLike): boolean {
+  return typeof attachment === "object" && attachment !== null
+    && (attachment as AttachmentRecord).origin === "generated";
 };
 
 export function MessageAttachments({
@@ -104,11 +113,16 @@ export function MessageAttachments({
 }: MessageAttachmentsProps) {
   const isMobile = useIsMobile();
 
-  if (!message.attachments?.length) {
+  // Generated deliverables render inline in the timeline (ArtifactCard); this
+  // stack is user uploads only.
+  const uploads = (message.attachments ?? []).filter(
+    (attachment) => !isGeneratedAttachment(attachment as AttachmentLike)
+  );
+  if (!uploads.length) {
     return null;
   }
 
-  const items = message.attachments.map((attachment) =>
+  const items = uploads.map((attachment) =>
     normalizeAttachment(attachment as AttachmentLike, isImageFile)
   );
   const images = items.filter((item) => item.isImage);

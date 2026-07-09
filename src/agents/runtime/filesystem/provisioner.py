@@ -55,9 +55,10 @@ path components, defending against path-traversal injected through the
 from __future__ import annotations
 
 import base64
+import mimetypes
 import shutil
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Tuple
 
 from core.settings import settings
 from observability import get_logger
@@ -149,6 +150,103 @@ def conversation_input_root(user_id: str, agent_slug: str, conversation_id: str)
 def conversation_output_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
     """Read-write ``/conversation/output/`` mount — agent-generated artifacts."""
     return conversation_root(user_id, agent_slug, conversation_id) / "output"
+
+
+# The virtual mount an agent references when it presents a deliverable. Only
+# files under this prefix can ever be read back to the bridge — a deliberate
+# boundary so a `present_artifact` call (or a future read endpoint) can never be
+# tricked into exfiltrating input uploads, skills, or another mount.
+CONVERSATION_OUTPUT_PREFIX = "/conversation/output/"
+
+
+def resolve_output_file(
+    *, user_id: str, agent_slug: str, conversation_id: str, virtual_path: str
+) -> Path:
+    """Resolve a virtual ``/conversation/output/<...>`` path to its on-disk file.
+
+    Every path component is validated with ``_safe_segment`` (defeating
+    traversal), and the path MUST live under the output mount — anything else
+    raises ``ValueError``. Existence is NOT checked here; the caller decides
+    (the tool wants a clear "did you write it?" signal, the read endpoint skips
+    misses gracefully).
+    """
+    text = (virtual_path or "").strip()
+    if not text.startswith(CONVERSATION_OUTPUT_PREFIX):
+        raise ValueError(
+            f"Artifact path must be under {CONVERSATION_OUTPUT_PREFIX}: {virtual_path!r}"
+        )
+    relative = text[len(CONVERSATION_OUTPUT_PREFIX):].strip("/")
+    if not relative:
+        raise ValueError("Artifact path has no filename.")
+    resolved = conversation_output_root(user_id, agent_slug, conversation_id)
+    for segment in relative.split("/"):
+        resolved = resolved / _safe_segment(segment)
+    return resolved
+
+
+def read_output_files(
+    *,
+    user_id: str,
+    agent_slug: str,
+    conversation_id: str,
+    paths: List[str],
+) -> Tuple[List[Dict[str, object]], List[str]]:
+    """Read agent-presented deliverables from ``/conversation/output/`` back out.
+
+    Called by the bridge at run finalize with the exact virtual paths the agent
+    designated via ``present_artifact``, so it can persist them as generated
+    attachments. Enforces a count cap (raises ``ValueError``) and a per-file size
+    cap (over-cap files are treated as misses, not fatal). Returns
+    ``(files, missing)`` where each file is
+    ``{path, filename, mime, size, base64}`` and ``missing`` lists the virtual
+    paths that could not be returned (absent, oversized, or off-mount) so the
+    caller skips them without failing the run.
+    """
+    max_files = settings.filesystem.output_max_files
+    max_file_bytes = settings.filesystem.output_max_file_bytes
+    if len(paths) > max_files:
+        raise ValueError(f"Too many output files requested: {len(paths)} > {max_files}.")
+
+    files: List[Dict[str, object]] = []
+    missing: List[str] = []
+    for virtual_path in paths:
+        try:
+            resolved = resolve_output_file(
+                user_id=user_id,
+                agent_slug=agent_slug,
+                conversation_id=conversation_id,
+                virtual_path=virtual_path,
+            )
+        except ValueError:
+            missing.append(virtual_path)
+            continue
+        if not resolved.is_file():
+            missing.append(virtual_path)
+            continue
+        raw = resolved.read_bytes()
+        if len(raw) > max_file_bytes:
+            missing.append(virtual_path)
+            continue
+        files.append(
+            {
+                "path": virtual_path,
+                "filename": resolved.name,
+                "mime": mimetypes.guess_type(resolved.name)[0] or "application/octet-stream",
+                "size": len(raw),
+                "base64": base64.b64encode(raw).decode("ascii"),
+            }
+        )
+
+    logger.info(
+        "output_files_read",
+        "Read conversation output files back to the bridge",
+        user_id=user_id,
+        agent_slug=agent_slug,
+        conversation_id=conversation_id,
+        returned=len(files),
+        missing=len(missing),
+    )
+    return files, missing
 
 
 def ensure_user_agent_filesystem(

@@ -345,6 +345,12 @@ export type AttachmentOut = {
     timestamp: Date;
     blobId?: string;
     data?: string; // Base64 encoded data for images and public share downloads
+    // Provenance + agent-supplied display metadata. "upload" (default) for
+    // user-attached files, "generated" for a deliverable the agent presented
+    // via present_artifact; title/summary are populated for generated only.
+    origin?: "upload" | "generated";
+    title?: string;
+    summary?: string;
 };
 
 
@@ -527,7 +533,23 @@ export type SubagentBlock = {
     blocks: (ThinkingBlock | ContentBlock)[];
 };
 
-export type TimelineBlock = ThinkingBlock | ContentBlock | SubagentBlock;
+// A deliverable the agent designated via present_artifact, folded into the
+// timeline at the log position the PRESENT_ARTIFACT event fired — so it renders
+// inline between the thinking/content blocks around it. Carries display
+// metadata only; the downloadable bytes live on the message's matching
+// generated attachment (reconciled by filename), persisted at run finalize.
+export type ArtifactBlock = {
+    kind: "artifact";
+    id: string;
+    artifactId: string;
+    path: string;
+    filename: string;
+    title?: string;
+    summary?: string;
+    mime?: string;
+};
+
+export type TimelineBlock = ThinkingBlock | ContentBlock | SubagentBlock | ArtifactBlock;
 
 export type TimelineTerminalStatus = "completed" | "cancelled" | "failed";
 

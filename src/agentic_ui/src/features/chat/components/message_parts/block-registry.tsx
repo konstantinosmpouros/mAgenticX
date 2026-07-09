@@ -1,12 +1,16 @@
 import type { ReactNode } from "react";
 import type {
+  ArtifactBlock,
+  AttachmentOut,
   ContentBlock,
+  MessageOut,
   SubagentBlock,
   ThinkingBlock,
   TimelineBlock,
   TimelineTerminalStatus,
 } from "@/shared/lib/types";
 import { subagentBlockToItem } from "@/features/inference";
+import { ArtifactCard } from "./ArtifactCard";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
 import { SubagentCard } from "./SubagentContainer";
@@ -22,6 +26,12 @@ export type BlockRenderContext = {
   fallbackDurationSeconds?: number | null;
   open: boolean;
   onOpenChange: () => void;
+  // Threaded from ChatMessage so an inline artifact block can reconcile to the
+  // owning message's generated attachment and reuse the download/preview
+  // handlers. Absent in read-only render contexts.
+  message?: MessageOut;
+  onDownloadAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
+  onPreviewAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
 };
 
 // The construction object: maps each top-level block kind to its rendering
@@ -32,6 +42,14 @@ export const BLOCK_REGISTRY: Record<
   (block: TimelineBlock, ctx: BlockRenderContext) => ReactNode
 > = {
   content: (block) => <ContentBlockView block={block as ContentBlock} />,
+  artifact: (block, ctx) => (
+    <ArtifactCard
+      block={block as ArtifactBlock}
+      message={ctx.message}
+      onDownload={ctx.onDownloadAttachment}
+      onPreview={ctx.onPreviewAttachment}
+    />
+  ),
   subagent: (block, ctx) => (
     <SubagentCard subagent={subagentBlockToItem(block as SubagentBlock)} index={ctx.subagentIndex} />
   ),

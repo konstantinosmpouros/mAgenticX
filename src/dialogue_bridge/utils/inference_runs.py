@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import (
     AgentTable,
     AttachmentTable,
+    BlobTable,
     ConversationTable,
     MessageTable,
     SessionLocal,
@@ -29,6 +30,7 @@ from observability import get_context, get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
 from utils.agents import (
     build_agent_input_files_url,
+    build_agent_output_files_url,
     build_agent_resume_url,
     build_agent_stream_url,
     get_agent_by_id,
@@ -126,6 +128,27 @@ async def _seed_input_files(url: str, files: list[dict[str, Any]]) -> None:
     async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
         resp = await client.put(url, json={"files": files}, headers=internal_service_headers(get_context().get("request_id")))
         resp.raise_for_status()
+
+
+async def _fetch_output_files(url: str, paths: list[str]) -> list[dict[str, Any]]:
+    """GET agent-presented deliverables (base64) back from the agents service.
+
+    The mirror of ``_seed_input_files``: same authenticated internal call
+    (mTLS client cert + trusted-proxy header). Returns the ``files`` list from
+    the response (each ``{path, filename, mime, size, base64}``); paths the
+    agent couldn't return land in the response's ``missing`` and are simply
+    absent here."""
+    timeout = settings.http.inference_timeout
+    async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
+        resp = await client.get(
+            url,
+            params=[("paths", p) for p in paths],
+            headers=internal_service_headers(get_context().get("request_id")),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    files = data.get("files") if isinstance(data, dict) else None
+    return files if isinstance(files, list) else []
 
 
 def _parse_sse_bytes(buffer: str, chunk: bytes) -> tuple[str, list[dict[str, Any]]]:
@@ -231,6 +254,12 @@ class InferenceRunRuntime:
         # from the terminal CHECKPOINT_COMMITTED event). Persisted on the AI
         # message by _finish_run so the next turn resumes / forks from it.
         self.produced_checkpoint_id: str | None = None
+        # Deliverables the agent designated via present_artifact (captured from
+        # PRESENT_ARTIFACT custom events). Each entry is
+        # {artifact_id, path, title, summary}; deduped by path (last wins). At
+        # finalize _finish_run reads these files back from the agents service and
+        # persists them as generated attachments on the assistant message.
+        self.presented_artifacts: list[dict[str, Any]] = []
 
     def _accumulate_usage(self, value: Any) -> None:
         if not isinstance(value, dict):
@@ -253,6 +282,29 @@ class InferenceRunRuntime:
         token = str(raw_id) if raw_id is not None else f"anon-{self.next_seq}"
         if token not in self.pending_interrupt_ids:
             self.pending_interrupt_ids.append(token)
+
+    def _register_presented_artifact(self, value: Any) -> None:
+        """Record a PRESENT_ARTIFACT event's metadata, deduped by path.
+
+        Only top-level (orchestrator) present calls reach here — a sub-agent's
+        is never emitted as a top-level PRESENT_ARTIFACT (see the agents-service
+        normalizer). Re-presenting the same path overwrites the earlier entry so
+        the finalize fetch reads the file's latest bytes once."""
+        if not isinstance(value, dict):
+            return
+        path = value.get("path")
+        if not path:
+            return
+        entry = {
+            "artifact_id": value.get("artifact_id"),
+            "path": str(path),
+            "title": value.get("title") or "",
+            "summary": value.get("summary"),
+        }
+        self.presented_artifacts = [
+            a for a in self.presented_artifacts if a["path"] != entry["path"]
+        ]
+        self.presented_artifacts.append(entry)
 
     def resolve_interrupt(self, interrupt_id: Any) -> None:
         token = str(interrupt_id) if interrupt_id is not None else None
@@ -348,6 +400,11 @@ class InferenceRunRuntime:
                 self.register_interrupt(value)
             elif name == "TOKEN_USAGE":
                 self._accumulate_usage(value)
+            elif name == "PRESENT_ARTIFACT":
+                # Capture the deliverable for the finalize fetch, but let the
+                # event flow into raw_events unchanged — the UI renders it as a
+                # live artifact card (Phase 2) and it must survive reconnection.
+                self._register_presented_artifact(value)
             elif name == "CHECKPOINT_COMMITTED":
                 # Internal bridge<->agent metadata: capture the durable head but
                 # do NOT persist it into raw_events (it is not a render event,
@@ -972,6 +1029,77 @@ async def _load_message(db: AsyncSession, message_id: str) -> MessageTable | Non
 
 
 
+async def _capture_generated_artifacts(
+    db: AsyncSession,
+    run: MessageTable,
+    conversation: ConversationTable | None,
+    runtime: InferenceRunRuntime,
+) -> None:
+    """Persist the run's presented deliverables as generated attachments.
+
+    Reads the files the agent designated via ``present_artifact`` back from the
+    agents service (by their exact output/ paths) and writes an
+    ``AttachmentTable(origin='generated')`` + ``BlobTable`` per file onto the
+    assistant message — reusing the entire attachment download/preview pipeline.
+
+    Fail-open by contract: the assistant text has already been generated and
+    persisted, so any capture error (agent unreachable, file gone, bad base64)
+    is logged and skipped rather than failing an otherwise-successful run. Rows
+    are added to the caller's session and committed with the finalize write."""
+    presented = runtime.presented_artifacts
+    if not presented or conversation is None:
+        return
+    try:
+        agent = await get_agent_by_id(run.agent_id or conversation.agent_id)
+        url = build_agent_output_files_url(agent, str(conversation.user_id), str(run.conversation_id))
+        fetched = await _fetch_output_files(url, [a["path"] for a in presented])
+    except Exception:
+        logger.error(
+            "generated_artifacts_fetch_failed",
+            "Failed to read presented deliverables back from the agents service",
+            exc_info=True,
+            run_id=run.id,
+            presented=len(presented),
+        )
+        return
+
+    meta_by_path = {a["path"]: a for a in presented}
+    captured = 0
+    for f in fetched:
+        try:
+            raw = base64.b64decode(f.get("base64", ""), validate=True)
+        except (ValueError, TypeError):
+            logger.warning(
+                "generated_artifact_bad_base64",
+                "Skipped a presented deliverable with invalid base64",
+                run_id=run.id,
+            )
+            continue
+        meta = meta_by_path.get(f.get("path"), {})
+        db.add(
+            AttachmentTable(
+                message_id=run.id,
+                file_name=f.get("filename") or (meta.get("path", "").rsplit("/", 1)[-1]) or "artifact",
+                mime_type=f.get("mime") or "application/octet-stream",
+                size_bytes=f.get("size") or len(raw),
+                origin="generated",
+                title=(meta.get("title") or None),
+                summary=(meta.get("summary") or None),
+                blob=BlobTable(data=raw),
+            )
+        )
+        captured += 1
+
+    if captured:
+        logger.info(
+            "generated_artifacts_captured",
+            "Persisted agent-presented deliverables as generated attachments",
+            run_id=run.id,
+            captured=captured,
+            presented=len(presented),
+        )
+
+
 async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: str, error_message: str | None = None) -> None:
     async with SessionLocal() as db:
         run = await _load_run(db, run_id)
@@ -1019,6 +1147,14 @@ async def _finish_run(run_id: str, runtime: InferenceRunRuntime, status_value: s
                 conversation.last_message_preview = preview
             conversation.last_message_at = _now()
             conversation.updated_at = _now()
+
+        # Capture any deliverables the agent presented this run as generated
+        # attachments (completed runs only — a failed/cancelled run's partial
+        # output/ files aren't finished work). Fail-open: never blocks the
+        # finalize commit. Rows join the same transaction below.
+        if status_value == "completed":
+            await _capture_generated_artifacts(db, run, conversation, runtime)
+
         await db.commit()
 
 

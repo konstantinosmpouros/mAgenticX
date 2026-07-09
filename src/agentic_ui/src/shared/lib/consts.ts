@@ -177,6 +177,12 @@ const transformAttachment = (attachment: Record<string, any>) => ({
   timestamp: toDate(attachment?.timestamp ?? attachment?.created_at),
   blobId: attachment?.blobId ?? attachment?.blob_id ?? undefined,
   data: attachment?.data ?? undefined,
+  // Provenance + agent-supplied metadata: without these a generated deliverable
+  // reads as a plain upload, so it double-renders (top stack + inline card) and
+  // the inline artifact card can never reconcile to its blob (stuck "Preparing").
+  origin: attachment?.origin ?? "upload",
+  title: attachment?.title ?? undefined,
+  summary: attachment?.summary ?? undefined,
 });
 
 

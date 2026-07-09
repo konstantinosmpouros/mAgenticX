@@ -78,6 +78,26 @@ class SeedInputFilesResponse(BaseModel):
     written: List[str]
 
 
+class OutputFileOut(BaseModel):
+    """One agent-generated deliverable read back from ``/conversation/output/``.
+
+    Returned to the bridge (base64) so it can persist the file as a generated
+    attachment. ``path`` is the virtual path the agent presented, echoed back so
+    the bridge can rejoin it with the ``present_artifact`` event metadata."""
+    path: str
+    filename: str
+    mime: str = "application/octet-stream"
+    size: int = 0
+    base64: str
+
+
+class ReadOutputFilesResponse(BaseModel):
+    """Bridge ← agents: the requested deliverables plus any paths that could not
+    be returned (absent, oversized, or off-mount) so the caller skips them."""
+    files: List[OutputFileOut]
+    missing: List[str] = []
+
+
 class ReapConversationRequest(BaseModel):
     """Bridge → agents: reap a conversation's durable checkpoint threads and its
     per-(user, agent) filesystem dir on conversation delete. ``thread_ids`` are

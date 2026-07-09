@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from "react";
-import type { RunTimeline, TimelineBlock } from "@/shared/lib/types";
+import type { AttachmentOut, MessageOut, RunTimeline, TimelineBlock } from "@/shared/lib/types";
 import { BLOCK_REGISTRY, type BlockRenderContext } from "./block-registry";
 
 type TimelineSequenceProps = {
@@ -12,6 +12,11 @@ type TimelineSequenceProps = {
   fallbackThinkingSeconds?: number | null;
   expandedThinking: Record<string, boolean>;
   onToggleThinking: (key: string, next?: boolean) => void;
+  // Threaded to inline artifact blocks so they can reconcile to the message's
+  // generated attachment and reuse the download/preview handlers.
+  message?: MessageOut;
+  onDownloadAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
+  onPreviewAttachment?: (attachment: AttachmentOut, message: MessageOut) => void;
 };
 
 // The timeline construction object: walks the folded block sequence, computes
@@ -25,6 +30,9 @@ export function TimelineSequence({
   fallbackThinkingSeconds,
   expandedThinking,
   onToggleThinking,
+  message,
+  onDownloadAttachment,
+  onPreviewAttachment,
 }: TimelineSequenceProps) {
   // Post-run the sub-agent containers leave the body for the side panel,
   // which would leave the thinking blocks around them stacked back-to-back —
@@ -80,6 +88,9 @@ export function TimelineSequence({
           fallbackDurationSeconds: isLast ? fallbackThinkingSeconds : null,
           open,
           onOpenChange: () => onToggleThinking(expandKey, !open),
+          message,
+          onDownloadAttachment,
+          onPreviewAttachment,
         };
         return <Fragment key={block.id}>{BLOCK_REGISTRY[block.kind](block, ctx)}</Fragment>;
       })}

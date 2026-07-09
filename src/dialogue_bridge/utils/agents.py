@@ -90,6 +90,15 @@ def build_agent_input_files_url(agent: AgentTable, user_id: str, conversation_id
     return f"{base}/agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files"
 
 
+def build_agent_output_files_url(agent: AgentTable, user_id: str, conversation_id: str) -> str:
+    """GET endpoint that reads agent-presented deliverables back out of a
+    conversation's output/ dir (the present_artifact → generated-attachment
+    capture path at run finalize)."""
+    slug = _require_agent_slug(agent)
+    base = AGENTS_SERVICE_URL.rstrip("/")
+    return f"{base}/agents/{slug}/users/{user_id}/conversations/{conversation_id}/output-files"
+
+
 def build_agent_reap_url(agent_slug: str, user_id: str, conversation_id: str) -> str:
     """POST endpoint that reaps a conversation's checkpoint threads + filesystem dir."""
     base = AGENTS_SERVICE_URL.rstrip("/")

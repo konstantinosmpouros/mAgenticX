@@ -450,6 +450,14 @@ class FilesystemSettings(BaseSettings):
     input_max_file_bytes: int = Field(26214400, validation_alias="INPUT_MAX_FILE_BYTES")
     input_max_files: int = Field(10, validation_alias="INPUT_MAX_FILES")
 
+    # Server-side caps for reading agent-presented deliverables back out of the
+    # conversation output/ dir (the present_artifact → generated-attachment
+    # path). One run rarely presents many docs, so the count cap is tighter than
+    # input; the per-file cap matches input (25 MB) since a report/export can be
+    # large. Over-cap files are skipped (logged), not fatal.
+    output_max_file_bytes: int = Field(26214400, validation_alias="OUTPUT_MAX_FILE_BYTES")
+    output_max_files: int = Field(20, validation_alias="OUTPUT_MAX_FILES")
+
     # Hard cap on saved memories per (user, agent) — the `remember` tool refuses
     # new entries beyond this (updates to existing ones always go through), so
     # the AGENTS.md index never exceeds this many rows and stays context-cheap.

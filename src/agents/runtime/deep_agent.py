@@ -13,6 +13,7 @@ from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
 from runtime.tools.memory_search import build_memory_search_tool
+from runtime.tools.present_artifact import build_present_artifact_tool
 from runtime.tools.remember import build_remember_tool
 from runtime.middlewares import (
     ConfigurableSummarizationMiddleware,
@@ -50,6 +51,9 @@ RESERVED_DEEPAGENT_TOOL_NAMES: Set[str] = {
 
     # built-in memory
     "remember",
+
+    # built-in deliverables
+    "present_artifact",
 }
 
 
@@ -287,6 +291,10 @@ class DeepAgent(BaseAgent, ABC):
           save into a memory that isn't mounted.
         * ``search_past_conversations`` (cross-conversation semantic recall via
           the bridge's pgvector index) is **opt-in** via ``search_past_convs``.
+        * ``present_artifact`` (designate a finished output/ file as a
+          user-facing deliverable) is attached whenever there's a
+          ``conversation_id`` — it has no preference gate but needs a
+          conversation whose output/ mount it can point into.
         """
         ctx = self.context or {}
         user_id = ctx.get("user_id")
@@ -306,6 +314,14 @@ class DeepAgent(BaseAgent, ABC):
             tools.append(
                 build_memory_search_tool(
                     user_id=user_id,
+                    conversation_id=conversation_id,
+                )
+            )
+        if conversation_id:
+            tools.append(
+                build_present_artifact_tool(
+                    user_id=user_id,
+                    agent_slug=self.name,
                     conversation_id=conversation_id,
                 )
             )

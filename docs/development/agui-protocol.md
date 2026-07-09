@@ -104,6 +104,7 @@ All custom events share a wrapper shape:
 | `TOKEN_USAGE` | `TokenUsageEvent` | Per-AI-message token usage (input/output), one per settled `AIMessage`; namespace-attributed for sub-agents |
 | `HITL_INTERRUPT` | `HITLInterruptEvent` | Graph paused — waiting for human input |
 | `CHECKPOINT_COMMITTED` | `{thread_id, checkpoint_id}` | Terminal event emitted by the agent once its durable LangGraph checkpoint is written. The bridge captures it in `apply_event` and `_finish_run` persists `checkpoint_id` on the AI message, so the branch's next turn can resume/fork from the right head. Carries the branch-scoped checkpoint `thread_id`, not the run id. |
+| `PRESENT_ARTIFACT` | `PresentArtifactEvent` | A deep-agent deliverable explicitly designated via the `present_artifact` tool. Synthesized by the normalizer when it detects the tool call **by name for the top-level orchestrator only** (a sub-agent's call is dropped), carrying `{artifact_id, path, filename, title, summary, mime, status}` display metadata (no bytes). The bridge captures it in `apply_event` into `runtime.presented_artifacts`, and `_finish_run` reads the files back from the agents service and persists them as `attachments(origin='generated')` on the AI message. Lands in `raw_events` so the artifact card survives reconnection. |
 | `BRIDGE_HITL_RESOLVED` | `{interrupt_id, decision, reason}` | **Bridge-synthesized** (never emitted by the agents service): appended to the event log when `/resume` is accepted, so resolution state survives reloads. The client reducer flips the matching approval's status on it. |
 
 #### `PlanSnapshot`
@@ -578,8 +579,12 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Custom event type constants | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, `CHECKPOINT_COMMITTED_EVENT_TYPE`, etc. |
-| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `CheckpointCommittedEvent` |
+| Custom event type constants | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, `CHECKPOINT_COMMITTED_EVENT_TYPE`, `PRESENT_ARTIFACT_EVENT_TYPE`, etc. |
+| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `CheckpointCommittedEvent`, `PresentArtifactEvent` |
+| `present_artifact` detection (orchestrator-only) | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | tool-call switch in `_handle_updates_payload()` — `if tc_name == "present_artifact"` gated on `namespace is None` |
+| `present_artifact` tool | [src/agents/runtime/tools/present_artifact.py](../../src/agents/runtime/tools/present_artifact.py) | `build_present_artifact_tool()` — validates the output/ path, returns a confirmation (never emits) |
+| Output-file read-back | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `GET …/output-files` → `runtime.filesystem.read_output_files()` |
+| `PRESENT_ARTIFACT` capture + persist (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.presented_artifacts`, `_capture_generated_artifacts()` called from `_finish_run()` |
 | AG-UI event emission | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `AGUIEmitter` — all public methods |
 | Namespace attachment | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `_attach_namespace()` |
 | LangGraph → AG-UI translation | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |

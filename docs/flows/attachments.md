@@ -294,6 +294,34 @@ sequenceDiagram
 - The serialiser `serialise_message_with_images_for_agent()` still **inlines images as base64** in the message content (vision on the upload turn). For deep agents it additionally references each **non-image** file by its `/conversation/input/<name>` path (flag `include_input_paths=True`) so the agent can open it with its filesystem tools.
 - **LangGraph agents have no filesystem** — they are not seeded; they receive message content only (inline images, no input-path references).
 
+### Generated deliverables (`present_artifact` → generated attachments)
+
+Writing a file to `/conversation/output/` does **not** surface it to the user — that dir is the agent's private workspace and fills up with drafts, scratch notes, and sub-agent helper files. A deep agent promotes exactly one file into a user-facing deliverable by calling the built-in **`present_artifact(path, title, summary)`** tool. This is an explicit, intentional act — nothing in `output/` is captured unless presented — which is what keeps sub-agent noise out of the user's view.
+
+The tool never emits an AG-UI event itself (deep agents don't stream the `custom` channel). It validates that `path` resolves under the output mount and the file exists, then returns a confirmation. The **normalizer** detects the `present_artifact` tool call by name and — **for the top-level orchestrator only** (a sub-agent's call is dropped; the orchestrator re-presents the final doc) — synthesizes a `PRESENT_ARTIFACT` custom event carrying display metadata (`title`, `summary`, `filename`, `mime`), but no bytes. See [agui-protocol.md](../development/agui-protocol.md).
+
+At run finalize the bridge reads the presented files back and persists them as `attachments(origin='generated')` on the **assistant** message — so they flow through the exact same download / preview / Office-viewer machinery as uploads:
+
+```mermaid
+sequenceDiagram
+    participant AG as agents (normalizer)
+    participant D as dialogue_bridge
+    participant A as agents service (output-files)
+    participant PG as chat_postgres
+
+    AG->>D: CUSTOM PRESENT_ARTIFACT { artifact_id, path, title, summary }
+    Note over D: runtime.apply_event → runtime.presented_artifacts (deduped by path)
+    Note over D: stream ends → _finish_run (status = completed)
+    D->>A: GET /agents/{slug}/users/{userId}/conversations/{convId}/output-files?paths=…
+    A->>A: read_output_files() → base64 bytes + mime + size (path-guarded, size-capped)
+    A-->>D: { files: [...], missing: [...] }
+    D->>PG: INSERT BlobTable + AttachmentTable(origin='generated', title, summary) on the AI message
+```
+
+- **Capture is fail-open and completed-only.** `_capture_generated_artifacts()` runs inside `_finish_run` only for a `completed` run, in the same transaction as the finalize write. Any error (agent unreachable, file gone, bad base64) is logged and skipped — the assistant reply is already generated, so a capture failure never fails the run. `missing` paths (absent / oversized / off-mount) are skipped, not fatal.
+- **The `PRESENT_ARTIFACT` event stays in `raw_events`** (unlike `CHECKPOINT_COMMITTED`, which is suppressed) so the UI can render a live artifact card during streaming (Phase 2 of the feature); the persisted `attachments(origin='generated')` are the durable, downloadable copy on the settled message.
+- **Only deep agents produce generated artifacts** — the `present_artifact` tool is attached in `DeepAgent._builtin_tools()` (needs a `conversation_id`), and LangGraph agents have no filesystem.
+
 ### Cleanup
 
 The conversation filesystem (`input/` + `output/`) is removed by `delete_conversation_files()` during the conversation-delete reap (see [conversation-management.md](conversation-management.md)). There is no per-turn cleanup; seeded input files accumulate for the life of the conversation.
@@ -339,6 +367,10 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 | Input/output backend split + permissions | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `build_workspace_backend()` (mount routes), `WORKSPACE_WRITE_DENY` (`/conversation/input/` write-deny) — `DeepAgent._build_composite_backend()` delegates here |
 | Filesystem provisioner | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `seed_input_files()`, `delete_conversation_files()`, `conversation_input_root()`, `conversation_output_root()`, `ensure_user_agent_filesystem()` |
 | Input-files seed endpoint | [src/agents/main.py](../../src/agents/main.py) | `PUT /agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files` |
+| `present_artifact` tool | [src/agents/runtime/tools/present_artifact.py](../../src/agents/runtime/tools/present_artifact.py) | `build_present_artifact_tool()` — path-guarded, returns a confirmation (never emits); registered in `DeepAgent._builtin_tools()` |
+| Output-files read endpoint + util | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `GET …/output-files` → `runtime.filesystem.read_output_files()` / `resolve_output_file()` (path-guarded, size-capped) |
+| Generated-artifact capture (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.presented_artifacts`, `_fetch_output_files()`, `_capture_generated_artifacts()` (called in `_finish_run`), `build_agent_output_files_url()` |
+| Generated-artifact rendering (frontend) | [src/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx](../../src/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx) | `origin === "generated"` branch — left-aligned card, Sparkles icon, agent title/summary |
 | Share snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |
 | Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut`, `DocxPreviewTokenOut` |
 | HMAC token helpers | [src/dialogue_bridge/utils/attachments.py](../../src/dialogue_bridge/utils/attachments.py) | `generate_docx_preview_token()`, `validate_docx_preview_token()` |

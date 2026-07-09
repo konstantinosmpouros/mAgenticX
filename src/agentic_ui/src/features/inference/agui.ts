@@ -9,6 +9,7 @@ export const TASK_SUBAGENT_EVENT_TYPE = "TASK_SUBAGENT" as const;
 export const SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT" as const;
 export const BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT" as const;
 export const TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE" as const;
+export const PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT" as const;
 
 export const PLAN_SNAPSHOT_EVENT_NAMES = [
   PLAN_SNAPSHOT_EVENT_TYPE,
@@ -127,6 +128,26 @@ export const TokenUsageCustomEventSchema = CustomEventSchema.extend({
 });
 
 
+// ------------------------------------------------------
+// Present Artifact Types (agent-designated deliverable)
+// ------------------------------------------------------
+export const PresentArtifactPayloadSchema = z.object({
+  artifact_id: z.string(),
+  path: z.string(),
+  filename: z.string(),
+  title: z.string(),
+  summary: z.string().nullish(),
+  mime: z.string().nullish(),
+  status: z.string().nullish(),
+});
+export type PresentArtifactEvent = z.infer<typeof PresentArtifactPayloadSchema>;
+
+export const PresentArtifactCustomEventSchema = CustomEventSchema.extend({
+  name: z.literal(PRESENT_ARTIFACT_EVENT_TYPE),
+  value: PresentArtifactPayloadSchema,
+});
+
+
 
 // ------------------------------------------------------
 // Union of all custom events for AGUI
@@ -138,6 +159,7 @@ export const CustomAguiEventSchema = z.union([
   SubAgentCustomEventSchema,
   BeforeAgentCustomEventSchema,
   TokenUsageCustomEventSchema,
+  PresentArtifactCustomEventSchema,
 ]);
 
 export type PlanSnapshotCustomEvent = z.infer<typeof PlanSnapshotCustomEventSchema>;
@@ -146,4 +168,5 @@ export type TaskSubAgentCustomEvent = z.infer<typeof TaskSubAgentCustomEventSche
 export type SubAgentCustomEvent = z.infer<typeof SubAgentCustomEventSchema>;
 export type BeforeAgentCustomEvent = z.infer<typeof BeforeAgentCustomEventSchema>;
 export type TokenUsageCustomEvent = z.infer<typeof TokenUsageCustomEventSchema>;
+export type PresentArtifactCustomEvent = z.infer<typeof PresentArtifactCustomEventSchema>;
 export type CustomAguiEvent = z.infer<typeof CustomAguiEventSchema>;
