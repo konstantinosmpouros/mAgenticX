@@ -7,10 +7,10 @@ import {
   getConversations,
   getSkills,
   getTools,
-  refreshSession,
   getUserPreferences,
   restoreSession,
 } from '@/shared/lib/api';
+import { ensureFreshSession } from '@/shared/lib/sessionRefresh';
 import { sortByUpdatedAtDesc } from '@/shared/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -341,27 +341,10 @@ export function useUISnapshotPersistence(params: {
 // ---------------------------------------------------------------------------
 // Session auto-refresh effect
 // ---------------------------------------------------------------------------
-// Refresh ~10 min before the access token expires; also the "already fresh"
-// threshold — if more time than this remains when a tab acquires the cross-tab
-// lock, another tab just refreshed, so this tab skips its own network call.
-const SESSION_REFRESH_BUFFER_MS = 10 * 60 * 1000;
-
-// Cross-tab single-flight for the network refresh. Only one tab across the origin
-// runs POST /session/refresh at a time (Web Locks API); a tab that acquires the
-// lock after another already refreshed sees the fresh session marker and skips.
-// This prevents two tabs from rotating the refresh token concurrently — which
-// would diverge the server-tracked jti and trip refresh-reuse detection (a false
-// "stolen token" logout). Stateless — pure client-side coordination, no server
-// state; degrades to a plain refresh where Web Locks is unavailable.
-async function withSessionRefreshLock<T>(run: () => Promise<T>): Promise<T> {
-  const locks = typeof navigator !== "undefined" ? (navigator as any).locks : undefined;
-  if (!locks?.request) {
-    return run();
-  }
-  return locks.request("mx-session-refresh", run);
-}
-
-
+// Refresh ~10 min before the access token expires. The single-flight + cross-tab
+// coordination (and the "already fresh, another tab beat us to it" skip) all live
+// in ensureFreshSession now, so this effect only decides WHEN to refresh and how
+// to reflect success/failure in React state.
 export function useSessionAutoRefreshEffect(params: {
   isLoggedIn: boolean;
   setIsLoggedIn: (v: boolean) => void;
@@ -385,48 +368,24 @@ export function useSessionAutoRefreshEffect(params: {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     try {
-      // Cross-tab single-flight. The network refresh + session-marker write both
-      // happen INSIDE the lock, so the next tab to acquire it observes the fresh
-      // expiry and skips — two tabs never rotate the refresh token concurrently.
-      const outcome = await withSessionRefreshLock(async () => {
-        const current = loadSession();
-        if (current && current.expiresAt - Date.now() > SESSION_REFRESH_BUFFER_MS) {
-          // Another tab already refreshed while we waited for the lock; its
-          // rotated token + fresh marker are shared with us. Skip the call.
-          return "already-fresh" as const;
-        }
-        const result = await refreshSession();
-        const existing = loadSession();
-        const ttlMs =
-          typeof result.tokenTtl === 'number' && result.tokenTtl > 0
-            ? result.tokenTtl * 1000
-            : 60 * 60 * 1000;
-        const userToPersist = result.user ?? existing?.user ?? null;
-        if (userToPersist) {
-          saveSession(userToPersist, ttlMs);
-          if (existing) {
-            updateSession({
-              lastConversationId: existing.lastConversationId,
-              selectedAgent: existing.selectedAgent,
-              isPrivateMode: existing.isPrivateMode,
-            });
-          }
-        }
-        return result;
-      });
+      // ensureFreshSession does the single-flight refresh (cross-tab lock + fresh
+      // marker skip + local persistence). We only sync React state and re-arm.
+      const outcome = await ensureFreshSession();
+      if (outcome.status === 'failed') {
+        // Refresh token gone/expired (idle >12d, absolute >20d, or revoked) —
+        // the session is genuinely over.
+        throw new Error('session refresh failed');
+      }
 
-      if (outcome !== "already-fresh") {
-        const existing = loadSession();
-        if (outcome.user) {
-          setUserProfile(outcome.user);
-        } else if (existing?.user) {
-          setUserProfile(existing.user);
-        }
-        if (outcome.user?.id) {
-          setUserId(outcome.user.id);
-        } else if (existing?.userId) {
-          setUserId(existing.userId);
-        }
+      // 'refreshed' carries the rotated user; 'already-fresh' means another tab
+      // just refreshed, so read the shared persisted session for the profile.
+      const existing = loadSession();
+      const user = outcome.status === 'refreshed' ? outcome.user : existing?.user ?? null;
+      if (user) {
+        setUserProfile(user);
+        if (user.id) setUserId(user.id);
+      } else if (existing?.userId) {
+        setUserId(existing.userId);
       }
 
       setIsLoggedIn(true);

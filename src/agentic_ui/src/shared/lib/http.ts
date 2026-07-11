@@ -25,6 +25,7 @@
 import { z, type ZodTypeAny } from "zod";
 
 import { emitUnauthorized } from "./consts";
+import { ensureFreshSession } from "./sessionRefresh";
 import { withSessionRequest } from "./utils";
 
 
@@ -67,6 +68,12 @@ export type ApiRequestOptions = {
   headers?: Record<string, string>;
   /** Emit the global `mx:unauthorized` event on a 401. Defaults to `true`. */
   emitOn401?: boolean;
+  /**
+   * Opt this call out of the silent refresh-and-retry on a 401. Set on the auth
+   * endpoints themselves (login/refresh/session-introspect) so a 401 there can't
+   * recurse into another refresh; every other call gets the retry by default.
+   */
+  skipAuthRetry?: boolean;
   /** Parse the `Retry-After` header into `ApiError.retryAfterSeconds`. */
   captureRetryAfter?: boolean;
   /** Non-2xx statuses to treat as success (e.g. logout tolerates 401). */
@@ -124,10 +131,27 @@ async function extractDetail(res: Response): Promise<string | undefined> {
  * Blob/streaming callers use this directly so they can read headers + body.
  */
 export async function requestRaw(path: string, opts: ApiRequestOptions = {}): Promise<Response> {
-  const res = await fetch(path, withSessionRequest(buildInit(opts), { csrf: opts.csrf }));
+  let res = await fetch(path, withSessionRequest(buildInit(opts), { csrf: opts.csrf }));
 
   if (res.ok || opts.ignoreStatuses?.includes(res.status)) {
     return res;
+  }
+
+  // Silent re-auth: a 401 almost always means only the short-lived access token
+  // expired while the long-lived (12d idle / 20d absolute) refresh token is still
+  // valid — e.g. the tab was backgrounded or the device slept past the access TTL.
+  // Try one silent refresh and one retry before giving up, so a stale access
+  // token never bounces an otherwise-valid session to the login screen. The retry
+  // rebuilds the request from scratch, so it picks up the rotated CSRF cookie.
+  // ensureFreshSession is single-flight, so a burst of 401s refreshes only once.
+  if (res.status === 401 && !opts.skipAuthRetry) {
+    const outcome = await ensureFreshSession();
+    if (outcome.status !== "failed") {
+      res = await fetch(path, withSessionRequest(buildInit(opts), { csrf: opts.csrf }));
+      if (res.ok || opts.ignoreStatuses?.includes(res.status)) {
+        return res;
+      }
+    }
   }
 
   if (res.status === 401 && opts.emitOn401 !== false) {

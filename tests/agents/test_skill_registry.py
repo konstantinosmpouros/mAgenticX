@@ -374,20 +374,21 @@ def test_safe_segment_rejects_traversal(skills_fs):
     assert prov._safe_segment("ok-id") == "ok-id"
 
 
-def test_ensure_user_agent_filesystem_seeds_agent_md(skills_fs):
+def test_ensure_user_agent_filesystem_seeds_agents_md(skills_fs):
     prov = skills_fs.service.provisioner
     prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="omni")
-    agent_md = prov.memory_root("user-1") / "AGENT.md"
-    assert agent_md.is_file()
-    original = agent_md.read_text(encoding="utf-8")
+    agents_md = prov.memory_index_path("user-1", "omni")
+    assert agents_md.is_file()
+    original = agents_md.read_text(encoding="utf-8")
 
-    # A second call must never overwrite an edited AGENT.md.
-    agent_md.write_text("user edits", encoding="utf-8")
+    # A second call must never overwrite an edited AGENTS.md.
+    agents_md.write_text("user edits", encoding="utf-8")
     prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="omni")
-    assert agent_md.read_text(encoding="utf-8") == "user edits"
+    assert agents_md.read_text(encoding="utf-8") == "user edits"
     assert original  # template was non-empty
 
     assert prov.skills_root("user-1", "omni").is_dir()
+    assert prov.memory_entries_root("user-1", "omni").is_dir()
 
 
 def test_ensure_user_agent_filesystem_with_conversation(skills_fs):

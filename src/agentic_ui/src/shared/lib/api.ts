@@ -39,6 +39,7 @@ import type {
 } from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
 import { requestJson, requestVoid, requestBlob, requestRaw } from "./http";
+import { ensureFreshSession } from "./sessionRefresh";
 import {
   DocxPreviewTokenSchema,
   MemoryDetailSchema,
@@ -98,6 +99,8 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
     method: "POST",
     body: credentials,
     emitOn401: false,
+    // A 401 here is bad credentials, not an expired session — never refresh-retry.
+    skipAuthRetry: true,
     captureRetryAfter: true,
     fallbackMessage: "Failed to authenticate",
   });
@@ -110,6 +113,8 @@ export async function authenticate(credentials: AuthRequest): Promise<AuthRespon
 export async function getSessionMe(): Promise<AuthResponse> {
   const data = await requestJson(`${AUTH_BASE_PATH}/session`, {
     emitOn401: false,
+    // restoreSession() owns the 401→refresh fallback here; don't double-refresh.
+    skipAuthRetry: true,
     fallbackMessage: "Failed to fetch current session",
   });
   return normalizeAuthResponse(data);
@@ -140,6 +145,8 @@ export async function refreshSession(emitOnUnauthorized: boolean = true): Promis
     method: "POST",
     csrf: true,
     emitOn401: emitOnUnauthorized,
+    // This IS the refresh — a 401 means the refresh token is dead; never recurse.
+    skipAuthRetry: true,
     fallbackMessage: "Failed to refresh session",
   });
   return normalizeAuthResponse(data);
@@ -1245,6 +1252,18 @@ class PermanentInferenceWebSocketError extends Error {
   }
 }
 
+// The server closed the socket with 4401 (access token expired/invalid). Unlike a
+// permanent error this is recoverable: the reconnect loop refreshes the session
+// once and reconnects with the fresh cookie, matching the REST 401 behavior. Only
+// if that refresh fails is the session genuinely over.
+class AuthExpiredWebSocketError extends Error {
+  readonly authExpired = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthExpiredWebSocketError";
+  }
+}
+
 function getInferenceWebSocketUrl(userId: string, runId: string): string {
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const segments = [encodeURIComponent(userId), encodeURIComponent(runId)].join("/");
@@ -1363,10 +1382,10 @@ function runOneInferenceWebSocketConnection(
 
     socket.onclose = (event) => {
       if (event.code === 4401) {
-        emitUnauthorized();
-        finalize(() => reject(new PermanentInferenceWebSocketError(
+        // Recoverable — the reconnect loop refreshes once and retries. Do NOT
+        // emit unauthorized here; that only happens if the refresh itself fails.
+        finalize(() => reject(new AuthExpiredWebSocketError(
           event.reason || "Authentication required",
-          event.code,
         )));
         return;
       }
@@ -1390,6 +1409,7 @@ export async function connectInferenceWebSocket(
 ): Promise<void> {
   const url = getInferenceWebSocketUrl(userId, runId);
   let consecutiveFailures = 0;
+  let authRefreshAttempted = false;
   // eslint-disable-next-line no-constant-condition
   while (true) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -1401,6 +1421,20 @@ export async function connectInferenceWebSocket(
     } catch (err: any) {
       if (signal?.aborted || err?.name === "AbortError") {
         throw new DOMException("Aborted", "AbortError");
+      }
+      if (err?.authExpired) {
+        // Mirror the REST 401 flow: refresh the session once, then reconnect with
+        // the fresh cookie. A second auth expiry (or a failed refresh) means the
+        // session is really over — surface it as unauthorized and stop.
+        if (!authRefreshAttempted) {
+          authRefreshAttempted = true;
+          const outcome = await ensureFreshSession({ force: true });
+          if (outcome.status !== "failed") {
+            continue;
+          }
+        }
+        emitUnauthorized();
+        throw new PermanentInferenceWebSocketError(err.message || "Authentication required", 4401);
       }
       if (err?.permanent) {
         throw err;

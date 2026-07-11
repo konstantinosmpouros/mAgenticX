@@ -192,8 +192,14 @@ class JWTSettings(BaseSettings):
     # up to ABSOLUTE; being idle longer than IDLE logs them out; ABSOLUTE forces a
     # periodic full re-auth regardless of activity. IDLE should be <= ABSOLUTE; if
     # it isn't, the absolute cap simply dominates (min() below stays correct).
-    refresh_idle_ttl_seconds: int = Field(604800, validation_alias="JWT_REFRESH_IDLE_TTL_SECONDS")            # 7 days
-    refresh_absolute_ttl_seconds: int = Field(2592000, validation_alias="JWT_REFRESH_ABSOLUTE_TTL_SECONDS")   # 30 days
+    #
+    # Product target: a logged-in user is kept signed in silently for up to 20 days
+    # (ABSOLUTE), after which they must re-authenticate; going 12 days (IDLE) without
+    # the client managing to refresh (browser closed / device off the whole time)
+    # logs them out early. The frontend refreshes proactively and on any 401, so an
+    # active session slides toward the 20-day cap without ever prompting for login.
+    refresh_idle_ttl_seconds: int = Field(1036800, validation_alias="JWT_REFRESH_IDLE_TTL_SECONDS")           # 12 days
+    refresh_absolute_ttl_seconds: int = Field(1728000, validation_alias="JWT_REFRESH_ABSOLUTE_TTL_SECONDS")   # 20 days
     # Grace during which the just-rotated-FROM refresh jti is still accepted, so a
     # legitimate concurrent/retried refresh is not misread as stolen-token reuse.
     refresh_reuse_grace_seconds: int = Field(30, validation_alias="JWT_REFRESH_REUSE_GRACE_SECONDS")

@@ -43,7 +43,7 @@ sequenceDiagram
     Bridge->>Bridge: upsert UserTable (vault_user_id = entity_id), check is_active
     Bridge->>Vault: transit/sign jwt-rs256 (access claims) + (refresh claims)
     Vault-->>Bridge: RS256 signatures (private key never leaves Vault)
-    Bridge-->>B: Set-Cookie: access(8h) + refresh(rolling, ≤30d) + csrf
+    Bridge-->>B: Set-Cookie: access(8h) + refresh(rolling, ≤20d) + csrf
     Bridge-->>B: AuthResponse {userId, tokenTtl}
 
     Note over B,Bridge: Every authenticated request — STATELESS
@@ -123,9 +123,11 @@ The response signature (`vault:v<N>:<sig>`) has its prefix stripped and is appen
 | Token | TTL (default) | Claims |
 | --- | --- | --- |
 | **access** | 8 h (`JWT_ACCESS_TTL_SECONDS`) | `sub` (user id), `sid` (login/session id), `typ="access"`, `act` (is_active), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
-| **refresh** | **rolling** — `exp = min(now + IDLE, lat + ABSOLUTE)`; defaults **7 d idle** (`JWT_REFRESH_IDLE_TTL_SECONDS`) / **30 d absolute** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) | `sub`, `sid`, `typ="refresh"`, `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
+| **refresh** | **rolling** — `exp = min(now + IDLE, lat + ABSOLUTE)`; defaults **12 d idle** (`JWT_REFRESH_IDLE_TTL_SECONDS`) / **20 d absolute** (`JWT_REFRESH_ABSOLUTE_TTL_SECONDS`) | `sub`, `sid`, `typ="refresh"`, `lat` (login time), `iss`, `aud`, `iat`, `nbf`, `exp`, `jti` |
 
 `sid` is a per-login id shared by both tokens (and stable across refresh) — the key the logout denylist and refresh-reuse detection use. The refresh window is **rolling**: each refresh slides `exp` forward by the idle window, but never past `lat + ABSOLUTE`. Net effect — an active user stays signed in up to the absolute cap; being idle longer than the idle window logs them out; the absolute cap forces a periodic full re-auth regardless of activity. The per-refresh `jti` is what makes rotation + reuse detection possible (Phase 6).
+
+**Product target — "stay signed in for 20 days":** with the current defaults a logged-in user is kept signed in silently for up to **20 days** (absolute cap), after which they must re-authenticate. Going **12 days** without the client managing a single refresh (browser closed / device off the whole time) expires the refresh token early. The frontend refreshes both proactively (before the access token expires) and reactively (on any `401`), so an active session slides toward the 20-day cap without ever showing the login screen. Because the access token trails the refresh cap by at most one access TTL, the effective hard logout lands at 20 days + ≤ 8 h in the edge case of a session held open right at the boundary.
 
 ### Cookies
 
@@ -134,7 +136,7 @@ The response signature (`vault:v<N>:<sig>`) has its prefix stripped and is appen
 | Cookie | HttpOnly | Expiry | Purpose |
 | --- | --- | --- | --- |
 | `mx_session` (or `__Host-mx_session`) | Yes | access TTL (8 h) | access JWT |
-| `mx_refresh` (or `__Host-mx_refresh`) | Yes | rolling refresh TTL (≤ absolute cap, 30 d) | refresh JWT |
+| `mx_refresh` (or `__Host-mx_refresh`) | Yes | rolling refresh TTL (≤ absolute cap, 20 d) | refresh JWT |
 | `mx_csrf` (or `__Host-mx_csrf`) | **No** | rolling refresh TTL | CSRF double-submit value |
 
 `__Host-` prefixing applies when `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is set. The access JWT lives in an HttpOnly cookie — JavaScript cannot read it (XSS-safe), and it is still verified with **zero** server state.
@@ -245,7 +247,13 @@ sequenceDiagram
 
 ### Auto-Refresh Scheduling
 
-`useSessionAutoRefreshEffect` schedules a `setTimeout` to fire **10 minutes** before `expiresAt` (a 2-minute margin is too thin on an 8-hour token). It calls `POST /v1/auth/session/refresh`; on success the server rotates all three cookies and returns a fresh `tokenTtl`, which re-arms the timer. Because browsers throttle/suspend timers in a backgrounded tab (and a slept device pauses them), the hook also re-evaluates on **`visibilitychange`/`focus`** (tab becomes visible): via the same scheduler it refreshes immediately if the access token already expired or is about to, otherwise re-arms the drifted timer — the "silent refresh on return" that keeps an active-but-returning user signed in. The network refresh is **cross-tab single-flight** (Web Locks): with several tabs open only one performs it and the rest pick up the rotated token, so tabs never rotate the refresh token concurrently (which would otherwise trip server-side reuse detection). A hard fallback remains: if a request still lands on an expired access token it `401`s and the app returns to login.
+Silent refresh has **two triggers**, both routed through the single `ensureFreshSession()` primitive ([shared/lib/sessionRefresh.ts](../../src/agentic_ui/src/shared/lib/sessionRefresh.ts)):
+
+1. **Proactive (timer).** `useSessionAutoRefreshEffect` schedules a `setTimeout` to fire **10 minutes** before `expiresAt` (a 2-minute margin is too thin on an 8-hour token). Because browsers throttle/suspend timers in a backgrounded tab (and a slept device pauses them), the hook also re-evaluates on **`visibilitychange`/`focus`**: via the same scheduler it refreshes immediately if the access token already expired or is about to, otherwise re-arms the drifted timer.
+
+2. **Reactive (401 interceptor).** Every API call goes through `requestRaw` ([shared/lib/http.ts](../../src/agentic_ui/src/shared/lib/http.ts)); a `401` triggers **one** silent refresh and **one** retry of the original request (rebuilt so it picks up the rotated CSRF cookie) before the app gives up. The inference **WebSocket** mirrors this: a `4401` close refreshes once and reconnects with the fresh cookie. This is what stops a stale access token — after device sleep, or a request racing the expiry — from bouncing an otherwise-valid session to the login screen. Only when the refresh **itself** fails (idle > 12 d, absolute > 20 d, or the `sid` was revoked) does the app emit `mx:unauthorized` and return to login.
+
+`ensureFreshSession()` calls `POST /v1/auth/session/refresh` (on success the server rotates all three cookies and returns a fresh `tokenTtl`, re-arming the proactive timer). It is **single-flight** on two levels: an in-process promise singleton dedupes a burst of concurrent `401`s within a tab, and the **cross-tab Web Locks** lock (`mx-session-refresh`) ensures only one tab across the origin performs the network refresh while the rest pick up the rotated token from the shared session marker — so tabs never rotate the refresh token concurrently (which would otherwise trip server-side reuse detection). The auth endpoints themselves (`login`, `session/refresh`, `GET /session`) opt out of the interceptor via `skipAuthRetry` so a failed refresh can never recurse.
 
 ### Logout Cleanup
 
@@ -287,6 +295,8 @@ sequenceDiagram
 | Settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `JWTSettings`, `VaultSettings` (AppRole + Transit) |
 | Vault setup runbook | [src/vault/vault_init.sh](../../src/vault/vault_init.sh) | Transit key + AppRole role + policy |
 | Rate limiting | [src/dialogue_bridge/core/security/rate_limit.py](../../src/dialogue_bridge/core/security/rate_limit.py) | `AUTHENTICATE_LIMIT`, `limiter` |
-| localStorage marker | [src/agentic_ui/src/lib/authStorage.ts](../../src/agentic_ui/src/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |
-| Auto-refresh scheduling | [src/agentic_ui/src/hooks/useSessionEffects.ts](../../src/agentic_ui/src/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` (10-min buffer) |
-| Login / logout handlers | [src/agentic_ui/src/handlers/auth.ts](../../src/agentic_ui/src/handlers/auth.ts) | `handleLogin`, `handleLogout` |
+| localStorage marker | [src/agentic_ui/src/shared/lib/authStorage.ts](../../src/agentic_ui/src/shared/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |
+| Silent-refresh primitive | [src/agentic_ui/src/shared/lib/sessionRefresh.ts](../../src/agentic_ui/src/shared/lib/sessionRefresh.ts) | `ensureFreshSession()` — single-flight + cross-tab refresh, shared by both triggers |
+| 401 refresh-and-retry interceptor | [src/agentic_ui/src/shared/lib/http.ts](../../src/agentic_ui/src/shared/lib/http.ts) | `requestRaw` (reactive trigger; `skipAuthRetry` opt-out) |
+| Auto-refresh scheduling | [src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` (proactive trigger, 10-min buffer) |
+| Login / logout handlers | [src/agentic_ui/src/features/auth/handlers/auth.ts](../../src/agentic_ui/src/features/auth/handlers/auth.ts) | `handleLogin`, `handleLogout` |
