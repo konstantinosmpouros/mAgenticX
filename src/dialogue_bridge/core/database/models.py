@@ -1,6 +1,6 @@
 """ORM table definitions (SQLAlchemy models) for the dialogue_bridge database.
 
-Every table model plus the ``upsert_user_from_vault`` helper. ``Base`` and
+Every table model plus the ``upsert_user_from_identity`` helper. ``Base`` and
 ``gen_uuid`` come from ``core.database.engine``; the whole surface is re-exported
 from ``core.database`` so callers keep importing ``from core.database import ...``.
 """
@@ -67,7 +67,16 @@ class UserTable(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     username = Column(String, unique=True, index=True, nullable=False)
-    vault_user_id = Column(String, unique=True, index=True, nullable=False)
+    # Per-provider external subject ids. Both are nullable+unique so ONE row can
+    # be linked to multiple login methods (see upsert_user_from_identity): a
+    # Vault-only user has oidc_subject NULL, an Entra-only user has vault_user_id
+    # NULL, and a linked user carries both. Postgres allows many NULLs under a
+    # unique index, so unlinked rows never collide.
+    vault_user_id = Column(String, unique=True, index=True, nullable=True)
+    oidc_subject = Column(String, unique=True, index=True, nullable=True)
+    # Comma-separated set of login methods proven for this account ("vault",
+    # "entra"), for observability/debugging — the subject columns are authoritative.
+    auth_providers = Column(String, nullable=True)
 
     email = Column(String, unique=True, index=True, nullable=True)
     display_name = Column(String, nullable=True)
@@ -474,54 +483,97 @@ class MessageEmbeddingTable(Base):
 # -------------------------------------------------------------------------------
 # User helpers
 # -------------------------------------------------------------------------------
-async def upsert_user_from_vault(
+# Maps an auth provider to the UserTable column that stores its external subject
+# id. Adding a third provider (e.g. Keycloak) is a one-line addition here.
+_PROVIDER_SUBJECT_COLUMN = {"vault": "vault_user_id", "entra": "oidc_subject"}
+
+
+class IdentityConflictError(Exception):
+    """A login could not be linked because the email is already bound to a
+    DIFFERENT subject for the same provider. Raised (and surfaced as an auth
+    failure) rather than silently merging or duplicating an account."""
+
+
+def _normalize_email(email: str | None) -> str | None:
+    email = (email or "").strip().lower()
+    return email or None
+
+
+async def upsert_user_from_identity(
     session: AsyncSession,
     *,
-    vault_user_id: str,
+    provider: str,
+    subject: str,
     username: str,
+    email: str | None = None,
     metadata: dict | None = None,
 ) -> UserTable:
-    """
-    Ensure a Vault-authenticated user exists locally.
-    - Creates a new user row when first seen.
-    - Updates mutable profile fields on subsequent logins.
-    """
-    metadata = metadata or {}
+    """Resolve (or create) the single canonical user row for an authenticated
+    identity, LINKING login methods so the same human never gets two rows.
 
+    Resolution order:
+      1. by this provider's subject id — the user has signed in this way before;
+      2. else by verified email — an account already exists (created via the
+         other provider); attach this provider's subject to it (the link step);
+      3. else create a fresh row carrying this provider's subject.
+
+    Email is the cross-provider link key and is trustworthy here because every
+    provider (single-tenant Entra, org-provisioned Vault) is authoritative for
+    it. A subject/email clash fails closed via :class:`IdentityConflictError`.
+    """
+    if provider not in _PROVIDER_SUBJECT_COLUMN:
+        raise ValueError(f"Unknown auth provider: {provider!r}")
+    subject_col = _PROVIDER_SUBJECT_COLUMN[provider]
+    metadata = metadata or {}
+    email_norm = _normalize_email(email)
+
+    # 1. Already known via this provider.
     result = await session.execute(
-        select(UserTable).where(
-            UserTable.vault_user_id == vault_user_id,
-        )
+        select(UserTable).where(getattr(UserTable, subject_col) == subject)
     )
     user: UserTable | None = result.scalar_one_or_none()
 
-    if user is None:
-        user = UserTable(
-            id=gen_uuid(),
-            vault_user_id=vault_user_id,
-            username=username,
+    # 2. Not yet — try to link to an existing account by email.
+    if user is None and email_norm:
+        result = await session.execute(
+            select(UserTable).where(func.lower(UserTable.email) == email_norm)
         )
+        user = result.scalar_one_or_none()
+        if user is not None:
+            bound = getattr(user, subject_col)
+            if bound is not None and bound != subject:
+                raise IdentityConflictError(
+                    f"email already linked to a different {provider} subject"
+                )
+            setattr(user, subject_col, subject)  # link this provider to the row
+
+    # 3. Brand-new human.
+    if user is None:
+        user = UserTable(id=gen_uuid(), username=username, email=email_norm)
+        setattr(user, subject_col, subject)
         session.add(user)
         # Flush early so relationships can reference the user within the same transaction.
         await session.flush()
 
-    # Always refresh username to keep local record aligned with Vault.
-    user.username = username
+    # Record which login methods now resolve to this account.
+    providers = {p for p in (user.auth_providers or "").split(",") if p}
+    providers.add(provider)
+    user.auth_providers = ",".join(sorted(providers))
 
-    # Update selected metadata only when the Vault response includes a value.
-    mutable_fields = (
-        "email",
-        "display_name",
-        "avatar_url",
-        "full_name",
-        "department",
-        "role_title",
-    )
-    for field in mutable_fields:
-        if field in metadata and metadata[field] is not None:
+    # Set username/email only when missing, to avoid clobbering a value the other
+    # provider owns (username is unique — overwriting could collide).
+    if not user.username:
+        user.username = username
+    if email_norm and not user.email:
+        user.email = email_norm
+
+    # Refresh mutable profile fields when the provider supplied them (email is
+    # handled above — never overwritten here, to avoid a unique-constraint clash).
+    for field in ("display_name", "avatar_url", "full_name", "department", "role_title"):
+        if metadata.get(field) is not None:
             setattr(user, field, metadata[field])
 
-    if "last_login_at" in metadata and metadata["last_login_at"] is not None:
+    if metadata.get("last_login_at") is not None:
         user.last_login_at = metadata["last_login_at"]
 
     return user

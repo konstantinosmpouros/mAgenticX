@@ -148,7 +148,7 @@ export default function ProfilePanel({
             description: "Manage archived conversations and understand how history behaves in the workspace.",
         },
         mcp: {
-            title: "MCP1 Servers",
+            title: "MCP Servers",
             description: "Choose which MCP-powered tools stay available inside conversations.",
         },
         skills: {

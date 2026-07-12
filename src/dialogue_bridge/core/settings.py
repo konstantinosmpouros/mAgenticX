@@ -226,6 +226,60 @@ class JWTSettings(BaseSettings):
         return v
 
 
+class EntraSettings(BaseSettings):
+    """Microsoft Entra ID (Azure AD) OIDC provider config.
+
+    The bridge acts as an OIDC Relying Party (authorization-code + PKCE via MSAL)
+    and, on a successful Entra login, mints the SAME session JWTs as the userpass
+    path — Entra only replaces *how identity is proven*. The whole provider stays
+    INERT unless ``tenant_id``, ``client_id`` and ``client_secret`` are all set
+    (see ``enabled``), so shipping it default-off changes nothing until configured.
+    """
+
+    model_config = _BASE_MODEL_CONFIG
+
+    tenant_id: str | None = Field(None, validation_alias="ENTRA_TENANT_ID")
+    client_id: str | None = Field(None, validation_alias="ENTRA_CLIENT_ID")
+    client_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    # Browser-facing callback URL, registered verbatim in the Entra app. Behind
+    # nginx the request URL is the internal host, so this must be configured
+    # explicitly (per environment) to exactly match the registered redirect URI.
+    redirect_uri: str | None = Field(None, validation_alias="ENTRA_REDIRECT_URI")
+    # Comma-separated Entra security-group Object IDs allowed to sign in. Empty =
+    # no group restriction. Enforced fail-closed in the callback.
+    allowed_group_ids: str | None = Field(None, validation_alias="ENTRA_ALLOWED_GROUP_IDS")
+    # SPA path to land on after a successful SSO login.
+    post_login_redirect: str = Field("/", validation_alias="ENTRA_POST_LOGIN_REDIRECT")
+    # SPA path (with an error query) to bounce to when SSO is denied/fails.
+    login_error_redirect: str = Field("/login", validation_alias="ENTRA_LOGIN_ERROR_REDIRECT")
+    authority_host: str = Field(
+        "https://login.microsoftonline.com", validation_alias="ENTRA_AUTHORITY_HOST"
+    )
+
+    @field_validator("client_secret", mode="before")
+    @classmethod
+    def _load_client_secret(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        return _resolve_file_backed_secret("ENTRA_CLIENT_SECRET") or ""
+
+    @property
+    def enabled(self) -> bool:
+        return bool(
+            self.tenant_id and self.client_id and self.client_secret.get_secret_value()
+        )
+
+    @property
+    def authority(self) -> str:
+        return f"{self.authority_host.rstrip('/')}/{self.tenant_id}"
+
+    @property
+    def allowed_groups(self) -> set[str]:
+        return {g.strip() for g in (self.allowed_group_ids or "").split(",") if g.strip()}
+
+
 class TlsSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
@@ -585,6 +639,7 @@ class Settings(BaseSettings):
     session: SessionSettings = Field(default_factory=SessionSettings)
     vault: VaultSettings = Field(default_factory=VaultSettings)
     jwt: JWTSettings = Field(default_factory=JWTSettings)
+    entra: EntraSettings = Field(default_factory=EntraSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     inference: InferenceSettings = Field(default_factory=InferenceSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)

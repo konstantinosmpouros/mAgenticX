@@ -12,6 +12,7 @@ psycopg2-binary==2.9.10  # used only by alembic migrations (sync driver)
 pydantic==2.11.7
 pydantic-settings==2.7.1
 python-jose[cryptography]==3.5.0
+msal==1.31.1  # Microsoft Entra ID OIDC relying-party (auth-code + PKCE) sign-in
 python-multipart==0.0.26
 fonttools==4.60.1
 slowapi==0.1.9

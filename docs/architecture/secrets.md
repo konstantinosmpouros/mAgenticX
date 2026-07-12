@@ -48,6 +48,7 @@ Nine Swarm secrets, declared at the bottom of the compose with `external: true` 
 | `magenticx_log_redaction_secret` | `log_redaction_secret` | `LOG_REDACTION_SECRET_FILE` | `dialogue_bridge`, `agents`, `rag_service` | Shared HMAC key so the hashed `client_ip` (`h:<16hex>`) correlates across services. Absent ⇒ each process falls back to a random per-process key (correlation degrades, logs stay private). See [observability.md](../development/observability.md). |
 | `magenticx_vault_role_id` | `vault_role_id` | `VAULT_ROLE_ID_FILE` | `dialogue_bridge` | AppRole **role id** — the bridge's Vault machine identity. Used to sign session JWTs via Transit and read the verification public key. |
 | `magenticx_vault_secret_id` | `vault_secret_id` | `VAULT_SECRET_ID_FILE` | `dialogue_bridge` | AppRole **secret id** — pairs with the role id to authenticate to Vault. |
+| `magenticx_entra_client_secret` | `entra_client_secret` | `ENTRA_CLIENT_SECRET_FILE` | `dialogue_bridge` | Microsoft Entra app-registration **client secret** for the OIDC relying-party (auth-code + PKCE) sign-in. Only needed when Entra SSO is enabled; absent ⇒ SSO stays inert. |
 
 > `dialogue_bridge`, `agents`, and `rag_service` **refuse to start** without `trusted_proxy_secret`. Outside `development`/`test`, the bridge additionally requires `VAULT_URL` + `vault_role_id` + `vault_secret_id` (stateless JWT auth) and a `session_token_secret`.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import re
 import time
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -49,6 +50,29 @@ def _vault_headers(token: str | None = None) -> dict[str, str]:
 class VaultAuthResult:
     vault_user_id: str
     username: str
+    # Email is the cross-provider account-link key (see upsert_user_from_identity).
+    # Userpass doesn't return one, so we derive it from the username when the
+    # username IS the email (the common org convention). None when it isn't —
+    # that user simply won't auto-link to an Entra login until an email is known.
+    email: str | None = None
+
+
+# Vault userpass usernames follow Vault's GenericNameRegex: a word char,
+# optionally followed by word/dot/hyphen chars and ending in a word char. Notably
+# "@" is NOT allowed — so an email can never BE a userpass username, and sending
+# one makes Vault 500 on an unroutable path. We validate up front and return a
+# clean "invalid credentials" instead (input validation at the trust boundary).
+_USERPASS_USERNAME_RE = re.compile(r"[0-9A-Za-z_](?:[0-9A-Za-z_.\-]*[0-9A-Za-z_])?")
+
+
+def _username_as_email(username: str) -> str | None:
+    """Return the username as an email if it structurally looks like one."""
+    candidate = (username or "").strip()
+    if candidate.count("@") == 1:
+        local, _, domain = candidate.partition("@")
+        if local and "." in domain and not domain.startswith(".") and not domain.endswith("."):
+            return candidate.lower()
+    return None
 
 
 class VaultAuthenticator:
@@ -60,6 +84,11 @@ class VaultAuthenticator:
             raise RuntimeError("VAULT_URL is not configured.")
 
     async def authenticate(self, username: str, password: str) -> VaultAuthResult:
+        # Reject anything that can't be a valid userpass username (e.g. an email
+        # with "@") before touching Vault — otherwise Vault 500s on the unroutable
+        # login path and it surfaces as a misleading "service unavailable".
+        if not username or not _USERPASS_USERNAME_RE.fullmatch(username):
+            raise VaultAuthError("Invalid username or password.", status_code=401)
         url = (
             f"{self._settings.addr.rstrip('/')}/v1/auth/"
             f"{self._settings.userpass_mount}/login/{quote(username, safe='')}"
@@ -79,7 +108,16 @@ class VaultAuthenticator:
         vault_user_id = auth_block.get("entity_id")
         if not auth_block.get("client_token") or not vault_user_id:
             raise VaultAuthError("Vault login response missing client_token or entity_id.")
-        return VaultAuthResult(vault_user_id=vault_user_id, username=username)
+        # Resolve the cross-provider link email. Vault userpass usernames can't be
+        # emails (the backend's username regex forbids "@"), so the authoritative
+        # source is the identity ENTITY's `email` metadata; fall back to the
+        # username only when it already looks like an email.
+        entity_email = await vault_service.read_entity_email(vault_user_id)
+        return VaultAuthResult(
+            vault_user_id=vault_user_id,
+            username=username,
+            email=entity_email or _username_as_email(username),
+        )
 
     @staticmethod
     def _parse_json(response: httpx.Response, context: str) -> dict:
@@ -241,6 +279,27 @@ class VaultServiceClient:
             raise VaultServiceError("Transit sign response has an unexpected signature format.")
         # "vault:v<N>:<base64url-nopad>" — strip the prefix; the rest is the segment.
         return signature.split(":", 2)[2]
+
+    async def read_entity_email(self, entity_id: str) -> str | None:
+        """Read an identity entity's ``email`` metadata, the cross-provider
+        account-link key for a Vault-authenticated user (a userpass username
+        can't be an email, so the email lives on the entity). Best-effort: any
+        failure — missing entity, no email set, or a policy gap — returns None so
+        login never breaks, it just doesn't auto-link until an email is known."""
+        if not entity_id:
+            return None
+        try:
+            data = (await self._request("GET", f"identity/entity/id/{entity_id}")).get("data") or {}
+        except VaultServiceError:
+            logger.warning(
+                "vault_entity_read_failed",
+                "Could not read Vault entity metadata for the link email",
+                failure_reason="vault_entity_read_failed",
+            )
+            return None
+        metadata = data.get("metadata") or {}
+        email = metadata.get("email")
+        return email.strip().lower() if isinstance(email, str) and email.strip() else None
 
 
 vault_service = VaultServiceClient()

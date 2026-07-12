@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from observability import get_logger, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import UserTable, get_db, upsert_user_from_vault
+from core.database import UserTable, get_db, upsert_user_from_identity, IdentityConflictError
 from schemas import AuthRequest, AuthResponse
 from core.security.rate_limit import AUTHENTICATE_LIMIT, limiter
 from core.settings import settings
@@ -26,6 +27,7 @@ from core.auth.session import (
 )
 from core.auth.providers import get_provider
 from core.auth.vault import VaultAuthError
+from core.auth.oidc import begin_login, complete_login, EntraOIDCError, EntraAccessDeniedError
 
 
 router = APIRouter()
@@ -51,7 +53,11 @@ async def authenticate(
             {"username": creds.username, "password": creds.password}
         )
     except VaultAuthError as exc:
-        if exc.status_code in (400, 401, 403):
+        # 404 too: Vault returns it for a login path that doesn't route (e.g. a
+        # username containing "@", which userpass forbids) — that's a bad
+        # username, not a service outage, so surface it as invalid credentials
+        # rather than a misleading "service unavailable".
+        if exc.status_code in (400, 401, 403, 404):
             logger.warning(
                 "auth_login_failed",
                 "Vault authentication failed",
@@ -92,10 +98,12 @@ async def authenticate(
 
     login_time = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    user = await upsert_user_from_vault(
+    user = await upsert_user_from_identity(
         db,
-        vault_user_id=identity.subject,
+        provider="vault",
+        subject=identity.subject,
         username=identity.username,
+        email=identity.email,
         metadata={"last_login_at": login_time},
     )
 
@@ -187,3 +195,115 @@ async def logout(
     logger.info("logout_completed", "Logout completed", had_session=sid is not None)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
+
+
+# ---------------------------------------------------------------------------
+# Microsoft Entra ID (OIDC) — federated sign-in alongside username/password
+# ---------------------------------------------------------------------------
+@router.get("/config", status_code=status.HTTP_200_OK)
+async def auth_config() -> dict:
+    """Public: which login methods the SPA should offer. No secrets — a single
+    boolean so the login page knows whether to render the Microsoft button."""
+    return {"oidcEnabled": settings.entra.enabled}
+
+
+def _oidc_redirect_uri(request: Request) -> str:
+    """The browser-facing callback URL registered in the Entra app. Prefer the
+    explicit config (must match Entra exactly); fall back to the forwarded
+    origin behind nginx for local convenience."""
+    if settings.entra.redirect_uri:
+        return settings.entra.redirect_uri
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if not host:
+        raise EntraOIDCError("Cannot determine redirect URI; set ENTRA_REDIRECT_URI.")
+    return f"{proto}://{host}/api/v1/auth/oidc/callback"
+
+
+@router.get("/oidc/login")
+@limiter.limit(AUTHENTICATE_LIMIT)
+async def oidc_login(request: Request) -> RedirectResponse:
+    """Begin the Entra auth-code flow — 302 the browser to Microsoft."""
+    if not settings.entra.enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled.")
+    try:
+        auth_uri = await begin_login(_oidc_redirect_uri(request))
+    except EntraOIDCError as exc:
+        logger.error(
+            "oidc_login_start_failed",
+            "Failed to start Microsoft sign-in",
+            failure_reason="oidc_login_start_failed",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not start Microsoft sign-in. Please try again.",
+        ) from exc
+    return RedirectResponse(auth_uri, status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/oidc/callback")
+async def oidc_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """Entra redirect target: validate the id_token, link/resolve the user, mint
+    the same session cookies as password login, and land the browser in the SPA.
+
+    On any failure we redirect back to the login screen with an ``sso`` reason
+    query rather than leaking an error page — no session cookies are set."""
+    if not settings.entra.enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled.")
+
+    def _deny(reason: str) -> RedirectResponse:
+        return RedirectResponse(
+            f"{settings.entra.login_error_redirect}?sso={reason}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    try:
+        identity = await complete_login(dict(request.query_params))
+    except EntraAccessDeniedError:
+        # Authenticated fine, but not authorized (not in an allowed group) — a
+        # deliberate access decision, not a transient failure.
+        logger.warning("oidc_access_denied", "Microsoft user is not authorized to sign in", failure_reason="oidc_access_denied")
+        return _deny("denied")
+    except EntraOIDCError:
+        logger.warning("oidc_callback_rejected", "Microsoft sign-in was rejected", failure_reason="oidc_callback_rejected")
+        return _deny("failed")
+
+    login_time = datetime.now(timezone.utc).replace(tzinfo=None)
+    display_name = (identity.claims or {}).get("name")
+    try:
+        user = await upsert_user_from_identity(
+            db,
+            provider="entra",
+            subject=identity.subject,
+            username=identity.username,
+            email=identity.email,
+            metadata={
+                "last_login_at": login_time,
+                "full_name": display_name,
+                "display_name": display_name,
+            },
+        )
+    except IdentityConflictError:
+        logger.warning("oidc_identity_conflict", "Could not link Microsoft identity to an existing account", failure_reason="oidc_identity_conflict")
+        return _deny("conflict")
+
+    if not user.is_active:
+        logger.warning("oidc_user_inactive", "Authenticated Microsoft user is inactive", user_id=user.id, failure_reason="inactive_user")
+        return _deny("disabled")
+
+    user.last_login_at = login_time
+    await db.commit()
+    await db.refresh(user)
+
+    issued = await mint_login_session(user)
+    await refresh_guard.register(
+        issued.session_id, issued.refresh_jti, settings.jwt.refresh_absolute_ttl_seconds
+    )
+    set_context(user_id=user.id, session_id=issued.session_id)
+    redirect = RedirectResponse(settings.entra.post_login_redirect, status_code=status.HTTP_302_FOUND)
+    issue_session_cookies(redirect, issued)
+    logger.info("oidc_login_succeeded", "User authenticated via Microsoft Entra")
+    return redirect

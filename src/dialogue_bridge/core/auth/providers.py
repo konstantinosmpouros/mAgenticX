@@ -58,7 +58,12 @@ class VaultUserpassProvider(AuthProvider):
         username = (payload.get("username") or "").strip()
         password = payload.get("password") or ""
         result = await self._get_authenticator().authenticate(username, password)
-        return AuthIdentity(subject=result.vault_user_id, username=result.username, provider=self.name)
+        return AuthIdentity(
+            subject=result.vault_user_id,
+            username=result.username,
+            provider=self.name,
+            email=result.email,
+        )
 
 
 _PROVIDERS: dict[str, AuthProvider] = {}

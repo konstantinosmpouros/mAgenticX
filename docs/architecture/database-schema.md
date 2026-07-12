@@ -25,7 +25,9 @@ erDiagram
     users {
         string id PK
         string username UK
-        string vault_user_id UK
+        string vault_user_id UK "nullable"
+        string oidc_subject UK "nullable"
+        string auth_providers
         string email UK
         string display_name
         string avatar_url
@@ -175,8 +177,10 @@ The identity record for every person who has logged in. Created (or refreshed) o
 | --- | --- | --- | --- | --- |
 | `id` | `String` | No | `gen_uuid()` | PK |
 | `username` | `String` | No | — | UNIQUE, INDEXED — Vault username |
-| `vault_user_id` | `String` | No | — | UNIQUE, INDEXED — Vault `entity_id`, stable across password changes |
-| `email` | `String` | Yes | `NULL` | UNIQUE, INDEXED — may be absent if Vault metadata is empty |
+| `vault_user_id` | `String` | Yes | `NULL` | UNIQUE, INDEXED — Vault `entity_id`, stable across password changes. Nullable since `0014` (an Entra-only user has none). |
+| `oidc_subject` | `String` | Yes | `NULL` | UNIQUE, INDEXED — Microsoft Entra `oid`. The OIDC counterpart of `vault_user_id`; a row may carry both when the account is linked across providers. |
+| `auth_providers` | `String` | Yes | `NULL` | Comma-separated set of proven login methods (`vault`, `entra`) for observability; the subject columns are authoritative. |
+| `email` | `String` | Yes | `NULL` | UNIQUE, INDEXED — the cross-provider **account-link key** (`upsert_user_from_identity`). May be `NULL` when no email is known. |
 | `display_name` | `String` | Yes | `NULL` | From Vault metadata |
 | `avatar_url` | `String` | Yes | `NULL` | From Vault metadata |
 | `full_name` | `String` | Yes | `NULL` | From Vault metadata |
@@ -473,7 +477,7 @@ One semantic embedding per message (**pgvector**), powering "most relevant conve
 | Table | Column(s) |
 | --- | --- |
 | `agents` | `slug` |
-| `users` | `username`, `vault_user_id`, `email` |
+| `users` | `username`, `vault_user_id`, `oidc_subject`, `email` |
 | `conversation_shares` | `token` |
 
 ---

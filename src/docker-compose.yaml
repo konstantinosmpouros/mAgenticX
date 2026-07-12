@@ -138,6 +138,13 @@ services:
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_PASSWORD=${REDIS_PASSWORD:-magenticx-dev-redis}
+      # Microsoft Entra ID (OIDC) sign-in — inert unless all three of
+      # tenant/client/secret are set (SSO stays off when these are empty).
+      - ENTRA_TENANT_ID=${ENTRA_TENANT_ID:-}
+      - ENTRA_CLIENT_ID=${ENTRA_CLIENT_ID:-}
+      - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET:-}
+      - ENTRA_REDIRECT_URI=${ENTRA_REDIRECT_URI:-}
+      - ENTRA_ALLOWED_GROUP_IDS=${ENTRA_ALLOWED_GROUP_IDS:-}
     depends_on:
       - agents
       - chat_postgres

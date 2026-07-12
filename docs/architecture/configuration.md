@@ -84,9 +84,26 @@ The BFF. The richest configuration surface — 19 settings groups.
 | `JWT_ISSUER` | `magenticx-bridge` | `iss` claim. | — |
 | `JWT_AUDIENCE` | `magenticx` | `aud` claim. | — |
 | `JWT_ACCESS_TTL_SECONDS` | `28800` (8h) | Access-token lifetime. | 60 … 86400 |
-| `JWT_REFRESH_TTL_SECONDS` | `864000` (10d) | Refresh-token lifetime. | 3600 … 2592000 |
+| `JWT_REFRESH_IDLE_TTL_SECONDS` | `1036800` (12d) | Rolling idle window — refresh `exp` slides forward by this on each refresh. Being idle longer than this logs the user out. | 300 … 2592000 |
+| `JWT_REFRESH_ABSOLUTE_TTL_SECONDS` | `1728000` (20d) | Hard cap from original login — the refresh `exp` never exceeds `lat + this`, forcing a full re-auth. | 3600 … 15552000 |
+| `JWT_REFRESH_REUSE_GRACE_SECONDS` | `30` | Grace during which the just-rotated-from refresh `jti` is still accepted (avoids false reuse-detection on a retried/concurrent refresh). | 0 … 300 |
 | `JWT_LEEWAY_SECONDS` | `30` | Clock-skew leeway on verification. | 0 … 300 |
 | `JWT_SIGN_VERSION_CACHE_SECONDS` | `60` | How long the Transit key version is cached before re-checking. | — |
+
+### Microsoft Entra ID / OIDC (`EntraSettings`)
+
+Federated sign-in alongside username/password. **Inert unless `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` are all set** (`settings.entra.enabled`).
+
+| Env var | Default | What it does |
+| --- | --- | --- |
+| `ENTRA_TENANT_ID` | `None` | Directory (tenant) id. |
+| `ENTRA_CLIENT_ID` | `None` | Application (client) id of the app registration. |
+| `ENTRA_CLIENT_SECRET` | (secret) | Client secret (file-backed via `ENTRA_CLIENT_SECRET_FILE` / Swarm secret in prod). |
+| `ENTRA_REDIRECT_URI` | `None` | Exact registered callback URL, e.g. `http://localhost:8050/api/v1/auth/oidc/callback`. Falls back to forwarded-origin derivation if unset. |
+| `ENTRA_ALLOWED_GROUP_IDS` | `None` | Comma-separated Entra security-group Object IDs allowed to sign in. Empty = no restriction (enforced fail-closed). |
+| `ENTRA_POST_LOGIN_REDIRECT` | `/` | SPA path to land on after a successful SSO login. |
+| `ENTRA_LOGIN_ERROR_REDIRECT` | `/login` | SPA path (with an `?sso=<reason>` query) to bounce to when SSO is denied/fails. |
+| `ENTRA_AUTHORITY_HOST` | `https://login.microsoftonline.com` | Entra authority host (override for sovereign clouds). |
 
 ### Internal TLS client (`TlsSettings`)
 

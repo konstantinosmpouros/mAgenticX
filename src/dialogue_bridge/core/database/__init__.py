@@ -26,7 +26,8 @@ from core.database.models import (
     ScheduledTaskTable,
     UserPreferencesTable,
     UserTable,
-    upsert_user_from_vault,
+    IdentityConflictError,
+    upsert_user_from_identity,
 )
 
 __all__ = [
@@ -50,5 +51,6 @@ __all__ = [
     "ConversationShareTable",
     "AttachmentTable",
     "BlobTable",
-    "upsert_user_from_vault",
+    "IdentityConflictError",
+    "upsert_user_from_identity",
 ]

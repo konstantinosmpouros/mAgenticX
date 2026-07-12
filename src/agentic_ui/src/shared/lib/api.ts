@@ -164,6 +164,26 @@ export async function logoutSession(): Promise<void> {
   });
 }
 
+// Public config: whether Microsoft (Entra) SSO is available, so the login page
+// only shows the button when the backend is actually configured for it. A 401
+// is not meaningful here and never triggers a refresh.
+export async function getAuthConfig(): Promise<{ oidcEnabled: boolean }> {
+  const data = await requestJson(`${AUTH_BASE_PATH}/config`, {
+    emitOn401: false,
+    skipAuthRetry: true,
+    fallbackMessage: "Failed to fetch auth config",
+  });
+  const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  return { oidcEnabled: record.oidcEnabled === true };
+}
+
+// Enter the Entra auth-code flow. This is a full-page navigation, NOT a fetch:
+// the browser must follow the 302 to Microsoft and back through the callback,
+// which sets the session cookies before redirecting into the app.
+export function beginEntraLogin(): void {
+  window.location.href = `${AUTH_BASE_PATH}/oidc/login`;
+}
+
 
 // Fetch agents from backend via nginx proxy. The wire shape is validated as an
 // array of objects; each row is coerced into the app `Agent` (icon name → the

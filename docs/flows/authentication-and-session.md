@@ -129,6 +129,24 @@ The response signature (`vault:v<N>:<sig>`) has its prefix stripped and is appen
 
 **Product target — "stay signed in for 20 days":** with the current defaults a logged-in user is kept signed in silently for up to **20 days** (absolute cap), after which they must re-authenticate. Going **12 days** without the client managing a single refresh (browser closed / device off the whole time) expires the refresh token early. The frontend refreshes both proactively (before the access token expires) and reactively (on any `401`), so an active session slides toward the 20-day cap without ever showing the login screen. Because the access token trails the refresh cap by at most one access TTL, the effective hard logout lands at 20 days + ≤ 8 h in the edge case of a session held open right at the boundary.
 
+```mermaid
+flowchart LR
+    A["🔑 Login<br/>t = 0"] --> B["🔄 Silent refresh<br/>(rotates cookies,<br/>slides the idle window)"]
+    B -->|"still active"| B
+    B -->|"reached t = 20 days<br/>ABSOLUTE cap"| C["🚪 Forced re-login"]
+    B -->|"no refresh for 12 days<br/>IDLE cap (browser closed /<br/>device off the whole time)"| C
+```
+
+Two tokens, two jobs — the short access token is presented on every request; the long refresh token silently buys a new pair, its expiry re-derived on each refresh:
+
+```mermaid
+flowchart TD
+    L["Login / every refresh"] --> AC["Access token — 8 h<br/>sent on every request"]
+    L --> RF["Refresh token<br/>exp = min(now + 12d, login + 20d)"]
+    RF --> N1["sliding 12-day idle window"]
+    RF --> N2["hard 20-day cap from original login"]
+```
+
 ### Cookies
 
 `issue_session_cookies()` sets three cookies (unchanged transport from the previous design):
@@ -251,13 +269,160 @@ Silent refresh has **two triggers**, both routed through the single `ensureFresh
 
 1. **Proactive (timer).** `useSessionAutoRefreshEffect` schedules a `setTimeout` to fire **10 minutes** before `expiresAt` (a 2-minute margin is too thin on an 8-hour token). Because browsers throttle/suspend timers in a backgrounded tab (and a slept device pauses them), the hook also re-evaluates on **`visibilitychange`/`focus`**: via the same scheduler it refreshes immediately if the access token already expired or is about to, otherwise re-arms the drifted timer.
 
+   ```mermaid
+   sequenceDiagram
+       participant T as Timer (useSessionAutoRefreshEffect)
+       participant R as ensureFreshSession
+       participant L as Web Lock "mx-session-refresh"
+       participant B as Bridge
+
+       Note over T: fires ~10 min before access expiry<br/>also on visibilitychange / focus
+       T->>R: ensureFreshSession()
+       R->>L: acquire cross-tab lock
+       alt another tab already refreshed
+           L-->>R: got lock, marker still fresh
+           R-->>T: already-fresh → skip network, re-arm
+       else this tab does the refresh
+           R->>B: POST /session/refresh
+           B-->>R: rotate cookies + new tokenTtl
+           R-->>T: refreshed → re-arm timer
+       end
+   ```
+
 2. **Reactive (401 interceptor).** Every API call goes through `requestRaw` ([shared/lib/http.ts](../../src/agentic_ui/src/shared/lib/http.ts)); a `401` triggers **one** silent refresh and **one** retry of the original request (rebuilt so it picks up the rotated CSRF cookie) before the app gives up. The inference **WebSocket** mirrors this: a `4401` close refreshes once and reconnects with the fresh cookie. This is what stops a stale access token — after device sleep, or a request racing the expiry — from bouncing an otherwise-valid session to the login screen. Only when the refresh **itself** fails (idle > 12 d, absolute > 20 d, or the `sid` was revoked) does the app emit `mx:unauthorized` and return to login.
 
+   ```mermaid
+   sequenceDiagram
+       participant C as Component (API call)
+       participant H as http.ts (requestRaw)
+       participant R as ensureFreshSession
+       participant B as Bridge
+
+       C->>H: GET /conversations
+       H->>B: request (access cookie expired)
+       B-->>H: 401
+       H->>R: ensureFreshSession()
+       R->>B: POST /session/refresh (refresh + CSRF cookie)
+       alt refresh token still valid (<12d idle, <20d abs)
+           B-->>R: 200 — rotate access/refresh/csrf
+           R-->>H: refreshed
+           H->>B: RETRY GET /conversations (fresh cookie)
+           B-->>H: 200
+           H-->>C: data — user noticed nothing
+       else refresh token dead / revoked
+           B-->>R: 401
+           R-->>H: failed
+           H->>H: emitUnauthorized()
+           H-->>C: logout + "Session expired" → /login
+       end
+   ```
+
+   The inference WebSocket applies the same repair to a `4401` close — refresh once, then reconnect:
+
+   ```mermaid
+   sequenceDiagram
+       participant W as Inference WS loop
+       participant B as Bridge
+       participant R as ensureFreshSession
+
+       W->>B: connect (access cookie stale)
+       B-->>W: close 4401
+       alt first 4401 → try refresh
+           W->>R: ensureFreshSession(force)
+           R-->>W: refreshed
+           W->>B: reconnect with fresh cookie
+       else refresh failed, or a 2nd 4401
+           W->>W: emitUnauthorized() → logout
+       end
+   ```
+
 `ensureFreshSession()` calls `POST /v1/auth/session/refresh` (on success the server rotates all three cookies and returns a fresh `tokenTtl`, re-arming the proactive timer). It is **single-flight** on two levels: an in-process promise singleton dedupes a burst of concurrent `401`s within a tab, and the **cross-tab Web Locks** lock (`mx-session-refresh`) ensures only one tab across the origin performs the network refresh while the rest pick up the rotated token from the shared session marker — so tabs never rotate the refresh token concurrently (which would otherwise trip server-side reuse detection). The auth endpoints themselves (`login`, `session/refresh`, `GET /session`) opt out of the interceptor via `skipAuthRetry` so a failed refresh can never recurse.
+
+These three end-states — and only these — return the user to login; every transient access-token expiry in between is repaired silently:
+
+```mermaid
+stateDiagram-v2
+    [*] --> LoggedIn: login at t=0
+    LoggedIn --> LoggedIn: silent refresh (proactive + on 401)
+    LoggedIn --> LoggedOut: inactive 12 days (idle cap)
+    LoggedIn --> LoggedOut: 20 days elapsed (absolute cap)
+    LoggedIn --> LoggedOut: explicit logout / sid revoked
+    LoggedOut --> [*]: redirect to /login
+```
 
 ### Logout Cleanup
 
 `handleLogout()` clears `mx_auth_session`, deletes the per-`userId` IndexedDB snapshot, fires `logoutSession()` (`POST /v1/auth/logout`) fire-and-forget, and resets React state to `/login`.
+
+---
+
+## Phase 9 — Microsoft Entra ID (OIDC) Federated Sign-In
+
+Entra is an **additional** login method **alongside** username/password, not a replacement. The bridge acts as the OIDC **Relying Party** (authorization-code + PKCE via Microsoft's MSAL): Entra proves identity, then the bridge mints the **same session JWTs** as the password path — everything in Phases 4–8 is unchanged. The provider stays **inert unless configured**: `ENTRA_TENANT_ID` + `ENTRA_CLIENT_ID` + `ENTRA_CLIENT_SECRET` must all be set (`settings.entra.enabled`), and `GET /v1/auth/config → {oidcEnabled}` tells the login page whether to render the "Sign in with Microsoft" button.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant DB as dialogue_bridge (RP)
+    participant R as Redis
+    participant E as Microsoft Entra
+    B->>DB: GET /v1/auth/oidc/login
+    DB->>R: store {state,nonce,PKCE} (TTL 10m, single-use)
+    DB-->>B: 302 → Entra (prompt=select_account)
+    B->>E: pick account, sign in (+MFA)
+    E-->>B: 302 → /v1/auth/oidc/callback?code&state
+    B->>DB: callback
+    DB->>R: fetch + delete flow(state)
+    DB->>E: exchange code (PKCE + client secret)
+    E-->>DB: id_token {oid, email, groups}
+    DB->>DB: validate token + GROUP gate → resolve/link user → mint JWTs
+    DB-->>B: Set-Cookie + 302 → /  (failure → /login?sso=<reason>)
+```
+
+### Identity linking — one row per human
+
+The same person must map to **one** `users` row whether they sign in via Vault or Microsoft. The link key is the **normalized email**; a row can carry both `vault_user_id` and `oidc_subject`. One helper — `upsert_user_from_identity` — serves both login paths:
+
+```mermaid
+flowchart TD
+    L["Login via provider P<br/>subject S, email E"] --> Q1{"row where<br/>P-subject == S ?"}
+    Q1 -->|yes| U["use that row"]
+    Q1 -->|no| Q2{"row where<br/>email == E ?"}
+    Q2 -->|yes| LINK["attach S to that row<br/>➜ SAME row, no duplicate"]
+    Q2 -->|no| NEW["create new row"]
+    LINK --> U
+    NEW --> U
+```
+
+Migration `0014_link_identities` makes `vault_user_id` nullable and adds `oidc_subject` (nullable, unique) + `auth_providers`. A subject/email clash fails closed (`IdentityConflictError` → `/login?sso=conflict`). The local `users` row is created automatically on first login (JIT) and the second provider is linked on *its* first login — the database is never provisioned by hand.
+
+**Where the link email comes from (the key asymmetry):**
+
+| Provider | Email source |
+| --- | --- |
+| **Microsoft (Entra)** | the id_token `email` / `preferred_username` claim |
+| **Vault** | the **identity entity's `email` metadata** — read via `vault_service.read_entity_email()` (needs `read identity/entity/id/*` on the bridge's AppRole policy). A Vault userpass **username can never be an email** (Vault's `GenericNameRegex` forbids `@`), so the email lives on the entity, not the username. A username-that-happens-to-be-an-email is only a last-resort fallback (`_username_as_email`). |
+
+A Vault user whose entity has **no** `email` set simply stays a Vault-only account (nothing to match), which is why the bridge also validates the username against Vault's allowed pattern up front — an `@`-containing login is rejected as invalid credentials rather than 500-ing Vault on an unroutable path.
+
+> **The whole model in one line:** there is no self-registration — an admin provisions the user in Vault (userpass user **+ entity `email`**) and/or Entra (tenant user **+ allowed group**); **matching emails across the two ⇒ one account.** Set the same email on both sides and the logins merge automatically.
+
+### Group gate
+
+`ENTRA_ALLOWED_GROUP_IDS` (comma-separated group Object IDs) restricts who may sign in. The callback requires the id_token `groups` claim to intersect the allowed set, **fail closed**; a groups "overage" is denied (use a dedicated security group). Empty = no restriction.
+
+### Security notes
+
+Real authorization-code + **PKCE**; `state`/`nonce`/PKCE held single-use in Redis (10-min TTL) as CSRF/replay defense; full id_token validation (signature vs Entra JWKS, `iss`/`aud`/`nonce`/`exp`) by MSAL. **Entra's own tokens are never stored** — the id_token authenticates once and is discarded; only the bridge's session JWT persists. The client secret is a file-backed `SecretStr`. MSAL is synchronous, so all of its network calls run via `asyncio.to_thread` to avoid blocking the event loop.
+
+### Production enablement
+
+Entra ships **default-off**, so the images deploy to production inert: the additive `0014` migration applies on startup and existing login is unaffected (the Vault entity-email read fails gracefully if the policy below isn't present yet). To turn it on:
+
+- **Secret + config:** `ENTRA_CLIENT_SECRET` as a Swarm secret (`magenticx_entra_client_secret` → `ENTRA_CLIENT_SECRET_FILE`); the other `ENTRA_*` (including the production redirect URI) as service env in the production compose.
+- **Vault:** add `read identity/entity/id/*` to the bridge's AppRole policy on the production Vault (already in `vault_init.sh`), then set each Vault user's entity `email` so it can link to their Microsoft login.
+- **Egress:** the bridge needs outbound HTTPS to the Microsoft identity platform (server-side code exchange + JWKS).
+- **Deploy:** standard rolling update — this change does **not** touch mTLS. Recommended: deploy the images inert first, then enable as a deliberate second step.
 
 ---
 
@@ -290,9 +455,11 @@ Silent refresh has **two triggers**, both routed through the single `ensureFresh
 | JWT mint / verify | [src/dialogue_bridge/core/auth/tokens.py](../../src/dialogue_bridge/core/auth/tokens.py) | `mint_tokens()`, `verify()`, claim model |
 | Session deps + cookies | [src/dialogue_bridge/core/auth/session.py](../../src/dialogue_bridge/core/auth/session.py) | `require_session`, `require_current_user`, `require_refresh_session`, `require_csrf_protection`, `issue_session_cookies`, `revoke_current_session` |
 | Instant-logout denylist | [src/dialogue_bridge/core/logout_denylist.py](../../src/dialogue_bridge/core/logout_denylist.py) | `LogoutDenylist` (fail-open) |
-| Auth endpoints | [src/dialogue_bridge/router/auth.py](../../src/dialogue_bridge/router/auth.py) | `authenticate`, `session_me`, `refresh_session`, `logout` |
+| Auth endpoints | [src/dialogue_bridge/router/auth.py](../../src/dialogue_bridge/router/auth.py) | `authenticate`, `session_me`, `refresh_session`, `logout`, `auth_config`, `oidc_login`, `oidc_callback` |
+| Entra OIDC flow (MSAL) | [src/dialogue_bridge/core/auth/oidc.py](../../src/dialogue_bridge/core/auth/oidc.py) | `begin_login`, `complete_login`, group gate |
+| Identity link/upsert | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `upsert_user_from_identity` (link-by-email), `IdentityConflictError` |
 | User upsert from Vault | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `upsert_user_from_vault()` |
-| Settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `JWTSettings`, `VaultSettings` (AppRole + Transit) |
+| Settings | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `JWTSettings`, `VaultSettings` (AppRole + Transit), `EntraSettings` (OIDC) |
 | Vault setup runbook | [src/vault/vault_init.sh](../../src/vault/vault_init.sh) | Transit key + AppRole role + policy |
 | Rate limiting | [src/dialogue_bridge/core/security/rate_limit.py](../../src/dialogue_bridge/core/security/rate_limit.py) | `AUTHENTICATE_LIMIT`, `limiter` |
 | localStorage marker | [src/agentic_ui/src/shared/lib/authStorage.ts](../../src/agentic_ui/src/shared/lib/authStorage.ts) | `StoredSession`, `saveSession()`, `loadSession()` |

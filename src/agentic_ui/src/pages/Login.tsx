@@ -7,11 +7,31 @@ import { Input } from "@/shared/ui/input";
 import { Button } from "@/shared/ui/button";
 import { VscEye, VscEyeClosed } from "react-icons/vsc";
 import ParticleNetwork from "@/shared/ui/react_bits/bg_particle_network";
-import { authenticate, restoreSession } from "@/shared/lib/api";
+import { authenticate, beginEntraLogin, getAuthConfig, restoreSession } from "@/shared/lib/api";
 import { loadSession, saveSession, updateSession } from "@/shared/lib/authStorage";
 import { useToast } from "@/shared/hooks/use-toast";
 import { cn } from "@/shared/lib/utils";
 import type { AuthApiError } from "@/shared/lib/types";
+
+// Microsoft's brand mark (the 4-colour squares). Justified custom component:
+// Lucide carries no brand logos, and Microsoft's sign-in branding guidelines
+// require their own mark — so this is an inline SVG rather than a Lucide icon.
+const MicrosoftLogo = ({ className }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 21 21" aria-hidden="true" focusable="false">
+        <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+        <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+        <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+        <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+);
+
+// Human-readable reasons for a bounced SSO callback (?sso=<reason>).
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+    failed: "Microsoft sign-in did not complete. Please try again.",
+    denied: "This Microsoft account isn't authorized to access mAgenticX. Contact an administrator to request access.",
+    conflict: "This Microsoft account's email is already linked to another sign-in method.",
+    disabled: "Your account is disabled. Contact an administrator.",
+};
 
 // Animated backdrop: a constellation network over a layered charcoal→magenta
 // vignette. Memoized so form state changes never re-mount the canvas.
@@ -45,8 +65,37 @@ export default function Login() {
     const [cooldownSeconds, setCooldownSeconds] = useState(0);
     const [capsLock, setCapsLock] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [oidcEnabled, setOidcEnabled] = useState(false);
 
     const isRateLimited = rateLimitedUntil !== null && cooldownSeconds > 0;
+
+    // Ask the backend whether Microsoft SSO is configured (button hidden if not),
+    // and surface any ?sso=<reason> the OIDC callback bounced back with.
+    useEffect(() => {
+        let cancelled = false;
+        void getAuthConfig()
+            .then((config) => {
+                if (!cancelled) setOidcEnabled(config.oidcEnabled);
+            })
+            .catch(() => {
+                if (!cancelled) setOidcEnabled(false);
+            });
+
+        const reason = new URLSearchParams(window.location.search).get("sso");
+        if (reason) {
+            toast({
+                title: "Microsoft sign-in",
+                description: SSO_ERROR_MESSAGES[reason] ?? "Sign-in could not be completed.",
+                variant: "destructive",
+                duration: 3200,
+            });
+            // Strip the query so a refresh doesn't re-toast.
+            window.history.replaceState({}, "", window.location.pathname);
+        }
+        return () => {
+            cancelled = true;
+        };
+    }, [toast]);
 
     useEffect(() => {
         const previous = document.title;
@@ -413,6 +462,42 @@ export default function Login() {
                                     </motion.div>
                                 </motion.div>
                             </form>
+
+                            {oidcEnabled && (
+                                // Decoupled from the container's stagger on purpose: oidcEnabled
+                                // resolves asynchronously (after the /auth/config fetch), so this
+                                // block mounts AFTER the form. Given its own initial/animate + a
+                                // delay, it fades in as the last element to settle instead of
+                                // popping in ahead of the still-animating form fields above it.
+                                <motion.div
+                                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.32, delay: reduceMotion ? 0 : 0.7, ease: [0.22, 1, 0.36, 1] }}
+                                    className="space-y-6"
+                                >
+                                    <div className="flex items-center gap-3" aria-hidden="true">
+                                        <span className="h-px flex-1 bg-white/10" />
+                                        <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">or</span>
+                                        <span className="h-px flex-1 bg-white/10" />
+                                    </div>
+
+                                    <motion.div
+                                        whileHover={reduceMotion ? undefined : { scale: 1.02 }}
+                                        whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+                                        transition={{ duration: 0.18, ease: "easeOut" }}
+                                    >
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={beginEntraLogin}
+                                            className="flex h-12 w-full items-center justify-center gap-3 rounded-xl !border-white/12 !bg-white/[0.04] text-white transition-colors hover:!bg-white/[0.08] hover:!text-white focus-visible:ring-2 focus-visible:ring-[#d0b0ff]/40"
+                                        >
+                                            <MicrosoftLogo className="h-[18px] w-[18px]" />
+                                            <span className="text-sm font-semibold tracking-wide">Sign in with Microsoft</span>
+                                        </Button>
+                                    </motion.div>
+                                </motion.div>
+                            )}
 
                             <motion.div variants={itemVariants} className="text-center text-xs text-white/55">
                                 Don't have access yet?{" "}
