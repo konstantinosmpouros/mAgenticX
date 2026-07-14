@@ -12,6 +12,8 @@ export type DismissActiveUiCtx = {
   isReportDialogOpen: boolean;
   shareTargetMessage: unknown;
   showUserProfile: boolean;
+  showShortcutsPanel: boolean;
+  showHelpPanel: boolean;
   isAgentPickerOpen: boolean;
   isHeaderActionMenuOpen: boolean;
   isSidebarFloatingUiOpen: boolean;
@@ -23,6 +25,8 @@ export type DismissActiveUiCtx = {
   closeReportDialog: () => void;
   closeShareDialog: () => void;
   closeProfilePanel: () => void;
+  closeShortcutsPanel: () => void;
+  closeHelpPanel: () => void;
   handleCancelEditMessage: () => void;
   setIsAgentPickerOpen: Dispatch<SetStateAction<boolean>>;
   setIsHeaderActionMenuOpen: Dispatch<SetStateAction<boolean>>;
@@ -38,6 +42,8 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
     isReportDialogOpen,
     shareTargetMessage,
     showUserProfile,
+    showShortcutsPanel,
+    showHelpPanel,
     isAgentPickerOpen,
     isHeaderActionMenuOpen,
     isSidebarFloatingUiOpen,
@@ -49,6 +55,8 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
     closeReportDialog,
     closeShareDialog,
     closeProfilePanel,
+    closeShortcutsPanel,
+    closeHelpPanel,
     handleCancelEditMessage,
     setIsAgentPickerOpen,
     setIsHeaderActionMenuOpen,
@@ -82,6 +90,16 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
 
   if (shareTargetMessage) {
     closeShareDialog();
+    return true;
+  }
+
+  if (showShortcutsPanel) {
+    closeShortcutsPanel();
+    return true;
+  }
+
+  if (showHelpPanel) {
+    closeHelpPanel();
     return true;
   }
 

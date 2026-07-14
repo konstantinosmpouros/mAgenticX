@@ -574,7 +574,8 @@ All colors MUST be HSL.
 
 @media (prefers-reduced-motion: reduce) {
   .voice-chat-panel,
-  .voice-composer-transition {
+  .voice-composer-transition,
+  .animate-message-in {
     animation-duration: 1ms;
     filter: none;
     scale: 1;

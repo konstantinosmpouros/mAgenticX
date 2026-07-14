@@ -80,6 +80,9 @@ import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/features
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
 import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
 import ProfilePanel from "@/features/settings/components/ProfilePanel";
+import EditProfileDialog from "@/features/settings/components/EditProfileDialog";
+import ShortcutsPanel from "@/features/settings/components/ShortcutsPanel";
+import HelpPanel from "@/features/settings/components/HelpPanel";
 import ReportConversationDialog from "@/features/reporting/components/ReportPanel";
 import ShareConversationDialog from "@/features/sharing/components/SharePanel";
 import ChatBody from "@/features/chat/components/ChatBody";
@@ -195,6 +198,13 @@ export function useChatWorkspace({
   // Boolean variables for navigation
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
+  // The small "Edit profile" dialog opened from the sidebar profile menu —
+  // separate surface from the full settings panel, ChatGPT-style.
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  // Dedicated reference panels (not settings sections), opened from the
+  // sidebar profile menu's Help submenu and the Alt+/ shortcut.
+  const [showShortcutsPanel, setShowShortcutsPanel] = useState(false);
+  const [showHelpPanel, setShowHelpPanel] = useState(false);
   const { headerHasDivider, handleHeaderScrollState } = useHeaderDividerEffect();
 
   // UI components
@@ -498,7 +508,7 @@ export function useChatWorkspace({
   });
 
   const openProfilePanel = useCallback(
-    (tab: string = "profile") => {
+    (tab: string = "general") => {
       setActiveProfileTab(tab);
       setShowUserProfile(true);
       requestPersist();
@@ -942,6 +952,8 @@ export function useChatWorkspace({
       isReportDialogOpen,
       shareTargetMessage,
       showUserProfile,
+      showShortcutsPanel,
+      showHelpPanel,
       isAgentPickerOpen,
       isHeaderActionMenuOpen,
       isSidebarFloatingUiOpen,
@@ -953,6 +965,8 @@ export function useChatWorkspace({
       closeReportDialog,
       closeShareDialog,
       closeProfilePanel,
+      closeShortcutsPanel: () => setShowShortcutsPanel(false),
+      closeHelpPanel: () => setShowHelpPanel(false),
       handleCancelEditMessage,
       setIsAgentPickerOpen,
       setIsHeaderActionMenuOpen,
@@ -978,6 +992,8 @@ export function useChatWorkspace({
     selectedImage,
     shareTargetMessage,
     showUserProfile,
+    showShortcutsPanel,
+    showHelpPanel,
   ]);
 
   // AI transition dot (between DB persistence and thinking start)
@@ -1125,7 +1141,9 @@ export function useChatWorkspace({
   });
 
   useEffect(() => {
-    if (!showUserProfile || activeProfileTab !== "archived") {
+    // "archived" is the pre-taxonomy id for the Data controls section; stale
+    // persisted snapshots may still carry it, so honor both.
+    if (!showUserProfile || (activeProfileTab !== "data-controls" && activeProfileTab !== "archived")) {
       return;
     }
 
@@ -1404,6 +1422,8 @@ export function useChatWorkspace({
     userProfile, loadingConversation, activeProfileTab, sidebarOpen,
     // view-local state
     currentMessage, setCurrentMessage, attachments, thinkingState, showUserProfile,
+    showEditProfile, setShowEditProfile, showShortcutsPanel, setShowShortcutsPanel,
+    showHelpPanel, setShowHelpPanel,
     selectedImage, selectedFilePreview, isAgentPickerOpen, setIsAgentPickerOpen,
     isHeaderActionMenuOpen, setIsHeaderActionMenuOpen, setIsSidebarFloatingUiOpen,
     sidebarDismissFloatingUiSignal, isReportDialogOpen, shareDialogUrl,
@@ -1485,7 +1505,9 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     setIsSidebarFloatingUiOpen, convIsLoadingMore, conversationsLoading, convHasMore,
     isSearchOpen, searchQuery, searchResults, defaultSearchResults, searchLoading, searchError,
     setSearchQuery, closeSearchPanel, handleSearchResultSelect, resumeInferenceRunHandler,
-    isInterruptResolved, showUserProfile, closeProfilePanel, activeProfileTab,
+    isInterruptResolved, showUserProfile, showEditProfile, setShowEditProfile,
+    showShortcutsPanel, setShowShortcutsPanel, showHelpPanel, setShowHelpPanel,
+    closeProfilePanel, activeProfileTab,
     handleSetActiveProfileTab, handleLogout, toolsWithStatus, availableSkills, handleRefreshSkills,
     mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail, ensureSkillDetail,
     handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill, handleRemoveSkillFromPool,
@@ -1534,6 +1556,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
           openAgentPicker,
           togglePrivateMode: handleTogglePrivateMode,
           openProfilePanel,
+          openShortcutsPanel: () => setShowShortcutsPanel(true),
           startNewChat: handleNewChat,
           dismissActiveUi,
         }}
@@ -1553,7 +1576,11 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
           onVoiceMode={triggerVoiceMode}
           onOpenScheduledTasks={() => navigate("/tasks")}
           scheduledTasksRunningCount={scheduledTasks.runningCount}
-          onOpenUserProfile={() => openProfilePanel()}
+          onOpenSettings={(tab) => openProfilePanel(tab)}
+          onEditProfile={() => setShowEditProfile(true)}
+          onOpenShortcuts={() => setShowShortcutsPanel(true)}
+          onOpenHelp={() => setShowHelpPanel(true)}
+          onLogout={handleLogout}
           agents={agents}
           userProfile={userProfile}
           dismissFloatingUiSignal={sidebarDismissFloatingUiSignal}
@@ -1632,6 +1659,26 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
                 onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
                 preferencesSaving={isSavingPreferences}
+              />
+
+              {/* Edit profile — the small identity card from the profile menu */}
+              <EditProfileDialog
+                open={showEditProfile}
+                onClose={() => setShowEditProfile(false)}
+                user={userProfile}
+              />
+
+              {/* Dedicated reference panels from the profile menu's Help submenu */}
+              <ShortcutsPanel
+                open={showShortcutsPanel}
+                onClose={() => setShowShortcutsPanel(false)}
+              />
+              <HelpPanel
+                open={showHelpPanel}
+                onClose={() => setShowHelpPanel(false)}
+                archivedConversations={archivedConversations}
+                availableTools={toolsWithStatus}
+                userPreferences={resolvedPreferences}
               />
 
               <ReportConversationDialog

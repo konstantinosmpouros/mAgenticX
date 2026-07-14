@@ -10,7 +10,17 @@ import {
   Trash2,
   Pencil,
   ArrowRight,
+  ChevronRight,
   ChevronsUpDown,
+  FileText,
+  HelpCircle,
+  Keyboard,
+  LifeBuoy,
+  LogOut,
+  Palette,
+  Settings,
+  ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { PiWaveformBold } from "react-icons/pi";
 import { MdOutlineSchedule } from "react-icons/md";
@@ -36,6 +46,7 @@ import {
   useSidebar,
 } from "@/shared/ui/sidebar";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
 type ChatSidebarProps = {
   conversations: ConversationSummary[];
@@ -55,7 +66,15 @@ type ChatSidebarProps = {
   onVoiceMode?: () => void;
   onOpenScheduledTasks?: () => void;
   scheduledTasksRunningCount?: number;
-  onOpenUserProfile: () => void;
+  /** Open the settings panel, optionally on a specific section. */
+  onOpenSettings: (tab?: string) => void;
+  /** Open the small "Edit profile" dialog. */
+  onEditProfile: () => void;
+  /** Open the dedicated Keyboard Shortcuts panel. */
+  onOpenShortcuts: () => void;
+  /** Open the dedicated Help & Resources panel. */
+  onOpenHelp: () => void;
+  onLogout: () => void;
   agents: Agent[];
   userProfile: UserProfile | null;
   dismissFloatingUiSignal?: number;
@@ -108,7 +127,11 @@ export default function ChatSidebar({
   onVoiceMode,
   onOpenScheduledTasks,
   scheduledTasksRunningCount = 0,
-  onOpenUserProfile,
+  onOpenSettings,
+  onEditProfile,
+  onOpenShortcuts,
+  onOpenHelp,
+  onLogout,
   agents,
   userProfile,
   dismissFloatingUiSignal = 0,
@@ -192,12 +215,17 @@ export default function ChatSidebar({
     }
   }, [onOpenScheduledTasks, isMobile, setOpenMobile]);
 
-  const handleOpenProfile = React.useCallback(() => {
-    onOpenUserProfile();
-    if (isMobile) {
-      setOpenMobile(false);
-    }
-  }, [onOpenUserProfile, isMobile, setOpenMobile]);
+  // Profile popover (the ChatGPT-style menu on the footer account button).
+  const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
+  const handleProfileMenuAction = React.useCallback(
+    (action: () => void) => {
+      action();
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+    },
+    [isMobile, setOpenMobile]
+  );
 
   const handleScroll: React.UIEventHandler<HTMLDivElement> = React.useCallback(
     (event) => {
@@ -299,8 +327,8 @@ export default function ChatSidebar({
   }, [handleCancelRename, renamingConversationId]);
 
   React.useEffect(() => {
-    onFloatingUiStateChange?.(Boolean(openActionMenuId || renamingConversationId));
-  }, [onFloatingUiStateChange, openActionMenuId, renamingConversationId]);
+    onFloatingUiStateChange?.(Boolean(openActionMenuId || renamingConversationId || profileMenuOpen));
+  }, [onFloatingUiStateChange, openActionMenuId, renamingConversationId, profileMenuOpen]);
 
   const lastDismissFloatingUiSignalRef = React.useRef(dismissFloatingUiSignal);
   React.useEffect(() => {
@@ -310,6 +338,7 @@ export default function ChatSidebar({
 
     lastDismissFloatingUiSignalRef.current = dismissFloatingUiSignal;
     setOpenActionMenuId(null);
+    setProfileMenuOpen(false);
     handleCancelRename();
   }, [dismissFloatingUiSignal, handleCancelRename]);
 
@@ -697,40 +726,187 @@ export default function ChatSidebar({
       >
         <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              onClick={handleOpenProfile}
-              className={cn(
-                // Frozen by construction, matching the Search/New chat/Voice/Tasks rows:
-                // a constant px-1.5 lead keeps the avatar pinned at the same x in both
-                // states (centered when collapsed, see SIDEBAR_WIDTH_ICON), so toggling
-                // the rail never shifts it.
-                "!flex items-center gap-1 rounded-lg bg-transparent px-1.5 py-2 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
-                "group-data-[collapsible=icon]:!h-12",
-                "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent"
-              )}
-              tooltip={{
-                children: (
+            <DropdownMenu.Root open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
+              {/* Tooltip composed manually (not via SidebarMenuButton's `tooltip` prop):
+                  the dropdown trigger must slot straight onto the real <button> — the
+                  prop variant would wrap it in a Tooltip and break the asChild chain. */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenu.Trigger asChild>
+                    <SidebarMenuButton
+                      size="lg"
+                      className={cn(
+                        // Frozen by construction, matching the Search/New chat/Voice/Tasks rows:
+                        // a constant px-1.5 lead keeps the avatar pinned at the same x in both
+                        // states (centered when collapsed, see SIDEBAR_WIDTH_ICON), so toggling
+                        // the rail never shifts it.
+                        "!flex items-center gap-1 rounded-lg bg-transparent px-1.5 py-2 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                        "group-data-[collapsible=icon]:!h-12",
+                        "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent",
+                        profileMenuOpen && "bg-[hsl(var(--hover-surface))]"
+                      )}
+                    >
+                      <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-sm font-semibold">{profileInitials}</span>
+                        )}
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+                        <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
+                        <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
+                      </div>
+                      <ChevronsUpDown className="ml-auto h-4 w-4 flex-shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                    </SidebarMenuButton>
+                  </DropdownMenu.Trigger>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="right"
+                  align="center"
+                  hidden={state !== "collapsed" || isMobile || profileMenuOpen}
+                >
                   <div className="flex flex-col text-left">
                     <span className="text-sm font-semibold">{profileName}</span>
                     <span className="text-xs text-muted-foreground">{profileEmail}</span>
                   </div>
-                ),
-              }}
-            >
-              <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-sm font-semibold">{profileInitials}</span>
-                )}
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
-                <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
-                <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
-              </div>
-              <ChevronsUpDown className="ml-auto h-4 w-4 flex-shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-            </SidebarMenuButton>
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  side={isCollapsed ? "right" : "top"}
+                  sideOffset={10}
+                  align={isCollapsed ? "end" : "start"}
+                  className="z-50 w-64 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=top]:slide-in-from-bottom-2 data-[side=right]:slide-in-from-left-2"
+                  onCloseAutoFocus={(event) => event.preventDefault()}
+                >
+                  {/* Identity header — opens the Edit profile dialog. */}
+                  <DropdownMenu.Item
+                    onSelect={() => handleProfileMenuAction(onEditProfile)}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
+                      {avatarUrl ? (
+                        <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-sm font-semibold">{profileInitials}</span>
+                      )}
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
+                      <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
+                    </div>
+                    <ChevronRight size={15} className="ml-auto flex-shrink-0 text-muted-foreground" />
+                  </DropdownMenu.Item>
+
+                  <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+
+                  <DropdownMenu.Item
+                    onSelect={() => handleProfileMenuAction(() => onOpenSettings("personalization"))}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                      <Palette size={15} />
+                    </div>
+                    <span>Personalization</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => handleProfileMenuAction(onEditProfile)}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                      <UserRound size={15} />
+                    </div>
+                    <span>Profile</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => handleProfileMenuAction(() => onOpenSettings("general"))}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                      <Settings size={15} />
+                    </div>
+                    <span>Settings</span>
+                  </DropdownMenu.Item>
+
+                  <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+
+                  <DropdownMenu.Sub>
+                    <DropdownMenu.SubTrigger className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] data-[state=open]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                        <LifeBuoy size={15} />
+                      </div>
+                      <span>Help</span>
+                      <ChevronRight size={15} className="ml-auto text-muted-foreground" />
+                    </DropdownMenu.SubTrigger>
+                    <DropdownMenu.Portal>
+                      <DropdownMenu.SubContent
+                        sideOffset={8}
+                        className="z-50 w-56 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=right]:slide-in-from-left-2 data-[side=left]:slide-in-from-right-2"
+                      >
+                        <DropdownMenu.Item
+                          onSelect={() => handleProfileMenuAction(onOpenHelp)}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                        >
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                            <HelpCircle size={15} />
+                          </div>
+                          <span>Help center</span>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                          onSelect={() => handleProfileMenuAction(onOpenShortcuts)}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                        >
+                          <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                            <Keyboard size={15} />
+                          </div>
+                          <span>Keyboard shortcuts</span>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                        <DropdownMenu.Item asChild>
+                          <a
+                            href="/terms"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                          >
+                            <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                              <FileText size={15} />
+                            </div>
+                            <span>Terms of Service</span>
+                          </a>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item asChild>
+                          <a
+                            href="/privacy"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                          >
+                            <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                              <ShieldCheck size={15} />
+                            </div>
+                            <span>Privacy Policy</span>
+                          </a>
+                        </DropdownMenu.Item>
+                      </DropdownMenu.SubContent>
+                    </DropdownMenu.Portal>
+                  </DropdownMenu.Sub>
+
+                  <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+
+                  <DropdownMenu.Item
+                    onSelect={() => handleProfileMenuAction(onLogout)}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-md text-destructive">
+                      <LogOut size={15} />
+                    </div>
+                    <span>Log out</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

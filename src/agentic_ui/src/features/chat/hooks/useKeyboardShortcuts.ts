@@ -26,6 +26,7 @@ export type ChatKeyboardShortcutOptions = {
   openAgentPicker: () => void;
   togglePrivateMode: () => void;
   openProfilePanel: (tab?: string) => void;
+  openShortcutsPanel: () => void;
   startNewChat: () => void;
   dismissActiveUi: () => boolean;
 };
@@ -151,6 +152,7 @@ export function useChatKeyboardShortcuts(
       openAgentPicker: options.openAgentPicker,
       togglePrivateMode: options.togglePrivateMode,
       openProfilePanel: options.openProfilePanel,
+      openShortcutsPanel: options.openShortcutsPanel,
       startNewChat: options.startNewChat,
       dismissActiveUi: options.dismissActiveUi,
     });

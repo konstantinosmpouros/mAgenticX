@@ -54,8 +54,6 @@ export type ShortcutRuntimeContext = {
 
 export type ShortcutActionMap = Partial<Record<ShortcutId, () => void>>;
 
-export const PROFILE_PANEL_SHORTCUTS_TAB = "shortcuts";
-
 export const SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "sidebar.toggle",

@@ -23,8 +23,15 @@
 ## Agentic UI
 
 - Chart can be visualized with [shadcn/charts](https://www.shadcn.io/charts) and the agent can have a custom tool like the todo tool in order to represent the chart and create a custom AGUI event for the interaction with the chart.
+- Profile panel — implement the "coming soon / not implemented" placeholders left by the ChatGPT-taxonomy refactor:
+  - **Stub sections** (full ComingSoon pages): Notifications (lands with the Notification system + PWA item above), Plugins (OAuth app connectors — distinct from MCP Servers), Usage (workspace-wide token/run analytics), Storage (attachment/artifact quotas + cleanup), Safety (content-safety / moderation preferences).
+  - **Stub rows** inside real tabs: General → Accent color, UI language, dictation on/off preference; Personalization → Custom instructions, Personality; Data controls → improve-the-model opt-in, Export data, Delete account; Security → Multi-factor authentication, Log out of all devices (needs a revoke-all path in the stateless-JWT auth).
+  - **Edit profile dialog** is read-only (fields come from the IdP) — avatar upload + display-name editing need a bridge profile-update endpoint.
+
+## Bugs / Fixes
+
 - Check for context and usage if we can use this one from [shadcn](https://www.shadcn.io/ai/context).
-- The scrolling effect must scroll a bit more if inference is active like gpt and have effects like these.
+- Refactor the Profile panel to be more like openai's profile + settings flow.
 
 ## Security
 

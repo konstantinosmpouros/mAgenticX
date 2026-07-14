@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn, fmtDate } from "@/shared/lib/utils";
 import type { ConversationShareListItem, ConversationSummary } from "@/shared/lib/types";
 import { InfoCard, MetricCard, SoftPanel } from "./shared";
+import { ComingSoonRow } from "./ComingSoon";
 
 type DataControlsTabProps = {
     archivedConversations: ConversationSummary[];
@@ -352,6 +353,27 @@ export default function DataControlsTab({
                         ) : null}
                     </div>
                 </div>
+            </InfoCard>
+
+            <InfoCard
+                eyebrow="Planned"
+                title="More data controls"
+                description="Mirrored from the target settings layout — these land here once implemented."
+            >
+                <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+                    <ComingSoonRow
+                        title="Improve the model for everyone"
+                        description="Choose whether your conversations may be used to improve future models."
+                    />
+                    <ComingSoonRow
+                        title="Export data"
+                        description="Download a copy of your conversations and account data."
+                    />
+                    <ComingSoonRow
+                        title="Delete account"
+                        description="Permanently remove this account and all of its data."
+                    />
+                </SoftPanel>
             </InfoCard>
         </div>
     );

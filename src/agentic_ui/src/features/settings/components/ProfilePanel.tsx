@@ -1,21 +1,138 @@
-import { X } from "lucide-react";
+import type { ComponentType } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+    Bell,
+    Gauge,
+    HardDrive,
+    Puzzle,
+    Shield,
+    type LucideProps,
+} from "lucide-react";
 
-import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
 import { ScrollArea } from "@/shared/ui/scroll-area";
+import { PremiumModalShell } from "@/shared/ui/premium-modal-shell";
 import { safeText } from "@/shared/lib/utils";
 import { NA, type RealtimeVoice, type VoiceModeLanguage } from "@/shared/lib/consts";
 import { Agent, ConversationShareListItem, ConversationSummary, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
 import ProfileSidebar, { NAV_ITEMS } from "./profile_parts/ProfileSidebar";
 import AccountTab from "./profile_parts/AccountTab";
+import GeneralTab from "./profile_parts/GeneralTab";
 import PersonalizationTab from "./profile_parts/PersonalizationTab";
+import VoiceTab from "./profile_parts/VoiceTab";
+import SecurityTab from "./profile_parts/SecurityTab";
 import DataControlsTab from "./profile_parts/DataControlsTab";
 import McpServersTab from "./profile_parts/McpServersTab";
 import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
-import ShortcutsTab from "./profile_parts/ShortcutsTab";
-import HelpTab from "./profile_parts/HelpTab";
+import ComingSoon from "./profile_parts/ComingSoon";
 import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
+
+/** Pre-taxonomy tab ids (persisted in UI snapshots) → their new section. */
+const LEGACY_TAB_MAP: Record<string, string> = {
+    profile: "account",
+    appearance: "personalization",
+    archived: "data-controls",
+};
+
+const VALID_SECTION_IDS = new Set<string>(NAV_ITEMS.map((item) => item.id));
+
+/** Header copy per section — title + one-line description under it. */
+const SECTION_META: Record<string, { eyebrow?: string; title: string; description: string }> = {
+    general: {
+        title: "General",
+        description: "Theme, chat experience, and the workspace-wide basics.",
+    },
+    notifications: {
+        title: "Notifications",
+        description: "How and where the workspace notifies you about finished work.",
+    },
+    personalization: {
+        title: "Personalization",
+        description: "Control what agents remember about you and how they adapt.",
+    },
+    plugins: {
+        title: "Plugins",
+        description: "Third-party plugins that extend what agents can do.",
+    },
+    voice: {
+        title: "Voice",
+        description: "The voice agents speak with and the default spoken language.",
+    },
+    usage: {
+        title: "Usage",
+        description: "Workspace-wide token and run usage.",
+    },
+    "data-controls": {
+        title: "Data controls",
+        description: "Manage archived conversations, shared links, and how history behaves.",
+    },
+    storage: {
+        title: "Storage",
+        description: "Attachment and artifact storage across the workspace.",
+    },
+    safety: {
+        title: "Safety",
+        description: "Content safety controls and moderation preferences.",
+    },
+    security: {
+        title: "Security",
+        description: "Session lifetime, sign-out, and account protection.",
+    },
+    account: {
+        title: "Account",
+        description: "Review your identity, workspace role, and recent account activity.",
+    },
+    skills: {
+        title: "Skills",
+        description: "Your pool and the shared catalog.",
+    },
+    mcp: {
+        title: "MCP Servers",
+        description: "Choose which MCP-powered tools stay available inside conversations.",
+    },
+    memories: {
+        title: "Memory",
+        description: "Review and delete what each deep agent remembers about you.",
+    },
+};
+
+/** Sections mirrored from the ChatGPT taxonomy that are not implemented yet. */
+const STUB_SECTIONS: Record<
+    string,
+    { icon: ComponentType<LucideProps>; title: string; description: string; notes?: string[] }
+> = {
+    notifications: {
+        icon: Bell,
+        title: "Notifications",
+        description:
+            "Web push, email, and an in-app inbox for run completions, scheduled-task results, and approval requests.",
+        notes: ["Scheduled-task results currently surface inside the app while it is open."],
+    },
+    plugins: {
+        icon: Puzzle,
+        title: "Plugins",
+        description: "Connect third-party plugins and OAuth-based app connectors to your workspace.",
+        notes: ["MCP-powered tools are already available under Workspace → MCP Servers."],
+    },
+    usage: {
+        icon: Gauge,
+        title: "Usage",
+        description: "Workspace-wide analytics for tokens, runs, and per-agent consumption.",
+        notes: [
+            "Per-conversation token usage is already available from the composer's usage panel, and per message via General → Per-message token usage.",
+        ],
+    },
+    storage: {
+        icon: HardDrive,
+        title: "Storage",
+        description: "Quotas and cleanup for attachments, generated artifacts, and agent files.",
+    },
+    safety: {
+        icon: Shield,
+        title: "Safety",
+        description: "Content safety controls and moderation preferences for agent responses.",
+    },
+};
 
 type ProfilePanelProps = {
     open: boolean;
@@ -126,132 +243,129 @@ export default function ProfilePanel({
     onSelectVoiceModeLanguage,
     preferencesSaving = false,
 }: ProfilePanelProps) {
+    const reduceMotion = useReducedMotion();
     const displayName =
         safeText(user?.displayName) !== NA
             ? safeText(user?.displayName)
             : safeText(user?.fullName) !== NA
               ? safeText(user?.fullName)
               : safeText(user?.username);
-    const normalizedActiveTab = NAV_ITEMS.some((item) => item.id === activeTab) ? activeTab : "profile";
+    // Persisted tab ids from before the ChatGPT-taxonomy rename keep working:
+    // remap them to their new section, then validate against the nav registry
+    // (plus the hidden sections reachable via the Help submenu / shortcuts).
+    const remappedTab = LEGACY_TAB_MAP[activeTab] ?? activeTab;
+    const normalizedActiveTab = VALID_SECTION_IDS.has(remappedTab) ? remappedTab : "general";
 
-    const sectionMeta: Record<string, { eyebrow?: string; title: string; description: string }> = {
-        profile: {
-            title: "Account",
-            description: "Review your identity, workspace role, and recent account activity.",
-        },
-        appearance: {
-            title: "Personalization",
-            description: "Adjust how the workspace feels and which default experience is visible to you.",
-        },
-        archived: {
-            title: "Data Controls",
-            description: "Manage archived conversations and understand how history behaves in the workspace.",
-        },
-        mcp: {
-            title: "MCP Servers",
-            description: "Choose which MCP-powered tools stay available inside conversations.",
-        },
-        skills: {
-            title: "Skills",
-            description: "Your pool and the shared catalog.",
-        },
-        memories: {
-            title: "Memories",
-            description: "Review and delete what each deep agent remembers about you.",
-        },
-        shortcuts: {
-            title: "Keyboard Shortcuts",
-            description: "Browse the same shortcut registry the UI runtime uses.",
-        },
-        help: {
-            title: "Help & Resources",
-            description: "Open product documentation and support entry points.",
-        },
-    };
-
-    // Fall back to the profile section if a nav item ever lacks a meta entry,
+    // Fall back to the General section if a nav item ever lacks a meta entry,
     // so a missing key degrades gracefully instead of crashing the panel.
-    const activeSection = sectionMeta[normalizedActiveTab] ?? sectionMeta.profile;
+    const activeSection = SECTION_META[normalizedActiveTab] ?? SECTION_META.general;
     const showActiveSectionEyebrow =
         Boolean(activeSection.eyebrow)
         && activeSection.eyebrow.trim().toLowerCase() !== activeSection.title.trim().toLowerCase();
 
+    const stub = STUB_SECTIONS[normalizedActiveTab];
+
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center px-4 py-6">
-            <div
-                className="absolute inset-0 bg-black/65 backdrop-blur-sm animate-in fade-in-0 duration-200"
-                onClick={onClose}
-            />
+        <PremiumModalShell open={open} onClose={onClose} closeLabel="Close profile panel" className="max-w-5xl">
+            <div className="flex h-[min(44rem,88vh)] w-full min-w-0 max-[639px]:flex-col">
+                <ProfileSidebar
+                    normalizedActiveTab={normalizedActiveTab}
+                    setActiveTab={setActiveTab}
+                />
 
-            <div className="relative z-10 w-full max-w-5xl animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
-                <Card className="relative flex h-[min(44rem,88vh)] w-full overflow-hidden rounded-[30px] border border-border/60 bg-card/95 text-foreground shadow-[0_32px_90px_-36px_rgba(15,23,42,0.65)] backdrop-blur-xl">
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label="Close profile panel"
-                        onClick={onClose}
-                        className="absolute right-4 top-4 z-20 h-9 w-9 rounded-full text-muted-foreground transition hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-0 focus-visible:outline-none"
-                    >
-                        <X size={18} />
-                    </Button>
-
-                    <div className="flex h-full w-full min-w-0 max-[639px]:flex-col">
-                        <ProfileSidebar
-                            normalizedActiveTab={normalizedActiveTab}
-                            setActiveTab={setActiveTab}
-                            onLogout={onLogout}
-                        />
-
-                        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                            <div className="border-b border-border/60 px-6 py-5 sm:px-8 max-[639px]:px-4 max-[639px]:py-3">
-                                {showActiveSectionEyebrow ? (
-                                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground max-[639px]:text-[0.58rem] max-[639px]:tracking-[0.18em]">
-                                        {activeSection.eyebrow}
-                                    </p>
-                                ) : null}
-                                <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between max-[639px]:gap-2">
-                                    <div className="space-y-1">
-                                        <h2 className="text-2xl font-semibold tracking-tight text-foreground max-[639px]:text-xl">
-                                            {activeSection.title}
-                                        </h2>
-                                        <p className="max-w-2xl text-sm text-muted-foreground max-[639px]:text-xs">
-                                            {activeSection.description}
-                                        </p>
-                                    </div>
-                                    <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-emerald-500/20 bg-background/70 px-2.5 py-1 text-xs font-medium text-muted-foreground sm:max-w-xs max-[639px]:gap-1.5 max-[639px]:px-2 max-[639px]:py-0.5 max-[639px]:text-[0.68rem]">
-                                        <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)] max-[639px]:h-1.5 max-[639px]:w-1.5" aria-hidden="true" />
-                                        <span className="min-w-0 truncate">
-                                            <span className="text-emerald-600 dark:text-emerald-400">Signed in</span>
-                                            <span className="text-muted-foreground"> as </span>
-                                            <span className="font-medium text-foreground">{displayName}</span>
-                                        </span>
-                                    </div>
-                                </div>
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                    <div className="border-b border-white/10 px-6 py-5 pr-16 sm:px-8 sm:pr-16 max-[639px]:px-4 max-[639px]:py-3 max-[639px]:pr-12">
+                        {showActiveSectionEyebrow ? (
+                            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/45 max-[639px]:text-[0.58rem] max-[639px]:tracking-[0.16em]">
+                                {activeSection.eyebrow}
+                            </p>
+                        ) : null}
+                        <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between max-[639px]:gap-2">
+                            {/* Keyed by section so a tab switch re-runs the entrance. */}
+                            <motion.div
+                                key={normalizedActiveTab}
+                                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.22, ease: "easeOut" }}
+                                className="min-w-0 space-y-1"
+                            >
+                                <h2 className="text-2xl font-semibold leading-tight tracking-tight text-white md:text-[2rem] max-[639px]:text-xl">
+                                    {activeSection.title}
+                                </h2>
+                                <p className="max-w-2xl text-sm text-white/55 max-[639px]:text-xs">
+                                    {activeSection.description}
+                                </p>
+                            </motion.div>
+                            <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-white/[0.12] bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-white/60 sm:max-w-xs max-[639px]:gap-1.5 max-[639px]:px-2 max-[639px]:py-0.5 max-[639px]:text-[0.68rem]">
+                                <span className="flex h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)] max-[639px]:h-1.5 max-[639px]:w-1.5" aria-hidden="true" />
+                                <span className="min-w-0 truncate">
+                                    <span className="text-emerald-400">Signed in</span>
+                                    <span className="text-white/55"> as </span>
+                                    <span className="font-medium text-white">{displayName}</span>
+                                </span>
                             </div>
+                        </div>
+                    </div>
 
                             <ScrollArea className="h-full w-full">
-                                <div className="space-y-6 px-6 py-6 sm:px-8">
-                                    {normalizedActiveTab === "profile" ? (
-                                        <AccountTab user={user} userPreferences={userPreferences} />
-                                    ) : null}
-
-                                    {normalizedActiveTab === "appearance" ? (
-                                        <PersonalizationTab
-                                            user={user}
+                                {/* Animated section swap: outgoing content fades down-out,
+                                    incoming rises in (mode="wait" keeps them sequential). */}
+                                <AnimatePresence mode="wait" initial={false}>
+                                    <motion.div
+                                        key={normalizedActiveTab}
+                                        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+                                        animate={{
+                                            opacity: 1,
+                                            y: 0,
+                                            transition: { duration: 0.22, ease: "easeOut" },
+                                        }}
+                                        exit={
+                                            reduceMotion
+                                                ? { opacity: 0, transition: { duration: 0.1 } }
+                                                : { opacity: 0, y: -6, transition: { duration: 0.14, ease: "easeIn" } }
+                                        }
+                                        className="space-y-6 px-6 py-6 sm:px-8"
+                                    >
+                                    {normalizedActiveTab === "general" ? (
+                                        <GeneralTab
                                             userPreferences={userPreferences}
                                             preferencesSaving={preferencesSaving}
                                             onToggleSuggestionsEnabled={onToggleSuggestionsEnabled}
                                             onToggleMessageTokenUsage={onToggleMessageTokenUsage}
+                                        />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "personalization" ? (
+                                        <PersonalizationTab
+                                            userPreferences={userPreferences}
+                                            preferencesSaving={preferencesSaving}
                                             onToggleSearchPastConvs={onToggleSearchPastConvs}
                                             onToggleUseMemory={onToggleUseMemory}
+                                            onOpenMemories={() => setActiveTab("memories")}
+                                        />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "voice" ? (
+                                        <VoiceTab
+                                            user={user}
+                                            userPreferences={userPreferences}
+                                            preferencesSaving={preferencesSaving}
                                             onSelectVoiceModeVoice={onSelectVoiceModeVoice}
                                             onSelectVoiceModeLanguage={onSelectVoiceModeLanguage}
                                         />
                                     ) : null}
 
-                                    {normalizedActiveTab === "archived" ? (
+                                    {normalizedActiveTab === "security" ? (
+                                        <SecurityTab onLogout={onLogout} />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "account" ? (
+                                        <AccountTab user={user} userPreferences={userPreferences} />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "data-controls" ? (
                                         <DataControlsTab
                                             archivedConversations={archivedConversations}
                                             archivedConversationsLoading={archivedConversationsLoading}
@@ -302,21 +416,19 @@ export default function ProfilePanel({
                                         <MemoriesTab agents={agents} {...memoryInspector} />
                                     ) : null}
 
-                                    {normalizedActiveTab === "shortcuts" ? <ShortcutsTab /> : null}
-
-                                    {normalizedActiveTab === "help" ? (
-                                        <HelpTab
-                                            archivedConversations={archivedConversations}
-                                            availableTools={availableTools}
-                                            userPreferences={userPreferences}
+                                    {stub ? (
+                                        <ComingSoon
+                                            icon={stub.icon}
+                                            title={stub.title}
+                                            description={stub.description}
+                                            notes={stub.notes}
                                         />
                                     ) : null}
-                                </div>
-                            </ScrollArea>
-                        </div>
+                                    </motion.div>
+                                </AnimatePresence>
+                        </ScrollArea>
                     </div>
-                </Card>
-            </div>
-        </div>
+                </div>
+        </PremiumModalShell>
     );
 }

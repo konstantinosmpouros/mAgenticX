@@ -110,6 +110,69 @@ export const MetricCard = ({
     </SoftPanel>
 );
 
+// Preference toggle switch — the pill switch used across settings tabs. Kept as
+// one primitive so General/Personalization rows stay visually identical.
+export const ToggleSwitch = ({
+    checked,
+    disabled = false,
+    onToggle,
+    label,
+}: {
+    checked: boolean;
+    disabled?: boolean;
+    onToggle?: () => void;
+    label: string;
+}) => (
+    <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-disabled={disabled}
+        aria-label={label}
+        onClick={() => !disabled && onToggle?.()}
+        className={cn(
+            "relative inline-flex h-7 w-12 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+            checked ? "border-primary/40 bg-primary/20" : "border-transparent bg-background/80",
+            disabled && "cursor-not-allowed opacity-60"
+        )}
+    >
+        <span
+            className={cn(
+                "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
+                checked ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
+            )}
+        />
+    </button>
+);
+
+// A titled settings row with a trailing toggle — one preference per row inside
+// a SoftPanel stack.
+export const PrefToggleRow = ({
+    title,
+    description,
+    checked,
+    disabled = false,
+    onToggle,
+}: {
+    title: string;
+    description: string;
+    checked: boolean;
+    disabled?: boolean;
+    onToggle?: () => void;
+}) => (
+    <div className="px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">{title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+                <ToggleSwitch checked={checked} disabled={disabled} onToggle={onToggle} label={title} />
+            </div>
+        </div>
+    </div>
+);
+
 // One row on the Skills hub — icon, title, subtitle, a count chip, and a
 // trailing action button. The whole row is the button; the trailing element
 // reads as "Manage"/"Create" and carries a chevron for affordance.

@@ -1,27 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { Agent, ThinkingState } from '@/shared/lib/types';
+import type { Agent } from '@/shared/lib/types';
 import type { CSSProperties, RefObject } from 'react';
-
-
-// ---------------------------------------------------------------------------
-// Auto-scroll effect
-// ---------------------------------------------------------------------------
-export function useAutoScrollEffect(messages: any[], thinkingState: ThinkingState | null, messagesEndRef: React.RefObject<HTMLDivElement>, shouldAutoScroll: boolean) {
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'end',
-        inline: 'nearest',
-      });
-    }, 100);
-  };
-
-  useEffect(() => {
-    if (!shouldAutoScroll) return;
-    scrollToBottom();
-  }, [messages, thinkingState, shouldAutoScroll]);
-}
 
 
 // ---------------------------------------------------------------------------

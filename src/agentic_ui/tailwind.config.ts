@@ -99,6 +99,16 @@ content: [
     					transform: 'translateY(0)'
     				}
     			},
+    			'message-in': {
+    				from: {
+    					opacity: '0',
+    					transform: 'translateY(6px)'
+    				},
+    				to: {
+    					opacity: '1',
+    					transform: 'translateY(0)'
+    				}
+    			},
     			'pulse-scale': {
     				'0%, 100%': {
     					opacity: '1',
@@ -144,7 +154,9 @@ content: [
     		},
     		animation: {
     			'fade-in': 'fade-in 0.3s ease-out',
-    			'fade-in-fast': 'fade-in 0.18s ease-out',
+    			// Message rows: a gentle, steady rise that decelerates to a settle, tuned to
+    			// feel coordinated with the ~420ms scroll-anchor glide rather than a fast pop.
+    			'message-in': 'message-in 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
     			'pulse-scale': 'pulse-scale 1.3s ease-in-out infinite',
     			'star-movement-bottom': 'star-movement-bottom linear infinite alternate',
     			'star-movement-top': 'star-movement-top linear infinite alternate'

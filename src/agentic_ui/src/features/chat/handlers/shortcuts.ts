@@ -1,4 +1,4 @@
-import { PROFILE_PANEL_SHORTCUTS_TAB, type ShortcutActionMap } from "@/shared/lib/shortcuts";
+import { type ShortcutActionMap } from "@/shared/lib/shortcuts";
 
 type ShortcutHandlersCtx = {
   toggleSidebar: () => void;
@@ -10,6 +10,7 @@ type ShortcutHandlersCtx = {
   openAgentPicker: () => void;
   togglePrivateMode: () => void;
   openProfilePanel: (tab?: string) => void;
+  openShortcutsPanel: () => void;
   startNewChat: () => void;
   dismissActiveUi: () => boolean;
 };
@@ -39,7 +40,7 @@ export function createShortcutHandlers(ctx: ShortcutHandlersCtx): ShortcutAction
     "agentPicker.open": ctx.openAgentPicker,
     "private.toggle": ctx.togglePrivateMode,
     "profile.open": () => ctx.openProfilePanel(),
-    "shortcuts.open": () => ctx.openProfilePanel(PROFILE_PANEL_SHORTCUTS_TAB),
+    "shortcuts.open": ctx.openShortcutsPanel,
     "ui.escape": resolveEscape,
   };
 }

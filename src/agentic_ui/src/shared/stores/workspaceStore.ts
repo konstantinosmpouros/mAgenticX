@@ -166,7 +166,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   starterSuggestions: [],
   sidebarOpen: false,
-  activeProfileTab: "profile",
+  activeProfileTab: "general",
   workspace: null,
 
   setUserId: (v) => set((s) => ({ userId: resolve(v, s.userId) })),
