@@ -37,6 +37,10 @@ async def get_user_preferences(
         "show_message_token_usage": bool(row.show_message_token_usage),
         "search_past_convs": bool(row.search_past_convs),
         "use_memory": bool(row.use_memory),
+        # Schema-level validators normalize both: unknown personality ids
+        # collapse to "default", stored custom-instruction text is re-sanitized.
+        "personality": row.personality,
+        "custom_instructions": row.custom_instructions if isinstance(row.custom_instructions, dict) else {},
         "voice_mode_voice": normalize_realtime_voice(row.voice_mode_voice),
         "voice_mode_language": normalize_voice_mode_language(row.voice_mode_language),
     }
@@ -60,6 +64,9 @@ async def upsert_user_preferences(
     existing: UserPreferencesTable | None = result.scalar_one_or_none()
     voice_mode_voice = normalize_realtime_voice(payload.voiceModeVoice)
     voice_mode_language = normalize_voice_mode_language(payload.voiceModeLanguage)
+    # Already normalized by the schema: personality is fail-closed against the
+    # preset registry, custom-instruction text sanitized + length-capped.
+    custom_instructions = payload.customInstructions.model_dump(mode="json")
     if existing:
         existing.tools = payload.tools.model_dump(mode="json", by_alias=True)
         existing.prefers_agentic_chat = bool(payload.prefersAgenticChat)
@@ -67,6 +74,8 @@ async def upsert_user_preferences(
         existing.show_message_token_usage = bool(payload.showMessageTokenUsage)
         existing.search_past_convs = bool(payload.searchPastConvs)
         existing.use_memory = bool(payload.useMemory)
+        existing.personality = payload.personality
+        existing.custom_instructions = custom_instructions
         existing.voice_mode_voice = voice_mode_voice
         existing.voice_mode_language = voice_mode_language
     else:
@@ -79,18 +88,24 @@ async def upsert_user_preferences(
                 show_message_token_usage=bool(payload.showMessageTokenUsage),
                 search_past_convs=bool(payload.searchPastConvs),
                 use_memory=bool(payload.useMemory),
+                personality=payload.personality,
+                custom_instructions=custom_instructions,
                 voice_mode_voice=voice_mode_voice,
                 voice_mode_language=voice_mode_language,
             )
         )
 
     await db.commit()
+    # Custom-instruction content is user PII — log only the enabled flag and
+    # the personality preset id, never the text itself.
     logger.info(
         "preferences_updated",
         "Updated user preferences",
         disabled_tools=len(payload.tools.disabled),
         prefers_agentic_chat=bool(payload.prefersAgenticChat),
         suggestions_enabled=bool(payload.suggestionsEnabled),
+        personality=payload.personality,
+        custom_instructions_enabled=payload.customInstructions.enabled,
         voice_mode_voice=voice_mode_voice,
         voice_mode_language=voice_mode_language,
     )
@@ -101,6 +116,8 @@ async def upsert_user_preferences(
         showMessageTokenUsage=bool(payload.showMessageTokenUsage),
         searchPastConvs=bool(payload.searchPastConvs),
         useMemory=bool(payload.useMemory),
+        personality=payload.personality,
+        customInstructions=payload.customInstructions,
         voiceModeVoice=voice_mode_voice,
         voiceModeLanguage=voice_mode_language,
     )

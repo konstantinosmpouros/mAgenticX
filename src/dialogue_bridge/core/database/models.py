@@ -123,6 +123,14 @@ class UserPreferencesTable(Base):
     # AGENT.md `/memories/` mount + future memory folder) for the run. Threaded
     # into the run config so memory can be disabled per user without code change.
     use_memory = Column(Boolean, nullable=False, server_default="true")
+    # Personality preset id for agent responses ("default" = the agent's own
+    # voice, no injected directive). Normalized fail-closed against the preset
+    # registry at the API boundary; the agents service re-validates on its side.
+    personality = Column(String, nullable=False, server_default="default")
+    # User-authored custom instructions: {enabled, nickname, occupation, traits,
+    # about}. Threaded into the run context and injected into deep-agent system
+    # prompts only while `enabled` is true.
+    custom_instructions = Column(JSON, nullable=False, default=dict, server_default="{}")
     voice_mode_voice = Column(String, nullable=False, server_default="alloy")
     voice_mode_language = Column(String, nullable=False, server_default="english")
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

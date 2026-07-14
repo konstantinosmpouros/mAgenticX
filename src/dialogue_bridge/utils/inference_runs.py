@@ -98,6 +98,37 @@ def _tool_preferences_to_json(items: list[ToolPreference] | None) -> list[dict[s
     return [{"server_id": item.server_id, "tool_name": item.tool_name} for item in items]
 
 
+def _effective_personalization(prefs_row: UserPreferencesTable | None) -> dict[str, Any]:
+    """Reduce a preference row to the personalization payload a run should carry.
+
+    Only *effective* data survives: the personality preset when non-default,
+    and the custom-instruction text fields only while the user has the feature
+    enabled and at least one field filled. Returns ``{}`` when nothing applies
+    so the caller can omit the context key entirely — the agents service treats
+    an absent key as "no personalization" (and re-validates whatever does
+    arrive fail-closed).
+    """
+    if prefs_row is None:
+        return {}
+    payload: dict[str, Any] = {}
+
+    personality = (prefs_row.personality or "").strip().lower()
+    if personality and personality != "default":
+        payload["personality"] = personality
+
+    ci = prefs_row.custom_instructions if isinstance(prefs_row.custom_instructions, dict) else {}
+    if ci.get("enabled"):
+        fields = {
+            key: value.strip()
+            for key in ("nickname", "occupation", "traits", "about")
+            if isinstance((value := ci.get(key)), str) and value.strip()
+        }
+        if fields:
+            payload["custom_instructions"] = fields
+
+    return payload
+
+
 def _collect_input_files(message: MessageTable) -> list[dict[str, Any]]:
     """Read a user message's attachment bytes into the seed-endpoint payload.
 
@@ -680,8 +711,8 @@ class InferenceRunManager:
                     forked=fork_from is not None,
                     sent_messages=sent_messages,
                 )
-                # Per-user memory prefs, loaded once and threaded into the run
-                # context. `search_past_convs` (opt-in) gates the deep agent's
+                # Per-user prefs, loaded once and threaded into the run context.
+                # `search_past_convs` (opt-in) gates the deep agent's
                 # cross-conversation `search_past_conversations` tool; `use_memory`
                 # (on by default) gates its persistent memory (the /memories/
                 # AGENTS.md + entries mount and the `remember` tool). Both default
@@ -693,6 +724,14 @@ class InferenceRunManager:
                 ).scalar_one_or_none()
                 search_past_convs = bool(prefs_row.search_past_convs) if prefs_row else False
                 use_memory = bool(prefs_row.use_memory) if prefs_row else True
+                # Personalization (personality preset + custom instructions) from
+                # the same row — only *effective* data is threaded: the preset
+                # when non-default, the custom-instruction fields only while the
+                # user has them enabled and non-empty. A run with no effective
+                # personalization carries no `personalization` key at all, so
+                # its agent prompt is byte-identical to the pre-feature one. The
+                # agents service re-validates the payload fail-closed on its side.
+                personalization = _effective_personalization(prefs_row)
 
                 # Shared config block forwarded to both the initial /stream call
                 # and any /resume legs. thread_id keys the durable saver (branch-
@@ -707,6 +746,7 @@ class InferenceRunManager:
                         "run_id": str(run.id),
                         "search_past_convs": search_past_convs,
                         "use_memory": use_memory,
+                        **({"personalization": personalization} if personalization else {}),
                     },
                     "tools": enabled_tools or None,
                 }

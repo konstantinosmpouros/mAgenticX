@@ -123,8 +123,11 @@ erDiagram
         json tools
         boolean prefers_agentic_chat
         boolean suggestions_enabled
+        boolean show_message_token_usage
         boolean search_past_convs
         boolean use_memory
+        string personality
+        json custom_instructions
         string voice_mode_voice
         string voice_mode_language
         datetime updated_at
@@ -226,8 +229,11 @@ One row per user, created on first access. The `tools` JSON column stores enable
 | `tools` | `JSON` | No | `{}` | Tool preference dict — `{disabled: [{serverId, toolName}]}` |
 | `prefers_agentic_chat` | `Boolean` | No | `false` | Whether the user prefers agentic (tool-enabled) chat by default |
 | `suggestions_enabled` | `Boolean` | No | `true` | Whether the UI shows suggested follow-up questions |
+| `show_message_token_usage` | `Boolean` | No | `false` | Whether the UI shows per-message token usage. Migration `0006`. |
 | `search_past_convs` | `Boolean` | No | `false` | Opt-in: when true, deep agents get the `search_past_conversations` memory tool. Threaded into the run config so the agent attaches the tool only when enabled. Migration `0011`. |
 | `use_memory` | `Boolean` | No | `true` | On by default: gates a deep agent's persistent memory (AGENT.md `/memories/` mount + future memory folder). Threaded into the run config as `context.use_memory`; the agent omits its memory wiring when false. Migration `0012`. |
+| `personality` | `String` | No | `"default"` | Personality preset id for agent responses (`default` = no injected directive). Fail-closed against the preset registry at the API boundary; re-validated by the agents service. Migration `0015`. |
+| `custom_instructions` | `JSON` | No | `{}` | User-authored custom instructions — `{enabled, nickname, occupation, traits, about}`. Injected into deep-agent system prompts (via `context.personalization`) only while `enabled` is true. Migration `0015`. |
 | `voice_mode_voice` | `String` | No | `"alloy"` | Selected TTS voice |
 | `voice_mode_language` | `String` | No | `"english"` | Selected voice mode language |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |

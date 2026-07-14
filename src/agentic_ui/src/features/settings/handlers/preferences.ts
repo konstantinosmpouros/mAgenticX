@@ -1,13 +1,20 @@
 import { useMemo } from 'react';
 import { updateUserPreferences } from '@/shared/lib/api';
-import type { ToolMetadata, ToolPreference, UserPreferences } from '@/shared/lib/types';
+import type { CustomInstructions, ToolMetadata, ToolPreference, UserPreferences } from '@/shared/lib/types';
 import {
+  DEFAULT_PERSONALITY,
   DEFAULT_REALTIME_VOICE,
   DEFAULT_VOICE_MODE_LANGUAGE,
+  type PersonalityId,
   type RealtimeVoice,
   type VoiceModeLanguage,
 } from '@/shared/lib/consts';
-import { normalizeRealtimeVoice, normalizeVoiceModeLanguage } from '@/shared/lib/utils';
+import {
+  normalizeCustomInstructions,
+  normalizePersonality,
+  normalizeRealtimeVoice,
+  normalizeVoiceModeLanguage,
+} from '@/shared/lib/utils';
 
 // Preferences handlers derive the tool toggle model shown in settings and persist changes optimistically.
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
@@ -21,6 +28,8 @@ export type PreferencesHandlers = {
   handleToggleShowMessageTokenUsage: () => Promise<void>;
   handleToggleSearchPastConvs: () => Promise<void>;
   handleToggleUseMemory: () => Promise<void>;
+  handleSelectPersonality: (personality: PersonalityId) => Promise<void>;
+  handleSaveCustomInstructions: (customInstructions: CustomInstructions) => Promise<boolean>;
   handleSelectVoiceModeVoice: (voice: RealtimeVoice) => Promise<void>;
   handleSelectVoiceModeLanguage: (language: VoiceModeLanguage) => Promise<void>;
 };
@@ -56,6 +65,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       showMessageTokenUsage: false,
       searchPastConvs: false,
       useMemory: true,
+      personality: DEFAULT_PERSONALITY,
+      customInstructions: normalizeCustomInstructions(undefined),
       voiceModeVoice: DEFAULT_REALTIME_VOICE,
       voiceModeLanguage: DEFAULT_VOICE_MODE_LANGUAGE,
     }),
@@ -65,8 +76,57 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     ...defaultPreferences,
     ...(userPreferences ?? {}),
     tools: userPreferences?.tools ?? defaultPreferences.tools,
+    personality: normalizePersonality(userPreferences?.personality),
+    customInstructions: normalizeCustomInstructions(userPreferences?.customInstructions),
     voiceModeVoice: normalizeRealtimeVoice(userPreferences?.voiceModeVoice),
     voiceModeLanguage: normalizeVoiceModeLanguage(userPreferences?.voiceModeLanguage),
+  };
+
+  // The PUT endpoint is a FULL replacement: every save must carry every field.
+  // All handlers build their payload through this snapshot + overrides, so a
+  // newly added preference can never be silently wiped by an unrelated toggle.
+  const snapshotPrefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    tools: resolvedPreferences.tools ?? { disabled: [] },
+    prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
+    suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
+    showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
+    searchPastConvs: resolvedPreferences.searchPastConvs === true,
+    useMemory: resolvedPreferences.useMemory !== false,
+    personality: resolvedPreferences.personality,
+    customInstructions: resolvedPreferences.customInstructions,
+    voiceModeVoice: resolvedPreferences.voiceModeVoice,
+    voiceModeLanguage: resolvedPreferences.voiceModeLanguage,
+    ...overrides,
+  });
+
+  // Shared optimistic-persist flow: apply instantly, PUT, adopt the canonical
+  // response; roll back + toast on failure. Returns success for callers that
+  // gate UI on it (the custom-instructions dialog closes only on success).
+  const persistPrefs = async (nextPrefs: UserPreferences, errorTitle: string): Promise<boolean> => {
+    if (!userId) {
+      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      return false;
+    }
+    const prevPrefs = resolvedPreferences;
+    setUserPreferences(nextPrefs);
+    setIsSavingPreferences(true);
+    try {
+      const saved = await updateUserPreferences(userId, nextPrefs);
+      // Replace the optimistic snapshot with the canonical payload returned by the backend.
+      setUserPreferences(saved);
+      persistUIState();
+      return true;
+    } catch (error) {
+      setUserPreferences(prevPrefs);
+      toast({
+        title: errorTitle,
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+      return false;
+    } finally {
+      setIsSavingPreferences(false);
+    }
   };
 
   const toolKey = (serverId: string | undefined, toolName: string) => `${serverId || 'default'}::${toolName}`;
@@ -107,12 +167,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   );
 
   const handleToggleToolPreference = async (tool: ToolMetadata) => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
     const key = toolKey(tool.serverId, tool.toolName);
-    const prevPrefs = resolvedPreferences;
     const nextDisabled = new Set(disabledToolKeys);
     // Flip the local set first so the toggle feels instant; revert on persistence failure.
     if (nextDisabled.has(key)) {
@@ -120,248 +175,73 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     } else {
       nextDisabled.add(key);
     }
-    const nextPrefs: UserPreferences = {
-      tools: {
-        disabled: Array.from(nextDisabled).map((k) => {
-          const [serverId, toolName] = k.split('::');
-          return { serverId, toolName };
-        }),
-      },
-      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
-      searchPastConvs: resolvedPreferences.searchPastConvs === true,
-      useMemory: resolvedPreferences.useMemory !== false,
-      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
-      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
-      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
-    };
-    setUserPreferences(nextPrefs);
-    setIsSavingPreferences(true);
-    try {
-      const saved = await updateUserPreferences(userId, nextPrefs);
-      // Replace the optimistic snapshot with the canonical payload returned by the backend.
-      setUserPreferences(saved);
-      persistUIState();
-    } catch (error) {
-      setUserPreferences(prevPrefs);
-      toast({
-        title: 'Could not update preferences',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingPreferences(false);
-    }
+    await persistPrefs(
+      snapshotPrefs({
+        tools: {
+          disabled: Array.from(nextDisabled).map((k) => {
+            const [serverId, toolName] = k.split('::');
+            return { serverId, toolName };
+          }),
+        },
+      }),
+      'Could not update preferences'
+    );
   };
 
   const handleToggleSuggestionsEnabled = async () => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    const prevPrefs = resolvedPreferences;
-    const nextPrefs: UserPreferences = {
-      tools: resolvedPreferences.tools ?? { disabled: [] },
-      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
-      searchPastConvs: resolvedPreferences.searchPastConvs === true,
-      useMemory: resolvedPreferences.useMemory !== false,
-      suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false),
-      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
-      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
-      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
-    };
-    setUserPreferences(nextPrefs);
-    setIsSavingPreferences(true);
-    try {
-      const saved = await updateUserPreferences(userId, nextPrefs);
-      setUserPreferences(saved);
-      persistUIState();
-    } catch (error) {
-      setUserPreferences(prevPrefs);
-      toast({
-        title: 'Could not update preferences',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingPreferences(false);
-    }
+    await persistPrefs(
+      snapshotPrefs({ suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false) }),
+      'Could not update preferences'
+    );
   };
 
   const handleToggleShowMessageTokenUsage = async () => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    const prevPrefs = resolvedPreferences;
-    const nextPrefs: UserPreferences = {
-      tools: resolvedPreferences.tools ?? { disabled: [] },
-      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
-      searchPastConvs: resolvedPreferences.searchPastConvs === true,
-      useMemory: resolvedPreferences.useMemory !== false,
-      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      showMessageTokenUsage: !(resolvedPreferences.showMessageTokenUsage === true),
-      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
-      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
-    };
-    setUserPreferences(nextPrefs);
-    setIsSavingPreferences(true);
-    try {
-      const saved = await updateUserPreferences(userId, nextPrefs);
-      setUserPreferences(saved);
-      persistUIState();
-    } catch (error) {
-      setUserPreferences(prevPrefs);
-      toast({
-        title: 'Could not update preferences',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingPreferences(false);
-    }
+    await persistPrefs(
+      snapshotPrefs({ showMessageTokenUsage: !(resolvedPreferences.showMessageTokenUsage === true) }),
+      'Could not update preferences'
+    );
   };
 
   const handleToggleSearchPastConvs = async () => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    const prevPrefs = resolvedPreferences;
-    const nextPrefs: UserPreferences = {
-      tools: resolvedPreferences.tools ?? { disabled: [] },
-      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
-      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
-      searchPastConvs: !(resolvedPreferences.searchPastConvs === true),
-      useMemory: resolvedPreferences.useMemory !== false,
-      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
-      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
-    };
-    setUserPreferences(nextPrefs);
-    setIsSavingPreferences(true);
-    try {
-      const saved = await updateUserPreferences(userId, nextPrefs);
-      setUserPreferences(saved);
-      persistUIState();
-    } catch (error) {
-      setUserPreferences(prevPrefs);
-      toast({
-        title: 'Could not update preferences',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingPreferences(false);
-    }
+    await persistPrefs(
+      snapshotPrefs({ searchPastConvs: !(resolvedPreferences.searchPastConvs === true) }),
+      'Could not update preferences'
+    );
   };
 
   const handleToggleUseMemory = async () => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    const prevPrefs = resolvedPreferences;
-    const nextPrefs: UserPreferences = {
-      tools: resolvedPreferences.tools ?? { disabled: [] },
-      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
-      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
-      searchPastConvs: resolvedPreferences.searchPastConvs === true,
-      useMemory: !(resolvedPreferences.useMemory !== false),
-      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
-      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
-    };
-    setUserPreferences(nextPrefs);
-    setIsSavingPreferences(true);
-    try {
-      const saved = await updateUserPreferences(userId, nextPrefs);
-      setUserPreferences(saved);
-      persistUIState();
-    } catch (error) {
-      setUserPreferences(prevPrefs);
-      toast({
-        title: 'Could not update preferences',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingPreferences(false);
-    }
+    await persistPrefs(
+      snapshotPrefs({ useMemory: !(resolvedPreferences.useMemory !== false) }),
+      'Could not update preferences'
+    );
+  };
+
+  const handleSelectPersonality = async (personality: PersonalityId) => {
+    const nextPersonality = normalizePersonality(personality);
+    if (nextPersonality === resolvedPreferences.personality) return;
+    await persistPrefs(
+      snapshotPrefs({ personality: nextPersonality }),
+      'Could not update personality'
+    );
+  };
+
+  const handleSaveCustomInstructions = async (customInstructions: CustomInstructions): Promise<boolean> => {
+    return persistPrefs(
+      snapshotPrefs({ customInstructions: normalizeCustomInstructions(customInstructions) }),
+      'Could not save custom instructions'
+    );
   };
 
   const handleSelectVoiceModeVoice = async (voice: RealtimeVoice) => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
     const nextVoice = normalizeRealtimeVoice(voice);
     if (nextVoice === normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice)) return;
-
-    const prevPrefs = resolvedPreferences;
-    const nextPrefs: UserPreferences = {
-      tools: resolvedPreferences.tools ?? { disabled: [] },
-      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
-      searchPastConvs: resolvedPreferences.searchPastConvs === true,
-      useMemory: resolvedPreferences.useMemory !== false,
-      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
-      voiceModeVoice: nextVoice,
-      voiceModeLanguage: normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage),
-    };
-    setUserPreferences(nextPrefs);
-    setIsSavingPreferences(true);
-    try {
-      const saved = await updateUserPreferences(userId, nextPrefs);
-      setUserPreferences(saved);
-      persistUIState();
-    } catch (error) {
-      setUserPreferences(prevPrefs);
-      toast({
-        title: 'Could not update voice mode voice',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingPreferences(false);
-    }
+    await persistPrefs(snapshotPrefs({ voiceModeVoice: nextVoice }), 'Could not update voice mode voice');
   };
 
   const handleSelectVoiceModeLanguage = async (language: VoiceModeLanguage) => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
     const nextLanguage = normalizeVoiceModeLanguage(language);
     if (nextLanguage === normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage)) return;
-
-    const prevPrefs = resolvedPreferences;
-    const nextPrefs: UserPreferences = {
-      tools: resolvedPreferences.tools ?? { disabled: [] },
-      prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
-      searchPastConvs: resolvedPreferences.searchPastConvs === true,
-      useMemory: resolvedPreferences.useMemory !== false,
-      suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
-      showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
-      voiceModeVoice: normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice),
-      voiceModeLanguage: nextLanguage,
-    };
-    setUserPreferences(nextPrefs);
-    setIsSavingPreferences(true);
-    try {
-      const saved = await updateUserPreferences(userId, nextPrefs);
-      setUserPreferences(saved);
-      persistUIState();
-    } catch (error) {
-      setUserPreferences(prevPrefs);
-      toast({
-        title: 'Could not update voice mode language',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingPreferences(false);
-    }
+    await persistPrefs(snapshotPrefs({ voiceModeLanguage: nextLanguage }), 'Could not update voice mode language');
   };
 
   return {
@@ -373,6 +253,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     handleToggleShowMessageTokenUsage,
     handleToggleSearchPastConvs,
     handleToggleUseMemory,
+    handleSelectPersonality,
+    handleSaveCustomInstructions,
     handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage,
   };

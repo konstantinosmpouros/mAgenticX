@@ -1,8 +1,8 @@
 # User Preferences
 
-User preferences capture per-user settings that persist across sessions: which tools are disabled, whether suggestions are shown, and which voice and language to use in realtime voice conversations. The source of truth is a single row in the `user_preferences` PostgreSQL table, one per user. The frontend caches preferences in IndexedDB for instant rehydration on page load, applies them optimistically in React state, and writes changes back to the database via a single `PUT` endpoint. The backend reads preferences directly from the database for any server-side decisions (voice session config, voice language).
+User preferences capture per-user settings that persist across sessions: which tools are disabled, whether suggestions are shown, how agents are personalized (personality preset + custom instructions), and which voice and language to use in realtime voice conversations. The source of truth is a single row in the `user_preferences` PostgreSQL table, one per user. The frontend caches preferences in IndexedDB for instant rehydration on page load, applies them optimistically in React state, and writes changes back to the database via a single `PUT` endpoint. The backend reads preferences directly from the database for any server-side decisions (voice session config, voice language, per-run personalization).
 
-**Where preferences surface in the UI.** The settings modal (`ProfilePanel`, opened from the sidebar profile menu) mirrors ChatGPT's section taxonomy: theme, follow-up suggestions, and per-message token usage live under **General**; the agent-memory (`useMemory`) and reference-chat-history (`searchPastConvs`) toggles under **Personalization**; the realtime voice + spoken language under **Voice**; and per-tool enable/disable under **MCP Servers** (Workspace group). Sections mirrored from ChatGPT that aren't built yet render a "Not implemented yet" placeholder. Legacy persisted tab ids (`profile`/`appearance`/`archived`) are remapped to `account`/`personalization`/`data-controls` on load.
+**Where preferences surface in the UI.** The settings modal (`ProfilePanel`, opened from the sidebar profile menu) mirrors ChatGPT's section taxonomy: theme, follow-up suggestions, and per-message token usage live under **General**; the style controls — **Custom instructions** (opened in its own dialog) and the **Personality** preset select — plus the agent-memory (`useMemory`) and reference-chat-history (`searchPastConvs`) toggles under **Personalization**; the realtime voice + spoken language under **Voice**; and per-tool enable/disable under **MCP Servers** (Workspace group). Sections mirrored from ChatGPT that aren't built yet render a "Not implemented yet" placeholder. Legacy persisted tab ids (`profile`/`appearance`/`archived`) are remapped to `account`/`personalization`/`data-controls` on load.
 
 ---
 
@@ -73,6 +73,8 @@ The `user_preferences` table has a one-to-one relationship with `users`. A row i
 | `suggestions_enabled` | Boolean | `true` | Show/hide starter suggestion chips in the chat UI |
 | `search_past_convs` | Boolean | `false` | Opt-in: attach the deep-agent `search_past_conversations` memory tool. Migration `0011`. |
 | `use_memory` | Boolean | `true` | On by default: gates a deep agent's persistent memory (AGENT.md `/memories/` mount + future memory folder). Threaded into the run config; turn off to run agents without their stored memory. Migration `0012`. |
+| `personality` | String | `"default"` | Personality preset id for agent responses (`default` = no injected directive). Fail-closed against the preset registry. Migration `0015`. |
+| `custom_instructions` | JSON | `{}` | `{enabled, nickname, occupation, traits, about}` — user-authored instructions injected into deep-agent prompts while `enabled`. Migration `0015`. |
 | `voice_mode_voice` | String | `"alloy"` | OpenAI Realtime voice identity |
 | `voice_mode_language` | String | `"english"` | Language for realtime voice instructions |
 | `updated_at` | DateTime | `func.now()` | Auto-updated on every write |
@@ -98,6 +100,8 @@ class UserPreferences(BaseModel):
     suggestionsEnabled: bool           # default: True
     searchPastConvs: bool              # default: False
     useMemory: bool                    # default: True
+    personality: str                   # default: "default" (fail-closed to preset registry)
+    customInstructions: CustomInstructions  # {enabled, nickname, occupation, traits, about}
     voiceModeVoice: str                # default: "alloy"
     voiceModeLanguage: str             # default: "english"
 ```
@@ -146,6 +150,15 @@ Tool preferences are **not** applied server-side automatically. The frontend rea
 ### Agent Memory
 
 `useMemory` is on by default (`true`) and gates a deep agent's **per-(user, agent) persistent memory**: the `/memories/` mount holding `AGENTS.md` (a compact index injected as always-on context) plus `entries/<name>.yml` detail files the agent reads on demand, and the built-in **`remember`** tool that writes them. Like `searchPastConvs`, it is applied server-side and **per run**: the bridge threads it into the agents `/stream` request config under `context.use_memory`, `BaseAgent.__init__` parses it into `self.use_memory`, and the deep-agent build dynamically includes or omits the memory wiring — when false, `load_agent_md()` returns `[]`, `_build_composite_backend()` drops the `/memories/` mount, and `remember` isn't attached. Turning it off lets a user run an agent with no stored memory, no agent code change. Distinct from `searchPastConvs`: this gates the agent's own memory (read + write), that one gates cross-conversation message search.
+
+### Personality & Custom Instructions
+
+The two style preferences (Settings → Personalization) mirror ChatGPT's taxonomy:
+
+- **`personality`** — one preset id from the registry (`default`, `professional`, `friendly`, `candid`, `quirky`, `efficient`, `cynical`, `nerdy`). Each non-default preset maps to a style directive the agents service injects into the system prompt; `default` injects nothing, so the agent keeps its own voice. The id is validated **fail-closed** at every layer (frontend normalizer, bridge schema validator, agents runtime parse) — an unknown id silently collapses to `default`, same stance as voice normalization.
+- **`customInstructions`** — the user-authored document `{enabled, nickname, occupation, traits, about}` edited in the dedicated dialog (opened from the Personalization tab; the dialog saves the whole document in one `PUT` and closes only on success). Field lengths are capped identically on both sides (nickname 100, occupation 150, traits/about 1500 — `CUSTOM_INSTRUCTIONS_LIMITS` on the client, `max_length` in the bridge schema, re-capped in the agents runtime); control characters are stripped at the bridge boundary. The `enabled` flag lets the user keep the text saved without applying it.
+
+Both are applied **server-side per run** — see Phase 6. Instruction content is treated as user PII: the bridge logs only the preset id and the enabled flag, never the text.
 
 ### Voice Mode Voice
 
@@ -228,8 +241,12 @@ The handlers are:
 | `handleToggleSuggestionsEnabled()` | Flips `suggestionsEnabled` |
 | `handleToggleSearchPastConvs()` | Flips `searchPastConvs` (memory-tool gate) |
 | `handleToggleUseMemory()` | Flips `useMemory` (agent persistent-memory gate) |
+| `handleSelectPersonality(id)` | Sets `personality` (no-op when unchanged) |
+| `handleSaveCustomInstructions(doc)` | Replaces the whole `customInstructions` document; returns success so the dialog closes only when persisted |
 | `handleSelectVoiceModeVoice(voice)` | Sets `voiceModeVoice` |
 | `handleSelectVoiceModeLanguage(language)` | Sets `voiceModeLanguage` |
+
+All handlers build their payload through a shared `snapshotPrefs(overrides)` + `persistPrefs(next, errorTitle)` pair: the snapshot always carries **every** field (the `PUT` is a full replacement, so a handler that omitted a field would silently wipe it), and the persist helper owns the optimistic-update/rollback/toast flow once.
 
 ### Cross-Tab Consistency
 
@@ -264,6 +281,12 @@ The agents service receives an `enabled_tools` list in every inference request c
 
 `use_memory` is loaded from the same preference row in `inference_runs._run` and included as `context.use_memory` (default `true` when no row exists). `BaseAgent.__init__` parses it into `self.use_memory`; the deep agent's build reads that flag to include or omit its per-(user, agent) memory wiring — the `/memories/` mount (`AGENTS.md` index + `entries/*.yml`) and the `remember` write tool. Also read **per run**, so turning memory off applies on the next message. No `_WORKSPACE_WRITE_DENY` rule targets `/memories/`, so dropping that mount needs no permission change.
 
+### Personalization (Personality + Custom Instructions)
+
+Loaded from the same preference row in `inference_runs._run` and reduced by `_effective_personalization()` to only *effective* data: the preset id when non-`default`, and the non-empty custom-instruction text fields only while `enabled` is true. When nothing applies, the `context.personalization` key is **omitted entirely**, so a default run's agent prompt is byte-identical to the pre-feature one.
+
+On the agents side the main logic lives in [`runtime/personalization.py`](../../src/agents/runtime/personalization.py): `BaseAgent.__init__` re-parses the payload **fail-closed** (unknown preset → `default`; text stripped of control characters and re-capped — defense in depth across the service boundary), and `DeepAgent.build_deep_agent()` appends the composed `## User Personalization` block to the system prompt — after the agent's static instructions, before the memory block. The block frames the user text as *data* wrapped in `<user_custom_instructions>` fences (the closing fence is filtered out of user text) and states explicitly that it adjusts tone/style only, never tool policy, filesystem permissions, or safety rules. Personalization applies to the **main agent only**, never sub-agents, and only deep agents consume it today (LangGraph agents parse but ignore it). Read **per run**, so changes apply on the next message.
+
 ---
 
 ## Sharp Edges and Behavioral Notes
@@ -275,6 +298,10 @@ The agents service receives an `enabled_tools` list in every inference request c
 - **Tool preferences are computed client-side.** The backend never auto-filters tools based on `user_preferences.tools`. The frontend must subtract disabled tools from the full catalog and send the resulting `enabledTools` list on every inference request. A bug in that computation lets disabled tools through silently.
 
 - **Voice normalization is silent.** If an unsupported voice name is stored in the DB (e.g., from a previous deployment with different supported voices), the GET response returns the fallback default without any error. The user's preference is effectively reset without notification.
+
+- **Personality normalization is silent too — and triple-layered.** The frontend normalizer, the bridge schema validator, and the agents runtime parse all collapse an unknown preset id to `default` independently. Renaming or removing a preset therefore never errors, but silently resets affected users; the three registries (`consts.PERSONALITY_PRESETS`, bridge `PERSONALITY_IDS`, agents `_PERSONALITY_DIRECTIVES`) must be kept in lockstep manually.
+
+- **Custom-instruction content is PII by policy.** No layer logs the text: the bridge logs only `personality` + `custom_instructions_enabled`, the agents service logs only the preset id and a has-instructions boolean.
 
 - **No partial PATCH.** There is no `PATCH` endpoint. Every update is a full write. The frontend always sends all fields, so this is safe in practice — but any external client that sends partial payloads will lose fields not included.
 
@@ -301,6 +328,9 @@ The agents service receives an `enabled_tools` list in every inference request c
 | TypeScript types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `UserPreferences`, `ToolPreference`, `RealtimeVoice`, `VoiceModeLanguage` |
 | API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `getUserPreferences()`, `updateUserPreferences()` |
 | Frontend constants | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES`, `DEFAULT_REALTIME_VOICE` |
-| Preference handlers | [src/agentic_ui/src/handlers/preferences.ts](../../src/agentic_ui/src/handlers/preferences.ts) | `usePreferencesHandlers()`, optimistic update pattern, rollback |
+| Preference handlers | [src/agentic_ui/src/handlers/preferences.ts](../../src/agentic_ui/src/handlers/preferences.ts) | `usePreferencesHandlers()`, `snapshotPrefs`/`persistPrefs`, optimistic update pattern, rollback |
+| Personalization UI | [src/agentic_ui/src/features/settings/components/profile_parts/PersonalizationTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/PersonalizationTab.tsx) | Custom-instructions row + personality select; dialog in `CustomInstructionsDialog.tsx` (owned by `ProfilePanel`, rendered as a shell sibling) |
+| Personalization runtime (agents) | [src/agents/runtime/personalization.py](../../src/agents/runtime/personalization.py) | Preset registry + directives, `parse_personalization()` (fail-closed), `build_personalization_prompt()` |
+| Personalization threading (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_effective_personalization()`, `context.personalization` in the run config |
 | IndexedDB persistence | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | `loadUISnapshot()`, `saveUISnapshot()`, `clearUISnapshot()` |
 | Inference tool filtering | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `enabled_tools` in `InferenceRunStartPayload`, config forwarding to agents |

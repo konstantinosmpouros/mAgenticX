@@ -336,6 +336,16 @@ Memory is **toggleable per run** via the user's `use_memory` preference (default
 
 The user inspects and corrects this memory in the **ProfilePanel → Memories tab**: drill into a deep agent, see its saved memories (name-sorted), click to preview content, and delete one. The agent owns *writes* (the `remember` tool); the user only reads + deletes. The read/delete operations live in `runtime/filesystem/memory.py` (`list_memories` / `read_memory` / `delete_memory` — delete drops both the `entries/<name>.yml` and its `AGENTS.md` row via the same `index_line_pattern` the write path uses), exposed by `router/memories.py` (`/agents/{slug}/users/{user_id}/memories[...]`, internal-caller gated) and proxied by the bridge's `/v1/memories` router (no cache). There is no create/update endpoint by design.
 
+##### Per-user personalization (personality + custom instructions)
+
+Separate from memory, every run may carry the user's **personalization** — a personality preset plus user-authored custom instructions (Settings → Personalization) — threaded by the bridge as `context.personalization`, present only when effective. The main logic lives in [`runtime/personalization.py`](../../src/agents/runtime/personalization.py):
+
+- `_PERSONALITY_DIRECTIVES` — the preset registry (`professional`, `friendly`, `candid`, `quirky`, `efficient`, `cynical`, `nerdy`; `default` means "inject nothing").
+- `parse_personalization(context)` — **fail-closed** re-validation at the service boundary (the bridge already validated, but agents don't trust it): unknown preset → `default`, text stripped of control chars and re-capped.
+- `build_personalization_prompt(...)` — composes the `## User Personalization` block: a framing preamble pinning the trust boundary (user preferences are *data* — tone/style only, never overriding tool policy, filesystem permissions, or the rest of the prompt), the preset's directive, and the custom-instruction fields inside `<user_custom_instructions>` fences (the closing fence is filtered from user text so the block can't be terminated early).
+
+`BaseAgent.__init__` parses it into `self.personalization` (both agent families get it); `DeepAgent.build_deep_agent()` appends the block via `_personalization_system_prompt()` — final prompt order: **static instructions → personalization → memory**. It applies to the **main agent only**, never sub-agents, and returns `""` when inactive so a default run's prompt is byte-identical to the pre-feature one. Override `_personalization_system_prompt()` to suppress or reposition it for a specific agent. LangGraph agents parse but don't consume it yet. See [user-preferences](../flows/user-preferences.md#personalization-personality--custom-instructions).
+
 #### 4. Create skills
 
 Skills are modular capabilities the agent can invoke. Each skill lives in its own subdirectory:

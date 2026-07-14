@@ -287,7 +287,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.11.0
+    image: konstantinosmpouros/agentic_ui:v0.12.0
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:

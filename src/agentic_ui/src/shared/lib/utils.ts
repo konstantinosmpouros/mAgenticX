@@ -1,13 +1,17 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { AttachmentIn, AuthResponse, ConversationUsage, FileAttachment, MessageOut, SkillTreeNode } from "./types";
+import type { AttachmentIn, AuthResponse, ConversationUsage, CustomInstructions, FileAttachment, MessageOut, SkillTreeNode } from "./types";
 import {
+  CUSTOM_INSTRUCTIONS_LIMITS,
+  DEFAULT_PERSONALITY,
   DEFAULT_REALTIME_VOICE,
   DEFAULT_VOICE_MODE_LANGUAGE,
   NA,
+  PERSONALITY_PRESETS,
   REALTIME_VOICES,
   VOICE_MODE_LANGUAGES,
   withCredentials,
+  type PersonalityId,
   type RealtimeVoice,
   type VoiceModeLanguage,
 } from "./consts";
@@ -69,6 +73,29 @@ export function normalizeVoiceModeLanguage(value: unknown): VoiceModeLanguage {
   return VOICE_MODE_LANGUAGES.some((option) => option.id === language)
     ? (language as VoiceModeLanguage)
     : DEFAULT_VOICE_MODE_LANGUAGE;
+}
+
+// Fail-closed preset validation, same stance as the voice normalizers: an id
+// the preset registry doesn't know (e.g. from a stale snapshot) → "default".
+export function normalizePersonality(value: unknown): PersonalityId {
+  const id = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return PERSONALITY_PRESETS.some((preset) => preset.id === id)
+    ? (id as PersonalityId)
+    : DEFAULT_PERSONALITY;
+}
+
+// Coerce any stored/received custom-instructions value into the full app
+// shape, re-capping field lengths so oversize data can never round-trip.
+export function normalizeCustomInstructions(value: unknown): CustomInstructions {
+  const record = (value ?? {}) as Record<string, unknown>;
+  const text = (raw: unknown, max: number) => (typeof raw === "string" ? raw.slice(0, max) : "");
+  return {
+    enabled: record.enabled === true,
+    nickname: text(record.nickname, CUSTOM_INSTRUCTIONS_LIMITS.nickname),
+    occupation: text(record.occupation, CUSTOM_INSTRUCTIONS_LIMITS.occupation),
+    traits: text(record.traits, CUSTOM_INSTRUCTIONS_LIMITS.traits),
+    about: text(record.about, CUSTOM_INSTRUCTIONS_LIMITS.about),
+  };
 }
 
 const CSRF_COOKIE_CANDIDATES = ["__Host-mx_csrf", "mx_csrf"];

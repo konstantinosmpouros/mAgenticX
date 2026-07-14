@@ -12,6 +12,7 @@ from langgraph.types import Command
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
+from runtime.personalization import build_personalization_prompt
 from runtime.tools.memory_search import build_memory_search_tool
 from runtime.tools.present_artifact import build_present_artifact_tool
 from runtime.tools.remember import build_remember_tool
@@ -352,6 +353,18 @@ class DeepAgent(BaseAgent, ABC):
         return _MEMORY_SYSTEM_PROMPT if self.use_memory else ""
 
 
+    def _personalization_system_prompt(self) -> str:
+        """The user-personalization block (personality preset + custom
+        instructions) appended to the system prompt.
+
+        Empty when the run carries no effective personalization, so a default
+        run's prompt is identical to the pre-feature one. The block itself is
+        composed and hardened in ``runtime.personalization`` — override this to
+        customise placement or suppress personalization for a specific agent.
+        """
+        return build_personalization_prompt(self.personalization)
+
+
     def build_deep_agent(
         self,
         *,
@@ -382,6 +395,23 @@ class DeepAgent(BaseAgent, ABC):
         stack = middleware if middleware is not None else self.default_middleware(model, backend)
         stack = self._ensure_tool_error_middleware(stack)  # guarantee on the main agent
         exclude_stock_summarization(model if isinstance(model, str) else "")
+
+        # Append the user-personalization block (personality preset + custom
+        # instructions, threaded from preferences by the bridge) right after the
+        # agent's static instructions, then the memory-usage block. Both are
+        # empty when inactive, so a default run's prompt is unchanged.
+        personalization_prompt = self._personalization_system_prompt()
+        if personalization_prompt:
+            system_prompt = (
+                f"{system_prompt}\n\n{personalization_prompt}" if system_prompt else personalization_prompt
+            )
+            logger.info(
+                "deep_agent_personalization_applied",
+                "Applied user personalization to the system prompt",
+                agent_slug=self.name,
+                personality=self.personalization.personality,
+                has_custom_instructions=self.personalization.has_custom_instructions,
+            )
 
         # Append the memory-usage instructions only when memory is enabled, so the
         # agent is told about /memories/ exactly when the mount + remember tool

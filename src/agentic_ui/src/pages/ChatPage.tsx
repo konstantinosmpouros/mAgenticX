@@ -400,6 +400,8 @@ export function useChatWorkspace({
     handleToggleShowMessageTokenUsage,
     handleToggleSearchPastConvs,
     handleToggleUseMemory,
+    handleSelectPersonality,
+    handleSaveCustomInstructions,
     handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage,
   } = usePreferencesHandlers({
@@ -1467,7 +1469,8 @@ export function useChatWorkspace({
     handleLoadMoreArchivedConversations, handleOpenArchivedConversation,
     handleUnarchiveConversation, handleLoadMoreSharedConversations, handleOpenSharedConversation,
     handleRevokeSharedConversation, handleToggleToolPreference, handleToggleSuggestionsEnabled,
-    handleToggleSearchPastConvs, handleToggleUseMemory, handleSelectVoiceModeVoice, handleSelectVoiceModeLanguage, closeReportDialog,
+    handleToggleSearchPastConvs, handleToggleUseMemory, handleSelectPersonality, handleSaveCustomInstructions,
+    handleSelectVoiceModeVoice, handleSelectVoiceModeLanguage, closeReportDialog,
     handleSubmitConversationReport, handleShareModeChange, handleShareExpiresAtChange,
     closeShareDialog, copyShareDialogUrl, handleCreateShareLink, handleDownloadSharePdf,
     handleCloseFilePreview, handleFileDownload, handleCloseImagePreview,
@@ -1518,7 +1521,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     sharedConversations, sharedConvIsLoading, sharedConvHasMore, handleLoadMoreSharedConversations,
     handleOpenSharedConversation, handleRevokeSharedConversation, handleToggleToolPreference,
     handleToggleSuggestionsEnabled, handleToggleShowMessageTokenUsage, handleToggleSearchPastConvs,
-    handleToggleUseMemory, handleSelectVoiceModeVoice,
+    handleToggleUseMemory, handleSelectPersonality, handleSaveCustomInstructions, handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage, isSavingPreferences, isReportDialogOpen, closeReportDialog,
     handleSubmitConversationReport, isSubmittingReport, reportTargetMessageId,
     reportTargetMessagePreview, reportConversationTitle, shareTargetMessage, isCreatingShareLink,
@@ -1656,6 +1659,8 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
                 onToggleSearchPastConvs={handleToggleSearchPastConvs}
                 onToggleUseMemory={handleToggleUseMemory}
+                onSelectPersonality={handleSelectPersonality}
+                onSaveCustomInstructions={handleSaveCustomInstructions}
                 onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
                 onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
                 preferencesSaving={isSavingPreferences}

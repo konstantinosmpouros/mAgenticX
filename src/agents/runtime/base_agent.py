@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 from core.error_handling import agent_stream_error_handler
 from observability import get_logger
+from runtime.personalization import Personalization, parse_personalization
 from utils import (
     build_tool_cache_key,
     get_tool_cache_key,
@@ -75,6 +76,13 @@ class BaseAgent:
         # agent invoked without the flag keeps its always-on memory. Deep agents
         # read this to include or omit their persistent-memory wiring.
         self.use_memory: bool = bool(self.context.get("use_memory", True))
+
+        # Per-run personalization (personality preset + custom instructions),
+        # threaded from the user's preferences by the bridge and re-validated
+        # fail-closed here. Neutral default when absent — `has_effect` False
+        # leaves the agent's prompt untouched. Deep agents append the composed
+        # block to their system prompt; LangGraph agents may adopt it later.
+        self.personalization: Personalization = parse_personalization(self.context)
 
 
 

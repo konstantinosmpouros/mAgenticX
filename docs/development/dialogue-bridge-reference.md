@@ -91,7 +91,7 @@ src/dialogue_bridge/
 │   ├── scheduled_tasks.py (Scheduler loop) · agents.py (agent cache) · titles.py · suggestions.py
 │   ├── speech.py · voice.py · search.py · skills.py · skills_cache.py · memories.py · validators.py
 ├── observability/              config, context, events, filters, formatters, middleware, redaction, stream_metrics, exception_handlers
-├── migrations/versions/        0001_baseline … 0012_use_memory
+├── migrations/versions/        0001_baseline … 0015_personalization
 ├── requirements.txt · Dockerfile
 ```
 
@@ -157,7 +157,7 @@ Async engine (`core/database/engine.py`): `create_async_engine(url, connect_args
 |---|---|
 | **agents** | `id`, `slug`(unique), name/description/icon, `version`, `type`(server_default `"langgraph agent"`), `is_active`, timestamps. Cached manifests from the agents service. |
 | **users** | `id`, `username`(unique,idx), `vault_user_id`(unique,idx), `email`(unique,idx), display_name/avatar/full_name/department/role_title, `last_login_at`, `is_active`. `upsert_user_from_vault` maps a Vault entity → row. |
-| **user_preferences** | 1:1 with users (unique `user_id`). `tools`(JSON), `prefers_agentic_chat`, `suggestions_enabled`, `show_message_token_usage`(0006), `search_past_convs`(0011, gates cross-conv memory tool), `use_memory`(0012, gates persistent memory), `voice_mode_voice`/`_language`. |
+| **user_preferences** | 1:1 with users (unique `user_id`). `tools`(JSON), `prefers_agentic_chat`, `suggestions_enabled`, `show_message_token_usage`(0006), `search_past_convs`(0011, gates cross-conv memory tool), `use_memory`(0012, gates persistent memory), `personality`+`custom_instructions`(0015, threaded to runs as `context.personalization`), `voice_mode_voice`/`_language`. |
 | **conversations** | `user_id`, `agent_id`(last-used pointer), `forked_parent_id`/`forked_message_id`(self-ref fork lineage, SET NULL), `agent_name`, `title`, `is_private`, `is_archived`/`archived_at`, `is_reported`/`reported_at`, **`active_assistant_message_id`**(FK→messages SET NULL — the AI msg currently streaming; `post_update=True` to break the write cycle), `last_message_preview`/`last_message_at`. |
 | **messages** ★ | The append-only tree AND the run. `conversation_id`(CASCADE), **`parent_message_id`**(self-FK SET NULL — the tree edge; edits/retries are *sibling* rows, never overwrites), `sender`(`message_sender_enum` user/ai), `content`, `liked`, `reasoning_steps`/`reasoning_time_seconds`, `input_tokens`/`output_tokens`(0004), `is_error`/`error_message`, **`checkpoint_thread_id`**(0007, per-branch LangGraph thread), **`checkpoint_id`**(0007, durable head from `CHECKPOINT_COMMITTED`), `raw_events`(JSON, ordered AG-UI events), `agent_id`(SET NULL)/`agent_name`, **`streaming_status`**(queued/running/cancelling/completed/cancelled/failed), `streaming_message_path`/`streaming_enabled_tools`(JSON), `streaming_started_at`/`_completed_at`/`_cancel_requested_at`, `scheduled_task_id`(0009, SET NULL). **Two partial indexes**: unique `WHERE streaming_status IN ('queued','running','cancelling')` (≤1 active stream per conversation) + `WHERE streaming_status IS NOT NULL`. |
 | **conversation_reports** | unique `conversation_id`; reason/details/status, optional `message_id`. |
@@ -187,7 +187,10 @@ The `conversations ↔ messages` cross-FK cycle is resolved via `use_alter` in t
 | `0009` | `scheduled_tasks` (+partial `WHERE status='active'`) + `messages.scheduled_task_id`. |
 | `0010` | `CREATE EXTENSION vector` + `message_embeddings` + hand-written **HNSW** cosine index (needs `pgvector/pgvector:pg16`). |
 | `0011` | `user_preferences.search_past_convs`. |
-| `0012` | `user_preferences.use_memory`. **Current head.** |
+| `0012` | `user_preferences.use_memory`. |
+| `0013` | `attachments.origin` (user-uploaded vs agent-generated). |
+| `0014` | link auth identities — `users.vault_user_id` nullable + `oidc_subject` + `auth_providers` (Entra OIDC SSO). |
+| `0015` | `user_preferences.personality` + `custom_instructions` (personalization). **Current head.** |
 
 Partial/`postgresql_where` and pgvector-opclass indexes are always hand-written (autogenerate blind spots). **No inference-run table exists** — the run is the `messages.streaming_*` columns, present since the baseline.
 
@@ -285,7 +288,7 @@ Process-global manager with per-run dicts (`_tasks`, `_cancel_events`, `_runtime
 6. Build the **config block** sent to both `/stream` and `/resume`:
    ```json
    {"run_config": {"configurable": {"thread_id": "<branch thread>"}},
-    "context": {"user_id","conversation_id","run_id","search_past_convs","use_memory"},
+    "context": {"user_id","conversation_id","run_id","search_past_convs","use_memory","personalization?"},
     "tools": [...],
     "fork_from": {"thread_id","checkpoint_id"}   // /stream only, delta_fork}
    ```

@@ -243,7 +243,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 `POST /agents/{agent_slug}/stream` (`router/inference.py:32-124`). Body `Request` = `{messages: List[Dict], config: Dict}`.
 
 **`config` shape:**
-- `config["context"]` = `{user_id, conversation_id, run_id?, use_memory?, search_past_convs?}` (`user_id`+`conversation_id` mandatory).
+- `config["context"]` = `{user_id, conversation_id, run_id?, use_memory?, search_past_convs?, personalization?}` (`user_id`+`conversation_id` mandatory; `personalization` = `{personality?, custom_instructions?}` and is present only when effective).
 - `config["run_config"]["configurable"]["thread_id"]` = the **branch-scoped checkpoint thread id**.
 - `config["tools"]` = `[{server_id, tool_name}]` the client wants enabled.
 - `config["fork_from"]` = `{thread_id, checkpoint_id}` for edit/retry forks.
@@ -276,7 +276,7 @@ Not abstract; shared plumbing. `AgentType = Literal["deep agent","langgraph agen
 
 Class identity attributes (overridden by subclasses as plain class attrs): `name` (slug — registry key + URL), `agent_id`, `label`, `version`, `type`, `description`, `icon`.
 
-`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), `config_tools`, `config_tool_names` (normalized `server_id/tool_name` cache-keys), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True).
+`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), `config_tools`, `config_tool_names` (normalized `server_id/tool_name` cache-keys), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True), `personalization` (parsed fail-closed from `context.personalization` by `runtime/personalization.py` — unknown preset → `default`, text re-sanitized + re-capped).
 
 - `manifest()` (classmethod) → the registry dict; reads class attrs only (no instantiation).
 - `attach_tools(live_tools)` → `_apply_live_tools(_filter_live_tools(...))`. `_filter_live_tools` keeps only live tools whose cache-key is in `config_tool_names`; logs `agent_tools_missing`/`agent_tools_resolved`.
@@ -296,8 +296,8 @@ Class identity attributes (overridden by subclasses as plain class attrs): `name
 - `RESERVED_DEEPAGENT_TOOL_NAMES` = `{write_todos, ls, read_file, write_file, edit_file, glob, grep, execute, task, remember}` — stripped from attached MCP tools (`_apply_live_tools` override).
 - `_impl_dir` = the concrete subclass's directory (asset discovery root).
 - Lifecycle hooks run in order in `ensure_built()`: `load_skills()` → `["/skills/"]`; `load_memory()` → None; `load_agent_md()` → `["/memories/AGENTS.md"]` (or `[]` if memory off); `register_subagents()`; **`register_agent()`** (abstract, last).
-- `build_deep_agent(model, system_prompt, subagents, interrupt_on, middleware)` — the base assembler: builds the CompositeBackend factory, composes middleware (`ToolErrorMiddleware` + tuned summarizer; force-guaranteed on main + each subagent; stock summarizer excluded), appends `_MEMORY_SYSTEM_PROMPT` when memory on, then `create_deep_agent(model, name, tools=self.tools+self._builtin_tools(), system_prompt, subagents, interrupt_on, middleware, memory=self.agent_md_paths, skills=self.skills_paths, backend, permissions=WORKSPACE_WRITE_DENY, context_schema, checkpointer, store=None)`.
-- `_builtin_tools()` — `remember` (when `use_memory`) + `search_past_conversations` (opt-in via `context.search_past_convs`); `[]` if no `user_id`.
+- `build_deep_agent(model, system_prompt, subagents, interrupt_on, middleware)` — the base assembler: builds the CompositeBackend factory, composes middleware (`ToolErrorMiddleware` + tuned summarizer; force-guaranteed on main + each subagent; stock summarizer excluded), appends the personalization block (`runtime/personalization.build_personalization_prompt`, empty when no effective personalization) then `_MEMORY_SYSTEM_PROMPT` when memory on — final prompt order: static instructions → personalization → memory — then `create_deep_agent(model, name, tools=self.tools+self._builtin_tools(), system_prompt, subagents, interrupt_on, middleware, memory=self.agent_md_paths, skills=self.skills_paths, backend, permissions=WORKSPACE_WRITE_DENY, context_schema, checkpointer, store=None)`. Personalization applies to the **main agent only**, never sub-agents.
+- `_builtin_tools()` — `remember` (when `use_memory`) + `search_past_conversations` (opt-in via `context.search_past_convs`) + `present_artifact` (when a `conversation_id` exists); `[]` if no `user_id`.
 - `astream(...)` — `stream_mode=["messages","updates"]`, **`subgraphs=True`** (surfaces nested sub-agent events).
 
 **`use_memory` gates four things together** (desync any one and the agent lies about its mounts): the `/memories/` mount, the `remember` tool, `load_agent_md()`, and the appended `_MEMORY_SYSTEM_PROMPT`.
@@ -490,7 +490,7 @@ Structured, async, per-request-context logging.
 
 - **agents → rag_service** — only from LangGraph nodes, over mTLS + `internal_service_headers`. HR/Orthodox POST `/retrieve/{collection}` (parallel `asyncio.gather`); Retail GET `/excel/{table}/schema` + POST `/excel/{table}/query/sql`.
 - **agents → dialogue_bridge** (reverse) — the `search_past_conversations` tool POSTs to `/v1/internal/memory/search` (mTLS + proxy header); also `POST /embed` lets the bridge proxy embeddings (it has no OpenAI key).
-- **dialogue_bridge → agents** — `inference_runs.py` builds `{run_config.configurable.thread_id, context:{user_id, conversation_id, run_id, use_memory, search_past_convs}, tools, fork_from?}` and streams `POST /stream` (or `/resume`) over `httpx.AsyncClient(verify=SSLContext, cert=None)` with `internal_service_headers` + `Accept: text/event-stream`, parsing SSE bytes → Redis delta publish. A `RUN_ERROR` frame marks the run failed.
+- **dialogue_bridge → agents** — `inference_runs.py` builds `{run_config.configurable.thread_id, context:{user_id, conversation_id, run_id, use_memory, search_past_convs, personalization?}, tools, fork_from?}` and streams `POST /stream` (or `/resume`) over `httpx.AsyncClient(verify=SSLContext, cert=None)` with `internal_service_headers` + `Accept: text/event-stream`, parsing SSE bytes → Redis delta publish. A `RUN_ERROR` frame marks the run failed.
 
 ---
 

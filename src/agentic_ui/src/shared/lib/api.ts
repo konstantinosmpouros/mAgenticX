@@ -58,6 +58,8 @@ import {
 } from "./schemas";
 import {
   normalizeAuthResponse,
+  normalizeCustomInstructions,
+  normalizePersonality,
   normalizeRealtimeVoice,
   normalizeVoiceModeLanguage,
 } from "./utils";
@@ -431,6 +433,8 @@ function mapUserPreferences(data: unknown) {
   const searchPastConvs =
     typeof record.searchPastConvs === "boolean" ? record.searchPastConvs : false;
   const useMemory = typeof record.useMemory === "boolean" ? record.useMemory : true;
+  const personality = normalizePersonality(record.personality);
+  const customInstructions = normalizeCustomInstructions(record.customInstructions);
   const voiceModeVoice = normalizeRealtimeVoice(record.voiceModeVoice);
   const voiceModeLanguage = normalizeVoiceModeLanguage(record.voiceModeLanguage);
 
@@ -441,6 +445,8 @@ function mapUserPreferences(data: unknown) {
     showMessageTokenUsage,
     searchPastConvs,
     useMemory,
+    personality,
+    customInstructions,
     voiceModeVoice,
     voiceModeLanguage,
   };

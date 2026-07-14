@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { PlanSnapshot } from "@/features/inference/agui";
-import type { RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
+import type { PersonalityId, RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
 
 // Wire-response contracts whose TypeScript shape is INFERRED from the Zod
 // schemas in `schemas.ts` (the single source of truth for these). Re-exported
@@ -173,6 +173,17 @@ export type ToolPreference = {
     toolName: string;
 };
 
+// User-authored custom instructions injected into deep-agent system prompts
+// while `enabled` is true. Field lengths are capped by CUSTOM_INSTRUCTIONS_LIMITS
+// (mirroring the bridge schema).
+export type CustomInstructions = {
+    enabled: boolean;
+    nickname: string;
+    occupation: string;
+    traits: string;
+    about: string;
+};
+
 export type UserPreferences = {
     tools?: {
         disabled?: ToolPreference[];
@@ -182,6 +193,8 @@ export type UserPreferences = {
     showMessageTokenUsage?: boolean;
     searchPastConvs?: boolean;
     useMemory?: boolean;
+    personality?: PersonalityId;
+    customInstructions?: CustomInstructions;
     voiceModeVoice?: RealtimeVoice;
     voiceModeLanguage?: VoiceModeLanguage;
 };

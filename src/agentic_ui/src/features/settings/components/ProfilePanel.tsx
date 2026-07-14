@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
     Bell,
@@ -11,9 +11,9 @@ import {
 
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { PremiumModalShell } from "@/shared/ui/premium-modal-shell";
-import { safeText } from "@/shared/lib/utils";
-import { NA, type RealtimeVoice, type VoiceModeLanguage } from "@/shared/lib/consts";
-import { Agent, ConversationShareListItem, ConversationSummary, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
+import { normalizeCustomInstructions, safeText } from "@/shared/lib/utils";
+import { NA, type PersonalityId, type RealtimeVoice, type VoiceModeLanguage } from "@/shared/lib/consts";
+import { Agent, ConversationShareListItem, ConversationSummary, CustomInstructions, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
 import ProfileSidebar, { NAV_ITEMS } from "./profile_parts/ProfileSidebar";
 import AccountTab from "./profile_parts/AccountTab";
 import GeneralTab from "./profile_parts/GeneralTab";
@@ -25,6 +25,7 @@ import McpServersTab from "./profile_parts/McpServersTab";
 import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
 import ComingSoon from "./profile_parts/ComingSoon";
+import CustomInstructionsDialog from "./profile_parts/CustomInstructionsDialog";
 import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
 
 /** Pre-taxonomy tab ids (persisted in UI snapshots) → their new section. */
@@ -190,6 +191,9 @@ type ProfilePanelProps = {
     onToggleMessageTokenUsage?: () => void;
     onToggleSearchPastConvs?: () => void;
     onToggleUseMemory?: () => void;
+    onSelectPersonality?: (personality: PersonalityId) => void;
+    /** Persists the custom-instructions document; resolves true on success. */
+    onSaveCustomInstructions?: (value: CustomInstructions) => Promise<boolean>;
     onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
     onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
     preferencesSaving?: boolean;
@@ -239,11 +243,24 @@ export default function ProfilePanel({
     onToggleMessageTokenUsage,
     onToggleSearchPastConvs,
     onToggleUseMemory,
+    onSelectPersonality,
+    onSaveCustomInstructions,
     onSelectVoiceModeVoice,
     onSelectVoiceModeLanguage,
     preferencesSaving = false,
 }: ProfilePanelProps) {
     const reduceMotion = useReducedMotion();
+    // The custom-instructions editor is owned here (not by the tab) so it can
+    // render as a SIBLING of the settings shell — PremiumModalShell doesn't
+    // portal, and nesting one shell inside another traps the overlay in the
+    // panel's stacking/animation context.
+    const [showCustomInstructions, setShowCustomInstructions] = useState(false);
+
+    // Closing the whole panel (Esc, backdrop, X) must also drop the editor —
+    // otherwise it would still be flagged open the next time the panel mounts.
+    useEffect(() => {
+        if (!open) setShowCustomInstructions(false);
+    }, [open]);
     const displayName =
         safeText(user?.displayName) !== NA
             ? safeText(user?.displayName)
@@ -268,6 +285,7 @@ export default function ProfilePanel({
     if (!open) return null;
 
     return (
+        <>
         <PremiumModalShell open={open} onClose={onClose} closeLabel="Close profile panel" className="max-w-5xl">
             <div className="flex h-[min(44rem,88vh)] w-full min-w-0 max-[639px]:flex-col">
                 <ProfileSidebar
@@ -344,6 +362,8 @@ export default function ProfilePanel({
                                             onToggleSearchPastConvs={onToggleSearchPastConvs}
                                             onToggleUseMemory={onToggleUseMemory}
                                             onOpenMemories={() => setActiveTab("memories")}
+                                            onOpenCustomInstructions={() => setShowCustomInstructions(true)}
+                                            onSelectPersonality={onSelectPersonality}
                                         />
                                     ) : null}
 
@@ -430,5 +450,13 @@ export default function ProfilePanel({
                     </div>
                 </div>
         </PremiumModalShell>
+        <CustomInstructionsDialog
+            open={showCustomInstructions}
+            onClose={() => setShowCustomInstructions(false)}
+            value={normalizeCustomInstructions(userPreferences?.customInstructions)}
+            saving={preferencesSaving}
+            onSave={onSaveCustomInstructions}
+        />
+        </>
     );
 }
