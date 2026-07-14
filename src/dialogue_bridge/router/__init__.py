@@ -12,6 +12,7 @@ from router.voice import router as voice_router
 from router.skills import router as skills_router
 from router.memories import router as memories_router
 from router.scheduled_tasks import router as scheduled_tasks_router
+from router.usage import router as usage_router
 from router.internal_memory import router as internal_memory_router
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "skills_router",
     "memories_router",
     "scheduled_tasks_router",
+    "usage_router",
     "internal_memory_router",
 ]

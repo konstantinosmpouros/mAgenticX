@@ -482,7 +482,8 @@ export function useChatWorkspace({
     rootKey: ROOT_BRANCH_KEY,
   });
 
-  // Per-conversation token usage for the input-bar usage panel (AI messages only).
+  // Per-conversation token usage (AI messages only) for the Settings → Usage
+  // tab's "This conversation" card.
   const conversationUsage = useMemo(() => computeConversationUsage(activeMessages), [activeMessages]);
 
   // Reset message editing state on conversation change
@@ -1515,7 +1516,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail, ensureSkillDetail,
     handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill, handleRemoveSkillFromPool,
     skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading, isSkillToggling,
-    memoryInspector,
+    memoryInspector, conversationUsage,
     resolvedPreferences, archivedConversations, archivedConvIsLoading, archivedConvHasMore,
     handleLoadMoreArchivedConversations, handleOpenArchivedConversation, handleUnarchiveConversation,
     sharedConversations, sharedConvIsLoading, sharedConvHasMore, handleLoadMoreSharedConversations,
@@ -1664,6 +1665,8 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
                 onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
                 preferencesSaving={isSavingPreferences}
+                conversationUsage={currentConversation ? conversationUsage : null}
+                conversationTitle={currentConversation?.title ?? null}
               />
 
               {/* Edit profile — the small identity card from the profile menu */}

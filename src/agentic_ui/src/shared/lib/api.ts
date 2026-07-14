@@ -52,6 +52,7 @@ import {
   UserSkillListSchema,
   UserSkillSchema,
   UserSkillDetailSchema,
+  UsageSummarySchema,
   WireObjectArraySchema,
   WireObjectSchema,
   WorkspaceSearchResultListSchema,
@@ -91,6 +92,7 @@ const SEARCH_BASE_PATH = `${API_BASE_PATH}/search`;
 const SKILLS_BASE_PATH = `${API_BASE_PATH}/skills`;
 const MEMORIES_BASE_PATH = `${API_BASE_PATH}/memories`;
 const SCHEDULED_TASKS_BASE_PATH = `${API_BASE_PATH}/scheduled-tasks`;
+const USAGE_BASE_PATH = `${API_BASE_PATH}/usage`;
 
 
 // Authenticate user credentials. A failed login is a credential error, not a
@@ -450,6 +452,15 @@ function mapUserPreferences(data: unknown) {
     voiceModeVoice,
     voiceModeLanguage,
   };
+}
+
+
+// Fetch the workspace-wide usage rollup for the Settings → Usage tab.
+export async function getUsageSummary(userId: string) {
+  return requestJson(`${USAGE_BASE_PATH}/${encodeURIComponent(userId)}/summary`, {
+    schema: UsageSummarySchema,
+    fallbackMessage: "Failed to fetch usage summary",
+  });
 }
 
 

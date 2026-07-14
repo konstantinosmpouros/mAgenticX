@@ -18,8 +18,6 @@ import StarBorder from "@/shared/ui/react_bits/star_border";
 import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
-import { ConversationUsagePanel } from "@/features/chat/components/ConversationUsagePanel";
-import type { ConversationUsage } from "@/shared/lib/types";
 
 export type DictationStatus = "idle" | "recording" | "review" | "submitting";
 export type ChatInputMode = "chat" | "voice";
@@ -94,12 +92,6 @@ type ChatInputBarProps = {
     starterSuggestions?: string[];
     onStarterSuggestionSelect?: (suggestion: string) => void;
 
-    // Conversation token-usage panel (shown next to "+" only when a conversation
-    // is open). Null/undefined hides the gauge button.
-    conversationUsage?: ConversationUsage | null;
-    showMessageTokenUsage?: boolean;
-    onToggleMessageTokenUsage?: () => void;
-    preferencesSaving?: boolean;
 };
 
 // Random welcome quotes (use {agent} to inject the agent's name)
@@ -163,10 +155,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
         hitlTakeover,
         starterSuggestions = [],
         onStarterSuggestionSelect,
-        conversationUsage,
-        showMessageTokenUsage = false,
-        onToggleMessageTokenUsage,
-        preferencesSaving = false,
     } = props;
 
 
@@ -869,15 +857,6 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                                     <p>Attach files & photos</p>
                                                 </TooltipContent>
                                             </Tooltip>
-
-                                            {!isMessagesEmpty && conversationUsage ? (
-                                                <ConversationUsagePanel
-                                                    usage={conversationUsage}
-                                                    showMessageTokenUsage={showMessageTokenUsage}
-                                                    onToggleMessageTokenUsage={() => onToggleMessageTokenUsage?.()}
-                                                    disabled={preferencesSaving}
-                                                />
-                                            ) : null}
                                         </div>
 
                                         {dictationStatus === "idle" ? (

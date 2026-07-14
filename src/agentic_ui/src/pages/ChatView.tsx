@@ -44,10 +44,6 @@ export default function ChatView() {
     voiceSession,
     voiceBarReady,
     chatBarReady,
-    conversationUsage,
-    resolvedPreferences,
-    handleToggleShowMessageTokenUsage,
-    isSavingPreferences,
     isMessagesEmpty,
     settledVoiceActive,
     attachments,
@@ -146,10 +142,6 @@ export default function ChatView() {
         mode={voiceSession.isActive ? "voice" : "chat"}
         voiceBarVisible={voiceBarReady}
         chatBarVisible={chatBarReady}
-        conversationUsage={currentConversation ? conversationUsage : null}
-        showMessageTokenUsage={resolvedPreferences.showMessageTokenUsage === true}
-        onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
-        preferencesSaving={isSavingPreferences}
         // Centered empty state
         isMessagesEmpty={isMessagesEmpty}
         positionClass={

@@ -231,3 +231,54 @@ export const WorkspaceSearchResultListSchema = z
   .array(z.unknown())
   .catch([])
   .transform((rows) => rows.map((row) => toWorkspaceSearchResult(row as Record<string, unknown>)));
+
+
+// ---------------------------------------------------------------------------
+// Usage summary (Settings → Usage tab) — camelCase wire, defaulted per field
+// ---------------------------------------------------------------------------
+export type UsageWindow = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  aiMessages: number;
+};
+
+const toCount = (value: unknown): number =>
+  Number.isFinite(value) ? Math.max(0, Math.round(Number(value))) : 0;
+
+const toUsageWindow = (raw: unknown): UsageWindow => {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  return {
+    inputTokens: toCount(record.inputTokens),
+    outputTokens: toCount(record.outputTokens),
+    totalTokens: toCount(record.totalTokens),
+    aiMessages: toCount(record.aiMessages),
+  };
+};
+
+const toUsageSummary = (raw: Record<string, unknown>) => ({
+  totals: toUsageWindow(raw.totals),
+  conversations: toCount(raw.conversations),
+  today: toUsageWindow(raw.today),
+  last7Days: toUsageWindow(raw.last7Days),
+  last30Days: toUsageWindow(raw.last30Days),
+  perAgent: (Array.isArray(raw.perAgent) ? raw.perAgent : []).map((row) => {
+    const record = (row ?? {}) as Record<string, unknown>;
+    return {
+      ...toUsageWindow(record),
+      agentName: typeof record.agentName === "string" && record.agentName ? record.agentName : "Unknown agent",
+    };
+  }),
+  daily: (Array.isArray(raw.daily) ? raw.daily : []).map((row) => {
+    const record = (row ?? {}) as Record<string, unknown>;
+    return {
+      ...toUsageWindow(record),
+      date: typeof record.date === "string" ? record.date : "",
+    };
+  }),
+});
+
+export const UsageSummarySchema = z.record(z.unknown()).transform(toUsageSummary);
+export type UsageSummary = z.infer<typeof UsageSummarySchema>;
+export type UsageAgentBreakdown = UsageSummary["perAgent"][number];
+export type UsageDailyPoint = UsageSummary["daily"][number];

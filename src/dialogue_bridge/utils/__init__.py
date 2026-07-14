@@ -47,9 +47,11 @@ from utils.voice import (
     preferred_voice_mode_language,
     recent_history_for_voice_instructions,
 )
+from utils.usage import compute_usage_summary
 from utils.validators import validate_convId, validate_convId_full, validate_userId
 
 __all__ = [
+    "compute_usage_summary",
     "build_agent_stream_url",
     "fetch_tools_from_agents_service",
     "generate_conversation_title",

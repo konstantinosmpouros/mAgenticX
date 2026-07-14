@@ -79,7 +79,7 @@ src/dialogue_bridge/
 │   └── database/
 │       ├── engine.py           async engine, SessionLocal, get_db, Postgres verify-full SSL, Base, gen_uuid
 │       └── models.py           EVERY ORM table
-├── router/                     auth, inference, speech, voice, catalog, preferences, conversations, messages,
+├── router/                     auth, inference, speech, voice, catalog, preferences, usage, conversations, messages,
 │                               attachments, shared_conv, search, skills, memories, scheduled_tasks, internal_memory
 ├── schemas/__init__.py         ALL Pydantic request/response models (flat)
 ├── utils/                      business logic + DB queries (one file per domain)
@@ -89,7 +89,7 @@ src/dialogue_bridge/
 │   ├── event_log.py            ★ RedisEventLog (XADD/XREAD/EXPIRE) per-run stream
 │   ├── conversations.py · messages.py · attachments.py · embeddings.py · shared_conv.py · share_export.py
 │   ├── scheduled_tasks.py (Scheduler loop) · agents.py (agent cache) · titles.py · suggestions.py
-│   ├── speech.py · voice.py · search.py · skills.py · skills_cache.py · memories.py · validators.py
+│   ├── speech.py · voice.py · search.py · skills.py · skills_cache.py · memories.py · usage.py · validators.py
 ├── observability/              config, context, events, filters, formatters, middleware, redaction, stream_metrics, exception_handlers
 ├── migrations/versions/        0001_baseline … 0015_personalization
 ├── requirements.txt · Dockerfile
@@ -247,6 +247,8 @@ nginx strips `/api/`, so the browser calls `/api/v1/...` and FastAPI sees `/v1/.
 **Catalog** `/v1/catalog`: `GET /agents` (cache→sync), `GET /tools` (proxy agents `/tools`), `GET /{uid}/suggestions`.
 
 **Preferences** `/v1/preferences`: `GET /{uid}`, `PUT /{uid}` (CSRF).
+
+**Usage** `/v1/usage`: `GET /{uid}/summary` (read-only rollup for Settings → Usage — all-time totals + today/7d/30d windows via one FILTER-clause aggregate, capped per-agent ranking by denormalized `agent_name`, sparse 30-day daily series; `utils/usage.py`).
 
 **Speech** `/v1/speech`: `POST /dictation/{uid}` (multipart), `POST /read-aloud/{uid}/{cid}/{mid}`, `POST /read-aloud-preview/{uid}`.
 

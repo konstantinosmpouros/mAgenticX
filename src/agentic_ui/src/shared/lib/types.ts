@@ -18,6 +18,10 @@ import type {
   RealtimeVoiceSessionResponse,
   WorkspaceSearchResult,
   WorkspaceSearchResultKind,
+  UsageSummary,
+  UsageWindow,
+  UsageAgentBreakdown,
+  UsageDailyPoint,
 } from "./schemas";
 
 export type {
@@ -32,6 +36,10 @@ export type {
   RealtimeVoiceSessionResponse,
   WorkspaceSearchResult,
   WorkspaceSearchResultKind,
+  UsageSummary,
+  UsageWindow,
+  UsageAgentBreakdown,
+  UsageDailyPoint,
 };
 
 

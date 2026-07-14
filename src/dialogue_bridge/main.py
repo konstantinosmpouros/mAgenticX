@@ -41,6 +41,7 @@ from router import (
     skills_router,
     memories_router,
     scheduled_tasks_router,
+    usage_router,
     internal_memory_router,
 )
 
@@ -226,6 +227,11 @@ app.include_router(
     scheduled_tasks_router,
     prefix=f"/v1/scheduled-tasks",
     tags=["Scheduled Tasks"],
+)
+app.include_router(
+    usage_router,
+    prefix=f"/v1/usage",
+    tags=["Usage"],
 )
 # Service-to-service only. Guarded by require_internal_caller AND denied at the
 # nginx edge (/api/v1/internal/) — reachable only by the agents service on the

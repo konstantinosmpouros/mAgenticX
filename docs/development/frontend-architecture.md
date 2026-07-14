@@ -32,8 +32,7 @@ src/
   features/                  # one folder per feature; owns components/ hooks/ handlers/
     chat/          # conversation rendering + chat handlers/hooks + sidebar
       components/  #   ChatBody, ChatMessage, ChatInputBar, ChatHeader, ChatSidebar,
-                   #   ConversationUsagePanel, AgentRunTimeline, HitlInputTakeover,
-                   #   message_parts/*
+                   #   AgentRunTimeline, HitlInputTakeover, message_parts/*
       hooks/       #   useChatEffects, useActiveRunBranchSnap, useConversationRail,
                    #   useKeyboardShortcuts
       handlers/    #   conversations, messages, shortcuts, ui
@@ -42,10 +41,11 @@ src/
     tasks/         # ScheduledTasksPage, scheduled_tasks_parts/*, useScheduledTasks
     settings/      # ProfilePanel (ChatGPT-taxonomy settings modal on the premium dark
                    #   shell), EditProfileDialog, ShortcutsPanel + HelpPanel (dedicated
-                   #   modals, not settings tabs), profile_parts/* (General/Personalization/
-                   #   Voice/Security/DataControls/Account real tabs + ComingSoon stubs +
-                   #   Skills/Mcp/Memories workspace tabs), useProfilePanel, useToolStatus,
-                   #   useSkills, useMemories, preferences handler
+                   #   modals, not settings tabs), profile_parts/* (General/Personalization
+                   #   (+CustomInstructionsDialog)/Voice/Usage/Security/DataControls/Account
+                   #   real tabs + ComingSoon stubs + Skills/Mcp/Memories workspace tabs),
+                   #   useProfilePanel, useToolStatus, useSkills, useMemories,
+                   #   useUsageSummary, preferences handler
     sharing/       # SharePanel + share handler
     reporting/     # ReportPanel + report handler
     search/        # SearchPanel + search handler

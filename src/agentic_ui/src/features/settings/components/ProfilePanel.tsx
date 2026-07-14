@@ -2,7 +2,6 @@ import { useEffect, useState, type ComponentType } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
     Bell,
-    Gauge,
     HardDrive,
     Puzzle,
     Shield,
@@ -13,7 +12,7 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { PremiumModalShell } from "@/shared/ui/premium-modal-shell";
 import { normalizeCustomInstructions, safeText } from "@/shared/lib/utils";
 import { NA, type PersonalityId, type RealtimeVoice, type VoiceModeLanguage } from "@/shared/lib/consts";
-import { Agent, ConversationShareListItem, ConversationSummary, CustomInstructions, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
+import { Agent, ConversationShareListItem, ConversationSummary, ConversationUsage, CustomInstructions, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
 import ProfileSidebar, { NAV_ITEMS } from "./profile_parts/ProfileSidebar";
 import AccountTab from "./profile_parts/AccountTab";
 import GeneralTab from "./profile_parts/GeneralTab";
@@ -24,9 +23,11 @@ import DataControlsTab from "./profile_parts/DataControlsTab";
 import McpServersTab from "./profile_parts/McpServersTab";
 import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
+import UsageTab from "./profile_parts/UsageTab";
 import ComingSoon from "./profile_parts/ComingSoon";
 import CustomInstructionsDialog from "./profile_parts/CustomInstructionsDialog";
 import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
+import { useUsageSummary } from "@/features/settings/hooks/useUsageSummary";
 
 /** Pre-taxonomy tab ids (persisted in UI snapshots) → their new section. */
 const LEGACY_TAB_MAP: Record<string, string> = {
@@ -115,14 +116,6 @@ const STUB_SECTIONS: Record<
         description: "Connect third-party plugins and OAuth-based app connectors to your workspace.",
         notes: ["MCP-powered tools are already available under Workspace → MCP Servers."],
     },
-    usage: {
-        icon: Gauge,
-        title: "Usage",
-        description: "Workspace-wide analytics for tokens, runs, and per-agent consumption.",
-        notes: [
-            "Per-conversation token usage is already available from the composer's usage panel, and per message via General → Per-message token usage.",
-        ],
-    },
     storage: {
         icon: HardDrive,
         title: "Storage",
@@ -197,6 +190,10 @@ type ProfilePanelProps = {
     onSelectVoiceModeVoice?: (voice: RealtimeVoice) => void;
     onSelectVoiceModeLanguage?: (language: VoiceModeLanguage) => void;
     preferencesSaving?: boolean;
+    // Usage tab — per-conversation stats computed client-side by the shell
+    // (null when no conversation is open); workspace rollup is fetched here.
+    conversationUsage?: ConversationUsage | null;
+    conversationTitle?: string | null;
 };
 
 export default function ProfilePanel({
@@ -248,6 +245,8 @@ export default function ProfilePanel({
     onSelectVoiceModeVoice,
     onSelectVoiceModeLanguage,
     preferencesSaving = false,
+    conversationUsage = null,
+    conversationTitle = null,
 }: ProfilePanelProps) {
     const reduceMotion = useReducedMotion();
     // The custom-instructions editor is owned here (not by the tab) so it can
@@ -272,6 +271,10 @@ export default function ProfilePanel({
     // (plus the hidden sections reachable via the Help submenu / shortcuts).
     const remappedTab = LEGACY_TAB_MAP[activeTab] ?? activeTab;
     const normalizedActiveTab = VALID_SECTION_IDS.has(remappedTab) ? remappedTab : "general";
+
+    // Workspace usage rollup — fetched lazily the first time the Usage tab is
+    // opened, cached (with a short TTL) across tab switches and panel closes.
+    const usage = useUsageSummary(user?.id ?? null, open && normalizedActiveTab === "usage");
 
     // Fall back to the General section if a nav item ever lacks a meta entry,
     // so a missing key degrades gracefully instead of crashing the panel.
@@ -434,6 +437,17 @@ export default function ProfilePanel({
 
                                     {normalizedActiveTab === "memories" && memoryInspector ? (
                                         <MemoriesTab agents={agents} {...memoryInspector} />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "usage" ? (
+                                        <UsageTab
+                                            summary={usage.summary}
+                                            loading={usage.loading}
+                                            error={usage.error}
+                                            onRefresh={usage.refresh}
+                                            conversationUsage={conversationUsage}
+                                            conversationTitle={conversationTitle}
+                                        />
                                     ) : null}
 
                                     {stub ? (
