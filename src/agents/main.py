@@ -137,6 +137,14 @@ async def _init_durable_checkpointer(app: FastAPI) -> None:
         "autocommit": True,           # required: setup() + CREATE INDEX CONCURRENTLY
         "row_factory": dict_row,      # required: reads must be dict rows
         "prepare_threshold": None,    # pgbouncer-safe; no server-side prepared stmts
+        # TCP keepalives: the Swarm overlay network on Dennis silently drops TCP
+        # flows idle for ~15 min, leaving pooled connections half-dead ("SSL
+        # SYSCALL error: EOF detected" on first use). Probing every 5 idle
+        # minutes keeps the flow tracked and detects dead peers early.
+        "keepalives": 1,
+        "keepalives_idle": 300,
+        "keepalives_interval": 30,
+        "keepalives_count": 3,
     }
     pool = AsyncConnectionPool(
         conninfo=cfg.url.get_secret_value(),
@@ -146,6 +154,10 @@ async def _init_durable_checkpointer(app: FastAPI) -> None:
         timeout=cfg.pool_timeout,
         open=False,
         kwargs=conn_kwargs,
+        # Health-check connections at checkout (the psycopg_pool equivalent of
+        # the bridge engine's pool_pre_ping): a connection that died while idle
+        # is discarded and replaced instead of surfacing an OperationalError.
+        check=AsyncConnectionPool.check_connection,
     )
     await pool.open()
     await pool.wait()

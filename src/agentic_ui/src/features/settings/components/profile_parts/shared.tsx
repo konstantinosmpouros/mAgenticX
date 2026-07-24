@@ -202,7 +202,7 @@ export const SkillHubRow = ({
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: "easeOut", delay: index * 0.05 }}
         whileTap={reduceMotion ? undefined : { scale: 0.99 }}
-        className="group flex w-full items-center gap-4 rounded-[1.4rem] bg-muted/30 px-5 py-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group flex w-full items-center gap-4 rounded-[1.4rem] bg-muted/30 px-5 py-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[639px]:gap-3 max-[639px]:px-4"
     >
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-background/60 text-primary">
             {icon}
@@ -218,8 +218,11 @@ export const SkillHubRow = ({
             </div>
             <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
         </div>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors group-hover:bg-background">
-            {actionLabel}
+        {/* On phones the row itself is the tap target — collapse the pill to the
+            chevron so the title isn't squeezed into an ellipsis by two shrink-0
+            neighbors (meta badge + action label). */}
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground transition-colors group-hover:bg-background max-[639px]:px-1.5">
+            <span className="max-[639px]:hidden">{actionLabel}</span>
             <ChevronRight className="h-3.5 w-3.5" aria-hidden />
         </span>
     </motion.button>

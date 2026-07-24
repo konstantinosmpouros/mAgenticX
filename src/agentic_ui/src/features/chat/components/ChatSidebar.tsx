@@ -347,6 +347,60 @@ export default function ChatSidebar({
   const showEmptyState = !isInitialLoading && !isLoadingMore && conversations.length === 0;
   const showInitialSkeleton = isInitialLoading || (isLoadingMore && conversations.length === 0);
 
+  // Shared between the desktop Help flyout and the mobile flattened section. A
+  // Radix SubContent can only open left/right of its trigger; on a phone the
+  // parent menu already spans the viewport, so neither side fits and the flyout
+  // clips off-screen — on mobile these render inline in the main menu instead.
+  const helpMenuItems = (
+    <>
+      <DropdownMenu.Item
+        onSelect={() => handleProfileMenuAction(onOpenHelp)}
+        className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+      >
+        <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+          <HelpCircle size={15} />
+        </div>
+        <span>Help center</span>
+      </DropdownMenu.Item>
+      <DropdownMenu.Item
+        onSelect={() => handleProfileMenuAction(onOpenShortcuts)}
+        className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+      >
+        <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+          <Keyboard size={15} />
+        </div>
+        <span>Keyboard shortcuts</span>
+      </DropdownMenu.Item>
+      <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+      <DropdownMenu.Item asChild>
+        <a
+          href="/terms"
+          target="_blank"
+          rel="noreferrer"
+          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+            <FileText size={15} />
+          </div>
+          <span>Terms of Service</span>
+        </a>
+      </DropdownMenu.Item>
+      <DropdownMenu.Item asChild>
+        <a
+          href="/privacy"
+          target="_blank"
+          rel="noreferrer"
+          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+            <ShieldCheck size={15} />
+          </div>
+          <span>Privacy Policy</span>
+        </a>
+      </DropdownMenu.Item>
+    </>
+  );
+
   return (
     <SidebarRoot
       collapsible="icon"
@@ -831,67 +885,27 @@ export default function ChatSidebar({
 
                   <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
 
-                  <DropdownMenu.Sub>
-                    <DropdownMenu.SubTrigger className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] data-[state=open]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
-                        <LifeBuoy size={15} />
-                      </div>
-                      <span>Help</span>
-                      <ChevronRight size={15} className="ml-auto text-muted-foreground" />
-                    </DropdownMenu.SubTrigger>
-                    <DropdownMenu.Portal>
-                      <DropdownMenu.SubContent
-                        sideOffset={8}
-                        className="z-50 w-56 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=right]:slide-in-from-left-2 data-[side=left]:slide-in-from-right-2"
-                      >
-                        <DropdownMenu.Item
-                          onSelect={() => handleProfileMenuAction(onOpenHelp)}
-                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                  {isMobile ? (
+                    helpMenuItems
+                  ) : (
+                    <DropdownMenu.Sub>
+                      <DropdownMenu.SubTrigger className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] data-[state=open]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
+                          <LifeBuoy size={15} />
+                        </div>
+                        <span>Help</span>
+                        <ChevronRight size={15} className="ml-auto text-muted-foreground" />
+                      </DropdownMenu.SubTrigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.SubContent
+                          sideOffset={8}
+                          className="z-50 w-56 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=right]:slide-in-from-left-2 data-[side=left]:slide-in-from-right-2"
                         >
-                          <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
-                            <HelpCircle size={15} />
-                          </div>
-                          <span>Help center</span>
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Item
-                          onSelect={() => handleProfileMenuAction(onOpenShortcuts)}
-                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
-                        >
-                          <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
-                            <Keyboard size={15} />
-                          </div>
-                          <span>Keyboard shortcuts</span>
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
-                        <DropdownMenu.Item asChild>
-                          <a
-                            href="/terms"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
-                          >
-                            <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
-                              <FileText size={15} />
-                            </div>
-                            <span>Terms of Service</span>
-                          </a>
-                        </DropdownMenu.Item>
-                        <DropdownMenu.Item asChild>
-                          <a
-                            href="/privacy"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
-                          >
-                            <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
-                              <ShieldCheck size={15} />
-                            </div>
-                            <span>Privacy Policy</span>
-                          </a>
-                        </DropdownMenu.Item>
-                      </DropdownMenu.SubContent>
-                    </DropdownMenu.Portal>
-                  </DropdownMenu.Sub>
+                          {helpMenuItems}
+                        </DropdownMenu.SubContent>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Sub>
+                  )}
 
                   <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
 
