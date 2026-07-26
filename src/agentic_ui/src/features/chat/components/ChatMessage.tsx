@@ -179,7 +179,11 @@ export function ChatMessage({
               onCancelEdit={onCancelEdit}
               onSubmitEdit={onSubmitEdit}
             />
-          ) : timeline ? (
+          ) : timeline && !(isStreamingThisMessage && timeline.blocks.length === 0) ? (
+            // While the run's reply is live but the agent hasn't emitted its
+            // first block yet (transition phase), render nothing — the pulsing
+            // transition dot below is the only "something is happening" signal.
+            // Rendering here too would double up ("Reasoning…" + dot).
             <AgentRunTimeline
               timeline={timeline}
               runId={message.id}

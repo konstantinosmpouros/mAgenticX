@@ -193,9 +193,35 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
 
     setCurrentMessage('');
     setAttachments([]);
-    // Show the transition dot while we wait for the backend to start emitting real AG-UI events.
+
+    // Optimistic echo (ChatGPT-style): the user's bubble renders the instant
+    // they hit send — before the /start round-trip — with the transition dot
+    // pulsing under it. The temp row is replaced wholesale when the server
+    // detail lands; on a brand-new chat the message setter builds a temporary
+    // conversation shell (empty id) so the hero view swaps immediately too.
+    const now = new Date();
+    const tempId = `temp-${now.getTime().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const tempMessage: MessageOut = {
+      id: tempId,
+      parentMessageId: lastPersistedMessageId,
+      sender: 'user',
+      content: currentMessage || undefined,
+      created_at: now,
+      updated_at: now,
+      attachments: apiAttachments.map((att, index) => ({
+        id: `${tempId}-att-${index}`,
+        name: att.name,
+        mime: att.mime,
+        size: att.size,
+        timestamp: now,
+        data: att.dataB64,
+      })),
+    };
+    setMessages((prev) => [...prev, tempMessage]);
+    // Show the transition dot until the agent's FIRST real signal arrives over
+    // the run WebSocket (thinking/tool/content) — not merely until /start returns.
     if (setShowAiTransition) setShowAiTransition(true);
-    
+
     try {
       // Create new conversation if needed
       if (messages.length === 0) {
@@ -266,16 +292,26 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
       }
     } catch (error) {
       console.error('Failed to send message:', error);
+      // Roll back the optimistic echo so no phantom message survives the failure:
+      // drop the temp row, dissolve a temporary conversation shell (empty id)
+      // back to the hero view, and put the draft back so nothing the user typed
+      // is lost.
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setCurrentConversation((prev) => (prev && !prev.id ? null : prev));
+      setCurrentMessage(currentMessage);
+      setAttachments(attachments);
+      if (setShowAiTransition) setShowAiTransition(false);
       const copy = getInferenceStartErrorCopy(error, {
         title: 'Error',
         description: 'Failed to send message. Please try again.',
       });
       toast({ ...copy, variant: 'destructive' });
     } finally {
-      // Always release the shared streaming state, even if the failure happened before streaming began.
+      // Always release the shared streaming state, even if the failure happened
+      // before streaming began. The transition dot is deliberately NOT cleared
+      // here on success — it lives until the first agent frame (applyRunEvent).
       streamAbortRef.current = null;
       setIsSendingMessage(false);
-      if (setShowAiTransition) setShowAiTransition(false);
     }
   };
 
@@ -386,6 +422,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
       persistUIState?.();
     } catch (error) {
       console.error('Failed to submit edited message', error);
+      if (setShowAiTransition) setShowAiTransition(false);
       const copy = getInferenceStartErrorCopy(error, {
         title: 'Failed to edit message',
         description: 'Please try again in a moment.',
@@ -393,9 +430,10 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
       toast({ ...copy, variant: 'destructive' });
       throw error;
     } finally {
-      // Edit submission owns the send/loading flags just like the main composer send flow.
+      // Edit submission owns the send/loading flags just like the main composer
+      // send flow. On success the transition dot stays up until the first agent
+      // frame (cleared in applyRunEvent), so it is only reset here on error.
       setIsSendingMessage?.(false);
-      if (setShowAiTransition) setShowAiTransition(false);
     }
   };
 
@@ -507,15 +545,16 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
       persistUIState?.();
     } catch (error) {
       console.error('Failed to retry AI message', error);
+      if (setShowAiTransition) setShowAiTransition(false);
       const copy = getInferenceStartErrorCopy(error, {
         title: 'Failed to retry message',
         description: 'Please try again in a moment.',
       });
       toast({ ...copy, variant: 'destructive' });
     } finally {
-      // Retry owns the same send/loading cleanup contract as send and edit-submit.
+      // Retry owns the same send/loading cleanup contract as send and edit-submit;
+      // the transition dot persists on success until the first agent frame.
       setIsSendingMessage?.(false);
-      if (setShowAiTransition) setShowAiTransition(false);
     }
   };
 

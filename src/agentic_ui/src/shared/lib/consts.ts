@@ -151,7 +151,9 @@ export const MCP_VARIANTS = {
   idleDark: "darkGrey" as const,
   hoverLight: "black" as const,
   hoverDark: "white" as const,
-  active: "magenta" as const,
+  // White, not magenta: the settings-nav Lucide icons render white when their
+  // item is selected, and the MCP PNG must match them.
+  active: "white" as const,
 };
 
 

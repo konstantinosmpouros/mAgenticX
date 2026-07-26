@@ -880,7 +880,10 @@ export function useChatWorkspace({
   const lastConversationIdRef = useRef<string | null>(null);
   useEffect(() => {
     const id = currentConversation?.id ?? null;
-    const wasEmpty = lastConversationIdRef.current === null;
+    // "" is the optimistic conversation shell of an in-flight first send — it
+    // counts as empty so the shell→real-id transition still promotes the URL
+    // (and `if (id && …)` below keeps the shell itself from being navigated to).
+    const wasEmpty = !lastConversationIdRef.current;
     lastConversationIdRef.current = id;
     if (id && wasEmpty && !id.startsWith("shared:") && !conversationId && !isTasksRoute) {
       navigate("/c/" + id, { replace: true });
@@ -1406,6 +1409,7 @@ export function useChatWorkspace({
         speakingMessageId={speakingMessageId}
         isStreaming={isCurrentConversationBusy}
         liveTimeline={activeConversationRun?.timeline ?? null}
+        activeRunAssistantMessageId={activeConversationRun?.assistantMessageId ?? null}
         scrollResetKey={currentConversation?.id ?? null}
       />
     );

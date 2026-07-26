@@ -65,6 +65,11 @@ type ChatBody = {
   onFlashUserActionBar: (messageId: string) => void;
   AiTransitionIndicator?: ComponentType;
   thinkingState: ThinkingState | null;
+  // The active run's assistant placeholder id. Fallback identity for the
+  // streaming reply when thinkingState hasn't activated yet (pre-first-signal)
+  // or was lost (e.g. reload mid-run) — keeps the reply's action bar hidden and
+  // its live timeline attached for the run's entire lifetime.
+  activeRunAssistantMessageId?: string | null;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   AgentIcon: LucideIcon;
   currentAgent?: Agent;
@@ -116,6 +121,7 @@ export default function ChatBody({
   onFlashUserActionBar,
   AiTransitionIndicator,
   thinkingState,
+  activeRunAssistantMessageId = null,
   messagesEndRef,
   AgentIcon,
   currentAgent,
@@ -181,11 +187,18 @@ export default function ChatBody({
   const prefersReducedMotion = useReducedMotion();
 
   const streamingMessageId = React.useMemo(() => {
+    // The active run is authoritative: its assistant placeholder is the
+    // streaming reply for the run's ENTIRE lifetime — including the transition
+    // phase before the agent's first signal, when thinkingState still holds
+    // the PREVIOUS turn's (done) branchPath and would misidentify the target.
+    if (activeRunAssistantMessageId) {
+      return activeRunAssistantMessageId;
+    }
     if (thinkingState?.branchPath && thinkingState.branchPath.length > 0) {
       return thinkingState.branchPath[thinkingState.branchPath.length - 1];
     }
     return null;
-  }, [thinkingState?.branchPath]);
+  }, [activeRunAssistantMessageId, thinkingState?.branchPath]);
 
   // The turn we anchor to the top while streaming: the user message that started
   // the run (the streaming reply's parent), falling back to the reply itself.

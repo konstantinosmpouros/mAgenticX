@@ -177,8 +177,20 @@ export function useInferenceRuns({
     });
 
     if (run.conversationId === currentConversationIdRef.current) {
-      setShowAiTransition?.(false);
       const thoughts = message?.thinking ?? (run.timeline ? timelineThoughtStrings(run.timeline) : run.thinking ?? []);
+      // "First real signal" = the agent has actually started doing something:
+      // a timeline block (thinking/tool/content), a thought, a pending HITL
+      // interrupt, or the run reaching a terminal state. The /start snapshot
+      // alone is NOT a signal — until one arrives the transition dot keeps
+      // pulsing under the user's message and no thinking UI is shown.
+      const hasAgentSignal =
+        !active ||
+        thoughts.length > 0 ||
+        (run.timeline?.blocks.length ?? 0) > 0 ||
+        (run.pendingInterrupts?.length ?? 0) > 0;
+      if (hasAgentSignal) {
+        setShowAiTransition?.(false);
+      }
       setThinkingState((prev: ThinkingState | null) => {
         if (!active && (!prev || prev.messageId !== run.assistantMessageId)) {
           return prev;
@@ -187,6 +199,14 @@ export function useInferenceRuns({
           return prev
             ? { ...prev, thoughts, isActive: false, isDone: true, endTime: prev.endTime ?? Date.now() }
             : null;
+        }
+        if (!hasAgentSignal) {
+          // Still in the transition phase. A lingering done-state from a
+          // PREVIOUS run must be dropped here: retry/edit switch the view to a
+          // new sibling branch, and the old state's branchPath would fail the
+          // transition dot's branch-visibility check and hide it. Null state
+          // (no branchPath) always passes, so the dot shows on the new branch.
+          return prev && prev.messageId === run.assistantMessageId ? prev : null;
         }
         return {
           messageId: run.assistantMessageId,
@@ -335,7 +355,9 @@ export function useInferenceRuns({
       return sortByUpdatedAtDesc(next);
     });
     setCurrentConversation((prev) => {
-      if (!prev || prev.id === response.detail.id) {
+      // Empty id = the optimistic conversation shell created by the send flow
+      // for a brand-new chat — always replace it with the real server detail.
+      if (!prev || !prev.id || prev.id === response.detail.id) {
         return response.detail;
       }
       return prev;
