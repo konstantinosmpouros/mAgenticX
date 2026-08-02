@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { buildSkillFileTree, cn } from "@/shared/lib/utils";
 import type { CustomSkillCreatePayload, Skill, SkillTreeNode, UserSkill } from "@/shared/lib/types";
 
@@ -440,7 +441,7 @@ export default function SkillBuilder({
                         <span className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                             Files
                         </span>
-                        <Tooltipless
+                        <TreeHeaderUploadButton
                             label="Upload files"
                             onClick={() => uploadInputRef.current?.click()}
                         />
@@ -585,17 +586,24 @@ export default function SkillBuilder({
                             aria-label="New file or folder path"
                             className="min-w-0 flex-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
-                        <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            onClick={addEntry}
-                            disabled={!newPath.trim()}
-                            aria-label="Add file or folder"
-                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                        >
-                            <Plus className="h-4 w-4" />
-                        </Button>
+                        <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={addEntry}
+                                    disabled={!newPath.trim()}
+                                    aria-label="Add file or folder"
+                                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" align="center">
+                                <p>Add file or folder</p>
+                            </TooltipContent>
+                        </Tooltip>
                     </div>
                 </div>
 
@@ -688,16 +696,22 @@ export default function SkillBuilder({
     );
 }
 
-// Tiny icon-button used in the tree header. Kept inline (not the shared Button
-// with a Tooltip) so the file-tree header stays compact.
-const Tooltipless = ({ label, onClick }: { label: string; onClick: () => void }) => (
-    <button
-        type="button"
-        onClick={onClick}
-        aria-label={label}
-        title={label}
-        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-        <Upload className="h-3.5 w-3.5" />
-    </button>
+// Tiny icon-button used in the tree header. Compact (not the shared Button) but
+// carries the same styled hover label as the other profile-panel action buttons.
+const TreeHeaderUploadButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
+    <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+            <button
+                type="button"
+                onClick={onClick}
+                aria-label={label}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                <Upload className="h-3.5 w-3.5" />
+            </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center">
+            <p>{label}</p>
+        </TooltipContent>
+    </Tooltip>
 );

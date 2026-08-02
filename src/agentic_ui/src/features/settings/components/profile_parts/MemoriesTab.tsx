@@ -277,7 +277,7 @@ export default function MemoriesTab({
                                                                         disabled={deleting}
                                                                         aria-label={`Delete memory ${mem.name}`}
                                                                         onClick={() => setConfirmingDelete(mem.name)}
-                                                                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                                                                        className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-[hsl(var(--hover-surface))] hover:text-destructive"
                                                                     >
                                                                         {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                                                     </Button>

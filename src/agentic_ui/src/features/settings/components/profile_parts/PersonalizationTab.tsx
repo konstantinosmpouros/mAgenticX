@@ -1,8 +1,18 @@
-import { Brain, ChevronRight, NotebookPen } from "lucide-react";
+import { useState } from "react";
+import { Brain, ChevronRight, NotebookPen, Sparkles } from "lucide-react";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import {
+    VoiceSelector,
+    VoiceSelectorContent,
+    VoiceSelectorEmpty,
+    VoiceSelectorGroup,
+    VoiceSelectorInput,
+    VoiceSelectorItem,
+    VoiceSelectorList,
+    VoiceSelectorTrigger,
+} from "@/shared/ui/ai-elements/voice-selector";
 import { PERSONALITY_PRESETS, type PersonalityId } from "@/shared/lib/consts";
-import { normalizeCustomInstructions, normalizePersonality } from "@/shared/lib/utils";
+import { cn, normalizeCustomInstructions, normalizePersonality } from "@/shared/lib/utils";
 import type { UserPreferences } from "@/shared/lib/types";
 import { InfoCard, PrefToggleRow, SoftPanel } from "./shared";
 
@@ -40,6 +50,7 @@ export default function PersonalizationTab({
     const personality = normalizePersonality(userPreferences?.personality);
     const selectedPreset =
         PERSONALITY_PRESETS.find((preset) => preset.id === personality) ?? PERSONALITY_PRESETS[0];
+    const [personalitySelectorOpen, setPersonalitySelectorOpen] = useState(false);
     const customInstructions = normalizeCustomInstructions(userPreferences?.customInstructions);
     const customInstructionsOn = customInstructions.enabled;
 
@@ -92,28 +103,86 @@ export default function PersonalizationTab({
                                     The base voice agents respond with — Default keeps each agent's own.
                                 </p>
                             </div>
-                            <Select
+                            {/* Personality picker mirrors the voice + language pickers:
+                                a trigger showing the current preset + a searchable command
+                                dialog, instead of a plain dropdown. */}
+                            <VoiceSelector
                                 value={personality}
-                                onValueChange={(value) => onSelectPersonality?.(normalizePersonality(value))}
-                                disabled={preferencesSaving}
+                                open={personalitySelectorOpen}
+                                onOpenChange={setPersonalitySelectorOpen}
                             >
-                                <SelectTrigger
-                                    aria-label="Personality"
-                                    className="h-11 w-full rounded-xl border-border/60 bg-background/60 px-3 text-sm font-semibold hover:bg-background/80 focus:ring-primary/60 sm:w-44"
-                                >
-                                    <SelectValue>{selectedPreset.label}</SelectValue>
-                                </SelectTrigger>
-                                <SelectContent className="z-[90]">
-                                    {PERSONALITY_PRESETS.map((preset) => (
-                                        <SelectItem key={preset.id} value={preset.id}>
-                                            <span className="flex min-w-0 flex-col">
-                                                <span className="font-semibold">{preset.label}</span>
-                                                <span className="text-xs text-muted-foreground">{preset.description}</span>
+                                <VoiceSelectorTrigger asChild>
+                                    <button
+                                        type="button"
+                                        aria-label="Personality"
+                                        disabled={preferencesSaving}
+                                        className={cn(
+                                            "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-56",
+                                            personalitySelectorOpen && "bg-background/80"
+                                        )}
+                                    >
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-semibold text-foreground">
+                                                {selectedPreset.label}
                                             </span>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                            <span className="block truncate text-xs text-muted-foreground">
+                                                {selectedPreset.description}
+                                            </span>
+                                        </span>
+                                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                            <Sparkles size={13} />
+                                        </span>
+                                    </button>
+                                </VoiceSelectorTrigger>
+                                <VoiceSelectorContent
+                                    title="Personality"
+                                    className="z-[90] max-w-md overflow-hidden rounded-2xl border border-border/70 bg-background p-0 shadow-2xl"
+                                >
+                                    <VoiceSelectorInput placeholder="Search personalities..." />
+                                    <VoiceSelectorList className="max-h-[22rem]">
+                                        <VoiceSelectorEmpty>No personality found.</VoiceSelectorEmpty>
+                                        <VoiceSelectorGroup heading="Personalities">
+                                            {PERSONALITY_PRESETS.map((preset) => {
+                                                const isSelected = preset.id === personality;
+
+                                                return (
+                                                    <VoiceSelectorItem
+                                                        key={preset.id}
+                                                        value={`${preset.label} ${preset.description}`}
+                                                        onSelect={() => {
+                                                            setPersonalitySelectorOpen(false);
+                                                            onSelectPersonality?.(normalizePersonality(preset.id));
+                                                        }}
+                                                        className={cn(
+                                                            "items-center gap-3 rounded-xl px-3 py-3",
+                                                            isSelected && "bg-primary/10"
+                                                        )}
+                                                    >
+                                                        <span
+                                                            className={cn(
+                                                                "flex size-7 shrink-0 items-center justify-center rounded-lg border",
+                                                                isSelected
+                                                                    ? "border-primary/40 bg-primary/15 text-primary"
+                                                                    : "border-border/60 bg-muted/40 text-muted-foreground"
+                                                            )}
+                                                        >
+                                                            <Sparkles className="h-3.5 w-3.5" />
+                                                        </span>
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="block truncate text-left font-medium text-foreground">
+                                                                {preset.label}
+                                                            </span>
+                                                            <span className="block truncate text-left text-xs text-muted-foreground">
+                                                                {preset.description}
+                                                            </span>
+                                                        </span>
+                                                    </VoiceSelectorItem>
+                                                );
+                                            })}
+                                        </VoiceSelectorGroup>
+                                    </VoiceSelectorList>
+                                </VoiceSelectorContent>
+                            </VoiceSelector>
                         </div>
                     </div>
                 </SoftPanel>
