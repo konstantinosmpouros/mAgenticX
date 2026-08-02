@@ -5,9 +5,8 @@ permissions:
   contents: read
   id-token: write
 
+# Manual-only: run from the Actions tab (was pull_request-triggered).
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 jobs:

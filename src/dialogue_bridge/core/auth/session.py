@@ -10,7 +10,7 @@ import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Request, Response, status
 from observability import get_logger, set_context
 
-from core.redis import create_redis_client
+from core.cache import create_redis_client
 from core.settings import settings
 from core.auth.tokens import (
     ACCESS_TYPE,

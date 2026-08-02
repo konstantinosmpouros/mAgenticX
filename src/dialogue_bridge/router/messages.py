@@ -13,6 +13,7 @@ from schemas import (
     UpdateConversationResponse,
 )
 from core.auth.session import require_csrf_protection, AuthUser
+from core.security.rate_limit import message_post_rate_limit
 from utils import (
     _preview,
     apply_ai_message_update,
@@ -33,6 +34,8 @@ logger = get_logger(__name__)
     response_model=UpdateConversationResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Add a new message to an existing conversation",
+    # Each call may carry the full attachment budget — caps blob growth.
+    dependencies=[Depends(message_post_rate_limit)],
 )
 async def addMessageToConversation(
     user_id: str,

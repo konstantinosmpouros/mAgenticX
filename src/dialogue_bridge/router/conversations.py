@@ -22,6 +22,7 @@ from schemas import (
     ConversationTitleUpdate,
 )
 from core.auth.session import AuthUser, require_csrf_protection
+from core.security.rate_limit import export_pdf_rate_limit, share_create_rate_limit
 from utils.attachments import encode_disposition
 from utils.share_export import conversation_pdf_filename, render_conversation_pdf, select_scoped_messages
 from utils import (
@@ -168,6 +169,8 @@ async def forkConversation(
     response_model=ConversationShareResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a read-only share snapshot for a conversation branch",
+    # Mints a public token — outward-facing artifact, per-user ceiling.
+    dependencies=[Depends(share_create_rate_limit)],
 )
 async def shareConversation(
     user_id: str,
@@ -237,6 +240,8 @@ async def shareConversation(
 @router.post(
     "/{user_id}/{conversation_id}/share/export-pdf",
     summary="Create a transient PDF export for a conversation share scope",
+    # Full-conversation server-side render — CPU/memory heavy, per-user ceiling.
+    dependencies=[Depends(export_pdf_rate_limit)],
 )
 async def exportConversationPdf(
     user_id: str,

@@ -17,7 +17,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable
 
 import redis.asyncio as aioredis
 
-from core.redis import create_redis_client
+from core.cache import create_redis_client
 from core.settings import settings
 from observability import get_logger
 

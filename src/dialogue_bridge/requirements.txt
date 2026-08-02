@@ -9,14 +9,14 @@ pgvector==0.3.6  # SQLAlchemy Vector column type for per-message conversation em
 aiosqlite==0.21.0
 alembic==1.13.3
 psycopg2-binary==2.9.10  # used only by alembic migrations (sync driver)
-pydantic==2.11.7
+pydantic==2.12.5
 pydantic-settings==2.7.1
 python-jose[cryptography]==3.5.0
 msal==1.31.1  # Microsoft Entra ID OIDC relying-party (auth-code + PKCE) sign-in
 python-multipart==0.0.26
 fonttools==4.60.1
-slowapi==0.1.9
-redis==5.2.1
+redis==8.1.0
+fastapi-redis-sdk==0.8.0
 croniter==2.0.5  # cron-expression next-fire computation for scheduled tasks
 tzdata==2025.2
 pyasn1>=0.6.3 # not directly required, pinned by Snyk to avoid a vulnerability

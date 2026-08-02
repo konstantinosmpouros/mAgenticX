@@ -69,7 +69,7 @@ sequenceDiagram
 
 ## Phase 1 — Vault Credential Validation
 
-The browser sends `POST /v1/auth/login` with `{username, password}`. The endpoint is rate-limited per client IP using SlowAPI (`AUTH_RATE_LIMIT_MAX_ATTEMPTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`); a `429` carries a `Retry-After` header.
+The browser sends `POST /v1/auth/login` with `{username, password}`. The endpoint is rate-limited per resolved client IP via `fastapi-redis-sdk` (`AUTH_RATE_LIMIT_MAX_ATTEMPTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`, Redis-counted so the brute-force guard survives restarts); a `429` carries `Retry-After` + `X-RateLimit-*` headers. The same limit guards `GET /v1/auth/oidc/login`.
 
 `VaultAuthenticator.authenticate()` issues a single HTTP call to Vault's userpass backend:
 

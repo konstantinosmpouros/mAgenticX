@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import UserTable, get_db, upsert_user_from_identity, IdentityConflictError
 from schemas import AuthRequest, AuthResponse
-from core.security.rate_limit import AUTHENTICATE_LIMIT, limiter
+from core.security.rate_limit import auth_rate_limit, refresh_rate_limit
 from core.settings import settings
 from core.auth.session import (
     AuthContext,
@@ -39,8 +39,12 @@ async def _load_user(db: AsyncSession, user_id: str) -> UserTable | None:
     return result.scalar_one_or_none()
 
 
-@router.post("/login", response_model=AuthResponse, status_code=status.HTTP_200_OK)
-@limiter.limit(AUTHENTICATE_LIMIT)
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(auth_rate_limit)],  # per-IP brute-force guard
+)
 async def authenticate(
     creds: AuthRequest,
     request: Request,
@@ -144,7 +148,13 @@ async def session_me(
     return AuthResponse(**build_auth_response(user, access_ttl_for_session(ctx)))
 
 
-@router.post("/session/refresh", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/session/refresh",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    # Token mint hits Vault Transit — per-IP ceiling on the pre-auth path.
+    dependencies=[Depends(refresh_rate_limit)],
+)
 async def refresh_session(
     response: Response,
     _: None = Depends(require_csrf_protection),
@@ -220,8 +230,7 @@ def _oidc_redirect_uri(request: Request) -> str:
     return f"{proto}://{host}/api/v1/auth/oidc/callback"
 
 
-@router.get("/oidc/login")
-@limiter.limit(AUTHENTICATE_LIMIT)
+@router.get("/oidc/login", dependencies=[Depends(auth_rate_limit)])
 async def oidc_login(request: Request) -> RedirectResponse:
     """Begin the Entra auth-code flow — 302 the browser to Microsoft."""
     if not settings.entra.enabled:

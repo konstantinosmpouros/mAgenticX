@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from slowapi.errors import RateLimitExceeded
 
 from core.error_handling import DialogueBridgeExceptionHandler
 from observability.events import get_logger
@@ -22,12 +21,10 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     return await bridge_exception_handler.handle_unhandled_exception(request, exc)
 
 
-async def _rate_limit_exception_handler(request: Request, exc: RateLimitExceeded):
-    return await bridge_exception_handler.handle_rate_limit_exception(request, exc)
-
-
 def register_exception_handlers(app: FastAPI) -> None:
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exception_handler)
+    # 429s are handled by fastapi-redis-sdk's own RateLimitExceeded handler
+    # (registered by install_redis_sdk), which stamps Retry-After and the
+    # X-RateLimit-* headers — no bridge-side handler needed.
     app.add_exception_handler(HTTPException, _http_exception_handler)
     app.add_exception_handler(RequestValidationError, _validation_exception_handler)
     app.add_exception_handler(Exception, _unhandled_exception_handler)

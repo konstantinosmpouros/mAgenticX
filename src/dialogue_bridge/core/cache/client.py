@@ -1,12 +1,16 @@
 """Single source of truth for the bridge's async Redis client construction.
 
-Both the inference event log (``utils.event_log``) and the skills cache
-(``utils.skills_cache``) open their own connection pool, but the connection
-configuration — credentials, encoding, and especially TLS trust — must be
-identical. Keeping it in one factory prevents the two from drifting: a prior
+Every raw-Redis consumer — the inference event log (``utils.event_log``), the
+logout denylist (``core.auth.session``), the OIDC state store
+(``core.auth.oidc``), and the skills cache backend (``core.cache.policies``) —
+opens its pool through this factory so the connection configuration
+(credentials, encoding, and especially TLS trust) can never drift: a prior
 divergence left the skills cache without the internal CA, so it failed every
 ``rediss://`` handshake with CERTIFICATE_VERIFY_FAILED while the event log
 connected fine.
+
+The fastapi-redis-sdk integration (``core.cache.integration``) maintains its
+own pool from the SAME settings — see that module for how the two stay in sync.
 """
 from __future__ import annotations
 

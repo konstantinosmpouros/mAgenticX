@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from observability import get_logger, set_context
 
@@ -13,7 +13,7 @@ from schemas import (
     InferenceRunResumeIn,
 )
 from core.auth.session import AuthUser, authenticate_websocket_user, require_csrf_protection
-from core.security.rate_limit import INFERENCE_RATE_LIMIT, inference_user_key, limiter
+from core.security.rate_limit import allow_ws_connect, inference_rate_limit
 from utils import validate_userId
 from utils.inference_runs import (
     build_run_event_payload,
@@ -38,6 +38,7 @@ _WS_UNAUTHORIZED = 4401
 _WS_FORBIDDEN = 4403
 _WS_NOT_FOUND = 4404
 _WS_BAD_REQUEST = 4400
+_WS_RATE_LIMITED = 4429
 
 
 router = APIRouter()
@@ -47,10 +48,9 @@ router = APIRouter()
     "/runs/{user_id}/start",
     response_model=InferenceStartResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(inference_rate_limit)],  # per-user run-start ceiling
 )
-@limiter.limit(INFERENCE_RATE_LIMIT, key_func=inference_user_key)
 async def startInferenceFlow(
-    request: Request,
     user_id: str,
     payload: InferenceStartPayload,
     current_user: AuthUser = Depends(validate_userId),
@@ -123,6 +123,12 @@ async def inference_run_websocket(
     user = await authenticate_websocket_user(websocket.cookies, user_id)
     if user is None:
         await websocket.close(code=_WS_UNAUTHORIZED, reason="Authentication required")
+        return
+
+    # Connect-rate guard: the SDK's rate-limit middleware is HTTP-only, so the
+    # socket route meters its own handshakes (per verified user, fail-open).
+    if not await allow_ws_connect(websocket, user_id):
+        await websocket.close(code=_WS_RATE_LIMITED, reason="Too many connections; retry shortly")
         return
 
     run = await get_active_run_for_user(db, user_id, run_id)
