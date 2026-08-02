@@ -11,10 +11,12 @@ from core.security.internal_trust import (
     resolve_client_ip,
 )
 from core.security.rate_limit import (
-    AUTHENTICATE_LIMIT,
-    INFERENCE_RATE_LIMIT,
-    client_identifier,
-    inference_user_key,
-    limiter,
+    auth_rate_limit,
+    exempt_from_budget,
+    inference_rate_limit,
+    ip_identity,
+    speech_rate_limit,
+    user_path_identity,
+    verified_identity,
 )
 from core.security.tls import get_httpx_client_cert, get_httpx_verify

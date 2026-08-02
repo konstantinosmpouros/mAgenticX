@@ -22,9 +22,7 @@ from observability import (
     get_logger,
     register_exception_handlers,
 )
-from slowapi.middleware import SlowAPIMiddleware
-from core.security.rate_limit import limiter
-from core.security.user_rate_limit import UserRateLimitMiddleware
+from core.cache.integration import install_redis_sdk
 
 from router import (
     auth_router,
@@ -128,10 +126,6 @@ app = FastAPI(
 )
 
 
-# Attach rate limiter to app state
-app.state.limiter = limiter
-
-
 # Register exception handlers and middlewares
 register_exception_handlers(app)
 app.add_middleware(
@@ -143,8 +137,11 @@ app.add_middleware(
     expose_headers=list(settings.cors.expose_headers),
     max_age=settings.cors.max_age_seconds,
 )
-app.add_middleware(SlowAPIMiddleware)
-app.add_middleware(UserRateLimitMiddleware)
+# Redis SDK: pool lifespan (wraps the one above), the global per-identity
+# rate-limit budget middleware, and the DI caching layer. Added here so the
+# budget sits between request logging (outermost) and CORS — the same slot
+# the old UserRateLimitMiddleware occupied.
+install_redis_sdk(app)
 app.add_middleware(RequestLoggingMiddleware)
 
 

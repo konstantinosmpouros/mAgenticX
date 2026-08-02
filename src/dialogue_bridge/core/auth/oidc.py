@@ -26,7 +26,7 @@ import msal
 import redis.asyncio as aioredis
 
 from core.auth.providers import AuthIdentity
-from core.redis import create_redis_client
+from core.cache import create_redis_client
 from core.settings import settings
 from observability import get_logger
 

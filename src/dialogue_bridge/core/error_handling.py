@@ -4,7 +4,6 @@ from typing import Any, Awaitable, Callable, NoReturn, TypeVar
 import httpx
 from fastapi import HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
-from slowapi.errors import RateLimitExceeded
 from starlette.responses import JSONResponse
 
 
@@ -59,19 +58,6 @@ class DialogueBridgeExceptionHandler:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"detail": "Something went wrong. Please try again."},
-        )
-
-
-    async def handle_rate_limit_exception(self, request: Request, exc: RateLimitExceeded) -> JSONResponse:
-        self._logger.warning(
-            "rate_limit_exceeded",
-            "Rate limit exceeded",
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            limit=getattr(exc, "detail", None),
-        )
-        return JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            content={"detail": "Too many requests. Please wait and try again."},
         )
 
 

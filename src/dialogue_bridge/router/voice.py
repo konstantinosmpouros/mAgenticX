@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.auth.session import AuthUser, require_csrf_protection
+from core.security.rate_limit import voice_session_rate_limit
 from core.database import AttachmentTable, ConversationTable, MessageTable, get_db
 from core.settings import settings
 from schemas import (
@@ -42,6 +43,8 @@ logger = get_logger(__name__)
     response_model=RealtimeVoiceSessionOut,
     status_code=status.HTTP_200_OK,
     summary="Create a realtime voice WebRTC session",
+    # Opens a paid OpenAI Realtime session — strict per-user ceiling.
+    dependencies=[Depends(voice_session_rate_limit)],
 )
 async def createRealtimeVoiceSession(
     user_id: str,

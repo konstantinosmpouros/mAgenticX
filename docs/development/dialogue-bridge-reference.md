@@ -65,7 +65,10 @@ src/dialogue_bridge/
 ├── core/
 │   ├── settings.py             Pydantic-settings; every group + boot validators + *_FILE secret resolution
 │   ├── error_handling.py       Shared exception handler + upstream-retry helper
-│   ├── redis.py                Shared async Redis client factory (rediss:// TLS conditional)
+│   ├── cache/
+│   │   ├── client.py           Shared async Redis client factory (rediss:// TLS conditional)
+│   │   ├── integration.py      fastapi-redis-sdk install (pool lifespan, global budget, caching); env prime→warm→scrub
+│   │   └── policies.py         Cache key families, TTL/eviction-group registry, shared imperative CacheBackend
 │   ├── auth/
 │   │   ├── session.py          login/refresh/logout, cookies, CSRF, auth dependencies, Redis sid denylist, refresh_guard
 │   │   ├── tokens.py           mint/verify stateless JWTs (RS256 via Vault Transit)
@@ -73,8 +76,7 @@ src/dialogue_bridge/
 │   │   └── vault.py            Vault client (AppRole login, Transit sign/verify, userpass)
 │   ├── security/
 │   │   ├── internal_trust.py   require_internal_caller, internal_service_headers, client-IP resolution
-│   │   ├── rate_limit.py       slowapi limiter (per-IP /login, per-user inference key)
-│   │   ├── user_rate_limit.py  UserRateLimitMiddleware (app-wide per-user Redis fixed-window)
+│   │   ├── rate_limit.py       fastapi-redis-sdk policies: verified-identity budget + auth/inference/speech deps
 │   │   └── tls.py              httpx verify=/cert= mTLS helpers
 │   └── database/
 │       ├── engine.py           async engine, SessionLocal, get_db, Postgres verify-full SSL, Base, gen_uuid
@@ -110,11 +112,11 @@ Import-time `sys.path.append(PACKAGE_ROOT)` (`main.py:1-7`) → absolute imports
 4. Launch `run_embedding_sweeper(stop_event)` as a background task (no-op if `EMBEDDINGS_ENABLED=false`).
 5. `yield`. Shutdown: set the sweeper stop event → `scheduler.stop()` → `await asyncio.wait_for(embedding_task, 10)` (cancel on timeout).
 
-**App** — `FastAPI(title="Bridge Service", lifespan=lifespan)`, `app.state.limiter = limiter`, `register_exception_handlers(app)` (handles `RateLimitExceeded`, `HTTPException`, `RequestValidationError`, catch-all `Exception`).
+**App** — `FastAPI(title="Bridge Service", lifespan=lifespan)`, `register_exception_handlers(app)` (handles `HTTPException`, `RequestValidationError`, catch-all `Exception`; 429s are produced by fastapi-redis-sdk's own `RateLimitExceeded` handler, registered by `install_redis_sdk`).
 
-**Middleware** (added `main.py:136-147`; request-path order is reverse of add order): `RequestLoggingMiddleware → UserRateLimitMiddleware → SlowAPIMiddleware → CORSMiddleware → routes`. Then `add_pagination(app)`. `GET /health` → `{"status":"ok"}`, `include_in_schema=False`, exempt from logging + user-rate-limit.
+**Middleware** (request-path order is reverse of add order): `RequestLoggingMiddleware → RateLimitMiddleware (SDK global budget) → CacheResponseCaptureMiddleware (SDK) → CORSMiddleware → routes`. `install_redis_sdk(app)` (`core/cache/integration.py`) adds the SDK middlewares + wraps the lifespan with the Redis pool context. Then `add_pagination(app)`. `GET /health` → `{"status":"ok"}`, `include_in_schema=False`, exempt from logging + the budget.
 
-**15 routers, all `/v1/*`** (`main.py:160-237`): `auth`, `inference`, `speech`, `voice`, `catalog`, `preferences`, `conversations`, `messages`, `attachments`, `shared-conversations`, `search`, `skills`, `memories`, `scheduled-tasks`, and `internal` (service-to-service, `require_internal_caller` + nginx-denied).
+**16 routers, all `/v1/*`**: `auth`, `inference`, `speech`, `voice`, `catalog`, `preferences`, `usage`, `conversations`, `messages`, `attachments`, `shared-conversations`, `search`, `skills`, `memories`, `scheduled-tasks`, and `internal` (service-to-service, `require_internal_caller` + nginx-denied).
 
 **Scheduler loop** (`utils/scheduled_tasks.py`): every `poll_interval_seconds` (30) → `_tick()`: reap timed-out headless fires → `claim_due_tasks` under `SELECT … FOR UPDATE SKIP LOCKED` (advances `next_run_at` and commits *before* firing → deploy-overlap double-fire safety) → `fire_scheduled_task` (reuses `start_inference_flow` + `inference_run_manager.launch`).
 
@@ -222,7 +224,7 @@ Partial/`postgresql_where` and pgvector-opclass indexes are always hand-written 
 ## 8. Security (CSRF, rate limits, internal trust, TLS)
 
 - **CSRF** — double-submit cookie on every state-mutating endpoint (`require_csrf_protection`).
-- **Rate limiting, two layers** — (1) slowapi per-IP on `/login` only (`resolve_client_ip` key); (2) `UserRateLimitMiddleware` app-wide: ~300/min per verified-JWT-user (IP fallback), Redis fixed-window, **fails open**, exempts `/health` and `/v1/internal/*`. Inference `/start` additionally carries a per-user slowapi limit (10/60, keyed by path `user_id`).
+- **Rate limiting, one engine (fastapi-redis-sdk), two layers** — policies in `core/security/rate_limit.py`, installed by `core/cache/integration.py`. (1) Global budget middleware: ~300/min per verified-JWT-user (`verified_identity`; IP fallback), Redis-counted (atomic Lua window; survives deploys, holds across replicas), header-silent, exempts `/health` + `/v1/internal/*`. (2) Strict `rate_limit` dependencies (emit `X-RateLimit-*` + `Retry-After` on 429) — policy: *paid APIs, outward artifacts, and unbounded-storage writes get their own per-user window*: auth `/login` + `/oidc/login` 4/60 per resolved IP, `/session/refresh` 10/60 per IP (Vault Transit mint), inference `/start` 10/60 per user, speech router 20/60 per user, voice `/realtime/{uid}/session` 15/60 (paid Realtime), share create 10/60 (public tokens), PDF export 10/60 (heavy render), custom-skill upload 10/60 (disk writes), message POST 30/60 (blob growth), suggestions 10/60 (LLM-backed). The run-stream **WebSocket** is outside the HTTP middleware — `allow_ws_connect` meters handshakes in-route (20/60 per verified user, close code `4429`). Everything **fails open** on a Redis outage (logged + counted as degraded), same stance as the logout denylist.
 - **Internal trust** (`core/security/internal_trust.py`) — `require_internal_caller` validates `X-Internal-Proxy-Secret` via `secrets.compare_digest` (403 else); `internal_service_headers(request_id[,session_id,user_id])` builds outbound headers for the agents hop (always the proxy secret; auto-derives raw `X-User-Id`/`X-Session-Id` from the request context so ids correlate with the DB); `resolve_client_ip` only trusts forwarded headers from a trusted proxy.
 - **mTLS** (`core/security/tls.py`) — `get_httpx_verify()`/`get_httpx_client_cert()` for the bridge→agents hop; same single-SSLContext approach as the agents service.
 - **Three unauthenticated endpoints**: `GET /health`, `GET /v1/shared-conversations/{token}` (public share), `GET /v1/attachments/public/{token}` (HMAC-token-gated Office blob for the Online Viewer, served with `CSP: default-src 'none'; sandbox;` + `nosniff` + `no-store`).
@@ -322,7 +324,9 @@ agents /stream (SSE) → bridge _do_stream: _parse_sse_bytes → runtime.apply_e
 ```
 The detached task produces into Redis whether or not any browser is attached — that's what makes reconnect/resume/replay work.
 
-**`core/redis.py`** — one `create_redis_client()` shared by the event log + skills cache. `decode_responses=True`. TLS is conditional on `rediss://` (verify the server cert against `INTERNAL_CA_CERT_PATH`, `ssl_cert_reqs="required"`, hostname check on — Redis is password-over-verified-TLS, **not** mTLS). Password from `REDIS_PASSWORD[_FILE]` (empty → no AUTH, local dev).
+**`core/cache/client.py`** — one `create_redis_client()` shared by every raw-Redis consumer (event log, sid denylist, OIDC state, the skills CacheBackend). `decode_responses=True`. TLS is conditional on `rediss://` (verify the server cert against `INTERNAL_CA_CERT_PATH`, `ssl_cert_reqs="required"`, hostname check on — Redis is password-over-verified-TLS, **not** mTLS). Password from `REDIS_PASSWORD[_FILE]` (empty → no AUTH, local dev).
+
+**`core/cache/integration.py`** — fastapi-redis-sdk installation. The SDK's settings singleton is env-driven, so the installer *primes* the env from `core.settings` (credentialed `REDIS_URL` — the SDK's URL mode ignores its separate password field — plus `mx:sdk` key prefix, CA path for `rediss://`, header/fail-open flags), warms `get_settings()` once, then restores the password-less URL so nothing credentialed lingers in the process env or reaches subprocesses (alembic). **`core/cache/policies.py`** — cache key families + eviction groups + the shared imperative `CacheBackend` (used by `utils/skills_cache.py`; per-(user, agent) entries join group `skills:agents:{user_id}`, so pool-deletion cascade is one `delete_group`).
 
 **`utils/event_log.py` — `RedisEventLog`:**
 - Stream key `inference:run:{run_id}:events`.

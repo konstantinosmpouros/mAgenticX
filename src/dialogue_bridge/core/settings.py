@@ -532,9 +532,41 @@ class RateLimitSettings(BaseSettings):
     auth_window_seconds: int = Field(60, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_attempts: int = Field(10, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
     inference_window_seconds: int = Field(60, validation_alias="INFERENCE_RATE_LIMIT_WINDOW_SECONDS")
-    # App-level per-user cap enforced by UserRateLimitMiddleware across the whole
-    # backend: one aggregate budget per authenticated user (per-IP fallback for
-    # unauthenticated requests), counted in Redis. Default 300 calls / 60s.
+    # Speech endpoints (dictation, read-aloud, previews) proxy paid OpenAI
+    # audio APIs — strict per-user ceiling, distinct from the inference one.
+    speech_max_attempts: int = Field(20, validation_alias="SPEECH_RATE_LIMIT_MAX_ATTEMPTS")
+    speech_window_seconds: int = Field(60, validation_alias="SPEECH_RATE_LIMIT_WINDOW_SECONDS")
+    # Realtime voice session creation opens a paid OpenAI Realtime session —
+    # the most expensive single call in the API.
+    voice_session_max_attempts: int = Field(15, validation_alias="VOICE_SESSION_RATE_LIMIT_MAX_ATTEMPTS")
+    voice_session_window_seconds: int = Field(60, validation_alias="VOICE_SESSION_RATE_LIMIT_WINDOW_SECONDS")
+    # PDF export renders a whole conversation server-side (CPU/memory heavy).
+    export_pdf_max_attempts: int = Field(10, validation_alias="EXPORT_PDF_RATE_LIMIT_MAX_ATTEMPTS")
+    export_pdf_window_seconds: int = Field(60, validation_alias="EXPORT_PDF_RATE_LIMIT_WINDOW_SECONDS")
+    # Share-link creation mints public tokens — outward-facing artifacts.
+    share_create_max_attempts: int = Field(10, validation_alias="SHARE_CREATE_RATE_LIMIT_MAX_ATTEMPTS")
+    share_create_window_seconds: int = Field(60, validation_alias="SHARE_CREATE_RATE_LIMIT_WINDOW_SECONDS")
+    # Custom-skill upload writes multi-file folders onto the agents-service disk.
+    skill_upload_max_attempts: int = Field(10, validation_alias="SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS")
+    skill_upload_window_seconds: int = Field(60, validation_alias="SKILL_UPLOAD_RATE_LIMIT_WINDOW_SECONDS")
+    # Message creation can carry up to the full attachment budget per call —
+    # caps blob-storage growth independent of the aggregate budget.
+    message_post_max_attempts: int = Field(30, validation_alias="MESSAGE_RATE_LIMIT_MAX_ATTEMPTS")
+    message_post_window_seconds: int = Field(60, validation_alias="MESSAGE_RATE_LIMIT_WINDOW_SECONDS")
+    # Starter suggestions proxy an LLM generation call on the agents service.
+    suggestions_max_attempts: int = Field(10, validation_alias="SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS")
+    suggestions_window_seconds: int = Field(60, validation_alias="SUGGESTIONS_RATE_LIMIT_WINDOW_SECONDS")
+    # Session refresh mints tokens via Vault Transit; keyed per client IP
+    # (pre-auth path, like login).
+    refresh_max_attempts: int = Field(10, validation_alias="REFRESH_RATE_LIMIT_MAX_ATTEMPTS")
+    refresh_window_seconds: int = Field(60, validation_alias="REFRESH_RATE_LIMIT_WINDOW_SECONDS")
+    # Run-stream WebSocket handshakes — the SDK middleware is HTTP-only, so the
+    # socket route enforces this itself (see rate_limit.allow_ws_connect).
+    ws_connect_max_attempts: int = Field(20, validation_alias="WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS")
+    ws_connect_window_seconds: int = Field(60, validation_alias="WS_CONNECT_RATE_LIMIT_WINDOW_SECONDS")
+    # App-wide per-identity budget (the fastapi-redis-sdk global limiter): one
+    # aggregate budget per verified user (per-IP fallback for unauthenticated
+    # requests), counted in Redis. Default 300 calls / 60s.
     user_max_calls: int = Field(300, validation_alias="USER_RATE_LIMIT_MAX_CALLS")
     user_window_seconds: int = Field(60, validation_alias="USER_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_active_runs: int = Field(5, validation_alias="INFERENCE_MAX_ACTIVE_RUNS_PER_USER")

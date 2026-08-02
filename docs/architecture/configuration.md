@@ -120,11 +120,25 @@ Federated sign-in alongside username/password. **Inert unless `ENTRA_TENANT_ID` 
 | `AGENTS_SERVICE_URL` | `https://agents:8003` | Base URL of the agents service. |
 | `INFERENCE_TOOL_RESULT_MAX_CHARS` | `16000` | Cap on stored `TOOL_CALL_RESULT` content in the event log; oversized results are truncated and flagged. |
 | `INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS` | `10.0` | Timeout waiting to subscribe to a run's Redis stream. |
-| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `4` | Login attempts per window. |
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `4` | Login attempts per window (per resolved client IP). |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60` | Auth rate-limit window. |
-| `INFERENCE_RATE_LIMIT_MAX_ATTEMPTS` | `10` | Inference starts per window. |
+| `INFERENCE_RATE_LIMIT_MAX_ATTEMPTS` | `10` | Inference starts per window (per user). |
 | `INFERENCE_RATE_LIMIT_WINDOW_SECONDS` | `60` | Inference rate-limit window. |
+| `SPEECH_RATE_LIMIT_MAX_ATTEMPTS` | `20` | Speech calls (dictation, read-aloud, previews) per window (per user). |
+| `SPEECH_RATE_LIMIT_WINDOW_SECONDS` | `60` | Speech rate-limit window. |
+| `VOICE_SESSION_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `15` / `60` | Realtime voice session creation (paid OpenAI Realtime) per user. |
+| `EXPORT_PDF_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Conversation PDF exports (CPU-heavy render) per user. |
+| `SHARE_CREATE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Share-link creation (mints public tokens) per user. |
+| `SKILL_UPLOAD_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Custom-skill uploads (agents-service disk writes) per user. |
+| `MESSAGE_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `30` / `60` | Message creation (attachment/blob growth) per user. |
+| `SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Starter-suggestion generation (LLM-backed) per user. |
+| `REFRESH_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `10` / `60` | Session refresh (Vault Transit mint) per client IP. |
+| `WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS` / `_WINDOW_SECONDS` | `20` / `60` | Run-stream WebSocket handshakes per user (enforced in-route; close code `4429`). |
+| `USER_RATE_LIMIT_MAX_CALLS` | `300` | App-wide aggregate budget per verified user (per-IP fallback) per window. |
+| `USER_RATE_LIMIT_WINDOW_SECONDS` | `60` | Budget window. |
 | `INFERENCE_MAX_ACTIVE_RUNS_PER_USER` | `5` | Concurrent in-flight runs per user. |
+
+All rate limits are counted in **Redis** via `fastapi-redis-sdk` (they survive restarts and hold across replicas) and **fail open** on a Redis outage. The SDK's own `REDIS_*` env settings are **not** read from the environment — `core/cache/integration.py` primes them programmatically from the values above plus the Redis section below (so the file-backed password and internal CA are honored), then scrubs the password back out of the process env.
 
 ### Redis (`RedisSettings`)
 

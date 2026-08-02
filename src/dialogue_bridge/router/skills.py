@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Query, status
 from observability import get_logger, set_context
 
 from core.auth.session import AuthUser, require_csrf_protection, require_current_user
+from core.security.rate_limit import skill_upload_rate_limit
 from schemas import (
     CustomSkillCreateRequest,
     Skill,
@@ -135,6 +136,8 @@ async def add_global_to_pool(
     "/users/{user_id}/custom",
     response_model=UserSkill,
     status_code=status.HTTP_201_CREATED,
+    # Writes multi-file folders onto the agents-service disk — per-user ceiling.
+    dependencies=[Depends(skill_upload_rate_limit)],
 )
 async def create_custom_skill(
     user_id: str,

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser, require_csrf_protection
 from core.database import ConversationTable, MessageTable, UserPreferencesTable, get_db
+from core.security.rate_limit import speech_rate_limit
 from schemas import DictationResponse, ReadAloudPreviewRequest
 from utils import (
     generate_read_aloud_audio,
@@ -17,7 +18,9 @@ from utils import (
 )
 
 
-router = APIRouter()
+# Every speech endpoint proxies a paid OpenAI audio API — one per-user ceiling
+# covers the whole router (dictation, read-aloud, previews).
+router = APIRouter(dependencies=[Depends(speech_rate_limit)])
 logger = get_logger(__name__)
 
 
