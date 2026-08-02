@@ -463,6 +463,47 @@ class FilesystemSettings(BaseSettings):
     # the AGENTS.md index never exceeds this many rows and stays context-cheap.
     memory_max_entries: int = Field(60, validation_alias="MEMORY_MAX_ENTRIES")
 
+    # --- Sandbox-execution kill switch (fail-closed) ------------------------
+    # Gates the workspace's ability to run commands at all: deepagents exposes
+    # its `execute` tool exactly when the composite default backend implements
+    # SandboxBackendProtocol. Today that default is StateBackend (no execution
+    # path), but that safety is an accident of defaults — this flag turns it
+    # into a verified invariant: while False, workspace assembly REFUSES to
+    # mint a sandbox-capable default backend (see runtime/filesystem/
+    # workspace.py). Flipping this to True is reserved for the future
+    # sandboxed-execution rollout and must never happen before a real
+    # isolation kernel (gVisor-class) is in place.
+    sandbox_execution_enabled: bool = Field(False, validation_alias="SANDBOX_EXECUTION_ENABLED")
+
+    # --- Workspace retention (input/ and output/ are TTL-erased caches) -----
+    # Conversation input/ files are bridge-seeded copies of DB attachment blobs
+    # (re-materialized per run), and presented output/ files are read back at
+    # run finalize and persisted as generated-attachment blobs — so both dirs
+    # are caches of DB-owned data and safe to erase after a TTL. 0 disables
+    # that scope's sweep (logged loudly at startup). Sweeper details live in
+    # runtime/filesystem/retention.py.
+    input_ttl_hours: int = Field(72, validation_alias="WORKSPACE_INPUT_TTL_HOURS")
+    output_ttl_hours: int = Field(168, validation_alias="WORKSPACE_OUTPUT_TTL_HOURS")
+    retention_sweep_interval_minutes: int = Field(
+        60, validation_alias="WORKSPACE_SWEEP_INTERVAL_MINUTES"
+    )
+
+    @field_validator("input_ttl_hours", "output_ttl_hours", mode="after")
+    @classmethod
+    def _bound_ttls(cls, v: int, info) -> int:
+        # 0 = disabled; otherwise 1 hour .. 365 days. Negative values are a
+        # misconfiguration, not a disable — fail loudly instead of guessing.
+        if v < 0 or v > 8760:
+            raise ValueError(f"{info.field_name} must be between 0 (disabled) and 8760 hours.")
+        return v
+
+    @field_validator("retention_sweep_interval_minutes", mode="after")
+    @classmethod
+    def _bound_sweep_interval(cls, v: int) -> int:
+        if v < 5 or v > 1440:
+            raise ValueError("WORKSPACE_SWEEP_INTERVAL_MINUTES must be between 5 and 1440.")
+        return v
+
 
 class SummarizationSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG

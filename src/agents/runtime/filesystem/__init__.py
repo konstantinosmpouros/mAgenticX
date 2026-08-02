@@ -36,6 +36,10 @@ from runtime.filesystem.memory import (
     list_memories,
     read_memory,
 )
+from runtime.filesystem.retention import (
+    run_workspace_retention_loop,
+    sweep_workspace_retention_once,
+)
 from runtime.filesystem.workspace import (
     WORKSPACE_WRITE_DENY,
     build_workspace_backend,
@@ -64,7 +68,9 @@ __all__ = [
     "memory_root",
     "read_output_files",
     "resolve_output_file",
+    "run_workspace_retention_loop",
     "seed_input_files",
     "skills_root",
+    "sweep_workspace_retention_once",
     "user_root",
 ]

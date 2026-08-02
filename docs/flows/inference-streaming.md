@@ -553,6 +553,16 @@ Why this matters: every HITL within a single run shares that run's checkpoint `t
 - When active-run hydration returns, conversations not returned as active are cleared locally.
 - Terminal events always clear `runsByConversation`, `activeRunId`, and `isStreaming` for that conversation.
 
+### Send UX lifecycle (optimistic echo → transition dot → first signal)
+
+The composer send path (`createInferenceHandlers.handleSendMessage`) renders ChatGPT-style perceived latency around the backend-owned start:
+
+1. **Optimistic echo.** On submit, a `temp-`-prefixed user `MessageOut` (content + base64 attachment previews) is appended immediately — before `POST /start`. On a brand-new chat, `createConversationMessageSetter` builds a temporary conversation shell (**empty id**) so the hero view swaps to the conversation instantly; `beginRun()` replaces any empty-id shell with the server detail, and ChatPage's URL-promotion effect treats the empty id as "no conversation yet" so the shell is never navigated to. On start failure the temp row (and shell) roll back and the draft + attachments are restored to the composer.
+2. **Transition dot until the agent's first signal.** `showAiTransition` turns on at submit and is cleared by `applyRunEvent` only when the run shows real activity — a timeline block, a thought, a pending HITL interrupt, or a terminal status. The `/start` snapshot alone is *not* a signal: until the first real frame, `thinkingState` stays unset (a stale done-state from a previous run is dropped so the dot's branch-visibility check passes on retry/edit branches) and the assistant placeholder renders nothing (`ChatMessage` suppresses `AgentRunTimeline` for a live reply whose timeline has zero blocks — otherwise the empty-timeline "Reasoning…" shimmer would double up with the dot).
+3. **Run-gated reply identity.** `ChatBody` resolves the streaming reply as `activeRunAssistantMessageId ?? thinkingState.branchPath[last]` — the active run is authoritative for its whole lifetime, so the reply's action bar stays hidden and its live timeline stays attached from `/start` through terminal/stop, including the pre-first-signal window and reload-mid-run. The AI action bar appears only when the run ends (completed, failed, or cancelled).
+
+Edit and retry share the same dot semantics (set at submit, cleared on first signal / rolled back on error). Send/edit/retry all clear the dot in their error paths only — the success path leaves clearing to `applyRunEvent`.
+
 ### Re-entering a mid-stream conversation
 
 `MessageTable.content` / `raw_events` / `plan` / `subagents` are written to the DB only inside `_finish_run`. A `getConversationDetail` fetched while a run is mid-stream therefore returns the empty placeholder row. The placeholder is mounted as-is: the streaming assistant message renders from the **live run timeline** (`runsByConversation[conversationId].timeline`), which `useInferenceRuns` folds incrementally from WS frames — and which the fresh-subscribe snapshot frame fully reconstructs the moment the observer attaches, including for a HITL-paused run where no further delta is coming. There is no message-overlay step anymore; the live state never flows through `ConversationDetail`.
