@@ -47,6 +47,12 @@ services:
     user: "1000:1000"
     security_opt:
       - no-new-privileges:true
+    # The service needs no Linux capabilities (non-root uvicorn + file IO on
+    # its own volumes) — drop them all, and cap the process count so a runaway
+    # agent loop can't fork-storm the host.
+    cap_drop:
+      - ALL
+    pids_limit: 512
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAG_BASE_URL=http://rag_service:8001

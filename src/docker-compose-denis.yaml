@@ -82,6 +82,8 @@ services:
     user: "1000:1000"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - OPENAI_API_KEY_FILE=/run/secrets/openai_api_key
       - RAG_BASE_URL=https://rag_service:8001
@@ -115,6 +117,9 @@ services:
         order: start-first
         monitor: 30s
         failure_action: pause
+      resources:
+        limits:
+          pids: 512
     volumes:
       - /opt/magenticx/agents/tls/entrypoint-tls.sh:/app/tls/entrypoint-tls.sh:ro
       - /opt/magenticx/agents/tls/tls.key:/app/tls/tls.key:ro
@@ -287,7 +292,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.13.0
+    image: konstantinosmpouros/agentic_ui:v0.13.1
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:

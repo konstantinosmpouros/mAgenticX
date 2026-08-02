@@ -23,7 +23,9 @@ from typing import Any, Callable
 
 from deepagents import FilesystemPermission
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents.backends.protocol import SandboxBackendProtocol
 
+from core.settings import settings
 from runtime.filesystem.provisioner import (
     conversation_root,
     ensure_user_agent_filesystem,
@@ -107,6 +109,22 @@ def build_workspace_backend(
     output_path.mkdir(parents=True, exist_ok=True)
 
     def factory(rt: Any) -> CompositeBackend:
+        # Sandbox-execution kill switch (fail-closed). deepagents exposes its
+        # `execute` tool exactly when the composite DEFAULT backend implements
+        # SandboxBackendProtocol — StateBackend does not, LocalShellBackend
+        # (host-shell execution!) does. While sandbox execution is disabled,
+        # refuse to mint a sandbox-capable default so a future refactor
+        # swapping this class can never silently open a code-execution path.
+        # Raising here fails the tool call (and the run) rather than degrading
+        # open.
+        default_backend = StateBackend()
+        if not settings.filesystem.sandbox_execution_enabled and isinstance(
+            default_backend, SandboxBackendProtocol
+        ):
+            raise RuntimeError(
+                "Workspace default backend is sandbox-capable but SANDBOX_EXECUTION_ENABLED "
+                "is false — refusing to expose an execution path."
+            )
         routes: dict[str, FilesystemBackend] = {}
         if use_memory:
             routes["/memories/"] = FilesystemBackend(
@@ -134,6 +152,6 @@ def build_workspace_backend(
                 root_dir=str(conversation_history_path), virtual_mode=True
             ),
         })
-        return CompositeBackend(default=StateBackend(), routes=routes)
+        return CompositeBackend(default=default_backend, routes=routes)
 
     return factory

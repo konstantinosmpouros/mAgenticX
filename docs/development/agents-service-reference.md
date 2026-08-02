@@ -95,7 +95,8 @@ src/agents/
 │   │   └── fork.py             seed_thread_from_checkpoint (copy-on-fork for branches)
 │   ├── filesystem/
 │   │   ├── provisioner.py      Framework-free path helpers + on-disk provisioning
-│   │   ├── workspace.py        deepagents CompositeBackend factory + WORKSPACE_WRITE_DENY
+│   │   ├── workspace.py        deepagents CompositeBackend factory + WORKSPACE_WRITE_DENY + sandbox-execution guard
+│   │   ├── retention.py        TTL sweeper for conversation input/output caches
 │   │   ├── memory.py           AGENTS.md index helpers (remember tool backing)
 │   │   └── agent_md_template.py  AGENTS_MD_TEMPLATE seed string
 │   └── skill_registry/
@@ -145,8 +146,9 @@ src/agents/
 3. `rebuild_global_manifest()` — scan the global registry → write `manifest.json`.
 4. `reconcile_all_user_manifests()` — heal each user's manifest vs disk.
 5. `await _init_durable_checkpointer(app)` — **fail fast/loud** if `agent_runtime` is unreachable.
-6. `yield`.
-7. Shutdown: `pool.close()` → restore loop handler → `shutdown_logging()`.
+6. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `runtime/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
+7. `yield`.
+8. Shutdown: cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
 
 **Durable checkpointer init** — `_init_durable_checkpointer` (`main.py:115-182`), heavy deps imported lazily:
 - `_ensure_checkpointer_database(conninfo)` (`main.py:71-112`) — idempotently `CREATE DATABASE agent_runtime` via the `postgres` maintenance DB (returns early for empty/`postgres` target; **10 retries, 2s apart** on `OperationalError`; race-safe against `DuplicateDatabase`). Needed because `POSTGRES_DB` bootstraps only one DB and `setup()` creates tables, not the database.
@@ -435,6 +437,10 @@ Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a d
     └── output/        → /conversation/output/        (agent artifacts)
 ```
 `build_workspace_backend(...)` returns a **factory** invoked per tool call (so `StateBackend` binds the live `ToolRuntime`). All routes are `FilesystemBackend(virtual_mode=True)` — the agent sees only virtual paths, never the host path, so it cannot escape its root; longer-prefix routes win; the default route is an ephemeral `StateBackend()`. `WORKSPACE_WRITE_DENY` pins read-only surfaces (`/skills`, `/large_tool_results`, `/conversation_history`, `/conversation/input`). `_safe_segment` rejects `/`, `\`, `..`, leading `.` on every user/agent/conversation/skill/file segment (path-traversal defense).
+
+**Sandbox-execution guard (fail-closed):** deepagents surfaces its built-in `execute` tool exactly when the composite **default** backend implements `SandboxBackendProtocol` (`StateBackend` does not; `LocalShellBackend` — host-shell execution — does, and its import is test-banned from the whole service). While `SANDBOX_EXECUTION_ENABLED` is false the factory refuses to mint a sandbox-capable default (`RuntimeError`), so a refactor swapping the default class can never silently open a code-execution path. Pinned by `tests/agents/test_execute_lockdown.py`.
+
+**Workspace retention:** `retention.py` TTL-erases `input/` (default 72h) and `output/` (default 168h) cache files — safe because both are copies of DB blobs (input is bridge-seeded per run; presented outputs are persisted as generated attachments at finalize). `memory/`, loose `/conversation/` files, and the offload dirs are out of scope. Symlinks are deleted-as-links and logged as security events; swept dirs must realpath-resolve under the filesystem root; conversations with writes in the last 30 min are skipped.
 
 ---
 

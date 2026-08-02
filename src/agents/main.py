@@ -14,6 +14,7 @@ from fastapi import FastAPI
 
 from core.settings import settings
 from runtime.checkpointer import set_checkpointer
+from runtime.filesystem import run_workspace_retention_loop
 from observability import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -200,6 +201,7 @@ async def _lifespan(app: FastAPI):
     old = loop.get_exception_handler()
     loop.set_exception_handler(_make_loop_exception_handler(old))
     pool = None
+    retention_task: asyncio.Task | None = None
     try:
         logger.info("service_startup", "Agents service startup initiated")
         # Bootstrap the global skills registry volume from the image seed,
@@ -212,8 +214,21 @@ async def _lifespan(app: FastAPI):
         # unreachable; cross-turn resume depends on it.
         await _init_durable_checkpointer(app)
         pool = app.state.checkpointer_pool
+        # TTL retention for conversation input/output caches (blob-backed in
+        # the DB, so erasure is safe). Best-effort background loop — it logs
+        # and retries on failure, never takes the service down.
+        retention_task = asyncio.create_task(
+            run_workspace_retention_loop(), name="workspace-retention"
+        )
         yield
     finally:
+        if retention_task is not None:
+            retention_task.cancel()
+            # Swallow only the cancellation we just requested.
+            try:
+                await retention_task
+            except asyncio.CancelledError:
+                pass
         if pool is not None:
             await pool.close()
         loop.set_exception_handler(old)

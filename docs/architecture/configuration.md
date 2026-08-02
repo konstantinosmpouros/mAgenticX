@@ -312,6 +312,10 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `SKILLS_REGISTRY_USERS_ROOT` | `/var/agents/skills_registry/users` | Per-user skill registries + manifests. |
 | `INPUT_MAX_FILE_BYTES` | `26214400` (25 MB) | Server-side per-file cap on the conversation-input seeding endpoint (defence in depth; mirrors the bridge). |
 | `INPUT_MAX_FILES` | `10` | Server-side per-turn file cap. |
+| `SANDBOX_EXECUTION_ENABLED` | `false` | Fail-closed kill switch for sandboxed command execution: while false, workspace assembly refuses to mint a sandbox-capable default backend, which is exactly what would make deepagents expose its `execute` tool. Reserved for the future gVisor-class sandbox rollout. |
+| `WORKSPACE_INPUT_TTL_HOURS` | `72` | TTL for conversation `input/` cache files (bridge-seeded copies of DB attachment blobs). `0` disables the input sweep. |
+| `WORKSPACE_OUTPUT_TTL_HOURS` | `168` | TTL for conversation `output/` cache files (presented artifacts are blob-persisted at run finalize). `0` disables the output sweep. |
+| `WORKSPACE_SWEEP_INTERVAL_MINUTES` | `60` | Retention sweeper cadence (jittered ±10%; bounded 5–1440). |
 | `SUMMARIZATION_TRIGGER_FRACTION` | `0.92` | Compact when context reaches this fraction of a model's window (profile-aware models). |
 | `SUMMARIZATION_KEEP_FRACTION` | `0.30` | Fraction of the window to retain after compaction. |
 | `SUMMARIZATION_TRIGGER_TOKENS` | `200000` | Fallback token trigger for profile-less models. |
