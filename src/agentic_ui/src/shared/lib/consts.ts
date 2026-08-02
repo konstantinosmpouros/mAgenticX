@@ -87,8 +87,8 @@ export type RealtimeVoice = (typeof REALTIME_VOICES)[number]["id"];
 export const DEFAULT_REALTIME_VOICE: RealtimeVoice = "alloy";
 
 export const VOICE_MODE_LANGUAGES = [
-  { id: "english", label: "English" },
-  { id: "greek", label: "Greek" },
+  { id: "english", label: "English", native: "English" },
+  { id: "greek", label: "Greek", native: "Ελληνικά" },
 ] as const;
 
 export type VoiceModeLanguage = (typeof VOICE_MODE_LANGUAGES)[number]["id"];

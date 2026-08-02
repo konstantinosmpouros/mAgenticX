@@ -441,7 +441,7 @@ export default function SkillBuilder({
                         <span className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                             Files
                         </span>
-                        <Tooltipless
+                        <TreeHeaderUploadButton
                             label="Upload files"
                             onClick={() => uploadInputRef.current?.click()}
                         />
@@ -696,16 +696,22 @@ export default function SkillBuilder({
     );
 }
 
-// Tiny icon-button used in the tree header. Kept inline (not the shared Button
-// with a Tooltip) so the file-tree header stays compact.
-const Tooltipless = ({ label, onClick }: { label: string; onClick: () => void }) => (
-    <button
-        type="button"
-        onClick={onClick}
-        aria-label={label}
-        title={label}
-        className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-        <Upload className="h-3.5 w-3.5" />
-    </button>
+// Tiny icon-button used in the tree header. Compact (not the shared Button) but
+// carries the same styled hover label as the other profile-panel action buttons.
+const TreeHeaderUploadButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
+    <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+            <button
+                type="button"
+                onClick={onClick}
+                aria-label={label}
+                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                <Upload className="h-3.5 w-3.5" />
+            </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center">
+            <p>{label}</p>
+        </TooltipContent>
+    </Tooltip>
 );

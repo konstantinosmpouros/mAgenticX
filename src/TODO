@@ -33,6 +33,7 @@
 ## Bugs / Fixes
 
 - Check for context and usage if we can use this one from [shadcn](https://www.shadcn.io/ai/context).
+- Voice mode language is a hard-coded english/greek allow-list (`VOICE_MODE_LANGUAGES` in `consts.ts` + the `normalize_voice_mode_language` set and `build_voice_instructions` map in `dialogue_bridge/utils/voice.py`) and only a single user-wide preference — make it dynamic (the model speaks the full realtime/Whisper language set; the language is just injected as an instruction, so no API limit) and wire it per-conversation so each conversation can carry its own spoken language, not one global default.
 
 ## Security
 

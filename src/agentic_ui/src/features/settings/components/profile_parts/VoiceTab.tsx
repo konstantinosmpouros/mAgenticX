@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Languages, Sparkles } from "lucide-react";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import {
     VoiceSelector,
     VoiceSelectorAttributes,
@@ -44,6 +43,7 @@ export default function VoiceTab({
     onSelectVoiceModeLanguage,
 }: VoiceTabProps) {
     const [voiceSelectorOpen, setVoiceSelectorOpen] = useState(false);
+    const [languageSelectorOpen, setLanguageSelectorOpen] = useState(false);
     const [previewLoadingVoice, setPreviewLoadingVoice] = useState<RealtimeVoice | null>(null);
     const [previewPlayingVoice, setPreviewPlayingVoice] = useState<RealtimeVoice | null>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -53,6 +53,8 @@ export default function VoiceTab({
     const selectedVoiceModeVoice =
         REALTIME_VOICES.find((voice) => voice.id === voiceModeVoice) ?? REALTIME_VOICES[0];
     const voiceModeLanguage = normalizeVoiceModeLanguage(userPreferences?.voiceModeLanguage);
+    const selectedLanguage =
+        VOICE_MODE_LANGUAGES.find((language) => language.id === voiceModeLanguage) ?? VOICE_MODE_LANGUAGES[0];
 
     const clearVoicePreview = useCallback(() => {
         previewAudioRef.current?.pause();
@@ -212,22 +214,87 @@ export default function VoiceTab({
                                     Default response language for live voice conversations.
                                 </p>
                             </div>
-                            <Select
+                            {/* Language picker mirrors the voice picker above: a trigger
+                                showing the current selection + a searchable command dialog,
+                                rather than a plain dropdown. */}
+                            <VoiceSelector
                                 value={voiceModeLanguage}
-                                onValueChange={(value) => onSelectVoiceModeLanguage?.(normalizeVoiceModeLanguage(value))}
-                                disabled={preferencesSaving}
+                                open={languageSelectorOpen}
+                                onOpenChange={setLanguageSelectorOpen}
                             >
-                                <SelectTrigger className="h-11 w-full rounded-xl border-border/60 bg-background/60 px-3 text-sm font-semibold hover:bg-background/80 focus:ring-primary/60 sm:w-36">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {VOICE_MODE_LANGUAGES.map((language) => (
-                                        <SelectItem key={language.id} value={language.id}>
-                                            {language.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                <VoiceSelectorTrigger asChild>
+                                    <button
+                                        type="button"
+                                        disabled={preferencesSaving}
+                                        className={cn(
+                                            "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-56",
+                                            languageSelectorOpen && "bg-background/80"
+                                        )}
+                                    >
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-semibold text-foreground">
+                                                {selectedLanguage.label}
+                                            </span>
+                                            <span className="block truncate text-xs text-muted-foreground">
+                                                {selectedLanguage.native}
+                                            </span>
+                                        </span>
+                                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                            <Languages size={13} />
+                                        </span>
+                                    </button>
+                                </VoiceSelectorTrigger>
+                                <VoiceSelectorContent
+                                    title="Spoken language"
+                                    className="z-[90] max-w-md overflow-hidden rounded-2xl border border-border/70 bg-background p-0 shadow-2xl"
+                                >
+                                    <VoiceSelectorInput placeholder="Search languages..." />
+                                    <VoiceSelectorList className="max-h-[22rem]">
+                                        <VoiceSelectorEmpty>No language found.</VoiceSelectorEmpty>
+                                        <VoiceSelectorGroup heading="Languages">
+                                            {VOICE_MODE_LANGUAGES.map((language) => {
+                                                const isSelected = language.id === voiceModeLanguage;
+
+                                                return (
+                                                    <VoiceSelectorItem
+                                                        key={language.id}
+                                                        value={`${language.label} ${language.native}`}
+                                                        onSelect={() => {
+                                                            setLanguageSelectorOpen(false);
+                                                            onSelectVoiceModeLanguage?.(normalizeVoiceModeLanguage(language.id));
+                                                        }}
+                                                        className={cn(
+                                                            "items-center gap-3 rounded-xl px-3 py-3",
+                                                            isSelected && "bg-primary/10"
+                                                        )}
+                                                    >
+                                                        <span
+                                                            className={cn(
+                                                                "flex size-7 shrink-0 items-center justify-center rounded-lg border",
+                                                                isSelected
+                                                                    ? "border-primary/40 bg-primary/15 text-primary"
+                                                                    : "border-border/60 bg-muted/40 text-muted-foreground"
+                                                            )}
+                                                        >
+                                                            <Languages className="h-3.5 w-3.5" />
+                                                        </span>
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="flex min-w-0 items-center gap-2">
+                                                                <VoiceSelectorName>{language.label}</VoiceSelectorName>
+                                                                <VoiceSelectorAttributes className="ml-auto shrink-0 gap-2">
+                                                                    <VoiceSelectorDescription className="whitespace-nowrap">
+                                                                        {language.native}
+                                                                    </VoiceSelectorDescription>
+                                                                </VoiceSelectorAttributes>
+                                                            </span>
+                                                        </span>
+                                                    </VoiceSelectorItem>
+                                                );
+                                            })}
+                                        </VoiceSelectorGroup>
+                                    </VoiceSelectorList>
+                                </VoiceSelectorContent>
+                            </VoiceSelector>
                         </div>
                     </div>
                 </SoftPanel>
