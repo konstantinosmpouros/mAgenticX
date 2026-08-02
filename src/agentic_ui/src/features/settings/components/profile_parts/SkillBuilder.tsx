@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { buildSkillFileTree, cn } from "@/shared/lib/utils";
 import type { CustomSkillCreatePayload, Skill, SkillTreeNode, UserSkill } from "@/shared/lib/types";
 
@@ -585,17 +586,24 @@ export default function SkillBuilder({
                             aria-label="New file or folder path"
                             className="min-w-0 flex-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
-                        <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            onClick={addEntry}
-                            disabled={!newPath.trim()}
-                            aria-label="Add file or folder"
-                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                        >
-                            <Plus className="h-4 w-4" />
-                        </Button>
+                        <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={addEntry}
+                                    disabled={!newPath.trim()}
+                                    aria-label="Add file or folder"
+                                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" align="center">
+                                <p>Add file or folder</p>
+                            </TooltipContent>
+                        </Tooltip>
                     </div>
                 </div>
 
