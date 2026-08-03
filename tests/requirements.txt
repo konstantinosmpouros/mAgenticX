@@ -2,3 +2,7 @@ pytest==8.4.2
 pytest-asyncio==1.2.0
 pytest-cov==6.0.0
 fakeredis==2.31.3
+# Per-test watchdog: a hung test (e.g. an unterminated live-tail stream read)
+# fails fast with a stack dump instead of pinning the CI runner until the
+# 6-hour job ceiling. Enforced via `timeout` in pytest.ini.
+pytest-timeout==2.4.0

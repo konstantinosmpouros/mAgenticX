@@ -100,7 +100,18 @@ class RedisEventLog:
                 continue
             for _stream_name, entries in result:
                 for entry_id, fields in entries:
-                    payload_raw = fields.get("payload")
+                    # Stream entries decode to str when the client is built with
+                    # decode_responses=True (production — see core.cache.client)
+                    # but come back as bytes otherwise. Coerce both the entry id
+                    # and the payload field name so a bytes-returning client can
+                    # never miss the "payload" key and silently skip every event:
+                    # that would strand this live-tail loop, blocking forever on a
+                    # stream that already holds its terminal frame. (fakeredis
+                    # ignores decode_responses for XREAD, which is exactly this
+                    # case in the test suite.)
+                    if isinstance(entry_id, bytes):
+                        entry_id = entry_id.decode()
+                    payload_raw = fields.get("payload") or fields.get(b"payload")
                     if not payload_raw:
                         cursor = entry_id
                         continue

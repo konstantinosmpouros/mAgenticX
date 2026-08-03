@@ -449,6 +449,7 @@ Queue-based structured logging (mirrors the agents service): a non-blocking `Que
 - **Interrupts are tracked by id, never a counter** — a sub-agent interrupt is double-delivered (top-level + `SUBAGENT_EVENT`), so a counter would drift and the run would hang.
 - **Payload mode (`delta_resume`/`delta_fork`/`full_seed`) is re-derived at run time from the message tree** via `nearest_committed_ai`, independent of the create-time thread allocation.
 - **`publish` is fail-open** — a lost wire frame never crashes the run; the DB row is the durable record after the Redis TTL (3600s) expires.
+- **The stream reader must see decoded strings** — `read_since` looks the `"payload"` field up by str key, so the client's `decode_responses=True` is load-bearing: a bytes-returning client (or fakeredis, which ignores `decode_responses` for XREAD) would silently skip *every* entry, never see the terminal frame, and block forever on the live tail. `read_since` now coerces bytes entry-ids/field-names defensively, but production still relies on `create_redis_client()` setting `decode_responses=True`.
 - **One active stream per conversation** is enforced by a partial unique index; per-user active runs capped at 5.
 - **Startup reaps orphaned runs** — a restart mid-stream can't resume (the in-memory task/runtime is gone), so those flip to `failed`.
 - **Blobs are in Postgres** (`blobs.data`), no object storage. Embeddings are bridge-stored but **agents-computed** (bridge has no OpenAI key).
