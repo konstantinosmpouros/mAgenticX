@@ -296,6 +296,34 @@ class ToolsPreferences(BaseModel):
         return self
 
 
+# -------------------------------------------
+# Per-agent tools DTOs (Agents tab) — proxied from the agents service, which
+# already emits camelCase, so these mirror that shape 1:1.
+# -------------------------------------------
+class AgentToolRow(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    key: str
+    name: str
+    description: str = ""
+    source: str  # "native" | "mcp"
+    disabled: bool
+
+
+class AgentToolsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    agentSlug: str
+    tools: list[AgentToolRow] = Field(default_factory=list)
+
+
+class ToolToggleRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    toolKey: str
+    disabled: bool
+
+
 # Personality presets recognised by the agents service (its registry lives in
 # agents `runtime/personalization.py`). Kept in lockstep manually; the agents
 # side is fail-closed, so an id it doesn't know collapses to "default" there

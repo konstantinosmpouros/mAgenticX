@@ -35,6 +35,7 @@ from router.generation import router as generation_router
 from router.inference import router as inference_router
 from router.memories import router as memories_router
 from router.skills import router as skills_router
+from router.agent_tools import router as agent_tools_router
 from router.voice import router as voice_router
 
 
@@ -258,4 +259,5 @@ app.include_router(generation_router)
 app.include_router(inference_router)
 app.include_router(memories_router)
 app.include_router(skills_router)
+app.include_router(agent_tools_router)
 app.include_router(voice_router)

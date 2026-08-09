@@ -1,5 +1,6 @@
 from router.auth import router as auth_router
 from router.catalog import router as catalog_router
+from router.agent_tools import router as agent_tools_router
 from router.inference import router as inference_router
 from router.preferences import router as preferences_router
 from router.conversations import router as conversations_router
@@ -18,6 +19,7 @@ from router.internal_memory import router as internal_memory_router
 __all__ = [
     "auth_router",
     "catalog_router",
+    "agent_tools_router",
     "inference_router",
     "preferences_router",
     "conversations_router",

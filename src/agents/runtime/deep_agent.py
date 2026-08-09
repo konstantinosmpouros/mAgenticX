@@ -25,6 +25,8 @@ from runtime.filesystem import (
     build_workspace_backend,
     ensure_user_agent_filesystem,
 )
+from runtime.filesystem.tool_prefs import read_disabled_tools
+from utils import get_tool_cache_key
 from observability import get_logger
 
 logger = get_logger(__name__)
@@ -315,6 +317,33 @@ class DeepAgent(BaseAgent, ABC):
         )
 
 
+    def _apply_tool_disables(self, tools: List[Any]) -> List[Any]:
+        """Drop tools the user disabled for this (user, agent) from the built set.
+
+        The user may disable a subset of the agent's tools per agent (the Agents
+        tab → ``runtime/filesystem/tool_prefs``). Matching is by canonical cache
+        key (``get_tool_cache_key``), so MCP and native tools are handled the
+        same way. No-op when there's no user context or no disables, so an
+        unaffected run behaves exactly as before.
+        """
+        user_id = (self.context or {}).get("user_id")
+        if not user_id:
+            return tools
+        disabled = read_disabled_tools(user_id, self.name)
+        if not disabled:
+            return tools
+        kept = [tool for tool in tools if get_tool_cache_key(tool) not in disabled]
+        removed = len(tools) - len(kept)
+        if removed:
+            logger.info(
+                "agent_tools_disabled_filtered",
+                "Removed user-disabled tools for (user, agent)",
+                agent_slug=self.name,
+                removed_count=removed,
+            )
+        return kept
+
+
     @staticmethod
     def _ensure_tool_error_middleware(stack: Optional[Sequence[Any]]) -> list[Any]:
         """Return ``stack`` with ``ToolErrorMiddleware`` guaranteed (prepended if
@@ -420,7 +449,7 @@ class DeepAgent(BaseAgent, ABC):
         return create_deep_agent(
             model=model,
             name=self.name,
-            tools=self.tools + self._builtin_tools(),
+            tools=self._apply_tool_disables(self.tools + self._builtin_tools()),
             system_prompt=system_prompt,
             subagents=augmented_subagents,
             interrupt_on=interrupt_on,

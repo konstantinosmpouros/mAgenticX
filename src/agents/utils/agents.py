@@ -113,6 +113,7 @@ def _scan_yaml_agents(root: Path) -> Dict[str, AgentDefinition]:
             slug=spec.slug,
             manifest=manifest_from_spec(spec),
             factory=(lambda cfg, s=spec, sd=entry: YamlDeepAgent(s, sd, config=cfg)),
+            spec=spec,
         )
     return registry
 
