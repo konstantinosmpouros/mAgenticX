@@ -1,0 +1,40 @@
+# Built-in Omni agent, declarative form (platform restructure, Phase 1 proof).
+# Seeded from the image into /var/magenticx/global/agents/ at boot; overrides
+# the legacy Python OmniAgent of the same slug. Models mirror the omni deep-agent
+# settings defaults (OMNI_MAIN_MODEL / OMNI_RESEARCHER_MODEL / OMNI_WRITER_MODEL).
+id: Omni-Agent v1
+slug: omni-agent-v1
+name: Omni
+version: 1.0.0
+type: deep_agent
+description: General-purpose agent for research, writing, and file management
+icon: BrainCircuit
+prompt: ./AGENT.md
+model:
+  main: openai:gpt-5
+  subagents:
+    researcher: openai:gpt-4o
+    writer: openai:gpt-4o
+memory: true
+tools: []          # builtins (remember / present_artifact) + sub-agents only
+skills: []
+subagents:
+  - name: researcher
+    description: >-
+      Deep-dives a topic, looks up facts, gathers and verifies sources.
+      Returns structured findings ready to act on.
+    prompt: ./subagents/researcher.md
+    model: openai:gpt-4o
+    tools: []
+  - name: writer
+    description: >-
+      Formats, polishes, and produces structured written output. Saves the
+      final document to the store and returns the filename.
+    prompt: ./subagents/writer.md
+    model: openai:gpt-4o
+    tools: []
+hitl:                # HITL_GATED_TOOLS — approval before these run
+  write_file: true
+  edit_file: true
+  execute: true
+  task: true

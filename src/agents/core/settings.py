@@ -444,6 +444,23 @@ class FilesystemSettings(BaseSettings):
         validation_alias="SKILLS_REGISTRY_USERS_ROOT",
     )
 
+    # --- Platform two-plane roots (declarative-agents redesign) -------------
+    # New roots for the platform restructure (see
+    # docs/draft/platform-restructure-change-plan.md). Additive scaffolding:
+    # nothing reads these yet, so behaviour is unchanged until the YAML
+    # discoverer (global agents) and the storage migration (workspaces) wire
+    # them in. `global_root` collects shared assets (built-in agent YAMLs +
+    # the skill registry); `workspaces_root` holds one tree per user
+    # (custom agents, skills, memory, per-agent config).
+    global_root: Path = Field(
+        Path("/var/magenticx/global"),
+        validation_alias="MAGENTICX_GLOBAL_ROOT",
+    )
+    workspaces_root: Path = Field(
+        Path("/var/magenticx/workspaces"),
+        validation_alias="MAGENTICX_WORKSPACES_ROOT",
+    )
+
     # Server-side caps for the conversation input/ seeding endpoint (defence in
     # depth — the bridge already enforces these at upload). Mirror the bridge's
     # AttachmentSettings defaults: 25 MB/file, 10 files/turn.

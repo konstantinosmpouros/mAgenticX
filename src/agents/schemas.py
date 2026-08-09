@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Type
+from typing import Any, Callable, Dict, List, Literal, Optional, Type
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
 
@@ -170,7 +170,7 @@ class ToolManifest(BaseModel):
 
 
 class SkillManifest(BaseModel):
-    """One entry in the central skills registry (``src/agents/skills_registry/``).
+    """One entry in the central skills registry (``runtime/skill_registry/registry/``).
 
     ``content`` is the markdown body that follows the frontmatter — agents
     pull this in via the deepagents ``SkillsMiddleware`` when the user has
@@ -291,6 +291,20 @@ class MemoryDetail(MemoryEntry):
 
 @dataclass(frozen=True)
 class AgentDefinition:
+    """A registered agent template. ``cls`` is set for Python-class agents,
+    ``factory`` for declarative (YAML) agents; ``build()`` picks whichever is
+    present, so callers never branch on the kind."""
+
     slug: str
-    cls: Type[Any]
     manifest: Dict[str, Any]
+    cls: Optional[Type[Any]] = None
+    factory: Optional[Callable[..., Any]] = None
+
+    def build(self, config: Optional[Dict[str, Any]] = None) -> Any:
+        """Instantiate the agent for a run — ``factory(config)`` (YAML) or
+        ``cls(config=config)`` (Python class)."""
+        if self.factory is not None:
+            return self.factory(config)
+        if self.cls is not None:
+            return self.cls(config=config)
+        raise ValueError(f"AgentDefinition {self.slug!r} has neither factory nor cls.")

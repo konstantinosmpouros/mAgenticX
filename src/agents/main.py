@@ -27,6 +27,8 @@ from runtime.skill_registry import (
     reconcile_all_user_manifests,
     seed_global_registry,
 )
+from runtime.declarative import seed_global_agents
+from utils.agents import refresh_registry
 from router.catalog import router as catalog_router
 from router.embeddings import router as embeddings_router
 from router.generation import router as generation_router
@@ -210,6 +212,10 @@ async def _lifespan(app: FastAPI):
         seed_global_registry()
         rebuild_global_manifest()
         reconcile_all_user_manifests()
+        # Seed built-in declarative (YAML) agents into the global volume, then
+        # re-scan so they join AGENT_REGISTRY (invisible at import, before seed).
+        seed_global_agents()
+        refresh_registry()
         # Durable checkpointer — fail fast and loud if agent_runtime is
         # unreachable; cross-turn resume depends on it.
         await _init_durable_checkpointer(app)
