@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     # Hard backstop above the normal run time (~2-4 min) so a hang that slips
     # past the per-test pytest-timeout can never pin the runner for hours.
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

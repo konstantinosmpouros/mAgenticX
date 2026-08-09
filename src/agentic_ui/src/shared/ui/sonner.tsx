@@ -1,29 +1,33 @@
-import { useTheme } from "next-themes"
-import { Toaster as Sonner, toast } from "sonner"
+import { useTheme } from "next-themes";
+import { Toaster as SonnerToaster } from "sonner";
 
-type ToasterProps = React.ComponentProps<typeof Sonner>
+import { useIsMobile } from "@/shared/hooks/use-mobile";
 
-const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+type ToasterProps = React.ComponentProps<typeof SonnerToaster>;
 
-  return (
-    <Sonner
-      theme={theme as ToasterProps["theme"]}
-      className="toaster group"
-      toastOptions={{
-        classNames: {
-          toast:
-            "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
-          description: "group-[.toast]:text-muted-foreground",
-          actionButton:
-            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-          cancelButton:
-            "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
-        },
-      }}
-      {...props}
-    />
-  )
+/**
+ * Toaster — the single toast portal for the app. Every toast is rendered as a
+ * fully custom {@link ToastCard} via `toast.custom` (see shared/hooks/use-toast),
+ * so this component only configures Sonner's *behaviour*: a collapsed stack that
+ * folds and fans out on hover (`expand={false}` + `visibleToasts`), theme sync,
+ * and placement — bottom-right on desktop, top-center on mobile so it never
+ * covers the composer. Sonner handles stacking, swipe-to-dismiss, hover-pause of
+ * the dismiss timer, and the ARIA live region.
+ */
+export function Toaster(props: ToasterProps) {
+    const { theme = "system" } = useTheme();
+    const isMobile = useIsMobile();
+
+    return (
+        <SonnerToaster
+            theme={theme as ToasterProps["theme"]}
+            position={isMobile ? "top-center" : "bottom-right"}
+            expand={false}
+            visibleToasts={3}
+            gap={12}
+            offset={16}
+            className="toaster group"
+            {...props}
+        />
+    );
 }
-
-export { Toaster, toast }
