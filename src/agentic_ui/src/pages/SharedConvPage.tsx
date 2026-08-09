@@ -123,7 +123,7 @@ export default function SharedConversationPage() {
 
     const session = loadSession();
     if (!isSessionValid(session)) {
-      toast({ title: "Sign in to continue", description: "Create your own copy of this shared conversation after signing in.", duration: 2600 });
+      toast({ title: "Sign in to continue", description: "Create your own copy of this shared conversation after signing in.", variant: "info", duration: 2600 });
       navigate("/login");
       return;
     }
@@ -141,7 +141,7 @@ export default function SharedConversationPage() {
         },
       });
       updateSession({ lastConversationId: response.detail.id });
-      toast({ title: "Conversation added", description: "The agent response is now running in your workspace.", duration: 2200 });
+      toast({ title: "Conversation added", description: "The agent response is now running in your workspace.", variant: "success", duration: 2200 });
       navigate("/");
     } catch (err) {
       console.error("Failed to continue shared conversation:", err);
