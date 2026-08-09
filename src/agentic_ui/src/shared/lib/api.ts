@@ -52,6 +52,7 @@ import {
   UserSkillListSchema,
   UserSkillSchema,
   UserSkillDetailSchema,
+  AgentToolsResponseSchema,
   UsageSummarySchema,
   WireObjectArraySchema,
   WireObjectSchema,
@@ -80,6 +81,7 @@ import {
 const API_BASE_PATH = "/api/v1";
 const AUTH_BASE_PATH = `${API_BASE_PATH}/auth`;
 const CATALOG_BASE_PATH = `${API_BASE_PATH}/catalog`;
+const AGENTS_BASE_PATH = `${API_BASE_PATH}/agents`;
 const PREFERENCES_BASE_PATH = `${API_BASE_PATH}/preferences`;
 const CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/conversations`;
 const MESSAGES_BASE_PATH = `${API_BASE_PATH}/messages`;
@@ -266,6 +268,37 @@ export async function disableUserAgentSkill(
     method: "DELETE",
     csrf: true,
     fallbackMessage: `Failed to disable skill ${skillName}`,
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// Per-agent tools (Agents tab). List the tools an agent may use with their
+// per-(user, agent) disabled flags, and toggle one. Proxied to the agents
+// service by the bridge; the toggle is CSRF-protected + returns refreshed rows.
+// ---------------------------------------------------------------------------
+export async function getAgentTools(userId: string, agentId: string) {
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools`;
+  return requestJson(url, {
+    schema: AgentToolsResponseSchema,
+    fallbackMessage: "Failed to fetch agent tools",
+  });
+}
+
+
+export async function toggleAgentTool(
+  userId: string,
+  agentId: string,
+  toolKey: string,
+  disabled: boolean,
+) {
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools/toggle`;
+  return requestJson(url, {
+    method: "POST",
+    csrf: true,
+    body: { toolKey, disabled },
+    schema: AgentToolsResponseSchema,
+    fallbackMessage: "Failed to update tool",
   });
 }
 

@@ -18,40 +18,40 @@ logger = get_logger(__name__)
 
 
 @router.get(
-    "/{user_id}/{agent_slug}/tools",
+    "/{user_id}/{agent_id}/tools",
     response_model=AgentToolsResponse,
     status_code=status.HTTP_200_OK,
 )
 async def get_agent_tools(
     user_id: str,
-    agent_slug: str,
+    agent_id: str,
     _: AuthUser = Depends(validate_userId),
 ) -> AgentToolsResponse:
     """The tools this agent can use + their per-(user, agent) disabled state."""
     set_context(user_id=user_id)
-    payload = await fetch_agent_tools(user_id, agent_slug)
+    payload = await fetch_agent_tools(user_id, agent_id)
     return AgentToolsResponse.model_validate(payload)
 
 
 @router.post(
-    "/{user_id}/{agent_slug}/tools/toggle",
+    "/{user_id}/{agent_id}/tools/toggle",
     response_model=AgentToolsResponse,
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_csrf_protection)],
 )
 async def toggle_agent_tool(
     user_id: str,
-    agent_slug: str,
+    agent_id: str,
     body: ToolToggleRequest,
     _: AuthUser = Depends(validate_userId),
 ) -> AgentToolsResponse:
     """Enable/disable one tool for this (user, agent); returns refreshed rows."""
     set_context(user_id=user_id)
-    payload = await set_agent_tool_disabled(user_id, agent_slug, body.toolKey, body.disabled)
+    payload = await set_agent_tool_disabled(user_id, agent_id, body.toolKey, body.disabled)
     logger.info(
         "agent_tool_toggled",
         "Toggled per-agent tool disable state",
-        agent_slug=agent_slug,
+        agent_id=agent_id,
         tool_key=body.toolKey,
         disabled=body.disabled,
     )

@@ -21,6 +21,7 @@ import VoiceTab from "./profile_parts/VoiceTab";
 import SecurityTab from "./profile_parts/SecurityTab";
 import DataControlsTab from "./profile_parts/DataControlsTab";
 import McpServersTab from "./profile_parts/McpServersTab";
+import AgentsTab from "./profile_parts/AgentsTab";
 import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
 import UsageTab from "./profile_parts/UsageTab";
@@ -406,12 +407,11 @@ export default function ProfilePanel({
                                     ) : null}
 
                                     {normalizedActiveTab === "mcp" ? (
-                                        <McpServersTab
-                                            availableTools={availableTools}
-                                            userPreferences={userPreferences}
-                                            preferencesSaving={preferencesSaving}
-                                            onToggleToolPreference={onToggleToolPreference}
-                                        />
+                                        <McpServersTab availableTools={availableTools} />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "agents" ? (
+                                        <AgentsTab agents={agents} />
                                     ) : null}
 
                                     {normalizedActiveTab === "skills" ? (

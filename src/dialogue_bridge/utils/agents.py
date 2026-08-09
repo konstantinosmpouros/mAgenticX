@@ -312,12 +312,29 @@ def _agent_tools_url(user_id: str, agent_slug: str) -> str:
     return f"{base}/agents/{user_id}/{agent_slug}/tools"
 
 
-async def fetch_agent_tools(user_id: str, agent_slug: str) -> Dict[str, Any]:
+async def _resolve_agent_slug(agent_id: str) -> str:
+    """Translate the catalog agent id (what the UI holds) into the slug the
+    agents-service registry is keyed by."""
+    agent = await get_agent_by_id(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found or not active.")
+    slug = getattr(agent, "slug", None)
+    if not slug:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Agent configuration is incomplete (missing slug).",
+        )
+    return slug
+
+
+async def fetch_agent_tools(user_id: str, agent_id: str) -> Dict[str, Any]:
     """Proxy the agents service per-agent tools endpoint (Agents tab): the tools
-    an agent can use with their per-(user, agent) disabled flags."""
+    an agent can use with their per-(user, agent) disabled flags. ``agent_id`` is
+    the catalog id from the UI, resolved here to the agents-registry slug."""
+    slug = await _resolve_agent_slug(agent_id)
     timeout = settings.http.agents_timeout
     upstream_headers = internal_service_headers(get_context().get("request_id"))
-    url = _agent_tools_url(user_id, agent_slug)
+    url = _agent_tools_url(user_id, slug)
     try:
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
@@ -353,12 +370,14 @@ async def fetch_agent_tools(user_id: str, agent_slug: str) -> Dict[str, Any]:
 
 
 async def set_agent_tool_disabled(
-    user_id: str, agent_slug: str, tool_key: str, disabled: bool
+    user_id: str, agent_id: str, tool_key: str, disabled: bool
 ) -> Dict[str, Any]:
-    """Proxy the agents service toggle endpoint; returns the refreshed tool rows."""
+    """Proxy the agents service toggle endpoint; returns the refreshed tool rows.
+    ``agent_id`` is the catalog id, resolved here to the agents-registry slug."""
+    slug = await _resolve_agent_slug(agent_id)
     timeout = settings.http.agents_timeout
     upstream_headers = internal_service_headers(get_context().get("request_id"))
-    url = f"{_agent_tools_url(user_id, agent_slug)}/toggle"
+    url = f"{_agent_tools_url(user_id, slug)}/toggle"
     body = {"toolKey": tool_key, "disabled": disabled}
     try:
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
