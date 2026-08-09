@@ -18,8 +18,10 @@ type McpServersTabProps = {
 };
 
 export default function McpServersTab({ availableTools }: McpServersTabProps) {
-    const { theme } = useTheme();
-    const currentTheme = theme === "dark" ? "dark" : "light";
+    // Key off resolvedTheme, not theme: theme is often "system", which would make
+    // the light/dark icon swap misfire and render the dark-variant icon in light mode.
+    const { resolvedTheme } = useTheme();
+    const currentTheme = resolvedTheme === "dark" ? "dark" : "light";
 
     // Group tools by their server (read-only; no preference state involved).
     const serverGroups = useMemo(
@@ -94,8 +96,8 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
                                         className="flex w-full items-center justify-between gap-4 rounded-2xl text-left"
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-background/75">
-                                                <McpIcon size={20} variant={currentTheme === "dark" ? "white" : "black"} />
+                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/60 bg-muted">
+                                                <McpIcon size={20} variant={currentTheme === "dark" ? "white" : "darkGrey"} />
                                             </div>
                                             <div>
                                                 <p className="text-sm font-semibold text-foreground">{serverLabel}</p>
@@ -129,7 +131,7 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
                                                 const displayText =
                                                     showFull || !isTruncated
                                                         ? description
-                                                        : description.slice(0, maxDescriptionLength);
+                                                        : `${description.slice(0, maxDescriptionLength)}…`;
 
                                                 return (
                                                     <div key={uniqueKey} className="px-4 py-4">
@@ -144,18 +146,18 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
                                                             </div>
                                                             <p className="text-sm text-muted-foreground">
                                                                 {displayText}
-                                                                {!showFull && isTruncated ? (
+                                                                {isTruncated ? (
                                                                     <button
                                                                         type="button"
                                                                         onClick={() =>
                                                                             setExpandedDescriptions((prev) => ({
                                                                                 ...prev,
-                                                                                [uniqueKey]: true,
+                                                                                [uniqueKey]: !showFull,
                                                                             }))
                                                                         }
                                                                         className="ml-2 text-[0.72rem] font-semibold text-primary hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                                                                     >
-                                                                        See more
+                                                                        {showFull ? "See less" : "See more"}
                                                                     </button>
                                                                 ) : null}
                                                             </p>
