@@ -88,12 +88,56 @@ export default function AgentsTab({ agents }: AgentsTabProps) {
         }
     };
 
+    const renderRow = (row: AgentToolRow) => {
+        const enabled = !row.disabled;
+        const busy = togglingKey === row.key;
+        return (
+            <div key={row.key} className="flex items-start justify-between gap-4 px-5 py-4">
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground">{row.name}</p>
+                        <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                            {row.source}
+                        </span>
+                    </div>
+                    {row.description ? (
+                        <p className="mt-1 break-words text-sm text-muted-foreground">{row.description}</p>
+                    ) : null}
+                </div>
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={enabled}
+                    aria-label={`${enabled ? "Disable" : "Enable"} ${row.name}`}
+                    disabled={busy}
+                    onClick={() => void onToggle(row)}
+                    className={cn(
+                        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                        enabled ? "border-primary/40 bg-primary/20" : "border-transparent bg-background/80",
+                        busy && "cursor-not-allowed opacity-60"
+                    )}
+                >
+                    <span
+                        className={cn(
+                            "inline-block h-5 w-5 rounded-full shadow transition-transform",
+                            enabled ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
+                        )}
+                    />
+                </button>
+            </div>
+        );
+    };
+
+    // Split the agent's baseline tools from the gateway tools the user may add.
+    const declaredRows = resp?.tools.filter((t) => t.declared) ?? [];
+    const availableRows = resp?.tools.filter((t) => !t.declared) ?? [];
+
     return (
         <div className="space-y-6 animate-fade-in">
             <InfoCard
                 eyebrow="Workspace"
-                title="Agents"
-                description="Pick an agent to see the tools it can use, and turn off any you don't want it to have. These choices are yours alone and apply per agent."
+                title="Choose an agent"
+                description="Pick an agent to manage its tools. Your choices apply to this agent only."
             >
                 {toolAgents.length === 0 ? (
                     <SoftPanel className="px-6 py-10 text-center">
@@ -136,7 +180,7 @@ export default function AgentsTab({ agents }: AgentsTabProps) {
                 <InfoCard
                     eyebrow="Tools"
                     title={`${selectedAgent.name}'s tools`}
-                    description="Turn a tool off to stop this agent from using it in your conversations."
+                    description="Turn off any of the agent's own tools, or turn on extra tools from the connected apps to grant them to just this agent."
                 >
                     {error ? (
                         <SoftPanel className="flex items-center gap-3 px-4 py-3">
@@ -148,49 +192,31 @@ export default function AgentsTab({ agents }: AgentsTabProps) {
                             <p className="text-sm text-muted-foreground">Loading tools…</p>
                         </SoftPanel>
                     ) : resp && resp.tools.length > 0 ? (
-                        <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-                            {resp.tools.map((row) => {
-                                const enabled = !row.disabled;
-                                const busy = togglingKey === row.key;
-                                return (
-                                    <div key={row.key} className="flex items-start justify-between gap-4 px-5 py-4">
-                                        <div className="min-w-0">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <p className="text-sm font-semibold text-foreground">{row.name}</p>
-                                                <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                                                    {row.source}
-                                                </span>
-                                            </div>
-                                            {row.description ? (
-                                                <p className="mt-1 break-words text-sm text-muted-foreground">
-                                                    {row.description}
-                                                </p>
-                                            ) : null}
-                                        </div>
-                                        <button
-                                            type="button"
-                                            role="switch"
-                                            aria-checked={enabled}
-                                            aria-label={`${enabled ? "Disable" : "Enable"} ${row.name}`}
-                                            disabled={busy}
-                                            onClick={() => void onToggle(row)}
-                                            className={cn(
-                                                "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                                                enabled ? "border-primary/40 bg-primary/20" : "border-transparent bg-background/80",
-                                                busy && "cursor-not-allowed opacity-60"
-                                            )}
-                                        >
-                                            <span
-                                                className={cn(
-                                                    "inline-block h-5 w-5 rounded-full shadow transition-transform",
-                                                    enabled ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60"
-                                                )}
-                                            />
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </SoftPanel>
+                        <div className="space-y-5">
+                            {declaredRows.length > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                        The agent's tools
+                                    </p>
+                                    <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+                                        {declaredRows.map(renderRow)}
+                                    </SoftPanel>
+                                </div>
+                            ) : null}
+                            {availableRows.length > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                        Available to add
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Tools from the connected apps. Turn one on to let this agent use it in your conversations.
+                                    </p>
+                                    <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+                                        {availableRows.map(renderRow)}
+                                    </SoftPanel>
+                                </div>
+                            ) : null}
+                        </div>
                     ) : (
                         <SoftPanel className="px-6 py-10 text-center">
                             <p className="text-sm font-semibold text-foreground">No configurable tools</p>

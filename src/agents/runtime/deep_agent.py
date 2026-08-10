@@ -13,7 +13,7 @@ from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
 from runtime.personalization import build_personalization_prompt
-from runtime.tools.registry import NativeToolContext, build_auto_attach_tools
+from runtime.tools.registry import NATIVE_TOOLS, NativeToolContext, build_auto_attach_tools
 from runtime.middlewares import (
     ConfigurableSummarizationMiddleware,
     ToolErrorMiddleware,
@@ -318,18 +318,22 @@ class DeepAgent(BaseAgent, ABC):
 
 
     def _apply_tool_disables(self, tools: List[Any]) -> List[Any]:
-        """Drop tools the user disabled for this (user, agent) from the built set.
+        """Drop MCP tools the user disabled for this (user, agent) from the built
+        set.
 
-        The user may disable a subset of the agent's tools per agent (the Agents
-        tab → ``runtime/filesystem/tool_prefs``). Matching is by canonical cache
-        key (``get_tool_cache_key``), so MCP and native tools are handled the
-        same way. No-op when there's no user context or no disables, so an
-        unaffected run behaves exactly as before.
+        The user may disable a subset of the agent's MCP tools per agent (the
+        Agents tab → ``runtime/filesystem/tool_prefs``). Matching is by canonical
+        cache key (``get_tool_cache_key``). **Native builtins are never dropped**:
+        they aren't managed by this tab (``remember`` / ``search_past_conversations``
+        follow the Personalization prefs; ``present_artifact`` is always on), so
+        native keys are subtracted from the disabled set here — this also neutralizes
+        any legacy pre-model disable of a native. No-op when there's no user
+        context or no disables.
         """
         user_id = (self.context or {}).get("user_id")
         if not user_id:
             return tools
-        disabled = read_disabled_tools(user_id, self.name)
+        disabled = read_disabled_tools(user_id, self.name) - set(NATIVE_TOOLS)
         if not disabled:
             return tools
         kept = [tool for tool in tools if get_tool_cache_key(tool) not in disabled]

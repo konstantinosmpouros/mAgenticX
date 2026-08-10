@@ -1,22 +1,34 @@
 """Per-agent tool listing + toggling (Agents-tab business logic).
 
-Computes the tool rows shown in the UI's Agents tab — the tools a given agent
-can use, each annotated with its per-(user, agent) disabled state — and applies
-a toggle. The disabled set is the same one the runtime subtracts at build time
-(``runtime.filesystem.tool_prefs`` ↔ ``DeepAgent._apply_tool_disables``), so what
-the user sees here is exactly what the agent gets.
+Scope: **MCP tools only.** The Agents tab is where a user tunes which MCP tools
+an agent may use — two groups of rows:
 
-Tool identity is the canonical cache key (``utils.build_tool_cache_key`` /
-``get_tool_cache_key``): ``<server>/<tool>`` for MCP, the bare name for native
-tools — matching the resolver so a disable here removes the right tool there.
+* **declared** — the MCP tools the agent's spec declares (``agent.yaml``). ON by
+  default; the user may turn one OFF (added to the per-agent ``disabled`` set).
+* **available** — every other MCP tool the gateway currently exposes. OFF by
+  default; the user may turn one ON for this agent (added to the ``enabled``
+  set). This is how a user grants an agent a tool it did not declare.
+
+Native builtins are **deliberately not managed here**: ``remember`` and
+``search_past_conversations`` are controlled by the user's Personalization prefs
+(``use_memory`` / ``search_past_convs``), and ``present_artifact`` is always on
+and can never be disabled. So they are never listed and never toggle-able —
+``DeepAgent._apply_tool_disables`` also refuses to drop any native key.
+
+Effective set the runtime builds: ``(declared_mcp ∪ enabled) − disabled`` — the
+two override sets in ``runtime.filesystem.tool_prefs``, consumed by
+``YamlDeepAgent`` (enabled → ``config_tool_names``) and
+``DeepAgent._apply_tool_disables`` (disabled). Tool identity is the canonical
+cache key so a toggle here removes/adds exactly the right live tool there.
+
 Only **deep agents** have this tool model; LangGraph agents return no rows.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional, Set
 
 from observability import get_logger
-from runtime.filesystem.tool_prefs import read_disabled_tools, set_tool_disabled
+from runtime.filesystem.tool_prefs import read_tool_prefs, write_tool_prefs
 from runtime.tools.registry import native_catalog
 from schemas import AgentToolRow
 from utils.agents import AGENT_REGISTRY
@@ -25,66 +37,115 @@ from utils.mcp_tools import build_tool_cache_key, get_cached_tool_manifests_map
 logger = get_logger(__name__)
 
 
-def list_agent_tools(user_id: str, agent_slug: str) -> Optional[List[AgentToolRow]]:
-    """Tool rows for (user, agent), or ``None`` when the agent is unknown.
+def _native_keys() -> Set[str]:
+    """Cache keys of the native builtins (bare tool name = their key). Managed
+    outside this tab, so excluded from listing and protected from toggling."""
+    return {n["name"] for n in native_catalog()}
 
-    Includes the always-on native builtins (deep agents only) plus the agent's
-    spec-declared tools (YAML agents). Deduped by key; each row carries the
-    current disabled flag.
+
+def _is_deep(definition) -> bool:
+    return (definition.manifest or {}).get("type") == "deep agent"
+
+
+def _declared_mcp_rows(definition, disabled: Set[str]) -> Dict[str, AgentToolRow]:
+    """The agent's declared MCP tools (default-ON), keyed by cache key. Native
+    spec refs are intentionally skipped — natives are not managed here."""
+    rows: Dict[str, AgentToolRow] = {}
+    spec = getattr(definition, "spec", None)
+    if spec is None:
+        return rows
+    mcp_map = get_cached_tool_manifests_map()
+    for tool in spec.tools:
+        if getattr(tool, "native", None):
+            continue  # native builtins are controlled in Personalization / always-on
+        key = build_tool_cache_key(tool.server_id or "", tool.tool_name or "")
+        manifest = mcp_map.get(key)
+        rows[key] = AgentToolRow(
+            key=key, name=(tool.tool_name or key),
+            description=(getattr(manifest, "description", "") or "") if manifest else "",
+            source="mcp", declared=True, disabled=key in disabled,
+        )
+    return rows
+
+
+def list_agent_tools(user_id: str, agent_slug: str) -> Optional[List[AgentToolRow]]:
+    """MCP tool rows for (user, agent), or ``None`` when the agent is unknown.
+
+    Declared MCP tools first (default ON, ``disabled`` reflects the override),
+    then every other gateway MCP tool as an *available* row (default OFF, shown
+    ON only when the user enabled it). Native builtins are never included.
     """
     definition = AGENT_REGISTRY.get(agent_slug)
     if definition is None:
         return None
+    if not _is_deep(definition):
+        return []
 
-    disabled = read_disabled_tools(user_id, agent_slug)
-    rows: dict[str, AgentToolRow] = {}
+    disabled, enabled = read_tool_prefs(user_id, agent_slug)
+    rows = _declared_mcp_rows(definition, disabled)
 
-    native_by_name = {n["name"]: n for n in native_catalog()}
-    is_deep = (definition.manifest or {}).get("type") == "deep agent"
+    # Available: every gateway MCP tool the agent did not declare. OFF unless the
+    # user enabled it. Relies on the manifest cache being warm (the tools
+    # endpoint warms it) — a cold cache simply yields no available rows.
+    for key, manifest in get_cached_tool_manifests_map().items():
+        if key in rows:
+            continue
+        rows[key] = AgentToolRow(
+            key=key, name=(getattr(manifest, "tool_name", "") or key),
+            description=(getattr(manifest, "description", "") or ""),
+            source="mcp", declared=False, disabled=key not in enabled,
+        )
 
-    # Always-on native builtins (deep agents only — LangGraph agents don't use them).
-    if is_deep:
-        for meta in native_catalog():
-            if not meta.get("autoAttach"):
-                continue
-            key = meta["name"]
-            rows[key] = AgentToolRow(
-                key=key, name=meta["name"], description=meta.get("description", ""),
-                source="native", disabled=key in disabled,
-            )
-
-    # Spec-declared tools (declarative/YAML agents).
-    spec = getattr(definition, "spec", None)
-    if spec is not None:
-        mcp_map = get_cached_tool_manifests_map()
-        for tool in spec.tools:
-            if getattr(tool, "native", None):
-                key = tool.native
-                meta = native_by_name.get(key)
-                rows[key] = AgentToolRow(
-                    key=key, name=key, description=(meta.get("description", "") if meta else ""),
-                    source="native", disabled=key in disabled,
-                )
-            else:
-                key = build_tool_cache_key(tool.server_id or "", tool.tool_name or "")
-                manifest = mcp_map.get(key)
-                rows[key] = AgentToolRow(
-                    key=key, name=(tool.tool_name or key),
-                    description=(getattr(manifest, "description", "") or "") if manifest else "",
-                    source="mcp", disabled=key in disabled,
-                )
-
-    return list(rows.values())
+    # Declared first, then available alphabetically — stable for the UI.
+    return sorted(rows.values(), key=lambda r: (not r.declared, r.name.lower()))
 
 
 def toggle_agent_tool(
     user_id: str, agent_slug: str, tool_key: str, disabled: bool
 ) -> Optional[List[AgentToolRow]]:
-    """Set the disabled state of one tool for (user, agent); return refreshed
-    rows, or ``None`` when the agent is unknown."""
-    if agent_slug not in AGENT_REGISTRY:
+    """Set one MCP tool's ON/OFF state for (user, agent); return refreshed rows,
+    or ``None`` when the agent is unknown.
+
+    ``disabled`` is the *requested* state (True = turn OFF). Routing depends on
+    whether the tool is ON by default (a declared MCP tool) or OFF by default
+    (an available catalog tool):
+
+    * declared  → OFF adds to ``disabled``; ON removes from ``disabled``.
+    * available → ON adds to ``enabled``;  OFF removes from ``enabled``.
+
+    Native builtins are rejected outright (no-op) — they are not managed here and
+    ``present_artifact`` in particular can never be disabled.
+    """
+    definition = AGENT_REGISTRY.get(agent_slug)
+    if definition is None:
         return None
-    set_tool_disabled(user_id, agent_slug, tool_key, disabled)
+
+    key = (tool_key or "").strip()
+    if not key:
+        raise ValueError("tool_key must be a non-empty string")
+
+    # Never let a native builtin enter the override sets.
+    if key in _native_keys():
+        logger.info(
+            "agent_tool_toggle_ignored_native",
+            "Ignored toggle of a native builtin (managed outside the Agents tab)",
+            agent_slug=agent_slug, tool_key=key,
+        )
+        return list_agent_tools(user_id, agent_slug)
+
+    cur_disabled, cur_enabled = read_tool_prefs(user_id, agent_slug)
+    default_on = key in _declared_mcp_rows(definition, cur_disabled)
+
+    if disabled:  # user wants the tool OFF
+        if default_on:
+            cur_disabled.add(key)
+        cur_enabled.discard(key)
+    else:  # user wants the tool ON
+        cur_disabled.discard(key)
+        if not default_on:
+            cur_enabled.add(key)
+
+    write_tool_prefs(user_id, agent_slug, cur_disabled, cur_enabled)
     return list_agent_tools(user_id, agent_slug)
 
 

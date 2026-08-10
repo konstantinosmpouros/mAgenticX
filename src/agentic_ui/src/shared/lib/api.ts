@@ -34,7 +34,6 @@ import type {
   MemorySummary,
   MemoryDetail,
   ToolMetadata,
-  ToolPreference,
   WorkspaceSearchResult,
 } from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
@@ -457,8 +456,6 @@ export async function searchWorkspace(
 // drift. Tool disable-list entries are passed through verbatim.
 function mapUserPreferences(data: unknown) {
   const record = (data ?? {}) as Record<string, unknown>;
-  const toolsRecord = record.tools as { disabled?: unknown } | undefined;
-  const tools = Array.isArray(toolsRecord?.disabled) ? (toolsRecord.disabled as ToolPreference[]) : [];
   const prefersAgenticChat =
     typeof record.prefersAgenticChat === "boolean" ? record.prefersAgenticChat : false;
   const suggestionsEnabled =
@@ -474,7 +471,6 @@ function mapUserPreferences(data: unknown) {
   const voiceModeLanguage = normalizeVoiceModeLanguage(record.voiceModeLanguage);
 
   return {
-    tools: { disabled: tools },
     prefersAgenticChat,
     suggestionsEnabled,
     showMessageTokenUsage,
@@ -1091,24 +1087,6 @@ export async function endRealtimeVoiceSession(
 }
 
 
-const serializeToolPreferences = (enabledTools?: ToolPreference[]) =>
-  Array.isArray(enabledTools) && enabledTools.length > 0
-    ? enabledTools.map((item) => ({
-        server_id:
-          typeof (item as any).server_id === "string"
-            ? (item as any).server_id
-            : typeof item.serverId === "string"
-              ? item.serverId
-              : "",
-        tool_name:
-          typeof (item as any).tool_name === "string"
-            ? (item as any).tool_name
-            : typeof item.toolName === "string"
-              ? item.toolName
-              : "",
-      }))
-    : undefined;
-
 const transformInferenceRunEvent = (event: Record<string, any>): InferenceRunEvent => ({
   type: event.type,
   run: transformInferenceRun(event.run ?? {}),
@@ -1135,10 +1113,6 @@ export async function startInference(
   if (payload.targetMessageId) body.targetMessageId = payload.targetMessageId;
   if (payload.messagePath?.length) body.messagePath = payload.messagePath;
   if (payload.message) body.message = payload.message;
-  const enabledTools = serializeToolPreferences(payload.enabledTools);
-  if (enabledTools) {
-    body.enabledTools = enabledTools;
-  }
 
   const data = (await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, {
     method: "POST",
@@ -1204,8 +1178,6 @@ export async function createScheduledTask(
   if (typeof payload.isPrivate === "boolean") body.isPrivate = payload.isPrivate;
   if (typeof payload.maxRuns === "number") body.maxRuns = payload.maxRuns;
   if (payload.expiresAt) body.expiresAt = payload.expiresAt;
-  const enabledTools = serializeToolPreferences(payload.enabledTools);
-  if (enabledTools) body.enabledTools = enabledTools;
 
   const data = await requestJson(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, {
     method: "POST",
@@ -1236,8 +1208,6 @@ export async function updateScheduledTask(
   if (typeof payload.intervalSeconds === "number") body.intervalSeconds = payload.intervalSeconds;
   if (payload.cronExpr) body.cronExpr = payload.cronExpr;
   if (payload.timezone) body.timezone = payload.timezone;
-  const enabledTools = serializeToolPreferences(payload.enabledTools);
-  if (enabledTools) body.enabledTools = enabledTools;
 
   const data = await requestJson(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, {
     method: "PATCH",

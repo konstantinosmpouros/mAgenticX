@@ -2,7 +2,7 @@ import { LifeBuoy } from "lucide-react";
 
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { PremiumModalShell } from "@/shared/ui/premium-modal-shell";
-import type { ConversationSummary, ToolMetadata, UserPreferences } from "@/shared/lib/types";
+import type { ConversationSummary, ToolMetadata } from "@/shared/lib/types";
 import HelpTab from "./profile_parts/HelpTab";
 
 /**
@@ -15,7 +15,6 @@ type HelpPanelProps = {
     onClose: () => void;
     archivedConversations: ConversationSummary[];
     availableTools: (ToolMetadata & { enabled?: boolean })[];
-    userPreferences: UserPreferences;
 };
 
 export default function HelpPanel({
@@ -23,7 +22,6 @@ export default function HelpPanel({
     onClose,
     archivedConversations,
     availableTools,
-    userPreferences,
 }: HelpPanelProps) {
     return (
         <PremiumModalShell open={open} onClose={onClose} closeLabel="Close help" className="max-w-3xl">
@@ -46,7 +44,6 @@ export default function HelpPanel({
                         <HelpTab
                             archivedConversations={archivedConversations}
                             availableTools={availableTools}
-                            userPreferences={userPreferences}
                         />
                     </div>
                 </ScrollArea>

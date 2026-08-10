@@ -85,6 +85,10 @@ const SECTION_META: Record<string, { eyebrow?: string; title: string; descriptio
         title: "Account",
         description: "Review your identity, workspace role, and recent account activity.",
     },
+    agents: {
+        title: "Agents",
+        description: "Give each agent the tools it should use — your choices apply per agent.",
+    },
     skills: {
         title: "Skills",
         description: "Your pool and the shared catalog.",
@@ -180,7 +184,6 @@ type ProfilePanelProps = {
     onLoadMoreSharedConversations?: () => void;
     onSelectSharedConversation?: (share: ConversationShareListItem) => void;
     onRevokeSharedConversation?: (share: ConversationShareListItem) => void;
-    onToggleToolPreference?: (tool: ToolMetadata) => void;
     onToggleSuggestionsEnabled?: () => void;
     onToggleMessageTokenUsage?: () => void;
     onToggleSearchPastConvs?: () => void;
@@ -236,7 +239,6 @@ export default function ProfilePanel({
     onLoadMoreSharedConversations,
     onSelectSharedConversation,
     onRevokeSharedConversation,
-    onToggleToolPreference,
     onToggleSuggestionsEnabled,
     onToggleMessageTokenUsage,
     onToggleSearchPastConvs,

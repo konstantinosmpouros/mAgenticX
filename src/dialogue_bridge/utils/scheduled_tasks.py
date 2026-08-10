@@ -39,7 +39,6 @@ from schemas import (
     ScheduledTaskCreate,
     ScheduledTaskOut,
     ScheduledTaskUpdate,
-    ToolPreference,
 )
 from utils.agents import get_agent_by_id
 from utils.inference_runs import ACTIVE_RUN_STATUSES, inference_run_manager
@@ -50,22 +49,6 @@ logger = get_logger(__name__)
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _tool_prefs_to_json(items: list[ToolPreference] | None) -> list[dict[str, str]] | None:
-    if not items:
-        return None
-    return [{"server_id": item.server_id, "tool_name": item.tool_name} for item in items]
-
-
-def _json_to_tool_prefs(value: object) -> list[ToolPreference] | None:
-    if not isinstance(value, list) or not value:
-        return None
-    prefs: list[ToolPreference] = []
-    for item in value:
-        if isinstance(item, dict) and item.get("tool_name"):
-            prefs.append(ToolPreference(server_id=item.get("server_id", ""), tool_name=item["tool_name"]))
-    return prefs or None
 
 
 # -------------------------------------------------------------------------------
@@ -168,7 +151,6 @@ async def create_scheduled_task(
         target_mode=create.targetMode,
         title=create.title,
         prompt=create.prompt,
-        enabled_tools=_tool_prefs_to_json(create.enabledTools),
         is_private=create.isPrivate,
         schedule_kind=create.scheduleKind,
         schedule_spec=spec,
@@ -210,8 +192,6 @@ async def update_scheduled_task(
         task.title = update.title
     if update.prompt is not None:
         task.prompt = update.prompt
-    if update.enabledTools is not None:
-        task.enabled_tools = _tool_prefs_to_json(update.enabledTools)
     if update.agentId is not None:
         agent = await get_agent_by_id(update.agentId)
         if agent is None:
@@ -386,7 +366,6 @@ async def fire_scheduled_task(task_id: str) -> None:
             await db.commit()
             return
 
-        enabled = _json_to_tool_prefs(task.enabled_tools)
         message = MessageIn(sender="user", content=task.prompt)
 
         if task.target_mode == "bound" and task.conversation_id:
@@ -410,7 +389,6 @@ async def fire_scheduled_task(task_id: str) -> None:
                 agentId=agent.id,
                 conversationId=conv.id,
                 parentMessageId=leaf.id,
-                enabledTools=enabled,
                 message=message,
             )
         else:
@@ -419,7 +397,6 @@ async def fire_scheduled_task(task_id: str) -> None:
                 agentId=agent.id,
                 isPrivate=task.is_private,
                 title=task.title,
-                enabledTools=enabled,
                 message=message,
             )
 

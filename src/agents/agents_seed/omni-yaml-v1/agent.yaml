@@ -1,10 +1,11 @@
 # Built-in Omni agent, declarative form (platform restructure, Phase 1 proof).
-# Seeded from the image into /var/magenticx/global/agents/ at boot; overrides
-# the legacy Python OmniAgent of the same slug. Models mirror the omni deep-agent
-# settings defaults (OMNI_MAIN_MODEL / OMNI_RESEARCHER_MODEL / OMNI_WRITER_MODEL).
-id: Omni-Agent v1
-slug: omni-agent-v1
-name: Omni
+# Seeded from the image into /var/magenticx/global/agents/ at boot. Distinct slug
+# from the Python OmniAgent (omni-agent-v1) so BOTH are selectable side by side:
+# "Omni" (Python class) and "Omni (YAML)" (this one). Models mirror the omni
+# deep-agent settings defaults (OMNI_MAIN_MODEL / OMNI_RESEARCHER_MODEL / OMNI_WRITER_MODEL).
+id: Omni-Agent YAML v1
+slug: omni-yaml-v1
+name: Omni (YAML)
 version: 1.0.0
 type: deep_agent
 description: General-purpose agent for research, writing, and file management

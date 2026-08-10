@@ -7,7 +7,6 @@ import type {
   MessageIn,
   MessageOut,
   FileAttachment,
-  ToolPreference,
   InferenceStartRequest,
   InferenceStartResponse,
 } from '@/shared/lib/types';
@@ -28,9 +27,7 @@ type InferenceCtx = {
   agents: Agent[];
   currentConversation: ConversationDetail | null;
   currentMessage: string;
-  isSendingMessage?: boolean;
-  enabledTools?: ToolPreference[];
-  sharedConversationToken?: string;
+  isSendingMessage?: boolean;  sharedConversationToken?: string;
   
   // setters
   setMessages: (updater: (prev: MessageOut[]) => MessageOut[]) => void | ((v: MessageOut[]) => void);
@@ -68,9 +65,7 @@ type MessageEditHandlersCtx = {
   streamAbortRef: MutableRefObject<AbortController | null>;
   rootBranchKey: string;
   setBranchSelections: Dispatch<SetStateAction<Record<string, number>>>;
-  setIsSendingMessage?: (value: boolean) => void;
-  enabledTools?: ToolPreference[];
-  persistUIState?: () => void;
+  setIsSendingMessage?: (value: boolean) => void;  persistUIState?: () => void;
   beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
 };
 
@@ -87,9 +82,7 @@ type RetryHandlersCtx = {
   streamAbortRef: MutableRefObject<AbortController | null>;
   rootBranchKey: string;
   setBranchSelections: Dispatch<SetStateAction<Record<string, number>>>;
-  setIsSendingMessage?: (value: boolean) => void;
-  enabledTools?: ToolPreference[];
-  persistUIState?: () => void;
+  setIsSendingMessage?: (value: boolean) => void;  persistUIState?: () => void;
   beginInferenceRun: (request: InferenceStartRequest) => Promise<InferenceStartResponse>;
 };
 
@@ -132,9 +125,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     getImageUrl,
     setThinkingState,
     setShowAiTransition,
-    streamAbortRef,
-    enabledTools,
-    sharedConversationToken,
+    streamAbortRef,    sharedConversationToken,
     persistUIState,
     beginInferenceRun,
     stopActiveInferenceRun,
@@ -237,9 +228,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
             content: currentMessage || undefined,
             attachments: apiAttachments,
             parentMessageId: null,
-          },
-          enabledTools,
-        });
+          },        });
         persistUIState?.();
       }
 
@@ -253,9 +242,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
             sender: 'user',
             content: currentMessage || undefined,
             attachments: apiAttachments,
-          },
-          enabledTools,
-        });
+          },        });
         setCurrentConversation(response.detail);
         setMessages(() => response.detail.messages);
         updateSession({ lastConversationId: response.detail.id });
@@ -285,9 +272,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
           conversationId: currentConversation.id,
           parentMessageId: lastPersistedMessageId,
           messagePath: buildPathToMessage(currentConversation.messages ?? messages, lastPersistedMessageId),
-          message: messagePayload,
-          enabledTools,
-        });
+          message: messagePayload,        });
         persistUIState?.();
       }
     } catch (error) {
@@ -338,9 +323,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
     setShowAiTransition,
     rootBranchKey,
     setBranchSelections,
-    setIsSendingMessage,
-    enabledTools,
-    persistUIState,
+    setIsSendingMessage,    persistUIState,
     beginInferenceRun,
   } = ctx;
 
@@ -410,9 +393,7 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
         mode: 'edit',
         conversationId: currentConversation.id,
         targetMessageId,
-        message: payload,
-        enabledTools,
-      });
+        message: payload,      });
 
       // Switch the visible branch selection to the newly created edited sibling.
       setBranchSelections((prev) => ({
@@ -487,9 +468,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
     setShowAiTransition,
     rootBranchKey,
     setBranchSelections,
-    setIsSendingMessage,
-    enabledTools,
-    persistUIState,
+    setIsSendingMessage,    persistUIState,
     beginInferenceRun,
   } = ctx;
 
@@ -535,9 +514,7 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
         mode: 'retry',
         conversationId: currentConversation.id,
         targetMessageId: message.id,
-        messagePath: parentPath,
-        enabledTools,
-      });
+        messagePath: parentPath,      });
       setBranchSelections((prev) => ({
         ...prev,
         [parentKey]: siblingCount,

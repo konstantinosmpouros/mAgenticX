@@ -123,7 +123,6 @@ def prepare_inference_history(
     logger: EventLogger,
     messages: list[MessageTable],
     message_ids: list[str] | None,
-    enabled_tools_count: int,
     include_input_paths: bool = False,
 ) -> tuple[list[MessageTable], list[dict]]:
     """
@@ -160,7 +159,6 @@ def prepare_inference_history(
         placeholder_stripped=placeholder_stripped,
         resolved_history_messages=len(history_messages),
         serialised_messages=len(history),
-        enabled_tools=enabled_tools_count,
     )
     return history_messages, history
 

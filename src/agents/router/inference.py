@@ -48,7 +48,6 @@ async def stream_agent(agent_slug: str, req: Request):
         "agent_stream_request_received",
         "Agent stream request received",
         input_messages=len(req.messages),
-        configured_tools=len((req.config.get("tools") or []) if isinstance(req.config, dict) else []),
     )
     try:
         # Check if the agent is disabled

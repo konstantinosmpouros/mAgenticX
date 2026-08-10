@@ -324,6 +324,9 @@ class AgentToolRow(BaseModel):
     name: str
     description: str = ""
     source: Literal["native", "mcp"]
+    # True = part of the agent's declared baseline (native builtin or agent.yaml
+    # tool). False = an available gateway tool the user can enable for this agent.
+    declared: bool = True
     disabled: bool
 
 

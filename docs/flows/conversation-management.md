@@ -55,10 +55,10 @@ sequenceDiagram
     participant Bridge as dialogue_bridge
     participant PG as Postgres
 
-    Browser->>Bridge: POST /v1/inference/runs/{userId}/start {mode:"send", message, parentMessageId, messagePath, enabledTools}
+    Browser->>Bridge: POST /v1/inference/runs/{userId}/start {mode:"send", message, parentMessageId, messagePath}
     Bridge->>PG: Validate conversation ownership and message path
     Bridge->>PG: INSERT user message + attachments + blobs
-    Bridge->>PG: INSERT AI placeholder (streaming_status="queued", streaming_message_path, streaming_enabled_tools)
+    Bridge->>PG: INSERT AI placeholder (streaming_status="queued", streaming_message_path)
     Bridge->>PG: UPDATE conversations (active_assistant_message_id)
     Bridge-->>Browser: {detail, summary, run, message}
     Note over Browser,Bridge: inference stream begins (see inference-streaming.md)
@@ -99,8 +99,7 @@ flowchart TD
     "content": "Hello",
     "parentMessageId": null,
     "attachments": []
-  },
-  "enabledTools": []
+  }
 }
 ```
 
@@ -128,7 +127,7 @@ Every message in a conversation is connected to its predecessor via `parent_mess
 
 When a user edits a message, the UI does not `PATCH` the existing row. Instead it calls the backend-owned inference start endpoint with `mode: "edit"`:
 
-1. The payload includes `conversationId`, `targetMessageId`, the edited user `message`, and enabled tools.
+1. The payload includes `conversationId`, `targetMessageId`, and the edited user `message`.
 2. The bridge validates that `targetMessageId` is a user message in the conversation.
 3. The bridge creates a sibling user message under the original parent.
 4. The same transaction creates the AI placeholder and queued run under that new user message.

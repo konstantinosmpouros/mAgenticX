@@ -95,7 +95,6 @@ async def start_inference_flow(
         conversation=conversation,
         parent_message_id=parent_message_id,
         message_path=message_path,
-        enabled_tools=payload.enabledTools,
         agent=agent,
         mode=mode,
         scheduled_task_id=scheduled_task_id,

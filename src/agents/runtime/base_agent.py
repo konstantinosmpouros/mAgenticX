@@ -58,11 +58,12 @@ class BaseAgent:
         default_run_config: Dict[str, Any] = {'configurable': {"thread_id": str(uuid4())}}
         self.run_config: Optional[Mapping[str, Any]] = self.config.get("run_config", default_run_config)
         
-        # Configured tool selectors
-        self.config_tools: Sequence[Mapping[str, Any]] = self.config.get("tools", [])
-        self.config_tool_names: List[str] = (
-            [self._build_tool_key_from_config(item) for item in self.config_tools] if self.config_tools else []
-        )
+        # Configured tool selectors. Tools are declared per agent, not per request:
+        # a deep agent overrides these from its spec (see YamlDeepAgent), and the
+        # platform no longer accepts a per-request tool list. The base therefore
+        # seeds them empty instead of reading config["tools"].
+        self.config_tools: Sequence[Mapping[str, Any]] = []
+        self.config_tool_names: List[str] = []
         
         # Resolved tools (populated per-stream after loading from MCP)
         self.tools: List[Any] = []
@@ -170,13 +171,6 @@ class BaseAgent:
     # ---------------------------------------------------------------------
     def _validate_config(self, config: Mapping[str, Any]) -> Dict[str, Any]:
         """Validate and normalise a config mapping coming from the UI/backend."""
-        # Validate tool entries
-        tools = config.get("tools")
-        if tools is not None:
-            if isinstance(tools, str) or not isinstance(tools, Sequence):
-                raise TypeError("Agent config 'tools' must be a list of tool mappings.")
-            config["tools"] = self._validate_tool_config(tools)
-
         # Validate run config
         run_config = config.get("run_config")
         if run_config is not None:
@@ -188,40 +182,6 @@ class BaseAgent:
             config["context"] = self._validate_context_config(context)
 
         return config
-
-
-    @staticmethod
-    def _validate_tool_config(tools: Sequence[Any]) -> List[Mapping[str, Any]]:
-        """Return validated tool definitions while preserving extra parameters."""
-        if isinstance(tools, str) or not isinstance(tools, Sequence):
-            raise TypeError("Tool entries must be provided as a list of mappings.")
-        
-        normalised: List[Dict[str, Any]] = []
-        for tool in tools:
-            # Validate entry type
-            if not isinstance(tool, Mapping):
-                raise TypeError("Each tool entry must be a mapping containing at least a 'tool_name'.")
-            candidate = dict(tool)
-            
-            # Validate tool name
-            raw_name = candidate.get("tool_name")
-            if not isinstance(raw_name, str) or not raw_name.strip():
-                raise ValueError("Each tool entry must provide a non-empty 'tool_name' string.")
-            
-            candidate["tool_name"] = raw_name.strip()
-
-            # Normalise optional server identifier
-            raw_server = candidate.get("server_id", "")
-            if raw_server is None:
-                raw_server = ""
-            if not isinstance(raw_server, str):
-                raw_server = str(raw_server)
-            candidate["server_id"] = raw_server.strip()
-            
-            # Add to normalised list after validation
-            normalised.append(candidate)
-            
-        return normalised
 
 
     @staticmethod

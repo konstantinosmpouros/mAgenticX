@@ -161,6 +161,7 @@ export const AgentToolRowSchema = z.object({
   name: z.string(),
   description: z.string().catch(""),
   source: z.string(), // "native" | "mcp"
+  declared: z.boolean().catch(true), // baseline tool vs an available gateway tool
   disabled: z.boolean(),
 });
 export const AgentToolsResponseSchema = z.object({

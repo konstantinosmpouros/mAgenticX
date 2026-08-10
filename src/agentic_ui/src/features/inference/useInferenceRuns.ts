@@ -187,7 +187,7 @@ export function useInferenceRuns({
         !active ||
         thoughts.length > 0 ||
         (run.timeline?.blocks.length ?? 0) > 0 ||
-        (run.pendingInterrupts?.length ?? 0) > 0;
+        (run.pendingInterrupts ?? 0) > 0;
       if (hasAgentSignal) {
         setShowAiTransition?.(false);
       }

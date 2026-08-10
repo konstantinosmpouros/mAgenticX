@@ -27,7 +27,7 @@ from core.security.internal_trust import internal_service_headers
 from core.settings import settings
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from observability import get_context, get_logger
-from schemas import ConversationSummary, InferenceRunOut, MessageOut, ToolPreference
+from schemas import ConversationSummary, InferenceRunOut, MessageOut
 from utils.agents import (
     build_agent_input_files_url,
     build_agent_output_files_url,
@@ -90,12 +90,6 @@ async def list_runs_for_user(
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _tool_preferences_to_json(items: list[ToolPreference] | None) -> list[dict[str, str]]:
-    if not items:
-        return []
-    return [{"server_id": item.server_id, "tool_name": item.tool_name} for item in items]
 
 
 def _effective_personalization(prefs_row: UserPreferencesTable | None) -> dict[str, Any]:
@@ -613,7 +607,6 @@ class InferenceRunManager:
                     "parentMessageId": run.parent_message_id,
                     "status": "running",
                     "messagePath": run.streaming_message_path or [],
-                    "enabledTools": run.streaming_enabled_tools or [],
                     "startedAt": started_at.isoformat(),
                     "updatedAt": started_at.isoformat(),
                     "errorMessage": None,
@@ -627,7 +620,6 @@ class InferenceRunManager:
                 agent = await get_agent_by_id(run.agent_id or conversation.agent_id)
                 agent_url = build_agent_stream_url(agent)
                 resume_url = build_agent_resume_url(agent)
-                enabled_tools = run.streaming_enabled_tools or []
                 # Deep agents have a per-conversation filesystem; LangGraph
                 # agents do not. Only deep agents get files seeded into input/
                 # and the input/ path references in serialised attachments.
@@ -676,7 +668,6 @@ class InferenceRunManager:
                         logger=logger,
                         messages=conversation.messages,
                         message_ids=run.streaming_message_path,
-                        enabled_tools_count=len(enabled_tools),
                         include_input_paths=is_deep_agent,
                     )
                     sent_messages = len(history)
@@ -748,7 +739,6 @@ class InferenceRunManager:
                         "use_memory": use_memory,
                         **({"personalization": personalization} if personalization else {}),
                     },
-                    "tools": enabled_tools or None,
                 }
                 if fork_from is not None:
                     # Consumed by /stream only (idempotent seed before the run);
@@ -1232,7 +1222,6 @@ def build_run_out_from_message(message: MessageTable, *, user_id: str) -> Infere
         status=message.streaming_status or "completed",
         scheduledTaskId=message.scheduled_task_id,
         messagePath=message.streaming_message_path or [],
-        enabledTools=message.streaming_enabled_tools or [],
         content=message.content,
         thinking=message.reasoning_steps,
         rawEvents=message.raw_events or [],
@@ -1371,7 +1360,6 @@ async def create_inference_run_record(
     conversation: ConversationTable,
     parent_message_id: str,
     message_path: list[str] | None,
-    enabled_tools: list[ToolPreference] | None,
     agent: AgentTable,
     mode: str,
     scheduled_task_id: str | None = None,
@@ -1443,7 +1431,6 @@ async def create_inference_run_record(
         agent_id=agent.id,
         agent_name=agent.name,
         streaming_status="queued",
-        streaming_enabled_tools=_tool_preferences_to_json(enabled_tools),
         streaming_started_at=now,
         checkpoint_thread_id=checkpoint_thread_id,
         scheduled_task_id=scheduled_task_id,
