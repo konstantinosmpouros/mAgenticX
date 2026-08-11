@@ -2,7 +2,9 @@
 
 > **Status:** Not started
 > **TODO source:** New Features → "Projects / Workspaces: group related conversations, files, agents, tools, preferences, and instructions into persistent workspaces for long-running work. Each workspace/project carries **its own memory**, scoped per (user, workspace) — and later per (user, workspace, agent) — so a workspace's context never bleeds into another's."
-> **Depends on:** [02 · Org + user permissions](02-org-and-user-permissions.md)
+> **Depends on:** [02 · Org + user permissions](02-org-and-user-permissions.md), [18 · Workspace filesystem consolidation](18-workspace-filesystem-consolidation.md)
+>
+> **Ownership note (added after 18 was written):** the **physical filesystem layout, the `/var/magenticx` volume, and the copy→verify→mark migrator are owned by [18](18-workspace-filesystem-consolidation.md)**. This plan consumes that layout and owns the workspace *entity* — the tables, membership, the switcher UI, and subdividing `workspaces/users/<user_id>/` into per-workspace subtrees plus the `(user, workspace, agent)` memory tier. Where the two overlap below (§2.3, §3.5), 18 is authoritative on paths and the move; do not migrate the same data twice.
 > **Blocks (soft):** [01 · Custom agents per user](01-custom-agents-per-user.md) · [05 · Artifacts / Canvas](05-artifacts-canvas.md)
 > **Services touched:** dialogue_bridge · agents · agentic_ui · infra
 

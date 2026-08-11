@@ -71,6 +71,7 @@ def _load_agents_service(monkeypatch):
         error_handling=importlib.import_module("core.error_handling"),
         settings_module=importlib.import_module("core.settings"),
         # runtime
+        filesystem_layout=importlib.import_module("runtime.filesystem.layout"),
         base_agent=importlib.import_module("runtime.base_agent"),
         checkpointer_store=importlib.import_module("runtime.checkpointer.store"),
         checkpointer_fork=importlib.import_module("runtime.checkpointer.fork"),
@@ -116,34 +117,43 @@ def _write_global_skill(global_root: Path, category: str, name: str, description
 
 @pytest.fixture
 def skills_fs(agents_service, tmp_path):
-    """Point the skill-registry filesystem settings at an isolated tmp tree.
+    """Point the agents filesystem at an isolated tmp tree.
 
-    Seeds two global skills, redirects the per-user registry + per-(user,agent)
-    filesystem roots into tmp_path, and resets the in-memory global manifest
-    cache so each test starts from a freshly indexed global volume.
+    Redirects the two plane roots (``global_root`` / ``workspaces_root``) into
+    tmp_path, seeds two global skills into the catalogue, and resets the
+    in-memory global manifest cache so each test starts from a freshly indexed
+    catalogue.
+
+    Exposed attributes mirror the consolidated layout:
+
+    * ``global_root`` — the *catalogue* dir (``<plane>/skills``), so
+      ``global_root / <category> / <skill>`` addresses a skill folder.
+    * ``pool(user)`` — that user's skill pool (``manifest.json`` + ``custom/``).
+    * ``workspace(user)`` / ``agent_dir(user, slug)`` — the per-user tree.
     """
     fs = agents_service.main.settings.filesystem
+    layout = agents_service.filesystem_layout
 
-    global_root = tmp_path / "skills_registry" / "global"
-    users_root = tmp_path / "skills_registry" / "users"
-    user_fs_root = tmp_path / "filesystem"
-    global_root.mkdir(parents=True, exist_ok=True)
-    users_root.mkdir(parents=True, exist_ok=True)
-    user_fs_root.mkdir(parents=True, exist_ok=True)
+    global_plane = tmp_path / "global"
+    workspaces = tmp_path / "workspaces"
+    fs.global_root = global_plane
+    fs.workspaces_root = workspaces
 
-    fs.skills_registry_global_root = global_root
-    fs.skills_registry_users_root = users_root
-    fs.user_root = user_fs_root
+    catalogue = layout.global_skills_root()
+    catalogue.mkdir(parents=True, exist_ok=True)
+    layout.users_root().mkdir(parents=True, exist_ok=True)
 
-    _write_global_skill(global_root, "research", "deep-research", "Run deep research", "Body for deep research.")
-    _write_global_skill(global_root, "frontend", "design-system", "Design system helper", "Body for design system.")
+    _write_global_skill(catalogue, "research", "deep-research", "Run deep research", "Body for deep research.")
+    _write_global_skill(catalogue, "frontend", "design-system", "Design system helper", "Body for design system.")
 
     agents_service.global_manifest._MANIFEST_CACHE = None
     agents_service.global_manifest.rebuild_global_manifest()
 
     return SimpleNamespace(
-        global_root=global_root,
-        users_root=users_root,
-        user_fs_root=user_fs_root,
+        global_root=catalogue,
+        users_root=layout.users_root(),
+        pool=layout.user_skills_pool_root,
+        workspace=layout.user_workspace,
+        agent_dir=layout.agent_root,
         service=agents_service,
     )

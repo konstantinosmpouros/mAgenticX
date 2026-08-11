@@ -38,6 +38,7 @@ These plans deliberately cross-reference each other. Most items in `src/TODO` ar
 | 15 | [Open-source services on Dennis](15-dennis-open-source-services.md) | General | Not started |
 | 16 | [Context & usage UI](16-context-usage-ui.md) | Bugs / Fixes | Not started |
 | 17 | [Dynamic voice language, per conversation](17-voice-language-dynamic.md) | Bugs / Fixes | Not started |
+| 18 | [Workspace filesystem consolidation + two-tier skills](18-workspace-filesystem-consolidation.md) | derived (storage half of Projects/Workspaces) | Not started |
 
 ---
 
@@ -49,8 +50,12 @@ Arrows read **"must land before"**. Dashed arrows are soft couplings — the dow
 flowchart TD
     P00["00 · Platform restructure<br/>(done)"] --> P01["01 · Custom agents per user"]
     P00 --> P07["07 · Tool RAG"]
+    P00 --> P18["18 · Workspace filesystem<br/>+ two-tier skills"]
+    P18 --> P01
+    P18 --> P03["03 · Projects / Workspaces"]
+    P18 -.-> P12["12 · create_skill tool"]
     P02["02 · Org + user permissions"] --> P01
-    P02 --> P03["03 · Projects / Workspaces"]
+    P02 --> P03
     P02 --> P14["14 · Profile panel"]
     P03 -.-> P01
     P03 -.-> P05["05 · Artifacts / Canvas"]
@@ -62,7 +67,6 @@ flowchart TD
     P07 -.-> P06
     P15["15 · Services on Dennis"] --> P08
     P10["10 · RAG via MCP gateway"] -.-> P07
-    P12["12 · create_skill tool"]
     P01 -.-> P12
     P11["11 · Sandbox runner"]
     P13["13 · Charts + AG-UI"]
@@ -130,7 +134,7 @@ Plan [04](04-notifications-and-pwa.md) and [14](14-profile-panel-completion.md) 
 | A model registry (context window / pricing) | 01 (model allowlist), 06 (budgets), 16 (context meter) | One registry, built once. The only existing source of truth is the per-model profile already trusted by `summarization.py` — see [16](16-context-usage-ui.md) §1. |
 | The `auto_attach=False` native-tool slot | 09 (mail tools), 13 (`render_chart`), 12 (`create_skill`) | Not exclusive, but 13 is documented as its "first inhabitant" — whichever ships first proves the path. |
 | A HITL `edit` decision | 06 (prune/redirect a plan), 09 (edit a draft before send) | Both want to widen `approve`/`reject`. 09 designed around it (edit the draft row, then approve); 06 needs it. Build it once, in whichever lands first. |
-| `/var/magenticx` persistence | 01 (Phase 0), 03 (storage migration) | The mount does not exist today (see [01](01-custom-agents-per-user.md) §2). Whoever lands first provisions it in **both** compose files. |
+| `/var/magenticx` persistence + physical layout | **18 owns it**; 01 and 03 consume it | The mount does not exist today. [18](18-workspace-filesystem-consolidation.md) provisions the volume (its Phase 0 *is* 01's blocking Phase 0) and owns the copy→verify→mark migrator; 03 keeps the workspace *entity* (tables, membership, switcher, memory tier). Whichever of 01/03 lands second must not re-move data. |
 
 ---
 

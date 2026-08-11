@@ -23,12 +23,19 @@ def _touch(path: Path, *, age_hours: float) -> None:
 
 
 def _conv_dir(root: Path, user: str = "user-1", agent: str = "agent-1", conv: str = "conv-1") -> Path:
-    return root / user / "agents" / agent / conv
+    """A conversation dir in the consolidated layout.
+
+    ``root`` is the *workspaces plane*, so the tree is
+    ``<plane>/users/<user>/agents/<agent>/conversations/<conv>``. Conversations
+    live under their own parent, which is what lets the sweeper identify one by
+    position instead of by not-matching a list of sibling names.
+    """
+    return root / "users" / user / "agents" / agent / "conversations" / conv
 
 
 def _retention(agents_service, tmp_root: Path, *, input_ttl=72, output_ttl=168):
     fs = agents_service.main.settings.filesystem
-    fs.user_root = tmp_root
+    fs.workspaces_root = tmp_root
     fs.input_ttl_hours = input_ttl
     fs.output_ttl_hours = output_ttl
     return importlib.import_module("runtime.filesystem.retention")
@@ -44,7 +51,10 @@ def test_sweep_deletes_only_expired_cache_files(agents_service, tmp_path):
     _touch(conv / "input" / "recent-upload.pdf", age_hours=40)
     _touch(conv / "output" / "recent-report.docx", age_hours=40)
     # Out-of-scope files → untouchable regardless of age.
-    _touch(conv.parent / "memory" / "AGENTS.md", age_hours=999)
+    # conv.parent is `conversations/`; the agent root (memory/, skills/,
+    # default_skills/) is one level above and must never be reachable.
+    _touch(conv.parent.parent / "memory" / "AGENTS.md", age_hours=999)
+    _touch(conv.parent.parent / "default_skills" / "s" / "SKILL.md", age_hours=999)
     _touch(conv / "loose-note.md", age_hours=999)
     _touch(conv / "large_tool_results" / "blob.json", age_hours=999)
 
@@ -56,7 +66,10 @@ def test_sweep_deletes_only_expired_cache_files(agents_service, tmp_path):
     assert not (conv / "output" / "nested").exists()  # empty subdir pruned
     assert (conv / "input" / "recent-upload.pdf").exists()
     assert (conv / "output" / "recent-report.docx").exists()
-    assert (conv.parent / "memory" / "AGENTS.md").exists()
+    assert (conv.parent.parent / "memory" / "AGENTS.md").exists()
+    # A new sibling under the agent root is out of scope by position, not by a
+    # maintained name denylist — this is the point of the conversations/ parent.
+    assert (conv.parent.parent / "default_skills" / "s" / "SKILL.md").exists()
     assert (conv / "loose-note.md").exists()
     assert (conv / "large_tool_results" / "blob.json").exists()
     assert (conv / "input").is_dir()  # scope dirs themselves always survive

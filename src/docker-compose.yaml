@@ -61,18 +61,19 @@ services:
       - DIALOGUE_BRIDGE_URL=http://dialogue_bridge:8002
       - MCP_GATEWAY_URL=http://mcp_gateway:8005/sse
       - TRUSTED_PROXY_SECRET=${TRUSTED_PROXY_SECRET}
-      - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
-      - SKILLS_REGISTRY_GLOBAL_ROOT=/var/agents/skills_registry/global
-      - SKILLS_REGISTRY_USERS_ROOT=/var/agents/skills_registry/users
+      # Both planes of the agents filesystem live on the magenticx_data volume.
+      - MAGENTICX_GLOBAL_ROOT=/var/magenticx/global
+      - MAGENTICX_WORKSPACES_ROOT=/var/magenticx/workspaces
       # Durable LangGraph checkpointer — separate DB on the same Postgres
       # instance. Dev is plaintext (no TLS, no encryption); prod wires TLS +
       # an AES key (see docker-compose-denis.yaml).
       - AGENT_RUNTIME_DATABASE_URL=postgresql://admin:admin@chat_postgres:5432/agent_runtime
       - LANGGRAPH_STRICT_MSGPACK=true
     volumes:
-      - agents_filesystem:/var/agents/filesystem
-      - skills_registry_global:/var/agents/skills_registry/global
-      - skills_registry_users:/var/agents/skills_registry/users
+      # The whole agents filesystem: global plane (agent definitions + skills
+      # catalogue) and one workspace per user (pool, custom agents, per-agent
+      # memory, tool prefs, conversation files). See runtime/filesystem/layout.py.
+      - magenticx_data:/var/magenticx
     depends_on:
       - rag_service
       - chat_postgres
@@ -207,8 +208,4 @@ volumes:
 
   chat_convs:
 
-  agents_filesystem:
-
-  skills_registry_global:
-
-  skills_registry_users:
+  magenticx_data:

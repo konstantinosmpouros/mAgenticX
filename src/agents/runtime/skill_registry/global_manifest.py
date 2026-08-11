@@ -33,8 +33,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from core.settings import settings
 from observability import get_logger
+from runtime.filesystem import layout
 from schemas import SkillManifestEntry, GlobalManifest
 
 logger = get_logger(__name__)
@@ -44,7 +44,7 @@ _MANIFEST_CACHE: GlobalManifest | None = None
 
 
 def _manifest_path() -> Path:
-    return settings.filesystem.skills_registry_global_root / _MANIFEST_FILENAME
+    return layout.global_skills_root() / _MANIFEST_FILENAME
 
 
 def _parse_frontmatter(skill_md: Path) -> tuple[str, str]:
@@ -87,7 +87,7 @@ def _parse_frontmatter(skill_md: Path) -> tuple[str, str]:
 
 
 def _scan_global_registry() -> list[SkillManifestEntry]:
-    root = settings.filesystem.skills_registry_global_root
+    root = layout.global_skills_root()
     if not root.is_dir():
         logger.warning(
             "skills_global_root_missing",

@@ -37,9 +37,8 @@ RUN cp -r /app/agents_seed /opt/agents_seed
 # Docker named volumes inherit permissions the non-root container user can
 # write to. Without this, Docker creates the directory as root and the
 # UID-1000 process can't write into the volume.
-RUN mkdir -p /var/agents/filesystem /var/agents/skills_registry/global /var/agents/skills_registry/users \
-        /var/magenticx/global /var/magenticx/workspaces \
-    && chown -R 1000:1000 /var/agents/filesystem /var/agents/skills_registry /var/magenticx
+RUN mkdir -p /var/magenticx/global/agents /var/magenticx/global/skills /var/magenticx/workspaces/users \
+    && chown -R 1000:1000 /var/magenticx
 
 EXPOSE 8003
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003"]

@@ -93,9 +93,9 @@ services:
       - INTERNAL_CLIENT_CERT_PATH=/app/tls/tls.crt
       - INTERNAL_CLIENT_KEY_PATH=/app/tls/tls.key
       - TRUSTED_PROXY_SECRET_FILE=/run/secrets/trusted_proxy_secret
-      - AGENTS_FILESYSTEM_ROOT=/var/agents/filesystem
-      - SKILLS_REGISTRY_GLOBAL_ROOT=/var/agents/skills_registry/global
-      - SKILLS_REGISTRY_USERS_ROOT=/var/agents/skills_registry/users
+      # Both planes of the agents filesystem live on the magenticx_data volume.
+      - MAGENTICX_GLOBAL_ROOT=/var/magenticx/global
+      - MAGENTICX_WORKSPACES_ROOT=/var/magenticx/workspaces
       - AGENT_RUNTIME_DATABASE_URL=postgresql://admin@chat_postgres:5432/agent_runtime
       - AGENT_RUNTIME_DATABASE_PASSWORD_FILE=/run/secrets/postgres_password
       - LANGGRAPH_STRICT_MSGPACK=true
@@ -125,9 +125,10 @@ services:
       - /opt/magenticx/agents/tls/tls.key:/app/tls/tls.key:ro
       - /opt/magenticx/agents/tls/tls.crt:/app/tls/tls.crt:ro
       - /opt/magenticx/agents/tls/ca.crt:/app/tls/ca.crt:ro
-      - agents_filesystem:/var/agents/filesystem
-      - skills_registry_global:/var/agents/skills_registry/global
-      - skills_registry_users:/var/agents/skills_registry/users
+      # The whole agents filesystem: global plane (agent definitions + skills
+      # catalogue) and one workspace per user (pool, custom agents, per-agent
+      # memory, tool prefs, conversation files). See runtime/filesystem/layout.py.
+      - magenticx_data:/var/magenticx
     networks:
       - backend
       - frontend
@@ -385,10 +386,15 @@ volumes:
 
   chat_convs:
 
-  agents_filesystem:
-
-  skills_registry_global:
-
-  skills_registry_users:
+  # Consolidated agents filesystem (global plane + per-user workspaces). Bound to
+  # the VM so it is snapshot-able alongside the other bind-mounted data; the
+  # directory must be owned by 1000:1000 or the agents container cannot write it
+  # (same ownership rule as the TLS material).
+  magenticx_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/magenticx/data
 
 
