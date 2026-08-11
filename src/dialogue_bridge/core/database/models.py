@@ -111,7 +111,6 @@ class UserPreferencesTable(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    tools = Column(JSON, nullable=False, default=dict)
     prefers_agentic_chat = Column(Boolean, nullable=False, server_default="false")
     suggestions_enabled = Column(Boolean, nullable=False, server_default="true")
     show_message_token_usage = Column(Boolean, nullable=False, server_default="false")
@@ -274,7 +273,6 @@ class MessageTable(Base):
     # ------------------------------------------------------------------
     streaming_status = Column(String, nullable=True)                      # queued / running / cancelling / completed / cancelled / failed
     streaming_message_path = Column(JSON, nullable=True)                  # branch context: list of message IDs the agent saw as history
-    streaming_enabled_tools = Column(JSON, nullable=True)                 # tool preferences snapshot at start
     streaming_started_at = Column(DateTime, nullable=True)
     streaming_completed_at = Column(DateTime, nullable=True)
     streaming_cancel_requested_at = Column(DateTime, nullable=True)
@@ -415,9 +413,6 @@ class ScheduledTaskTable(Base):
     title = Column(String, nullable=True)
     # The instruction fed to the agent on every fire (the synthetic user turn).
     prompt = Column(Text, nullable=False)
-    # Tool list snapshot — enabledTools is client-computed, so a headless fire
-    # must carry its own frozen list (the backend never auto-filters tools).
-    enabled_tools = Column(JSON, nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="false")
 
     # 'fresh' = new conversation each fire (isolated); 'bound' = one dedicated

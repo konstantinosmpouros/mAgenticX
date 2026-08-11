@@ -753,21 +753,17 @@ def test_base_agent_default_construction(agents_service):
 def test_base_agent_valid_full_config(agents_service):
     BaseAgent = agents_service.base_agent.BaseAgent
     config = {
-        "tools": [
-            {"tool_name": "  search  ", "server_id": "  tavily  "},
-            {"tool_name": "fetch"},
-        ],
         "run_config": {"configurable": {"thread_id": "abc"}},
         "context": {"user_id": "  u1 ", "conversation_id": " c1 "},
     }
     agent = BaseAgent(config=config)
 
-    assert agent.config["tools"][0] == {"tool_name": "search", "server_id": "tavily"}
-    assert agent.config["tools"][1] == {"tool_name": "fetch", "server_id": ""}
     assert agent.run_config == {"configurable": {"thread_id": "abc"}}
     assert agent.context == {"user_id": "u1", "conversation_id": "c1"}
-    # config_tool_names are normalized cache keys.
-    assert agent.config_tool_names == ["tavily/search", "fetch"]
+    # Tools are declared per agent (a YamlDeepAgent seeds these from its spec),
+    # never from the request config — so the base leaves them empty.
+    assert agent.config_tools == []
+    assert agent.config_tool_names == []
 
 
 def test_base_agent_run_config_none_uses_default(agents_service):
@@ -775,46 +771,6 @@ def test_base_agent_run_config_none_uses_default(agents_service):
     agent = BaseAgent(config={"context": {"user_id": "u", "conversation_id": "c"}})
     assert "configurable" in agent.run_config
     assert "thread_id" in agent.run_config["configurable"]
-
-
-def test_base_agent_invalid_tools_not_sequence(agents_service):
-    BaseAgent = agents_service.base_agent.BaseAgent
-    with pytest.raises(TypeError):
-        BaseAgent(config={"tools": "not-a-list"})
-
-
-def test_base_agent_invalid_tool_entry_type(agents_service):
-    BaseAgent = agents_service.base_agent.BaseAgent
-    with pytest.raises(TypeError):
-        BaseAgent(config={"tools": ["not-a-mapping"]})
-
-
-def test_base_agent_validate_tool_config_rejects_string_directly(agents_service):
-    # The static helper guards against a bare string even when called directly.
-    BaseAgent = agents_service.base_agent.BaseAgent
-    with pytest.raises(TypeError):
-        BaseAgent._validate_tool_config("not-a-list")
-
-
-def test_base_agent_tool_missing_name(agents_service):
-    BaseAgent = agents_service.base_agent.BaseAgent
-    with pytest.raises(ValueError):
-        BaseAgent(config={"tools": [{"server_id": "tavily"}]})
-
-
-def test_base_agent_tool_blank_name(agents_service):
-    BaseAgent = agents_service.base_agent.BaseAgent
-    with pytest.raises(ValueError):
-        BaseAgent(config={"tools": [{"tool_name": "   "}]})
-
-
-def test_base_agent_tool_server_id_none_and_coerced(agents_service):
-    BaseAgent = agents_service.base_agent.BaseAgent
-    agent = BaseAgent(config={"tools": [{"tool_name": "x", "server_id": None}]})
-    assert agent.config["tools"][0]["server_id"] == ""
-
-    agent2 = BaseAgent(config={"tools": [{"tool_name": "x", "server_id": 123}]})
-    assert agent2.config["tools"][0]["server_id"] == "123"
 
 
 def test_base_agent_invalid_run_config_type(agents_service):
@@ -865,9 +821,10 @@ def test_base_agent_attach_tools_filters_and_dedups(agents_service):
     BaseAgent = agents_service.base_agent.BaseAgent
     get_tool_cache_key = agents_service.mcp_tools.get_tool_cache_key
 
-    agent = BaseAgent(
-        config={"tools": [{"tool_name": "fetch"}, {"tool_name": "missing_tool"}]}
-    )
+    agent = BaseAgent()
+    # config_tool_names is populated per agent (a YamlDeepAgent seeds it from its
+    # spec's declared tools); attach_tools filters the live manifest to those keys.
+    agent.config_tool_names = ["fetch"]
 
     wanted = _NamedTool("fetch")
     duplicate = _NamedTool("fetch")

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { updateUserPreferences } from '@/shared/lib/api';
-import type { CustomInstructions, ToolMetadata, ToolPreference, UserPreferences } from '@/shared/lib/types';
+import type { CustomInstructions, UserPreferences } from '@/shared/lib/types';
 import {
   DEFAULT_PERSONALITY,
   DEFAULT_REALTIME_VOICE,
@@ -20,10 +20,7 @@ import {
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 
 export type PreferencesHandlers = {
-  toolsWithStatus: (ToolMetadata & { enabled: boolean })[];
-  enabledToolsForRequest: ToolPreference[];
   resolvedPreferences: UserPreferences;
-  handleToggleToolPreference: (tool: ToolMetadata) => Promise<void>;
   handleToggleSuggestionsEnabled: () => Promise<void>;
   handleToggleShowMessageTokenUsage: () => Promise<void>;
   handleToggleSearchPastConvs: () => Promise<void>;
@@ -36,7 +33,6 @@ export type PreferencesHandlers = {
 
 type PreferencesCtx = {
   userId: string | null;
-  availableTools: ToolMetadata[];
   userPreferences: UserPreferences | null;
   setUserPreferences: (v: UserPreferences | null) => void;
   isSavingPreferences: boolean;
@@ -48,7 +44,6 @@ type PreferencesCtx = {
 export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers {
   const {
     userId,
-    availableTools,
     userPreferences,
     setUserPreferences,
     setIsSavingPreferences,
@@ -59,7 +54,6 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   const defaultPreferences: UserPreferences = useMemo(
     // Keep downstream code simple by always resolving a complete preference object.
     () => ({
-      tools: { disabled: [] },
       prefersAgenticChat: false,
       suggestionsEnabled: true,
       showMessageTokenUsage: false,
@@ -75,7 +69,6 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   const resolvedPreferences = {
     ...defaultPreferences,
     ...(userPreferences ?? {}),
-    tools: userPreferences?.tools ?? defaultPreferences.tools,
     personality: normalizePersonality(userPreferences?.personality),
     customInstructions: normalizeCustomInstructions(userPreferences?.customInstructions),
     voiceModeVoice: normalizeRealtimeVoice(userPreferences?.voiceModeVoice),
@@ -86,7 +79,6 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   // All handlers build their payload through this snapshot + overrides, so a
   // newly added preference can never be silently wiped by an unrelated toggle.
   const snapshotPrefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
-    tools: resolvedPreferences.tools ?? { disabled: [] },
     prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
     suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
     showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
@@ -127,65 +119,6 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     } finally {
       setIsSavingPreferences(false);
     }
-  };
-
-  const toolKey = (serverId: string | undefined, toolName: string) => `${serverId || 'default'}::${toolName}`;
-
-  const disabledToolKeys = useMemo(() => {
-    // Normalize old and new field names so stored preferences remain backward compatible.
-    const entries = resolvedPreferences?.tools?.disabled ?? [];
-    const keys = entries
-      .map((item) => {
-        const name = (item as any).toolName ?? (item as any).tool_name ?? '';
-        const server = (item as any).serverId ?? (item as any).server_id ?? '';
-        return toolKey(server, name);
-      })
-      .filter(Boolean);
-    return new Set(keys);
-  }, [resolvedPreferences]);
-
-  const toolsWithStatus = useMemo(
-    // Combine tool metadata with preference state so the UI can render a single enriched list.
-    () =>
-      availableTools.map((tool) => ({
-        ...tool,
-        enabled: !disabledToolKeys.has(toolKey(tool.serverId, tool.toolName)),
-      })),
-    [availableTools, disabledToolKeys]
-  );
-
-  const enabledToolsForRequest: ToolPreference[] = useMemo(
-    // Outbound inference requests only need the enabled subset.
-    () =>
-      toolsWithStatus
-        .filter((t) => t.enabled)
-        .map((t) => ({
-          serverId: t.serverId || '',
-          toolName: t.toolName,
-        })),
-    [toolsWithStatus]
-  );
-
-  const handleToggleToolPreference = async (tool: ToolMetadata) => {
-    const key = toolKey(tool.serverId, tool.toolName);
-    const nextDisabled = new Set(disabledToolKeys);
-    // Flip the local set first so the toggle feels instant; revert on persistence failure.
-    if (nextDisabled.has(key)) {
-      nextDisabled.delete(key);
-    } else {
-      nextDisabled.add(key);
-    }
-    await persistPrefs(
-      snapshotPrefs({
-        tools: {
-          disabled: Array.from(nextDisabled).map((k) => {
-            const [serverId, toolName] = k.split('::');
-            return { serverId, toolName };
-          }),
-        },
-      }),
-      'Could not update preferences'
-    );
   };
 
   const handleToggleSuggestionsEnabled = async () => {
@@ -245,10 +178,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   };
 
   return {
-    toolsWithStatus,
-    enabledToolsForRequest,
     resolvedPreferences,
-    handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
     handleToggleShowMessageTokenUsage,
     handleToggleSearchPastConvs,

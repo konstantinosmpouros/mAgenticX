@@ -40,7 +40,7 @@ sequenceDiagram
     participant Chroma as ChromaDB
     participant Duck as DuckDB
 
-    Browser->>Bridge: POST /v1/inference/runs/{user_id}/start {mode, enabledTools}
+    Browser->>Bridge: POST /v1/inference/runs/{user_id}/start {mode}
     Bridge-->>Browser: detail + summary + run + assistant placeholder
     Browser->>Bridge: WS /v1/inference/runs/{user_id}/{run_id}/ws (subscribe)
     Bridge->>Bridge: serialize message history with images
@@ -48,7 +48,7 @@ sequenceDiagram
 
     Agents->>MCP: SSE: initialize + list_tools
     MCP-->>Agents: [Tool definitions]
-    Agents->>Agents: filter tools by config, attach to agent instance
+    Agents->>Agents: filter live tools to the agent's resolved set\n(agent.yaml declared − tool_prefs.json disabled), attach
 
     Agents->>Agents: agent.astream() — LangGraph execution
     Agents-->>Bridge: ToolCallStartEvent (SSE)
@@ -107,7 +107,10 @@ When `MCP_MANIFEST_CACHE_ENABLED=true` and the cache is already populated, a `GE
 
 ## Phase 2 — Per-Request MCP Session and Tool Attachment
 
-Every inference stream request opens a fresh MCP session:
+Every inference stream request opens a fresh MCP session, but **which** tools attach is decided by the agent itself, not by the request. The old model — where the client computed an `enabledTools` list and the bridge forwarded it as `config["tools"]` — is retired. `BaseAgent.__init__` no longer seeds its tool filter from the request config; `config_tools` / `config_tool_names` default empty. Instead:
+
+- A **deep agent declares its tools per agent** in its `agent.yaml` `tools:` list (native + MCP). A `YamlDeepAgent` resolves that declared set from its spec at build time.
+- A user **disables specific tools per (user, agent)** in Settings → Agents. That disabled set is persisted server-side in a `tool_prefs.json` at the agent's root (`runtime/filesystem/tool_prefs.py`). The agent's **effective tool set = declared − disabled** (`_apply_tool_disables`).
 
 ```mermaid
 flowchart TD
@@ -116,16 +119,16 @@ flowchart TD
     C --> D["await load_mcp_tools(session)"]
     D --> E["Returns LangChain tool objects\n(distinct from manifest-only cache)"]
     E --> F["agent.attach_tools(live_tools)"]
-    F --> G["Filter: only tools in config_tool_names"]
+    F --> G["Filter to the agent's resolved set:\nagent.yaml declared − tool_prefs.json disabled"]
     G --> H["Missing tools logged at WARNING"]
     H --> I["agent.tools populated, agent.tools_names populated"]
     I --> J["agent.astream() starts"]
     J --> K["mcp_session_context() closes on exit"]
 ```
 
-`agent.attach_tools()` filters the live tool list against `config_tool_names` — a list of cache-key strings built from the `"tools"` array in the inference request config. Tools not present in `config_tool_names` are silently dropped. This means the agent only ever calls tools the client explicitly selected; the MCP gateway may expose 50 tools but the agent sees only the 3 the user enabled.
+`agent.attach_tools()` filters the live tool list down to the agent's resolved tool set. Tools outside that set are silently dropped: the MCP gateway may expose 50 tools but the agent sees only the ones its `agent.yaml` declares and its owner has not disabled. Because the client sends no tool list, an empty request config never widens or narrows what the agent can call.
 
-The config structure the bridge sends:
+The config structure the bridge sends carries no `tools` key:
 
 ```json
 {
@@ -136,14 +139,12 @@ The config structure the bridge sends:
     },
     "run_config": {
       "configurable": { "thread_id": "..." }
-    },
-    "tools": [
-      { "tool_name": "tavily-search", "server_id": "tavily" },
-      { "tool_name": "download_paper", "server_id": "arxiv" }
-    ]
+    }
   }
 }
 ```
+
+**LangGraph agents (`hr_policies` / `orthodox` / `retail`) are unaffected.** Their RAG retrieval is a graph **node** that calls `rag_service` over HTTP (Phase 3), never a bound tool, so they have no attachable tool set and the empty request tool list changes nothing for them.
 
 ---
 
@@ -332,7 +333,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 
 - **The MCP session lives for exactly one inference request.** A new SSE connection is opened and closed for every call to `event_stream()`. There is no connection pool or shared session. If the MCP gateway is unreachable, the inference request fails immediately.
 
-- **Tool attachment is a filter, not a lookup.** `attach_tools()` receives the full list of live tools from the MCP gateway and discards any whose cache key is not in `config_tool_names`. If the client sends a tool key that does not match any live tool, the mismatch is logged at WARNING and the agent runs without that tool — it does not error.
+- **Tool attachment is a filter, not a lookup — and the filter source is the agent, not the request.** `attach_tools()` receives the full list of live tools from the MCP gateway and keeps only those in the agent's resolved set (`agent.yaml` declared − `tool_prefs.json` disabled). If a declared tool matches no live tool, the mismatch is logged at WARNING and the agent runs without it — it does not error. The client no longer supplies a tool list, so `config_tools` / `config_tool_names` are empty.
 
 - **The DuckDB instance is per-process and in-memory.** Restarting the RAG service reloads all Excel files from disk into a fresh DuckDB instance. Any query sent between the process restart and the first workbook load will 404. The `TABLES` global is only populated after `_lifespan()` completes.
 
@@ -366,7 +367,8 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | MCP tool cache & manifest | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`, `list_mcp_tools()`, `_prime_manifest_cache()` |
 | MCP session per request | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `mcp_session_context()`, `load_mcp_tools()` |
 | Tool server ID overrides | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
-| Agent base (tool filtering) | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `attach_tools()`, `_build_tool_key_from_config()` |
+| Agent base (tool filtering) | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
+| Per-(user, agent) tool disables | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
 | LangGraph agent build & stream | [src/agents/runtime/langgraph_agent.py](../../src/agents/runtime/langgraph_agent.py) | `build()`, `astream()` |
 | Deep agent build lifecycle | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
 | Tool call lifecycle events | [src/agents/runtime/protocols/agui/emitter.py](../../src/agents/runtime/protocols/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |

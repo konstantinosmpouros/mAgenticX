@@ -28,7 +28,7 @@ flowchart LR
     Agents -->|"AG-UI SSE frames"| Bridge
 ```
 
-The event log is durable across container restarts (Redis is its own service) but ephemeral by design: stream keys get a 1 h `EXPIRE` applied on terminal status so reconnecting clients within that window can still replay missed events. The authoritative record of completed runs lives on the assistant `MessageTable` row — there is no separate `inference_runs` table; the row's `streaming_*` columns carry the lifecycle (`streaming_status`, `streaming_started_at`, `streaming_completed_at`, `streaming_message_path`, `streaming_enabled_tools`, `streaming_cancel_requested_at`) and the standard `content`/`raw_events`/`plan`/`subagents`/`reasoning_steps` columns carry the final accumulated state.
+The event log is durable across container restarts (Redis is its own service) but ephemeral by design: stream keys get a 1 h `EXPIRE` applied on terminal status so reconnecting clients within that window can still replay missed events. The authoritative record of completed runs lives on the assistant `MessageTable` row — there is no separate `inference_runs` table; the row's `streaming_*` columns carry the lifecycle (`streaming_status`, `streaming_started_at`, `streaming_completed_at`, `streaming_message_path`, `streaming_cancel_requested_at`) and the standard `content`/`raw_events`/`plan`/`subagents`/`reasoning_steps` columns carry the final accumulated state. (The `streaming_enabled_tools` column was dropped in migration `0016_retire_enabled_tools` — a run no longer snapshots a tool list; the agent resolves its own tools.)
 
 ---
 
@@ -74,10 +74,10 @@ sequenceDiagram
     participant Task as InferenceRunManager task
     participant Agents as agents service
 
-    UI->>Bridge: POST /v1/inference/runs/{user_id}/start {mode, message, path, tools}
+    UI->>Bridge: POST /v1/inference/runs/{user_id}/start {mode, message, path}
     Bridge->>PG: Validate user ownership and active-run conflicts
     Bridge->>PG: Persist user-side action for mode
-    Bridge->>PG: INSERT AI placeholder (streaming_status='queued', streaming_message_path, streaming_enabled_tools)
+    Bridge->>PG: INSERT AI placeholder (streaming_status='queued', streaming_message_path)
     Bridge->>PG: SET conversation.active_assistant_message_id
     Bridge->>PG: COMMIT
     Bridge->>PG: Reload conversation detail and placeholder; build InferenceRunOut from message
@@ -152,7 +152,7 @@ sequenceDiagram
         end
         Runs->>PG: SELECT count(active streaming messages for user)
         Runs->>PG: SELECT active streaming message for conversation
-        Runs->>PG: INSERT AI placeholder (streaming_status='queued', streaming_message_path, streaming_enabled_tools, streaming_started_at)
+        Runs->>PG: INSERT AI placeholder (streaming_status='queued', streaming_message_path, streaming_started_at)
         Runs->>PG: UPDATE conversation.active_assistant_message_id + last_message_at
         Start->>PG: COMMIT
     end
@@ -244,7 +244,7 @@ flowchart TD
     B -->|"retry"| F["validate target AI message\nuse its parent user message"]
     B -->|"shared_continue"| G["load active share\nclone snapshot + continuation user message"]
     C & D & E & F & G --> H["create_inference_run_record()"]
-    H --> I["INSERT AI placeholder\n(streaming_status='queued',\n streaming_message_path,\n streaming_enabled_tools,\n streaming_started_at)"]
+    H --> I["INSERT AI placeholder\n(streaming_status='queued',\n streaming_message_path,\n streaming_started_at)"]
     I --> K["SET conversation.active_assistant_message_id"]
     K --> L["COMMIT"]
     L --> M["Reload detail/message;\nbuild_run_out_from_message"]

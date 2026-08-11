@@ -48,7 +48,6 @@ async def stream_agent(agent_slug: str, req: Request):
         "agent_stream_request_received",
         "Agent stream request received",
         input_messages=len(req.messages),
-        configured_tools=len((req.config.get("tools") or []) if isinstance(req.config, dict) else []),
     )
     try:
         # Check if the agent is disabled
@@ -60,7 +59,7 @@ async def stream_agent(agent_slug: str, req: Request):
             )
         # Initialise the agent
         agent_logger.info("agent_initialization_started", "Agent initialization started")
-        agent = definition.cls(config=req.config)
+        agent = definition.build(config=req.config)
     except HTTPException:
         raise
     except Exception as exc:
@@ -190,7 +189,7 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
         configurable_in["thread_id"] = effective_thread_id
         run_config_in["configurable"] = configurable_in
         resume_config["run_config"] = run_config_in
-        agent = definition.cls(config=resume_config)
+        agent = definition.build(config=resume_config)
     except HTTPException:
         raise
     except Exception as exc:

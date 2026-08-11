@@ -52,7 +52,7 @@ In `bound` mode, while a fire is running the conversation has an active run, so 
 
 ### Create
 
-`POST /v1/scheduled-tasks/{user_id}` → `create_scheduled_task` ([`utils/scheduled_tasks.py`](../../src/dialogue_bridge/utils/scheduled_tasks.py)). Validates the agent, caps per-user task count (`SCHEDULER_MAX_TASKS_PER_USER`), snapshots the tool list (`enabledTools` is client-computed — a headless fire must carry its own), and computes the initial `next_run_at` via `compute_next_run_at`.
+`POST /v1/scheduled-tasks/{user_id}` → `create_scheduled_task` ([`utils/scheduled_tasks.py`](../../src/dialogue_bridge/utils/scheduled_tasks.py)). Validates the agent, caps per-user task count (`SCHEDULER_MAX_TASKS_PER_USER`), and computes the initial `next_run_at` via `compute_next_run_at`. A task no longer snapshots a tool list — the retired `enabled_tools` column (migration `0016_retire_enabled_tools`) is gone. When a fire runs, the agent resolves its own tools (declared in `agent.yaml`, minus the owner's per-(user, agent) disables), exactly as an interactive run does.
 
 ### Claim (single-fire safe)
 
@@ -105,7 +105,7 @@ The management page shows two layers, both built on the durable tag:
 | --- | --- | --- | --- |
 | `GET` | `/v1/scheduled-tasks/{user_id}` | — | `ScheduledTaskOut[]` (with live status) |
 | `POST` | `/v1/scheduled-tasks/{user_id}` | `ScheduledTaskCreate` | `ScheduledTaskOut` |
-| `PATCH` | `/v1/scheduled-tasks/{user_id}/{task_id}` | `ScheduledTaskUpdate` (pause/resume, label, prompt, tools) | `ScheduledTaskOut` |
+| `PATCH` | `/v1/scheduled-tasks/{user_id}/{task_id}` | `ScheduledTaskUpdate` (pause/resume, label, prompt) | `ScheduledTaskOut` |
 | `DELETE` | `/v1/scheduled-tasks/{user_id}/{task_id}` | — | `204` |
 
 Mutations require the CSRF token; all are scoped to the authenticated user. Router: [`router/scheduled_tasks.py`](../../src/dialogue_bridge/router/scheduled_tasks.py).
@@ -141,5 +141,5 @@ Tasks are fetched fresh (not cached in the IndexedDB UI snapshot), so no snapsho
 
 - **In-app poll only.** No web push / email — that is the separate Notification system TODO. The badge reflects *running* tasks via poll.
 - **Single replica.** The scheduler and `InferenceRunManager` both assume one bridge replica.
-- **Schedule edits.** The update endpoint changes label/prompt/tools and pause/resume; changing the cadence is delete-and-recreate for now.
-- **Per-task tool picker.** v1 seeds a task with the user's currently-enabled tools; a dedicated picker in the create form is deferred.
+- **Schedule edits.** The update endpoint changes label/prompt and pause/resume; changing the cadence is delete-and-recreate for now.
+- **Tools are the agent's, not the task's.** A task carries no tool list. Every fire runs with the agent's declared tools minus the owner's per-(user, agent) disables (Settings → Agents) — the same resolution an interactive run uses. To change a scheduled agent's tools, change them in the Agents tab; there is no per-task tool picker.

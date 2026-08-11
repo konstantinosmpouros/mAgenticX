@@ -195,7 +195,7 @@ erDiagram
 | `sessions` | bridge-managed access/refresh sessions |
 | `agents` | cached agent manifests from the agents service |
 | `conversations` | conversation shell and sidebar metadata; `active_assistant_message_id` FK points to the AI message currently being streamed |
-| `messages` | user and AI messages, reactions, reasoning, plan, subagent state, plus `streaming_*` columns (status / message_path / enabled_tools / started_at / completed_at / cancel_requested_at) that drive the inference-run lifecycle. A partial unique index on `conversation_id WHERE streaming_status IN ('queued','running','cancelling')` ensures at most one active stream per conversation. |
+| `messages` | user and AI messages, reactions, reasoning, plan, subagent state, plus `streaming_*` columns (status / message_path / started_at / completed_at / cancel_requested_at) that drive the inference-run lifecycle. A partial unique index on `conversation_id WHERE streaming_status IN ('queued','running','cancelling')` ensures at most one active stream per conversation. |
 | `attachments` | metadata for uploaded files |
 | `blobs` | raw binary payload storage |
 
@@ -402,7 +402,6 @@ The inference payload accepts:
 - `message`
 - `conversationId`, `parentMessageId`, or `targetMessageId` depending on mode
 - `messagePath`
-- `enabledTools`
 
 `messagePath` is validated to ensure:
 
@@ -541,10 +540,9 @@ The preferences surface is:
 
 Current payload fields:
 
-- `tools.disabled`
 - `prefersAgenticChat`
 
-Disabled tools are normalized and deduplicated by `server_id + tool_name`.
+Tool control is no longer a global preference. It moved to a per-(user, agent) disabled set on the agents service (Settings → Agents); the old `user_preferences.tools` column was dropped in migration `0016_retire_enabled_tools`.
 
 ## 14. Request Models and Limits
 
@@ -552,13 +550,7 @@ Disabled tools are normalized and deduplicated by `server_id + tool_name`.
 
 ```json
 {
-  "messagePath": ["msg-1", "msg-2"],
-  "enabledTools": [
-    {
-      "serverId": "tavily",
-      "toolName": "tavily-search"
-    }
-  ]
+  "messagePath": ["msg-1", "msg-2"]
 }
 ```
 

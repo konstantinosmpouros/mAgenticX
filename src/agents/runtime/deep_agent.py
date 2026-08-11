@@ -13,9 +13,7 @@ from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
 from runtime.personalization import build_personalization_prompt
-from runtime.tools.memory_search import build_memory_search_tool
-from runtime.tools.present_artifact import build_present_artifact_tool
-from runtime.tools.remember import build_remember_tool
+from runtime.tools.registry import NATIVE_TOOLS, NativeToolContext, build_auto_attach_tools
 from runtime.middlewares import (
     ConfigurableSummarizationMiddleware,
     ToolErrorMiddleware,
@@ -27,6 +25,8 @@ from runtime.filesystem import (
     build_workspace_backend,
     ensure_user_agent_filesystem,
 )
+from runtime.filesystem.tool_prefs import read_disabled_tools
+from utils import get_tool_cache_key
 from observability import get_logger
 
 logger = get_logger(__name__)
@@ -301,32 +301,51 @@ class DeepAgent(BaseAgent, ABC):
         user_id = ctx.get("user_id")
         if not user_id:
             return []
-        conversation_id = ctx.get("conversation_id")
-        tools: List[Any] = []
-        if self.use_memory:
-            tools.append(
-                build_remember_tool(
-                    user_id=user_id,
-                    agent_slug=self.name,
-                    conversation_id=conversation_id,
-                )
+        # Delegate to the native-tool registry so the always-on builtins live in
+        # one place (runtime/tools/registry.py). Gating is unchanged: the builder
+        # for each auto-attach tool returns None when its gate is off
+        # (remember→use_memory, search_past_conversations→search_past_convs,
+        # present_artifact→conversation_id present).
+        return build_auto_attach_tools(
+            NativeToolContext(
+                user_id=user_id,
+                agent_slug=self.name,
+                conversation_id=ctx.get("conversation_id"),
+                use_memory=self.use_memory,
+                search_past_convs=bool(ctx.get("search_past_convs")),
             )
-        if ctx.get("search_past_convs"):
-            tools.append(
-                build_memory_search_tool(
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                )
+        )
+
+
+    def _apply_tool_disables(self, tools: List[Any]) -> List[Any]:
+        """Drop MCP tools the user disabled for this (user, agent) from the built
+        set.
+
+        The user may disable a subset of the agent's MCP tools per agent (the
+        Agents tab → ``runtime/filesystem/tool_prefs``). Matching is by canonical
+        cache key (``get_tool_cache_key``). **Native builtins are never dropped**:
+        they aren't managed by this tab (``remember`` / ``search_past_conversations``
+        follow the Personalization prefs; ``present_artifact`` is always on), so
+        native keys are subtracted from the disabled set here — this also neutralizes
+        any legacy pre-model disable of a native. No-op when there's no user
+        context or no disables.
+        """
+        user_id = (self.context or {}).get("user_id")
+        if not user_id:
+            return tools
+        disabled = read_disabled_tools(user_id, self.name) - set(NATIVE_TOOLS)
+        if not disabled:
+            return tools
+        kept = [tool for tool in tools if get_tool_cache_key(tool) not in disabled]
+        removed = len(tools) - len(kept)
+        if removed:
+            logger.info(
+                "agent_tools_disabled_filtered",
+                "Removed user-disabled tools for (user, agent)",
+                agent_slug=self.name,
+                removed_count=removed,
             )
-        if conversation_id:
-            tools.append(
-                build_present_artifact_tool(
-                    user_id=user_id,
-                    agent_slug=self.name,
-                    conversation_id=conversation_id,
-                )
-            )
-        return tools
+        return kept
 
 
     @staticmethod
@@ -434,7 +453,7 @@ class DeepAgent(BaseAgent, ABC):
         return create_deep_agent(
             model=model,
             name=self.name,
-            tools=self.tools + self._builtin_tools(),
+            tools=self._apply_tool_disables(self.tools + self._builtin_tools()),
             system_prompt=system_prompt,
             subagents=augmented_subagents,
             interrupt_on=interrupt_on,

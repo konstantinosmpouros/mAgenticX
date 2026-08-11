@@ -483,20 +483,18 @@ __all__ = ["MyDeepAgent", ...]
 
 ### How Tools Are Selected
 
-The inference request carries a `config.tools` array of selector objects. The bridge forwards this verbatim:
+Tools are declared **per agent**, not per request — the old client-computed `enabledTools` list (forwarded as `config.tools`) is retired. A deep agent declares its tools in its `agent.yaml` `tools:` list:
 
-```json
-{
-  "tools": [
-    { "tool_name": "tavily-search", "server_id": "tavily" },
-    { "tool_name": "download_paper", "server_id": "arxiv" }
-  ]
-}
+```yaml
+tools:
+  - { tool_name: tavily-search, server_id: tavily }   # MCP tool
+  - { tool_name: download_paper, server_id: arxiv }   # MCP tool
+  - native: remember                                  # native builtin
 ```
 
-`_validate_tool_config()` normalizes each entry and `_build_tool_key_from_config()` converts it to a cache key (`"tavily/tavily-search"`, `"arxiv/download_paper"`). These keys are stored in `self.config_tool_names`.
+`YamlDeepAgent` seeds these into `self.config_tool_names` via `_build_tool_key_from_config()` (cache keys like `"tavily/tavily-search"`, `"arxiv/download_paper"`) — the base `BaseAgent` leaves them empty, since nothing tool-related rides on the request anymore.
 
-At stream time, the MCP gateway provides live LangChain tool objects. `attach_tools()` keeps only the ones whose cache key matches an entry in `self.config_tool_names`.
+At stream time, the MCP gateway provides live LangChain tool objects. `attach_tools()` keeps only the ones whose cache key matches an entry in `self.config_tool_names`, then a deep agent's `_apply_tool_disables()` subtracts the per-(user, agent) disabled set (Settings → Agents, stored in `tool_prefs.json`).
 
 ### Tool Cache Key Format
 

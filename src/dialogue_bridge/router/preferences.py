@@ -21,7 +21,6 @@ async def get_user_preferences(
 ):
     """
     Return generic user preferences (future-proof JSON) scoped to the given user.
-    Currently supports tools.disabled list.
     """
     set_context(user_id=user_id)
     result = await db.execute(select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id))
@@ -31,7 +30,6 @@ async def get_user_preferences(
         return UserPreferences()
 
     payload: dict = {
-        "tools": row.tools if isinstance(row.tools, dict) else {},
         "prefers_agentic_chat": bool(row.prefers_agentic_chat),
         "suggestions_enabled": bool(row.suggestions_enabled),
         "show_message_token_usage": bool(row.show_message_token_usage),
@@ -68,7 +66,6 @@ async def upsert_user_preferences(
     # preset registry, custom-instruction text sanitized + length-capped.
     custom_instructions = payload.customInstructions.model_dump(mode="json")
     if existing:
-        existing.tools = payload.tools.model_dump(mode="json", by_alias=True)
         existing.prefers_agentic_chat = bool(payload.prefersAgenticChat)
         existing.suggestions_enabled = bool(payload.suggestionsEnabled)
         existing.show_message_token_usage = bool(payload.showMessageTokenUsage)
@@ -82,7 +79,6 @@ async def upsert_user_preferences(
         db.add(
             UserPreferencesTable(
                 user_id=user_id,
-                tools=payload.tools.model_dump(mode="json", by_alias=True),
                 prefers_agentic_chat=bool(payload.prefersAgenticChat),
                 suggestions_enabled=bool(payload.suggestionsEnabled),
                 show_message_token_usage=bool(payload.showMessageTokenUsage),
@@ -101,7 +97,6 @@ async def upsert_user_preferences(
     logger.info(
         "preferences_updated",
         "Updated user preferences",
-        disabled_tools=len(payload.tools.disabled),
         prefers_agentic_chat=bool(payload.prefersAgenticChat),
         suggestions_enabled=bool(payload.suggestionsEnabled),
         personality=payload.personality,
@@ -110,7 +105,6 @@ async def upsert_user_preferences(
         voice_mode_language=voice_mode_language,
     )
     return UserPreferences(
-        tools=payload.tools,
         prefersAgenticChat=bool(payload.prefersAgenticChat),
         suggestionsEnabled=bool(payload.suggestionsEnabled),
         showMessageTokenUsage=bool(payload.showMessageTokenUsage),

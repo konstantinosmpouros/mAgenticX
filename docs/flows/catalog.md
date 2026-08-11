@@ -1,6 +1,6 @@
 # Catalog
 
-The catalog is the discovery layer that tells the frontend which agents and tools are available at any given moment. `dialogue_bridge` exposes three endpoints under `/v1/catalog`: one for agents (backed by an in-memory cache synced from the agents service), one for tools (always fetched fresh from the agents service, which aggregates them from the MCP gateway), and one that generates personalized conversation starter suggestions via an LLM call. On page load the frontend fetches both lists in parallel, merges them with any previously cached snapshot from IndexedDB, and uses the result to populate the agent selector and the tool preferences panel. Every inference request is built from this data: the selected agent UUID and the computed list of enabled tools both flow into the conversation creation and run-start payloads.
+The catalog is the discovery layer that tells the frontend which agents and tools are available at any given moment. `dialogue_bridge` exposes three endpoints under `/v1/catalog`: one for agents (backed by an in-memory cache synced from the agents service), one for tools (always fetched fresh from the agents service, which aggregates them from the MCP gateway), and one that generates personalized conversation starter suggestions via an LLM call. On page load the frontend fetches both lists in parallel, merges them with any previously cached snapshot from IndexedDB, and uses the result to populate the agent selector and the **read-only** MCP Servers browse tab. The catalog is purely informational for tools: an inference request carries only the selected agent UUID — it does **not** carry a tool list. Tool enablement is owned by the agents service (declared per agent in `agent.yaml`, disabled per (user, agent) in Settings → Agents), not computed from the catalog and sent per request. See [user-preferences.md § Tool control moved to the Agents tab](user-preferences.md#tool-control-moved-to-the-agents-tab).
 
 ---
 
@@ -235,7 +235,7 @@ Agents are **always** re-fetched even if the snapshot has them — because an ag
 
 ## Phase 5 — From Catalog to Inference Request
 
-The selected agent and tool list flow into every inference request. Here is the complete mapping:
+Only the selected agent flows into an inference request — the tool list does not. Here is the complete mapping:
 
 ### Agent selection → stream URL
 
@@ -250,18 +250,18 @@ flowchart LR
 
 The frontend always works with agent UUIDs. The `slug` (the URL path segment used to route to the correct agent class) lives only in the backend database, populated during the agent sync.
 
-### Tool preferences → enabled tools list
+### Tools → resolved by the agent, not sent by the client
+
+The catalog's tool list is **display-only**. It populates the read-only MCP Servers browse tab and gives the Agents tab the names to render, but the frontend no longer computes an `enabledTools` list and no inference request carries one. The bridge does not forward a `config["tools"]` list to the agents service.
 
 ```mermaid
 flowchart TD
-    A["availableTools: ToolMetadata[]"] --> C
-    B["userPreferences.tools.disabled: ToolPreference[]"] --> C
-    C["compute enabledTools:\navailableTools - disabled"] --> D
-    D["enabledTools: ToolPreference[]\n[{ serverId, toolName }, ...]"]
-    D --> E["POST /v1/inference/runs/{user_id}/start\n{ mode, enabledTools, ... }"]
+    A["agent.yaml tools:\n(declared native + MCP)"] --> C
+    B["tool_prefs.json\n(per-(user, agent) disabled set)"] --> C
+    C["agents service: effective tools\n= declared − disabled\n(_apply_tool_disables)"]
 ```
 
-The subtraction is computed in the inference handler using a `Set` keyed by `"{serverId}::{toolName}"`. The resulting `enabledTools` list is sent in the inference run start payload and forwarded to the agents service. If the user has disabled all tools, `enabledTools` is an empty array; the agent then runs with no MCP tool access.
+Tool resolution happens entirely on the agents service when a `YamlDeepAgent` is built: it reads the tools declared in the agent's `agent.yaml` and subtracts the owner's disabled set from `tool_prefs.json`. An empty request tool list is meaningless now — the agent never depended on the client to tell it which tools to attach. LangGraph agents (`hr_policies` / `orthodox` / `retail`) reach RAG through a graph node over HTTP, so they carry no tool set at all.
 
 ### Full inference request shapes
 
@@ -277,11 +277,7 @@ The subtraction is computed in the inference handler using a `Set` keyed by `"{s
     "type": "text",
     "content": "Search for recent ML papers",
     "attachments": []
-  },
-  "enabledTools": [
-    { "serverId": "arxiv-mcp-server", "toolName": "search_arxiv" },
-    { "serverId": "tavily", "toolName": "tavily_search" }
-  ]
+  }
 }
 ```
 
@@ -298,11 +294,7 @@ The subtraction is computed in the inference handler using a `Set` keyed by `"{s
     "type": "text",
     "content": "Use the search tools for this",
     "attachments": []
-  },
-  "enabledTools": [
-    { "serverId": "arxiv-mcp-server", "toolName": "search_arxiv" },
-    { "serverId": "tavily", "toolName": "tavily_search" }
-  ]
+  }
 }
 ```
 
@@ -335,7 +327,7 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 
 - **If the agents service is down, the catalog 503s and the UI shows no agents.** If the IndexedDB snapshot has a stale agent list, the UI will briefly show it and then overwrite it with an empty list when the fresh fetch fails. There is no "use stale data on error" fallback for the agents fetch.
 
-- **`enabledTools` is computed by the frontend, not enforced by the backend.** If a tool appears in `enabledTools` but the MCP server is currently offline, the agent will attempt to call it and get a tool execution error. There is no pre-flight check against live MCP server availability.
+- **Tool enablement is not in the request path at all.** No `enabledTools` list is computed by the frontend or sent to the bridge; the agents service resolves an agent's tools from its `agent.yaml` declaration minus the per-(user, agent) disabled set. If a declared tool's MCP server is currently offline, the agent still tries to call it and gets a tool execution error — the catalog is not a pre-flight availability check.
 
 - **A conversation is permanently bound to an agent UUID.** The `agentId` is written to the `conversations` table at creation time and never changes. If the agent is later removed from the service and deactivated, the conversation record still references it. The inference flow will fail for that conversation until a different agent is selected.
 
@@ -353,8 +345,8 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 | MCP catalog registry | [src/mcp_gateway/mcp_catalog.yaml](../../src/mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
 | MCP server config | [src/mcp_gateway/mcp_config.yaml](../../src/mcp_gateway/mcp_config.yaml) | runtime parameters per server |
 | Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `getAgents()`, `getTools()`, `getSuggestions()` |
-| Frontend types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `Agent`, `ToolMetadata`, `ToolPreference` |
+| Frontend types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `Agent`, `ToolMetadata` (the `ToolPreference` type was deleted) |
 | Icon mapping | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `mapIcon()`, icon name → LucideIcon lookup |
 | Startup hydration | [src/agentic_ui/src/hooks/useSessionEffects.ts](../../src/agentic_ui/src/hooks/useSessionEffects.ts) | `useAuthRehydrateEffect`, parallel catalog fetches |
 | IndexedDB snapshot | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | `UISnapshotSerializable`, `agents`, `availableTools` fields |
-| Inference request building | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | enabled tool computation, `agentId` and start-mode payloads |
+| Inference request building | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `agentId` and start-mode payloads (no tool list is computed or sent) |

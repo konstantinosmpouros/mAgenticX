@@ -10,8 +10,7 @@ import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
  * workspace context built by ChatShell; navigation drives open/close.
  */
 export default function TasksView() {
-  const { reduceMotion, navigate, scheduledTasks, agents, enabledToolsForRequest } =
-    useChatWorkspaceContext();
+  const { reduceMotion, navigate, scheduledTasks, agents } = useChatWorkspaceContext();
 
   return (
     <motion.div
@@ -26,7 +25,6 @@ export default function TasksView() {
         loading={scheduledTasks.loading}
         error={scheduledTasks.error}
         agents={agents}
-        defaultEnabledTools={enabledToolsForRequest}
         onCreate={scheduledTasks.create}
         onUpdate={scheduledTasks.update}
         onDelete={scheduledTasks.remove}

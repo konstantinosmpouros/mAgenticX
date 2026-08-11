@@ -154,6 +154,25 @@ export type ToolMetadata = z.infer<typeof ToolMetadataSchema>;
 
 
 // ---------------------------------------------------------------------------
+// Per-agent tools (Agents tab) — GET/POST /v1/agents/{user}/{slug}/tools
+// ---------------------------------------------------------------------------
+export const AgentToolRowSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  description: z.string().catch(""),
+  source: z.string(), // "native" | "mcp"
+  declared: z.boolean().catch(true), // baseline tool vs an available gateway tool
+  disabled: z.boolean(),
+});
+export const AgentToolsResponseSchema = z.object({
+  agentSlug: z.string(),
+  tools: z.array(AgentToolRowSchema).catch([]),
+});
+export type AgentToolRow = z.infer<typeof AgentToolRowSchema>;
+export type AgentToolsResponse = z.infer<typeof AgentToolsResponseSchema>;
+
+
+// ---------------------------------------------------------------------------
 // Catalog suggestions — { suggestions: string[] } → filtered string[]
 // ---------------------------------------------------------------------------
 export const SuggestionsSchema = z

@@ -200,7 +200,6 @@ def test_prepare_history_strips_trailing_empty_ai_placeholder():
         logger=logger,
         messages=[user, placeholder],
         message_ids=["u1", "a1"],
-        enabled_tools_count=3,
     )
     assert [m.id for m in history_messages] == ["u1"]
     assert history == [{"role": "user", "content": "hello"}]
@@ -208,7 +207,6 @@ def test_prepare_history_strips_trailing_empty_ai_placeholder():
     assert event == "inference_branch_resolved"
     assert kwargs["placeholder_stripped"] is True
     assert kwargs["branch_source"] == "message_path"
-    assert kwargs["enabled_tools"] == 3
 
 
 def test_prepare_history_keeps_ai_message_with_content():
@@ -219,7 +217,6 @@ def test_prepare_history_keeps_ai_message_with_content():
         logger=logger,
         messages=[user, ai],
         message_ids=None,
-        enabled_tools_count=0,
     )
     assert [m.id for m in history_messages] == ["u1", "a1"]
     assert history[-1] == {"role": "ai", "content": "answer"}
@@ -234,7 +231,6 @@ def test_prepare_history_empty_messages_is_safe():
         logger=logger,
         messages=[],
         message_ids=None,
-        enabled_tools_count=1,
     )
     assert history_messages == []
     assert history == []

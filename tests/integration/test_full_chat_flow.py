@@ -27,7 +27,6 @@ async def test_create_run_and_finalize_chat_flow(client, seeded_user, seeded_age
                 "type": "text",
                 "content": "Help me plan a new onboarding flow.",
             },
-            "enabledTools": [{"serverId": "rag", "toolName": "sql_query"}],
         },
     )
 
@@ -41,7 +40,6 @@ async def test_create_run_and_finalize_chat_flow(client, seeded_user, seeded_age
     assert run_payload["detail"]["activeRunId"] == run_payload["run"]["id"]
     assert run_payload["run"]["assistantMessageId"] == ai_message_id
     assert run_payload["run"]["messagePath"] == [user_message_id, ai_message_id]
-    assert run_payload["run"]["enabledTools"] == [{"server_id": "rag", "tool_name": "sql_query"}]
 
     finalize_response = await client.patch(
         f"/v1/messages/{seeded_user.id}/{conversation_id}/{ai_message_id}",

@@ -13,6 +13,8 @@ import type {
   UserSkillDetail,
   MemorySummary,
   MemoryDetail,
+  AgentToolRow,
+  AgentToolsResponse,
   ToolMetadata,
   DocxPreviewTokenResponse,
   RealtimeVoiceSessionResponse,
@@ -31,6 +33,8 @@ export type {
   UserSkillDetail,
   MemorySummary,
   MemoryDetail,
+  AgentToolRow,
+  AgentToolsResponse,
   ToolMetadata,
   DocxPreviewTokenResponse,
   RealtimeVoiceSessionResponse,
@@ -115,7 +119,10 @@ export type Agent = {
 // Tool Schemas
 // ------------------------------------------------------
 // `ToolMetadata` is inferred from `ToolMetadataSchema` (see re-export above).
-export type ToolWithStatus = ToolMetadata & { enabled?: boolean };
+// Tools no longer carry a global enabled/disabled status — enablement is
+// per-agent (Settings → Agents), resolved server-side. This stays as an alias
+// so the read-only catalog views keep a stable prop name.
+export type ToolWithStatus = ToolMetadata;
 
 // Profile panel — a documentation/support entry on the Help tab.
 export type HelpCard = {
@@ -175,12 +182,6 @@ export type UserAgentSkillSelection = Record<string, string[]>;
 // ------------------------------------------------------
 // User Preferences Schemas
 // ------------------------------------------------------
-// User preferences related types
-export type ToolPreference = {
-    serverId: string;
-    toolName: string;
-};
-
 // User-authored custom instructions injected into deep-agent system prompts
 // while `enabled` is true. Field lengths are capped by CUSTOM_INSTRUCTIONS_LIMITS
 // (mirroring the bridge schema).
@@ -193,9 +194,6 @@ export type CustomInstructions = {
 };
 
 export type UserPreferences = {
-    tools?: {
-        disabled?: ToolPreference[];
-    };
     prefersAgenticChat?: boolean;
     suggestionsEnabled?: boolean;
     showMessageTokenUsage?: boolean;
@@ -442,7 +440,6 @@ export type InferenceRun = {
     // live run back to its task for the "running" badge).
     scheduledTaskId?: string | null;
     messagePath: string[];
-    enabledTools?: ToolPreference[];
     content?: string | null;
     thinking?: string[] | null;
     rawEvents?: Record<string, any>[];
@@ -623,7 +620,6 @@ export type InferenceStartRequest = {
     parentMessageId?: string;
     targetMessageId?: string;
     messagePath?: string[];
-    enabledTools?: ToolPreference[];
     message?: MessageIn;
 };
 
@@ -649,7 +645,6 @@ export type ScheduledTask = {
     conversationId?: string | null;
     title?: string | null;
     prompt: string;
-    enabledTools: ToolPreference[];
     isPrivate: boolean;
     targetMode: TaskTargetMode | string;
     scheduleKind: ScheduleKind | string;
@@ -682,7 +677,6 @@ export type ScheduledTaskCreatePayload = {
     intervalSeconds?: number; // interval
     cronExpr?: string;        // cron
     timezone?: string;        // IANA tz (cron)
-    enabledTools?: ToolPreference[];
     isPrivate?: boolean;
     maxRuns?: number;
     expiresAt?: string;       // ISO-8601 UTC
@@ -692,7 +686,6 @@ export type ScheduledTaskUpdatePayload = {
     title?: string;
     prompt?: string;
     status?: "active" | "paused";
-    enabledTools?: ToolPreference[];
     agentId?: string;
     targetMode?: TaskTargetMode;
     isPrivate?: boolean;

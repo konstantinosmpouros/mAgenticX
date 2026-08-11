@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Type
+from typing import Any, Callable, Dict, List, Literal, Optional, Type
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
 
@@ -170,7 +170,7 @@ class ToolManifest(BaseModel):
 
 
 class SkillManifest(BaseModel):
-    """One entry in the central skills registry (``src/agents/skills_registry/``).
+    """One entry in the central skills registry (``runtime/skill_registry/registry/``).
 
     ``content`` is the markdown body that follows the frontmatter — agents
     pull this in via the deepagents ``SkillsMiddleware`` when the user has
@@ -291,6 +291,50 @@ class MemoryDetail(MemoryEntry):
 
 @dataclass(frozen=True)
 class AgentDefinition:
+    """A registered agent template. ``cls`` is set for Python-class agents,
+    ``factory`` for declarative (YAML) agents; ``build()`` picks whichever is
+    present, so callers never branch on the kind."""
+
     slug: str
-    cls: Type[Any]
     manifest: Dict[str, Any]
+    cls: Optional[Type[Any]] = None
+    factory: Optional[Callable[..., Any]] = None
+    # The parsed AgentSpec for declarative (YAML) agents; None for Python-class
+    # agents. Kept opaque (Any) so this DTO module stays decoupled from
+    # runtime.declarative. Used to compute the agent's declared tool set for the
+    # per-agent tools endpoint.
+    spec: Optional[Any] = None
+
+    def build(self, config: Optional[Dict[str, Any]] = None) -> Any:
+        """Instantiate the agent for a run — ``factory(config)`` (YAML) or
+        ``cls(config=config)`` (Python class)."""
+        if self.factory is not None:
+            return self.factory(config)
+        if self.cls is not None:
+            return self.cls(config=config)
+        raise ValueError(f"AgentDefinition {self.slug!r} has neither factory nor cls.")
+
+
+class AgentToolRow(BaseModel):
+    """One tool an agent can use, with its per-(user, agent) disabled state.
+
+    Rendered in the Agents tab; the user toggles ``disabled`` per agent."""
+
+    key: str
+    name: str
+    description: str = ""
+    source: Literal["native", "mcp"]
+    # True = part of the agent's declared baseline (native builtin or agent.yaml
+    # tool). False = an available gateway tool the user can enable for this agent.
+    declared: bool = True
+    disabled: bool
+
+
+class AgentToolsResponse(BaseModel):
+    agentSlug: str
+    tools: List[AgentToolRow] = Field(default_factory=list)
+
+
+class ToolToggleRequest(BaseModel):
+    toolKey: str
+    disabled: bool

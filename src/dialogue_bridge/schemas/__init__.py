@@ -239,61 +239,32 @@ class CustomSkillCreateRequest(BaseModel):
 
 
 # -------------------------------------------
-# User preferences DTO
+# Per-agent tools DTOs (Agents tab) — proxied from the agents service, which
+# already emits camelCase, so these mirror that shape 1:1.
 # -------------------------------------------
-class ToolPreference(BaseModel):
+class AgentToolRow(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    server_id: str = Field(
-        "",
-        validation_alias=AliasChoices("server_id", "serverId"),
-        serialization_alias="serverId",
-    )
-    tool_name: str = Field(
-        ...,
-        validation_alias=AliasChoices("tool_name", "toolName"),
-        serialization_alias="toolName",
-    )
-
-    @field_validator("server_id", "tool_name", mode="before")
-    @classmethod
-    def _coerce_and_strip(cls, v: str) -> str:
-        if v is None:
-            return ""
-        if not isinstance(v, str):
-            v = str(v)
-        return v.strip()
+    key: str
+    name: str
+    description: str = ""
+    source: str  # "native" | "mcp"
+    declared: bool = True  # part of the agent's baseline vs an available gateway tool
+    disabled: bool
 
 
-class ToolsPreferences(BaseModel):
+class AgentToolsResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    disabled: list[ToolPreference] = Field(default_factory=list)
+    agentSlug: str
+    tools: list[AgentToolRow] = Field(default_factory=list)
 
-    @model_validator(mode="after")
-    def _dedupe_disabled(self) -> "ToolsPreferences":
-        """Normalize and deduplicate the disabled list by server/tool key."""
-        cleaned: list[ToolPreference] = []
-        seen: set[str] = set()
 
-        for entry in self.disabled or []:
-            tool_name = (entry.tool_name or "").strip()
-            server_id = (entry.server_id or "").strip()
-            if not tool_name:
-                continue
-            key = f"{server_id}::{tool_name}"
-            if key in seen:
-                continue
-            seen.add(key)
-            cleaned.append(
-                ToolPreference(
-                    server_id=server_id,
-                    tool_name=tool_name,
-                )
-            )
+class ToolToggleRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
 
-        self.disabled = cleaned
-        return self
+    toolKey: str
+    disabled: bool
 
 
 # Personality presets recognised by the agents service (its registry lives in
@@ -334,7 +305,6 @@ class CustomInstructions(BaseModel):
 class UserPreferences(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    tools: ToolsPreferences = Field(default_factory=ToolsPreferences)
     prefersAgenticChat: bool = Field(
         default=False,
         validation_alias=AliasChoices("prefers_agentic_chat", "prefersAgenticChat"),
@@ -782,7 +752,6 @@ class InferenceStartPayload(BaseModel):
     parentMessageId: Optional[str] = None
     targetMessageId: Optional[str] = None
     messagePath: list[str] | None = None
-    enabledTools: list[ToolPreference] | None = Field(default=None, validation_alias="enabledTools")
     message: Optional[MessageIn] = None
 
 
@@ -804,7 +773,6 @@ class InferenceRunOut(BaseModel):
     status: str
     scheduledTaskId: Optional[str] = None
     messagePath: list[str] = Field(default_factory=list)
-    enabledTools: list[dict] = Field(default_factory=list)
     content: Optional[str] = None
     thinking: Optional[list[str]] = None
     rawEvents: list[dict] = Field(default_factory=list)
@@ -816,7 +784,7 @@ class InferenceRunOut(BaseModel):
     cancelRequestedAt: Optional[UTCDateTime] = None
     updatedAt: UTCDateTime
 
-    @field_validator("messagePath", "enabledTools", "rawEvents", mode="before")
+    @field_validator("messagePath", "rawEvents", mode="before")
     @classmethod
     def _coerce_json_lists(cls, value):
         return value if isinstance(value, list) else []
@@ -959,7 +927,6 @@ class ScheduledTaskCreate(BaseModel):
     intervalSeconds: Optional[int] = None
     cronExpr: Optional[str] = None
     timezone: Optional[str] = None
-    enabledTools: Optional[List[ToolPreference]] = None
     isPrivate: bool = False
     maxRuns: Optional[int] = Field(None, ge=1)
     expiresAt: Optional[datetime] = None
@@ -996,7 +963,6 @@ class ScheduledTaskUpdate(BaseModel):
     title: Optional[str] = None
     prompt: Optional[str] = None
     status: Optional[Literal["active", "paused"]] = None
-    enabledTools: Optional[List[ToolPreference]] = None
     agentId: Optional[str] = None
     targetMode: Optional[TaskTargetMode] = None
     isPrivate: Optional[bool] = None
@@ -1050,7 +1016,6 @@ class ScheduledTaskOut(BaseModel):
     conversationId: Optional[str] = Field(None, validation_alias="conversation_id")
     title: Optional[str] = None
     prompt: str
-    enabledTools: List[dict] = Field(default_factory=list, validation_alias="enabled_tools")
     isPrivate: bool = Field(False, validation_alias="is_private")
     targetMode: str = Field("fresh", validation_alias="target_mode")
     scheduleKind: str = Field(..., validation_alias="schedule_kind")
@@ -1071,11 +1036,6 @@ class ScheduledTaskOut(BaseModel):
     # Derived, set by the util after model_validate (not ORM columns).
     liveStatus: Optional[str] = None
     lastRunConversationId: Optional[str] = None
-
-    @field_validator("enabledTools", mode="before")
-    @classmethod
-    def _coerce_tools(cls, value):
-        return value if isinstance(value, list) else []
 
     @field_validator("scheduleSpec", mode="before")
     @classmethod
@@ -1195,8 +1155,6 @@ __all__ = [
     "AgentPublic",
     "ToolManifest",
     "Skill",
-    "ToolPreference",
-    "ToolsPreferences",
     "UserPreferences",
     "ConversationSummary",
     "BlobOut",

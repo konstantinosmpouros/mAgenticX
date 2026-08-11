@@ -2,7 +2,7 @@
 
 The image ships the admin-curated skill catalog at
 ``/opt/skills_registry_seed/`` (copied in by the Dockerfile from
-``src/agents/skills_registry/``). At boot, we copy that into the mounted
+``runtime/skill_registry/registry/``). At boot, we copy that into the mounted
 ``$SKILLS_REGISTRY_GLOBAL_ROOT`` volume using ``cp -rn`` semantics —
 existing destination files are never overwritten. This handles:
 
@@ -24,7 +24,7 @@ from observability import get_logger
 
 logger = get_logger(__name__)
 
-# Where the Dockerfile drops a copy of src/agents/skills_registry/ at build
+# Where the Dockerfile drops a copy of runtime/skill_registry/registry/ at build
 # time. Override via env for tests / local-dev. Absence of the seed dir is
 # logged and skipped — not fatal (the volume may already be populated, e.g.
 # in production after the first deploy).

@@ -436,7 +436,9 @@ export function createAiTransitionHandlers(ctx: AiTransitionHandlersCtx) {
 
     return (
       <div className="flex justify-start pl-2">
-        <div className="size-3 rounded-full bg-white/90 shadow-sm transform-gpu motion-safe:animate-pulse-scale" />
+        {/* Semantic token, not bg-white: foreground is dark in light mode (visible) and
+            light in dark mode (visible) — a hardcoded white dot vanished on light backgrounds. */}
+        <div className="size-3 rounded-full bg-foreground/90 shadow-sm transform-gpu motion-safe:animate-pulse-scale" />
       </div>
     );
   };

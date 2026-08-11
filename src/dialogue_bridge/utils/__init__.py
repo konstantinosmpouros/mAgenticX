@@ -1,6 +1,8 @@
 from utils.agents import (
     build_agent_stream_url,
+    fetch_agent_tools,
     fetch_tools_from_agents_service,
+    set_agent_tool_disabled,
     get_agent_by_id,
     get_cached_agents,
     reap_conversation_runtime,
@@ -53,7 +55,9 @@ from utils.validators import validate_convId, validate_convId_full, validate_use
 __all__ = [
     "compute_usage_summary",
     "build_agent_stream_url",
+    "fetch_agent_tools",
     "fetch_tools_from_agents_service",
+    "set_agent_tool_disabled",
     "generate_conversation_title",
     "resolve_conversation_title",
     "set_conversation_archive_state",

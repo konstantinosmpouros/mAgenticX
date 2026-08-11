@@ -34,7 +34,6 @@ import type {
   MemorySummary,
   MemoryDetail,
   ToolMetadata,
-  ToolPreference,
   WorkspaceSearchResult,
 } from "./types";
 import { PROXY_LIMIT_MB } from "./uploadGuards";
@@ -52,6 +51,7 @@ import {
   UserSkillListSchema,
   UserSkillSchema,
   UserSkillDetailSchema,
+  AgentToolsResponseSchema,
   UsageSummarySchema,
   WireObjectArraySchema,
   WireObjectSchema,
@@ -80,6 +80,7 @@ import {
 const API_BASE_PATH = "/api/v1";
 const AUTH_BASE_PATH = `${API_BASE_PATH}/auth`;
 const CATALOG_BASE_PATH = `${API_BASE_PATH}/catalog`;
+const AGENTS_BASE_PATH = `${API_BASE_PATH}/agents`;
 const PREFERENCES_BASE_PATH = `${API_BASE_PATH}/preferences`;
 const CONVERSATIONS_BASE_PATH = `${API_BASE_PATH}/conversations`;
 const MESSAGES_BASE_PATH = `${API_BASE_PATH}/messages`;
@@ -270,6 +271,37 @@ export async function disableUserAgentSkill(
 }
 
 
+// ---------------------------------------------------------------------------
+// Per-agent tools (Agents tab). List the tools an agent may use with their
+// per-(user, agent) disabled flags, and toggle one. Proxied to the agents
+// service by the bridge; the toggle is CSRF-protected + returns refreshed rows.
+// ---------------------------------------------------------------------------
+export async function getAgentTools(userId: string, agentId: string) {
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools`;
+  return requestJson(url, {
+    schema: AgentToolsResponseSchema,
+    fallbackMessage: "Failed to fetch agent tools",
+  });
+}
+
+
+export async function toggleAgentTool(
+  userId: string,
+  agentId: string,
+  toolKey: string,
+  disabled: boolean,
+) {
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools/toggle`;
+  return requestJson(url, {
+    method: "POST",
+    csrf: true,
+    body: { toolKey, disabled },
+    schema: AgentToolsResponseSchema,
+    fallbackMessage: "Failed to update tool",
+  });
+}
+
+
 // List the memories this agent has saved about the user (metadata only).
 export async function listAgentMemories(userId: string, agentId: string): Promise<MemorySummary[]> {
   const url = `${MEMORIES_BASE_PATH}/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}`;
@@ -424,8 +456,6 @@ export async function searchWorkspace(
 // drift. Tool disable-list entries are passed through verbatim.
 function mapUserPreferences(data: unknown) {
   const record = (data ?? {}) as Record<string, unknown>;
-  const toolsRecord = record.tools as { disabled?: unknown } | undefined;
-  const tools = Array.isArray(toolsRecord?.disabled) ? (toolsRecord.disabled as ToolPreference[]) : [];
   const prefersAgenticChat =
     typeof record.prefersAgenticChat === "boolean" ? record.prefersAgenticChat : false;
   const suggestionsEnabled =
@@ -441,7 +471,6 @@ function mapUserPreferences(data: unknown) {
   const voiceModeLanguage = normalizeVoiceModeLanguage(record.voiceModeLanguage);
 
   return {
-    tools: { disabled: tools },
     prefersAgenticChat,
     suggestionsEnabled,
     showMessageTokenUsage,
@@ -1058,24 +1087,6 @@ export async function endRealtimeVoiceSession(
 }
 
 
-const serializeToolPreferences = (enabledTools?: ToolPreference[]) =>
-  Array.isArray(enabledTools) && enabledTools.length > 0
-    ? enabledTools.map((item) => ({
-        server_id:
-          typeof (item as any).server_id === "string"
-            ? (item as any).server_id
-            : typeof item.serverId === "string"
-              ? item.serverId
-              : "",
-        tool_name:
-          typeof (item as any).tool_name === "string"
-            ? (item as any).tool_name
-            : typeof item.toolName === "string"
-              ? item.toolName
-              : "",
-      }))
-    : undefined;
-
 const transformInferenceRunEvent = (event: Record<string, any>): InferenceRunEvent => ({
   type: event.type,
   run: transformInferenceRun(event.run ?? {}),
@@ -1102,10 +1113,6 @@ export async function startInference(
   if (payload.targetMessageId) body.targetMessageId = payload.targetMessageId;
   if (payload.messagePath?.length) body.messagePath = payload.messagePath;
   if (payload.message) body.message = payload.message;
-  const enabledTools = serializeToolPreferences(payload.enabledTools);
-  if (enabledTools) {
-    body.enabledTools = enabledTools;
-  }
 
   const data = (await requestJson(`${INFERENCE_BASE_PATH}/runs/${userId}/start`, {
     method: "POST",
@@ -1171,8 +1178,6 @@ export async function createScheduledTask(
   if (typeof payload.isPrivate === "boolean") body.isPrivate = payload.isPrivate;
   if (typeof payload.maxRuns === "number") body.maxRuns = payload.maxRuns;
   if (payload.expiresAt) body.expiresAt = payload.expiresAt;
-  const enabledTools = serializeToolPreferences(payload.enabledTools);
-  if (enabledTools) body.enabledTools = enabledTools;
 
   const data = await requestJson(`${SCHEDULED_TASKS_BASE_PATH}/${userId}`, {
     method: "POST",
@@ -1203,8 +1208,6 @@ export async function updateScheduledTask(
   if (typeof payload.intervalSeconds === "number") body.intervalSeconds = payload.intervalSeconds;
   if (payload.cronExpr) body.cronExpr = payload.cronExpr;
   if (payload.timezone) body.timezone = payload.timezone;
-  const enabledTools = serializeToolPreferences(payload.enabledTools);
-  if (enabledTools) body.enabledTools = enabledTools;
 
   const data = await requestJson(`${SCHEDULED_TASKS_BASE_PATH}/${userId}/${taskId}`, {
     method: "PATCH",

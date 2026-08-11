@@ -25,6 +25,7 @@ from observability import (
 from core.cache.integration import install_redis_sdk
 
 from router import (
+    agent_tools_router,
     auth_router,
     catalog_router,
     inference_router,
@@ -179,6 +180,11 @@ app.include_router(
     catalog_router,
     prefix=f"/v1/catalog",
     tags=["Catalog"]
+)
+app.include_router(
+    agent_tools_router,
+    prefix=f"/v1/agents",
+    tags=["Agent Tools"],
 )
 app.include_router(
     preferences_router,

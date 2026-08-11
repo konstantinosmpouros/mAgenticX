@@ -247,7 +247,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 **`config` shape:**
 - `config["context"]` = `{user_id, conversation_id, run_id?, use_memory?, search_past_convs?, personalization?}` (`user_id`+`conversation_id` mandatory; `personalization` = `{personality?, custom_instructions?}` and is present only when effective).
 - `config["run_config"]["configurable"]["thread_id"]` = the **branch-scoped checkpoint thread id**.
-- `config["tools"]` = `[{server_id, tool_name}]` the client wants enabled.
+- **No `config["tools"]`** — the retired global tool-enablement model used to pass the client's enabled list here; it is gone. An agent resolves its own tools (a deep agent's declared `agent.yaml` `tools:` set minus the per-(user, agent) disables in `tool_prefs.json`), so the request carries no tool list.
 - `config["fork_from"]` = `{thread_id, checkpoint_id}` for edit/retry forks.
 
 **Pre-flight:** `set_context(...)` for logging → `AGENT_REGISTRY.get(slug)` (404 if unknown) → `agent = definition.cls(config=req.config)` (400 on config-validation error).
@@ -255,7 +255,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 **Streaming generator `event_stream()`:**
 1. `async with mcp_session_context() as session:` opens an SSE MCP client to the gateway, kept open for the whole run.
 2. `live_tools = await load_mcp_tools(session)` (langchain-mcp-adapters) → callable LangChain tools.
-3. `agent.attach_tools(live_tools)` → filter by `config["tools"]` cache-keys; DeepAgent additionally strips reserved deepagents tool names.
+3. `agent.attach_tools(live_tools)` → filter the live tools down to the agent's resolved set (a deep agent's `agent.yaml`-declared tools minus its `tool_prefs.json` disables — no longer a client-supplied list); DeepAgent additionally strips reserved deepagents tool names.
 4. **Fork** (if `fork_from`): `await agent.ensure_built()` then `seed_thread_from_checkpoint(...)` copies the parent branch's state at the fork point into the new thread.
 5. `async for chunk in agent.astream(payload={"messages": req.messages}): yield chunk` — each chunk is an AG-UI SSE byte frame (LangGraph agents emit via a `custom` StreamWriter; deep agents' raw chunks pass through `AGUIStreamNormalizer`).
 6. **Terminal frame**: `emit_checkpoint_committed(...)` yields a `CHECKPOINT_COMMITTED` custom event carrying `(thread_id, checkpoint_id)` so the bridge can persist the durable head on the assistant message.
@@ -278,11 +278,11 @@ Not abstract; shared plumbing. `AgentType = Literal["deep agent","langgraph agen
 
 Class identity attributes (overridden by subclasses as plain class attrs): `name` (slug — registry key + URL), `agent_id`, `label`, `version`, `type`, `description`, `icon`.
 
-`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), `config_tools`, `config_tool_names` (normalized `server_id/tool_name` cache-keys), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True), `personalization` (parsed fail-closed from `context.personalization` by `runtime/personalization.py` — unknown preset → `default`, text re-sanitized + re-capped).
+`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), **empty `config_tools`/`config_tool_names`** (no longer seeded from a request tool list — that global model is retired; a deep agent resolves its own tools from `agent.yaml` minus `tool_prefs.json` disables), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True), `personalization` (parsed fail-closed from `context.personalization` by `runtime/personalization.py` — unknown preset → `default`, text re-sanitized + re-capped).
 
 - `manifest()` (classmethod) → the registry dict; reads class attrs only (no instantiation).
-- `attach_tools(live_tools)` → `_apply_live_tools(_filter_live_tools(...))`. `_filter_live_tools` keeps only live tools whose cache-key is in `config_tool_names`; logs `agent_tools_missing`/`agent_tools_resolved`.
-- Config validation (`_validate_*`) — tools must have a non-empty `tool_name`; **`context` must have non-empty `user_id` AND `conversation_id`** (the invariant deep-agent filesystem provisioning relies on).
+- `attach_tools(live_tools)` → `_apply_live_tools(_filter_live_tools(...))`. `_filter_live_tools` keeps only live tools whose cache-key is in the agent's resolved set (declared − disabled); logs `agent_tools_missing`/`agent_tools_resolved`.
+- Config validation (`_validate_*`) — **`context` must have non-empty `user_id` AND `conversation_id`** (the invariant deep-agent filesystem provisioning relies on).
 - `_encode_run_error(exc)` → the `RUN_ERROR` SSE frame (a raw frame, **not** an AG-UI event).
 
 ### `LangGraphAgent(BaseAgent, ABC)` (`runtime/langgraph_agent.py`)
@@ -398,12 +398,12 @@ flowchart TD
 `utils/mcp_tools.py` talks SSE to the gateway (`settings.mcp.mcp_gateway_url`). **No proxy secret / mTLS on this hop** — the dind gateway can't terminate TLS (accepted plaintext-on-overlay risk).
 
 - `_MCP_TOOL_MANIFEST_CACHE` — process-global, keyed `server_id/tool_name`. `_TOOL_SERVER_OVERRIDES` maps bare tool names → server id (the gateway doesn't prefix names): tavily-* → `tavily`, arxiv tools → `arxiv`.
-- Cache-key semantics: `_make_cache_key(server, name)` → `"{server}/{name}"` or bare `name`. `build_tool_cache_key`/`get_tool_cache_key` are what `BaseAgent` uses to match configured vs live tools.
+- Cache-key semantics: `_make_cache_key(server, name)` → `"{server}/{name}"` or bare `name`. `build_tool_cache_key`/`get_tool_cache_key` are what `BaseAgent` uses to match the agent's resolved (declared − disabled) tools against the live ones.
 - `_fetch_tools_from_gateway()` — `sse_client` → `mcp.ClientSession` → `initialize()` → `list_tools()`.
 - `list_mcp_tools(force_refresh=False)` — **returns `[]` on a cache hit** (only the manifest matters for `/tools`); otherwise fetches + primes the cache + returns raw tools.
 - `mcp_session_context()` — yields an open, initialized session for the per-run `/stream`.
 
-**Attachment path:** `/stream` opens the session → `load_mcp_tools(session)` (langchain-mcp-adapters) → `attach_tools` → `_filter_live_tools` keeps only client-selected keys → `_apply_live_tools` (deep agents drop reserved names) → `self.tools` fed into the graph.
+**Attachment path:** `/stream` opens the session → `load_mcp_tools(session)` (langchain-mcp-adapters) → `attach_tools` → `_filter_live_tools` keeps only the agent's resolved keys (declared in `agent.yaml` − disabled in `tool_prefs.json`; not a client list) → `_apply_live_tools` (deep agents drop reserved names) → `self.tools` fed into the graph.
 
 > `_extract_tool_identity` returns a **2-tuple** `(server_id, tool_name)` despite the docstring saying 3-tuple.
 

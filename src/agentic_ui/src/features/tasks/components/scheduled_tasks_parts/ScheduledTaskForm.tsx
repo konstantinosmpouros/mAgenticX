@@ -6,7 +6,6 @@ import type {
   ScheduledTaskCreatePayload,
   ScheduleKind,
   TaskTargetMode,
-  ToolPreference,
 } from "@/shared/lib/types";
 import { cn } from "@/shared/lib/utils";
 
@@ -19,14 +18,12 @@ export type ScheduledTaskFormInitial = {
   scheduleKind?: ScheduleKind | string;
   scheduleSpec?: Record<string, unknown>;
   timezone?: string | null;
-  enabledTools?: ToolPreference[];
 };
 
 type ScheduledTaskFormProps = {
   agents: Agent[];
-  defaultEnabledTools?: ToolPreference[];
-  // Pre-fill the form. When `initial.enabledTools` is present (editing a task)
-  // those tools are preserved; otherwise the user's current set is seeded.
+  // Pre-fill the form (editing a task or importing a template). Tools are
+  // agent-declared, not carried per task.
   initial?: ScheduledTaskFormInitial;
   submitLabel?: string;
   submitting: boolean;
@@ -116,7 +113,6 @@ const Segmented = <T extends string>({
 
 export default function ScheduledTaskForm({
   agents,
-  defaultEnabledTools,
   initial,
   submitLabel,
   submitting,
@@ -165,8 +161,6 @@ export default function ScheduledTaskForm({
       title: title.trim() || undefined,
       targetMode,
       scheduleKind,
-      // Editing preserves the task's existing tools; create/import seeds the user's current set.
-      enabledTools: initial?.enabledTools ?? defaultEnabledTools,
     };
 
     if (scheduleKind === "interval") {

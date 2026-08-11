@@ -307,7 +307,6 @@ export const transformInferenceRun = (run: Record<string, any>): InferenceRun =>
   status: run.status ?? "running",
   scheduledTaskId: run.scheduledTaskId ?? run.scheduled_task_id ?? null,
   messagePath: Array.isArray(run.messagePath ?? run.message_path) ? (run.messagePath ?? run.message_path) : [],
-  enabledTools: Array.isArray(run.enabledTools ?? run.enabled_tools) ? (run.enabledTools ?? run.enabled_tools) : [],
   content: run.content ?? null,
   thinking: Array.isArray(run.thinking) ? run.thinking : null,
   rawEvents: Array.isArray(run.rawEvents ?? run.raw_events) ? (run.rawEvents ?? run.raw_events) : [],
@@ -342,7 +341,6 @@ export const transformScheduledTask = (task: Record<string, any>): ScheduledTask
   const lastRunAt = task.lastRunAt ?? task.last_run_at;
   const expiresAt = task.expiresAt ?? task.expires_at;
   const spec = task.scheduleSpec ?? task.schedule_spec;
-  const tools = task.enabledTools ?? task.enabled_tools;
   return {
     id: task.id,
     agentId: task.agentId ?? task.agent_id ?? null,
@@ -351,12 +349,6 @@ export const transformScheduledTask = (task: Record<string, any>): ScheduledTask
     conversationId: task.conversationId ?? task.conversation_id ?? null,
     title: task.title ?? null,
     prompt: task.prompt ?? "",
-    enabledTools: Array.isArray(tools)
-      ? tools.map((t: any) => ({
-          serverId: t.serverId ?? t.server_id ?? "",
-          toolName: t.toolName ?? t.tool_name ?? "",
-        }))
-      : [],
     isPrivate: Boolean(task.isPrivate ?? task.is_private),
     targetMode: task.targetMode ?? task.target_mode ?? "fresh",
     scheduleKind: task.scheduleKind ?? task.schedule_kind ?? "interval",

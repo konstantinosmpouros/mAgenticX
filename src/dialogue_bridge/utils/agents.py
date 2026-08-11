@@ -307,6 +307,112 @@ async def reap_conversation_runtime(db: AsyncSession, user_id: str, conversation
                 )
 
 
+def _agent_tools_url(user_id: str, agent_slug: str) -> str:
+    base = AGENTS_SERVICE_URL.rstrip("/")
+    return f"{base}/agents/{user_id}/{agent_slug}/tools"
+
+
+async def _resolve_agent_slug(agent_id: str) -> str:
+    """Translate the catalog agent id (what the UI holds) into the slug the
+    agents-service registry is keyed by."""
+    agent = await get_agent_by_id(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found or not active.")
+    slug = getattr(agent, "slug", None)
+    if not slug:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Agent configuration is incomplete (missing slug).",
+        )
+    return slug
+
+
+async def fetch_agent_tools(user_id: str, agent_id: str) -> Dict[str, Any]:
+    """Proxy the agents service per-agent tools endpoint (Agents tab): the tools
+    an agent can use with their per-(user, agent) disabled flags. ``agent_id`` is
+    the catalog id from the UI, resolved here to the agents-registry slug."""
+    slug = await _resolve_agent_slug(agent_id)
+    timeout = settings.http.agents_timeout
+    upstream_headers = internal_service_headers(get_context().get("request_id"))
+    url = _agent_tools_url(user_id, slug)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
+            resp = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.get(url, headers=upstream_headers),
+                upstream_service="agents",
+                operation="agent_tools_fetch",
+            )
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.raise_http_error(
+            logger, exc, event="agent_tools_fetch_failed",
+            message="Agents service returned an HTTP error while fetching agent tools",
+            public_detail="Agent tools could not be loaded. Please try again.",
+            upstream_service="agents", operation="agent_tools_fetch",
+        )
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger, exc, event="agent_tools_unreachable",
+            message="Failed to reach agents service while fetching agent tools",
+            public_detail="Agent tools are temporarily unavailable. Please try again shortly.",
+            upstream_service="agents", operation="agent_tools_fetch",
+        )
+    try:
+        return resp.json()
+    except ValueError as exc:
+        upstream_error_handler.raise_invalid_response(
+            logger, exc, event="agent_tools_invalid_json",
+            message="Agents service returned invalid JSON for agent tools",
+            public_detail="Agent tools returned an unexpected response.",
+            upstream_service="agents", operation="agent_tools_fetch",
+        )
+
+
+async def set_agent_tool_disabled(
+    user_id: str, agent_id: str, tool_key: str, disabled: bool
+) -> Dict[str, Any]:
+    """Proxy the agents service toggle endpoint; returns the refreshed tool rows.
+    ``agent_id`` is the catalog id, resolved here to the agents-registry slug."""
+    slug = await _resolve_agent_slug(agent_id)
+    timeout = settings.http.agents_timeout
+    upstream_headers = internal_service_headers(get_context().get("request_id"))
+    url = f"{_agent_tools_url(user_id, slug)}/toggle"
+    body = {"toolKey": tool_key, "disabled": disabled}
+    try:
+        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
+            resp = await upstream_error_handler.run_with_retries(
+                logger,
+                lambda: client.post(url, headers=upstream_headers, json=body),
+                upstream_service="agents",
+                operation="agent_tool_toggle",
+            )
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        upstream_error_handler.raise_http_error(
+            logger, exc, event="agent_tool_toggle_failed",
+            message="Agents service returned an HTTP error while toggling an agent tool",
+            public_detail="Could not update the tool. Please try again.",
+            upstream_service="agents", operation="agent_tool_toggle",
+        )
+    except httpx.RequestError as exc:
+        upstream_error_handler.raise_request_error(
+            logger, exc, event="agent_tool_toggle_unreachable",
+            message="Failed to reach agents service while toggling an agent tool",
+            public_detail="Tool settings are temporarily unavailable. Please try again shortly.",
+            upstream_service="agents", operation="agent_tool_toggle",
+        )
+    try:
+        return resp.json()
+    except ValueError as exc:
+        upstream_error_handler.raise_invalid_response(
+            logger, exc, event="agent_tool_toggle_invalid_json",
+            message="Agents service returned invalid JSON for tool toggle",
+            public_detail="Tool update returned an unexpected response.",
+            upstream_service="agents", operation="agent_tool_toggle",
+        )
+
+
 async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:
     """Proxy the agents service `/tools` endpoint without caching."""
     timeout = settings.http.agents_timeout

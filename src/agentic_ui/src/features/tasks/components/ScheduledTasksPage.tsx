@@ -20,7 +20,6 @@ import type {
   ScheduledTask,
   ScheduledTaskCreatePayload,
   ScheduledTaskUpdatePayload,
-  ToolPreference,
 } from "@/shared/lib/types";
 import { cn } from "@/shared/lib/utils";
 import {
@@ -44,7 +43,6 @@ type ScheduledTasksPageProps = {
   loading: boolean;
   error?: string | null;
   agents: Agent[];
-  defaultEnabledTools?: ToolPreference[];
   onCreate: (payload: ScheduledTaskCreatePayload) => Promise<ScheduledTask>;
   onUpdate: (taskId: string, payload: ScheduledTaskUpdatePayload) => Promise<ScheduledTask>;
   onDelete: (taskId: string) => Promise<void>;
@@ -483,7 +481,7 @@ function SegmentedTabs({
 }
 
 function templateInitial(template: ScheduledTaskTemplate): ScheduledTaskFormInitial {
-  // No agentId/enabledTools — the form defaults the agent and seeds the user's current tools.
+  // No agentId — the form defaults the agent; tools are agent-declared, not per-task.
   return {
     title: template.label,
     prompt: template.instructions,
@@ -499,7 +497,6 @@ export default function ScheduledTasksPage({
   loading,
   error,
   agents,
-  defaultEnabledTools,
   onCreate,
   onUpdate,
   onDelete,
@@ -645,7 +642,6 @@ export default function ScheduledTasksPage({
               <div className="mx-auto w-full max-w-2xl">
                 <ScheduledTaskForm
                   agents={agents}
-                  defaultEnabledTools={defaultEnabledTools}
                   initial={taskView === "edit" ? editingTask ?? undefined : undefined}
                   submitLabel={taskView === "edit" ? "Save changes" : "Create task"}
                   submitting={submitting}
@@ -717,7 +713,6 @@ export default function ScheduledTasksPage({
             <div className="mx-auto w-full max-w-2xl">
               <ScheduledTaskForm
                 agents={agents}
-                defaultEnabledTools={defaultEnabledTools}
                 initial={templateInitial(selectedTemplate)}
                 submitLabel="Create task"
                 submitting={submitting}

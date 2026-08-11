@@ -21,6 +21,7 @@ import VoiceTab from "./profile_parts/VoiceTab";
 import SecurityTab from "./profile_parts/SecurityTab";
 import DataControlsTab from "./profile_parts/DataControlsTab";
 import McpServersTab from "./profile_parts/McpServersTab";
+import AgentsTab from "./profile_parts/AgentsTab";
 import SkillsTab from "./profile_parts/SkillsTab";
 import MemoriesTab from "./profile_parts/MemoriesTab";
 import UsageTab from "./profile_parts/UsageTab";
@@ -83,6 +84,10 @@ const SECTION_META: Record<string, { eyebrow?: string; title: string; descriptio
     account: {
         title: "Account",
         description: "Review your identity, workspace role, and recent account activity.",
+    },
+    agents: {
+        title: "Agents",
+        description: "Give each agent the tools it should use — your choices apply per agent.",
     },
     skills: {
         title: "Skills",
@@ -179,7 +184,6 @@ type ProfilePanelProps = {
     onLoadMoreSharedConversations?: () => void;
     onSelectSharedConversation?: (share: ConversationShareListItem) => void;
     onRevokeSharedConversation?: (share: ConversationShareListItem) => void;
-    onToggleToolPreference?: (tool: ToolMetadata) => void;
     onToggleSuggestionsEnabled?: () => void;
     onToggleMessageTokenUsage?: () => void;
     onToggleSearchPastConvs?: () => void;
@@ -235,7 +239,6 @@ export default function ProfilePanel({
     onLoadMoreSharedConversations,
     onSelectSharedConversation,
     onRevokeSharedConversation,
-    onToggleToolPreference,
     onToggleSuggestionsEnabled,
     onToggleMessageTokenUsage,
     onToggleSearchPastConvs,
@@ -406,12 +409,11 @@ export default function ProfilePanel({
                                     ) : null}
 
                                     {normalizedActiveTab === "mcp" ? (
-                                        <McpServersTab
-                                            availableTools={availableTools}
-                                            userPreferences={userPreferences}
-                                            preferencesSaving={preferencesSaving}
-                                            onToggleToolPreference={onToggleToolPreference}
-                                        />
+                                        <McpServersTab availableTools={availableTools} />
+                                    ) : null}
+
+                                    {normalizedActiveTab === "agents" ? (
+                                        <AgentsTab agents={agents} />
                                     ) : null}
 
                                     {normalizedActiveTab === "skills" ? (

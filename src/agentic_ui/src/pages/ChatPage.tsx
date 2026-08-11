@@ -392,10 +392,7 @@ export function useChatWorkspace({
 
   // Preferences handlers
   const {
-    toolsWithStatus,
-    enabledToolsForRequest,
     resolvedPreferences,
-    handleToggleToolPreference,
     handleToggleSuggestionsEnabled,
     handleToggleShowMessageTokenUsage,
     handleToggleSearchPastConvs,
@@ -406,7 +403,6 @@ export function useChatWorkspace({
     handleSelectVoiceModeLanguage,
   } = usePreferencesHandlers({
     userId,
-    availableTools,
     userPreferences,
     setUserPreferences,
     isSavingPreferences,
@@ -758,7 +754,6 @@ export function useChatWorkspace({
     rootBranchKey: ROOT_BRANCH_KEY,
     setBranchSelections,
     setIsSendingMessage,
-    enabledTools: enabledToolsForRequest,
     beginInferenceRun,
     persistUIState: requestPersist,
   });
@@ -1028,7 +1023,6 @@ export function useChatWorkspace({
     rootBranchKey: ROOT_BRANCH_KEY,
     setBranchSelections,
     setIsSendingMessage,
-    enabledTools: enabledToolsForRequest,
     beginInferenceRun,
     persistUIState: requestPersist,
   });
@@ -1056,7 +1050,6 @@ export function useChatWorkspace({
     setThinkingState,
     setShowAiTransition,
     streamAbortRef,
-    enabledTools: enabledToolsForRequest,
     beginInferenceRun,
     stopActiveInferenceRun,
     sharedConversationToken,
@@ -1444,7 +1437,7 @@ export function useChatWorkspace({
     // hook outputs / context
     headerHasDivider, navigate, isTasksRoute, reduceMotion, voiceSession, scheduledTasks,
     resumeInferenceRunHandler, isInterruptResolved, resolvedPreferences,
-    enabledToolsForRequest, toolsWithStatus, toast, isSearchOpen, searchQuery,
+    toast, isSearchOpen, searchQuery,
     searchResults, searchLoading, searchError, setSearchQuery, closeSearchPanel,
     conversationUsage, activeConversationRun, pendingRunInterrupts, activeHitlInterrupt,
     // profile/skills
@@ -1473,7 +1466,7 @@ export function useChatWorkspace({
     handleSetActiveProfileTab, handleLogout, handleRefreshSkills,
     handleLoadMoreArchivedConversations, handleOpenArchivedConversation,
     handleUnarchiveConversation, handleLoadMoreSharedConversations, handleOpenSharedConversation,
-    handleRevokeSharedConversation, handleToggleToolPreference, handleToggleSuggestionsEnabled,
+    handleRevokeSharedConversation, handleToggleSuggestionsEnabled,
     handleToggleSearchPastConvs, handleToggleUseMemory, handleSelectPersonality, handleSaveCustomInstructions,
     handleSelectVoiceModeVoice, handleSelectVoiceModeLanguage, closeReportDialog,
     handleSubmitConversationReport, handleShareModeChange, handleShareExpiresAtChange,
@@ -1516,7 +1509,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     isInterruptResolved, showUserProfile, showEditProfile, setShowEditProfile,
     showShortcutsPanel, setShowShortcutsPanel, showHelpPanel, setShowHelpPanel,
     closeProfilePanel, activeProfileTab,
-    handleSetActiveProfileTab, handleLogout, toolsWithStatus, availableSkills, handleRefreshSkills,
+    handleSetActiveProfileTab, handleLogout, availableTools, availableSkills, handleRefreshSkills,
     mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail, ensureSkillDetail,
     handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill, handleRemoveSkillFromPool,
     skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading, isSkillToggling,
@@ -1524,7 +1517,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     resolvedPreferences, archivedConversations, archivedConvIsLoading, archivedConvHasMore,
     handleLoadMoreArchivedConversations, handleOpenArchivedConversation, handleUnarchiveConversation,
     sharedConversations, sharedConvIsLoading, sharedConvHasMore, handleLoadMoreSharedConversations,
-    handleOpenSharedConversation, handleRevokeSharedConversation, handleToggleToolPreference,
+    handleOpenSharedConversation, handleRevokeSharedConversation,
     handleToggleSuggestionsEnabled, handleToggleShowMessageTokenUsage, handleToggleSearchPastConvs,
     handleToggleUseMemory, handleSelectPersonality, handleSaveCustomInstructions, handleSelectVoiceModeVoice,
     handleSelectVoiceModeLanguage, isSavingPreferences, isReportDialogOpen, closeReportDialog,
@@ -1627,7 +1620,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 setActiveTab={handleSetActiveProfileTab}
                 onLogout={handleLogout}
                 user={userProfile}
-                availableTools={toolsWithStatus}
+                availableTools={availableTools}
                 availableSkills={availableSkills}
                 onRefreshSkills={handleRefreshSkills}
                 mySkills={mySkills}
@@ -1659,7 +1652,6 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 onLoadMoreSharedConversations={handleLoadMoreSharedConversations}
                 onSelectSharedConversation={handleOpenSharedConversation}
                 onRevokeSharedConversation={handleRevokeSharedConversation}
-                onToggleToolPreference={handleToggleToolPreference}
                 onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
                 onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
                 onToggleSearchPastConvs={handleToggleSearchPastConvs}
@@ -1689,8 +1681,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 open={showHelpPanel}
                 onClose={() => setShowHelpPanel(false)}
                 archivedConversations={archivedConversations}
-                availableTools={toolsWithStatus}
-                userPreferences={resolvedPreferences}
+                availableTools={availableTools}
               />
 
               <ReportConversationDialog

@@ -44,7 +44,7 @@ src/
                    #   modals, not settings tabs), profile_parts/* (General/Personalization
                    #   (+CustomInstructionsDialog)/Voice/Usage/Security/DataControls/Account
                    #   real tabs + ComingSoon stubs + Skills/Mcp/Memories workspace tabs),
-                   #   useProfilePanel, useToolStatus, useSkills, useMemories,
+                   #   useProfilePanel, useSkills, useMemories,
                    #   useUsageSummary, preferences handler
     sharing/       # SharePanel + share handler
     reporting/     # ReportPanel + report handler

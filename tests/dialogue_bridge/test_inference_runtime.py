@@ -24,7 +24,6 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from core.database import ConversationTable, MessageTable
-from schemas import ToolPreference
 import utils.inference_runs as ir
 from utils.inference_runs import (
     InferenceRunRuntime,
@@ -235,7 +234,6 @@ async def test_build_run_out_from_message(session_factory, seeded_user, seeded_a
             sender="ai",
             content="final",
             streaming_status="completed",
-            streaming_enabled_tools=[{"server_id": "s", "tool_name": "t"}],
             raw_events=[{"type": "x"}],
         )
         session.add(message)
@@ -248,7 +246,6 @@ async def test_build_run_out_from_message(session_factory, seeded_user, seeded_a
         assert out.userId == seeded_user.id
         assert out.status == "completed"
         assert out.content == "final"
-        assert out.enabledTools == [{"server_id": "s", "tool_name": "t"}]
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +287,6 @@ async def test_create_inference_run_record_success(session_factory, seeded_user,
             conversation=conversation,
             parent_message_id=parent_id,
             message_path=None,
-            enabled_tools=[ToolPreference(server_id="srv", tool_name="tool")],
             agent=seeded_agent,
             mode="send",
         )
@@ -301,7 +297,6 @@ async def test_create_inference_run_record_success(session_factory, seeded_user,
         # the new run's id is appended to its own message path
         assert run.streaming_message_path[-1] == run.id
         assert conversation.active_assistant_message_id == run.id
-        assert run.streaming_enabled_tools == [{"server_id": "srv", "tool_name": "tool"}]
 
 
 async def test_create_inference_run_record_bad_parent_400(session_factory, seeded_user, seeded_agent):
@@ -315,7 +310,6 @@ async def test_create_inference_run_record_bad_parent_400(session_factory, seede
                 conversation=conversation,
                 parent_message_id="not-a-real-message",
                 message_path=None,
-                enabled_tools=None,
                 agent=seeded_agent,
                 mode="send",
             )
@@ -345,7 +339,6 @@ async def test_create_inference_run_record_conflict_when_active_exists(session_f
                 conversation=conversation,
                 parent_message_id=parent_id,
                 message_path=None,
-                enabled_tools=None,
                 agent=seeded_agent,
                 mode="send",
             )
@@ -385,7 +378,6 @@ async def test_create_inference_run_record_too_many_active_429(session_factory, 
                 conversation=conversation,
                 parent_message_id=parent_id,
                 message_path=None,
-                enabled_tools=None,
                 agent=seeded_agent,
                 mode="send",
             )

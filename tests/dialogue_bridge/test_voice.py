@@ -11,7 +11,6 @@ async def test_realtime_voice_session_creates_empty_conversation(client, seeded_
         session.add(
             UserPreferencesTable(
                 user_id=seeded_user.id,
-                tools={"disabled": []},
                 voice_mode_voice="cedar",
                 voice_mode_language="greek",
             )

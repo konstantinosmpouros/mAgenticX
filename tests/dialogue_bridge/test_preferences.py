@@ -6,7 +6,6 @@ async def test_get_user_preferences_defaults_when_no_row_exists(client, seeded_u
 
     assert response.status_code == 200
     assert response.json() == {
-        "tools": {"disabled": []},
         "prefersAgenticChat": False,
         "suggestionsEnabled": True,
         "showMessageTokenUsage": False,
@@ -25,19 +24,14 @@ async def test_get_user_preferences_defaults_when_no_row_exists(client, seeded_u
     }
 
 
-async def test_put_user_preferences_deduplicates_disabled_tools(client, seeded_user):
+async def test_put_user_preferences_normalizes_unsupported_voice_and_language(client, seeded_user):
+    """Unknown voice/language values fail closed to the defaults, and the saved
+    document round-trips. Tool enablement is deliberately absent: it is no longer
+    a preference (see migration 0016) — it lives per (user, agent) on the agents
+    service, so a preferences PUT can neither enable nor disable a tool."""
     response = await client.put(
         f"/v1/preferences/{seeded_user.id}",
         json={
-            "tools": {
-                "disabled": [
-                    {"serverId": "rag", "toolName": "sql_query"},
-                    {"serverId": "rag", "toolName": "sql_query"},
-                    {"serverId": "rag", "toolName": " schema_lookup "},
-                    {"serverId": "rag", "toolName": "schema_lookup"},
-                    {"serverId": " ", "toolName": "  "},
-                ]
-            },
             "prefersAgenticChat": True,
             "suggestionsEnabled": False,
             "voiceModeVoice": "unsupported-realtime-voice",
@@ -47,12 +41,6 @@ async def test_put_user_preferences_deduplicates_disabled_tools(client, seeded_u
 
     assert response.status_code == 200
     assert response.json() == {
-        "tools": {
-            "disabled": [
-                {"serverId": "rag", "toolName": "sql_query"},
-                {"serverId": "rag", "toolName": "schema_lookup"},
-            ]
-        },
         "prefersAgenticChat": True,
         "suggestionsEnabled": False,
         "showMessageTokenUsage": False,

@@ -1,8 +1,10 @@
 # User Preferences
 
-User preferences capture per-user settings that persist across sessions: which tools are disabled, whether suggestions are shown, how agents are personalized (personality preset + custom instructions), and which voice and language to use in realtime voice conversations. The source of truth is a single row in the `user_preferences` PostgreSQL table, one per user. The frontend caches preferences in IndexedDB for instant rehydration on page load, applies them optimistically in React state, and writes changes back to the database via a single `PUT` endpoint. The backend reads preferences directly from the database for any server-side decisions (voice session config, voice language, per-run personalization).
+User preferences capture per-user settings that persist across sessions: whether suggestions are shown, how agents are personalized (personality preset + custom instructions), whether agent memory and cross-conversation recall are active, and which voice and language to use in realtime voice conversations. The source of truth is a single row in the `user_preferences` PostgreSQL table, one per user. The frontend caches preferences in IndexedDB for instant rehydration on page load, applies them optimistically in React state, and writes changes back to the database via a single `PUT` endpoint. The backend reads preferences directly from the database for any server-side decisions (voice session config, voice language, per-run personalization, the memory gates).
 
-**Where preferences surface in the UI.** The settings modal (`ProfilePanel`, opened from the sidebar profile menu) mirrors ChatGPT's section taxonomy: theme, follow-up suggestions, and per-message token usage live under **General**; the style controls — **Custom instructions** (opened in its own dialog) and the **Personality** preset select — plus the agent-memory (`useMemory`) and reference-chat-history (`searchPastConvs`) toggles under **Personalization**; the realtime voice + spoken language under **Voice**; and per-tool enable/disable under **MCP Servers** (Workspace group). Sections mirrored from ChatGPT that aren't built yet render a "Not implemented yet" placeholder. Legacy persisted tab ids (`profile`/`appearance`/`archived`) are remapped to `account`/`personalization`/`data-controls` on load.
+**Tool enablement is NOT a user preference.** There is no global "enabled tools" set here anymore. Tools are declared **per agent** (in the agent's `agent.yaml`), and a user disables specific tools **per (user, agent)** in the **Settings → Agents** tab; that disabled set is stored server-side by the agents service, not in `user_preferences`. See [§ Tool control moved to the Agents tab](#tool-control-moved-to-the-agents-tab) below and [catalog.md](catalog.md).
+
+**Where preferences surface in the UI.** The settings modal (`ProfilePanel`, opened from the sidebar profile menu) mirrors ChatGPT's section taxonomy: theme, follow-up suggestions, and per-message token usage live under **General**; the style controls — **Custom instructions** (opened in its own dialog) and the **Personality** preset select — plus the agent-memory (`useMemory`) and reference-chat-history (`searchPastConvs`) toggles under **Personalization**; the realtime voice + spoken language under **Voice**; per-(user, agent) tool disabling under **Agents**; and a **read-only** browse of the MCP catalog under **MCP Servers** (Workspace group) — the MCP Servers tab no longer carries any global tool toggle. Sections mirrored from ChatGPT that aren't built yet render a "Not implemented yet" placeholder. Legacy persisted tab ids (`profile`/`appearance`/`archived`) are remapped to `account`/`personalization`/`data-controls` on load.
 
 ---
 
@@ -68,7 +70,6 @@ The `user_preferences` table has a one-to-one relationship with `users`. A row i
 | --- | --- | --- | --- |
 | `id` | String (UUID) | `gen_uuid()` | Row PK |
 | `user_id` | String (FK) | — | FK to `users.id`; UNIQUE; cascade delete |
-| `tools` | JSON | `{}` | `{"disabled": [{server_id, tool_name}, ...]}` |
 | `prefers_agentic_chat` | Boolean | `false` | Reserved for future agentic-chat UX toggle |
 | `suggestions_enabled` | Boolean | `true` | Show/hide starter suggestion chips in the chat UI |
 | `search_past_convs` | Boolean | `false` | Opt-in: attach the deep-agent `search_past_conversations` memory tool. Migration `0011`. |
@@ -80,6 +81,8 @@ The `user_preferences` table has a one-to-one relationship with `users`. A row i
 | `updated_at` | DateTime | `func.now()` | Auto-updated on every write |
 
 All boolean columns use explicit `bool()` coercion on insert/update to guard against string values arriving from JSON.
+
+> The old `tools` JSON column (the global `{disabled: [{serverId, toolName}]}` blob) was **dropped** in migration `0016_retire_enabled_tools`. Global tool enablement no longer exists; tool control is per (user, agent) and lives on the agents service (see below).
 
 ---
 
@@ -95,7 +98,6 @@ Returns the current preferences for the user. If no row exists, returns a defaul
 
 ```python
 class UserPreferences(BaseModel):
-    tools: ToolsPreferences            # {"disabled": [...]}
     prefersAgenticChat: bool           # default: False
     suggestionsEnabled: bool           # default: True
     searchPastConvs: bool              # default: False
@@ -113,7 +115,6 @@ Voice and language values are normalized before return — invalid DB values are
 Writes the complete preferences object for the user. If a row exists, all fields are updated. If no row exists, a new row is inserted.
 
 - **Auth required:** valid `user_id` (session-validated) + CSRF token
-- **Deduplication:** the `tools.disabled` list is deduped by `"{server_id}::{tool_name}"` key before save
 - **Returns:** the normalized, persisted `UserPreferences` object
 
 The `PUT` is always a full replacement — there is no partial `PATCH`. The frontend always sends the full current state of preferences.
@@ -121,23 +122,6 @@ The `PUT` is always a full replacement — there is no partial `PATCH`. The fron
 ---
 
 ## Phase 3 — Preference Categories
-
-### Tool Preferences
-
-Controls which MCP/agent tools are disabled for the user. The backend stores the *disabled* list; the frontend computes the enabled subset by taking all available tools and subtracting the disabled ones.
-
-```json
-{
-  "tools": {
-    "disabled": [
-      { "server_id": "tavily", "tool_name": "web_search" },
-      { "server_id": "arxiv", "tool_name": "search_papers" }
-    ]
-  }
-}
-```
-
-Tool preferences are **not** applied server-side automatically. The frontend reads stored preferences, computes `enabledTools`, and sends the list explicitly in every inference run start payload. The agents service receives only the enabled set.
 
 ### Suggestions
 
@@ -182,6 +166,21 @@ The language controls the text injected by the voice instruction builder, not an
 ### Prefers Agentic Chat
 
 `prefersAgenticChat` is stored but currently not consumed by the inference flow. It is persisted now so that existing user rows are compatible with a future UI toggle for an autonomous agentic chat mode.
+
+---
+
+## Tool control moved to the Agents tab
+
+Tool enablement used to be a global user preference: the frontend subtracted a global `tools.disabled` set from the full catalog, computed an `enabledTools` list, and sent it on every inference request. **That model is fully retired.** `user_preferences.tools` no longer exists, the request no longer carries `enabledTools`, and the bridge no longer forwards a `config["tools"]` list to the agents service.
+
+Tools are now owned by the agents service:
+
+- **Declared per agent.** A deep agent declares its tool set (native + MCP) in its `agent.yaml` `tools:` list. A `YamlDeepAgent` resolves those tools from its spec at build time, independently of any request — the client no longer tells the agent which tools to attach.
+- **Disabled per (user, agent).** In **Settings → Agents**, a user can disable specific tools for a specific agent. That disabled set is persisted **server-side** by the agents service in a `tool_prefs.json` at the agent's root (`runtime/filesystem/tool_prefs.py`), not in `user_preferences`. The agent's effective tool set is `declared − disabled` (`_apply_tool_disables`).
+- **MCP Servers tab is read-only.** The **Settings → MCP Servers** tab is a browse-only view of the MCP catalog; it carries no global toggle. Enable/disable happens only in the per-agent Agents tab.
+- **LangGraph agents are unaffected.** `hr_policies` / `orthodox` / `retail` reach RAG through a graph **node** that calls `rag_service` over HTTP — retrieval is never a bound tool — so they have no tool set to disable and an empty request tool list changes nothing for them.
+
+Because none of this is a `user_preferences` field, none of the mutation/normalization/IndexedDB flow below applies to tool control.
 
 ---
 
@@ -237,7 +236,6 @@ The handlers are:
 
 | Handler | What it changes |
 | --- | --- |
-| `handleToggleToolPreference(tool)` | Adds or removes a tool from `tools.disabled` |
 | `handleToggleSuggestionsEnabled()` | Flips `suggestionsEnabled` |
 | `handleToggleSearchPastConvs()` | Flips `searchPastConvs` (memory-tool gate) |
 | `handleToggleUseMemory()` | Flips `useMemory` (agent persistent-memory gate) |
@@ -256,7 +254,7 @@ There is no real-time cross-tab sync. If preferences are changed in a second tab
 
 ## Phase 6 — Backend Application of Preferences
 
-Preferences are read server-side for voice sessions, for the memory-tool gate (`search_past_convs`), and for the agent-memory gate (`use_memory`). Everything else (tools, suggestions) is managed entirely by the frontend.
+Preferences are read server-side for voice sessions, for the memory-tool gate (`search_past_convs`), and for the agent-memory gate (`use_memory`). Suggestions gating is managed entirely by the frontend. Tool enablement is not a preference at all — it is resolved by the agents service from the agent's declared set minus the per-(user, agent) disabled set (see [§ Tool control moved to the Agents tab](#tool-control-moved-to-the-agents-tab)).
 
 ### Voice Session
 
@@ -268,10 +266,6 @@ When the browser calls `POST /v1/voice/session`, the voice router:
 4. Passes both to the voice instruction builder, which constructs the OpenAI Realtime session config
 
 This means the browser can override preferences per-session by sending explicit values in the request, but if it sends `null`, the stored preference is used automatically.
-
-### Tool Preferences in Inference
-
-The agents service receives an `enabled_tools` list in every inference request config. The `dialogue_bridge` does not apply tool preferences itself — the frontend is responsible for computing `enabledTools` (all tools minus `tools.disabled`) and sending it in the `InferenceRunStartPayload`.
 
 ### Search-Past-Conversations Gate
 
@@ -293,9 +287,9 @@ On the agents side the main logic lives in [`runtime/personalization.py`](../../
 
 - **No row until first PUT.** A new user has no `user_preferences` row. The `GET` endpoint returns a default object, not a DB row. Nothing is persisted until the user (or the UI) explicitly writes a preference. This means a user who never opens the preferences panel has no row.
 
-- **Full replacement on PUT.** The `PUT` endpoint replaces all fields. If the frontend sends an incomplete object, fields not present in the payload will be coerced to their Pydantic defaults (e.g., `tools: {}` becomes `{"disabled": []}`). Always send the full current state.
+- **Full replacement on PUT.** The `PUT` endpoint replaces all fields. If the frontend sends an incomplete object, fields not present in the payload are coerced to their Pydantic defaults (e.g., a missing `personality` becomes `"default"`, a missing `customInstructions` becomes `{}`). Always send the full current state.
 
-- **Tool preferences are computed client-side.** The backend never auto-filters tools based on `user_preferences.tools`. The frontend must subtract disabled tools from the full catalog and send the resulting `enabledTools` list on every inference request. A bug in that computation lets disabled tools through silently.
+- **Tool control is not in this row.** `user_preferences` no longer has a `tools` column, and no inference request carries an `enabledTools` list. Tool enablement is resolved entirely by the agents service (declared per agent, disabled per (user, agent)); a preferences `PUT` can neither enable nor disable a tool. See [§ Tool control moved to the Agents tab](#tool-control-moved-to-the-agents-tab).
 
 - **Voice normalization is silent.** If an unsupported voice name is stored in the DB (e.g., from a previous deployment with different supported voices), the GET response returns the fallback default without any error. The user's preference is effectively reset without notification.
 
@@ -320,12 +314,13 @@ On the agents side the main logic lives in [`runtime/personalization.py`](../../
 | Concept | File | What to look for |
 | --- | --- | --- |
 | DB table definition | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `UserPreferencesTable` class, column defaults |
-| Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `UserPreferences`, `ToolsPreferences`, `ToolPreference` |
+| Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `UserPreferences`, `CustomInstructions` (the `ToolsPreferences`/`ToolPreference` schemas were deleted) |
 | Preferences router | [src/dialogue_bridge/router/preferences.py](../../src/dialogue_bridge/router/preferences.py) | GET and PUT handlers, upsert logic |
 | Voice normalization | [src/dialogue_bridge/utils/voice.py](../../src/dialogue_bridge/utils/voice.py) | `preferred_realtime_voice()`, `preferred_voice_mode_language()`, `normalize_*` functions |
 | Voice router (preference lookup) | [src/dialogue_bridge/router/voice.py](../../src/dialogue_bridge/router/voice.py) | Session config construction, preference resolution |
 | Backend settings (voice) | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `VoiceSettings`, `REALTIME_SUPPORTED_VOICES`, `REALTIME_DEFAULT_VOICE` |
-| TypeScript types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `UserPreferences`, `ToolPreference`, `RealtimeVoice`, `VoiceModeLanguage` |
+| TypeScript types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `UserPreferences`, `RealtimeVoice`, `VoiceModeLanguage` (the `ToolPreference` type was deleted) |
+| Per-(user, agent) tool disabling | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` — the replacement for the old global tool preference |
 | API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `getUserPreferences()`, `updateUserPreferences()` |
 | Frontend constants | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES`, `DEFAULT_REALTIME_VOICE` |
 | Preference handlers | [src/agentic_ui/src/handlers/preferences.ts](../../src/agentic_ui/src/handlers/preferences.ts) | `usePreferencesHandlers()`, `snapshotPrefs`/`persistPrefs`, optimistic update pattern, rollback |
@@ -333,4 +328,3 @@ On the agents side the main logic lives in [`runtime/personalization.py`](../../
 | Personalization runtime (agents) | [src/agents/runtime/personalization.py](../../src/agents/runtime/personalization.py) | Preset registry + directives, `parse_personalization()` (fail-closed), `build_personalization_prompt()` |
 | Personalization threading (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_effective_personalization()`, `context.personalization` in the run config |
 | IndexedDB persistence | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | `loadUISnapshot()`, `saveUISnapshot()`, `clearUISnapshot()` |
-| Inference tool filtering | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `enabled_tools` in `InferenceRunStartPayload`, config forwarding to agents |

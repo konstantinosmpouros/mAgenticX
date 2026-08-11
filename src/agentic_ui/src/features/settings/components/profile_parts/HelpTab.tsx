@@ -1,8 +1,7 @@
 import { useTheme } from "next-themes";
 import { AppWindow, Archive, ExternalLink, MoonStar, Sparkles } from "lucide-react";
 
-import { useToolStatus } from "@/features/settings/hooks/useToolStatus";
-import type { ConversationSummary, HelpCard, ToolWithStatus, UserPreferences } from "@/shared/lib/types";
+import type { ConversationSummary, HelpCard, ToolWithStatus } from "@/shared/lib/types";
 import { InfoCard, SoftPanel } from "./shared";
 
 const HELP_CARDS: HelpCard[] = [
@@ -27,13 +26,14 @@ const HELP_CARDS: HelpCard[] = [
 type HelpTabProps = {
     archivedConversations: ConversationSummary[];
     availableTools: ToolWithStatus[];
-    userPreferences: UserPreferences;
 };
 
-export default function HelpTab({ archivedConversations, availableTools, userPreferences }: HelpTabProps) {
+export default function HelpTab({ archivedConversations, availableTools }: HelpTabProps) {
     const { theme } = useTheme();
     const currentTheme = theme === "dark" ? "dark" : "light";
-    const { enabledToolsCount } = useToolStatus(availableTools, userPreferences);
+    // Tools are no longer globally enabled/disabled — this is the size of the
+    // available MCP catalog (per-agent enablement lives in Settings → Agents).
+    const toolCount = availableTools.length;
 
     const handleHelpCardClick = (card: HelpCard) => {
         if (!card.href) return;
@@ -97,7 +97,7 @@ export default function HelpTab({ archivedConversations, availableTools, userPre
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-foreground">
-                                    {enabledToolsCount} enabled tool{enabledToolsCount === 1 ? "" : "s"}
+                                    {toolCount} tool{toolCount === 1 ? "" : "s"}
                                 </p>
                                 <p className="text-sm text-muted-foreground">
                                     MCP tools currently available in chat.
