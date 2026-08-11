@@ -135,7 +135,7 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
 
                                                 return (
                                                     <div key={uniqueKey} className="px-4 py-4">
-                                                        <div className="min-w-0 space-y-2">
+                                                        <div className="min-w-0 space-y-3">
                                                             <div className="flex flex-wrap items-center gap-2">
                                                                 <p className="text-sm font-semibold text-foreground">
                                                                     {tool.toolName}
@@ -144,7 +144,7 @@ export default function McpServersTab({ availableTools }: McpServersTabProps) {
                                                                     {parameterLabel}
                                                                 </span>
                                                             </div>
-                                                            <p className="text-sm text-muted-foreground">
+                                                            <p className="text-sm leading-relaxed text-muted-foreground">
                                                                 {displayText}
                                                                 {isTruncated ? (
                                                                     <button

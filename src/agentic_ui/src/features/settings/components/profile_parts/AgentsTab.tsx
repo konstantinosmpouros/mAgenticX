@@ -101,7 +101,14 @@ export default function AgentsTab({ agents }: AgentsTabProps) {
                         </span>
                     </div>
                     {row.description ? (
-                        <p className="mt-1 break-words text-sm text-muted-foreground">{row.description}</p>
+                        // MCP tools ship a long LLM-facing description; show a 2-line
+                        // preview here (full text lives in the read-only MCP Servers tab).
+                        <p
+                            className="mt-1 line-clamp-2 break-words text-sm text-muted-foreground"
+                            title={row.description}
+                        >
+                            {row.description}
+                        </p>
                     ) : null}
                 </div>
                 <button
