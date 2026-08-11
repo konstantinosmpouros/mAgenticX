@@ -49,6 +49,7 @@ from typing import Iterable
 
 from core.settings import settings
 from observability import get_logger
+from runtime.filesystem import layout
 from runtime.filesystem.provisioner import _safe_segment
 from runtime.skill_registry.global_manifest import get_global_manifest, is_global_skill
 from schemas import (
@@ -158,19 +159,21 @@ def _collect_skill_files(folder: Path) -> list[SkillFile]:
 # Path helpers
 # ---------------------------------------------------------------------------
 def _user_root(user_id: str) -> Path:
-    return settings.filesystem.skills_registry_users_root / _safe_segment(user_id)
+    """The user's skill pool — now a subtree of their workspace rather than a
+    separate volume (see ``runtime.filesystem.layout``)."""
+    return layout.user_skills_pool_root(user_id)
 
 
 def _manifest_path(user_id: str) -> Path:
-    return _user_root(user_id) / _MANIFEST_FILENAME
+    return layout.user_manifest_path(user_id)
 
 
 def _custom_root(user_id: str) -> Path:
-    return _user_root(user_id) / "custom"
+    return layout.user_custom_skills_root(user_id)
 
 
 def _custom_skill_dir(user_id: str, skill_name: str) -> Path:
-    return _custom_root(user_id) / _safe_segment(skill_name)
+    return layout.user_custom_skill_dir(user_id, skill_name)
 
 
 def _global_skill_dir_from_source_path(source_path: str) -> Path:
@@ -184,7 +187,7 @@ def _global_skill_dir_from_source_path(source_path: str) -> Path:
     if len(parts) < 2 or parts[0] != "global":
         raise ValueError(f"Unexpected global source_path: {source_path!r}")
     relative = parts[1:]  # category, skill_name (plus any future depth)
-    resolved = settings.filesystem.skills_registry_global_root
+    resolved = layout.global_skills_root()
     for segment in relative:
         resolved = resolved / _safe_segment(segment)
     return resolved
@@ -475,12 +478,11 @@ def add_custom_to_user(user_id: str, payload: CustomSkillCreate) -> SkillManifes
 def _cascade_remove_from_agent_assignments(user_id: str, skill_name: str) -> None:
     """Remove the skill folder from every ``agents/*/skills/<name>/`` for this user.
 
-    Idempotent. Iterates the per-user filesystem under
-    ``$AGENTS_FILESYSTEM_ROOT/<user_id>/agents/`` and removes any matching
-    skill directory. Missing dirs are tolerated.
+    Idempotent. Iterates the user's workspace under ``agents/`` and removes any
+    matching skill directory. Missing dirs are tolerated.
     """
     safe_skill = _safe_segment(skill_name)
-    agents_parent = settings.filesystem.user_root / _safe_segment(user_id) / "agents"
+    agents_parent = layout.user_agents_root(user_id)
     if not agents_parent.is_dir():
         return
     for agent_dir in agents_parent.iterdir():
@@ -586,7 +588,7 @@ def reconcile_all_user_manifests() -> None:
     (no dir yet) are not provisioned here — they're created lazily on first
     POST. We only heal existing state.
     """
-    users_root = settings.filesystem.skills_registry_users_root
+    users_root = layout.users_root()
     if not users_root.is_dir():
         users_root.mkdir(parents=True, exist_ok=True)
         return
@@ -632,13 +634,7 @@ def _enable_skill_for_agent(
     the skill isn't in the user's pool.
     """
     src = resolve_skill_path(user_id, skill_name)
-    dest_parent = (
-        settings.filesystem.user_root
-        / _safe_segment(user_id)
-        / "agents"
-        / _safe_segment(agent_slug)
-        / "skills"
-    )
+    dest_parent = layout.agent_skills_root(user_id, agent_slug)
     dest_parent.mkdir(parents=True, exist_ok=True)
     dest = dest_parent / _safe_segment(skill_name)
     if dest.exists():

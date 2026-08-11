@@ -420,38 +420,14 @@ class DeepAgentsSettings(BaseModel):
 class FilesystemSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    # Per-user filesystem root for CompositeBackend mounts. Bind-mounted from
-    # the host (or a Docker named volume) so each agent's memory (AGENTS.md +
-    # entries) and enabled skills survive container restarts.
-    user_root: Path = Field(
-        Path("/var/agents/filesystem"),
-        validation_alias="AGENTS_FILESYSTEM_ROOT",
-    )
-
-    # Global skills registry — admin-curated catalog mounted as a read-write
-    # Docker volume so admins can add skills out-of-band. Seeded at boot from
-    # the image's /opt/skills_registry_seed/ via runtime.skill_registry.
-    skills_registry_global_root: Path = Field(
-        Path("/var/agents/skills_registry/global"),
-        validation_alias="SKILLS_REGISTRY_GLOBAL_ROOT",
-    )
-
-    # Per-user skill registry — each user's pool of skills (refs to global +
-    # owned custom skills) plus their manifest.json. Mutated by bridge user
-    # endpoints; reconciled at boot by the agents-service lifespan.
-    skills_registry_users_root: Path = Field(
-        Path("/var/agents/skills_registry/users"),
-        validation_alias="SKILLS_REGISTRY_USERS_ROOT",
-    )
-
-    # --- Platform two-plane roots (declarative-agents redesign) -------------
-    # New roots for the platform restructure (see
-    # docs/draft/platform-restructure-change-plan.md). Additive scaffolding:
-    # nothing reads these yet, so behaviour is unchanged until the YAML
-    # discoverer (global agents) and the storage migration (workspaces) wire
-    # them in. `global_root` collects shared assets (built-in agent YAMLs +
-    # the skill registry); `workspaces_root` holds one tree per user
-    # (custom agents, skills, memory, per-agent config).
+    # --- The two planes -----------------------------------------------------
+    # Everything on the agents filesystem hangs off these two roots, both backed
+    # by one Docker volume mounted at /var/magenticx. `global_root` holds
+    # platform-owned shared assets (built-in agent definitions + the skills
+    # catalogue); `workspaces_root` holds one tree per user (their skill pool,
+    # their own agent definitions, per-agent memory, tool prefs and every
+    # conversation's files). `runtime.filesystem.layout` derives every concrete
+    # path from these — nothing else should join path segments by hand.
     global_root: Path = Field(
         Path("/var/magenticx/global"),
         validation_alias="MAGENTICX_GLOBAL_ROOT",

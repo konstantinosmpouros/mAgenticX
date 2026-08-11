@@ -19,8 +19,8 @@ import os
 import shutil
 from pathlib import Path
 
-from core.settings import settings
 from observability import get_logger
+from runtime.filesystem import layout
 
 logger = get_logger(__name__)
 
@@ -51,7 +51,7 @@ def seed_global_registry() -> None:
       the manifest module's job after this returns.
     """
     seed = _seed_dir()
-    target = settings.filesystem.skills_registry_global_root
+    target = layout.global_skills_root()
 
     if not seed.is_dir():
         logger.info(

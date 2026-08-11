@@ -40,11 +40,15 @@ from pathlib import Path
 
 from core.settings import settings
 from observability import get_logger
+from runtime.filesystem.layout import CONVERSATIONS_DIRNAME, users_root
 
 logger = get_logger(__name__)
 
-# Directories under an agent root that are NOT conversation dirs.
-_NON_CONVERSATION_DIRS = {"memory", "skills"}
+# NOTE: there is deliberately no "non-conversation dirs" denylist any more.
+# Conversation dirs live under `<agent>/conversations/`, so a conversation is
+# identified by position. The old name-based skip (`memory`, `skills`) had to be
+# updated every time a new sibling appeared under the agent root — `tool_prefs.json`
+# only escaped it by being a file, and `default_skills/` would not have.
 # Per-pass safety budgets (hardcoded on purpose — not worth config surface).
 _MAX_DELETES_PER_PASS = 10_000
 _MAX_PASS_SECONDS = 30.0
@@ -70,9 +74,14 @@ class SweepStats:
 def _iter_scope_dirs(root: Path):
     """Yield every ``(scope, conversation_dir/scope)`` pair under the root.
 
-    Layout: ``<root>/<user_id>/agents/<agent_slug>/<conversation_id>/{input,output}``.
+    Layout: ``<root>/<user_id>/agents/<agent_slug>/conversations/<conversation_id>/{input,output}``.
     Walked with ``scandir`` and ``follow_symlinks=False`` at every level — a
     symlinked directory anywhere on the path is simply not descended into.
+
+    Because conversations sit under their own ``conversations/`` parent, every
+    directory reached at the deepest level *is* a conversation: no sibling of
+    ``memory/`` or ``skills/`` can be mistaken for one, and adding a new sibling
+    under the agent root cannot silently widen this sweep.
     """
     try:
         user_entries = list(os.scandir(root))
@@ -89,14 +98,13 @@ def _iter_scope_dirs(root: Path):
         for agent_entry in agent_entries:
             if not agent_entry.is_dir(follow_symlinks=False):
                 continue
+            conversations_dir = Path(agent_entry.path) / CONVERSATIONS_DIRNAME
             try:
-                conv_entries = list(os.scandir(agent_entry.path))
+                conv_entries = list(os.scandir(conversations_dir))
             except FileNotFoundError:
                 continue
             for conv_entry in conv_entries:
                 if not conv_entry.is_dir(follow_symlinks=False):
-                    continue
-                if conv_entry.name in _NON_CONVERSATION_DIRS:
                     continue
                 for scope in ("input", "output"):
                     scope_dir = Path(conv_entry.path) / scope
@@ -196,7 +204,7 @@ def sweep_workspace_retention_once() -> SweepStats:
         "output": cfg.output_ttl_hours * 3600,
     }
     stats = SweepStats(scopes={k: bool(v) for k, v in ttls.items()})
-    root = cfg.user_root
+    root = users_root()
     try:
         real_root = root.resolve(strict=True)
     except (FileNotFoundError, OSError):

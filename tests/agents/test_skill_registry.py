@@ -59,7 +59,9 @@ def test_scan_global_registry_skips_stray_and_missing_skill_md(skills_fs):
 
 def test_scan_global_registry_missing_root_returns_empty(skills_fs):
     gm = skills_fs.service.global_manifest
-    skills_fs.service.main.settings.filesystem.skills_registry_global_root = skills_fs.global_root / "does-not-exist"
+    # Repoint the whole global plane at a path that doesn't exist, so the
+    # derived catalogue root (<plane>/skills) is missing too.
+    skills_fs.service.main.settings.filesystem.global_root = skills_fs.global_root / "does-not-exist"
     assert gm._scan_global_registry() == []
 
 
@@ -169,7 +171,7 @@ def test_add_custom_to_user_creates_folder_and_entry(skills_fs):
     assert entry.type == "custom"
     assert entry.source_path == "users/user-1/custom/my-skill"
 
-    skill_dir = skills_fs.users_root / "user-1" / "custom" / "my-skill"
+    skill_dir = skills_fs.pool("user-1") / "custom" / "my-skill"
     assert (skill_dir / "SKILL.md").read_text(encoding="utf-8").startswith("---\nname: my-skill")
     assert (skill_dir / "references" / "notes.md").is_file()
     assert (skill_dir / "assets" / "logo.png").read_bytes() == b"\x89PNG fake"
@@ -196,7 +198,7 @@ def test_add_custom_to_user_name_conflict_with_global(skills_fs):
 def test_add_custom_to_user_folder_already_exists(skills_fs):
     ur = skills_fs.service.user_registry
     ur.ensure_user_registry("user-1")
-    (skills_fs.users_root / "user-1" / "custom" / "ghost").mkdir(parents=True, exist_ok=True)
+    (skills_fs.pool("user-1") / "custom" / "ghost").mkdir(parents=True, exist_ok=True)
     with pytest.raises(ur.SkillNameConflict):
         ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "ghost"))
 
@@ -286,7 +288,7 @@ def test_remove_custom_skill_deletes_folder_and_cascades(skills_fs):
     ur.remove_from_user("user-1", "my-skill")
 
     assert [s.name for s in ur.list_user_skills("user-1")] == []
-    assert not (skills_fs.users_root / "user-1" / "custom" / "my-skill").exists()
+    assert not (skills_fs.pool("user-1") / "custom" / "my-skill").exists()
     assert not assigned.exists()
 
 
@@ -318,7 +320,7 @@ def test_read_user_manifest_missing_returns_empty(skills_fs):
 def test_read_user_manifest_corrupt_returns_empty(skills_fs):
     ur = skills_fs.service.user_registry
     ur.ensure_user_registry("user-1")
-    (skills_fs.users_root / "user-1" / "manifest.json").write_text("{ not json", encoding="utf-8")
+    (skills_fs.pool("user-1") / "manifest.json").write_text("{ not json", encoding="utf-8")
     manifest = ur.read_user_manifest("user-1")
     assert manifest.skills == []
 
@@ -329,10 +331,10 @@ def test_reconcile_adopts_orphan_and_drops_missing(skills_fs):
     ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "vanishing"))
     import shutil
 
-    shutil.rmtree(skills_fs.users_root / "user-1" / "custom" / "vanishing")
+    shutil.rmtree(skills_fs.pool("user-1") / "custom" / "vanishing")
 
     # Orphan folder on disk not present in the manifest (should be adopted).
-    orphan = skills_fs.users_root / "user-1" / "custom" / "orphan"
+    orphan = skills_fs.pool("user-1") / "custom" / "orphan"
     orphan.mkdir(parents=True, exist_ok=True)
     (orphan / "SKILL.md").write_text("---\nname: orphan\ndescription: found\n---\nbody", encoding="utf-8")
 
@@ -356,8 +358,10 @@ def test_reconcile_all_user_manifests_walks_users(skills_fs):
 
 def test_reconcile_all_user_manifests_creates_root_when_missing(skills_fs):
     ur = skills_fs.service.user_registry
-    fresh = skills_fs.users_root.parent / "fresh-users"
-    skills_fs.service.main.settings.filesystem.skills_registry_users_root = fresh
+    # A fresh workspaces plane: its `users/` root must be created on demand.
+    fresh_plane = skills_fs.users_root.parent.parent / "fresh-workspaces"
+    skills_fs.service.main.settings.filesystem.workspaces_root = fresh_plane
+    fresh = fresh_plane / "users"
     assert not fresh.exists()
     ur.reconcile_all_user_manifests()
     assert fresh.is_dir()

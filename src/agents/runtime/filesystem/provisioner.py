@@ -7,11 +7,17 @@ tree that backs each user's shared ``AGENT.md`` memory and the per-agent
 *is* the "this skill is enabled for this user-agent pair" record — there is
 no database table mirroring the on-disk state.
 
+Every path comes from :mod:`runtime.filesystem.layout`, the single authority for
+the consolidated two-plane layout. This module owns the *lifecycle* (create,
+seed, read back, delete); layout owns *where*.
+
 Layout (structurally-isolated mounts the agent sees as siblings). Memory is
 per-(user, agent) — a sibling of ``skills/`` — so one agent's accumulated
 memory never bleeds into another's context:
 
-    <filesystem_root>/<user_id>/
+    <workspaces_root>/users/<user_id>/
+    ├── skills/                        ← the user's pool (manifest + custom/)
+    ├── custom_agents/                 ← the user's own agent.yaml definitions
     └── agents/
         └── <agent_slug>/
             ├── memory/                ← CompositeBackend route /memories/
@@ -20,8 +26,11 @@ memory never bleeds into another's context:
             │       └── <name>.yml     ← one memory each, read on demand
             ├── skills/                ← CompositeBackend route /skills/
             │   └── <skill_name>/SKILL.md
-            └── <conversation_id>/     ← CompositeBackend route /conversation/
-                └── <session files>
+            ├── tool_prefs.json        ← per-agent tool overrides
+            └── conversations/
+                └── <conversation_id>/ ← CompositeBackend route /conversation/
+                    ├── input/         ← read-only user uploads
+                    └── output/        ← agent artifacts
 
 Each mount lives in a distinct, non-overlapping subtree so no
 ``FilesystemBackend`` can resolve into another's space. In particular:
@@ -62,37 +71,41 @@ from typing import Dict, List, Tuple
 
 from core.settings import settings
 from observability import get_logger
+from runtime.filesystem import layout
 from runtime.filesystem.agent_md_template import AGENTS_MD_TEMPLATE
 
 logger = get_logger(__name__)
 
+# Canonical path-segment validator lives in `layout`; re-exported here because
+# the skill registry imports it from this module.
+_safe_segment = layout.safe_segment
 
-def _safe_segment(value: str) -> str:
-    """Reject IDs that could break out of their intended directory.
+# Explanatory file dropped into a freshly-created custom_agents/ dir so anyone
+# inspecting the volume knows what belongs there before the feature ships.
+_CUSTOM_AGENTS_README = """\
+# Your agents
 
-    UUIDs from the bridge are safe by construction, but ``user_id`` /
-    ``agent_slug`` are inputs to a path operation — validating them is
-    cheap defense in depth against any future caller that supplies a
-    different ID shape.
-    """
-    if (
-        not value
-        or "/" in value
-        or "\\" in value
-        or ".." in value
-        or value.startswith(".")
-    ):
-        raise ValueError(f"Illegal path segment: {value!r}")
-    return value
+Each subdirectory here is one agent you define, named after its slug:
+
+    <agent-slug>/
+        agent.yaml          identity, prompt, models, tools, sub-agents, HITL gates
+        AGENT.md            the system prompt
+        subagents/*.md      sub-agent prompts (optional)
+
+Authoring these from the UI is not wired up yet — the folder is provisioned in
+advance so the definitions have a home the moment it is. Platform agents are
+defined outside your workspace and are not editable here.
+"""
 
 
 def user_root(user_id: str) -> Path:
-    """The parent of both the memory and agents trees.
+    """This user's workspace root — parent of the pool, custom agents and the
+    per-agent trees.
 
     Not used as a FilesystemBackend root anywhere — exposed for callers
     that need to enumerate a user's siblings (e.g. cleanup tasks).
     """
-    return settings.filesystem.user_root / _safe_segment(user_id)
+    return layout.user_workspace(user_id)
 
 
 def memory_root(user_id: str, agent_slug: str) -> Path:
@@ -102,32 +115,32 @@ def memory_root(user_id: str, agent_slug: str) -> Path:
     Per-agent (a sibling of ``skills/`` under ``agent_root``) so one agent's
     memory never surfaces in another agent's context.
     """
-    return agent_root(user_id, agent_slug) / "memory"
+    return layout.memory_root(user_id, agent_slug)
 
 
 def memory_entries_root(user_id: str, agent_slug: str) -> Path:
     """The ``entries/`` subdir holding one ``<name>.yml`` per saved memory."""
-    return memory_root(user_id, agent_slug) / "entries"
+    return layout.memory_entries_root(user_id, agent_slug)
 
 
 def memory_index_path(user_id: str, agent_slug: str) -> Path:
     """The ``AGENTS.md`` index file — injected as the agent's always-on memory."""
-    return memory_root(user_id, agent_slug) / "AGENTS.md"
+    return layout.memory_index_path(user_id, agent_slug)
 
 
 def agent_root(user_id: str, agent_slug: str) -> Path:
-    """Parent of the agent's ``skills/`` directory and every conversation dir.
+    """Parent of the agent's ``skills/`` directory and its ``conversations/``.
 
     Not itself mounted — the agent never sees this level directly. Used
     internally to compute ``skills_root`` and ``conversation_root`` and by
-    the Phase 2 bridge endpoints when copying skills from the registry.
+    the bridge endpoints when copying skills from the registry.
     """
-    return user_root(user_id) / "agents" / _safe_segment(agent_slug)
+    return layout.agent_root(user_id, agent_slug)
 
 
 def skills_root(user_id: str, agent_slug: str) -> Path:
     """The ``/skills/`` mount root — enabled-skill directories live here."""
-    return agent_root(user_id, agent_slug) / "skills"
+    return layout.agent_skills_root(user_id, agent_slug)
 
 
 def conversation_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
@@ -136,20 +149,23 @@ def conversation_root(user_id: str, agent_slug: str, conversation_id: str) -> Pa
     Per-conversation isolation: files the agent writes in conversation A
     are not visible in conversation B. Cross-conversation persistence
     goes through the per-(user, agent) ``/memories/`` tree instead.
+
+    Lives under ``conversations/`` so a conversation dir is identifiable by
+    position rather than by not-matching a list of sibling names.
     """
-    return agent_root(user_id, agent_slug) / _safe_segment(conversation_id)
+    return layout.conversation_root(user_id, agent_slug, conversation_id)
 
 
 def conversation_input_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
     """Read-only ``/conversation/input/`` mount — user-uploaded files for this
     conversation. Seeded by the bridge before a run; the agent reads but never
     writes here (enforced by a FilesystemPermission write-deny)."""
-    return conversation_root(user_id, agent_slug, conversation_id) / "input"
+    return layout.conversation_input_root(user_id, agent_slug, conversation_id)
 
 
 def conversation_output_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
     """Read-write ``/conversation/output/`` mount — agent-generated artifacts."""
-    return conversation_root(user_id, agent_slug, conversation_id) / "output"
+    return layout.conversation_output_root(user_id, agent_slug, conversation_id)
 
 
 # The virtual mount an agent references when it presents a deliverable. Only
@@ -249,6 +265,45 @@ def read_output_files(
     return files, missing
 
 
+def ensure_user_workspace(user_id: str) -> Path:
+    """Idempotent user-level scaffold. Returns the workspace root.
+
+    Creates the directories that belong to the *user* rather than to any one
+    agent: the workspace root itself and ``custom_agents/`` (where the user's
+    own ``agent.yaml`` definitions will live — provisioned ahead of the feature
+    so the location is settled, see
+    ``docs/plans/01-custom-agents-per-user.md``). The skill *pool* is
+    provisioned by the registry layer's ``ensure_user_registry``, which owns
+    ``manifest.json``.
+
+    The README is written only when the directory is first created, so an admin
+    who deletes it is not fighting the service on every boot.
+    """
+    root = layout.user_workspace(user_id)
+    root.mkdir(parents=True, exist_ok=True)
+
+    custom_agents = layout.user_custom_agents_root(user_id)
+    if not custom_agents.exists():
+        custom_agents.mkdir(parents=True, exist_ok=True)
+        try:
+            (custom_agents / "README.md").write_text(_CUSTOM_AGENTS_README, encoding="utf-8")
+        except OSError:
+            # Explanatory only — never fail provisioning over it.
+            logger.warning(
+                "custom_agents_readme_write_failed",
+                "Could not write the custom_agents README",
+                exc_info=True,
+                user_id=user_id,
+            )
+        logger.info(
+            "custom_agents_dir_provisioned",
+            "Created the user's custom-agents directory",
+            user_id=user_id,
+            path=str(custom_agents),
+        )
+    return root
+
+
 def ensure_user_agent_filesystem(
     *,
     user_id: str,
@@ -259,18 +314,18 @@ def ensure_user_agent_filesystem(
 
     Provisions:
 
-    - ``<filesystem_root>/<user_id>/`` on first contact.
-    - ``<user_id>/agents/<agent_slug>/memory/`` (+ ``entries/``) and seeds the
+    - the user's workspace root + ``custom_agents/`` on first contact
+      (:func:`ensure_user_workspace`).
+    - ``agents/<agent_slug>/memory/`` (+ ``entries/``) and seeds the
       ``AGENTS.md`` index from the standard template if it doesn't exist;
       never overwrites an existing file (the agent's memory is sacred).
-    - ``<user_id>/agents/<agent_slug>/skills/`` on first contact (empty —
+    - ``agents/<agent_slug>/skills/`` on first contact (empty —
       assignments are owned by the skill-registry layer).
-    - ``<user_id>/agents/<agent_slug>/<conversation_id>/`` when
+    - ``agents/<agent_slug>/conversations/<conversation_id>/`` when
       ``conversation_id`` is supplied (agent invocation path). Bridge skill
       CRUD endpoints don't pass it.
     """
-    root = user_root(user_id)
-    root.mkdir(parents=True, exist_ok=True)
+    root = ensure_user_workspace(user_id)
 
     mem = memory_root(user_id, agent_slug)
     (mem / "entries").mkdir(parents=True, exist_ok=True)

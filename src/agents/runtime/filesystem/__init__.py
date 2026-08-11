@@ -1,14 +1,16 @@
 """Per-user / per-(user, agent) / per-conversation filesystem subsystem.
 
-Owns the directory tree under ``<filesystem_root>/<user_id>/...`` that backs
-each user's shared ``AGENT.md`` memory, the per-agent enabled-skills set,
-and each conversation's working area. See ``provisioner`` for the full
-layout doc.
+Owns the directory tree under ``<workspaces_root>/users/<user_id>/...`` that
+backs each user's skill pool, their own agent definitions, per-agent
+``AGENTS.md`` memory, the per-agent enabled-skills set, and each conversation's
+working area. ``layout`` is the single authority for *where* things live;
+``provisioner`` owns their lifecycle. See both for the full layout doc.
 
 Re-exports the public surface so the bridge / agents-service / runtime can
 import from ``runtime.filesystem`` rather than reaching into ``provisioner``
 directly.
 """
+from runtime.filesystem import layout
 from runtime.filesystem.agent_md_template import AGENTS_MD_TEMPLATE
 from runtime.filesystem.provisioner import (
     agent_root,
@@ -18,6 +20,7 @@ from runtime.filesystem.provisioner import (
     delete_conversation_files,
     disable_skill,
     ensure_user_agent_filesystem,
+    ensure_user_workspace,
     list_enabled_skills,
     memory_entries_root,
     memory_index_path,
@@ -62,6 +65,8 @@ __all__ = [
     "delete_conversation_files",
     "disable_skill",
     "ensure_user_agent_filesystem",
+    "ensure_user_workspace",
+    "layout",
     "list_enabled_skills",
     "memory_entries_root",
     "memory_index_path",

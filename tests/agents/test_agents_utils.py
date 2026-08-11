@@ -623,36 +623,39 @@ def test_make_merge_with_template_prepends_system(agents_service):
 # ===========================================================================
 def test_read_skill_body_strips_frontmatter(agents_service, monkeypatch, tmp_path):
     sk = agents_service.skills
-    root = tmp_path / "global"
+    plane = tmp_path / "global"
+    root = plane / "skills"
     skill_dir = root / "research" / "deep-dive"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: deep-dive\ndescription: do research\n---\n\nBody text here.",
         encoding="utf-8",
     )
-    monkeypatch.setattr(sk.settings.filesystem, "skills_registry_global_root", root)
+    monkeypatch.setattr(agents_service.settings_module.settings.filesystem, "global_root", plane)
     body = sk._read_skill_body_from_source_path("global/research/deep-dive")
     assert body == "Body text here."
 
 
 def test_read_skill_body_no_frontmatter_returns_raw(agents_service, monkeypatch, tmp_path):
     sk = agents_service.skills
-    root = tmp_path / "global"
+    plane = tmp_path / "global"
+    root = plane / "skills"
     skill_dir = root / "research" / "plain"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text("Just a body, no frontmatter.", encoding="utf-8")
-    monkeypatch.setattr(sk.settings.filesystem, "skills_registry_global_root", root)
+    monkeypatch.setattr(agents_service.settings_module.settings.filesystem, "global_root", plane)
     assert sk._read_skill_body_from_source_path("global/research/plain") == "Just a body, no frontmatter."
 
 
 def test_read_skill_body_unterminated_frontmatter_returns_raw(agents_service, monkeypatch, tmp_path):
     sk = agents_service.skills
-    root = tmp_path / "global"
+    plane = tmp_path / "global"
+    root = plane / "skills"
     skill_dir = root / "research" / "broken"
     skill_dir.mkdir(parents=True)
     raw = "---\nname: broken\nno closing fence"
     (skill_dir / "SKILL.md").write_text(raw, encoding="utf-8")
-    monkeypatch.setattr(sk.settings.filesystem, "skills_registry_global_root", root)
+    monkeypatch.setattr(agents_service.settings_module.settings.filesystem, "global_root", plane)
     assert sk._read_skill_body_from_source_path("global/research/broken") == raw
 
 
@@ -664,7 +667,7 @@ def test_read_skill_body_bad_prefix_returns_empty(agents_service):
 
 def test_read_skill_body_missing_file_returns_empty(agents_service, monkeypatch, tmp_path):
     sk = agents_service.skills
-    monkeypatch.setattr(sk.settings.filesystem, "skills_registry_global_root", tmp_path)
+    monkeypatch.setattr(agents_service.settings_module.settings.filesystem, "global_root", tmp_path)
     assert sk._read_skill_body_from_source_path("global/research/ghost") == ""
 
 

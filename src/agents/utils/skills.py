@@ -26,8 +26,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from core.settings import settings
 from observability import get_logger
+from runtime.filesystem import layout
 from runtime.filesystem import (
     disable_skill as _disable_skill_fs,
     ensure_user_agent_filesystem,
@@ -57,7 +57,7 @@ def _read_skill_body_from_source_path(source_path: str) -> str:
             source_path=source_path,
         )
         return ""
-    skill_md = settings.filesystem.skills_registry_global_root
+    skill_md = layout.global_skills_root()
     for segment in parts[1:]:
         skill_md = skill_md / segment
     skill_md = skill_md / "SKILL.md"
