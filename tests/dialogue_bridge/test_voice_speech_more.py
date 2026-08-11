@@ -201,7 +201,6 @@ async def test_preferred_realtime_voice_reads_preferences(session_factory, seede
         session.add(
             UserPreferencesTable(
                 user_id=seeded_user.id,
-                tools={"disabled": []},
                 voice_mode_voice="sage",
                 voice_mode_language="english",
             )
@@ -229,7 +228,6 @@ async def test_preferred_voice_mode_language_reads_preferences(session_factory, 
         session.add(
             UserPreferencesTable(
                 user_id=seeded_user.id,
-                tools={"disabled": []},
                 voice_mode_voice="alloy",
                 voice_mode_language="greek",
             )

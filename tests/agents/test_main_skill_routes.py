@@ -368,7 +368,7 @@ def _resume_env(agents_service, monkeypatch, agent_cls=_FakeResumeAgent, has_cp=
     # an agent whose aget_state returns empty interrupts.
     if not has_cp and agent_cls is _FakeResumeAgent:
         agent_cls = _NoInterruptResumeAgent
-    registry = {"omni": SimpleNamespace(cls=agent_cls, manifest={})}
+    registry = {"omni": agents_service.schemas.AgentDefinition(slug="omni", cls=agent_cls, manifest={})}
     monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
     monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
 

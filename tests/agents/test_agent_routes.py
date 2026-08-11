@@ -49,9 +49,10 @@ class _FailingInitAgent(_FakeAgent):
 
 
 async def test_agents_manifest_route_returns_sorted_manifests(client, agents_service, internal_headers, monkeypatch):
+    definition = agents_service.schemas.AgentDefinition
     registry = {
-        "z-agent": SimpleNamespace(manifest={"id": "2", "slug": "z-agent", "name": "Z Agent", "type": "langgraph", "description": "Zed", "icon": "z"}),
-        "a-agent": SimpleNamespace(manifest={"id": "1", "slug": "a-agent", "name": "A Agent", "type": "langgraph", "description": "Alpha", "icon": "a"}),
+        "z-agent": definition(slug="z-agent", manifest={"id": "2", "slug": "z-agent", "name": "Z Agent", "type": "langgraph", "description": "Zed", "icon": "z"}),
+        "a-agent": definition(slug="a-agent", manifest={"id": "1", "slug": "a-agent", "name": "A Agent", "type": "langgraph", "description": "Alpha", "icon": "a"}),
     }
     monkeypatch.setattr(agents_service.router_catalog, "AGENT_REGISTRY", registry)
 
@@ -103,7 +104,8 @@ async def test_stream_route_forwards_chunks_from_agent_runtime(
     monkeypatch,
 ):
     registry = {
-        "demo-agent": SimpleNamespace(
+        "demo-agent": agents_service.schemas.AgentDefinition(
+            slug="demo-agent",
             cls=_FakeAgent,
             manifest={"id": "1", "slug": "demo-agent", "name": "Demo Agent", "type": "langgraph", "description": "Demo", "icon": "bot"},
         )
@@ -136,7 +138,8 @@ async def test_stream_route_returns_400_when_agent_initialization_fails(
     monkeypatch,
 ):
     registry = {
-        "bad-agent": SimpleNamespace(
+        "bad-agent": agents_service.schemas.AgentDefinition(
+            slug="bad-agent",
             cls=_FailingInitAgent,
             manifest={"id": "1", "slug": "bad-agent", "name": "Bad Agent", "type": "langgraph", "description": "Bad", "icon": "bot"},
         )
@@ -160,7 +163,8 @@ async def test_stream_route_encodes_runtime_errors(
     monkeypatch,
 ):
     registry = {
-        "demo-agent": SimpleNamespace(
+        "demo-agent": agents_service.schemas.AgentDefinition(
+            slug="demo-agent",
             cls=_FailingStreamAgent,
             manifest={"id": "1", "slug": "demo-agent", "name": "Demo Agent", "type": "langgraph", "description": "Demo", "icon": "bot"},
         )
