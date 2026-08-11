@@ -42,7 +42,11 @@ jobs:
           # B101 flagged every test assertion (~1.2K alerts of pure noise), drowning
           # the real findings. Production code stays fully scanned, so asserts in
           # src/ are still reported.
-          excluded_paths: "./tests/*"
+          # MUST be a plain directory path, never a glob: the action interpolates
+          # this value unquoted into the bandit command line, so a shell glob like
+          # ./tests/* expands into the directory listing and breaks the invocation.
+          # Bandit appends /* to directory entries itself (manager.discover_files).
+          excluded_paths: "./tests"
           # comma-separated list of test IDs to skip
           # skips: # optional, default is DEFAULT
           # path to a .bandit file that supplies command line arguments
