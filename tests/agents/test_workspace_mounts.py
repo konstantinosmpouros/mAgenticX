@@ -22,13 +22,14 @@ def workspace(agents_service):
     return importlib.import_module("runtime.filesystem.workspace")
 
 
-def _backend(workspace, *, reference_dir=None):
+def _backend(workspace, *, reference_dir=None, default_skills_dir=None):
     factory = workspace.build_workspace_backend(
         user_id="user-1",
         agent_slug="agent-1",
         conversation_id="conv-1",
         use_memory=True,
         reference_dir=reference_dir,
+        default_skills_dir=default_skills_dir,
     )
     return factory(None)
 
@@ -91,9 +92,15 @@ def test_every_deny_rule_targets_a_mounted_route(
     """
     definition = tmp_path / "definition"
     definition.mkdir()
-    backend = _backend(workspace, reference_dir=definition if include_reference else None)
+    backend = _backend(
+        workspace,
+        reference_dir=definition if include_reference else None,
+        default_skills_dir=definition if include_reference else None,
+    )
     mounted = {prefix.strip("/").split("/")[0] for prefix in backend.routes}
-    rules = workspace.workspace_write_deny(include_reference=include_reference)
+    rules = workspace.workspace_write_deny(
+        include_reference=include_reference, include_default_skills=include_reference
+    )
 
     unscoped = [
         path
@@ -102,3 +109,28 @@ def test_every_deny_rule_targets_a_mounted_route(
         if path.lstrip("/").split("{")[0].split("/")[0] not in mounted
     ]
     assert not unscoped, f"deny rules outside every mounted route: {unscoped}"
+
+
+def test_default_skills_route_is_conditional(workspace, skills_fs, tmp_path):
+    """Tier ① is optional: an agent that ships with no skills of its own must not
+    advertise an empty mount."""
+    defaults = tmp_path / "default_skills"
+    defaults.mkdir()
+    assert "/default_skills/" not in _backend(workspace).routes
+    assert "/default_skills/" in _backend(workspace, default_skills_dir=defaults).routes
+
+
+def test_default_skills_are_read_only(workspace):
+    """The rule that makes "add to, never remove" structural rather than a UI
+    convention — a run cannot delete or overwrite a skill it ships with."""
+
+    def has_default_skills_deny(rules) -> bool:
+        return any(
+            rule.mode == "deny"
+            and "write" in rule.operations
+            and any("/default_skills" in path for path in rule.paths)
+            for rule in rules
+        )
+
+    assert not has_default_skills_deny(workspace.workspace_write_deny())
+    assert has_default_skills_deny(workspace.workspace_write_deny(include_default_skills=True))

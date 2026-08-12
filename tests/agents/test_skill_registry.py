@@ -438,3 +438,52 @@ def test_assign_unknown_skill_raises_file_not_found(skills_fs):
     ur.ensure_user_registry("user-1")
     with pytest.raises(FileNotFoundError):
         ur.assign_user_skill_to_agent(user_id="user-1", agent_slug="omni", skill_name="not-in-pool")
+
+
+# ---------------------------------------------------------------------------
+# sync_agent_default_skills — tier ① for a user-authored agent
+# ---------------------------------------------------------------------------
+def test_sync_default_skills_copies_from_the_pool(skills_fs):
+    ur = skills_fs.service.user_registry
+    layout = skills_fs.service.filesystem_layout
+    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
+
+    resolved = ur.sync_agent_default_skills(
+        user_id="user-1", agent_slug="styler", skill_names=["alpha"]
+    )
+
+    assert resolved == ["alpha"]
+    root = layout.agent_default_skills_root("user-1", "styler")
+    assert (root / "alpha" / "SKILL.md").is_file()
+
+
+def test_sync_default_skills_is_separate_from_the_enabled_tier(skills_fs):
+    """The two tiers must not share a directory — that separation is what makes a
+    default skill impossible to remove via the per-agent disable endpoint."""
+    ur = skills_fs.service.user_registry
+    prov = skills_fs.service.provisioner
+    layout = skills_fs.service.filesystem_layout
+    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
+    ur.sync_agent_default_skills(user_id="user-1", agent_slug="styler", skill_names=["alpha"])
+
+    # The default is not an "enabled" skill, and disabling it cannot touch it.
+    assert prov.list_enabled_skills("user-1", "styler") == []
+    prov.disable_skill(user_id="user-1", agent_slug="styler", skill_name="alpha")
+    assert (layout.agent_default_skills_root("user-1", "styler") / "alpha").is_dir()
+
+
+def test_sync_default_skills_prunes_undeclared_and_skips_missing(skills_fs):
+    ur = skills_fs.service.user_registry
+    layout = skills_fs.service.filesystem_layout
+    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
+    ur.sync_agent_default_skills(user_id="user-1", agent_slug="styler", skill_names=["alpha"])
+
+    # Re-saving with a different list prunes the old copy; a name that is not in
+    # the pool is skipped rather than failing the save.
+    resolved = ur.sync_agent_default_skills(
+        user_id="user-1", agent_slug="styler", skill_names=["not-in-pool"]
+    )
+
+    assert resolved == []
+    root = layout.agent_default_skills_root("user-1", "styler")
+    assert sorted(p.name for p in root.iterdir()) == []

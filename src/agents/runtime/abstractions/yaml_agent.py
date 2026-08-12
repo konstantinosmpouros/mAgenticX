@@ -26,6 +26,7 @@ from deepagents import SubAgent
 from runtime.abstractions.deep_agent import DeepAgent
 from runtime.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
 from utils.declarative import read_prompt
+from runtime.filesystem import layout
 from runtime.filesystem.tool_prefs import read_enabled_tools
 from runtime.tools.registry import NativeToolContext, resolve_native_tool
 from observability import get_logger
@@ -100,6 +101,32 @@ class YamlDeepAgent(DeepAgent):
         read once at build time.
         """
         return self._source_dir
+
+
+    @property
+    def default_skills_dir(self) -> Optional[Path]:
+        """The skills this agent ships with, resolved from where it was defined.
+
+        A platform agent's live in its own global folder and are mounted straight
+        from there — never copied into a user's tree, so they cost nothing per
+        user and cannot be tampered with. A user-authored agent's were resolved
+        out of the author's pool when the agent was saved, into the read-only
+        ``default_skills/`` dir in their workspace.
+
+        ``None`` when the spec declares none, when the directory is empty, or
+        during registry warmup (no ``user_id`` yet) — mounting an empty route
+        would advertise a tier the agent hasn't got.
+        """
+        if not self._spec.skills:
+            return None
+        if self._source_dir.parent.name == layout.CUSTOM_AGENTS_DIRNAME:
+            user_id = (self.context or {}).get("user_id")
+            if not user_id:
+                return None
+            path = layout.agent_default_skills_root(user_id, self.name)
+        else:
+            path = layout.global_agent_default_skills_root(self.name)
+        return path if path.is_dir() and any(path.iterdir()) else None
 
 
     def _native_ctx(self) -> Optional[NativeToolContext]:

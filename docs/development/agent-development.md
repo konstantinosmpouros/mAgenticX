@@ -357,7 +357,20 @@ skills/
         helpers.py       ← optional Python helpers (not auto-loaded)
 ```
 
-`load_skills()` returns `["./skills/"]` if the directory exists. The skills directory is passed to `create_deep_agent(skills=...)` and loaded by `SkillsMiddleware`.
+`load_skills()` returns the **skill sources** for this run, in precedence order, passed to `create_deep_agent(skills=...)` and consumed by `SkillsMiddleware`. There are two tiers:
+
+| Tier | Route | Contents | Writable? |
+| --- | --- | --- | --- |
+| ② user-enabled | `/skills/` | what the user turned on for this (user, agent) pair — the folder's presence *is* the record | no |
+| ① built-in | `/default_skills/` | the skills the agent **ships with**, from its spec's `skills:` | no |
+
+Each source is a `(route, label)` tuple; the label renders as `**<label> Skills**` in the system prompt (`Your` / `Built-in`). Pass explicit labels — deepagents otherwise derives one from the path, and a bare `/skills/` derives `Skills`, rendering as the duplicative "Skills Skills" its own docs warn about.
+
+**Order is load-bearing.** deepagents merges sources left to right and *later sources win* on a name clash (`all_skills[skill["name"]] = skill` in `before_agent`), so the defaults go **last**: a user cannot neutralise a skill the agent ships with by putting a same-named one in their pool. Combined with the read-only mount, "the user may add skills but never remove the built-in ones" is **structural** — the enable/disable endpoint only ever touches `/skills/`, so no code path can drop a default.
+
+Tier ① is optional: `DeepAgent.default_skills_dir` returns `None` (an agent written in Python declares its skills in code) and the route is simply absent, so an agent never advertises an empty tier. `YamlDeepAgent` resolves it from where the agent was defined — a **platform** agent mounts `global/agents/<slug>/skills/` directly (never copied per user), a **user-authored** one mounts the copy made in its workspace by `sync_agent_default_skills()` when the agent was saved (re-copied and pruned on every save, so editing the spec's `skills:` is reflected on the next run).
+
+One consequence of the middleware: `skills_metadata` is loaded **once per session** and skipped when already in state, so a skill change applies to the *next* conversation — the same caveat as `AGENTS.md` memory.
 
 ##### User-authored custom skills (multi-file)
 

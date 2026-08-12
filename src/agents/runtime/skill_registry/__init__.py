@@ -21,6 +21,7 @@ from runtime.skill_registry.global_manifest import (
 )
 from runtime.skill_registry.seed_global_registry import seed_global_registry
 from runtime.skill_registry.user_registry import (
+    sync_agent_default_skills,
     SkillNameConflict,
     SkillValidationError,
     add_custom_to_user,
@@ -56,4 +57,5 @@ __all__ = [
     "reconcile_user_manifest",
     "remove_from_user",
     "resolve_skill_path",
+    "sync_agent_default_skills",
 ]

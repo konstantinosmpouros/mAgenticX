@@ -56,8 +56,18 @@ _REFERENCE_WRITE_DENY = FilesystemPermission(
     operations=["write"], paths=["/reference{,/**}"], mode="deny"
 )
 
+# Tier-① skills: the ones an agent ships with. Read-only is what makes "the user
+# may add skills but never remove these" structural rather than a UI rule — the
+# per-agent enable/disable endpoint only ever touches the separate `/skills/`
+# tree, so there is no path through which a default can be dropped.
+_DEFAULT_SKILLS_WRITE_DENY = FilesystemPermission(
+    operations=["write"], paths=["/default_skills{,/**}"], mode="deny"
+)
 
-def workspace_write_deny(*, include_reference: bool = False) -> list[FilesystemPermission]:
+
+def workspace_write_deny(
+    *, include_reference: bool = False, include_default_skills: bool = False
+) -> list[FilesystemPermission]:
     """The write-deny ladder for a run, matched to the routes it actually mounts.
 
     Kept a function rather than a bare constant because ``/reference/`` is
@@ -70,6 +80,8 @@ def workspace_write_deny(*, include_reference: bool = False) -> list[FilesystemP
     rules = list(WORKSPACE_WRITE_DENY)
     if include_reference:
         rules.append(_REFERENCE_WRITE_DENY)
+    if include_default_skills:
+        rules.append(_DEFAULT_SKILLS_WRITE_DENY)
     return rules
 
 
@@ -80,6 +92,7 @@ def build_workspace_backend(
     conversation_id: str,
     use_memory: bool,
     reference_dir: Path | None = None,
+    default_skills_dir: Path | None = None,
 ) -> Callable[[Any], CompositeBackend]:
     """Provision the tree and return a factory minting a fresh ``CompositeBackend``
     per tool call.
@@ -94,6 +107,7 @@ def build_workspace_backend(
         /conversation/input/  → <conv_id>/input/                     (user uploads, read-only)
         /conversation/output/ → <conv_id>/output/                    (agent artifacts, read-write)
         /conversation/        → <user_root>/agents/<slug>/<conv_id>/ (this chat only)
+        /default_skills/      → the skills the agent ships with      (read-only, optional)
         /reference/           → the agent's definition folder        (read-only, optional)
         default               → StateBackend(rt)                     (ephemeral scratch)
 
@@ -186,6 +200,10 @@ def build_workspace_backend(
                 root_dir=str(conversation_history_path), virtual_mode=True
             ),
         })
+        if default_skills_dir is not None:
+            routes["/default_skills/"] = FilesystemBackend(
+                root_dir=str(default_skills_dir), virtual_mode=True
+            )
         if reference_dir is not None:
             routes["/reference/"] = FilesystemBackend(
                 root_dir=str(reference_dir), virtual_mode=True

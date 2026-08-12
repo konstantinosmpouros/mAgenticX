@@ -705,6 +705,13 @@ export default function AgentBuilder({
           <p className="text-xs text-muted-foreground">
             No skills yet — search your pool to give this agent focused know-how.
           </p>
+        ) : null}
+
+        {draft.skills.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Copied from your pool when you save, and always available to this agent — you can add
+            more per agent later, but these can't be switched off.
+          </p>
         ) : (
           <div className="flex flex-col gap-2">
             {draft.skills.map((name) => {
