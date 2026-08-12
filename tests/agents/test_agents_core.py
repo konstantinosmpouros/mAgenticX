@@ -712,7 +712,7 @@ async def test_fork_returns_false_on_empty_source(agents_service):
 
 
 # ---------------------------------------------------------------------------
-# runtime/base_agent.py
+# runtime/abstractions/base_agent.py
 # ---------------------------------------------------------------------------
 class _NamedTool:
     # _extract_tool_identity reads only `.name`; server_id is inferred via the

@@ -108,7 +108,7 @@ flowchart LR
 | Path helpers + provisioning (`memory_root`, `ensure_user_agent_filesystem`) | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) |
 | `AGENTS.md` seed template | [src/agents/runtime/filesystem/agent_md_template.py](../../src/agents/runtime/filesystem/agent_md_template.py) |
 | `remember` write tool (slugify, cap, upsert) | [src/agents/runtime/tools/remember.py](../../src/agents/runtime/tools/remember.py) |
-| Memory gating + system-prompt block | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `_memory_system_prompt`) |
+| Memory gating + system-prompt block | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `_memory_system_prompt`) |
 | Cap setting (`MEMORY_MAX_ENTRIES`) | [src/agents/core/settings.py](../../src/agents/core/settings.py) (`FilesystemSettings`) |
 | Agents inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) |
 | Bridge proxy + router | [src/dialogue_bridge/utils/memories.py](../../src/dialogue_bridge/utils/memories.py) · [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) |

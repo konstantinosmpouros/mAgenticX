@@ -117,7 +117,7 @@ The tool is built **per run**, closing over the current `user_id` + `conversatio
 | Embed request/response schema | [src/agents/schemas.py](../../src/agents/schemas.py) | `EmbedRequest`, `EmbedResponse` |
 | Embedding model config (agents) | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `RuntimeModelsSettings.embedding`, `embedding_dimensions` |
 | Agent memory tool | [src/agents/runtime/tools/memory_search.py](../../src/agents/runtime/tools/memory_search.py) | `build_memory_search_tool`, `search_past_conversations` |
-| Tool injection into deep agents | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent._builtin_tools`, `build_deep_agent(tools=...)` |
+| Tool injection into deep agents | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `DeepAgent._builtin_tools`, `build_deep_agent(tools=...)` |
 | Bridge URL config (agents) | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `BridgeSettings.memory_search_url`, `DIALOGUE_BRIDGE_URL` |
 | Sweeper + message search + agents client | [src/dialogue_bridge/utils/embeddings.py](../../src/dialogue_bridge/utils/embeddings.py) | `run_embedding_sweeper`, `search_user_messages`, `embed_texts` |
 | ORM model | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `MessageEmbeddingTable`, `EMBEDDING_DIMENSIONS` |

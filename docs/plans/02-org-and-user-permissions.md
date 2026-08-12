@@ -189,7 +189,7 @@ Refresh (`rotate_session`, session.py:293-296) re-reads membership from the DB a
 
 | `owner_kind` | Columns set | Who sees it | Who edits it |
 | --- | --- | --- | --- |
-| `platform` | both owner FKs `NULL` | every authenticated user | platform admins (today: out-of-band seeding — [agents/runtime/declarative/agent_seed.py:43](../../src/agents/runtime/declarative/agent_seed.py)) |
+| `platform` | both owner FKs `NULL` | every authenticated user | platform admins (today: out-of-band seeding — [agents/runtime/abstractions/agent_seed.py:43](../../src/agents/runtime/abstractions/agent_seed.py)) |
 | `org` | `owner_org_id` set | members of that org | org `admin`/`owner` |
 | `user` | `owner_user_id` + `owner_org_id` set | that user only | that user |
 

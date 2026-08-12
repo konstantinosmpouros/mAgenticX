@@ -146,7 +146,7 @@ The state type is assigned to `self.state` in `__init__` — the base class uses
 ```python
 # __init__.py
 from langgraph.graph import StateGraph, START, END
-from runtime import LangGraphAgent
+from runtime.abstractions import LangGraphAgent
 from .agents import build_my_agents
 from .nodes import MyAgentState, build_my_nodes
 
@@ -268,7 +268,7 @@ src/agents/deep_agents/my_deep_agent/
 # __init__.py
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
-from runtime import DeepAgent
+from runtime.abstractions import DeepAgent
 from core.settings import settings
 
 class MyDeepAgent(DeepAgent):
@@ -756,7 +756,7 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 - **Tool errors don't kill a deep-agent run.** The base `DeepAgent` installs `ToolErrorMiddleware` (`runtime/tool_error_middleware.py`) via `build_deep_agent(middleware=[...])` and injects it into every sub-agent spec (`_inject_tool_error_middleware` — the parent's middleware does not reach sub-agents, which compile their own stack). A tool that raises is caught and returned as a `ToolMessage(status="error")`, so the model can recover and the run continues; it surfaces as a `TOOL_CALL_RESULT` with `error: true` (a failed tool step in the UI) instead of a `RUN_ERROR`. Like the lockdown, this is centralized in the base — never wire it per-agent.
 
-- **The deep-agent workspace lockdown lives in the base class, not per-agent.** `DeepAgent._build_workspace_permissions()` returns the `FilesystemPermission` rules passed to `create_deep_agent(permissions=...)`, so every deep agent inherits the same confinement — never declare permissions in a concrete agent's `__init__`. The rules write-deny the read-only skill library (`/skills/`) and the deepagents-managed bookkeeping mounts (`/large_tool_results/`, `/conversation_history/`); reads stay open everywhere (a read-deny would block the agent from reading offloaded tool results). These are tool-level rules, so the library's automatic offload/eviction (which writes through the backend directly, not the `write_file`/`edit_file` tools) is unaffected. Every permission path must map to a mounted `CompositeBackend` route or deepagents raises at construction. Caveat: tool-level permissions are not yet supported once a `SandboxBackendProtocol` (execute) backend is used.
+- **The deep-agent workspace lockdown lives in the base class, not per-agent.** `workspace_write_deny(include_reference=...)` (in `runtime/filesystem/workspace.py`) returns the `FilesystemPermission` rules passed to `create_deep_agent(permissions=...)`, so every deep agent inherits the same confinement — never declare permissions in a concrete agent's `__init__`. The rules write-deny the read-only skill library (`/skills/`), the deepagents-managed bookkeeping mounts (`/large_tool_results/`, `/conversation_history/`), user uploads (`/conversation/input/`), and — when mounted — the agent's own definition folder (`/reference/`); reads stay open everywhere (a read-deny would block the agent from reading offloaded tool results). These are tool-level rules, so the library's automatic offload/eviction (which writes through the backend directly, not the `write_file`/`edit_file` tools) is unaffected. Every permission path must map to a mounted `CompositeBackend` route — hence `include_reference` tracking the mount — though deepagents only enforces that once the default backend supports execution. Caveat: tool-level permissions are not yet supported once a `SandboxBackendProtocol` (execute) backend is used.
 
 - **Duplicate `name` values silently overwrite.** `_discover_agents()` iterates modules in import order. If two agents share a slug, only the last-imported one is reachable. The service logs nothing — the collision is invisible at runtime.
 
@@ -796,11 +796,11 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Base agent class | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
-| LangGraph agent base | [src/agents/runtime/langgraph_agent.py](../../src/agents/runtime/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
-| Deep agent base | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` (delegates to workspace) |
+| Base agent class | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
+| LangGraph agent base | [src/agents/runtime/abstractions/langgraph_agent.py](../../src/agents/runtime/abstractions/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
+| Deep agent base | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` (delegates to workspace) |
 | Filesystem layout (paths + provisioning) | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | path helpers (`memory_root()`, `skills_root()`, `conversation_root()`…), `ensure_user_agent_filesystem()`; deepagents-free |
-| Filesystem workspace (mounts + permissions) | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map), `WORKSPACE_WRITE_DENY`, sandbox-execution guard (`SANDBOX_EXECUTION_ENABLED`, fail-closed) |
+| Filesystem workspace (mounts + permissions) | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map, incl. the optional read-only `/reference/` definition mount), `workspace_write_deny()`, sandbox-execution guard (`SANDBOX_EXECUTION_ENABLED`, fail-closed) |
 | Workspace retention (TTL caches) | [src/agents/runtime/filesystem/retention.py](../../src/agents/runtime/filesystem/retention.py) | `/conversation/input/` (72h) and `/conversation/output/` (168h) are TTL-erased caches — blobs in Postgres are the source of truth; agents must not treat old workspace files as durable |
 | Memory store ops (list/read/delete + row format) | [src/agents/runtime/filesystem/memory.py](../../src/agents/runtime/filesystem/memory.py) | `index_line()` / `index_line_pattern()`, `list_memories()`, `read_memory()`, `delete_memory()` |
 | Memory inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) → bridge [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) (`/v1/memories`) → UI [MemoriesTab.tsx](../../src/agentic_ui/src/components/chat/profile_parts/MemoriesTab.tsx) + [useMemories.ts](../../src/agentic_ui/src/hooks/useMemories.ts) | list / preview / delete a (user, agent)'s memories |

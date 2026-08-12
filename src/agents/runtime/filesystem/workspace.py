@@ -19,6 +19,7 @@ only here.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
 from deepagents import FilesystemPermission
@@ -47,6 +48,30 @@ WORKSPACE_WRITE_DENY: list[FilesystemPermission] = [
     FilesystemPermission(operations=["write"], paths=["/conversation/input{,/**}"], mode="deny"),
 ]
 
+# The agent's own definition folder, when it has one. Read-only: it is authored
+# through the builder UI (which enforces its own type/size limits), so letting a
+# run rewrite its own definition would both bypass that validation and let an
+# agent edit its next system prompt.
+_REFERENCE_WRITE_DENY = FilesystemPermission(
+    operations=["write"], paths=["/reference{,/**}"], mode="deny"
+)
+
+
+def workspace_write_deny(*, include_reference: bool = False) -> list[FilesystemPermission]:
+    """The write-deny ladder for a run, matched to the routes it actually mounts.
+
+    Kept a function rather than a bare constant because ``/reference/`` is
+    conditional: deepagents refuses a permission whose path is outside every
+    mounted route (``_all_paths_scoped_to_routes``) once the default backend
+    supports execution, so a rule for an unmounted route would become a hard
+    failure the day sandbox execute lands. Callers derive both the mount and the
+    rule from the same flag.
+    """
+    rules = list(WORKSPACE_WRITE_DENY)
+    if include_reference:
+        rules.append(_REFERENCE_WRITE_DENY)
+    return rules
+
 
 def build_workspace_backend(
     *,
@@ -54,6 +79,7 @@ def build_workspace_backend(
     agent_slug: str,
     conversation_id: str,
     use_memory: bool,
+    reference_dir: Path | None = None,
 ) -> Callable[[Any], CompositeBackend]:
     """Provision the tree and return a factory minting a fresh ``CompositeBackend``
     per tool call.
@@ -68,6 +94,7 @@ def build_workspace_backend(
         /conversation/input/  → <conv_id>/input/                     (user uploads, read-only)
         /conversation/output/ → <conv_id>/output/                    (agent artifacts, read-write)
         /conversation/        → <user_root>/agents/<slug>/<conv_id>/ (this chat only)
+        /reference/           → the agent's definition folder        (read-only, optional)
         default               → StateBackend(rt)                     (ephemeral scratch)
 
     Per-conversation isolation: ``/conversation/`` is rooted at a single
@@ -88,6 +115,13 @@ def build_workspace_backend(
     The central skills registry is intentionally **not mounted** — the agent
     only ever sees the skills the user has explicitly enabled, copied into
     ``skills/`` by the bridge's PUT endpoint.
+
+    ``reference_dir`` mounts the agent's own definition folder read-only at
+    ``/reference/``, so material shipped alongside the prompt (notes, checklists,
+    examples) is readable on demand instead of being inlined into every turn's
+    context. Declarative agents pass their source directory; agents defined in
+    code pass nothing and the route is simply absent. Keep the write-deny in
+    step via :func:`workspace_write_deny`.
     """
     ensure_user_agent_filesystem(
         user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id
@@ -152,6 +186,10 @@ def build_workspace_backend(
                 root_dir=str(conversation_history_path), virtual_mode=True
             ),
         })
+        if reference_dir is not None:
+            routes["/reference/"] = FilesystemBackend(
+                root_dir=str(reference_dir), virtual_mode=True
+            )
         return CompositeBackend(default=default_backend, routes=routes)
 
     return factory

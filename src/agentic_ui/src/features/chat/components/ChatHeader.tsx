@@ -88,7 +88,11 @@ export default function ChatHeader({
         () => displayAgents.find(a => a.id === selectedAgent),
         [displayAgents, selectedAgent]
     );
-    const showInactiveIndicator = Boolean(inactiveAgent && inactiveAgent.isActive === false);
+    // Keyed to the agent currently *shown in the picker*, not to the conversation's
+    // agent: the warning sits next to the trigger and describes what it displays,
+    // so deriving it from `inactiveAgent` left it stuck on after switching to a
+    // healthy agent.
+    const showInactiveIndicator = selected?.isActive === false;
 
     return (
         <div
@@ -109,15 +113,26 @@ export default function ChatHeader({
                         <SelectTrigger
                             ref={agentTriggerRef}
                             onMouseDown={(e) => e.preventDefault()}
-                            className="w-auto min-w-[9rem] max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] justify-start gap-2 px-3 h-11 rounded-xl"
+                            // Width hugs the agent name (no min-width): the trigger is
+                            // followed by the "might be inactive" indicator, and a fixed
+                            // floor left that badge stranded far from the chevron on
+                            // short names. max-w still caps it; the label truncates.
+                            className="w-auto max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] justify-start gap-2 px-3 h-11 rounded-xl"
                         >
                             <SelectValue placeholder="Select an agent">
                                 <div className="flex items-center">
-                                    {selected && (
-                                        <span className="truncate text-lg text-foreground max-w-[8.5rem] md:max-w-[10.5rem]">
-                                            {selected.name}
-                                        </span>
-                                    )}
+                                    {/* Radix only renders its own placeholder for an empty
+                                        value, so a selection naming an agent that isn't in
+                                        the list (a deleted one, or an old conversation's
+                                        inactive agent after starting a new chat) has to fall
+                                        back here — otherwise the trigger renders blank. */}
+                                    <span
+                                        className={`truncate text-lg max-w-[8.5rem] md:max-w-[10.5rem] ${
+                                            selected ? 'text-foreground' : 'text-muted-foreground'
+                                        }`}
+                                    >
+                                        {selected ? selected.name : 'Select an agent'}
+                                    </span>
                                 </div>
                             </SelectValue>
                         </SelectTrigger>

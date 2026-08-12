@@ -1,18 +1,31 @@
-"""Helpers for declarative (YAML) agents.
+"""Helpers for declarative (YAML-defined) agents.
 
-Extracted from ``yaml_agent`` so:
+Kept out of ``runtime/abstractions/`` so the *runtime* package holds only the
+agent machinery itself (the spec model, the generic agent, the seeder, the
+authoring CRUD) while these shared helpers live with the service's other
+utilities, per the repo's layer convention:
 
-* the discoverer can build a registry manifest straight from a spec
-  (:func:`manifest_from_spec`) without importing the agent runtime, and
-* prompt loading (:func:`read_prompt`) is reusable and unit-testable in
+* :func:`manifest_from_spec` lets the registry discoverer build a manifest
+  straight from a spec, without importing the agent runtime at all, and
+* :func:`read_prompt` keeps prompt resolution reusable and unit-testable in
   isolation.
+
+**The dependency on ``AgentSpec`` is deliberately type-only.** ``utils/__init__``
+eagerly imports modules that reach into ``runtime`` (``checkpointer``,
+``skills``), and ``runtime.abstractions``'s own package init imports
+``yaml_agent``, which imports this module — so a real import of
+``runtime.abstractions.agent_spec`` here would make the resulting cycle
+order-dependent: whichever side is imported first wins, and the other raises
+``ImportError`` on a half-initialised module. Under ``TYPE_CHECKING`` the edge
+exists for type checkers only, and there is no cycle to trip over at runtime.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from runtime.declarative.agent_spec import AgentSpec
+if TYPE_CHECKING:  # pragma: no cover - typing only, see the module docstring
+    from runtime.abstractions.agent_spec import AgentSpec
 
 
 def read_prompt(value: str, source_dir: Path) -> str:
@@ -38,7 +51,7 @@ def read_prompt(value: str, source_dir: Path) -> str:
     return target.read_text(encoding="utf-8")
 
 
-def manifest_from_spec(spec: AgentSpec) -> dict[str, Any]:
+def manifest_from_spec(spec: "AgentSpec") -> dict[str, Any]:
     """The registry manifest for a YAML agent (mirrors ``BaseAgent.manifest``).
 
     ``type`` is normalised from the spec's ``deep_agent`` to the runtime literal

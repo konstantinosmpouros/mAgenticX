@@ -10,7 +10,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
-from runtime.base_agent import AgentType, BaseAgent
+from runtime.abstractions.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
 from runtime.personalization import build_personalization_prompt
 from runtime.tools.registry import NATIVE_TOOLS, NativeToolContext, build_auto_attach_tools
@@ -21,9 +21,9 @@ from runtime.middlewares import (
     exclude_stock_summarization,
 )
 from runtime.filesystem import (
-    WORKSPACE_WRITE_DENY,
     build_workspace_backend,
     ensure_user_agent_filesystem,
+    workspace_write_deny,
 )
 from runtime.filesystem.tool_prefs import read_disabled_tools
 from utils import get_tool_cache_key
@@ -260,7 +260,21 @@ class DeepAgent(BaseAgent, ABC):
             agent_slug=self.name,
             conversation_id=ctx["conversation_id"],
             use_memory=self.use_memory,
+            reference_dir=self.reference_dir,
         )
+
+
+    @property
+    def reference_dir(self) -> Optional[Path]:
+        """Folder to mount read-only at ``/reference/``, or ``None`` for no mount.
+
+        A hook for definition-bundled material the agent should be able to read
+        on demand. ``None`` by default: an agent written in code has no such
+        folder, and its package directory holds source, which must never be
+        readable from a run. Declarative agents override this with their own
+        definition directory.
+        """
+        return None
 
 
     def default_middleware(self, model: Any, backend: Any) -> list[Any]:
@@ -462,7 +476,9 @@ class DeepAgent(BaseAgent, ABC):
             memory=self.agent_md_paths,
             skills=self.skills_paths,
             backend=backend,
-            permissions=list(WORKSPACE_WRITE_DENY),
+            # Derived from the same flag as the mount, so a rule can never point
+            # at a route this run didn't mount.
+            permissions=workspace_write_deny(include_reference=self.reference_dir is not None),
             context_schema=self.context,
             checkpointer=self.checkpointer,
             store=None,

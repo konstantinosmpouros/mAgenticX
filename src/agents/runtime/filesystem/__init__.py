@@ -46,6 +46,7 @@ from runtime.filesystem.retention import (
 from runtime.filesystem.workspace import (
     WORKSPACE_WRITE_DENY,
     build_workspace_backend,
+    workspace_write_deny,
 )
 
 __all__ = [
@@ -78,4 +79,5 @@ __all__ = [
     "skills_root",
     "sweep_workspace_retention_once",
     "user_root",
+    "workspace_write_deny",
 ]

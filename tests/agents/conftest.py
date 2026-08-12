@@ -72,7 +72,7 @@ def _load_agents_service(monkeypatch):
         settings_module=importlib.import_module("core.settings"),
         # runtime
         filesystem_layout=importlib.import_module("runtime.filesystem.layout"),
-        base_agent=importlib.import_module("runtime.base_agent"),
+        base_agent=importlib.import_module("runtime.abstractions.base_agent"),
         checkpointer_store=importlib.import_module("runtime.checkpointer.store"),
         checkpointer_fork=importlib.import_module("runtime.checkpointer.fork"),
         checkpointer_util=importlib.import_module("utils.checkpointer"),

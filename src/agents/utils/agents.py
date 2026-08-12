@@ -7,8 +7,8 @@ sources, hybrid during the migration to declarative agents:
    ``DeepAgent`` reachable from the ``langgraph_agents`` / ``deep_agents``
    packages. Discovered at import.
 2. **Declarative (YAML) agents** — ``<global_root>/agents/<slug>/agent.yaml``
-   parsed into an :class:`~runtime.declarative.agent_spec.AgentSpec` and served
-   by a shared :class:`~runtime.declarative.yaml_agent.YamlDeepAgent`. A YAML
+   parsed into an :class:`~runtime.abstractions.agent_spec.AgentSpec` and served
+   by a shared :class:`~runtime.abstractions.yaml_agent.YamlDeepAgent`. A YAML
    agent **overrides** a
    Python-class agent with the same slug (the migration direction).
 
@@ -26,9 +26,10 @@ import yaml
 
 import langgraph_agents
 import deep_agents
-from runtime import LangGraphAgent, DeepAgent
+from runtime.abstractions import AgentSpec, DeepAgent, LangGraphAgent, YamlDeepAgent
+from runtime.filesystem import layout
 from runtime.tools.registry import is_known_native_tool
-from runtime.declarative import AgentSpec, YamlDeepAgent, manifest_from_spec
+from utils.declarative import manifest_from_spec
 from core.settings import settings
 from observability import get_logger
 from schemas import AgentDefinition
@@ -153,6 +154,95 @@ def _build_registry() -> Dict[str, AgentDefinition]:
 
 
 AGENT_REGISTRY: Dict[str, AgentDefinition] = _build_registry()
+
+
+# ---------------------------------------------------------------------------
+# User-authored agents — resolved per request, never registered
+# ---------------------------------------------------------------------------
+# A user's agents live in their own workspace, so they cannot go in
+# AGENT_REGISTRY: that dict is process-global and keyed by slug alone, so two
+# users owning the same slug would collide and one user's definition would be
+# reachable by another. They are resolved on demand and memoised by
+# (user_id, slug) together with the manifest's mtime — an edit to agent.yaml
+# invalidates the entry naturally, with no explicit cache-busting to forget.
+_USER_AGENT_CACHE: Dict[tuple[str, str], tuple[float, AgentDefinition]] = {}
+
+
+def _load_user_agent(user_id: str, slug: str) -> Optional[AgentDefinition]:
+    """Parse + validate one user-authored agent from their workspace.
+
+    Returns ``None`` when the folder or manifest is absent, or when the spec is
+    invalid — an unusable definition must read as "no such agent" (a 404) rather
+    than take the request down with a 500.
+    """
+    try:
+        agent_dir = layout.user_custom_agent_dir(user_id, slug)
+    except ValueError:
+        # Illegal path segment in user_id/slug — treat as not found, never as a
+        # path to probe.
+        return None
+    manifest_path = agent_dir / "agent.yaml"
+    if not manifest_path.is_file():
+        return None
+
+    try:
+        mtime = manifest_path.stat().st_mtime
+    except OSError:
+        return None
+
+    cached = _USER_AGENT_CACHE.get((user_id, slug))
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
+    try:
+        raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        spec = AgentSpec.model_validate(raw)
+        if spec.slug != slug:
+            raise ValueError(
+                f"Agent slug {spec.slug!r} does not match its folder name {slug!r}."
+            )
+        ref_errors = spec.reference_errors(
+            is_known_model=_is_known_model,
+            is_known_native_tool=is_known_native_tool,
+        )
+        if ref_errors:
+            raise ValueError("; ".join(ref_errors))
+    except Exception:
+        logger.error(
+            "user_agent_invalid",
+            "Skipping invalid user-authored agent",
+            agent_dir=str(agent_dir),
+            exc_info=True,
+        )
+        return None
+
+    definition = AgentDefinition(
+        slug=spec.slug,
+        manifest=manifest_from_spec(spec),
+        factory=(lambda cfg, s=spec, sd=agent_dir: YamlDeepAgent(s, sd, config=cfg)),
+        spec=spec,
+    )
+    _USER_AGENT_CACHE[(user_id, slug)] = (mtime, definition)
+    return definition
+
+
+def resolve_agent_definition(
+    slug: str, owner_user_id: Optional[str] = None
+) -> Optional[AgentDefinition]:
+    """The single lookup for "give me this agent".
+
+    ``owner_user_id`` comes from the run context and is set by the bridge from
+    the agents table, which is the authority on ownership:
+
+    * ``None`` → a platform agent; served from ``AGENT_REGISTRY``.
+    * set      → that user's own agent, loaded from their workspace.
+
+    The two namespaces are disjoint lookups, so a user-authored agent can never
+    shadow a platform one regardless of what they named it.
+    """
+    if owner_user_id:
+        return _load_user_agent(owner_user_id, slug)
+    return AGENT_REGISTRY.get(slug)
 
 
 def refresh_registry() -> Dict[str, AgentDefinition]:

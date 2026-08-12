@@ -21,7 +21,7 @@ from schemas import (
     SeedInputFilesResponse,
 )
 from utils import emit_checkpoint_committed, mcp_session_context, release_checkpoint_unless_paused
-from utils.agents import AGENT_REGISTRY
+from utils.agents import resolve_agent_definition
 
 logger = get_logger(__name__)
 
@@ -50,8 +50,9 @@ async def stream_agent(agent_slug: str, req: Request):
         input_messages=len(req.messages),
     )
     try:
-        # Check if the agent is disabled
-        definition = AGENT_REGISTRY.get(agent_slug, None)
+        # Platform agent, or one this user authored in their own workspace —
+        # `agent_owner_id` is set by the bridge from the agents table.
+        definition = resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
         if definition is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -173,7 +174,7 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             detail="Checkpointer is not ready.",
         )
 
-    definition = AGENT_REGISTRY.get(agent_slug, None)
+    definition = resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
     if definition is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

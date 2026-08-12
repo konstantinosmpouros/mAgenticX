@@ -14,7 +14,7 @@ Two layers of validation:
   registry, native tool names against the native-tool registry, and prompt
   paths confined to the agent's own directory (traversal-guarded). Those
   registries don't exist at import time, so that check lives in the loader
-  (``runtime.declarative.yaml_agent`` / the discoverer), not in this module — see
+  (``runtime.abstractions.yaml_agent`` / the discoverer), not in this module — see
   :meth:`AgentSpec.reference_errors` for the hook.
 """
 from __future__ import annotations
@@ -104,7 +104,7 @@ class AgentSpec(BaseModel):
     """Top-level declarative agent definition — the parsed ``agent.yaml``.
 
     Field → runtime mapping (see the current class attributes in
-    ``runtime/base_agent.py`` and ``BaseAgent.manifest()``):
+    ``runtime/abstractions/base_agent.py`` and ``BaseAgent.manifest()``):
 
     ==========  ===========================================
     spec field  runtime attribute (today)

@@ -34,3 +34,8 @@ src/tls/vault/
 src/tls/npm/
 src/tls/redis/
 src/tls/monitoring/
+
+# pytest bootstrap artifacts (tests/dialogue_bridge/conftest.py seeds a sqlite
+# DATABASE_URL at import time so settings can load; the file itself is disposable)
+.pytest-bootstrap-*.db
+.pytest_cache/

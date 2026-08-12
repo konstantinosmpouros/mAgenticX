@@ -145,9 +145,9 @@ flowchart LR
 | --- | --- | --- |
 | Native-tool registry + builtins + gates | [src/agents/runtime/tools/registry.py](../../src/agents/runtime/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
 | Builtin implementations | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | `remember.py`, `memory_search.py`, `present_artifact.py` |
-| Assembly + builtins + disable filter | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
-| MCP filter (`attach_tools`, cache keys) | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
-| YAML → spec tools (native + MCP) | [src/agents/runtime/declarative/yaml_agent.py](../../src/agents/runtime/declarative/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
+| Assembly + builtins + disable filter | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
+| MCP filter (`attach_tools`, cache keys) | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
+| YAML → spec tools (native + MCP) | [src/agents/runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
 | Per-(user, agent) disable store | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `read_disabled_tools`, `set_tool_disabled` |
 | Agents-tab list / toggle | [src/agents/utils/agent_tools.py](../../src/agents/utils/agent_tools.py) · [router/agent_tools.py](../../src/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
 | Live MCP manifest load | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) · [router/inference.py](../../src/agents/router/inference.py) | `load_mcp_tools`, `mcp_session_context`, `attach_tools` call |

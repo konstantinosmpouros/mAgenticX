@@ -1,5 +1,8 @@
 import type {
   Agent,
+  CustomAgentDetail,
+  CustomAgentValidation,
+  CustomAgentWritePayload,
   AuthRequest,
   AuthResponse,
   ConversationDetail,
@@ -52,6 +55,8 @@ import {
   UserSkillSchema,
   UserSkillDetailSchema,
   AgentToolsResponseSchema,
+  CustomAgentDetailSchema,
+  CustomAgentValidationSchema,
   UsageSummarySchema,
   WireObjectArraySchema,
   WireObjectSchema,
@@ -67,6 +72,7 @@ import {
 import {
   mapIcon,
   emitUnauthorized,
+  transformAgent,
   transformConversationDetail,
   transformConversationSummary,
   transformSharedConversationDetail,
@@ -198,15 +204,23 @@ export async function getAgents(): Promise<Agent[]> {
     schema: WireObjectArraySchema,
     fallbackMessage: "Failed to fetch agents",
   });
-  return data.map((a) => ({
-    id: String(a.id ?? ""),
-    name: typeof a.name === "string" ? a.name : "Unknown Agent",
-    description: typeof a.description === "string" ? a.description : "",
-    icon: mapIcon(typeof a.icon === "string" ? a.icon : null),
-    version: typeof a.version === "string" ? a.version : undefined,
-    type: typeof a.type === "string" ? a.type : undefined,
-    isActive: Boolean(a.isActive ?? a.is_active ?? true),
-  }));
+  return data.map((a) => {
+    const iconName = typeof a.icon === "string" ? a.icon : null;
+    return {
+      id: String(a.id ?? ""),
+      name: typeof a.name === "string" ? a.name : "Unknown Agent",
+      description: typeof a.description === "string" ? a.description : "",
+      icon: mapIcon(iconName),
+      // Kept alongside the resolved component: the IndexedDB snapshot can only
+      // persist the name, and a Lucide icon is a forwardRef object whose `.name`
+      // is not the icon's name — so without this the icon degrades to the
+      // fallback glyph on every reload.
+      iconName,
+      version: typeof a.version === "string" ? a.version : undefined,
+      type: typeof a.type === "string" ? a.type : undefined,
+      isActive: Boolean(a.isActive ?? a.is_active ?? true),
+    };
+  });
 }
 
 
@@ -298,6 +312,86 @@ export async function toggleAgentTool(
     body: { toolKey, disabled },
     schema: AgentToolsResponseSchema,
     fallbackMessage: "Failed to update tool",
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// User-authored agents (the agent builder)
+// ---------------------------------------------------------------------------
+const customAgentsUrl = (userId: string, agentId?: string) =>
+  `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/custom` +
+  (agentId ? `/${encodeURIComponent(agentId)}` : "");
+
+// The agents this user authored. Returned in the same shape as the catalog, so
+// they slot straight into the existing `Agent` list.
+export async function getMyAgents(userId: string): Promise<Agent[]> {
+  const data = await requestJson(customAgentsUrl(userId), {
+    schema: WireObjectArraySchema,
+    fallbackMessage: "Failed to load your agents",
+  });
+  return data.map((row) => transformAgent(row));
+}
+
+// One owned agent's full definition, for the edit view.
+export async function getMyAgentDetail(userId: string, agentId: string): Promise<CustomAgentDetail> {
+  return requestJson(customAgentsUrl(userId, agentId), {
+    schema: CustomAgentDetailSchema,
+    fallbackMessage: "Failed to load the agent definition",
+  });
+}
+
+// Dry run: report every problem with a definition without writing anything.
+export async function validateMyAgent(
+  userId: string,
+  payload: CustomAgentWritePayload,
+): Promise<CustomAgentValidation> {
+  return requestJson(`${customAgentsUrl(userId)}/validate`, {
+    method: "POST",
+    csrf: true,
+    body: payload,
+    schema: CustomAgentValidationSchema,
+    fallbackMessage: "Failed to validate the agent",
+  });
+}
+
+export async function createMyAgent(
+  userId: string,
+  payload: CustomAgentWritePayload,
+): Promise<Agent> {
+  const data = await requestJson(customAgentsUrl(userId), {
+    method: "POST",
+    csrf: true,
+    body: payload,
+    schema: WireObjectSchema,
+    errorMessages: {
+      413: `This agent definition is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead).`,
+    },
+    fallbackMessage: "Failed to create the agent",
+  });
+  return transformAgent(data);
+}
+
+export async function updateMyAgent(
+  userId: string,
+  agentId: string,
+  payload: CustomAgentWritePayload,
+): Promise<Agent> {
+  const data = await requestJson(customAgentsUrl(userId, agentId), {
+    method: "PUT",
+    csrf: true,
+    body: payload,
+    schema: WireObjectSchema,
+    fallbackMessage: "Failed to update the agent",
+  });
+  return transformAgent(data);
+}
+
+export async function deleteMyAgent(userId: string, agentId: string): Promise<void> {
+  return requestVoid(customAgentsUrl(userId, agentId), {
+    method: "DELETE",
+    csrf: true,
+    fallbackMessage: "Failed to delete the agent",
   });
 }
 

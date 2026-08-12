@@ -72,7 +72,7 @@ def test_execute_stays_a_reserved_tool_name(agents_service):
     self.tools), but dynamically-attached MCP tools are name-filtered against
     this set — 'execute' must stay in it so an external tool can't smuggle the
     name in."""
-    deep_agent = importlib.import_module("runtime.deep_agent")
+    deep_agent = importlib.import_module("runtime.abstractions.deep_agent")
     assert "execute" in deep_agent.RESERVED_DEEPAGENT_TOOL_NAMES
 
 

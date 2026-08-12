@@ -2,7 +2,7 @@ from typing import Any
 
 from deepagents import SubAgent
 
-from runtime import DeepAgent
+from runtime.abstractions import DeepAgent
 from core.settings import settings
 from deep_agents.omni_agent.system_prompts import (
     OMNI_INSTRUCTIONS,

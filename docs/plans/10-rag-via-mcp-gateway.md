@@ -331,7 +331,7 @@ The Phase 0 characterization suite is the backbone: it exists before any refacto
 | MCP client + manifest cache | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` `:19`, `_make_cache_key` `:74`, `_fetch_tools_from_gateway` `:151`, `mcp_session_context` `:194` |
 | Per-run tool attachment | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `:91-96` session → `load_mcp_tools` → `attach_tools` |
 | Internal TLS client context | [src/agents/core/tls.py](../../src/agents/core/tls.py) | `_internal_ssl_context` `:29`, `get_httpx_verify` `:53` |
-| Declarative agent spec (target form) | [src/agents/runtime/declarative/agent_spec.py](../../src/agents/runtime/declarative/agent_spec.py) | `tools`, `hitl` `:145` |
+| Declarative agent spec (target form) | [src/agents/runtime/abstractions/agent_spec.py](../../src/agents/runtime/abstractions/agent_spec.py) | `tools`, `hitl` `:145` |
 | Gateway compose (local / prod) | [src/docker-compose-mcp.yaml](../../src/docker-compose-mcp.yaml) · [src/docker-compose-denis-mcp.yaml](../../src/docker-compose-denis-mcp.yaml) | `--servers`, `privileged: true`, published port (local only) |
 | Gateway trust notes | [src/mcp_gateway/README.md](../../src/mcp_gateway/README.md) | digest pins, `--servers` allowlist, plaintext residual |
 | Service topology | [src/docker-compose.yaml](../../src/docker-compose.yaml) · [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | `vectordb` on `backend` only; `agents` networks; `rag_service` TLS entrypoint |

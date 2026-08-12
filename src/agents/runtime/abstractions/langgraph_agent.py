@@ -8,7 +8,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
-from runtime.base_agent import BaseAgent
+from runtime.abstractions.base_agent import BaseAgent
 from runtime.checkpointer import get_checkpointer
 from observability import get_logger
 

@@ -108,6 +108,48 @@ export const UserSkillDetailSchema = z.record(z.unknown()).transform((raw) => ({
 }));
 export type UserSkillDetail = z.infer<typeof UserSkillDetailSchema>;
 
+// ---------------------------------------------------------------------------
+// User-authored agents (the agent builder) — /v1/agents/{user}/custom
+// ---------------------------------------------------------------------------
+// One file inside an agent folder: a prompt, not a payload. Same shape as a
+// skill file, kept separate because the allowlist is narrower server-side.
+const toAgentFile = (
+  raw: Record<string, unknown>,
+): { path: string; content: string; encoding: "utf-8" | "base64"; size?: number } => ({
+  path: typeof raw.path === "string" ? raw.path : "",
+  content: typeof raw.content === "string" ? raw.content : "",
+  encoding: raw.encoding === "base64" ? "base64" : "utf-8",
+  size: typeof raw.size === "number" ? raw.size : undefined,
+});
+export const AgentFileSchema = z.record(z.unknown()).transform(toAgentFile);
+export type AgentFile = z.infer<typeof AgentFileSchema>;
+
+// A user-authored agent's full definition. `spec` is the agent.yaml document,
+// passed through opaquely — the backend owns its schema, so validating its shape
+// here would only create a second contract to keep in sync.
+export const CustomAgentDetailSchema = z.record(z.unknown()).transform((raw) => ({
+  id: typeof raw.id === "string" ? raw.id : "",
+  slug: typeof raw.slug === "string" ? raw.slug : "",
+  name: typeof raw.name === "string" ? raw.name : "",
+  description: typeof raw.description === "string" ? raw.description : "",
+  icon: typeof raw.icon === "string" ? raw.icon : "",
+  version: typeof raw.version === "string" ? raw.version : undefined,
+  type: typeof raw.type === "string" ? raw.type : "deep agent",
+  spec: (raw.spec ?? {}) as Record<string, unknown>,
+  files: Array.isArray(raw.files)
+    ? raw.files.map((f) => toAgentFile(f as Record<string, unknown>)).filter((f) => f.path)
+    : [],
+}));
+export type CustomAgentDetail = z.infer<typeof CustomAgentDetailSchema>;
+
+// Dry-run result. `valid` defaults false so a malformed response fails closed —
+// the builder must never enable Save because validation returned nonsense.
+export const CustomAgentValidationSchema = z.object({
+  valid: z.boolean().catch(false),
+  errors: z.array(z.string()).catch([]),
+});
+export type CustomAgentValidation = z.infer<typeof CustomAgentValidationSchema>;
+
 
 // ---------------------------------------------------------------------------
 // Agent long-term memory (snake_case wire → camelCase app)

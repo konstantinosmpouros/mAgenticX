@@ -12,7 +12,7 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { PremiumModalShell } from "@/shared/ui/premium-modal-shell";
 import { normalizeCustomInstructions, safeText } from "@/shared/lib/utils";
 import { NA, type PersonalityId, type RealtimeVoice, type VoiceModeLanguage } from "@/shared/lib/consts";
-import { Agent, ConversationShareListItem, ConversationSummary, ConversationUsage, CustomInstructions, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
+import { Agent, ConversationShareListItem, ConversationSummary, ConversationUsage, CustomAgentDetail, CustomAgentValidation, CustomAgentWritePayload, CustomInstructions, CustomSkillCreatePayload, Skill, ToolMetadata, UserAgentSkillSelection, UserPreferences, UserProfile, UserSkill, UserSkillDetail } from "@/shared/lib/types";
 import ProfileSidebar, { NAV_ITEMS } from "./profile_parts/ProfileSidebar";
 import AccountTab from "./profile_parts/AccountTab";
 import GeneralTab from "./profile_parts/GeneralTab";
@@ -162,6 +162,16 @@ type ProfilePanelProps = {
     // enabled set keyed by ``agentId``. The hook lazy-loads selection when
     // the user expands an agent card via ``onLoadAgentSkills``.
     agents?: Agent[];
+    // User-authored agents (the Agents tab's builder). `myAgents` is the subset
+    // of `agents` this user owns; the handlers come from useUserAgents via
+    // useProfilePanel so a mutation also snapshots UI state.
+    myAgents?: Agent[];
+    busyAgentId?: string | null;
+    onCreateAgent?: (payload: CustomAgentWritePayload) => Promise<Agent | null>;
+    onUpdateAgent?: (agentId: string, payload: CustomAgentWritePayload) => Promise<Agent | null>;
+    onDeleteAgent?: (agentId: string) => Promise<boolean>;
+    onValidateAgent?: (payload: CustomAgentWritePayload) => Promise<CustomAgentValidation | null>;
+    onLoadAgentDefinition?: (agentId: string) => Promise<CustomAgentDetail | null>;
     skillSelections?: UserAgentSkillSelection;
     onLoadAgentSkills?: (agentId: string) => Promise<void>;
     onToggleUserAgentSkill?: (agentId: string, skillName: string) => Promise<void>;
@@ -219,6 +229,13 @@ export default function ProfilePanel({
     onAddGlobalSkillToPool,
     onCreateCustomSkill,
     onRemoveSkillFromPool,
+    myAgents,
+    busyAgentId,
+    onCreateAgent,
+    onUpdateAgent,
+    onDeleteAgent,
+    onValidateAgent,
+    onLoadAgentDefinition,
     agents,
     skillSelections,
     onLoadAgentSkills,
@@ -413,7 +430,17 @@ export default function ProfilePanel({
                                     ) : null}
 
                                     {normalizedActiveTab === "agents" ? (
-                                        <AgentsTab agents={agents} />
+                                        <AgentsTab
+                                            agents={agents ?? []}
+                                            myAgents={myAgents ?? []}
+                                            mySkills={mySkills ?? []}
+                                            busyAgentId={busyAgentId ?? null}
+                                            onCreateAgent={onCreateAgent}
+                                            onUpdateAgent={onUpdateAgent}
+                                            onDeleteAgent={onDeleteAgent}
+                                            onValidateAgent={onValidateAgent}
+                                            onLoadAgentDefinition={onLoadAgentDefinition}
+                                        />
                                     ) : null}
 
                                     {normalizedActiveTab === "skills" ? (

@@ -161,7 +161,7 @@ const toDate = (value: any): Date => (value ? new Date(value) : new Date());
 
 
 // Transform functions to map backend data to frontend types
-const transformAgent = (
+export const transformAgent = (
   agent: AgentPublic | Record<string, any> | undefined,
   fallback?: Partial<AgentPublic>,
 ): Agent => {
@@ -193,6 +193,10 @@ const transformAgent = (
     icon: mapIcon(resolvedIcon),
     iconName: resolvedIcon,
     version: agent?.version ?? fallback?.version,
+    // Carried through because consumers filter on it (`type === "deep agent"`
+    // gates the Tools/Skills/Memories per-agent lists); dropping it here made
+    // agents from this path invisible to those filters.
+    type: (agent as any)?.type ?? (fallback as any)?.type,
     isActive: resolvedIsActive,
   };
 };
