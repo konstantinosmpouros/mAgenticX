@@ -367,10 +367,10 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | MCP tool cache & manifest | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`, `list_mcp_tools()`, `_prime_manifest_cache()` |
 | MCP session per request | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `mcp_session_context()`, `load_mcp_tools()` |
 | Tool server ID overrides | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
-| Agent base (tool filtering) | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
+| Agent base (tool filtering) | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
 | Per-(user, agent) tool disables | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
-| LangGraph agent build & stream | [src/agents/runtime/langgraph_agent.py](../../src/agents/runtime/langgraph_agent.py) | `build()`, `astream()` |
-| Deep agent build lifecycle | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
+| LangGraph agent build & stream | [src/agents/runtime/abstractions/langgraph_agent.py](../../src/agents/runtime/abstractions/langgraph_agent.py) | `build()`, `astream()` |
+| Deep agent build lifecycle | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
 | Tool call lifecycle events | [src/agents/runtime/protocols/agui/emitter.py](../../src/agents/runtime/protocols/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
 | Stream normalization & routing | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
 | Special tool handling | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |

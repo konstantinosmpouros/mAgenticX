@@ -31,10 +31,22 @@ from observability import get_logger
 from runtime.filesystem.tool_prefs import read_tool_prefs, write_tool_prefs
 from runtime.tools.registry import native_catalog
 from schemas import AgentToolRow
-from utils.agents import AGENT_REGISTRY
+from utils.agents import resolve_agent_definition
 from utils.mcp_tools import build_tool_cache_key, get_cached_tool_manifests_map
 
 logger = get_logger(__name__)
+
+
+def _resolve_for_user(agent_slug: str, user_id: str):
+    """A platform agent, else one this user authored.
+
+    These endpoints are already scoped to a user and don't carry an explicit
+    owner id (unlike the inference path, where the bridge threads it). Trying
+    platform first is unambiguous because agent creation refuses a slug that
+    collides with a platform agent — see
+    ``docs/plans/01-custom-agents-per-user.md``.
+    """
+    return resolve_agent_definition(agent_slug) or resolve_agent_definition(agent_slug, user_id)
 
 
 def _native_keys() -> Set[str]:
@@ -75,7 +87,7 @@ def list_agent_tools(user_id: str, agent_slug: str) -> Optional[List[AgentToolRo
     then every other gateway MCP tool as an *available* row (default OFF, shown
     ON only when the user enabled it). Native builtins are never included.
     """
-    definition = AGENT_REGISTRY.get(agent_slug)
+    definition = _resolve_for_user(agent_slug, user_id)
     if definition is None:
         return None
     if not _is_deep(definition):
@@ -116,7 +128,7 @@ def toggle_agent_tool(
     Native builtins are rejected outright (no-op) — they are not managed here and
     ``present_artifact`` in particular can never be disabled.
     """
-    definition = AGENT_REGISTRY.get(agent_slug)
+    definition = _resolve_for_user(agent_slug, user_id)
     if definition is None:
         return None
 

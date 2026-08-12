@@ -10,7 +10,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
-from runtime.base_agent import AgentType, BaseAgent
+from runtime.abstractions.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
 from runtime.personalization import build_personalization_prompt
 from runtime.tools.registry import NATIVE_TOOLS, NativeToolContext, build_auto_attach_tools
@@ -21,9 +21,9 @@ from runtime.middlewares import (
     exclude_stock_summarization,
 )
 from runtime.filesystem import (
-    WORKSPACE_WRITE_DENY,
     build_workspace_backend,
     ensure_user_agent_filesystem,
+    workspace_write_deny,
 )
 from runtime.filesystem.tool_prefs import read_disabled_tools
 from utils import get_tool_cache_key
@@ -158,7 +158,9 @@ class DeepAgent(BaseAgent, ABC):
         self._user_filesystem_root: Optional[Path] = None
 
         # Agent components — populated during ensure_built()
-        self.skills_paths: list[str] = []       # absolute path to skills/ — for create_deep_agent(skills=[...])
+        # Skill *sources* for create_deep_agent(skills=[...]): a virtual route, or a
+        # (route, label) tuple. Labels render as "**<label> Skills**" in the prompt.
+        self.skills_paths: list[str | tuple[str, str]] = []
         self.agent_md_paths: list[str] = []     # /memories/AGENTS.md — for create_deep_agent(memory=[...])
         self.memory: Any = None
         # Bound lazily in ensure_built() so a HITL resume picks up the paused
@@ -260,7 +262,22 @@ class DeepAgent(BaseAgent, ABC):
             agent_slug=self.name,
             conversation_id=ctx["conversation_id"],
             use_memory=self.use_memory,
+            reference_dir=self.reference_dir,
+            default_skills_dir=self.default_skills_dir,
         )
+
+
+    @property
+    def reference_dir(self) -> Optional[Path]:
+        """Folder to mount read-only at ``/reference/``, or ``None`` for no mount.
+
+        A hook for definition-bundled material the agent should be able to read
+        on demand. ``None`` by default: an agent written in code has no such
+        folder, and its package directory holds source, which must never be
+        readable from a run. Declarative agents override this with their own
+        definition directory.
+        """
+        return None
 
 
     def default_middleware(self, model: Any, backend: Any) -> list[Any]:
@@ -462,7 +479,12 @@ class DeepAgent(BaseAgent, ABC):
             memory=self.agent_md_paths,
             skills=self.skills_paths,
             backend=backend,
-            permissions=list(WORKSPACE_WRITE_DENY),
+            # Derived from the same flag as the mount, so a rule can never point
+            # at a route this run didn't mount.
+            permissions=workspace_write_deny(
+                include_reference=self.reference_dir is not None,
+                include_default_skills=self.default_skills_dir is not None,
+            ),
             context_schema=self.context,
             checkpointer=self.checkpointer,
             store=None,
@@ -473,19 +495,43 @@ class DeepAgent(BaseAgent, ABC):
     # ---------------------------------------------------------------------
     # Lifecycle hooks
     # ---------------------------------------------------------------------
-    def load_skills(self) -> list[str]:
-        """Skills the agent should expose at startup.
+    def load_skills(self) -> list[str | tuple[str, str]]:
+        """Skill sources the agent should expose at startup, in precedence order.
 
-        Returns the ``/skills/`` virtual root which the CompositeBackend
-        resolves to ``<user_root>/agents/<agent_slug>/skills/``. The agent
-        therefore sees ONLY skills the user has explicitly enabled for
-        this (user, agent) pair. The central registry is not mounted —
-        users browse it via the ProfilePanel Skills tab, and the bridge's
-        PUT endpoint copies registry directories into this mount when the
-        user enables a skill.
+        ``/skills/`` (tier ②) resolves to ``<user_root>/agents/<slug>/skills/`` —
+        ONLY the skills the user explicitly enabled for this (user, agent) pair.
+        The central registry is never mounted; users browse it in the Skills tab
+        and the bridge's PUT endpoint copies directories into this mount.
+
+        When the agent ships with skills of its own (``default_skills_dir``),
+        ``/default_skills/`` (tier ①) is appended. **Order matters:** deepagents
+        loads sources left to right and later sources win on a name clash, so the
+        defaults go last — a user cannot neutralise a skill the agent ships with
+        by putting a same-named one in their pool. The mount is also write-denied,
+        so "add to, never remove" holds structurally rather than by UI convention.
+
+        Both sources carry an explicit label because deepagents derives one from
+        the path otherwise, and a bare ``/skills/`` derives ``Skills`` — rendering
+        as the duplicative "**Skills Skills**" its own docs warn about.
         """
         self._resolve_user_filesystem_root()  # ensure tree exists
-        return ["/skills/"]
+        sources: list[str | tuple[str, str]] = [("/skills/", "Your")]
+        if self.default_skills_dir is not None:
+            sources.append(("/default_skills/", "Built-in"))
+        return sources
+
+
+    @property
+    def default_skills_dir(self) -> Optional[Path]:
+        """Directory of skills this agent ships with, or ``None`` for none.
+
+        A policy hook, like :attr:`reference_dir`. ``None`` by default: an agent
+        defined in code declares its skills in code. Declarative agents resolve
+        it from their spec — platform agents straight out of their global folder,
+        user-authored ones from the copy made in their workspace when the agent
+        was saved.
+        """
+        return None
 
 
     def load_memory(self) -> Any:

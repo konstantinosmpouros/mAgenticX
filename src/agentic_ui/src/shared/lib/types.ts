@@ -11,6 +11,9 @@ import type {
   UserSkill,
   SkillFile,
   UserSkillDetail,
+  AgentFile,
+  CustomAgentDetail,
+  CustomAgentValidation,
   MemorySummary,
   MemoryDetail,
   AgentToolRow,
@@ -31,6 +34,9 @@ export type {
   UserSkill,
   SkillFile,
   UserSkillDetail,
+  AgentFile,
+  CustomAgentDetail,
+  CustomAgentValidation,
   MemorySummary,
   MemoryDetail,
   AgentToolRow,
@@ -164,6 +170,48 @@ export type CustomSkillCreatePayload = {
     name: string;
     description: string;
     files: SkillFile[];
+};
+
+
+// Agents tab sub-view — same hub/subview pattern as SkillsSubView.
+export type AgentsSubView = "hub" | "tools" | "mine" | "create" | "edit";
+
+// What the builder collects. Mirrors the fields of the backend AgentSpec that a
+// user may set; everything else (id, version, type) is derived on submit, and
+// the spec document itself is assembled in one place (`buildAgentSpec`) so the
+// form never has to know the YAML shape.
+export type AgentDraftSubAgent = {
+    name: string;
+    description: string;
+    prompt: string;
+};
+
+// A reference file the user adds to an agent folder, beyond the prompts the form
+// generates. Always UTF-8: an agent definition is prompts and config only, so the
+// backend's extension allowlist has no binary types and base64 would be dead weight.
+export type AgentDraftFile = {
+    path: string;
+    content: string;
+};
+
+export type AgentDraft = {
+    slug: string;
+    name: string;
+    description: string;
+    icon: string;
+    model: string;
+    prompt: string;
+    memory: boolean;
+    skills: string[];
+    subagents: AgentDraftSubAgent[];
+    files: AgentDraftFile[];
+};
+
+// Create/update payload: the agent.yaml document plus the prompt files it
+// references. `spec` is opaque here — the backend owns its schema.
+export type CustomAgentWritePayload = {
+    spec: Record<string, unknown>;
+    files: AgentFile[];
 };
 
 

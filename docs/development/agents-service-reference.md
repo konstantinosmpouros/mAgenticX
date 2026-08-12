@@ -76,9 +76,14 @@ src/agents/
 │   └── clients.py              OpenAI client factory
 ├── runtime/
 │   ├── __init__.py             re-exports LangGraphAgent, DeepAgent
-│   ├── base_agent.py           BaseAgent: identity, config validation, tool selection, manifest, error encoding
-│   ├── langgraph_agent.py      LangGraphAgent(BaseAgent, ABC): StateGraph build/compile/astream (stream_mode="custom")
-│   ├── deep_agent.py           DeepAgent(BaseAgent, ABC): deepagents lifecycle, filesystem, subagents, HITL
+│   ├── abstractions/           ★ what an agent IS: base classes + configurable kinds
+│   │   ├── base_agent.py       BaseAgent: identity, config validation, tool selection, manifest, error encoding
+│   │   ├── langgraph_agent.py  LangGraphAgent(BaseAgent, ABC): StateGraph build/compile/astream (stream_mode="custom")
+│   │   ├── deep_agent.py       DeepAgent(BaseAgent, ABC): deepagents lifecycle, filesystem, subagents, HITL
+│   │   ├── agent_spec.py       AgentSpec/ModelSpec/SubAgentSpec/ToolRef — the parsed agent.yaml contract
+│   │   ├── yaml_agent.py       YamlDeepAgent: one generic deep agent built from an AgentSpec
+│   │   ├── user_agents.py      User-authored agent validation + atomic write/read/delete
+│   │   └── agent_seed.py       Boot: seed the image's platform agent folders onto the volume
 │   ├── agui/                   ★ AG-UI protocol (NOT runtime/protocols/agui)
 │   │   ├── emitter.py          AGUIEmitter — encodes every AG-UI event to SSE bytes
 │   │   ├── events.py           Custom event Pydantic models + name constants
@@ -273,7 +278,7 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 
 Every `/stream` and `/resume` builds a **fresh** agent instance; the only shared state is the process-wide durable saver and two module-level caches.
 
-### `BaseAgent` (`runtime/base_agent.py`)
+### `BaseAgent` (`runtime/abstractions/base_agent.py`)
 Not abstract; shared plumbing. `AgentType = Literal["deep agent","langgraph agent"]`.
 
 Class identity attributes (overridden by subclasses as plain class attrs): `name` (slug — registry key + URL), `agent_id`, `label`, `version`, `type`, `description`, `icon`.
@@ -285,14 +290,14 @@ Class identity attributes (overridden by subclasses as plain class attrs): `name
 - Config validation (`_validate_*`) — **`context` must have non-empty `user_id` AND `conversation_id`** (the invariant deep-agent filesystem provisioning relies on).
 - `_encode_run_error(exc)` → the `RUN_ERROR` SSE frame (a raw frame, **not** an AG-UI event).
 
-### `LangGraphAgent(BaseAgent, ABC)` (`runtime/langgraph_agent.py`)
+### `LangGraphAgent(BaseAgent, ABC)` (`runtime/abstractions/langgraph_agent.py`)
 `stream_mode = "custom"` — nodes push AG-UI bytes directly through the LangGraph StreamWriter. Abstract hooks: `register_agents()` (LLM chains → `self.agents`), `register_nodes()` (callables → `self.nodes`), `register_graph_nodes(graph)`, `register_graph_edges(graph)`.
 
 - `build()` — if no preset saver, `InMemorySaver()`; register agents+nodes; `StateGraph(self.state)` → add nodes → add edges → `compile(checkpointer=self.memory_saver)`. Degenerate case (no state, no nodes) → `self.graph = self.agents` (bare runnable).
 - `ensure_built()` — binds the **shared durable saver** (`get_checkpointer()`) when a `thread_id` exists, else the ephemeral `InMemorySaver`.
 - `astream(payload, *, command=None)` — `graph.astream(command or payload, config=self.run_config, stream_mode="custom")`; str/bytes chunks pass through, structured chunks → `agui_normalizer.handle_chunk`; disconnect → silent, other exception → `RUN_ERROR` frame.
 
-### `DeepAgent(BaseAgent, ABC)` (`runtime/deep_agent.py`)
+### `DeepAgent(BaseAgent, ABC)` (`runtime/abstractions/deep_agent.py`)
 `stream_mode = ["messages","updates"]`, `type = "deep agent"`. Wraps deepagents' `create_deep_agent`. Concrete agents implement only `register_agent()`.
 
 - `RESERVED_DEEPAGENT_TOOL_NAMES` = `{write_todos, ls, read_file, write_file, edit_file, glob, grep, execute, task, remember}` — stripped from attached MCP tools (`_apply_live_tools` override).
@@ -427,16 +432,23 @@ flowchart TD
 
 ## 13. Filesystem / workspace model
 
-Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. On-disk tree under `AGENTS_FILESYSTEM_ROOT`:
+Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. On-disk tree under `MAGENTICX_WORKSPACES_ROOT` (all paths come from `runtime/filesystem/layout.py`, the single path authority):
 ```
-<root>/<user_id>/agents/<agent_slug>/
-├── memory/            → mount /memories/            (AGENTS.md + entries/<name>.yml)
-├── skills/            → mount /skills/               (<skill>/SKILL.md, UI-managed, read-only)
-└── <conversation_id>/ → mount /conversation/
-    ├── input/         → /conversation/input/         (read-only uploads)
-    └── output/        → /conversation/output/        (agent artifacts)
+<workspaces_root>/users/<user_id>/
+├── skills/                      the user's skill pool (not mounted)
+├── custom_agents/<slug>/      → mount /reference/     (the user's own agent definitions)
+└── agents/<agent_slug>/
+    ├── memory/                → mount /memories/      (AGENTS.md + entries/<name>.yml)
+    ├── skills/                → mount /skills/        (<skill>/SKILL.md, UI-managed, read-only)
+    └── conversations/<conversation_id>/ → mount /conversation/
+        ├── input/             → /conversation/input/  (read-only uploads)
+        └── output/            → /conversation/output/ (agent artifacts)
 ```
-`build_workspace_backend(...)` returns a **factory** invoked per tool call (so `StateBackend` binds the live `ToolRuntime`). All routes are `FilesystemBackend(virtual_mode=True)` — the agent sees only virtual paths, never the host path, so it cannot escape its root; longer-prefix routes win; the default route is an ephemeral `StateBackend()`. `WORKSPACE_WRITE_DENY` pins read-only surfaces (`/skills`, `/large_tool_results`, `/conversation_history`, `/conversation/input`). `_safe_segment` rejects `/`, `\`, `..`, leading `.` on every user/agent/conversation/skill/file segment (path-traversal defense).
+`build_workspace_backend(...)` returns a **factory** invoked per tool call (so `StateBackend` binds the live `ToolRuntime`). All routes are `FilesystemBackend(virtual_mode=True)` — the agent sees only virtual paths, never the host path, so it cannot escape its root; longer-prefix routes win; the default route is an ephemeral `StateBackend()`. `_safe_segment` rejects `/`, `\`, `..`, leading `.` on every user/agent/conversation/skill/file segment (path-traversal defense).
+
+**`/reference/` — the agent's own definition folder, read-only and optional.** Passed as `reference_dir` and supplied by `DeepAgent.reference_dir` (a policy hook returning `None` by default). `YamlDeepAgent` overrides it with its source directory, so material shipped beside `AGENT.md` — notes, checklists, examples — is readable **on demand** at `/reference/<path>` instead of being inlined into every turn. Agents defined in Python return `None`: their package directory holds source, which must never be readable from a run. Without the mount such a file is *inert* — the path matches no route, falls through to `StateBackend`, and reads "not found" with no error logged anywhere.
+
+**Write-deny stays matched to the mounts.** `workspace_write_deny(include_reference=...)` returns the ladder for a run: the always-on rules (`/skills`, `/large_tool_results`, `/conversation_history`, `/conversation/input`) plus `/reference` only when that route is mounted. A function rather than a constant because deepagents rejects a permission whose path lies outside every mounted route — dormant today (it fires only when the default backend supports execution), a hard failure the day sandbox execute lands. Both the mount and the rule derive from `self.reference_dir is not None`, so they cannot drift. `/reference/` is read-only because the folder is authored through the builder UI (which enforces its own type/size limits) and a run that could rewrite its own definition would be editing its next system prompt. Pinned by `tests/agents/test_workspace_mounts.py`.
 
 **Sandbox-execution guard (fail-closed):** deepagents surfaces its built-in `execute` tool exactly when the composite **default** backend implements `SandboxBackendProtocol` (`StateBackend` does not; `LocalShellBackend` — host-shell execution — does, and its import is test-banned from the whole service). While `SANDBOX_EXECUTION_ENABLED` is false the factory refuses to mint a sandbox-capable default (`RuntimeError`), so a refactor swapping the default class can never silently open a code-execution path. Pinned by `tests/agents/test_execute_lockdown.py`.
 
@@ -448,7 +460,7 @@ Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a d
 
 **Global skills registry** (boot, on-disk, three steps in the lifespan): `seed_global_registry()` copies the in-image seed into the `SKILLS_REGISTRY_GLOBAL_ROOT` volume (existing folders win) → `rebuild_global_manifest()` scans `<category>/<skill>/SKILL.md`, parses frontmatter (`name`, `description`), writes `manifest.json` atomically → `reconcile_all_user_manifests()`.
 
-**Two-tier model:** a global catalog (`GET /skills/global`) → a per-user **pool** (`/users/{uid}/skills`, add-global or create-custom) → per-(user, agent) **enablement** (`/agents/{slug}/users/{uid}/skills` — enabling copies the skill folder into the `/skills/` mount; **the folder's presence *is* the enabled record**, no DB row).
+**Two tiers at *runtime*** (`/default_skills/` = what the agent ships with, `/skills/` = what the user enabled; defaults are loaded last so they win a name clash, and both mounts are write-denied — see [agent-development](agent-development.md)). **Three tiers in the *management* flow:** a global catalog (`GET /skills/global`) → a per-user **pool** (`/users/{uid}/skills`, add-global or create-custom) → per-(user, agent) **enablement** (`/agents/{slug}/users/{uid}/skills` — enabling copies the skill folder into the `/skills/` mount; **the folder's presence *is* the enabled record**, no DB row).
 
 **Memory** — per-(user, agent): the `remember` tool writes `entries/<slug>.yml` (atomic) + upserts a one-line index in `AGENTS.md` (auto-seeded from `AGENTS_MD_TEMPLATE` on first contact, never overwritten). Hard cap `MEMORY_MAX_ENTRIES=60` (new entries refused when full; updates always allowed). `search_past_conversations` reads cross-conversation via the bridge's internal memory endpoint (pgvector), opt-in per run.
 
@@ -536,7 +548,7 @@ Structured, async, per-request-context logging.
 - **Stock deepagents summarizer must be excluded** per model spec or its lower threshold wins.
 - **`RESERVED_DEEPAGENT_TOOL_NAMES`** must be stripped from attached MCP tools.
 - **`use_memory` gates four things together** — desync one and the agent advertises a mount it lacks.
-- **`FilesystemBackend(virtual_mode=True)` + disjoint CompositeBackend roots** are the confinement model; permission rules must target a mounted route (deepagents rejects permissions on unmounted routes — why routes + permissions live together).
+- **`FilesystemBackend(virtual_mode=True)` + disjoint CompositeBackend roots** are the confinement model; permission rules must target a mounted route, which is why routes + permissions live together in `workspace.py` and why the conditional `/reference/` rule comes from `workspace_write_deny(include_reference=...)` rather than a bare constant. deepagents' own check on this (`_all_paths_scoped_to_routes`) is **dormant** — it runs only when the default backend supports execution — so an unmounted-route rule fails nothing today and everything once sandbox execute lands.
 - **`_encode_run_error` emits a raw `RUN_ERROR` frame, not an AG-UI event** — the consumer must handle both.
 - **`list_mcp_tools` returns `[]` on a cache hit**, not the tools (only the manifest matters there).
 - **The MCP hop is plaintext** (no proxy secret, no mTLS); rag/bridge hops require both.

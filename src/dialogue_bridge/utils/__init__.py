@@ -5,6 +5,7 @@ from utils.agents import (
     set_agent_tool_disabled,
     get_agent_by_id,
     get_cached_agents,
+    list_user_agents,
     reap_conversation_runtime,
     sync_agents_with_service,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "transcribe_dictation_audio",
     "get_agent_by_id",
     "get_cached_agents",
+    "list_user_agents",
     "reap_conversation_runtime",
     "sync_agents_with_service",
     "prepare_inference_history",

@@ -5,12 +5,13 @@ from fastapi import HTTPException, status
 from observability import get_context, get_logger
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from core.settings import settings
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
-from core.database import AgentTable, MessageTable
+from core.database import AgentTable, MessageTable, SessionLocal
 from core.security.internal_trust import internal_service_headers
 from core.error_handling import upstream_error_handler
 
@@ -24,16 +25,37 @@ _AGENT_CACHE: Dict[str, AgentTable] = {}
 
 
 def prime_agent_cache(agents: Iterable[AgentTable]) -> None:
-    """Store active agents for fast validation lookups."""
+    """Store active **platform** agents for fast validation lookups.
+
+    User-authored agents are deliberately excluded: this cache is process-global
+    and ``get_cached_agents()`` feeds the catalog endpoint, so a user-owned row in
+    here would be served to every other user. Their rows are read per-request
+    from the database instead (:func:`list_user_agents`, :func:`get_agent_by_id`).
+    """
     global _AGENT_CACHE
     # Keep only active agents so downstream validators skip disabled ones.
-    _AGENT_CACHE = {agent.id: agent for agent in agents if getattr(agent, "is_active", True)}
+    _AGENT_CACHE = {
+        agent.id: agent
+        for agent in agents
+        if getattr(agent, "is_active", True) and getattr(agent, "owner_user_id", None) is None
+    }
 
 
 def get_cached_agents() -> List[AgentTable]:
-    """Return cached active agents; empty list if cache not yet primed."""
+    """Return cached active platform agents; empty list if cache not yet primed."""
     # Return a list copy to avoid callers mutating the internal cache.
     return list(_AGENT_CACHE.values())
+
+
+async def list_user_agents(db: AsyncSession, user_id: str) -> List[AgentTable]:
+    """The active agents this user authored. Never cached (see
+    :func:`prime_agent_cache`)."""
+    result = await db.execute(
+        select(AgentTable)
+        .where(AgentTable.owner_user_id == user_id, AgentTable.is_active == True)  # noqa: E712
+        .order_by(AgentTable.name)
+    )
+    return list(result.scalars().all())
 
 
 def build_agent_stream_url(agent: AgentTable) -> str:
@@ -121,8 +143,14 @@ def _require_agent_slug(agent: AgentTable) -> str:
 
 
 async def _load_active_agents(db: AsyncSession) -> List[AgentTable]:
-    # Query all active agents so we can refresh the in-memory cache.
-    result = await db.execute(select(AgentTable).where(AgentTable.is_active == True))  # noqa: E712
+    # Active *platform* agents only — this feeds the process-global cache, which
+    # must never hold a user-owned row (see prime_agent_cache).
+    result = await db.execute(
+        select(AgentTable).where(
+            AgentTable.is_active == True,  # noqa: E712
+            AgentTable.owner_user_id.is_(None),
+        )
+    )
     return list(result.scalars().all())
 
 
@@ -233,15 +261,26 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
         )
         await db.execute(stmt)
 
+    # Deactivate platform agents that vanished from the manifest — but NEVER
+    # touch user-authored agents. They are created through the bridge and live in
+    # the user's workspace, so they are absent from the agents-service manifest
+    # by design; without the owner filter every sync would silently deactivate
+    # every custom agent a user owns.
     if manifest_ids:
-        # Deactivate any DB agents not present in the latest manifest list.
         await db.execute(
             update(AgentTable)
-            .where(AgentTable.id.notin_(list(manifest_ids)))
+            .where(
+                AgentTable.owner_user_id.is_(None),
+                AgentTable.id.notin_(list(manifest_ids)),
+            )
             .values(is_active=False)
         )
     else:
-        await db.execute(update(AgentTable).values(is_active=False))
+        await db.execute(
+            update(AgentTable)
+            .where(AgentTable.owner_user_id.is_(None))
+            .values(is_active=False)
+        )
 
     # Persist changes, refresh cache, and return the new active list.
     await db.commit()
@@ -252,12 +291,40 @@ async def sync_agents_with_service(db: AsyncSession) -> List[AgentTable]:
 
 
 async def get_agent_by_id(agent_id: str) -> AgentTable | None:
-    """Fetch an agent from cache or database without enforcing validation semantics."""
+    """Fetch an agent from cache or database without enforcing validation semantics.
+
+    The cache covers platform agents only, so a miss is not "no such agent" — a
+    user-authored agent is never cached, and one created after boot would be
+    invisible without this fallback (the cache refreshes only on an agents-service
+    sync). Falls through to a short-lived session read; returns ``None`` only when
+    the row genuinely does not exist or is inactive.
+    """
     # Prefer the in-memory cache for constant-time lookups during API calls.
     agent = _AGENT_CACHE.get(agent_id)
     if agent is not None and getattr(agent, "is_active", True):
         return agent
-    return None
+
+    try:
+        async with SessionLocal() as db:
+            result = await db.execute(
+                select(AgentTable).where(
+                    AgentTable.id == agent_id,
+                    AgentTable.is_active == True,  # noqa: E712
+                )
+            )
+            return result.scalar_one_or_none()
+    except SQLAlchemyError:
+        # A database problem must not turn a lookup helper — called on many read
+        # paths, where None already means "404 unknown agent" — into an
+        # unhandled 500. Degrade to not-found and log loudly so the real cause
+        # is diagnosable.
+        logger.warning(
+            "agent_lookup_db_failed",
+            "Agent lookup fell back to the database and failed; treating as unknown",
+            exc_info=True,
+            agent_id=agent_id,
+        )
+        return None
 
 
 async def reap_conversation_runtime(db: AsyncSession, user_id: str, conversation_id: str) -> None:

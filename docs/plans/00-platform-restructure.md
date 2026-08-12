@@ -49,7 +49,7 @@ Four pieces carry the design:
 
 **`YamlDeepAgent`** is a single generic `DeepAgent` that reads its identity and behaviour from a spec *per instance*, because one class serves every YAML agent. It seeds `config_tool_names` from `spec.tools` so the MCP filter is spec-driven, resolves declared native tools through the registry, and lets the registry manifest be built from the spec by `manifest_from_spec`.
 
-**The native-tool registry** is the single source of truth for platform tools: metadata plus a context-bound builder per tool, so a spec can select one by name, the catalog can list them read-only, and the deep-agent builtins resolve through one place. It deliberately lives in `runtime/tools/` rather than `runtime/declarative/` — importing it from the declarative package creates a cycle (`deep_agent → declarative → yaml_agent → deep_agent`).
+**The native-tool registry** is the single source of truth for platform tools: metadata plus a context-bound builder per tool, so a spec can select one by name, the catalog can list them read-only, and the deep-agent builtins resolve through one place. It deliberately lives in `runtime/tools/` rather than `runtime/abstractions/` — importing it from the declarative package creates a cycle (`deep_agent → declarative → yaml_agent → deep_agent`).
 
 **The refreshable registry.** The global volume is seeded *during* the service lifespan, after import, so `AGENT_REGISTRY` cannot be frozen at import time. `refresh_registry()` re-scans and mutates the dict **in place** so existing `from utils.agents import AGENT_REGISTRY` references stay valid.
 
@@ -80,7 +80,7 @@ Per-agent tool overrides live **outside** the database, on the agents service fi
 | Phase | Scope | Outcome |
 | --- | --- | --- |
 | **0 · Layout & paths** | `FilesystemSettings.global_root` = `/var/magenticx/global`, `workspaces_root` = `/var/magenticx/workspaces`; dirs created in the image. | **Done.** Path convention only — the legacy data move is [03](03-projects-and-workspaces.md). |
-| **1 · Declarative agents** | `runtime/declarative/` (`agent_spec`, `yaml_agent`, `agent_seed`, `utils`); native-tool registry; directory-scan discovery with YAML-overrides-Python; `AgentDefinition` gains `cls`/`factory`/`spec` + `build()`; image seeds `agents_seed/` → global volume (`cp -rn` semantics, existing folders win); omni ported to YAML. | **Done.** |
+| **1 · Declarative agents** | `runtime/abstractions/` (`agent_spec`, `yaml_agent`, `agent_seed`, `utils`); native-tool registry; directory-scan discovery with YAML-overrides-Python; `AgentDefinition` gains `cls`/`factory`/`spec` + `build()`; image seeds `agents_seed/` → global volume (`cp -rn` semantics, existing folders win); omni ported to YAML. | **Done.** |
 | **2 · Per-agent tools** | `tool_prefs.json` two-set store; `_apply_tool_disables`; Agents tab (declared + "available to add" from the gateway catalog); MCP Servers tab made read-only; bridge proxy endpoints; **global `enabledTools` retired** end to end + migration `0016`; native rules fixed (`remember` / `search_past_conversations` follow Personalization prefs, `present_artifact` always on). | **Done.** |
 | **3 · Custom agents per user** | Owner-aware agents, CRUD, authoring UI. | **Not started** → [01](01-custom-agents-per-user.md). |
 | **4 · Declarative LangGraph** | A graph interpreter so the HR / Orthodox / Retail agents become YAML too. | **Deferred.** Prerequisite work in [10](10-rag-via-mcp-gateway.md). |
@@ -120,12 +120,12 @@ These are the facts later plans keep tripping over, so they are recorded explici
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Spec schema | [runtime/declarative/agent_spec.py](../../src/agents/runtime/declarative/agent_spec.py) | `AgentSpec`, `ToolRef`, `SubAgentSpec`, `reference_errors` |
-| Generic YAML agent | [runtime/declarative/yaml_agent.py](../../src/agents/runtime/declarative/yaml_agent.py) | per-instance identity, `config_tool_names` seed, `_resolve_native_tools` |
-| Built-in seeding | [runtime/declarative/agent_seed.py](../../src/agents/runtime/declarative/agent_seed.py) | `seed_global_agents` (no-clobber) |
+| Spec schema | [runtime/abstractions/agent_spec.py](../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`, `ToolRef`, `SubAgentSpec`, `reference_errors` |
+| Generic YAML agent | [runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | per-instance identity, `config_tool_names` seed, `_resolve_native_tools` |
+| Built-in seeding | [runtime/abstractions/agent_seed.py](../../src/agents/runtime/abstractions/agent_seed.py) | `seed_global_agents` (no-clobber) |
 | Discovery / registry | [utils/agents.py](../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
 | Native tool registry | [runtime/tools/registry.py](../../src/agents/runtime/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `native_catalog` |
-| Tool assembly + overrides | [runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables` |
+| Tool assembly + overrides | [runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables` |
 | Per-agent overrides store | [runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `read_tool_prefs`, `write_tool_prefs` |
 | Agents-tab logic | [utils/agent_tools.py](../../src/agents/utils/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
 | Built-in agent example | [agents_seed/omni-yaml-v1/agent.yaml](../../src/agents/agents_seed/omni-yaml-v1/agent.yaml) | the reference spec |

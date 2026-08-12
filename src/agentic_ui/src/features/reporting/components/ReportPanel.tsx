@@ -60,14 +60,18 @@ export default function ReportConversationDialog({
   const contextLabel = isMessageReport ? "Assistant response" : "Full conversation";
   const previewText = messagePreview?.trim();
 
+  // The panel is capped to the viewport and only its *body* scrolls, so on a short
+  // screen the title and the Submit button stay put instead of the whole dialog
+  // running off the bottom. Nothing here changes how it looks when it already fits:
+  // the cap is a max-height, and the body only becomes scrollable once it must.
   return (
     <div className="fixed inset-0 z-[60] flex min-h-[100dvh] items-center justify-center px-4 py-6">
       <div
         className="absolute inset-0 z-0 bg-black/80 backdrop-blur-md animate-in fade-in-0 duration-200"
         onClick={submitting ? undefined : onClose}
       />
-      <div className="relative z-10 w-full max-w-[40rem] animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
-        <Card className="relative overflow-hidden rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)]">
+      <div className="relative z-10 flex max-h-[calc(100dvh-3rem)] w-full max-w-[40rem] animate-in fade-in-0 zoom-in-95 duration-200 ease-out">
+        <Card className="relative flex min-h-0 w-full flex-col overflow-hidden rounded-[1.6rem] border border-white/[0.14] bg-[#151515] text-white shadow-[0_28px_100px_rgba(0,0,0,0.72)]">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/20" />
           <Button
             size="icon"
@@ -80,7 +84,7 @@ export default function ReportConversationDialog({
             <X size={18} />
           </Button>
 
-          <div className="px-5 pt-6 md:px-7 md:pt-7">
+          <div className="shrink-0 px-5 pt-6 md:px-7 md:pt-7">
             <div className="flex items-start gap-4 border-b border-white/10 pb-5 pr-12">
               <div className="mt-1 hidden h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/[0.12] bg-white/[0.06] text-white/80 sm:flex">
                 <Flag className="h-5 w-5" />
@@ -102,7 +106,9 @@ export default function ReportConversationDialog({
             </div>
           </div>
 
-          <div className="px-5 py-5 md:px-7">
+          {/* The only scroll area — `min-h-0` so it can shrink inside the flex
+              column instead of forcing the card past its max-height. */}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 md:px-7">
             {conversationTitle ? (
               <div className="mb-4 rounded-2xl border border-white/[0.12] bg-white/[0.045] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/45">
@@ -180,7 +186,15 @@ export default function ReportConversationDialog({
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-4 px-5 pb-6 md:px-7 md:pb-7">
+          <div className="relative shrink-0 flex items-center justify-between gap-4 px-5 pb-6 md:px-7 md:pb-7">
+            {/* Softens the hard line where the scrolling body is clipped by the
+                footer: a short scrim just above it, fading the card colour up into
+                transparency so the last line of content dissolves instead of being
+                cut. `bottom-full` puts it outside the footer box, over the body. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-gradient-to-t from-[#151515] to-transparent"
+            />
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"

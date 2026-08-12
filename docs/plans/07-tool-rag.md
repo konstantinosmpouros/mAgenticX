@@ -16,7 +16,7 @@ The mental model that matters most here is a two-layer separation the platform d
 
 **Goals.** Cut the per-model-call tool-schema payload from O(all authorized tools) to O(k) without measurably degrading tool choice. Keep the authorization superset byte-for-byte identical to today's resolution. Give the model a first-class way to ask for more tools mid-run and have them appear on the next model call, without recompiling the graph. Ship with an eval harness that can prove both halves of the claim — that context went down *and* that tool selection did not get worse — because a silent quality regression here is the failure mode that would be discovered in production, by a user, months later.
 
-**Non-goals.** Not a change to what a user can turn on or off (the Agents tab contract in [tool-harness.md](../development/tool-harness.md) § Phase 4 is untouched). Not a way to grant an agent a tool it was never authorized for. Not applicable to LangGraph agents — their retrieval is a graph node calling `rag_service` over HTTP, not a bound tool, so they have no tool schemas to trim. Not a general-purpose vector service: no new Chroma collection, no rag_service change, no bridge migration. Not sub-agent-aware in v1 — sub-agent tool lists are today resolved from native refs only ([yaml_agent.py:119-142](../../src/agents/runtime/declarative/yaml_agent.py)), so there is nothing to narrow there yet.
+**Non-goals.** Not a change to what a user can turn on or off (the Agents tab contract in [tool-harness.md](../development/tool-harness.md) § Phase 4 is untouched). Not a way to grant an agent a tool it was never authorized for. Not applicable to LangGraph agents — their retrieval is a graph node calling `rag_service` over HTTP, not a bound tool, so they have no tool schemas to trim. Not a general-purpose vector service: no new Chroma collection, no rag_service change, no bridge migration. Not sub-agent-aware in v1 — sub-agent tool lists are today resolved from native refs only ([yaml_agent.py:119-142](../../src/agents/runtime/abstractions/yaml_agent.py)), so there is nothing to narrow there yet.
 
 ---
 
@@ -27,7 +27,7 @@ The mental model that matters most here is a two-layer separation the platform d
 The one assembly line is in `DeepAgent.build_deep_agent`, and the ordering is load-bearing:
 
 ```python
-# src/agents/runtime/deep_agent.py:456
+# src/agents/runtime/abstractions/deep_agent.py:456
 tools=self._apply_tool_disables(self.tools + self._builtin_tools()),
 ```
 
@@ -37,14 +37,14 @@ tools=self._apply_tool_disables(self.tools + self._builtin_tools()),
 | --- | --- | --- |
 | MCP session opened per stream | [router/inference.py:91-96](../../src/agents/router/inference.py) | `mcp_session_context()` → `load_mcp_tools(session)` → `agent.attach_tools(live_tools)` |
 | Same on the HITL resume leg | [router/inference.py:316-318](../../src/agents/router/inference.py) | resume re-loads and re-attaches; the tool set is recomputed identically |
-| Filter against declared keys | [base_agent.py:117-119](../../src/agents/runtime/base_agent.py) → [`_filter_live_tools`:132-159](../../src/agents/runtime/base_agent.py) | keeps only tools whose canonical cache key ∈ `config_tool_names`; logs `agent_tools_missing` for declared-but-absent keys |
-| Empty selector = nothing | [base_agent.py:133-134](../../src/agents/runtime/base_agent.py) | `if not self.config_tool_names: return []` — a Python deep agent with no spec gets zero MCP tools |
-| Base seeds selectors empty | [base_agent.py:61-66](../../src/agents/runtime/base_agent.py) | `config_tools` / `config_tool_names` are `[]`; nothing tool-related is read from `config["tools"]` (retired in migration `0016`) |
+| Filter against declared keys | [base_agent.py:117-119](../../src/agents/runtime/abstractions/base_agent.py) → [`_filter_live_tools`:132-159](../../src/agents/runtime/abstractions/base_agent.py) | keeps only tools whose canonical cache key ∈ `config_tool_names`; logs `agent_tools_missing` for declared-but-absent keys |
+| Empty selector = nothing | [base_agent.py:133-134](../../src/agents/runtime/abstractions/base_agent.py) | `if not self.config_tool_names: return []` — a Python deep agent with no spec gets zero MCP tools |
+| Base seeds selectors empty | [base_agent.py:61-66](../../src/agents/runtime/abstractions/base_agent.py) | `config_tools` / `config_tool_names` are `[]`; nothing tool-related is read from `config["tools"]` (retired in migration `0016`) |
 
 Second, `YamlDeepAgent.__init__` is the only thing that populates those selectors, and it does so from **two** sources — the spec, then the user's per-agent *enabled* set:
 
 ```python
-# src/agents/runtime/declarative/yaml_agent.py:67-82
+# src/agents/runtime/abstractions/yaml_agent.py:67-82
 mcp_refs = [t for t in spec.tools if not t.is_native]
 self.config_tools = [{"server_id": ..., "tool_name": ...} for t in mcp_refs]
 self.config_tool_names = [self._build_tool_key_from_config(e) for e in self.config_tools]
@@ -55,17 +55,17 @@ if user_id:
             self.config_tool_names.append(key)
 ```
 
-Native refs are resolved separately at build time ([yaml_agent.py:105-116, 153](../../src/agents/runtime/declarative/yaml_agent.py)), and the always-on builtins are appended by `_builtin_tools()` ([deep_agent.py:280-317](../../src/agents/runtime/deep_agent.py)) — `remember`, `search_past_conversations`, `present_artifact`, each behind its own gate in the native registry ([tools/registry.py:84-132](../../src/agents/runtime/tools/registry.py)).
+Native refs are resolved separately at build time ([yaml_agent.py:105-116, 153](../../src/agents/runtime/abstractions/yaml_agent.py)), and the always-on builtins are appended by `_builtin_tools()` ([deep_agent.py:280-317](../../src/agents/runtime/abstractions/deep_agent.py)) — `remember`, `search_past_conversations`, `present_artifact`, each behind its own gate in the native registry ([tools/registry.py:84-132](../../src/agents/runtime/tools/registry.py)).
 
 Then subtraction, which is where the *disabled* half applies:
 
 ```python
-# src/agents/runtime/deep_agent.py:336-339
+# src/agents/runtime/abstractions/deep_agent.py:336-339
 disabled = read_disabled_tools(user_id, self.name) - set(NATIVE_TOOLS)
 kept = [tool for tool in tools if get_tool_cache_key(tool) not in disabled]
 ```
 
-Two exemptions are already structural and must stay so. **Native builtins can never be disabled** — native keys are subtracted from the disabled set at [deep_agent.py:336](../../src/agents/runtime/deep_agent.py) and rejected at the toggle endpoint ([agent_tools.py:127-134](../../src/agents/utils/agent_tools.py)), so `present_artifact` is always on. **Framework builtins can never be disabled either**, because `create_deep_agent` adds `write_todos` / `ls` / `read_file` / `write_file` / `edit_file` / `glob` / `grep` / `execute` / `task` *after* the filter runs; the reserved-name set at [deep_agent.py:37-58](../../src/agents/runtime/deep_agent.py) also drops any MCP tool that tries to shadow one ([`_apply_live_tools`:644-669](../../src/agents/runtime/deep_agent.py)).
+Two exemptions are already structural and must stay so. **Native builtins can never be disabled** — native keys are subtracted from the disabled set at [deep_agent.py:336](../../src/agents/runtime/abstractions/deep_agent.py) and rejected at the toggle endpoint ([agent_tools.py:127-134](../../src/agents/utils/agent_tools.py)), so `present_artifact` is always on. **Framework builtins can never be disabled either**, because `create_deep_agent` adds `write_todos` / `ls` / `read_file` / `write_file` / `edit_file` / `glob` / `grep` / `execute` / `task` *after* the filter runs; the reserved-name set at [deep_agent.py:37-58](../../src/agents/runtime/abstractions/deep_agent.py) also drops any MCP tool that tries to shadow one ([`_apply_live_tools`:644-669](../../src/agents/runtime/abstractions/deep_agent.py)).
 
 The invariant, stated once so section 3 can hold it: **`effective = (declared_mcp ∪ user_enabled) − user_disabled`, plus gated natives, plus framework builtins added downstream of every filter.** Persisted in `<agent_root>/tool_prefs.json` v2, read fail-open ([tool_prefs.py:55-77](../../src/agents/runtime/filesystem/tool_prefs.py)), written atomically ([tool_prefs.py:93-112](../../src/agents/runtime/filesystem/tool_prefs.py)).
 
@@ -115,7 +115,7 @@ There is no `chromadb`, `faiss`, or similarity-search code anywhere under `src/a
 
 ### The middleware seam
 
-Middleware is per-implementation and composed on the instance: `default_middleware(model, backend)` returns `[ToolErrorMiddleware(), build_summarization_middleware(model, backend)]` ([deep_agent.py:266-277](../../src/agents/runtime/deep_agent.py)), an agent may override it, and `build_deep_agent` force-guarantees `ToolErrorMiddleware` on the agent and every dict-shaped sub-agent ([deep_agent.py:351-361, 444-451](../../src/agents/runtime/deep_agent.py)). The one middleware we wrote uses the `AgentMiddleware` `wrap_tool_call` / `awrap_tool_call` hooks from `langchain.agents.middleware.types` ([tool_error.py:12-43](../../src/agents/runtime/middlewares/tool_error.py)), against `langchain==1.3.9` / `deepagents==0.6.10`.
+Middleware is per-implementation and composed on the instance: `default_middleware(model, backend)` returns `[ToolErrorMiddleware(), build_summarization_middleware(model, backend)]` ([deep_agent.py:266-277](../../src/agents/runtime/abstractions/deep_agent.py)), an agent may override it, and `build_deep_agent` force-guarantees `ToolErrorMiddleware` on the agent and every dict-shaped sub-agent ([deep_agent.py:351-361, 444-451](../../src/agents/runtime/abstractions/deep_agent.py)). The one middleware we wrote uses the `AgentMiddleware` `wrap_tool_call` / `awrap_tool_call` hooks from `langchain.agents.middleware.types` ([tool_error.py:12-43](../../src/agents/runtime/middlewares/tool_error.py)), against `langchain==1.3.9` / `deepagents==0.6.10`.
 
 ---
 
@@ -179,7 +179,7 @@ Retrieval never decides these:
 
 | Class | Always presented | Why |
 | --- | --- | --- |
-| Framework builtins (`write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `task`, `execute`) | yes | They are the agent's ability to plan, read, write, and delegate. Hiding `write_todos` for a turn breaks the plan snapshot the UI renders; hiding `task` breaks sub-agents. They also enter *after* every filter ([deep_agent.py:453-469](../../src/agents/runtime/deep_agent.py)), so they are not the middleware's to remove in the first place — the middleware must recognize and pass them through by reserved name ([deep_agent.py:37-58](../../src/agents/runtime/deep_agent.py)). |
+| Framework builtins (`write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `task`, `execute`) | yes | They are the agent's ability to plan, read, write, and delegate. Hiding `write_todos` for a turn breaks the plan snapshot the UI renders; hiding `task` breaks sub-agents. They also enter *after* every filter ([deep_agent.py:453-469](../../src/agents/runtime/abstractions/deep_agent.py)), so they are not the middleware's to remove in the first place — the middleware must recognize and pass them through by reserved name ([deep_agent.py:37-58](../../src/agents/runtime/abstractions/deep_agent.py)). |
 | Native builtins (`remember`, `search_past_conversations`, `present_artifact`) | yes | Three tools, already gated by preference. `present_artifact` in particular must be callable at the *end* of a long run, when the turn text is about the topic and not about presenting — precisely the case retrieval would get wrong. |
 | `find_tools` | yes | The escape hatch is worthless if it can itself be retrieved away. |
 | MCP tools | retrieved | The only class that scales, and the only class this plan narrows. |
@@ -217,7 +217,7 @@ Every set in this design is keyed by the same canonical cache key that `tool_pre
 
 **No Alembic migration. No new table. No new column.** This is a deliberate and slightly unusual answer, so it is stated explicitly: the tool index is derived state over an external manifest, it is cheap to rebuild from scratch, and it belongs to the service that owns the manifest. Putting it in the bridge's Postgres would (a) require the bridge to learn about MCP tools, which it deliberately does not, and (b) put a network hop on the hot path. The current alembic head stays `0016_retire_enabled_tools`.
 
-On-disk layout on the agents global volume (same volume the skills registry and declarative agents are seeded into — [agent_seed.py:34-84](../../src/agents/runtime/declarative/agent_seed.py)):
+On-disk layout on the agents global volume (same volume the skills registry and declarative agents are seeded into — [agent_seed.py:34-84](../../src/agents/runtime/abstractions/agent_seed.py)):
 
 ```text
 <global_root>/tool_index/
@@ -273,7 +273,7 @@ Two optional, clearly-scoped surfaces if we want them later:
 
 ## 7. Cross-cutting impact
 
-**agents runtime — the real blast radius.** `build_deep_agent` gains one middleware in `default_middleware`, which means every deep agent that *overrides* `default_middleware` silently opts out of Tool RAG. That is either a feature or a trap; it must be made explicit the same way `ToolErrorMiddleware` is force-guaranteed at [deep_agent.py:415](../../src/agents/runtime/deep_agent.py) — either guarantee it too, or document that overriding opts out. Sub-agents get their middleware guaranteed separately ([deep_agent.py:444-451](../../src/agents/runtime/deep_agent.py)) and are out of scope in v1 because their MCP tools are not wired at all yet ([yaml_agent.py:124-132](../../src/agents/runtime/declarative/yaml_agent.py) logs `yaml_subagent_mcp_tools_ignored`). `_build_manifest` and `ToolManifest` gain a field. `list_mcp_tools` gains a real refresh caller. The lifespan gains a fifth bootstrap step and a second background loop. `native_catalog()` gains a row, which flows into the bridge's catalog surface — and `_native_keys()` in [agent_tools.py:40-43](../../src/agents/utils/agent_tools.py) automatically protects `find_tools` from ever entering a user override set, which is the correct outcome for free.
+**agents runtime — the real blast radius.** `build_deep_agent` gains one middleware in `default_middleware`, which means every deep agent that *overrides* `default_middleware` silently opts out of Tool RAG. That is either a feature or a trap; it must be made explicit the same way `ToolErrorMiddleware` is force-guaranteed at [deep_agent.py:415](../../src/agents/runtime/abstractions/deep_agent.py) — either guarantee it too, or document that overriding opts out. Sub-agents get their middleware guaranteed separately ([deep_agent.py:444-451](../../src/agents/runtime/abstractions/deep_agent.py)) and are out of scope in v1 because their MCP tools are not wired at all yet ([yaml_agent.py:124-132](../../src/agents/runtime/abstractions/yaml_agent.py) logs `yaml_subagent_mcp_tools_ignored`). `_build_manifest` and `ToolManifest` gain a field. `list_mcp_tools` gains a real refresh caller. The lifespan gains a fifth bootstrap step and a second background loop. `native_catalog()` gains a row, which flows into the bridge's catalog surface — and `_native_keys()` in [agent_tools.py:40-43](../../src/agents/utils/agent_tools.py) automatically protects `find_tools` from ever entering a user override set, which is the correct outcome for free.
 
 **dialogue_bridge.** Nothing on the inference hot path: the bridge sends no tool list ([tool-harness.md § Phase 2](../development/tool-harness.md)) and does not need to know this happened. Two second-order effects. Token accounting gets *quieter*: `TOKEN_USAGE` input counts drop, which is a real change to the numbers on `messages.input_tokens` and therefore to the Usage tab — a step change in a metric with no explanation in the data is exactly the kind of thing that gets mis-diagnosed later, so the rollout should be dated in [observability.md](../development/observability.md). And the Agents-tab proxy is the only place a new DTO field would ride.
 
@@ -389,7 +389,7 @@ Two environment realities to respect. The agents test suite needs `deepagents 0.
 1. **Query construction.** Last user message only, last N messages, or an LLM-rewritten retrieval query? The last is best for quality and worst for latency and cost. Default to the tail-of-N and revisit with Phase 4 numbers.
 2. **Do pins survive a HITL resume?** Re-deriving by retrieval on the resume leg is simpler and costs one turn of possible re-search; reading them back from the run's event log is exact but couples the middleware to the log. Leaning simple.
 3. **Should the index include *skills*?** Skills are already progressively disclosed by the deepagents `SkillsMiddleware`, so probably not — but if the skills pool grows to hundreds, the same machinery applies and building two indexes would be a mistake. Worth deciding before the row schema is frozen.
-4. **Per-agent `k`.** A research agent may want a wider view than a narrow one. `agent.yaml` could carry `tool_rag: {top_k: 12}`, which means an `AgentSpec` field and therefore a schema decision made once, since `extra="forbid"` ([agent_spec.py:124](../../src/agents/runtime/declarative/agent_spec.py)) makes adding it later a hard change for any hand-written YAML.
+4. **Per-agent `k`.** A research agent may want a wider view than a narrow one. `agent.yaml` could carry `tool_rag: {top_k: 12}`, which means an `AgentSpec` field and therefore a schema decision made once, since `extra="forbid"` ([agent_spec.py:124](../../src/agents/runtime/abstractions/agent_spec.py)) makes adding it later a hard change for any hand-written YAML.
 5. **Does `find_tools` count against a run budget?** It will once [06-deep-research-mode.md](06-deep-research-mode.md) introduces a max-tool-calls ceiling. Meta-tools arguably should be exempt; that is 06's decision to make, but it should be made knowingly.
 
 ---
@@ -398,12 +398,12 @@ Two environment realities to respect. The agents test suite needs `deepagents 0.
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| The one assembly line (bound set) | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `build_deep_agent`:387-469, the `tools=` argument at :456, `_builtin_tools`:280-317, `_apply_tool_disables`:320-348 |
-| Reserved framework names | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `RESERVED_DEEPAGENT_TOOL_NAMES`:37-58, `_apply_live_tools`:644-669 |
-| Middleware stack composition | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `default_middleware`:266-277, `_ensure_tool_error_middleware`:351-361, sub-agent guarantee :444-451 |
-| Live-manifest filter + cache keys | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `attach_tools`:117, `_build_tool_key_from_config`:122-129, `_filter_live_tools`:132-159 |
-| Declared ∪ enabled seeding | [src/agents/runtime/declarative/yaml_agent.py](../../src/agents/runtime/declarative/yaml_agent.py) | `config_tool_names` seed :67-82, `_resolve_native_tools`:105-116, `register_agent`:149-159 |
-| Spec tool refs | [src/agents/runtime/declarative/agent_spec.py](../../src/agents/runtime/declarative/agent_spec.py) | `ToolRef`:37-72, `AgentSpec.tools`:140, `extra="forbid"`:124 |
+| The one assembly line (bound set) | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`:387-469, the `tools=` argument at :456, `_builtin_tools`:280-317, `_apply_tool_disables`:320-348 |
+| Reserved framework names | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `RESERVED_DEEPAGENT_TOOL_NAMES`:37-58, `_apply_live_tools`:644-669 |
+| Middleware stack composition | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `default_middleware`:266-277, `_ensure_tool_error_middleware`:351-361, sub-agent guarantee :444-451 |
+| Live-manifest filter + cache keys | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `attach_tools`:117, `_build_tool_key_from_config`:122-129, `_filter_live_tools`:132-159 |
+| Declared ∪ enabled seeding | [src/agents/runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | `config_tool_names` seed :67-82, `_resolve_native_tools`:105-116, `register_agent`:149-159 |
+| Spec tool refs | [src/agents/runtime/abstractions/agent_spec.py](../../src/agents/runtime/abstractions/agent_spec.py) | `ToolRef`:37-72, `AgentSpec.tools`:140, `extra="forbid"`:124 |
 | Two-set override store | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `read_tool_prefs`:55-77, `read_enabled_tools`:86-90, `write_tool_prefs`:93-112 |
 | Manifest cache + canonical key | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`:18, `_TOOL_SERVER_OVERRIDES`:19-30, `_make_cache_key`:74-80, `_build_manifest`:83-107, `_prime_manifest_cache`:110-127, `list_mcp_tools`:177-191 |
 | Manifest record shape | [src/agents/schemas.py](../../src/agents/schemas.py) | `ToolManifest`:165-169 (gains `input_schema`), `AgentToolRow`:318-330 |

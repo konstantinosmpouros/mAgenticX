@@ -24,35 +24,35 @@ The mental model to hold is that **the budget is what makes the feature shippabl
 
 ### An agent is already fully expressible in YAML — with one gap that matters here
 
-A folder with an `agent.yaml` and an `AGENT.md` is a registered, runnable deep agent. `AgentSpec` is strict Pydantic with `extra="forbid"` ([agent_spec.py:124](../../src/agents/runtime/declarative/agent_spec.py)), so every field this plan wants is a deliberate schema decision:
+A folder with an `agent.yaml` and an `AGENT.md` is a registered, runnable deep agent. `AgentSpec` is strict Pydantic with `extra="forbid"` ([agent_spec.py:124](../../src/agents/runtime/abstractions/agent_spec.py)), so every field this plan wants is a deliberate schema decision:
 
 | Spec field | Runtime effect | Ref |
 | --- | --- | --- |
-| `prompt` | `instructions` → `system_prompt` | [yaml_agent.py:58](../../src/agents/runtime/declarative/yaml_agent.py) |
-| `model.main` / `model.subagents{}` | main + per-sub-agent model | [agent_spec.py:93-100](../../src/agents/runtime/declarative/agent_spec.py), [yaml_agent.py:144-146](../../src/agents/runtime/declarative/yaml_agent.py) |
-| `tools[]` (`{server_id, tool_name}` \| `{native}`) | seeds `config_tool_names` (MCP) / resolved at build (native) | [agent_spec.py:37-72](../../src/agents/runtime/declarative/agent_spec.py), [yaml_agent.py:67-83, 153](../../src/agents/runtime/declarative/yaml_agent.py) |
-| `skills[]` | default-enabled skills | [agent_spec.py:142](../../src/agents/runtime/declarative/agent_spec.py) |
-| `subagents[]` | `deepagents.SubAgent` list | [yaml_agent.py:119-142](../../src/agents/runtime/declarative/yaml_agent.py) |
-| `hitl{tool: bool}` | `create_deep_agent(interrupt_on=...)` | [yaml_agent.py:158](../../src/agents/runtime/declarative/yaml_agent.py) → [deep_agent.py:393, 453-460](../../src/agents/runtime/deep_agent.py) |
-| `memory` | default for `use_memory` | [yaml_agent.py:87-88](../../src/agents/runtime/declarative/yaml_agent.py) |
+| `prompt` | `instructions` → `system_prompt` | [yaml_agent.py:58](../../src/agents/runtime/abstractions/yaml_agent.py) |
+| `model.main` / `model.subagents{}` | main + per-sub-agent model | [agent_spec.py:93-100](../../src/agents/runtime/abstractions/agent_spec.py), [yaml_agent.py:144-146](../../src/agents/runtime/abstractions/yaml_agent.py) |
+| `tools[]` (`{server_id, tool_name}` \| `{native}`) | seeds `config_tool_names` (MCP) / resolved at build (native) | [agent_spec.py:37-72](../../src/agents/runtime/abstractions/agent_spec.py), [yaml_agent.py:67-83, 153](../../src/agents/runtime/abstractions/yaml_agent.py) |
+| `skills[]` | default-enabled skills | [agent_spec.py:142](../../src/agents/runtime/abstractions/agent_spec.py) |
+| `subagents[]` | `deepagents.SubAgent` list | [yaml_agent.py:119-142](../../src/agents/runtime/abstractions/yaml_agent.py) |
+| `hitl{tool: bool}` | `create_deep_agent(interrupt_on=...)` | [yaml_agent.py:158](../../src/agents/runtime/abstractions/yaml_agent.py) → [deep_agent.py:393, 453-460](../../src/agents/runtime/abstractions/deep_agent.py) |
+| `memory` | default for `use_memory` | [yaml_agent.py:87-88](../../src/agents/runtime/abstractions/yaml_agent.py) |
 
-The concrete example is `omni-yaml-v1`: `tools: []`, two sub-agents (`researcher`, `writer`) with `tools: []`, and `hitl: {write_file, edit_file, execute, task}` ([agents_seed/omni-yaml-v1/agent.yaml](../../src/agents/agents_seed/omni-yaml-v1/agent.yaml)). Agents are seeded from the image into `<global_root>/agents/` with existing-folders-win semantics ([agent_seed.py:34-84](../../src/agents/runtime/declarative/agent_seed.py)), then discovered by a directory scan that validates each spec and skips invalid ones without taking discovery down ([utils/agents.py:78-118](../../src/agents/utils/agents.py)); `refresh_registry()` runs in the lifespan after the seed ([main.py:218-219](../../src/agents/main.py)).
+The concrete example is `omni-yaml-v1`: `tools: []`, two sub-agents (`researcher`, `writer`) with `tools: []`, and `hitl: {write_file, edit_file, execute, task}` ([agents_seed/omni-yaml-v1/agent.yaml](../../src/agents/agents_seed/omni-yaml-v1/agent.yaml)). Agents are seeded from the image into `<global_root>/agents/` with existing-folders-win semantics ([agent_seed.py:34-84](../../src/agents/runtime/abstractions/agent_seed.py)), then discovered by a directory scan that validates each spec and skips invalid ones without taking discovery down ([utils/agents.py:78-118](../../src/agents/utils/agents.py)); `refresh_registry()` runs in the lifespan after the seed ([main.py:218-219](../../src/agents/main.py)).
 
 **The gap: a YAML sub-agent cannot have MCP tools.** `register_subagents` explicitly drops them with a warning:
 
 ```python
-# src/agents/runtime/declarative/yaml_agent.py:122-132
+# src/agents/runtime/abstractions/yaml_agent.py:122-132
 mcp_refs = [t for t in sa.tools if not t.is_native]
 if mcp_refs:
     logger.warning("yaml_subagent_mcp_tools_ignored",
                    "Sub-agent MCP tools are not yet wired for YAML agents; ignoring", ...)
 ```
 
-Only `_resolve_native_tools(sa.tools)` reaches the `SubAgent` ([yaml_agent.py:139](../../src/agents/runtime/declarative/yaml_agent.py)). A research agent whose whole point is a `searcher` sub-agent holding `tavily-search` is therefore not expressible today. This is a Phase 0 prerequisite, not a nice-to-have.
+Only `_resolve_native_tools(sa.tools)` reaches the `SubAgent` ([yaml_agent.py:139](../../src/agents/runtime/abstractions/yaml_agent.py)). A research agent whose whole point is a `searcher` sub-agent holding `tavily-search` is therefore not expressible today. This is a Phase 0 prerequisite, not a nice-to-have.
 
 ### The tools a research agent can actually get
 
-The request carries no tool list; on every `/stream` and `/resume` the router pulls the **entire** live gateway manifest and the agent keeps what it declared ([router/inference.py:91-96, 316-318](../../src/agents/router/inference.py) → [base_agent.py:117-159](../../src/agents/runtime/base_agent.py)). The gateway runs two servers, `--servers=tavily,arxiv-mcp-server` ([docker-compose-mcp.yaml](../../src/docker-compose-mcp.yaml)), and the server-inference table names the eight tools: `tavily-search`, `tavily-extract`, `tavily-crawl`, `tavily-map`, `search_papers`, `download_paper`, `read_paper`, `list_papers` ([mcp_tools.py:19-30](../../src/agents/utils/mcp_tools.py)). Full detail in [tool-harness.md](../development/tool-harness.md). On top of that: three always-on natives (`remember`, `search_past_conversations`, `present_artifact` — [tools/registry.py:84-132](../../src/agents/runtime/tools/registry.py)) and the framework builtins added downstream of every filter (`write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `task`, `execute` — [deep_agent.py:37-58, 453-469](../../src/agents/runtime/deep_agent.py)).
+The request carries no tool list; on every `/stream` and `/resume` the router pulls the **entire** live gateway manifest and the agent keeps what it declared ([router/inference.py:91-96, 316-318](../../src/agents/router/inference.py) → [base_agent.py:117-159](../../src/agents/runtime/abstractions/base_agent.py)). The gateway runs two servers, `--servers=tavily,arxiv-mcp-server` ([docker-compose-mcp.yaml](../../src/docker-compose-mcp.yaml)), and the server-inference table names the eight tools: `tavily-search`, `tavily-extract`, `tavily-crawl`, `tavily-map`, `search_papers`, `download_paper`, `read_paper`, `list_papers` ([mcp_tools.py:19-30](../../src/agents/utils/mcp_tools.py)). Full detail in [tool-harness.md](../development/tool-harness.md). On top of that: three always-on natives (`remember`, `search_past_conversations`, `present_artifact` — [tools/registry.py:84-132](../../src/agents/runtime/tools/registry.py)) and the framework builtins added downstream of every filter (`write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `task`, `execute` — [deep_agent.py:37-58, 453-469](../../src/agents/runtime/abstractions/deep_agent.py)).
 
 A user can also *enable* any other gateway tool per (user, agent) and *disable* a declared one ([tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py), [agent_tools.py:103-149](../../src/agents/utils/agent_tools.py)) — which means the research agent's tool surface is user-mutable and the budget must not assume a fixed roster.
 
@@ -78,7 +78,7 @@ Reject is non-terminal: the rejection becomes a `ToolMessage` and the loop conti
 
 | Ceiling | Status |
 | --- | --- |
-| Max steps / `recursion_limit` | **Absent.** `recursion_limit` appears nowhere in `src/`. `run_config` is `{'configurable': {'thread_id': …}}` ([base_agent.py:58-59](../../src/agents/runtime/base_agent.py)) and the bridge sets only `configurable.thread_id` ([inference_runs.py:730-733](../../src/dialogue_bridge/utils/inference_runs.py)). LangGraph's **default of 25 super-steps therefore applies silently** and surfaces as an opaque `RUN_ERROR`. A twenty-source research run hits it long before it finishes. |
+| Max steps / `recursion_limit` | **Absent.** `recursion_limit` appears nowhere in `src/`. `run_config` is `{'configurable': {'thread_id': …}}` ([base_agent.py:58-59](../../src/agents/runtime/abstractions/base_agent.py)) and the bridge sets only `configurable.thread_id` ([inference_runs.py:730-733](../../src/dialogue_bridge/utils/inference_runs.py)). LangGraph's **default of 25 super-steps therefore applies silently** and surfaces as an opaque `RUN_ERROR`. A twenty-source research run hits it long before it finishes. |
 | Max tool calls | Absent. |
 | Token / cost ceiling | Absent. `TOKEN_USAGE` is **collect-only**: accumulated per run deduped by `message_id` ([inference_runs.py:289-298](../../src/dialogue_bridge/utils/inference_runs.py)), persisted to `messages.input_tokens/output_tokens` at finalize ([inference_runs.py:1160-1161](../../src/dialogue_bridge/utils/inference_runs.py)), surfaced in the Usage tab — and the timeline reducer branch for it is an **explicit no-op** ([timeline.ts:698-703](../../src/agentic_ui/src/features/inference/timeline.ts)). Nothing compares it to a limit. |
 | Wall clock, interactive run | Absent. No `asyncio.timeout`, no deadline in `_run` ([inference_runs.py:575-904](../../src/dialogue_bridge/utils/inference_runs.py)). |
@@ -119,7 +119,7 @@ The timeline is a fold over the full event log, not an aggregate: `applyEvent` i
 
 ### Where per-user settings live
 
-One row per user, scalars plus one JSON column: `user_preferences` with `search_past_convs`, `use_memory`, `personality`, and `custom_instructions` as `JSON` ([models.py:108-137](../../src/dialogue_bridge/core/database/models.py)). Preferences are threaded into the run as `config["context"]` ([inference_runs.py:730-750](../../src/dialogue_bridge/utils/inference_runs.py)) and re-validated fail-closed on the agents side ([base_agent.py:79-86](../../src/agents/runtime/base_agent.py)). Alembic head is `0016_retire_enabled_tools`.
+One row per user, scalars plus one JSON column: `user_preferences` with `search_past_convs`, `use_memory`, `personality`, and `custom_instructions` as `JSON` ([models.py:108-137](../../src/dialogue_bridge/core/database/models.py)). Preferences are threaded into the run as `config["context"]` ([inference_runs.py:730-750](../../src/dialogue_bridge/utils/inference_runs.py)) and re-validated fail-closed on the agents side ([base_agent.py:79-86](../../src/agents/runtime/abstractions/base_agent.py)). Alembic head is `0016_retire_enabled_tools`.
 
 ---
 
@@ -133,7 +133,7 @@ Three questions, three different answers, and keeping them separate is the desig
 | --- | --- | --- |
 | Is it a distinct agent, a mode flag, or a middleware? | **A distinct declarative agent** — `agents_seed/deep-research-v1/` | A "deep research mode" flag on an existing agent means one agent whose prompt, sub-agent roster, and tool set change at runtime — a second, hidden declarative system inside the one plan 00 just built. A separate `agent.yaml` gets the prompt, models, sub-agents, tools, skills, and HITL gates for free, is user-selectable in the picker, inherits per-agent tool overrides and per-(user, agent) memory, and can be edited on the volume without a rebuild. |
 | Where do the ceilings live? | **A `ResearchBudgetMiddleware`** in `runtime/middlewares/` | A ceiling must be enforced at the tool-call and model-call boundaries, must be able to *change the run's behaviour* rather than abort it, and should be reusable by any future long-running agent. `ToolErrorMiddleware` already proves the pattern: intercept at `awrap_tool_call`, return a `ToolMessage` instead of raising ([tool_error.py:25-43](../../src/agents/runtime/middlewares/tool_error.py)). |
-| Where do the knobs live? | **Run parameters in `config["context"]`, with per-agent defaults in `agent.yaml`** | Identical to how `use_memory` / `search_past_convs` / `personalization` already reach the agent ([inference_runs.py:730-750](../../src/dialogue_bridge/utils/inference_runs.py) → [base_agent.py:79-86](../../src/agents/runtime/base_agent.py)). Per-run because a user tunes depth per question; per-agent defaults because a spec should be self-describing. |
+| Where do the knobs live? | **Run parameters in `config["context"]`, with per-agent defaults in `agent.yaml`** | Identical to how `use_memory` / `search_past_convs` / `personalization` already reach the agent ([inference_runs.py:730-750](../../src/dialogue_bridge/utils/inference_runs.py) → [base_agent.py:79-86](../../src/agents/runtime/abstractions/base_agent.py)). Per-run because a user tunes depth per question; per-agent defaults because a spec should be self-describing. |
 
 ```mermaid
 flowchart TD
@@ -264,7 +264,7 @@ Why a file and not a table, for v1: the report itself is already a file artifact
 
 ### Output templates are skills
 
-Four skill folders under the agent — `executive-summary`, `annotated-bibliography`, `comparison-matrix`, `decision-memo` — each a standard `skills/<name>/SKILL.md`. This is the right mechanism rather than four prompt blocks because skills are already progressively disclosed by the deepagents `SkillsMiddleware` (loaded on demand, not resident in context), are already enabled per (user, agent) through the Skills tab, are already mounted at `/skills/` per (user, agent) ([deep_agent.py:476-488](../../src/agents/runtime/deep_agent.py)), and are already user-extensible — so "add our house report format" is a skill upload, not a code change. The run parameter `output_template` names one, validated against the agent's enabled skills, and the orchestrator is instructed to read that skill before the writer runs.
+Four skill folders under the agent — `executive-summary`, `annotated-bibliography`, `comparison-matrix`, `decision-memo` — each a standard `skills/<name>/SKILL.md`. This is the right mechanism rather than four prompt blocks because skills are already progressively disclosed by the deepagents `SkillsMiddleware` (loaded on demand, not resident in context), are already enabled per (user, agent) through the Skills tab, are already mounted at `/skills/` per (user, agent) ([deep_agent.py:476-488](../../src/agents/runtime/abstractions/deep_agent.py)), and are already user-extensible — so "add our house report format" is a skill upload, not a code change. The run parameter `output_template` names one, validated against the agent's enabled skills, and the orchestrator is instructed to read that skill before the writer runs.
 
 ### Progress over a many-minute run
 
@@ -289,7 +289,7 @@ Chain: `0016_retire_enabled_tools` → `0017_research_preferences`. One migratio
 
 Explicitly **not** in v1: a `research_runs` table (the message row already is one), a `research_sources` table (the ledger is a file — § 3, § 12), and any cost/quota ledger (§ 1 non-goals).
 
-Agents-side spec additions to `AgentSpec` — and because of `extra="forbid"` ([agent_spec.py:124](../../src/agents/runtime/declarative/agent_spec.py)) these are one-shot decisions:
+Agents-side spec additions to `AgentSpec` — and because of `extra="forbid"` ([agent_spec.py:124](../../src/agents/runtime/abstractions/agent_spec.py)) these are one-shot decisions:
 
 ```yaml
 research:                    # optional block; absent = not a research agent
@@ -309,7 +309,7 @@ research:                    # optional block; absent = not a research agent
 | `GET`/`PUT` | `/v1/preferences/{user_id}` (existing) | expose the `research` document | existing prefs auth |
 | `POST` | agents `/agents/{slug}/resume` | `AgentResumeRequest.decision` gains `"edit"`; `value` typed; `_to_lc_decision` gains the branch | `require_internal_caller` |
 
-Run parameters are threaded into `config["context"]["research"]` exactly like the existing preference flags ([inference_runs.py:730-750](../../src/dialogue_bridge/utils/inference_runs.py)) and re-validated fail-closed in the agents service next to `parse_personalization` ([base_agent.py:79-86](../../src/agents/runtime/base_agent.py)) — validate on both sides, because the bridge is not the only possible caller of `/stream`.
+Run parameters are threaded into `config["context"]["research"]` exactly like the existing preference flags ([inference_runs.py:730-750](../../src/dialogue_bridge/utils/inference_runs.py)) and re-validated fail-closed in the agents service next to `parse_personalization` ([base_agent.py:79-86](../../src/agents/runtime/abstractions/base_agent.py)) — validate on both sides, because the bridge is not the only possible caller of `/stream`.
 
 Two new settings blocks. Agents: `ResearchSettings` with the platform-wide **maxima** that a per-run override can never exceed (`RESEARCH_MAX_SOURCES_CEILING`, `RESEARCH_MAX_TOOL_CALLS_CEILING`, `RESEARCH_MAX_WALL_CLOCK_CEILING`, `RESEARCH_DEFAULT_RECURSION_LIMIT`). Bridge: `RESEARCH_RUN_GRACE_SECONDS` for the watchdog, plus a raise of `HTTP_INFERENCE_READ_SECONDS` (§ 8 Phase 0).
 
@@ -336,7 +336,7 @@ Timeline collapsing for long runs is a `features/chat` change (`AgentRunTimeline
 
 ## 7. Cross-cutting impact
 
-**agents runtime.** `AgentSpec` gains a `research` block (an `extra="forbid"` schema decision made once). `YamlDeepAgent.register_subagents` must actually wire sub-agent MCP tools instead of warning ([yaml_agent.py:122-132](../../src/agents/runtime/declarative/yaml_agent.py)) — which means `_filter_live_tools` runs per sub-agent, sub-agent tool keys join the per-(user, agent) override model, and the Agents tab's notion of "declared" must decide whether sub-agent tools are listed. `default_middleware` gains a conditional third entry, so any agent overriding `default_middleware` opts out (the same trap as [07-tool-rag.md](07-tool-rag.md) § 7 — resolve both the same way). `run_config` gains an explicit `recursion_limit`, which changes the ceiling for **every** deep agent in the platform, not just this one. The normalizer gains two synthesis branches. The retention loop and the output mount are unchanged but now carry bigger files.
+**agents runtime.** `AgentSpec` gains a `research` block (an `extra="forbid"` schema decision made once). `YamlDeepAgent.register_subagents` must actually wire sub-agent MCP tools instead of warning ([yaml_agent.py:122-132](../../src/agents/runtime/abstractions/yaml_agent.py)) — which means `_filter_live_tools` runs per sub-agent, sub-agent tool keys join the per-(user, agent) override model, and the Agents tab's notion of "declared" must decide whether sub-agent tools are listed. `default_middleware` gains a conditional third entry, so any agent overriding `default_middleware` opts out (the same trap as [07-tool-rag.md](07-tool-rag.md) § 7 — resolve both the same way). `run_config` gains an explicit `recursion_limit`, which changes the ceiling for **every** deep agent in the platform, not just this one. The normalizer gains two synthesis branches. The retention loop and the output mount are unchanged but now carry bigger files.
 
 **dialogue_bridge.** The start payload and the resume payload both grow; the resume path gains a decision type and its first real payload validation. `_finish_run` writes `research_summary` and — the prerequisite — `_capture_generated_artifacts` must run on non-clean terminals ([inference_runs.py:1185-1186](../../src/dialogue_bridge/utils/inference_runs.py)). A new watchdog loop joins the lifespan next to the scheduler and the embedding sweeper. `HTTP_INFERENCE_READ_SECONDS` is raised, which loosens a timeout for *all* inference, not just research — so the corresponding tightening must be that a research run has its own explicit deadline, or the platform trades a bounded failure for an unbounded hang. Token totals per run jump by an order of magnitude, which shows up in the Usage tab and in whatever alerting reads it.
 
@@ -401,7 +401,7 @@ Wire run-complete and plan-approval-needed into [04-notifications-and-pwa.md](04
 
 **The denylist must be enforced, and the enforcement point is the tool boundary.** A prompt instruction is advisory. Argument inspection for URL tools plus result rewriting for query tools is what makes "never fetch from this domain" true. Normalize before matching (punycode/IDN, case, trailing dot, credentials in the authority, redirect targets) — a denylist that a `xn--` hostname walks straight through is worse than none, because it is believed.
 
-**Fetched web content is untrusted input reaching a tool-using agent.** That is the classic prompt-injection path: a crawled page instructing the agent to exfiltrate the conversation or call a tool. Existing structure limits the blast radius — the tool superset is agent-declared and user-narrowed ([tool-harness.md](../development/tool-harness.md)), the filesystem is permission-laddered with a read-only `input/` ([deep_agent.py:465](../../src/agents/runtime/deep_agent.py) `WORKSPACE_WRITE_DENY`), `execute` is fail-closed, and `present_artifact` is orchestrator-only. Add to that: cap extracted content per source, keep fetched text clearly delimited as data in the prompt, and consider gating any *writing* tool behind HITL for research runs that read the open web. Say plainly in the docs that a research report can contain content the agent was manipulated into writing.
+**Fetched web content is untrusted input reaching a tool-using agent.** That is the classic prompt-injection path: a crawled page instructing the agent to exfiltrate the conversation or call a tool. Existing structure limits the blast radius — the tool superset is agent-declared and user-narrowed ([tool-harness.md](../development/tool-harness.md)), the filesystem is permission-laddered with a read-only `input/` ([deep_agent.py:465](../../src/agents/runtime/abstractions/deep_agent.py) `WORKSPACE_WRITE_DENY`), `execute` is fail-closed, and `present_artifact` is orchestrator-only. Add to that: cap extracted content per source, keep fetched text clearly delimited as data in the prompt, and consider gating any *writing* tool behind HITL for research runs that read the open web. Say plainly in the docs that a research report can contain content the agent was manipulated into writing.
 
 **Logging.** Log domains and counts, never full URLs with query strings (they carry user content), never fetched page bodies, never the report text. `user_id` / `conversation_id` stay hashed per the shared redaction key ([observability.md](../development/observability.md)).
 
@@ -479,14 +479,14 @@ The agents suite needs `deepagents 0.6.10`, which the host lacks — validate wi
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Declarative spec (gains `research`) | [src/agents/runtime/declarative/agent_spec.py](../../src/agents/runtime/declarative/agent_spec.py) | `AgentSpec`:103-190, `hitl`:145, `tools`:140, `extra="forbid"`:124, `reference_errors`:172-190 |
-| Spec → runtime, and the sub-agent gap | [src/agents/runtime/declarative/yaml_agent.py](../../src/agents/runtime/declarative/yaml_agent.py) | `config_tool_names` seed :67-83, **`register_subagents`:119-142 (MCP refs dropped :122-132)**, `register_agent`:149-159 (`interrupt_on=self._spec.hitl`:158) |
+| Declarative spec (gains `research`) | [src/agents/runtime/abstractions/agent_spec.py](../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`:103-190, `hitl`:145, `tools`:140, `extra="forbid"`:124, `reference_errors`:172-190 |
+| Spec → runtime, and the sub-agent gap | [src/agents/runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | `config_tool_names` seed :67-83, **`register_subagents`:119-142 (MCP refs dropped :122-132)**, `register_agent`:149-159 (`interrupt_on=self._spec.hitl`:158) |
 | Concrete spec example | [src/agents/agents_seed/omni-yaml-v1/agent.yaml](../../src/agents/agents_seed/omni-yaml-v1/agent.yaml) | `tools: []`, sub-agents, `hitl:` block |
-| Seed + discovery | [agent_seed.py](../../src/agents/runtime/declarative/agent_seed.py) · [utils/agents.py](../../src/agents/utils/agents.py) | `seed_global_agents`:34-84; `_scan_yaml_agents`:78-118, `refresh_registry`:158-168 |
-| Build lifecycle, HITL wiring, permissions | [src/agents/runtime/deep_agent.py](../../src/agents/runtime/deep_agent.py) | `build_deep_agent`:387-469 (`interrupt_on`:393, `permissions=WORKSPACE_WRITE_DENY`:465), `default_middleware`:266-277, `_builtin_tools`:280-317, `_apply_tool_disables`:320-348, `load_skills`:476-488, `ensure_built`:558-590 |
+| Seed + discovery | [agent_seed.py](../../src/agents/runtime/abstractions/agent_seed.py) · [utils/agents.py](../../src/agents/utils/agents.py) | `seed_global_agents`:34-84; `_scan_yaml_agents`:78-118, `refresh_registry`:158-168 |
+| Build lifecycle, HITL wiring, permissions | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`:387-469 (`interrupt_on`:393, `permissions=WORKSPACE_WRITE_DENY`:465), `default_middleware`:266-277, `_builtin_tools`:280-317, `_apply_tool_disables`:320-348, `load_skills`:476-488, `ensure_built`:558-590 |
 | Middleware pattern to copy | [src/agents/runtime/middlewares/tool_error.py](../../src/agents/runtime/middlewares/tool_error.py) | `AgentMiddleware`, `wrap_tool_call`/`awrap_tool_call`:25-43, `_error_message`:45-60 |
 | Context compaction (long runs) | [src/agents/runtime/middlewares/summarization.py](../../src/agents/runtime/middlewares/summarization.py) | `build_summarization_middleware`:39-75, `exclude_stock_summarization`:78-101 |
-| `run_config` (no `recursion_limit`) | [src/agents/runtime/base_agent.py](../../src/agents/runtime/base_agent.py) | `default_run_config`:58-59, `_validate_run_config`:187-196, context flags :79-86 |
+| `run_config` (no `recursion_limit`) | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `default_run_config`:58-59, `_validate_run_config`:187-196, context flags :79-86 |
 | Agents `/stream` + `/resume` | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `/stream`:34-125 (tools :91-96), `/resume`:131-340 (`aget_state`:219-221, 409s :233-258, `_to_lc_decision`:269-279, `Command(resume=…)`:300), `output-files`:372-403, `reap`:406-434 |
 | Interrupt detection / artifact synthesis | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | stream-mode contract :25-37 and :80-81, `__interrupt__`:232-257, `write_todos`:351, `task`:363, `present_artifact`:386-418, sub-agent wrapping :625-658 |
 | Event constants + payloads | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) · [emitter.py](../../src/agents/runtime/agui/emitter.py) | constants :7-14, `PresentArtifactEvent`:112-129, `TokenUsageEvent`:80-91; emitter `present_artifact`:340, `_emit`:73-85 |

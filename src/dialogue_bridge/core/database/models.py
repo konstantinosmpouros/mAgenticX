@@ -39,9 +39,29 @@ EMBEDDING_DIMENSIONS = 1536
 # -------------------------------------------------------------------------------
 class AgentTable(Base):
     __tablename__ = "agents"
+    __table_args__ = (
+        # A user may not have two agents with the same slug…
+        UniqueConstraint("owner_user_id", "slug", name="uq_agents_owner_slug"),
+        # …and platform slugs stay globally unique. A plain composite constraint
+        # is not enough: Postgres allows unlimited NULLs in a unique index, so
+        # without this partial index two platform agents could share a slug.
+        Index(
+            "uq_agents_global_slug",
+            "slug",
+            unique=True,
+            postgresql_where=text("owner_user_id IS NULL"),
+        ),
+    )
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    slug = Column(String, nullable=False, unique=True)
+    # NULL = a platform agent discovered from the agents-service manifest.
+    # Set = a user-authored agent whose definition lives in that user's
+    # workspace (`custom_agents/<slug>/agent.yaml`). Drives both the agents
+    # service's resolution path and every ownership check.
+    owner_user_id = Column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    slug = Column(String, nullable=False)
     name = Column(String, nullable=False)
     description = Column(String, nullable=False)
     icon = Column(String, nullable=False)

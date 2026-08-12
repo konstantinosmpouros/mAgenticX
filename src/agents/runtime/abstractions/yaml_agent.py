@@ -1,5 +1,5 @@
 """``YamlDeepAgent`` — a single, generic ``DeepAgent`` built from an
-:class:`~runtime.declarative.agent_spec.AgentSpec` instead of a bespoke Python
+:class:`~runtime.abstractions.agent_spec.AgentSpec` instead of a bespoke Python
 subclass.
 
 This is what makes agents declarative: the discoverer parses a folder's
@@ -13,7 +13,7 @@ Identity (``name``/``agent_id``/``label``/…) is set per **instance** (a single
 class serves every YAML agent), so ``self.name`` — read throughout the base for
 the workspace mounts, builtins, and ``build_deep_agent(name=...)`` — resolves to
 the spec's slug. The registry manifest is built from the spec by
-``runtime.declarative.utils.manifest_from_spec`` (the base ``classmethod`` reads
+``utils.declarative.manifest_from_spec`` (the base ``classmethod`` reads
 class attrs, which a single shared class can't carry per agent).
 """
 from __future__ import annotations
@@ -23,9 +23,10 @@ from typing import Any, Mapping, Optional
 
 from deepagents import SubAgent
 
-from runtime.deep_agent import DeepAgent
-from runtime.declarative.agent_spec import AgentSpec, SubAgentSpec, ToolRef
-from runtime.declarative.utils import read_prompt
+from runtime.abstractions.deep_agent import DeepAgent
+from runtime.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
+from utils.declarative import read_prompt
+from runtime.filesystem import layout
 from runtime.filesystem.tool_prefs import read_enabled_tools
 from runtime.tools.registry import NativeToolContext, resolve_native_tool
 from observability import get_logger
@@ -88,6 +89,46 @@ class YamlDeepAgent(DeepAgent):
             self.use_memory = spec.memory
 
     # ------------------------------------------------------------------
+    @property
+    def reference_dir(self) -> Path:
+        """Mount the agent's own definition folder read-only at ``/reference/``.
+
+        A declarative agent's folder is prompts and config — the loader accepts
+        no other file type — so exposing it costs nothing and makes bundled
+        material (notes, checklists, examples the prompt refers to) actually
+        readable. Without this, a file sitting next to ``AGENT.md`` is inert:
+        only ``prompt`` and the sub-agent prompts are ever read, and those are
+        read once at build time.
+        """
+        return self._source_dir
+
+
+    @property
+    def default_skills_dir(self) -> Optional[Path]:
+        """The skills this agent ships with, resolved from where it was defined.
+
+        A platform agent's live in its own global folder and are mounted straight
+        from there — never copied into a user's tree, so they cost nothing per
+        user and cannot be tampered with. A user-authored agent's were resolved
+        out of the author's pool when the agent was saved, into the read-only
+        ``default_skills/`` dir in their workspace.
+
+        ``None`` when the spec declares none, when the directory is empty, or
+        during registry warmup (no ``user_id`` yet) — mounting an empty route
+        would advertise a tier the agent hasn't got.
+        """
+        if not self._spec.skills:
+            return None
+        if self._source_dir.parent.name == layout.CUSTOM_AGENTS_DIRNAME:
+            user_id = (self.context or {}).get("user_id")
+            if not user_id:
+                return None
+            path = layout.agent_default_skills_root(user_id, self.name)
+        else:
+            path = layout.global_agent_default_skills_root(self.name)
+        return path if path.is_dir() and any(path.iterdir()) else None
+
+
     def _native_ctx(self) -> Optional[NativeToolContext]:
         """Context for building native tools, or None during registry warmup
         (no user_id — same guard as ``_builtin_tools``)."""

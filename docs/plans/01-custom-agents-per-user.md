@@ -27,7 +27,7 @@ So this plan is mostly not about agent behaviour — it is about teaching three 
 
 ## 2. Current state
 
-**The engine is ready.** `_scan_yaml_agents(root)` walks `<root>/agents/<slug>/agent.yaml`, validates with `AgentSpec.model_validate` plus `reference_errors()` (models + native-tool allowlists), and registers an `AgentDefinition(slug, manifest, factory, spec)` whose factory builds a `YamlDeepAgent`. Invalid specs are logged and skipped, never fatal. See [utils/agents.py](../../src/agents/utils/agents.py) and [runtime/declarative/](../../src/agents/runtime/declarative/).
+**The engine is ready.** `_scan_yaml_agents(root)` walks `<root>/agents/<slug>/agent.yaml`, validates with `AgentSpec.model_validate` plus `reference_errors()` (models + native-tool allowlists), and registers an `AgentDefinition(slug, manifest, factory, spec)` whose factory builds a `YamlDeepAgent`. Invalid specs are logged and skipped, never fatal. See [utils/agents.py](../../src/agents/utils/agents.py) and [runtime/abstractions/](../../src/agents/runtime/abstractions/).
 
 **But everything about it is global.** Four concrete obstacles:
 
@@ -246,8 +246,8 @@ Spec validation gets table-driven tests (valid, unknown field, bad model, unknow
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Spec + validation to reuse | [runtime/declarative/agent_spec.py](../../src/agents/runtime/declarative/agent_spec.py) | `AgentSpec`, `reference_errors` |
-| Generic runtime agent | [runtime/declarative/yaml_agent.py](../../src/agents/runtime/declarative/yaml_agent.py) | `YamlDeepAgent` |
+| Spec + validation to reuse | [runtime/abstractions/agent_spec.py](../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`, `reference_errors` |
+| Generic runtime agent | [runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | `YamlDeepAgent` |
 | Discovery to extend | [utils/agents.py](../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
 | Agent-root derivation | [runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `agent_root` — must be owner-scoped |
 | Workspace roots | [core/settings.py](../../src/agents/core/settings.py) | `FilesystemSettings.workspaces_root` |

@@ -664,6 +664,65 @@ def assign_user_skill_to_agent(
     )
 
 
+def sync_agent_default_skills(
+    *,
+    user_id: str,
+    agent_slug: str,
+    skill_names: Iterable[str],
+) -> list[str]:
+    """Mirror a user-authored agent's declared ``skills:`` into its tier-① dir.
+
+    Called when the agent is saved, because that is the moment the spec (and the
+    fact that every name is in the user's pool) is known and validated. Returns
+    the names that resolved; a name that has since left the pool is skipped with
+    a warning rather than failing the save — the agent simply ships without it.
+
+    Kept separate from :func:`_enable_skill_for_agent` because the two tiers must
+    stay structurally distinct: this directory is mounted read-only, so a skill
+    that lands here cannot be removed by the per-agent enable/disable endpoint.
+    Names no longer declared are pruned, so editing an agent's skill list is
+    reflected on the next run.
+    """
+    wanted = {_safe_segment(name): name for name in skill_names}
+    dest_parent = layout.agent_default_skills_root(user_id, agent_slug)
+    dest_parent.mkdir(parents=True, exist_ok=True)
+
+    resolved: list[str] = []
+    for segment, name in wanted.items():
+        dest = dest_parent / segment
+        try:
+            src = resolve_skill_path(user_id, name)
+        except Exception:  # not in the pool any more — see the docstring
+            logger.warning(
+                "agent_default_skill_unresolved",
+                "Declared default skill is not in the user's pool; skipping",
+                user_id=user_id,
+                agent_slug=agent_slug,
+                skill_name=name,
+            )
+            continue
+        # Re-copy rather than skip-if-exists: saving the agent is the sync point,
+        # so the mounted copy should match the pool as of this save.
+        if dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
+        shutil.copytree(src, dest)
+        resolved.append(name)
+
+    # Prune anything the spec no longer declares.
+    for existing in dest_parent.iterdir():
+        if existing.is_dir() and existing.name not in wanted:
+            shutil.rmtree(existing, ignore_errors=True)
+
+    logger.info(
+        "agent_default_skills_synced",
+        "Synced a user agent's declared default skills from the pool",
+        user_id=user_id,
+        agent_slug=agent_slug,
+        count=len(resolved),
+    )
+    return resolved
+
+
 def list_user_skill_names(user_id: str) -> Iterable[str]:
     """Just the names — handy for callers that don't need full entries."""
     return [s.name for s in read_user_manifest(user_id).skills]

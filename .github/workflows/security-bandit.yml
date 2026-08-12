@@ -38,15 +38,21 @@ jobs:
           # Report only issues of a given confidence level or higher. Can be LOW, MEDIUM or HIGH. Default is UNDEFINED (everything)
           # confidence: # optional, default is UNDEFINED
           # comma-separated list of paths (glob patterns supported) to exclude from scan (note that these are in addition to the excluded paths provided in the config file) (default: .svn,CVS,.bzr,.hg,.git,__pycache__,.tox,.eggs,*.egg)
-          # tests/ is excluded because bare `assert` is the pytest idiom — Bandit's
-          # B101 flagged every test assertion (~1.2K alerts of pure noise), drowning
-          # the real findings. Production code stays fully scanned, so asserts in
-          # src/ are still reported.
-          # MUST be a plain directory path, never a glob: the action interpolates
+          # Excluded from the scan:
+          # - ./tests — bare `assert` is the pytest idiom; Bandit's B101 flagged
+          #   every test assertion (~1.2K alerts of pure noise).
+          # - ./src/agents/runtime/skill_registry/registry — the vendored skills
+          #   catalog (third-party skill folders seeded from upstream). Their
+          #   scripts legitimately shell out / download / parse XML, and we don't
+          #   maintain that code; findings there are unactionable. The registry
+          #   *code* (skill_registry/*.py) stays scanned. NOTE: agents must never
+          #   execute these scripts outside the sandbox plan — that control lives
+          #   in SANDBOX_EXECUTION_ENABLED, not in this scan.
+          # MUST be plain directory paths, never globs: the action interpolates
           # this value unquoted into the bandit command line, so a shell glob like
           # ./tests/* expands into the directory listing and breaks the invocation.
           # Bandit appends /* to directory entries itself (manager.discover_files).
-          excluded_paths: "./tests"
+          excluded_paths: "./tests,./src/agents/runtime/skill_registry/registry"
           # comma-separated list of test IDs to skip
           # skips: # optional, default is DEFAULT
           # path to a .bandit file that supplies command line arguments

@@ -43,6 +43,21 @@ class _FailingStreamAgent(_FakeAgent):
         yield b""
 
 
+def _patch_agent_resolver(agents_service, monkeypatch, registry):
+    """Point the inference router's agent lookup at a fake registry.
+
+    The router resolves through `resolve_agent_definition(slug, owner_user_id)`
+    so a user-authored agent can be loaded from its owner's workspace, so tests
+    patch that seam rather than a module-level registry dict. `owner_user_id` is
+    ignored here — these tests exercise platform agents.
+    """
+    monkeypatch.setattr(
+        agents_service.router_inference,
+        "resolve_agent_definition",
+        lambda slug, owner_user_id=None: registry.get(slug),
+    )
+
+
 class _FailingInitAgent(_FakeAgent):
     def __init__(self, config=None):
         raise RuntimeError("bad config")
@@ -110,7 +125,7 @@ async def test_stream_route_forwards_chunks_from_agent_runtime(
             manifest={"id": "1", "slug": "demo-agent", "name": "Demo Agent", "type": "langgraph", "description": "Demo", "icon": "bot"},
         )
     }
-    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
+    _patch_agent_resolver(agents_service, monkeypatch, registry)
     monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
     async def fake_load_mcp_tools(session):
         return [{"name": "sql_query"}]
@@ -144,7 +159,7 @@ async def test_stream_route_returns_400_when_agent_initialization_fails(
             manifest={"id": "1", "slug": "bad-agent", "name": "Bad Agent", "type": "langgraph", "description": "Bad", "icon": "bot"},
         )
     }
-    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
+    _patch_agent_resolver(agents_service, monkeypatch, registry)
 
     response = await client.post(
         "/agents/bad-agent/stream",
@@ -169,7 +184,7 @@ async def test_stream_route_encodes_runtime_errors(
             manifest={"id": "1", "slug": "demo-agent", "name": "Demo Agent", "type": "langgraph", "description": "Demo", "icon": "bot"},
         )
     }
-    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
+    _patch_agent_resolver(agents_service, monkeypatch, registry)
     monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
 
     async def fake_load_mcp_tools(session):

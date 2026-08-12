@@ -27,7 +27,7 @@ from runtime.skill_registry import (
     reconcile_all_user_manifests,
     seed_global_registry,
 )
-from runtime.declarative import seed_global_agents
+from runtime.abstractions import seed_global_agents
 from utils.agents import refresh_registry
 from router.catalog import router as catalog_router
 from router.embeddings import router as embeddings_router
@@ -36,6 +36,7 @@ from router.inference import router as inference_router
 from router.memories import router as memories_router
 from router.skills import router as skills_router
 from router.agent_tools import router as agent_tools_router
+from router.user_agents import router as user_agents_router
 from router.voice import router as voice_router
 
 
@@ -260,4 +261,5 @@ app.include_router(inference_router)
 app.include_router(memories_router)
 app.include_router(skills_router)
 app.include_router(agent_tools_router)
+app.include_router(user_agents_router)
 app.include_router(voice_router)

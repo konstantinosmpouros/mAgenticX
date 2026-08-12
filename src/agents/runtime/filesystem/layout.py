@@ -42,6 +42,9 @@ from core.settings import settings
 # sweeper used to skip `memory`/`skills` by name, which broke every time a new
 # sibling was added under the agent root.
 CONVERSATIONS_DIRNAME = "conversations"
+# Named so callers can recognise a *definition* path without a magic string
+# (e.g. a declarative agent deciding whether it is user-authored or platform).
+CUSTOM_AGENTS_DIRNAME = "custom_agents"
 
 
 def safe_segment(value: str) -> str:
@@ -128,16 +131,15 @@ def user_custom_skill_dir(user_id: str, skill_name: str) -> Path:
 
 
 def user_custom_agents_root(user_id: str) -> Path:
-    """Where a user's own ``agent.yaml`` definitions will live.
+    """Where a user's own ``agent.yaml`` definitions live.
 
-    Scaffolded now, wired later (see
-    ``docs/plans/01-custom-agents-per-user.md``). Deliberately separate from
+    Deliberately separate from
     ``agents/`` — that holds per-agent *state* for every agent the user talks
     to, platform or custom, while this holds *definitions* the user owns. The
     split mirrors the global plane, where ``global/agents/<slug>/`` is a
     definition and the user's state lives elsewhere.
     """
-    return user_workspace(user_id) / "custom_agents"
+    return user_workspace(user_id) / CUSTOM_AGENTS_DIRNAME
 
 
 def user_custom_agent_dir(user_id: str, agent_slug: str) -> Path:
@@ -205,6 +207,7 @@ def conversation_output_root(user_id: str, agent_slug: str, conversation_id: str
 
 __all__ = [
     "CONVERSATIONS_DIRNAME",
+    "CUSTOM_AGENTS_DIRNAME",
     "safe_segment",
     "global_root",
     "global_agents_root",

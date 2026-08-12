@@ -25,6 +25,7 @@ from observability import (
 from core.cache.integration import install_redis_sdk
 
 from router import (
+    user_agents_router,
     agent_tools_router,
     auth_router,
     catalog_router,
@@ -180,6 +181,13 @@ app.include_router(
     catalog_router,
     prefix=f"/v1/catalog",
     tags=["Catalog"]
+)
+app.include_router(
+    # Registered before the tools router so the literal "custom" path segment is
+    # matched ahead of the `{agent_id}` parameter.
+    user_agents_router,
+    prefix=f"/v1/agents",
+    tags=["Custom Agents"],
 )
 app.include_router(
     agent_tools_router,

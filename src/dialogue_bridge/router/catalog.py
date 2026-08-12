@@ -9,6 +9,7 @@ from utils import (
     generate_conversation_suggestions,
     get_agent_by_id,
     get_cached_agents,
+    list_user_agents,
     recent_conversations_for_suggestions,
     sync_agents_with_service,
     validate_userId,
@@ -22,10 +23,15 @@ logger = get_logger(__name__)
 
 
 @router.get("/agents", response_model=list[AgentPublic], status_code=status.HTTP_200_OK)
-async def get_available_agents(_: AuthUser = Depends(require_current_user), db: AsyncSession = Depends(get_db)):
+async def get_available_agents(user: AuthUser = Depends(require_current_user), db: AsyncSession = Depends(get_db)):
     """
-    Return the active agents, preferring the in-memory cache and refreshing
-    from the agents service only when the cache is empty.
+    Return the agents this caller may use: every active platform agent, plus the
+    agents they authored themselves.
+
+    Platform agents come from the in-memory cache (refreshed from the agents
+    service only when empty). User-authored agents are read per-request and
+    scoped to the caller — they are deliberately absent from the cache, which is
+    process-global and would otherwise expose one user's agents to everyone.
     """
     agents = get_cached_agents()
     if agents:
@@ -33,7 +39,11 @@ async def get_available_agents(_: AuthUser = Depends(require_current_user), db: 
     if not agents:
         logger.info("agents_cache_miss", "Agent cache empty; synchronizing with agents service")
         agents = await sync_agents_with_service(db)
-    return [AgentPublic.model_validate(a) for a in agents]
+
+    owned = await list_user_agents(db, user.id)
+    if owned:
+        logger.info("user_agents_listed", "Included user-authored agents", count=len(owned))
+    return [AgentPublic.model_validate(a) for a in [*agents, *owned]]
 
 
 @router.get("/tools", response_model=list[ToolManifest], status_code=status.HTTP_200_OK)

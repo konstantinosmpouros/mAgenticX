@@ -14,7 +14,13 @@ export default function TasksView() {
 
   return (
     <motion.div
-      className="absolute inset-0 z-50 bg-background"
+      // z-30, not z-50: this fills the sidebar's content pane, and the mobile
+      // sidebar is a fixed sibling at z-40 (backdrop) / z-50 (panel). At an equal
+      // z-50 the later DOM node won, so this opaque page painted straight over the
+      // open sidebar — on mobile the toggle looked like it did nothing. Anything
+      // that must sit above this (profile modal, dialogs) renders after it or
+      // portals out.
+      className="absolute inset-0 z-30 bg-background"
       initial={reduceMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2, ease: "easeOut" }}

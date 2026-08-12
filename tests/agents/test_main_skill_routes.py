@@ -363,13 +363,28 @@ class _NoInterruptResumeAgent(_FakeResumeAgent):
     interrupts: list = []
 
 
+def _patch_agent_resolver(agents_service, monkeypatch, registry):
+    """Point the inference router's agent lookup at a fake registry.
+
+    The router resolves through `resolve_agent_definition(slug, owner_user_id)`
+    so a user-authored agent can be loaded from its owner's workspace, so tests
+    patch that seam rather than a module-level registry dict. `owner_user_id` is
+    ignored here — these tests exercise platform agents.
+    """
+    monkeypatch.setattr(
+        agents_service.router_inference,
+        "resolve_agent_definition",
+        lambda slug, owner_user_id=None: registry.get(slug),
+    )
+
+
 def _resume_env(agents_service, monkeypatch, agent_cls=_FakeResumeAgent, has_cp=True):
     # has_cp=False ⇒ the checkpoint has no pending interrupt (409), modelled by
     # an agent whose aget_state returns empty interrupts.
     if not has_cp and agent_cls is _FakeResumeAgent:
         agent_cls = _NoInterruptResumeAgent
     registry = {"omni": agents_service.schemas.AgentDefinition(slug="omni", cls=agent_cls, manifest={})}
-    monkeypatch.setattr(agents_service.router_inference, "AGENT_REGISTRY", registry)
+    _patch_agent_resolver(agents_service, monkeypatch, registry)
     monkeypatch.setattr(agents_service.router_inference, "mcp_session_context", lambda: _FakeSessionContext())
 
     async def fake_load_mcp_tools(session):

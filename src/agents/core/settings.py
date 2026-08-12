@@ -264,6 +264,39 @@ class AgentRegistrySettings(BaseSettings):
         default=(), validation_alias="DISABLED_AGENT_SLUGS"
     )
 
+    # Models a *user-authored* agent may select. Deliberately a short curated
+    # allowlist rather than the loose `provider:model` shape accepted for
+    # built-ins: a user picking a nonexistent model would produce an agent that
+    # fails at run time, and an unbounded choice is a cost surface. Built-in
+    # agents are reviewed code and are not constrained by this.
+    allowed_agent_models: tuple[str, ...] = Field(
+        default=("openai:gpt-5", "openai:gpt-4o", "openai:gpt-4o-mini"),
+        validation_alias="ALLOWED_AGENT_MODELS",
+    )
+
+    # Per-user cap on authored agents — bounds both storage and the amount of
+    # prompt surface one account can introduce.
+    max_agents_per_user: int = Field(20, validation_alias="MAX_AGENTS_PER_USER")
+
+    @field_validator("allowed_agent_models", mode="before")
+    @classmethod
+    def _parse_models(cls, value: object) -> object:
+        """Accept a list or a comma-separated string (env-friendly), de-duped."""
+        if isinstance(value, (list, tuple)):
+            candidates = [str(item).strip() for item in value]
+        elif value is None:
+            return ()
+        else:
+            candidates = [part.strip() for part in str(value).split(",")]
+        items: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            items.append(candidate)
+        return tuple(items)
+
     @field_validator("disabled_agent_slugs", mode="before")
     @classmethod
     def _parse_slugs(cls, value: object) -> object:

@@ -737,6 +737,17 @@ class InferenceRunManager:
                         "run_id": str(run.id),
                         "search_past_convs": search_past_convs,
                         "use_memory": use_memory,
+                        # Whose agent this is: absent/None for a platform agent,
+                        # the owner's id for a user-authored one. The agents
+                        # service resolves the definition from the global
+                        # registry or that user's workspace accordingly — the DB
+                        # is the authority, so a user can never shadow a
+                        # platform agent by naming theirs the same.
+                        **(
+                            {"agent_owner_id": str(agent.owner_user_id)}
+                            if getattr(agent, "owner_user_id", None)
+                            else {}
+                        ),
                         **({"personalization": personalization} if personalization else {}),
                     },
                 }

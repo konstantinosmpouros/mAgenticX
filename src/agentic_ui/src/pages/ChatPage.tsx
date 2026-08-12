@@ -72,7 +72,7 @@ import {
   HitlProvider,
   pendingTimelineInterrupts,
 } from "@/features/inference";
-import { getConversationDetail, getSkills, getSuggestions } from "@/shared/lib/api";
+import { getAgents, getConversationDetail, getSkills, getSuggestions } from "@/shared/lib/api";
 
 // Chat Interface component
 import ChatSidebar from "@/features/chat/components/ChatSidebar";
@@ -343,6 +343,41 @@ export function useChatWorkspace({
     }
   }, [requestPersist]);
 
+  /**
+   * Re-pull the agent catalog after the user creates, edits or deletes an agent.
+   *
+   * The catalog is otherwise fetched once at login and once per page load, so
+   * without this every place that renders agents from it — the header picker,
+   * the Skills/Memories per-agent lists, the task form, message attribution —
+   * would keep serving the pre-mutation list until a refresh.
+   *
+   * `removedAgentId` additionally re-points the selection: the picker's
+   * `selectedAgent` is just an id, and if it names a deleted agent the header
+   * falls back to a placeholder while sends still carry the dead id.
+   */
+  const refreshAgentCatalog = useCallback(
+    async ({ removedAgentId }: { removedAgentId?: string } = {}) => {
+      try {
+        const fresh = await getAgents();
+        setAgents(fresh);
+        // Read the live selection from the store rather than closing over it,
+        // so this callback stays stable across agent switches.
+        if (removedAgentId && useWorkspaceStore.getState().selectedAgent === removedAgentId) {
+          const nextAgent = fresh.find((agent) => agent.isActive) ?? fresh[0];
+          setSelectedAgent(nextAgent?.id ?? "");
+        }
+      } catch (error) {
+        // The mutation itself already succeeded and reported its own outcome;
+        // a failed re-pull only means the list is stale until the next load, so
+        // don't raise a second, contradictory error toast.
+        if (import.meta.env.DEV) console.error("Failed to refresh the agent catalog:", error);
+      } finally {
+        requestPersist();
+      }
+    },
+    [requestPersist],
+  );
+
   const {
     isSearchOpen,
     searchQuery,
@@ -431,7 +466,20 @@ export function useChatWorkspace({
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
-  } = useProfilePanel({ userId, toast: toastWrapper, initialPool: myRegistrySkills, requestPersist });
+    myAgents,
+    busyAgentId,
+    getAgentDefinition,
+    validateAgent,
+    handleCreateAgent,
+    handleUpdateAgent,
+    handleDeleteAgent,
+  } = useProfilePanel({
+    userId,
+    toast: toastWrapper,
+    initialPool: myRegistrySkills,
+    requestPersist,
+    refreshAgentCatalog,
+  });
 
   // Per-(user, agent) long-term memory inspector for the ProfilePanel "Memories"
   // tab — read + delete only (the agent owns writes via its `remember` tool).
@@ -796,6 +844,20 @@ export function useChatWorkspace({
       setInactiveAgentFallback(null);
     }
   }, [currentConversation, agents]);
+
+  // With no conversation open, the picker's selection must name an agent that is
+  // actually in the catalog. An open conversation may legitimately point at one
+  // that isn't (its own inactive/removed agent, merged into the list for display),
+  // but once that conversation is gone the id is unusable: it would leave the
+  // trigger blank and send inference against an agent that no longer exists.
+  // Guarded on the route param too, so this never races an in-flight load that is
+  // about to set the selection from the conversation itself.
+  useEffect(() => {
+    if (conversationId || currentConversation || agents.length === 0) return;
+    if (agents.some((agent) => agent.id === selectedAgent)) return;
+    const nextAgent = agents.find((agent) => agent.isActive) ?? agents[0];
+    setSelectedAgent(nextAgent?.id ?? "");
+  }, [conversationId, currentConversation, agents, selectedAgent]);
 
   // Session auto-refresh effect
   useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
@@ -1445,6 +1507,9 @@ export function useChatWorkspace({
     isSkillToggling, mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail,
     ensureSkillDetail, handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill,
     handleRemoveSkillFromPool,
+    // profile/agents (the Agents-tab builder)
+    myAgents, busyAgentId, getAgentDefinition, validateAgent,
+    handleCreateAgent, handleUpdateAgent, handleDeleteAgent,
     memoryInspector,
     // derived
     AgentIcon, inputBarAgent, isMessagesEmpty, settledVoiceActive, isCurrentConversationBusy,
@@ -1512,6 +1577,8 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     handleSetActiveProfileTab, handleLogout, availableTools, availableSkills, handleRefreshSkills,
     mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail, ensureSkillDetail,
     handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill, handleRemoveSkillFromPool,
+    myAgents, busyAgentId, getAgentDefinition, validateAgent,
+    handleCreateAgent, handleUpdateAgent, handleDeleteAgent,
     skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading, isSkillToggling,
     memoryInspector, conversationUsage,
     resolvedPreferences, archivedConversations, archivedConvIsLoading, archivedConvHasMore,
@@ -1632,6 +1699,13 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                 onAddGlobalSkillToPool={handleAddGlobalSkill}
                 onCreateCustomSkill={handleCreateCustomSkill}
                 onRemoveSkillFromPool={handleRemoveSkillFromPool}
+                myAgents={myAgents}
+                busyAgentId={busyAgentId}
+                onCreateAgent={handleCreateAgent}
+                onUpdateAgent={handleUpdateAgent}
+                onDeleteAgent={handleDeleteAgent}
+                onValidateAgent={validateAgent}
+                onLoadAgentDefinition={getAgentDefinition}
                 agents={agents}
                 skillSelections={skillSelections}
                 onLoadAgentSkills={loadAgentSkills}
