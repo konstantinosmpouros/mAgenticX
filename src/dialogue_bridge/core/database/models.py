@@ -50,6 +50,10 @@ class AgentTable(Base):
             "slug",
             unique=True,
             postgresql_where=text("owner_user_id IS NULL"),
+            # The test suite builds this schema on sqlite; without the dialect's
+            # own predicate the index degrades to globally-unique there, so two
+            # users' same-named agents would collide in tests but not in prod.
+            sqlite_where=text("owner_user_id IS NULL"),
         ),
     )
 

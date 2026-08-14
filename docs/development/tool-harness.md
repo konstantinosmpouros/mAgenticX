@@ -126,6 +126,31 @@ flowchart LR
 
 ---
 
+## Phase 5 — User-authored agents inside the same harness
+
+A user can build their own agent (Settings → Agents → Your agents), and the point of the design is that **nothing about the harness changes**: the same `AgentSpec`, the same `YamlDeepAgent`, the same four tool classes, the same override sets. A user-authored agent cannot express a capability a platform agent cannot — because the prompt is user data but the *capability surface* stays platform-governed.
+
+```mermaid
+flowchart LR
+    SPEC["user's agent.yaml<br/>tools: [mcp refs, native names]"] --> VAL["validate_write()<br/>allowlisted model · known natives<br/>HITL floor · quotas · path confinement"]
+    VAL --> RES["resolve_agent_definition(slug, owner_user_id)"]
+    RES --> BUILD["YamlDeepAgent → build_deep_agent<br/>identical to a platform agent"]
+    BUILD --> OVR["(declared ∪ enabled) − disabled<br/>same tool_prefs.json"]
+```
+
+| Guarantee | How it holds |
+| --- | --- |
+| No user-supplied tool code | `tools:` entries are *references* — an MCP `server/tool` pair validated against the live gateway manifest, or a native name validated against the in-code registry. There is no path by which a spec contributes executable code. |
+| The approval gates can't be removed | `_HITL_FLOOR = (write_file, edit_file, execute, task)` is enforced in `validate_write`, so a spec that omits or falsifies a gate is **rejected**. Without this, authoring an agent would be a one-line bypass of the confirmation gate on `write_file`/`execute`. |
+| Models are allowlisted | `settings.registry.allowed_agent_models`, not free text — a user cannot select something nonexistent or costly. |
+| Definitions are config, never code | `extra="forbid"` on every spec model; the agent folder accepts `.md/.txt/.yaml/.yml` only, ≤20 files, ≤256 KiB each, ≤1 MiB total, depth ≤3. |
+| Overrides work identically | The Agents tab reads and writes the same `<agent_root>/tool_prefs.json` for a user agent as for a platform one; `agent_root` is per-`(user, slug)`, so two users' same-named agents cannot alias. |
+| Skills are references too | `skills:` must name skills already in the user's pool; they are copied into the read-only `/default_skills/` mount at save time and layered *after* the user-enabled tier, so they can be added to but never removed. See [agent-development](agent-development.md). |
+
+The agent's own definition folder is additionally mounted read-only at `/reference/`, so prompt-adjacent material (notes, checklists, examples) is readable on demand — but a run cannot rewrite its own definition, and therefore cannot edit its next system prompt.
+
+---
+
 ## Sharp Edges and Behavioral Notes
 
 - **`present_artifact` is always on; native builtins can't be disabled here.** The Agents tab lists MCP tools only. `toggle_agent_tool` ignores native keys and `_apply_tool_disables` subtracts native keys from the disabled set — so even a legacy pre-model disable of a native is neutralized. `remember` / `search_past_conversations` are turned on/off via the Personalization prefs, not this tab.
@@ -135,6 +160,7 @@ flowchart LR
 - **Reserved names win over MCP.** `DeepAgent._apply_live_tools` drops any live MCP tool whose name collides with a reserved deepagents builtin, so a rogue server can't shadow `read_file`.
 - **The request never carries tools.** Since migration `0016`, `config["tools"]` is not sent by the bridge and not read by `BaseAgent`. A `YamlDeepAgent` is the only thing that populates `config_tool_names`, from its spec.
 - **LangGraph agents are unaffected by all of this.** Their RAG retrieval is a graph *node* calling `rag_service` over HTTP, not a bound tool — an empty tool list changes nothing for them. This is why retiring the global tool list was safe.
+- **A user agent can never shadow a platform one.** Resolution checks the platform cache *first*, and creation rejects a reserved platform slug outright — so the per-agent tools endpoint is never ambiguous about which agent it is configuring.
 - **Python deep agents declare no MCP tools.** Without an `agent.yaml` spec, `config_tool_names` is empty, so a Python deep agent gets framework + native builtins only.
 
 ---
@@ -152,4 +178,6 @@ flowchart LR
 | Agents-tab list / toggle | [src/agents/utils/agent_tools.py](../../src/agents/utils/agent_tools.py) · [router/agent_tools.py](../../src/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
 | Live MCP manifest load | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) · [router/inference.py](../../src/agents/router/inference.py) | `load_mcp_tools`, `mcp_session_context`, `attach_tools` call |
 | Bridge proxy | [src/dialogue_bridge/router/agent_tools.py](../../src/dialogue_bridge/router/agent_tools.py) | GET list + POST toggle (CSRF) |
+| User-agent spec validation (tool refs, HITL floor, quotas) | [src/agents/runtime/abstractions/user_agents.py](../../src/agents/runtime/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
+| Ownership-aware resolution | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |
 | Frontend Agents tab | [src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | optimistic toggle, `getAgentTools` / `toggleAgentTool` |

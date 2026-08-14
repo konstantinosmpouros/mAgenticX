@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,14 @@ if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
 os.environ.setdefault("APP_ENV", "test")
-os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{(ROOT / '.pytest-bootstrap-dialogue-bridge.db').as_posix()}")
+# A placeholder so `core.settings` can load at import time — never connected to.
+# Every test gets its own engine from the `db_engine` fixture below. Kept in the
+# temp dir because sqlalchemy/aiosqlite touches the file into existence, and the
+# repo root is not a scratch space (it was landing there untracked and un-ignored).
+os.environ.setdefault(
+    "DATABASE_URL",
+    f"sqlite+aiosqlite:///{(Path(tempfile.gettempdir()) / 'pytest-bootstrap-dialogue-bridge.db').as_posix()}",
+)
 os.environ.setdefault("SESSION_TOKEN_SECRET", "test-session-token-secret")
 os.environ.setdefault("SESSION_COOKIE_SECURE", "false")
 os.environ.setdefault("TRUSTED_PROXY_SECRET", "test-trusted-proxy-secret")

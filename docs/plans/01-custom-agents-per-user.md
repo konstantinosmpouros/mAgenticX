@@ -1,6 +1,6 @@
 # Custom agents per user
 
-> **Status:** Not started
+> **Status:** **Delivered** (2026-08-12, `2efdda9` + `4e2d383`). Kept for the reasoning; the mechanism below is written as shipped, and where it diverged from the original plan the divergence is called out — the abandoned `runtime_key` scheme is described in §3.1 so nobody re-implements it.
 > **TODO source:** **Agents** → "Create a functionality for the user to configure a custom agent with a set of tools and instructions, so that the user can create a custom agent for their own use case with their skills, prompts, tools, filesystem, sub agents and etc in yml formats and then he will be able to use them."
 > **Depends on:** [00 · Platform restructure](00-platform-restructure.md) (done — the engine), [02 · Org + user permissions](02-org-and-user-permissions.md) (ownership semantics)
 > **Blocks:** nothing hard. Soft: [12 · `create_skill` tool](12-create-skill-tool.md) (an agent writing into *its own* user-owned definition)
@@ -59,44 +59,53 @@ Note that everything shipped so far is unaffected: `agent_root()` derives from `
 
 ---
 
-## 3. Target design
+## 3. Design as shipped
 
 ```mermaid
 flowchart TD
-    UI["Agents tab → Create agent<br/>form builder (+ YAML view)"] --> API["bridge /v1/agents/{user}/custom<br/>validate · create · update · delete"]
-    API --> WRITE["agents service<br/>POST /agents/users/{user}/agents"]
-    WRITE --> FS["/var/magenticx/workspaces/{user}/agents/{slug}/<br/>agent.yaml · AGENT.md · subagents/ · skills/"]
-    API --> DB[("AgentTable<br/>owner_user_id + slug + runtime_key")]
-    RUN["inference: build(runtime_key)"] --> RESOLVE["resolve_agent(runtime_key)"]
-    RESOLVE --> GLOBAL["global AGENT_REGISTRY<br/>(platform agents)"]
-    RESOLVE --> USER["lazy per-user scan<br/>(cached, invalidated on write)"]
+    UI["Agents tab → New agent<br/>guided builder (+ generated definition)"] --> API["bridge /v1/agents/{user}/custom<br/>validate · create · update · delete"]
+    API --> WRITE["agents service<br/>/users/{user}/custom-agents"]
+    WRITE --> FS["workspaces/users/{user}/custom_agents/{slug}/<br/>agent.yaml · AGENT.md · subagents/ · notes"]
+    API --> DB[("AgentTable<br/>owner_user_id + slug")]
+    RUN["inference: context.agent_owner_id"] --> RESOLVE["resolve_agent_definition(slug, owner_user_id)"]
+    RESOLVE --> GLOBAL["_AGENT_CACHE<br/>(platform agents only)"]
+    RESOLVE --> USER["_USER_AGENT_CACHE<br/>keyed (user_id, slug), mtime-invalidated"]
     USER --> FS
 ```
 
 ### 3.1 Ownership & the slug namespace
 
-`AgentTable` gains `owner_user_id` (nullable; `NULL` = platform agent) and a **`runtime_key`** — the identifier the bridge sends to the agents service and the agents service resolves:
+`AgentTable` gained `owner_user_id` (nullable; `NULL` = platform agent). Uniqueness became **per-owner**, with a partial unique index keeping platform slugs globally unique (§4).
 
-| Agent kind | `owner_user_id` | `slug` | `runtime_key` |
+**The planned `runtime_key` column was not built, and should not be.** The idea was a second identifier (`u/<user_id>/<slug>`) that the bridge would send instead of the slug. It is unnecessary: the agents service already receives the run's user via the inference context, so ownership can travel *beside* the slug instead of being encoded into it. What shipped is a single extra context field:
+
+| Agent kind | `owner_user_id` | `slug` | resolved by |
 | --- | --- | --- | --- |
-| Platform | `NULL` | `omni-yaml-v1` | `omni-yaml-v1` |
-| User | `<uuid>` | `research-bot` | `u/<user_id>/research-bot` |
+| Platform | `NULL` | `omni-yaml-v1` | `resolve_agent_definition("omni-yaml-v1", None)` |
+| User | `<uuid>` | `research-bot` | `resolve_agent_definition("research-bot", "<uuid>")` |
 
-This resolves the open collision decision from plan 00 in favour of **namespacing over override**: a user agent never shadows a platform agent, the user keeps a friendly slug, and the existing route shape `/agents/{agent_slug}/stream` keeps working because `runtime_key` is opaque to the URL. Uniqueness becomes per-owner (§4).
+The bridge sets `context.agent_owner_id` when the resolved agent row has an owner ([utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py)); the agents service passes it to the resolver ([router/inference.py](../../src/agents/router/inference.py), both the stream and resume paths). This keeps the same outcome as the plan — **namespacing over override**, a user agent can never shadow a built-in — with no slug mangling, no ambiguous parsing of `/`-containing keys, no migration backfill, and no second identifier to keep in sync with the first.
 
 ### 3.2 Resolution instead of registration
 
-The global `AGENT_REGISTRY` keeps holding **platform agents only**. User agents are resolved on demand:
+The process-global cache holds **platform agents only**; user agents resolve on demand:
 
 ```text
-resolve_agent(runtime_key):
-    if not runtime_key.startswith("u/"):  return AGENT_REGISTRY[runtime_key]
-    user_id, slug = parse(runtime_key)
-    return user_agent_cache.get((user_id, slug)) or scan_and_validate(
-        workspaces_root/user_id/agents/slug/agent.yaml)
+resolve_agent_definition(slug, owner_user_id=None):
+    platform = _AGENT_CACHE.get(slug)
+    if platform:                 return platform          # platform slugs are reserved
+    if not owner_user_id:        return None
+    return _load_user_agent(owner_user_id, slug)          # mtime-keyed cache
 ```
 
-Per-user agents are therefore never in a shared dict, cannot leak, and cannot be enumerated by another user. The cache is small, keyed by `(user_id, slug)`, invalidated on write and on a short TTL — this also fixes the "restart to propagate" problem for user agents specifically, since the writer invalidates its own entry.
+`_USER_AGENT_CACHE` is keyed `(user_id, slug)` and invalidated by the definition's **mtime** rather than by an explicit write hook or a TTL — a save changes the file, so the next resolve reloads it, and there is no cache-coherence path to get wrong. A spec that fails validation resolves to `None` (a 404) rather than a half-built agent.
+
+Two isolation properties fall out of this and are load-bearing:
+
+- User agents are never in a shared dict, so they cannot leak or be enumerated across users.
+- Platform lookup happens **first**, so a user agent named after a built-in resolves to the built-in. Creation also reserves platform slugs outright, so the case is rejected up front rather than silently shadowed.
+
+> **A leak this design fixed.** `GET /v1/catalog/agents` originally served the entire process-global cache to any authenticated caller. Once user agents could enter that cache, one user's agents would have been visible to everyone. The fix is structural — the cache is platform-only and owned agents are read per request, scoped to the caller ([router/catalog.py](../../src/dialogue_bridge/router/catalog.py)).
 
 ### 3.3 Authoring: form first, YAML visible
 
@@ -106,23 +115,23 @@ The primary surface is a guided builder that *generates* the YAML — name/descr
 
 ## 4. Data model & migrations
 
-New migration slot: **`0017_agent_ownership`** (`down_revision` = `0016_retire_enabled_tools`).
+Shipped as **`0017_agent_ownership`** (`down_revision` = `0016_retire_enabled_tools`), hand-written:
 
 ```python
 op.add_column("agents", sa.Column("owner_user_id", sa.String(), nullable=True))
 op.create_foreign_key(None, "agents", "users", ["owner_user_id"], ["id"], ondelete="CASCADE")
-op.add_column("agents", sa.Column("runtime_key", sa.String(), nullable=True))
-op.execute("UPDATE agents SET runtime_key = slug WHERE runtime_key IS NULL")   # backfill
-op.alter_column("agents", "runtime_key", nullable=False)
-op.create_unique_constraint("uq_agents_runtime_key", "agents", ["runtime_key"])
-op.drop_constraint("agents_slug_key", "agents", type_="unique")               # was global-unique
+op.create_index("ix_agents_owner_user_id", "agents", ["owner_user_id"])
+# The partial index must exist BEFORE the global constraint is dropped, so there
+# is no window in which two platform agents could take the same slug.
 op.create_index("uq_agents_global_slug", "agents", ["slug"],
                 unique=True, postgresql_where=sa.text("owner_user_id IS NULL"))
+op.drop_constraint("uq_agents_slug", "agents", type_="unique")
 op.create_unique_constraint("uq_agents_owner_slug", "agents", ["owner_user_id", "slug"])
-op.create_index("ix_agents_owner_user_id", "agents", ["owner_user_id"])
 ```
 
-Notes that matter: the partial index is required because Postgres allows unlimited `NULL`s in a unique constraint, so `(owner_user_id, slug)` alone would not keep platform slugs unique. `runtime_key` is backfilled from `slug` in the same migration, so the column is non-null without a separate deploy. Autogenerate silently ignores `postgresql_where`, so this migration must be hand-written (a documented blind spot in the repo's migration workflow).
+Notes that matter: the partial index is required because Postgres allows unlimited `NULL`s in a unique constraint, so `(owner_user_id, slug)` alone would not keep platform slugs unique. Autogenerate silently ignores `postgresql_where`, so this migration had to be hand-written (a documented blind spot in the repo's migration workflow). No `runtime_key` column and therefore no backfill (§3.1).
+
+**The downgrade deliberately refuses** when any user-owned agent exists, rather than dropping the column and silently deleting user agents. Rolling this migration back is therefore one-way once the feature has been used — a deliberate trade of reversibility for not destroying user content.
 
 Quotas live in settings, not the schema: max agents per user, max sub-agents per agent, max prompt bytes, max total spec bytes.
 
@@ -176,14 +185,14 @@ Empty state matters here: a first-time user sees an explanatory card with *Creat
 
 ---
 
-## 8. Phased execution
+## 8. Phased execution (as executed)
 
 **Phase 0 — Persist the workspace root (prerequisite, blocking).**
 Add a named volume (or a Dennis bind mount under `/opt/magenticx/`) at `/var/magenticx` to the agents service in **both** `docker-compose.yaml` and `docker-compose-denis.yaml`. Without this, `workspaces_root` is the container's ephemeral layer and every user-authored agent is lost on redeploy (§2). Decide here whether `global_root` shares the same volume — it should, so out-of-band edits to built-ins finally behave as documented.
 *Acceptance:* a file written under `/var/magenticx/workspaces/<user>/` survives `up -d --build --no-deps agents`; the seeder still reports `skipped=[…]` (not `copied`) for an already-present built-in on the second start.
 
 **Phase 1 — Ownership & resolution (no UI).**
-Migration `0017`; `owner_user_id` + `runtime_key` on the model; owner-aware `get_agent_by_id`; `sync_agents_with_service` scoped to platform agents; `resolve_agent(runtime_key)` + the per-user cache in the agents service; bridge sends `runtime_key` instead of `slug`.
+Migration `0017`; `owner_user_id` on the model; owner-aware `get_agent_by_id`; `sync_agents_with_service` and the process-global cache scoped to platform agents; `resolve_agent_definition(slug, owner_user_id)` + the mtime-keyed per-user cache in the agents service; bridge threads `context.agent_owner_id` (no `runtime_key` — §3.1).
 *Acceptance:* an agent folder placed by hand under `workspaces_root/<user>/agents/<slug>/` is usable for inference by that user and invisible to another user; every existing platform agent behaves exactly as before.
 
 **Phase 2 — Validation & CRUD.**
@@ -220,7 +229,7 @@ The central threat: **a user-authored agent executes with platform credentials**
 
 ## 10. Testing strategy
 
-Spec validation gets table-driven tests (valid, unknown field, bad model, unknown native tool, path escape, missing prompt file, over-quota, HITL-floor removal attempt). Resolution gets isolation tests: two users with the same slug resolve to different agents; user A cannot resolve user B's `runtime_key`; a platform slug is unshadowable. Bridge gets authz tests (403 cross-user, 403 on platform agent mutation) and a delete test asserting conversations survive. One integration test walks create → converse → update → delete against a real DB, per the repo's no-mocked-DB rule. Frontend: builder validation states and the picker's tolerance of a mid-session deletion. Agents-side tests run in-image (the host lacks the pinned `deepagents`).
+Spec validation gets table-driven tests (valid, unknown field, bad model, unknown native tool, path escape, missing prompt file, over-quota, HITL-floor removal attempt). Resolution gets isolation tests: two users with the same slug resolve to different agents; user A cannot resolve user B's agent; a platform slug is unshadowable. Bridge gets authz tests (403 cross-user, 403 on platform agent mutation) and a delete test asserting conversations survive. One integration test walks create → converse → update → delete against a real DB, per the repo's no-mocked-DB rule. Frontend: builder validation states and the picker's tolerance of a mid-session deletion. Agents-side tests run in-image (the host lacks the pinned `deepagents`).
 
 ---
 
