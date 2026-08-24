@@ -751,7 +751,7 @@ Note: `VAULT_OIDC_ROLE` and `VAULT_OIDC_PATH` exist in settings, but the current
 
 | Variable | Default |
 | --- | --- |
-| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `4` |
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `15` |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60` |
 | `INFERENCE_RATE_LIMIT_MAX_ATTEMPTS` | `10` |
 | `INFERENCE_RATE_LIMIT_WINDOW_SECONDS` | `60` |

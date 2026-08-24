@@ -39,6 +39,7 @@ These plans deliberately cross-reference each other. Most items in `src/TODO` ar
 | 16 | [Context & usage UI](16-context-usage-ui.md) | Bugs / Fixes | Not started |
 | 17 | [Dynamic voice language, per conversation](17-voice-language-dynamic.md) | Bugs / Fixes | Not started |
 | 18 | [Workspace filesystem consolidation + two-tier skills](18-workspace-filesystem-consolidation.md) | derived (storage half of Projects/Workspaces) | Not started |
+| 19 | [Multi-account sign-in & switching](19-multi-account-switching.md) | New Features → multiple accounts per browser | **Delivered** |
 
 ---
 

@@ -6,3 +6,9 @@ fakeredis==2.31.3
 # fails fast with a stack dump instead of pinning the CI runner until the
 # 6-hour job ceiling. Enforced via `timeout` in pytest.ini.
 pytest-timeout==2.4.0
+
+# Async SQLite driver — the bridge suite builds its schema on sqlite so tests
+# need no live Postgres. Test-only on purpose: it used to sit in
+# src/dialogue_bridge/requirements.txt and therefore shipped in the production
+# image, where nothing can reach it (production is always Postgres).
+aiosqlite==0.21.0

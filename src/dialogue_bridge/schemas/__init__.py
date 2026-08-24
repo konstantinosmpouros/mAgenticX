@@ -57,6 +57,37 @@ class AuthResponse(BaseModel):
     tokenTtl: Optional[int] = None
 
 
+class AccountSummary(BaseModel):
+    """One account the browser is signed in to, for the switcher.
+
+    Never carries a token — the parked credential stays server-side. ``expired``
+    marks a parked session whose refresh token has aged out: it is still listed
+    (silently vanishing looks like a bug) but selecting it re-authenticates.
+    """
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: str
+    username: str
+    email: Optional[str] = None
+    displayName: Optional[str] = Field(None, validation_alias="display_name")
+    avatarUrl: Optional[str] = Field(None, validation_alias="avatar_url")
+    isActive: bool = Field(True, validation_alias="is_active")
+    current: bool = False
+    expired: bool = False
+
+
+class AccountListResponse(BaseModel):
+    """The switcher's contents plus whether more accounts may be added."""
+    accounts: list[AccountSummary] = Field(default_factory=list)
+    canAddAccount: bool = True
+    maxAccounts: int = 0
+
+
+class SwitchAccountRequest(BaseModel):
+    """Promote a parked account to the active session."""
+    user_id: str
+
+
 
 # -------------------------------------------
 # DICTATION DTO

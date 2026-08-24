@@ -42,9 +42,11 @@ export type UserAgentsHandlers = {
 type UserAgentsCtx = {
   userId: string | null;
   toast: ToastFn;
+  /** False until the session has been confirmed against the cookies. */
+  authResolved?: boolean;
 };
 
-export function useUserAgents({ userId, toast }: UserAgentsCtx): UserAgentsHandlers {
+export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): UserAgentsHandlers {
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [loadingMyAgents, setLoadingMyAgents] = useState(false);
   const [busyAgentId, setBusyAgentId] = useState<string | null>(null);
@@ -57,7 +59,9 @@ export function useUserAgents({ userId, toast }: UserAgentsCtx): UserAgentsHandl
   }, [userId]);
 
   const refreshMyAgents = useCallback(async () => {
-    if (!userId) {
+    // Same guard as useSkills: the store's userId can disagree with the cookies
+    // until the session is confirmed (see useSkills for the OIDC case).
+    if (!userId || authResolved === false) {
       setMyAgents([]);
       return;
     }
@@ -70,7 +74,7 @@ export function useUserAgents({ userId, toast }: UserAgentsCtx): UserAgentsHandl
     } finally {
       setLoadingMyAgents(false);
     }
-  }, [userId]);
+  }, [userId, authResolved]);
 
   useEffect(() => {
     void refreshMyAgents();

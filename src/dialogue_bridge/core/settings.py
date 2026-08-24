@@ -114,6 +114,29 @@ class SessionSettings(BaseSettings):
     refresh_cookie_name: str | None = Field(None, validation_alias="SESSION_REFRESH_COOKIE_NAME")
     csrf_cookie_name: str | None = Field(None, validation_alias="SESSION_CSRF_COOKIE_NAME")
     csrf_header_name: str = Field("X-CSRF-Token", validation_alias="SESSION_CSRF_HEADER_NAME")
+
+    # --- multi-account (parked sessions) -------------------------------------
+    # On by default. It does keep several live refresh tokens per browser, which
+    # widens the blast radius of a stolen session from one account to N — bounded
+    # by max_parked_accounts, at-rest encryption and per-switch rotation (see
+    # docs/plans/19). Set false to turn the whole surface off; every
+    # /v1/auth/accounts* route then 404s.
+    multi_account_enabled: bool = Field(True, validation_alias="MULTI_ACCOUNT_ENABLED")
+    # Names the browser's parked-session index. Opaque random id, never a user id.
+    device_cookie_name: str | None = Field(None, validation_alias="SESSION_DEVICE_COOKIE_NAME")
+    # Hard ceiling on concurrently signed-in accounts. Each entry is a live bearer
+    # credential, so this is a security bound, not a UI nicety — keep it as low as
+    # the product allows. Two covers the common personal + work case; asking for a
+    # third surfaces the "log out of one to continue" dialog.
+    max_parked_accounts: int = Field(2, ge=1, le=10, validation_alias="MAX_PARKED_ACCOUNTS")
+    # AES-GCM key (32 bytes, base64 or hex) encrypting parked refresh tokens at
+    # rest. Redis otherwise holds usable credentials; with this, a Redis-only
+    # compromise is not enough. Supply it explicitly in production (a Swarm secret
+    # via PARKED_TOKEN_KEY_FILE) so it is rotatable independently; when absent it
+    # is derived from SESSION_TOKEN_SECRET, which keeps local dev free of an extra
+    # ops step without ever falling back to plaintext.
+    parked_token_key: SecretStr = Field(default_factory=lambda: SecretStr(""))
+
     # General-purpose HMAC secret (used e.g. for short-lived DOCX-preview tokens);
     # no longer used for auth sessions, which are now stateless Vault-signed JWTs.
     token_secret: SecretStr = Field(default_factory=lambda: SecretStr(""))
@@ -128,6 +151,16 @@ class SessionSettings(BaseSettings):
         resolved = _resolve_file_backed_secret("SESSION_TOKEN_SECRET")
         return resolved if resolved else ""
 
+    @field_validator("parked_token_key", mode="before")
+    @classmethod
+    def _load_parked_token_key(cls, value: object) -> object:
+        if isinstance(value, SecretStr) and value.get_secret_value():
+            return value
+        if isinstance(value, str) and value:
+            return value
+        resolved = _resolve_file_backed_secret("PARKED_TOKEN_KEY")
+        return resolved if resolved else ""
+
     @model_validator(mode="after")
     def _apply_cookie_name_defaults(self) -> "SessionSettings":
         host_locked = self.secure and self.domain is None
@@ -135,10 +168,23 @@ class SessionSettings(BaseSettings):
             "access_cookie_name": "__Host-mx_session" if host_locked else "mx_session",
             "refresh_cookie_name": "__Host-mx_refresh" if host_locked else "mx_refresh",
             "csrf_cookie_name": "__Host-mx_csrf" if host_locked else "mx_csrf",
+            "device_cookie_name": "__Host-mx_device" if host_locked else "mx_device",
         }
         for field_name, default in defaults.items():
             if getattr(self, field_name) is None:
                 object.__setattr__(self, field_name, default)
+        # Fail closed rather than parking credentials in plaintext: with the
+        # feature on there must be *something* to derive an at-rest key from.
+        if (
+            self.multi_account_enabled
+            and not self.parked_token_key.get_secret_value()
+            and not self.token_secret.get_secret_value()
+        ):
+            raise ValueError(
+                "MULTI_ACCOUNT_ENABLED is true but neither PARKED_TOKEN_KEY nor "
+                "SESSION_TOKEN_SECRET is set. Parked refresh tokens must be encrypted "
+                "at rest; refusing to start."
+            )
         return self
 
 
@@ -528,7 +574,11 @@ class RedisSettings(BaseSettings):
 class RateLimitSettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG
 
-    auth_max_attempts: int = Field(4, validation_alias="AUTH_RATE_LIMIT_MAX_ATTEMPTS")
+    # Per resolved client IP, per window. Raised from 4 because one sign-in is no
+    # longer one login: "add another account" is a second POST /login, and behind
+    # a NAT or corporate proxy several people share the same resolved IP — 4/min
+    # locked out legitimate users. Still a tight brute-force ceiling.
+    auth_max_attempts: int = Field(15, validation_alias="AUTH_RATE_LIMIT_MAX_ATTEMPTS")
     auth_window_seconds: int = Field(60, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS")
     inference_max_attempts: int = Field(10, validation_alias="INFERENCE_RATE_LIMIT_MAX_ATTEMPTS")
     inference_window_seconds: int = Field(60, validation_alias="INFERENCE_RATE_LIMIT_WINDOW_SECONDS")

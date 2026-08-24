@@ -343,3 +343,30 @@ export const UsageSummarySchema = z.record(z.unknown()).transform(toUsageSummary
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;
 export type UsageAgentBreakdown = UsageSummary["perAgent"][number];
 export type UsageDailyPoint = UsageSummary["daily"][number];
+
+// One account this browser is signed in to. The backend never sends a token —
+// the parked credential stays server-side — so there is nothing sensitive here.
+// `current` marks the active account; `expired` a parked session whose refresh
+// token aged out (still listed, because vanishing silently reads as a bug).
+export const AccountSummarySchema = z.record(z.unknown()).transform((raw) => ({
+  id: typeof raw.id === "string" ? raw.id : "",
+  username: typeof raw.username === "string" ? raw.username : "",
+  email: typeof raw.email === "string" ? raw.email : undefined,
+  displayName: typeof raw.displayName === "string" ? raw.displayName : undefined,
+  avatarUrl: typeof raw.avatarUrl === "string" ? raw.avatarUrl : undefined,
+  isActive: typeof raw.isActive === "boolean" ? raw.isActive : true,
+  current: raw.current === true,
+  expired: raw.expired === true,
+}));
+export type AccountSummary = z.infer<typeof AccountSummarySchema>;
+
+export const AccountListSchema = z.record(z.unknown()).transform((raw) => ({
+  accounts: Array.isArray(raw.accounts)
+    ? raw.accounts.map((row) => AccountSummarySchema.parse(row))
+    : [],
+  // Fail closed on a malformed answer: better to hide "add account" than to
+  // offer an action the server will reject.
+  canAddAccount: raw.canAddAccount === true,
+  maxAccounts: typeof raw.maxAccounts === "number" ? raw.maxAccounts : 0,
+}));
+export type AccountList = z.infer<typeof AccountListSchema>;

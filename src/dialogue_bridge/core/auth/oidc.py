@@ -34,6 +34,10 @@ logger = get_logger(__name__)
 
 _FLOW_KEY_PREFIX = "auth:oidc:flow:"
 _FLOW_TTL_SECONDS = 600  # 10 minutes to complete the redirect round-trip
+# "Add another account" has to survive the redirect round-trip: the callback is
+# a fresh GET from Microsoft carrying none of our own query, so the intent is
+# parked server-side against the same single-use state.
+_PARK_KEY_PREFIX = "auth:oidc:park:"
 
 
 class EntraOIDCError(Exception):
@@ -102,9 +106,12 @@ async def _get_redis() -> aioredis.Redis:
 # ---------------------------------------------------------------------------
 # Flow
 # ---------------------------------------------------------------------------
-async def begin_login(redirect_uri: str) -> str:
+async def begin_login(redirect_uri: str, *, park: bool = False) -> str:
     """Start the auth-code flow: build the Entra authorize URL, persist the flow
-    (state/nonce/PKCE) single-use in Redis, and return the URL to redirect to."""
+    (state/nonce/PKCE) single-use in Redis, and return the URL to redirect to.
+
+    ``park`` records that this sign-in should *add* an account rather than replace
+    the current one; :func:`consume_park_intent` reads it back in the callback."""
     app = await _get_app()
     # prompt=select_account lets the user pick which Microsoft account to use.
     flow = await asyncio.to_thread(
@@ -119,7 +126,33 @@ async def begin_login(redirect_uri: str) -> str:
         raise EntraOIDCError("MSAL did not return a usable authorization request.")
     client = await _get_redis()
     await client.setex(f"{_FLOW_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, json.dumps(flow))
+    if park:
+        await client.setex(f"{_PARK_KEY_PREFIX}{state}", _FLOW_TTL_SECONDS, "1")
     return auth_uri
+
+
+async def consume_park_intent(state: str | None) -> bool:
+    """Whether this sign-in began as "add another account". Single use.
+
+    Read-and-delete, so a replayed callback cannot park twice. Any Redis error
+    answers ``False``: failing to park merely replaces the session, which is the
+    pre-existing behaviour, and never leaves the browser in a stranger state.
+    """
+    if not state:
+        return False
+    try:
+        client = await _get_redis()
+        key = f"{_PARK_KEY_PREFIX}{state}"
+        value = await client.get(key)
+        if value is not None:
+            await client.delete(key)
+        return value is not None
+    except Exception:
+        logger.warning(
+            "oidc_park_intent_unavailable",
+            "Could not read the add-account intent; signing in normally",
+        )
+        return False
 
 
 async def complete_login(auth_response: dict) -> AuthIdentity:

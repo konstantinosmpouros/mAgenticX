@@ -165,6 +165,7 @@ SESSION_COOKIE_DOMAIN = settings.session.domain
 SESSION_ACCESS_COOKIE_NAME = settings.session.access_cookie_name
 SESSION_REFRESH_COOKIE_NAME = settings.session.refresh_cookie_name
 CSRF_COOKIE_NAME = settings.session.csrf_cookie_name
+DEVICE_COOKIE_NAME = settings.session.device_cookie_name
 CSRF_HEADER_NAME = settings.session.csrf_header_name
 
 
@@ -254,9 +255,44 @@ def issue_session_cookies(response: Response, issued: IssuedTokens) -> None:
 
 
 def clear_session_cookies(response: Response) -> None:
+    """Clear the *active* session. The device cookie is deliberately left alone —
+    it indexes the browser's other signed-in accounts, and a plain logout should
+    still leave those reachable (see ``clear_device_cookie`` for the escape
+    hatch that forgets them)."""
     cookie_domain = _cookie_domain()
     for key in (SESSION_ACCESS_COOKIE_NAME, SESSION_REFRESH_COOKIE_NAME, CSRF_COOKIE_NAME):
         response.delete_cookie(key=key, path="/", domain=cookie_domain)
+
+
+def get_device_id(request: Request) -> str | None:
+    """The browser's parked-session index id, if it carries one."""
+    raw = request.cookies.get(DEVICE_COOKIE_NAME)
+    return raw.strip() or None if raw else None
+
+
+def issue_device_cookie(response: Response, device_id: str) -> None:
+    """Persist the parked-session index id.
+
+    Same hardening as the session cookies (httpOnly, Secure, SameSite,
+    ``__Host-`` in production) and the same lifetime as a refresh token, since it
+    is useless once every parked session has expired. It is only an *index* — on
+    its own it grants nothing, because both ``/accounts`` and ``/switch`` also
+    require a valid active session.
+    """
+    response.set_cookie(
+        key=DEVICE_COOKIE_NAME,
+        value=device_id,
+        max_age=settings.jwt.refresh_absolute_ttl_seconds,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite=SESSION_COOKIE_SAMESITE,
+        domain=_cookie_domain(),
+        path="/",
+    )
+
+
+def clear_device_cookie(response: Response) -> None:
+    response.delete_cookie(key=DEVICE_COOKIE_NAME, path="/", domain=_cookie_domain())
 
 
 def _parse_bearer_token(request: Request) -> Optional[str]:
@@ -294,6 +330,27 @@ async def rotate_session(ctx: AuthContext, *, is_active: bool = True) -> IssuedT
     """Rotate the access + refresh pair, preserving the original sid and login_at
     so the denylist still covers this login and the 10-day refresh cap doesn't slide."""
     return await mint_tokens(ctx.user_id, sid=ctx.id, login_at=ctx.login_at, is_active=is_active)
+
+
+async def resolve_parked_refresh(token: str) -> AuthContext:
+    """Verify a refresh token taken from the parked index.
+
+    Goes through the same ``verify_token`` + denylist path as a cookie-borne
+    refresh, so a parked session that was logged out elsewhere, revoked, or has
+    simply expired cannot be promoted back into an active one.
+    """
+    claims = await verify_token(token, REFRESH_TYPE)
+    sid = claims["sid"]
+    if await logout_denylist.is_revoked(sid):
+        raise SessionAuthenticationError("Session has been logged out.")
+    return AuthContext(
+        id=sid,
+        user_id=claims["sub"],
+        is_active=bool(claims.get("act", True)),
+        expires_at=_claim_expiry(int(claims["exp"])),
+        login_at=claims.get("lat"),
+        jti=claims.get("jti"),
+    )
 
 
 async def _resolve(request: Request, token: str | None, expected_type: str) -> AuthContext:
@@ -369,10 +426,15 @@ async def require_refresh_session(request: Request) -> AuthContext:
     return ctx
 
 
-async def revoke_current_session(request: Request) -> str | None:
+async def revoke_current_session(request: Request) -> tuple[str, str | None] | None:
     """Instant logout: read the caller's access (or refresh) token, and denylist
     its sid for the full refresh lifetime so neither token survives — including a
-    copy exfiltrated before logout. Best-effort; returns the sid or None."""
+    copy exfiltrated before logout. Best-effort.
+
+    Returns ``(sid, user_id)`` so the caller can also forget this account as a
+    *parked* one. The user id comes from whichever token verified, which matters
+    because a logout often arrives with an already-expired access token — reading
+    the identity from the access token alone would silently skip the cleanup."""
     for getter, token_type in (
         (_get_access_token_from_request, ACCESS_TYPE),
         (_get_refresh_token_from_request, REFRESH_TYPE),
@@ -390,7 +452,7 @@ async def revoke_current_session(request: Request) -> str | None:
         set_context(user_id=claims.get("sub"), session_id=sid)
         # Cover the maximum session lifetime — the denylist entry auto-expires.
         await logout_denylist.revoke(sid, settings.jwt.refresh_absolute_ttl_seconds)
-        return sid
+        return sid, claims.get("sub")
     return None
 
 

@@ -101,7 +101,12 @@ export function useAuthRehydrateEffect(params: {
             ? restored.tokenTtl * 1000
             : 60 * 60 * 1000;
         saveSession(restored.user, ttlMs);
-        if (existing) {
+        // Only carry the previous session's UI position forward when it belongs
+        // to the SAME user. After a server-side session swap (adding an account
+        // through the OIDC callback) localStorage still describes the previous
+        // account, and inheriting its last conversation id would have the new
+        // account try to open someone else's chat.
+        if (existing && existing.userId === restored.user.id) {
           updateSession({
             lastConversationId: existing.lastConversationId,
             selectedAgent: existing.selectedAgent,
@@ -317,16 +322,25 @@ export function useUISnapshotPersistence(params: {
   ]);
 
   const snapshotRef = useRef<UISnapshotSerializable | null>(null);
+  // Stamp the snapshot with the user it was built for. Without this, a `userId`
+  // change re-runs the effect below with a NON-zero persistSignal and the
+  // PREVIOUS user's snapshot still in the ref — writing one account's
+  // conversations under another account's key, which then survives a reload.
+  // Reachable on every account switch, where the store is still populated with
+  // the outgoing account when the id flips.
+  const snapshotOwnerRef = useRef<string | null>(null);
   useEffect(() => {
     if (uiSnapshot) {
       snapshotRef.current = uiSnapshot;
+      snapshotOwnerRef.current = userId;
     }
-  }, [uiSnapshot]);
+  }, [uiSnapshot, userId]);
 
   const [persistSignal, setPersistSignal] = useState(0);
   useEffect(() => {
     if (persistSignal === 0) return;
     if (!userId || !snapshotRef.current) return;
+    if (snapshotOwnerRef.current !== userId) return;
     saveUISnapshot(userId, snapshotRef.current).catch(() => {});
   }, [userId, persistSignal]);
 

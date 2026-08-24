@@ -55,6 +55,10 @@ const ParticleBg = memo(
 export default function Login() {
     const reduceMotion = useReducedMotion();
     const navigate = useNavigate();
+    // "Add another account": the caller is already signed in and wants a second
+    // session parked alongside the first, so the restore-and-redirect below must
+    // be skipped and the login must be sent with park=true.
+    const addAccountMode = new URLSearchParams(window.location.search).get("add") === "1";
     const { toast } = useToast();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -158,6 +162,11 @@ export default function Login() {
 
     useEffect(() => {
         let cancelled = false;
+        if (addAccountMode) {
+            // A valid session exists on purpose here; restoring it would bounce
+            // the user straight back to the app instead of letting them add one.
+            return;
+        }
         const run = async () => {
             try {
                 const existing = loadSession();
@@ -183,7 +192,7 @@ export default function Login() {
         return () => {
             cancelled = true;
         };
-    }, [navigate]);
+    }, [navigate, addAccountMode]);
 
     // Staggered entrance: the container reveals children one after another;
     // each child fades up. Reduced motion collapses offsets to a plain fade.
@@ -210,7 +219,10 @@ export default function Login() {
         setSubmitting(true);
         try {
             setAuthStatus("idle");
-            const response = await authenticate({ username: username.trim(), password });
+            const response = await authenticate(
+                { username: username.trim(), password },
+                { park: addAccountMode },
+            );
             if (response.authenticated && response.user && response.user.id) {
                 const ttlSeconds =
                     typeof response.tokenTtl === "number" && response.tokenTtl > 0 ? response.tokenTtl : 3600;
@@ -221,6 +233,17 @@ export default function Login() {
                 setSuccess(true);
                 if (!reduceMotion) {
                     await new Promise((resolve) => setTimeout(resolve, 450));
+                }
+                if (addAccountMode) {
+                    // A HARD navigation, not a router push. The workspace store is
+                    // module-level, so a client-side navigate would arrive at "/"
+                    // still holding the PREVIOUS account's userId, agents and
+                    // conversations — and every request keyed on that stale id is
+                    // then rejected as "Token does not grant access to this user",
+                    // because the cookies now belong to the account just added.
+                    // Reloading restarts the app from the new session instead.
+                    window.location.assign("/");
+                    return;
                 }
                 navigate("/", { replace: true });
             } else {
@@ -489,7 +512,7 @@ export default function Login() {
                                         <Button
                                             type="button"
                                             variant="outline"
-                                            onClick={beginEntraLogin}
+                                            onClick={() => beginEntraLogin({ park: addAccountMode })}
                                             className="flex h-12 w-full items-center justify-center gap-3 rounded-xl !border-white/12 !bg-white/[0.04] text-white transition-colors hover:!bg-white/[0.08] hover:!text-white focus-visible:ring-2 focus-visible:ring-[#d0b0ff]/40"
                                         >
                                             <MicrosoftLogo className="h-[18px] w-[18px]" />

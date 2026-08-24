@@ -156,6 +156,7 @@ flowchart TD
 | `mx_session` (or `__Host-mx_session`) | Yes | access TTL (8 h) | access JWT |
 | `mx_refresh` (or `__Host-mx_refresh`) | Yes | rolling refresh TTL (≤ absolute cap, 20 d) | refresh JWT |
 | `mx_csrf` (or `__Host-mx_csrf`) | **No** | rolling refresh TTL | CSRF double-submit value |
+| `mx_device` (or `__Host-mx_device`) | Yes | absolute refresh TTL (20 d) | opaque id indexing this browser's *parked* sessions — only issued when multi-account is enabled (Phase 10) |
 
 `__Host-` prefixing applies when `SESSION_COOKIE_SECURE=true` and no `SESSION_COOKIE_DOMAIN` is set. The access JWT lives in an HttpOnly cookie — JavaScript cannot read it (XSS-safe), and it is still verified with **zero** server state.
 
@@ -221,6 +222,8 @@ sequenceDiagram
 2. **Denylist (theft defense)** — `revoke_current_session()` reads the caller's token, extracts its `sid`, and writes it to the Redis denylist for the full refresh lifetime. This kills any **copy** of the token (e.g. one exfiltrated before logout) instantly, on every VM.
 
 Logout always succeeds from the browser's perspective even if no valid token is present or Redis is unavailable (the denylist write is best-effort).
+
+`revoke_current_session()` returns `(sid, user_id)` — the id comes from whichever token verified, **not** from a fresh `require_session`, because a logout commonly arrives with an already-expired access token. With multi-account enabled that identity is used to drop the account from the browser's parked index, so a signed-out account is never left listed as something to switch back into.
 
 ---
 
@@ -423,6 +426,110 @@ Entra ships **default-off**, so the images deploy to production inert: the addit
 - **Vault:** add `read identity/entity/id/*` to the bridge's AppRole policy on the production Vault (already in `vault_init.sh`), then set each Vault user's entity `email` so it can link to their Microsoft login.
 - **Egress:** the bridge needs outbound HTTPS to the Microsoft identity platform (server-side code exchange + JWKS).
 - **Deploy:** standard rolling update — this change does **not** touch mTLS. Recommended: deploy the images inert first, then enable as a deliberate second step.
+
+---
+
+## Phase 10 — Multiple accounts per browser (opt-in)
+
+Off by default (`MULTI_ACCOUNT_ENABLED=false`); every endpoint below 404s while it is
+disabled, so a deployment that does not want it cannot even probe it.
+
+One browser can be signed in to several accounts while **exactly one is active per
+request**. That invariant is the whole design: every authorization check, rate
+limiter and audit line downstream keeps interpreting a request the same way, and
+nothing anywhere has to ask "which of the caller's identities is this for?".
+
+### Why parked sessions are server-side
+
+The session cookies carry the `__Host-` prefix, which forces `Path=/`. Extra
+accounts therefore cannot be parked in a cookie scoped to just the switch
+endpoint: every parked JWT (~1 KB) would ride on every request, and the 4 KB
+per-cookie ceiling caps a token map at about three accounts. So the active
+account keeps using the normal cookies unchanged, and the dormant ones live in
+Redis, indexed by the small opaque `mx_device` cookie:
+
+```text
+auth:parked:<device_id>  ->  hash { user_id: <AES-GCM sealed refresh token> }   TTL = refresh idle TTL
+```
+
+Two properties make that acceptable for a credential store:
+
+* **Encrypted at rest** with `PARKED_TOKEN_KEY`, and the `(device_id, user_id)`
+  pair is bound in as additional authenticated data — so a sealed blob cannot be
+  replayed under a different device or user even by someone who can write Redis.
+  Boot **fails closed** if the feature is on without the key.
+* **Nothing identifying is stored** beside the token. Display names and emails for
+  the switcher come from Postgres at request time, so a Redis dump does not also
+  leak a roster of who is signed in on which browser.
+
+### Endpoints
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/v1/auth/accounts` | Active account + parked ones. **Never returns a token.** |
+| POST | `/v1/auth/accounts/switch` | Promote a parked account; rate-limited; audited |
+| POST | `/v1/auth/accounts/logout-all` | Sign out of every account on this browser |
+| POST | `/v1/auth/login?park=true` | "Add another account" — parks the outgoing session instead of replacing it |
+
+**Three factors are required to switch**: a valid *active* session, the device
+cookie, **and** a CSRF token. The device cookie alone must never suffice — that
+would turn one stolen cookie into every parked account. `GET /accounts` carries
+the same requirement, so the roster cannot be enumerated with a stolen device
+cookie either. Neither route sits on `auth_rate_limit`: that is the per-IP
+*credential* bucket protecting login and refresh, and an authenticated read
+sharing it lets any chatty client starve sign-in.
+
+### The switch
+
+1. `take()` the parked refresh token — deleted as it is read, so it is single-use.
+2. Verify it through the same `verify_token` + denylist path as a cookie-borne
+   refresh, so a session revoked elsewhere cannot be promoted back.
+3. Mint a fresh pair for the incoming account, preserving its `sid` so the
+   denylist and the absolute refresh cap still apply to the original login.
+4. Rotate the **outgoing** account's refresh token and park that.
+5. Replace every cookie in one response.
+
+Both directions rotate, which is why `RefreshTokenGuard` is not a problem here: a
+parked token is never rotated *while* parked, so it stays the current `jti`; and
+because each switch rotates it, a captured parked token is single-use and its
+replay trips the reuse detector.
+
+### Client side
+
+The switch is driven by a **full-screen blocking interstitial** that is
+load-bearing, not decoration: rendering it unmounts the entire workspace tree, so
+nothing is left alive to receive a late response from the account being left and
+paint it under the new identity. The sequence is: show interstitial → leave the
+conversation route → `resetForAccountSwitch()` (blank every per-user store slice)
+→ `POST /accounts/switch` → re-run the **same** post-login bootstrap → hide.
+
+Two client-side rules that are easy to get wrong, and were:
+
+* **The bootstrap only replaces what it fetches.** Archived and shared
+  conversation lists, `selectedAgent`, starter suggestions, private mode and the
+  pagination cursors are *not* fetched by it, so without `resetForAccountSwitch()`
+  they survive a switch and are shown under the new identity.
+* **"Add another account" ends in a hard reload**, not a router navigation. The
+  workspace store is module-level, so a client-side navigate arrives at `/` still
+  holding the previous account's `userId` — and every request keyed on that stale
+  id is rejected as *"Token does not grant access to this user"*.
+
+### Logout semantics
+
+Unchanged: logout always ends the **active** session and drops it from the parked
+index. To sign out of a specific account, switch to it and then log out.
+"Log out of all accounts" exists separately so a shared machine is not left
+holding dormant logins.
+
+### Known gaps
+
+* **OIDC cannot add an account.** `?park=true` is honoured on password login only;
+  the Entra callback has no way to carry the intent through the redirect.
+* **"Log out of all accounts" has no UI yet** — the endpoint is implemented and
+  tested, but nothing calls it.
+* **CSRF enforcement on the new routes is not covered by tests**, because the test
+  suite overrides `require_csrf_protection` app-wide. The dependency is declared
+  the same way as on `/logout` and `/session/refresh`.
 
 ---
 

@@ -64,6 +64,21 @@ def _should_drop_key(key: str) -> bool:
     return lowered in _DROP_FIELD_NAMES
 
 
+_URL_CREDENTIALS_RE = re.compile(r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.\-]*://)(?P<user>[^:/?#\s@]+):(?P<secret>[^@/?#\s]+)@")
+
+
+def scrub_url_credentials(text: str) -> str:
+    """Mask ``user:password@`` in any URL inside a free-text blob.
+
+    The key-based rules above cannot help here: this is for *values* we log
+    verbatim — subprocess output, driver error messages — where a connection
+    string may be embedded mid-sentence. Used before logging alembic's output,
+    since a SQLAlchemy/driver error can echo the DATABASE_URL and the password
+    is injected from a Docker secret at settings load.
+    """
+    return _URL_CREDENTIALS_RE.sub(lambda m: f"{m.group('scheme')}{m.group('user')}:***@", text)
+
+
 def _truncate_string(value: str) -> str:
     if len(value) > _MAX_STRING_LENGTH:
         return value[:_MAX_STRING_LENGTH] + "...<truncated>"

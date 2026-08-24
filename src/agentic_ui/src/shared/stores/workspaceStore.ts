@@ -94,6 +94,8 @@ export type WorkspaceState = {
 
   // Setters (setState-compatible)
   setUserId: (v: SetStateArg<string | null>) => void;
+  /** Clear every per-user slice before switching accounts. */
+  resetForAccountSwitch: () => void;
   setIsLoggedIn: (v: SetStateArg<boolean>) => void;
   setAuthResolved: (v: SetStateArg<boolean>) => void;
   setUserProfile: (v: SetStateArg<UserProfile | null>) => void;
@@ -170,6 +172,48 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   workspace: null,
 
   setUserId: (v) => set((s) => ({ userId: resolve(v, s.userId) })),
+  /**
+   * Wipe every per-user slice before another account becomes active.
+   *
+   * The login bootstrap only *replaces* what it fetches (agents, tools, skills,
+   * preferences, conversations). Everything else here would otherwise survive a
+   * switch and be shown under the new identity — the archived and shared
+   * conversation lists most visibly, since they are lazily loaded and would keep
+   * the previous account's titles until the user happened to reload them.
+   *
+   * Auth fields (`userId`, `userProfile`, `isLoggedIn`) are deliberately left
+   * alone: the bootstrap sets them, and blanking them here would bounce the
+   * router to /login mid-switch.
+   */
+  resetForAccountSwitch: () =>
+    set(() => ({
+      agents: [],
+      availableTools: [],
+      availableSkills: [],
+      myRegistrySkills: [],
+      userPreferences: null,
+      isSavingPreferences: false,
+      selectedAgent: "",
+      isPrivateMode: false,
+      inactiveAgentFallback: null,
+      currentConversation: null,
+      loadingConversation: false,
+      conversations: [],
+      conversationsLoading: false,
+      convPage: 1,
+      convHasMore: true,
+      convIsLoadingMore: false,
+      archivedConversations: [],
+      archivedConvPage: 1,
+      archivedConvHasMore: true,
+      archivedConvIsLoading: false,
+      sharedConversations: [],
+      sharedConvPage: 1,
+      sharedConvHasMore: true,
+      sharedConvIsLoading: false,
+      starterSuggestions: [],
+    })),
+
   setIsLoggedIn: (v) => set((s) => ({ isLoggedIn: resolve(v, s.isLoggedIn) })),
   setAuthResolved: (v) => set((s) => ({ authResolved: resolve(v, s.authResolved) })),
   setUserProfile: (v) => set((s) => ({ userProfile: resolve(v, s.userProfile) })),

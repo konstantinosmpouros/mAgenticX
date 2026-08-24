@@ -28,7 +28,8 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTheme } from "next-themes";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import type { Agent, ConversationSummary, UserProfile } from "@/shared/lib/types";
+import type { AccountSummary, Agent, ConversationSummary, UserProfile } from "@/shared/lib/types";
+import AccountMenu from "@/features/auth/components/AccountMenu";
 import { cn } from "@/shared/lib/utils";
 import {
   Sidebar as SidebarRoot,
@@ -77,6 +78,16 @@ type ChatSidebarProps = {
   onLogout: () => void;
   agents: Agent[];
   userProfile: UserProfile | null;
+  /** Accounts this browser is signed in to. Empty ⇒ no switcher is shown,
+   *  which is also what happens when the feature is disabled server-side. */
+  accounts?: AccountSummary[];
+  canAddAccount?: boolean;
+  maxAccounts?: number;
+  busyAccountId?: string | null;
+  onSelectAccount?: (account: AccountSummary) => void;
+  onAddAccount?: () => void;
+  onLogoutAccount?: (account: AccountSummary) => void;
+  onLogoutAllAccounts?: () => void;
   dismissFloatingUiSignal?: number;
   onFloatingUiStateChange?: (open: boolean) => void;
   sidebarInteractionHook: (args: {
@@ -134,6 +145,14 @@ export default function ChatSidebar({
   onLogout,
   agents,
   userProfile,
+  accounts = [],
+  canAddAccount = false,
+  maxAccounts = 0,
+  busyAccountId = null,
+  onSelectAccount,
+  onAddAccount,
+  onLogoutAccount,
+  onLogoutAllAccounts,
   dismissFloatingUiSignal = 0,
   onFloatingUiStateChange,
   sidebarInteractionHook,
@@ -155,6 +174,9 @@ export default function ChatSidebar({
       : profileName.slice(0, 2)) || "P";
   const profileEmail = (userProfile?.email ?? "Open profile").trim();
   const avatarUrl = userProfile?.avatarUrl || null;
+  // Only worth a submenu when there is somewhere to switch to, or room to add
+  // one. With the feature off the backend sends nothing and this stays false.
+  const showAccountSwitcher = accounts.length > 1 || (accounts.length > 0 && canAddAccount);
   const [openActionMenuId, setOpenActionMenuId] = React.useState<string | null>(null);
   const [renamingConversationId, setRenamingConversationId] = React.useState<string | null>(null);
   const [renameDraft, setRenameDraft] = React.useState("");
@@ -834,24 +856,68 @@ export default function ChatSidebar({
                   className="z-50 w-64 rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[side=top]:slide-in-from-bottom-2 data-[side=right]:slide-in-from-left-2"
                   onCloseAutoFocus={(event) => event.preventDefault()}
                 >
-                  {/* Identity header — opens the Edit profile dialog. */}
-                  <DropdownMenu.Item
-                    onSelect={() => handleProfileMenuAction(onEditProfile)}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
-                  >
-                    <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
-                      {avatarUrl ? (
-                        <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-sm font-semibold">{profileInitials}</span>
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
-                      <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
-                    </div>
-                    <ChevronRight size={15} className="ml-auto flex-shrink-0 text-muted-foreground" />
-                  </DropdownMenu.Item>
+                  {/* Identity header. With other accounts available it becomes a
+                      submenu holding the switcher; otherwise it stays what it was
+                      and opens the Edit profile dialog. Radix's Sub opens on hover
+                      *and* on click/keyboard, so the switcher is reachable by
+                      touch and by arrow keys without extra handling. */}
+                  {showAccountSwitcher ? (
+                    <DropdownMenu.Sub>
+                      <DropdownMenu.SubTrigger className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] data-[state=open]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none">
+                        <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-semibold">{profileInitials}</span>
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
+                          <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
+                        </div>
+                        <ChevronRight size={15} className="ml-auto flex-shrink-0 text-muted-foreground" />
+                      </DropdownMenu.SubTrigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.SubContent
+                          sideOffset={8}
+                          className="z-50 rounded-xl border border-border bg-background text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+                        >
+                          <AccountMenu
+                            accounts={accounts}
+                            canAddAccount={canAddAccount}
+                            maxAccounts={maxAccounts}
+                            busyAccountId={busyAccountId}
+                            onSelectAccount={(account) => {
+                              setProfileMenuOpen(false);
+                              onSelectAccount?.(account);
+                            }}
+                            onAddAccount={() => {
+                              setProfileMenuOpen(false);
+                              onAddAccount?.();
+                            }}
+                          />
+                        </DropdownMenu.SubContent>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Sub>
+                  ) : (
+                    <DropdownMenu.Item
+                      onSelect={() => handleProfileMenuAction(onEditProfile)}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                    >
+                      <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-sm font-semibold">{profileInitials}</span>
+                        )}
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
+                        <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
+                      </div>
+                      <ChevronRight size={15} className="ml-auto flex-shrink-0 text-muted-foreground" />
+                    </DropdownMenu.Item>
+                  )}
 
                   <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
 
@@ -909,15 +975,69 @@ export default function ChatSidebar({
 
                   <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
 
-                  <DropdownMenu.Item
-                    onSelect={() => handleProfileMenuAction(onLogout)}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
-                  >
-                    <div className="flex h-7 w-7 items-center justify-center rounded-md text-destructive">
-                      <LogOut size={15} />
-                    </div>
-                    <span>Log out</span>
-                  </DropdownMenu.Item>
+                  {accounts.length > 1 ? (
+                    /* With several accounts signed in, "Log out" has to ask which
+                       one — otherwise the only way to sign out of a specific
+                       account is to switch to it first. Same submenu pattern as
+                       Help and the account switcher above. */
+                    <DropdownMenu.Sub>
+                      <DropdownMenu.SubTrigger className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive data-[state=open]:bg-destructive/10 focus-visible:outline-none data-[highlighted]:outline-none">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-md text-destructive">
+                          <LogOut size={15} />
+                        </div>
+                        <span>Log out</span>
+                        <ChevronRight size={15} className="ml-auto text-destructive/70" />
+                      </DropdownMenu.SubTrigger>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.SubContent
+                          sideOffset={8}
+                          className="z-50 w-[19rem] rounded-xl border border-border bg-background p-1.5 text-sm text-foreground shadow-xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+                        >
+                          {accounts.map((account) => (
+                            <DropdownMenu.Item
+                              key={account.id}
+                              onSelect={() => handleProfileMenuAction(() => onLogoutAccount?.(account))}
+                              className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
+                            >
+                              <span
+                                aria-hidden
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[0.65rem] font-semibold text-primary"
+                              >
+                                {(account.displayName || account.username || "?")
+                                  .split(/\s+/)
+                                  .slice(0, 2)
+                                  .map((part) => part.charAt(0).toUpperCase())
+                                  .join("")}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">
+                                Log out of {account.email || account.username}
+                              </span>
+                            </DropdownMenu.Item>
+                          ))}
+                          <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                          <DropdownMenu.Item
+                            onSelect={() => handleProfileMenuAction(() => onLogoutAllAccounts?.())}
+                            className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                          >
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-destructive">
+                              <LogOut size={15} />
+                            </span>
+                            <span>Log out of all accounts</span>
+                          </DropdownMenu.Item>
+                        </DropdownMenu.SubContent>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Sub>
+                  ) : (
+                    <DropdownMenu.Item
+                      onSelect={() => handleProfileMenuAction(onLogout)}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md text-destructive">
+                        <LogOut size={15} />
+                      </div>
+                      <span>Log out</span>
+                    </DropdownMenu.Item>
+                  )}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>

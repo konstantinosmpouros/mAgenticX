@@ -64,10 +64,12 @@ type SkillsCtx = {
   userId: string | null;
   toast: ToastFn;
   initialPool?: UserSkill[] | null;
+  /** False until the session has been confirmed against the cookies. */
+  authResolved?: boolean;
 };
 
 export function useSkills(ctx: SkillsCtx): SkillsHandlers {
-  const { userId, toast, initialPool } = ctx;
+  const { userId, toast, initialPool, authResolved } = ctx;
   const [selections, setSelections] = useState<UserAgentSkillSelection>({});
   const [loadingAgents, setLoadingAgents] = useState<Set<string>>(new Set());
   const [togglingKeys, setTogglingKeys] = useState<Set<string>>(new Set());
@@ -218,9 +220,15 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
   // the user manually hit Refresh.
   useEffect(() => {
     if (!userId) return;
+    // Wait for the session to be confirmed against the cookies. The store seeds
+    // `userId` from localStorage for fast paint, and that can name a DIFFERENT
+    // user than the cookies do — the server-side OIDC callback swaps the cookies
+    // without being able to touch localStorage. Fetching first produced
+    // "Token does not grant access to this user" from validate_userId.
+    if (authResolved === false) return;
     void refreshMySkills();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, authResolved]);
 
   const addGlobalToPool = useCallback(async (skillName: string) => {
     if (!userId) {

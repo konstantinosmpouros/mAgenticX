@@ -101,6 +101,16 @@ content: [
     			smooth: 'var(--transition-smooth)'
     		},
     		keyframes: {
+    			// Sweeps a highlight across text, for the account-switch interstitial.
+    			// Pairs with a background-clip:text gradient (see .animate-shimmer-text).
+    			'shimmer-text': {
+    				'0%': {
+    					backgroundPosition: '200% 0'
+    				},
+    				'100%': {
+    					backgroundPosition: '-200% 0'
+    				}
+    			},
     			'fade-in': {
     				from: {
     					opacity: '0',
@@ -165,6 +175,7 @@ content: [
     			}
     		},
     		animation: {
+    			'shimmer-text': 'shimmer-text 2.2s linear infinite',
     			'fade-in': 'fade-in 0.3s ease-out',
     			// Message rows: a gentle, steady rise that decelerates to a settle, tuned to
     			// feel coordinated with the ~420ms scroll-anchor glide rather than a fast pop.

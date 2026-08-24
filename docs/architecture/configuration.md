@@ -120,7 +120,7 @@ Federated sign-in alongside username/password. **Inert unless `ENTRA_TENANT_ID` 
 | `AGENTS_SERVICE_URL` | `https://agents:8003` | Base URL of the agents service. |
 | `INFERENCE_TOOL_RESULT_MAX_CHARS` | `16000` | Cap on stored `TOOL_CALL_RESULT` content in the event log; oversized results are truncated and flagged. |
 | `INFERENCE_WS_SUBSCRIBE_TIMEOUT_SECONDS` | `10.0` | Timeout waiting to subscribe to a run's Redis stream. |
-| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `4` | Login attempts per window (per resolved client IP). |
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `15` | Login attempts per window (per resolved client IP). Covers `POST /login` (including `?park=true`, the add-account path) and `GET /oidc/login`, so a single user adding an account spends more than one attempt; shared NAT/proxy egress IPs spend several. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60` | Auth rate-limit window. |
 | `INFERENCE_RATE_LIMIT_MAX_ATTEMPTS` | `10` | Inference starts per window (per user). |
 | `INFERENCE_RATE_LIMIT_WINDOW_SECONDS` | `60` | Inference rate-limit window. |
@@ -450,3 +450,14 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 | core stack compose | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | per-service `environment:` overrides |
 | monitoring compose | [src/docker-compose-denis-monitoring.yml](../../src/docker-compose-denis-monitoring.yml) | grafana/prometheus env + flags |
 | secret delivery | [docs/architecture/secrets.md](secrets.md) | which var is backed by which secret |
+
+### Multi-account sign-in (dialogue_bridge)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MULTI_ACCOUNT_ENABLED` | `true` | Master switch for several signed-in accounts per browser. Set `false` to remove the surface entirely — every `/v1/auth/accounts*` route then 404s. It does keep more live refresh tokens in one browser (blast radius of a stolen session goes from one account to N), bounded by the cap, at-rest encryption and per-switch rotation. |
+| `PARKED_TOKEN_KEY` | *derived* | AES-GCM key (32 bytes, base64 or hex) encrypting parked refresh tokens at rest. Set it explicitly in production — on Dennis as the Swarm secret `magenticx_parked_token_key` via `PARKED_TOKEN_KEY_FILE` — so it rotates independently. When unset it is derived from `SESSION_TOKEN_SECRET` (HKDF, fixed info label), so local dev needs no extra variable. **Never falls back to plaintext:** with neither this nor `SESSION_TOKEN_SECRET` present, boot fails closed. Note the derived path ties the two together — rotating `SESSION_TOKEN_SECRET` signs every parked account out. |
+| `MAX_PARKED_ACCOUNTS` | `2` | Hard ceiling on accounts signed in **in total** (the active one plus the parked ones). A security bound, not a UI limit — each parked entry is a live bearer credential. Checked *before* authenticating on the add-account path; asking for one more surfaces the "log out of one to continue" dialog. |
+| `SESSION_DEVICE_COOKIE_NAME` | `__Host-mx_device` / `mx_device` | Cookie holding the opaque parked-session index id. Follows the same `__Host-` rule as the session cookies. |
+
+See [authentication-and-session § Phase 10](../flows/authentication-and-session.md) for the flow and threat model.

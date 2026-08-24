@@ -15,6 +15,8 @@ type UseProfilePanelCtx = {
     userId: string | null;
     toast: ToastFn;
     initialPool?: UserSkill[] | null;
+    /** False until the session has been confirmed against the cookies. */
+    authResolved?: boolean;
     requestPersist: () => void;
     /**
      * Re-pull the shared agent catalog after an agent mutation. Owned by
@@ -35,12 +37,13 @@ export function useProfilePanel({
     userId,
     toast,
     initialPool,
+    authResolved,
     requestPersist,
     refreshAgentCatalog,
 }: UseProfilePanelCtx) {
-    const skills = useSkills({ userId, toast, initialPool });
+    const skills = useSkills({ userId, toast, initialPool, authResolved });
     const { refreshMySkills, addGlobalToPool, createCustomInPool, removeFromPool } = skills;
-    const userAgents = useUserAgents({ userId, toast });
+    const userAgents = useUserAgents({ userId, toast, authResolved });
 
     const handleRefreshMySkills = useCallback(async () => {
         await refreshMySkills({ bypassRedis: true });

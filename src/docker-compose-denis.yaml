@@ -76,7 +76,7 @@ services:
 
   agents: # 8003
     container_name: agents
-    image: konstantinosmpouros/agents:v1.20.0
+    image: konstantinosmpouros/agents:v1.21.0
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8003", "--no-server-header"]
     user: "1000:1000"
@@ -224,7 +224,7 @@ services:
 
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.15.0
+    image: konstantinosmpouros/dialogue_bridge:v2.16.0
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8002", "--no-server-header"]
     user: "1000:1000"
@@ -246,6 +246,7 @@ services:
       - INTERNAL_CLIENT_KEY_PATH=/app/tls/tls.key
       - LOG_FORMAT=json
       - LOG_REDACTION_SECRET_FILE=/run/secrets/log_redaction_secret
+      - PARKED_TOKEN_KEY_FILE=/run/secrets/parked_token_key
       - ENTRA_TENANT_ID=ed91df0f-0bb3-4a96-9609-128c6a3630be
       - ENTRA_CLIENT_ID=621d8aca-3bda-413f-a55d-6878f6d6d998
       - ENTRA_CLIENT_SECRET_FILE=/run/secrets/entra_client_secret
@@ -253,6 +254,7 @@ services:
       - ENTRA_ALLOWED_GROUP_IDS=47e15454-9ad3-45e7-aa02-2241b51f6238
     secrets:
       - session_token_secret
+      - parked_token_key
       - trusted_proxy_secret
       - redis_password
       - postgres_password
@@ -293,7 +295,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.13.1
+    image: konstantinosmpouros/agentic_ui:v0.14.0
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:
@@ -352,6 +354,13 @@ secrets:
   session_token_secret:
     external: true
     name: magenticx_session_token_secret
+  # Encrypts the refresh tokens of *parked* accounts (multi-account sign-in) at
+  # rest in Redis. Dedicated rather than derived from session_token_secret so it
+  # rotates on its own — rotating it signs every parked account out, which must
+  # not be a side effect of rotating an unrelated key.
+  parked_token_key:
+    external: true
+    name: magenticx_parked_token_key
   redis_password:
     external: true
     name: magenticx_redis_password

@@ -21,6 +21,7 @@ from observability import (
     configure_logging,
     get_logger,
     register_exception_handlers,
+    scrub_url_credentials,
 )
 from core.cache.integration import install_redis_sdk
 
@@ -67,14 +68,36 @@ def _run_alembic_upgrade() -> None:
         text=True,
         check=False,
     )
-    if result.stdout:
-        logger.info("alembic_subprocess_stdout", "Alembic subprocess output", output=result.stdout.strip())
-    if result.stderr:
-        logger.info("alembic_subprocess_stderr", "Alembic subprocess stderr", output=result.stderr.strip())
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"alembic upgrade head failed with exit code {result.returncode}"
-        )
+    # NB: the field names must not be `output` / `text` / `input` — those are in
+    # the redaction drop-list (they are how user/model *content* is named
+    # elsewhere), so the value would be dropped and the event would log with an
+    # empty `fields: {}`. That is exactly what happened on the 2026-08-14 deploy:
+    # four failed migration attempts, none of which recorded why.
+    stdout = scrub_url_credentials(result.stdout.strip()) if result.stdout else ""
+    stderr = scrub_url_credentials(result.stderr.strip()) if result.stderr else ""
+
+    if stdout:
+        logger.info("alembic_subprocess_stdout", "Alembic subprocess output", alembic_stdout=stdout)
+    if result.returncode == 0:
+        # Alembic writes its normal progress ("Running upgrade …") to stderr, so
+        # on success this is not an error — keep it at info.
+        if stderr:
+            logger.info("alembic_subprocess_stderr", "Alembic subprocess stderr", alembic_stderr=stderr)
+        return
+
+    # Failure: surface the reason at error level, and put the tail in the
+    # exception message too, so it appears in the startup traceback even if the
+    # log pipeline is what is broken.
+    logger.error(
+        "alembic_upgrade_failed",
+        "Alembic upgrade head failed",
+        exit_code=result.returncode,
+        alembic_stderr=stderr or "<no stderr captured>",
+    )
+    tail = " | ".join(stderr.splitlines()[-3:]) if stderr else "no stderr captured"
+    raise RuntimeError(
+        f"alembic upgrade head failed with exit code {result.returncode}: {tail}"
+    )
 
 
 @asynccontextmanager
