@@ -182,6 +182,27 @@ async def test_park_with_no_key_material_at_all_refuses(store, monkeypatch):
         await store.park("device-1", "user-a", "token-a", 60)
 
 
+@pytest.mark.parametrize("nbytes", [32, 64])
+async def test_a_key_of_32_bytes_or_more_is_accepted(store, monkeypatch, nbytes):
+    """`openssl rand -base64 64` is a reasonable thing for an operator to run, and
+    must not fail at *runtime* just because AES-256 wants exactly 32 bytes."""
+    key = base64.b64encode(os.urandom(nbytes)).decode("ascii")
+    monkeypatch.setattr(settings.session, "parked_token_key", type(settings.session.parked_token_key)(key))
+
+    await store.park("device-1", "user-a", "token-a", 60)
+
+    assert await store.take("device-1", "user-a") == "token-a"
+
+
+async def test_a_key_shorter_than_32_bytes_is_refused(store, monkeypatch):
+    """Never stretch weak key material — that would hide that it is weak."""
+    short = base64.b64encode(os.urandom(16)).decode("ascii")
+    monkeypatch.setattr(settings.session, "parked_token_key", type(settings.session.parked_token_key)(short))
+
+    with pytest.raises(ParkedSessionError):
+        await store.park("device-1", "user-a", "token-a", 60)
+
+
 async def test_the_key_is_derived_when_no_dedicated_secret_is_set(store, monkeypatch):
     """Local dev sets no PARKED_TOKEN_KEY, so the key is derived from
     SESSION_TOKEN_SECRET — encryption still happens, it is just not a separately

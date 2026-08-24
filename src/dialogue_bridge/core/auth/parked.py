@@ -91,12 +91,22 @@ def _load_key() -> bytes:
     if raw:
         for decode in (base64.b64decode, bytes.fromhex):
             try:
-                key = decode(raw)
+                material = decode(raw)
             except (binascii.Error, ValueError):
                 continue
-            if len(key) == 32:
-                return key
-        raise ParkedSessionError("PARKED_TOKEN_KEY must decode to 32 bytes (base64 or hex).")
+            if len(material) == 32:
+                return material
+            if len(material) > 32:
+                # AES-256 needs exactly 32 bytes, but an operator generating
+                # *more* entropy (e.g. `openssl rand -base64 64`) should not hit a
+                # runtime failure — condense it instead. Shorter material is
+                # refused rather than stretched: stretching weak key material only
+                # hides that it is weak.
+                return _hkdf32(material)
+            break
+        raise ParkedSessionError(
+            "PARKED_TOKEN_KEY must decode to at least 32 bytes (base64 or hex)."
+        )
 
     root = settings.session.token_secret.get_secret_value()
     if not root:
@@ -104,12 +114,17 @@ def _load_key() -> bytes:
             "Neither PARKED_TOKEN_KEY nor SESSION_TOKEN_SECRET is configured; refusing "
             "to store parked sessions unencrypted."
         )
+    return _hkdf32(root.encode("utf-8"))
+
+
+def _hkdf32(material: bytes) -> bytes:
+    """Condense key material to exactly 32 bytes for AES-256-GCM."""
     return HKDF(
         algorithm=hashes.SHA256(),
         length=32,
         salt=None,
         info=_DERIVED_KEY_INFO,
-    ).derive(root.encode("utf-8"))
+    ).derive(material)
 
 
 def _aad(device_id: str, user_id: str) -> bytes:
