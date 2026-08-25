@@ -219,7 +219,6 @@ export default function ProfilePanel({
     user,
     availableTools,
     availableSkills,
-    onRefreshSkills,
     mySkills,
     loadingMySkills = false,
     mySkillDetails,

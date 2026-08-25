@@ -310,6 +310,8 @@ When a conversation reaches its first AI response, the bridge calls the agents s
 
 - **`isPrivate` conversations are excluded from all listing endpoints.** `GET /{userId}` and `GET /{userId}/archived` both filter `is_private=False`. There is no endpoint to list private conversations in the current implementation — they can only be accessed by direct ID if the client already knows the ID (e.g., navigating straight to its `/c/:conversationId` URL).
 
+- **The UI hides Share, Archive and Delete on a private conversation.** `ChatHeader` suppresses all three when private mode is on, and drops the `⋯` trigger entirely when that would leave the menu empty. This follows from the filter above: Archive manages a listing the conversation is not in, and offering Share on a private chat contradicts the mode. The consequence is that a private conversation has **no in-app delete path** — it is not in the sidebar either — so it persists until removed directly in the database.
+
 - **Share snapshots grow without bound.** `snapshot_json` is stored as a Postgres JSON column with no size cap. A conversation with 200 messages and large image attachments (base64-encoded inline) can produce a snapshot of tens of megabytes. There is no compression or external blob storage for snapshots.
 
 - **Title generation is best-effort.** If the agents service is down, the conversation is created with a fallback title. There is no retry or deferred title generation — the title stays as the fallback until the user renames it manually.

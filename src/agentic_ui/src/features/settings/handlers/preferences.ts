@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { updateUserPreferences } from '@/shared/lib/api';
+import { toastError } from '@/shared/lib/toast';
 import type { CustomInstructions, UserPreferences } from '@/shared/lib/types';
 import {
   DEFAULT_PERSONALITY,
@@ -110,10 +111,8 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       return true;
     } catch (error) {
       setUserPreferences(prevPrefs);
-      toast({
-        title: errorTitle,
+      toastError(toast, errorTitle, error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
       return false;
     } finally {

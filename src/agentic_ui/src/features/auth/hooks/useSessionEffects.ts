@@ -61,7 +61,6 @@ export function useAuthRehydrateEffect(params: {
     setUserPreferences,
     setConversations,
     setConversationsLoading,
-    setCurrentConversation,
     setLoadingConversation,
     setSelectedAgent,
     setIsPrivateMode,

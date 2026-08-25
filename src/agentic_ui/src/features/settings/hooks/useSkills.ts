@@ -9,6 +9,7 @@ import {
   getUserAgentSkills,
   removeSkillFromPool,
 } from '@/shared/lib/api';
+import { toastError } from '@/shared/lib/toast';
 import type {
   CustomSkillCreatePayload,
   UserAgentSkillSelection,
@@ -110,10 +111,8 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       setSelections((prev) => ({ ...prev, [agentId]: fetched }));
       loadedRef.current.add(agentId);
     } catch (error) {
-      toast({
-        title: 'Could not load skills',
+      toastError(toast, 'Could not load skills', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setLoadingAgents((prev) => {
@@ -163,10 +162,8 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       }
     } catch (error) {
       setSelections((prev) => ({ ...prev, [agentId]: current }));
-      toast({
-        title: isCurrentlyEnabled ? 'Could not disable skill' : 'Could not enable skill',
+      toastError(toast, isCurrentlyEnabled ? 'Could not disable skill' : 'Could not enable skill', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setTogglingKeys((prev) => {
@@ -203,10 +200,8 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       // refresh was in flight) — already handled by the global unauthorized
       // redirect, so don't surface a "try again" toast on the way out.
       if ((error as { status?: number })?.status === 401) return;
-      toast({
-        title: 'Could not refresh your skills',
+      toastError(toast, 'Could not refresh your skills', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setLoadingMySkills(false);
@@ -242,10 +237,8 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       // from the backend rather than something the frontend guessed.
       await refreshMySkills({ bypassRedis: true });
     } catch (error) {
-      toast({
-        title: 'Could not add skill to your pool',
+      toastError(toast, 'Could not add skill to your pool', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     }
   }, [userId, mySkills, refreshMySkills, toast]);
@@ -260,10 +253,8 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       setMySkills((prev) => [...prev, created]);
       return created;
     } catch (error) {
-      toast({
-        title: 'Could not create the skill',
+      toastError(toast, 'Could not create the skill', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
       return null;
     }
@@ -289,10 +280,8 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       loadedRef.current = new Set();
     } catch (error) {
       setMySkills(prev);
-      toast({
-        title: 'Could not remove the skill',
+      toastError(toast, 'Could not remove the skill', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     }
   }, [userId, mySkills, pruneSkillFromAssignments, toast]);
@@ -318,10 +307,8 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       const detail = await getMySkillDetail(userId, skillName);
       setSkillDetail((prev) => ({ ...prev, [skillName]: detail }));
     } catch (error) {
-      toast({
-        title: 'Could not load skill content',
+      toastError(toast, 'Could not load skill content', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setLoadingDetailKeys((prev) => {

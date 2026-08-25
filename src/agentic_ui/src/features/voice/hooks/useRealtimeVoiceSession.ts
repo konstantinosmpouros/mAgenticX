@@ -4,6 +4,7 @@ import type { VoiceModeStatus } from "@/shared/lib/types";
 import {
   createRealtimeVoiceSession,
 } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 
 type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
 
@@ -150,7 +151,7 @@ export function useRealtimeVoiceSession({
         const message = error instanceof Error ? error.message : "Unable to start realtime voice.";
         setErrorMessage(message);
         setStatus("error");
-        toast({ title: "Voice mode failed", description: message, variant: "destructive" });
+        toastError(toast, "Voice mode failed", error, { description: message });
       }
     },
     [cleanup, handleRealtimeEvent, status, toast],

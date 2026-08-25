@@ -1,4 +1,5 @@
 import { downloadConversationPdfExport, getConversationDetail, getSharedConversationLinks, revokeSharedConversationLink, shareConversation } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 import type { ConversationDetail, ConversationShareListItem, ConversationShareMode, MessageOut } from "@/shared/lib/types";
 import type { Dispatch, SetStateAction } from "react";
 
@@ -90,13 +91,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
         duration: 2600,
       });
     } catch (error) {
-      console.error("Failed to share conversation:", error);
-      toast({
-        title: "Failed to share conversation",
-        description: error instanceof Error ? error.message : "Please try again in a moment.",
-        variant: "destructive",
-        duration: 3000,
-      });
+      toastError(toast, "Failed to share conversation", error, { duration: 3000 });
     }
   };
 
@@ -216,13 +211,7 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
         duration: 2400,
       });
     } catch (error) {
-      console.error("Failed to export conversation PDF:", error);
-      toast({
-        title: "PDF export failed",
-        description: error instanceof Error ? error.message : "Please try again in a moment.",
-        variant: "destructive",
-        duration: 3000,
-      });
+      toastError(toast, "PDF export failed", error, { duration: 3000 });
     } finally {
       setIsExportingSharePdf(false);
     }
@@ -300,11 +289,8 @@ export function createSharedConversationHandlers(ctx: SharedConversationHandlers
       setSharedConversationsPage(page);
       setSharedConversationsHasMore(items.length >= pageSize);
     } catch (error) {
-      console.error("Failed to load shared conversations:", error);
-      toast({
-        title: "Failed to load shared links",
+      toastError(toast, "Failed to load shared links", error, {
         description: "There was an error loading shared conversations. Please try again.",
-        variant: "destructive",
         duration: 3000,
       });
       if (options?.reset) setSharedConversations([]);
@@ -340,11 +326,8 @@ export function createSharedConversationHandlers(ctx: SharedConversationHandlers
       setCurrentMessage("");
       persistUIState();
     } catch (error) {
-      console.error("Failed to open shared conversation source:", error);
-      toast({
-        title: "Failed to open conversation",
+      toastError(toast, "Failed to open conversation", error, {
         description: "The original conversation could not be loaded.",
-        variant: "destructive",
         duration: 3000,
       });
     } finally {
@@ -366,11 +349,8 @@ export function createSharedConversationHandlers(ctx: SharedConversationHandlers
       );
       toast({ title: "Share link revoked", description: "That link can no longer be accessed.", duration: 2200 });
     } catch (error) {
-      console.error("Failed to revoke shared conversation:", error);
-      toast({
-        title: "Failed to revoke link",
+      toastError(toast, "Failed to revoke link", error, {
         description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
         duration: 3000,
       });
     }

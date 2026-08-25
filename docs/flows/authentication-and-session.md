@@ -551,6 +551,8 @@ holding dormant logins.
 
 - **localStorage is not a security boundary.** It holds profile/navigation data, never tokens. XSS reading it leaks data, not session control (the JWT is HttpOnly).
 
+- **The cookie-consent gate sits in front of the whole router, and its wallpaper `<Login/>` must stay inert.** Until consent is stored, `App.tsx` swaps the route table for a catch-all that renders `Login` behind a blur. That instance is decoration, but the component is not passive: its session-restore effect calls `window.location.assign("/")`. A user holding a valid session cookie but no persisted consent therefore reloaded forever and could never reach the Accept button. `Login` takes a `decorative` prop that disables the navigating effect, the `document.title` takeover, the auth-config fetch, and the query-string rewrite — **any future effect with a side effect must honour it too.** Relatedly, `saveCookieConsent` can fail silently where storage is blocked (Safari ITP, "block all cookies", enterprise policy), so consent is also held in-process for the life of the document.
+
 ---
 
 ## File Map

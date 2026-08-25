@@ -94,6 +94,16 @@ export default function ChatHeader({
     // healthy agent.
     const showInactiveIndicator = selected?.isActive === false;
 
+    // A private ("incognito") conversation is deliberately kept out of the
+    // conversation list, so the actions that would publish it (Share) or manage
+    // its listing (Archive / Delete) make no sense and are hidden entirely —
+    // offering Share on a private chat in particular contradicts the mode.
+    const showShareAction = Boolean(onShareConversation) && !isPrivateMode;
+    const showArchiveAction = !isPrivateMode;
+    const showDeleteAction = !isPrivateMode;
+    const showReportAction = !isConversationReported;
+    const showActionsMenu = showArchiveAction || showDeleteAction || showReportAction;
+
     return (
         <div
             className={`sticky top-0 z-40 w-full bg-transparent px-3 py-2 md:px-6 md:py-3 border-b transition-colors duration-200 ${showBottomBorder ? 'border-border/100 backdrop-blur-md' : 'border-transparent'}`}
@@ -242,7 +252,7 @@ export default function ChatHeader({
                                     </TooltipContent>
                                 </Tooltip>
                             )}
-                            {onShareConversation && (
+                            {showShareAction && (
                                 <Tooltip delayDuration={0}>
                                     <TooltipTrigger asChild>
                                         <button
@@ -266,6 +276,7 @@ export default function ChatHeader({
                                     </TooltipContent>
                                 </Tooltip>
                             )}
+                            {showActionsMenu && (
                             <DropdownMenu.Root
                                 open={conversationActionsOpen}
                                 onOpenChange={onConversationActionsOpenChange}
@@ -289,6 +300,7 @@ export default function ChatHeader({
                                         align="end"
                                         className="z-50 w-48 rounded-xl border border-border bg-background text-foreground shadow-lg p-1.5 focus:outline-none focus-visible:outline-none origin-top-right data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
                                     >
+                                        {showArchiveAction && (
                                         <DropdownMenu.Item
                                             onSelect={() => {
                                                 if (isConversationArchived) {
@@ -304,7 +316,8 @@ export default function ChatHeader({
                                             </div>
                                             <span>{isConversationArchived ? "Unarchive" : "Archive"}</span>
                                         </DropdownMenu.Item>
-                                        {!isConversationReported && (
+                                        )}
+                                        {showReportAction && (
                                             <DropdownMenu.Item
                                                 onSelect={() => {
                                                     onReportConversation?.();
@@ -317,7 +330,10 @@ export default function ChatHeader({
                                                 <span>Report</span>
                                             </DropdownMenu.Item>
                                         )}
-                                    <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                                    {showDeleteAction && (showArchiveAction || showReportAction) && (
+                                        <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                                    )}
+                                        {showDeleteAction && (
                                         <DropdownMenu.Item
                                             onSelect={() => {
                                                 onDeleteConversation?.();
@@ -329,9 +345,11 @@ export default function ChatHeader({
                                             </div>
                                             <span>Delete</span>
                                         </DropdownMenu.Item>
+                                        )}
                                 </DropdownMenu.Content>
                             </DropdownMenu.Portal>
                         </DropdownMenu.Root>
+                            )}
                         </>
                     )}
                 </div>

@@ -10,7 +10,6 @@ import TasksView from "./pages/TasksView";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import SharedConversationPage from "./pages/SharedConvPage";
-import Test from "./pages/Test";
 import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { CookieConsentBanner } from "@/shared/ui/cookie-consent-banner";
@@ -47,7 +46,6 @@ const App = () => {
               <Route path="/share/:token" element={<SharedConversationPage />} />
               <Route path="/terms" element={<TermsAndConditions />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
-              <Route path="/test" element={<Test />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
@@ -60,8 +58,8 @@ const App = () => {
                 element={
                   <div className="flex h-screen flex-col overflow-hidden">
                     <div className="relative min-h-0 flex-1 overflow-hidden">
-                      <div className="pointer-events-none select-none">
-                        <Login />
+                      <div className="pointer-events-none select-none" aria-hidden="true">
+                        <Login decorative />
                       </div>
                       <div className="absolute inset-0 bg-background/50 backdrop-blur-[3px]" />
                     </div>

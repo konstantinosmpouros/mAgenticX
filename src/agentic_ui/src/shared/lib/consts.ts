@@ -259,7 +259,11 @@ export const transformConversationSummary = (
     forkedParentId: summary.forkedParentId ?? summary.forked_parent_id ?? null,
     forkedMessageId: summary.forkedMessageId ?? summary.forked_message_id ?? null,
     title: summary.title ?? undefined,
-    isPrivate: Boolean(summary.isPrivate),
+    // Accept both casings like every neighbouring field. The bridge serializes
+    // this as camelCase today, but privacy is the one flag where a casing
+    // mismatch would silently render a private conversation as a public one —
+    // so it must not depend on a single key being spelled the expected way.
+    isPrivate: Boolean(summary.isPrivate ?? summary.is_private),
     isArchived: Boolean(summary.isArchived ?? summary.is_archived),
     archivedAt: archivedAt ? toDate(archivedAt) : null,
     isReported: Boolean(summary.isReported ?? summary.is_reported),
@@ -289,7 +293,8 @@ export const transformConversationDetail = (
     forkedParentId: detail.forkedParentId ?? detail.forked_parent_id ?? null,
     forkedMessageId: detail.forkedMessageId ?? detail.forked_message_id ?? null,
     title: detail.title ?? "",
-    isPrivate: Boolean(detail.isPrivate),
+    // See transformConversationSummary — privacy must not hinge on key casing.
+    isPrivate: Boolean(detail.isPrivate ?? detail.is_private),
     isArchived: Boolean(detail.isArchived ?? detail.is_archived),
     archivedAt: archivedAt ? toDate(archivedAt) : null,
     isReported: Boolean(detail.isReported ?? detail.is_reported),

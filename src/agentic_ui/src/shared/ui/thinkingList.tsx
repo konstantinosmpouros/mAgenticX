@@ -1,10 +1,6 @@
 import { cn } from "@/shared/lib/utils";
-import { Wrench, } from "lucide-react";
 import { LuCircleCheck } from "react-icons/lu";
 import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
-
-
-import { FaCog } from "react-icons/fa";
 import { BiSolidCog } from "react-icons/bi";
 
 

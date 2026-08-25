@@ -7,7 +7,17 @@ type CookieConsentData = {
     version: string;
 };
 
+/**
+ * In-process fallback for browsers that throw on localStorage writes (Safari ITP
+ * in embedded contexts, "block all cookies", strict enterprise policy). Without
+ * it an accepted consent is lost the moment the write fails, so the gate re-asks
+ * on every document — and a user who already holds a session cookie can never
+ * get past it. This at least holds the consent for the life of the document.
+ */
+let inMemoryConsent = false;
+
 export function saveCookieConsent(): void {
+    inMemoryConsent = true;
     try {
         const data: CookieConsentData = {
             accepted: true,
@@ -31,6 +41,7 @@ export function loadCookieConsent(): CookieConsentData | null {
 }
 
 export function hasCookieConsent(): boolean {
+    if (inMemoryConsent) return true;
     const data = loadCookieConsent();
     return data !== null && data.accepted === true && data.version === CONSENT_VERSION;
 }

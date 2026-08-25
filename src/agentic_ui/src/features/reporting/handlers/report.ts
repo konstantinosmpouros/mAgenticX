@@ -1,4 +1,5 @@
 import { reportConversation } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 import type { ConversationDetail, ConversationReportPayload, ConversationSummary, MessageOut } from "@/shared/lib/types";
 import type { Dispatch, SetStateAction } from "react";
 
@@ -106,8 +107,10 @@ export function createReportHandlers(ctx: ReportHandlersCtx) {
       persistUIState();
       return true;
     } catch (error) {
-      console.error("Failed to report conversation:", error);
-      toast({ title: "Failed to submit report", description: "There was an error submitting the report. Please try again.", variant: "destructive", duration: 3000 });
+      toastError(toast, "Failed to submit report", error, {
+        description: "There was an error submitting the report. Please try again.",
+        duration: 3000,
+      });
       return false;
     }
   };

@@ -1,4 +1,5 @@
 import { transcribeDictation } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 import type { DictationStatus } from "@/features/chat/components/ChatInputBar";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
@@ -71,11 +72,7 @@ export function createVoiceDictationHandlers(ctx: VoiceDictationCtx) {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Voice transcription failed. Please try again.";
-      ctx.toast({
-        title: "Dictation failed",
-        description: message,
-        variant: "destructive",
-      });
+      toastError(ctx.toast, "Dictation failed", error, { description: message });
     } finally {
       ctx.setDictationStatus("idle");
     }

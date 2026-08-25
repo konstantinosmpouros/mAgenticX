@@ -140,7 +140,6 @@ function InterruptList({ interrupts }: { interrupts: SubagentInterrupt[] }) {
 function CopyableContentBox({
   content,
   children,
-  tone = "body",
   size = "md",
 }: {
   content: string;

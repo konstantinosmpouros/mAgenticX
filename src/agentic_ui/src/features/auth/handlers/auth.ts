@@ -13,6 +13,7 @@ import {
   logoutSession,
   switchAccount,
 } from '@/shared/lib/api';
+import { toastError } from '@/shared/lib/toast';
 import { sortByUpdatedAtDesc } from '@/shared/lib/utils';
 import { saveSession, clearSession, loadSession } from '@/shared/lib/authStorage';
 import { setUnauthorizedSuppressed } from '@/shared/lib/consts';
@@ -98,8 +99,9 @@ export function createAuthHandlers(ctx: AuthCtx) {
         toast({ title: 'Authentication failed', description: 'Please check your credentials and try again.', variant: 'destructive', duration: 2000 });
       }
     } catch (error) {
-      console.error('Authentication error:', error);
-      toast({ title: 'Login Failed', description: 'Unable to connect to authentication service', variant: 'destructive' });
+      toastError(toast, 'Login Failed', error, {
+        description: 'Unable to connect to authentication service',
+      });
     }
   };
 

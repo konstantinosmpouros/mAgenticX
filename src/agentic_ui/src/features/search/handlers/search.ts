@@ -120,6 +120,9 @@ export function createSearchResultHandlers({
       id: conversationId,
       agent,
       title: result.title,
+      // Safe to hardcode: workspace search filters `is_private == False` at the
+      // query level (dialogue_bridge/utils/search.py), so a private conversation
+      // can never surface as a search result in the first place.
       isPrivate: false,
       isArchived: false,
       lastMessage: result.snippet || undefined,

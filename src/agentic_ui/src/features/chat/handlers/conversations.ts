@@ -1,5 +1,6 @@
 import { Building2 } from 'lucide-react';
 import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, getArchivedConversations, forkConversation } from '@/shared/lib/api';
+import { toastError } from '@/shared/lib/toast';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Agent, ConversationDetail, ConversationSummary, MessageOut } from '@/shared/lib/types';
 
@@ -186,7 +187,13 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     try {
       setLoadingConversation(true);
       const summary = await forkConversation(userId, currentConversation.id, message.id);
-      setConversations(prev => sortConversationSummaries([summary, ...prev.filter(c => c.id !== summary.id)]));
+      // A fork inherits the source conversation's privacy, and private
+      // conversations are excluded from every listing endpoint — so a private
+      // fork must not be inserted into the sidebar (see beginRun for the full note).
+      setConversations(prev => {
+        const withoutFork = prev.filter(c => c.id !== summary.id);
+        return summary.isPrivate ? withoutFork : sortConversationSummaries([summary, ...withoutFork]);
+      });
 
       // Seed the fetched detail so the route's load effect short-circuits
       // (currentConversation.id === :conversationId) instead of refetching,
@@ -202,13 +209,7 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       toast({ title: 'Conversation forked', duration: 2000 });
       persistUIState();
     } catch (error) {
-      console.error('Failed to fork conversation:', error);
-      toast({
-        title: 'Failed to fork conversation',
-        description: error instanceof Error ? error.message : 'Please try again in a moment.',
-        variant: 'destructive',
-        duration: 3000,
-      });
+      toastError(toast, 'Failed to fork conversation', error, { duration: 3000 });
     } finally {
       setLoadingConversation(false);
     }
@@ -258,8 +259,10 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       toast({ title: 'Conversation deleted', description: 'The conversation has been removed from your history', duration: 2000 });
       persistUIState();
     } catch (error) {
-      console.error('Failed to delete conversation:', error);
-      toast({ title: 'Failed to delete conversation', description: 'There was an error deleting the conversation. Please try again.', variant: 'destructive', duration: 3000 });
+      toastError(toast, 'Failed to delete conversation', error, {
+        description: 'There was an error deleting the conversation. Please try again.',
+        duration: 3000,
+      });
     }
   };
 
@@ -309,11 +312,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       });
       persistUIState();
     } catch (error) {
-      console.error('Failed to rename conversation:', error);
-      toast({
-        title: 'Failed to rename conversation',
+      toastError(toast, 'Failed to rename conversation', error, {
         description: 'There was an error renaming the conversation. Please try again.',
-        variant: 'destructive',
         duration: 3000,
       });
     }
@@ -342,8 +342,10 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       toast({ title: 'Conversation archived', description: 'The conversation has been moved out of the sidebar.', duration: 2200 });
       persistUIState();
     } catch (error) {
-      console.error('Failed to archive conversation:', error);
-      toast({ title: 'Failed to archive conversation', description: 'There was an error archiving the conversation. Please try again.', variant: 'destructive', duration: 3000 });
+      toastError(toast, 'Failed to archive conversation', error, {
+        description: 'There was an error archiving the conversation. Please try again.',
+        duration: 3000,
+      });
     }
   };
 
@@ -378,8 +380,10 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       toast({ title: 'Conversation unarchived', description: 'The conversation is back in the sidebar.', duration: 2200 });
       persistUIState();
     } catch (error) {
-      console.error('Failed to unarchive conversation:', error);
-      toast({ title: 'Failed to unarchive conversation', description: 'There was an error unarchiving the conversation. Please try again.', variant: 'destructive', duration: 3000 });
+      toastError(toast, 'Failed to unarchive conversation', error, {
+        description: 'There was an error unarchiving the conversation. Please try again.',
+        duration: 3000,
+      });
     }
   };
 
@@ -426,11 +430,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setArchivedConvPage(page);
       setArchivedConvHasMore(items.length >= archivedPageSize);
     } catch (error) {
-      console.error('Failed to load archived conversations:', error);
-      toast({
-        title: 'Failed to load archived chats',
+      toastError(toast, 'Failed to load archived chats', error, {
         description: 'There was an error loading archived conversations. Please try again.',
-        variant: 'destructive',
         duration: 3000,
       });
       if (options?.reset) {

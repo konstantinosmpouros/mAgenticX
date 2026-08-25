@@ -7,18 +7,12 @@ import { useToast } from "@/shared/hooks/use-toast";
 
 // Import types for messages, thinking state, conversations, and agents
 import type {
-  ThinkingState, Agent,
+  ThinkingState,
   MessageOut,
   ConversationDetail,
   ConversationSummary,
-  ConversationShareListItem,
   ConversationShareMode,
-  SharedConversationDetail,
-  Skill,
-  UserSkill,
-  UserProfile,
-  ToolMetadata,
-  UserPreferences } from "@/shared/lib/types";
+  SharedConversationDetail } from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/features/settings/handlers/preferences";
 import { computeConversationUsage } from "@/shared/lib/utils";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
@@ -95,6 +89,7 @@ import SearchPanel from "@/features/search/components/SearchPanel";
 import { useScheduledTasks } from "@/features/tasks/hooks/useScheduledTasks";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
+import { toastError } from "@/shared/lib/toast";
 import type { AttachmentLike } from "@/features/chat/components/message_parts/MessageAttachments";
 
 const ROOT_BRANCH_KEY = "__root__";
@@ -351,11 +346,8 @@ export function useChatWorkspace({
       setAvailableSkills(fresh);
       requestPersist();
     } catch (error) {
-      console.error("Failed to refresh skills:", error);
-      toastWrapper({
-        title: "Couldn't refresh skills",
+      toastError(toastWrapper, "Couldn't refresh skills", error, {
         description: error instanceof Error ? error.message : "Try again in a moment.",
-        variant: "destructive",
       });
     }
   }, [requestPersist]);
@@ -565,12 +557,17 @@ export function useChatWorkspace({
   const [dictationCancelSignal, setDictationCancelSignal] = useState(0);
   const [isPlanExpanded, setIsPlanExpanded] = useState(true);
 
-  const setConversationMessages = createConversationMessageSetter({
-    agents,
-    selectedAgent,
-    isPrivateMode,
-    setCurrentConversation,
-  });
+  // Memoized because it is threaded into the edit / retry / inference / feedback
+  // factories below — an unstable identity here invalidates all of them.
+  const setConversationMessages = useMemo(
+    () => createConversationMessageSetter({
+      agents,
+      selectedAgent,
+      isPrivateMode,
+      setCurrentConversation,
+    }),
+    [agents, selectedAgent, isPrivateMode, setCurrentConversation],
+  );
 
   const openProfilePanel = useCallback(
     (tab: string = "general") => {
@@ -600,13 +597,16 @@ export function useChatWorkspace({
     setDictationRequestSignal((prev) => prev + 1);
   }, [dictationStatus, isCurrentConversationBusy]);
 
-  const { handleDictationSubmit, handleDictationStatusChange } = createVoiceDictationHandlers({
-    userId,
-    setCurrentMessage,
-    setDictationStatus,
-    textareaRef,
-    toast: toastWrapper,
-  });
+  const { handleDictationSubmit, handleDictationStatusChange } = useMemo(
+    () => createVoiceDictationHandlers({
+      userId,
+      setCurrentMessage,
+      setDictationStatus,
+      textareaRef,
+      toast: toastWrapper,
+    }),
+    [userId, setCurrentMessage, setDictationStatus, textareaRef, toastWrapper],
+  );
 
   const reduceMotion = useReducedMotion();
   const { voiceSession, handleVoiceMode } = useChatVoiceMode({
@@ -930,11 +930,8 @@ export function useChatWorkspace({
       })
       .catch((error) => {
         if (gen !== loadGenRef.current) return;
-        console.error("Failed to load conversation", error);
-        toastWrapper({
-          title: "Failed to load conversation",
+        toastError(toastWrapper, "Failed to load conversation", error, {
           description: "There was an error loading the conversation. Please try again.",
-          variant: "destructive",
           duration: 3000,
         });
       })
@@ -997,22 +994,31 @@ export function useChatWorkspace({
   });
 
   // Create attachment handlers
-  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl, handleFileDownload } = createAttachmentHandlers({
-    attachments,
-    setAttachments,
-    toast: toastWrapper,
-    userId,
-    currentConversation,
-  });
+  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl, handleFileDownload } = useMemo(
+    () => createAttachmentHandlers({
+      attachments,
+      setAttachments,
+      toast: toastWrapper,
+      userId,
+      currentConversation,
+    }),
+    [attachments, setAttachments, toastWrapper, userId, currentConversation],
+  );
 
   // Create UI handlers
-  const { handleCopy, handleImageClick, handleCloseImagePreview } = createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage });
-  const { handleReadAloud, stopReadAloud } = createReadAloudHandlers({
-    userId,
-    conversationId: currentConversation?.id ?? null,
-    setSpeakingMessageId,
-    toast: toastWrapper,
-  });
+  const { handleCopy, handleImageClick, handleCloseImagePreview } = useMemo(
+    () => createUIHandlers({ toast: toastWrapper, setCopiedId, setSelectedImage }),
+    [toastWrapper, setCopiedId, setSelectedImage],
+  );
+  const { handleReadAloud, stopReadAloud } = useMemo(
+    () => createReadAloudHandlers({
+      userId,
+      conversationId: currentConversation?.id ?? null,
+      setSpeakingMessageId,
+      toast: toastWrapper,
+    }),
+    [userId, currentConversation?.id, setSpeakingMessageId, toastWrapper],
+  );
 
   useEffect(() => () => stopReadAloud(), []);
 
@@ -1082,12 +1088,19 @@ export function useChatWorkspace({
     if (thinkingState?.isActive) setShowAiTransition(false);
   }, [thinkingState?.isActive]);
 
-  // Create AI transition handlers
-  const { AiTransitionIndicator } = createAiTransitionHandlers({
-    showAiTransition,
-    thinkingState,
-    activeBranchPath,
-  });
+  // Create AI transition handlers.
+  // Memoized deliberately: this factory returns a *component*, and React
+  // compares element types by identity. Calling it bare gave `<AiTransitionIndicator/>`
+  // a brand-new type on every render, so the indicator's DOM was torn down and
+  // rebuilt on every streamed token instead of simply re-rendering.
+  const { AiTransitionIndicator } = useMemo(
+    () => createAiTransitionHandlers({
+      showAiTransition,
+      thinkingState,
+      activeBranchPath,
+    }),
+    [showAiTransition, thinkingState, activeBranchPath],
+  );
 
   // Retry handlers
   const { handleRetryAiMessage } = createRetryHandlers({
@@ -1236,18 +1249,27 @@ export function useChatWorkspace({
   }, [closeProfilePanel, handleConversationSelect]);
 
   // Agent change handler
-  const { handleAgentChange } = createAgentHandlers({
-    setSelectedAgent,
-    persistUIState: requestPersist,
-  });
+  const { handleAgentChange } = useMemo(
+    () => createAgentHandlers({
+      setSelectedAgent,
+      persistUIState: requestPersist,
+    }),
+    [setSelectedAgent, requestPersist],
+  );
 
-  const { handleSearchResultSelect } = createSearchResultHandlers({
-    agents,
-    onAgentSelect: handleAgentChange,
-    onConversationSelect: (conversation) => void handleConversationSelect(conversation),
-    onCloseSearch: closeSearchPanel,
-  });
-  const defaultSearchResults = buildDefaultConversationSearchResults(conversations);
+  const { handleSearchResultSelect } = useMemo(
+    () => createSearchResultHandlers({
+      agents,
+      onAgentSelect: handleAgentChange,
+      onConversationSelect: (conversation) => void handleConversationSelect(conversation),
+      onCloseSearch: closeSearchPanel,
+    }),
+    [agents, handleAgentChange, handleConversationSelect, closeSearchPanel],
+  );
+  const defaultSearchResults = useMemo(
+    () => buildDefaultConversationSearchResults(conversations),
+    [conversations],
+  );
 
   // Handle thinking toggle. `next` carries the explicit target state when the
   // block's default (absent from the record) is open — a bare flip of an
@@ -1393,10 +1415,8 @@ export function useChatWorkspace({
         // login page (and whatever it navigates to) starts from the new session.
         window.location.assign(account.current ? "/login" : "/login?add=1");
       } catch (error) {
-        toastWrapper({
-          title: "Could not sign out of that account",
+        toastError(toastWrapper, "Could not sign out of that account", error, {
           description: error instanceof Error ? error.message : "Please try again.",
-          variant: "destructive",
         });
       } finally {
         setBusyAccountId(null);

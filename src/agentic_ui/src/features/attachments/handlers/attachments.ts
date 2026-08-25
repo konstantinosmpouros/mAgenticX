@@ -1,5 +1,6 @@
 import { validateAdd } from '@/shared/lib/uploadGuards';
 import { downloadAttachment } from '@/shared/lib/api';
+import { toastError } from '@/shared/lib/toast';
 import type { ConversationDetail, MessageOut } from '@/shared/lib/types';
 
 // Attachment handlers centralize the file lifecycle for the composer:
@@ -185,8 +186,10 @@ export function createAttachmentHandlers(ctx: AttachmentsCtx) {
         filename: attachment.name,
       });
     } catch (error) {
-      console.error('Download failed:', error);
-      toast({ title: 'Download failed', description: 'Unable to download the file. Please try again.', variant: 'destructive', duration: 3000 });
+      toastError(toast, 'Download failed', error, {
+        description: 'Unable to download the file. Please try again.',
+        duration: 3000,
+      });
     }
   };
 

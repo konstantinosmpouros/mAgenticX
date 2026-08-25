@@ -271,7 +271,9 @@ function updateToolAt(
 }
 
 function applyToolEvent(
-  session: Session,
+  // Retained for signature symmetry with the sibling applyXEvent handlers; the
+  // underscore marks it as intentionally unread.
+  _session: Session,
   event: RawEvent,
   paths: Record<string, { block: number; item: number }>,
   getBlock: (index: number) => ThinkingBlock,

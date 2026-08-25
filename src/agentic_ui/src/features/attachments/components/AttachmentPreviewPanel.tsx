@@ -90,7 +90,7 @@ function shouldReadText(descriptor: AttachmentPreviewDescriptor) {
 }
 
 function renderReadyState(state: Extract<PreviewState, { status: "ready" }>) {
-  const { descriptor, meta, previewUrl, blob, text } = state;
+  const { descriptor, meta, previewUrl, text } = state;
 
   if (!descriptor.previewable) {
     return null;

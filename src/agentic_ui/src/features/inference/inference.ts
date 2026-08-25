@@ -1,4 +1,5 @@
 import { getInferenceStartErrorCopy } from './inferenceErrors';
+import { toastError } from '@/shared/lib/toast';
 import { convertFileAttachments } from '@/shared/lib/utils';
 import { validateAttachmentsForUpload } from '@/shared/lib/uploadGuards';
 import type {
@@ -119,7 +120,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setAttachments,
     setIsSendingMessage,
     setCurrentConversation,
-    setConversations,
     toast,
     isImageFile,
     getImageUrl,
@@ -276,7 +276,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         persistUIState?.();
       }
     } catch (error) {
-      console.error('Failed to send message:', error);
       // Roll back the optimistic echo so no phantom message survives the failure:
       // drop the temp row, dissolve a temporary conversation shell (empty id)
       // back to the hero view, and put the draft back so nothing the user typed
@@ -290,7 +289,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
         title: 'Error',
         description: 'Failed to send message. Please try again.',
       });
-      toast({ ...copy, variant: 'destructive' });
+      toastError(toast, copy.title, error, { description: copy.description });
     } finally {
       // Always release the shared streaming state, even if the failure happened
       // before streaming began. The transition dot is deliberately NOT cleared
@@ -402,13 +401,12 @@ export function createMessageEditHandlers(ctx: MessageEditHandlersCtx) {
       }));
       persistUIState?.();
     } catch (error) {
-      console.error('Failed to submit edited message', error);
       if (setShowAiTransition) setShowAiTransition(false);
       const copy = getInferenceStartErrorCopy(error, {
         title: 'Failed to edit message',
         description: 'Please try again in a moment.',
       });
-      toast({ ...copy, variant: 'destructive' });
+      toastError(toast, copy.title, error, { description: copy.description });
       throw error;
     } finally {
       // Edit submission owns the send/loading flags just like the main composer
@@ -521,13 +519,12 @@ export function createRetryHandlers(ctx: RetryHandlersCtx) {
       }));
       persistUIState?.();
     } catch (error) {
-      console.error('Failed to retry AI message', error);
       if (setShowAiTransition) setShowAiTransition(false);
       const copy = getInferenceStartErrorCopy(error, {
         title: 'Failed to retry message',
         description: 'Please try again in a moment.',
       });
-      toast({ ...copy, variant: 'destructive' });
+      toastError(toast, copy.title, error, { description: copy.description });
     } finally {
       // Retry owns the same send/loading cleanup contract as send and edit-submit;
       // the transition dot persists on success until the first agent frame.

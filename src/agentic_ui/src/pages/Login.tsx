@@ -10,6 +10,7 @@ import ParticleNetwork from "@/shared/ui/react_bits/bg_particle_network";
 import { authenticate, beginEntraLogin, getAuthConfig, restoreSession } from "@/shared/lib/api";
 import { loadSession, saveSession, updateSession } from "@/shared/lib/authStorage";
 import { useToast } from "@/shared/hooks/use-toast";
+import { toastError } from "@/shared/lib/toast";
 import { cn } from "@/shared/lib/utils";
 import type { AuthApiError } from "@/shared/lib/types";
 
@@ -52,7 +53,20 @@ const ParticleBg = memo(
     () => true,
 );
 
-export default function Login() {
+type LoginProps = {
+    /**
+     * Render as inert wallpaper. The cookie-consent gate in App.tsx mounts this
+     * page behind a blur purely for looks, but a live Login is not decoration:
+     * its session-restore effect calls `window.location.assign("/")`, which —
+     * once the user has a valid session cookie but no persisted consent — puts
+     * the app in an infinite reload loop that makes signing in impossible.
+     * Decorative instances therefore skip every effect with a side effect
+     * (navigation, document.title, auth-config fetch, query-string rewriting).
+     */
+    decorative?: boolean;
+};
+
+export default function Login({ decorative = false }: LoginProps = {}) {
     const reduceMotion = useReducedMotion();
     const navigate = useNavigate();
     // "Add another account": the caller is already signed in and wants a second
@@ -76,6 +90,7 @@ export default function Login() {
     // Ask the backend whether Microsoft SSO is configured (button hidden if not),
     // and surface any ?sso=<reason> the OIDC callback bounced back with.
     useEffect(() => {
+        if (decorative) return;
         let cancelled = false;
         void getAuthConfig()
             .then((config) => {
@@ -99,15 +114,16 @@ export default function Login() {
         return () => {
             cancelled = true;
         };
-    }, [toast]);
+    }, [toast, decorative]);
 
     useEffect(() => {
+        if (decorative) return;
         const previous = document.title;
         document.title = "Sign in · mAgenticX";
         return () => {
             document.title = previous;
         };
-    }, []);
+    }, [decorative]);
 
     const handleCapsLock = (event: KeyboardEvent<HTMLInputElement>) => {
         if (typeof event.getModifierState === "function") {
@@ -162,6 +178,11 @@ export default function Login() {
 
     useEffect(() => {
         let cancelled = false;
+        if (decorative) {
+            // The consent-gate wallpaper instance: restoring here would redirect
+            // to "/", which re-mounts the gate and reloads forever.
+            return;
+        }
         if (addAccountMode) {
             // A valid session exists on purpose here; restoring it would bounce
             // the user straight back to the app instead of letting them add one.
@@ -195,7 +216,7 @@ export default function Login() {
         return () => {
             cancelled = true;
         };
-    }, [navigate, addAccountMode]);
+    }, [navigate, addAccountMode, decorative]);
 
     // Staggered entrance: the container reveals children one after another;
     // each child fades up. Reduced motion collapses offsets to a plain fade.
@@ -265,10 +286,8 @@ export default function Login() {
                 setRateLimitedUntil(Date.now() + retryAfterSeconds * 1000);
                 setCooldownSeconds(retryAfterSeconds);
                 setAuthStatus("rate_limited");
-                toast({
-                    title: "Too many requests",
+                toastError(toast, "Too many requests", error, {
                     description: "Too many sign-in attempts. Please wait a moment and try again.",
-                    variant: "destructive",
                     duration: 2600,
                 });
                 return;
@@ -282,10 +301,8 @@ export default function Login() {
                 });
                 return;
             }
-            toast({
-                title: "Login failed",
+            toastError(toast, "Login failed", error, {
                 description: "Unable to connect to authentication service",
-                variant: "destructive",
             });
         } finally {
             setSubmitting(false);

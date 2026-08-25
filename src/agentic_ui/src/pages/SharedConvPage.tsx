@@ -6,9 +6,10 @@ import { Textarea } from "@/shared/ui/textarea";
 import ChatBody from "@/features/chat/components/ChatBody";
 import { getSharedConversation, startInference } from "@/shared/lib/api";
 import { getInferenceStartErrorCopy } from "@/features/inference";
-import type { MessageOut, SharedConversationDetail } from "@/shared/lib/types";
+import type { SharedConversationDetail } from "@/shared/lib/types";
 import type { AttachmentLike } from "@/features/chat/components/message_parts/MessageAttachments";
 import { useToast } from "@/shared/hooks/use-toast";
+import { toastError } from "@/shared/lib/toast";
 import { isSessionValid, loadSession, updateSession } from "@/shared/lib/authStorage";
 import { ChatInterface } from "./ChatPage";
 
@@ -144,12 +145,11 @@ export default function SharedConversationPage() {
       toast({ title: "Conversation added", description: "The agent response is now running in your workspace.", variant: "success", duration: 2200 });
       navigate("/");
     } catch (err) {
-      console.error("Failed to continue shared conversation:", err);
       const copy = getInferenceStartErrorCopy(err, {
         title: "Could not continue conversation",
         description: err instanceof Error ? err.message : "Please try again.",
       });
-      toast({ ...copy, variant: "destructive", duration: 3000 });
+      toastError(toast, copy.title, err, { description: copy.description, duration: 3000 });
     } finally {
       setContinuing(false);
     }

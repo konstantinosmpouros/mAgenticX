@@ -143,7 +143,6 @@ export default function ChatSidebar({
   onOpenShortcuts,
   onOpenHelp,
   onLogout,
-  agents,
   userProfile,
   accounts = [],
   canAddAccount = false,

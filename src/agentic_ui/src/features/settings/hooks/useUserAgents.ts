@@ -8,6 +8,7 @@ import {
   updateMyAgent,
   validateMyAgent,
 } from '@/shared/lib/api';
+import { toastError } from '@/shared/lib/toast';
 import type {
   Agent,
   CustomAgentDetail,
@@ -96,10 +97,8 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       try {
         return await getMyAgentDetail(userId, agentId);
       } catch (error) {
-        toast({
-          title: 'Could not open the agent',
+        toastError(toast, 'Could not open the agent', error, {
           description: error instanceof Error ? error.message : 'Please try again.',
-          variant: 'destructive',
         });
         return null;
       }
@@ -116,10 +115,8 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       try {
         return await validateMyAgent(userId, payload);
       } catch (error) {
-        toast({
-          title: 'Could not validate the agent',
+        toastError(toast, 'Could not validate the agent', error, {
           description: error instanceof Error ? error.message : 'Please try again.',
-          variant: 'destructive',
         });
         return null;
       }
@@ -137,10 +134,8 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
         toast({ title: 'Agent created', description: `${created.name} is ready to use.` });
         return created;
       } catch (error) {
-        toast({
-          title: 'Could not create the agent',
+        toastError(toast, 'Could not create the agent', error, {
           description: error instanceof Error ? error.message : 'Please try again.',
-          variant: 'destructive',
         });
         return null;
       } finally {
@@ -160,10 +155,8 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
         toast({ title: 'Agent saved', description: `${saved.name} was updated.` });
         return saved;
       } catch (error) {
-        toast({
-          title: 'Could not save the agent',
+        toastError(toast, 'Could not save the agent', error, {
           description: error instanceof Error ? error.message : 'Please try again.',
-          variant: 'destructive',
         });
         return null;
       } finally {
@@ -192,10 +185,8 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
         return true;
       } catch (error) {
         setMyAgents(previous);
-        toast({
-          title: 'Could not delete the agent',
+        toastError(toast, 'Could not delete the agent', error, {
           description: error instanceof Error ? error.message : 'Please try again.',
-          variant: 'destructive',
         });
         return false;
       } finally {

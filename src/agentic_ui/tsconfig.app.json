@@ -14,12 +14,17 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
+    /* Linting.
+       `strict` / `noImplicitAny` stay off for now: turning them on surfaces ~100
+       pre-existing errors, which would bury the in-flight cleanup work. They get
+       enabled directory-by-directory in a later pass. The three flags below cost
+       nothing to keep green and are what stop dead imports and unused bindings
+       from accumulating silently — the reason so much of it built up already. */
     "strict": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noImplicitAny": false,
-    "noFallthroughCasesInSwitch": false,
+    "noFallthroughCasesInSwitch": true,
 
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",

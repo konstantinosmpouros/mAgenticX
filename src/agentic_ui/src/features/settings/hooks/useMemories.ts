@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { deleteAgentMemory, getAgentMemory, listAgentMemories } from '@/shared/lib/api';
+import { toastError } from '@/shared/lib/toast';
 import type { MemoryDetail, MemorySummary } from '@/shared/lib/types';
 
 // Owns the read + delete state for the ProfilePanel "Memories" tab. Memory is
@@ -63,10 +64,8 @@ export function useMemories(ctx: MemoriesCtx): MemoriesHandlers {
       setMemories((prev) => ({ ...prev, [agentId]: fetched }));
       loadedRef.current.add(agentId);
     } catch (error) {
-      toast({
-        title: 'Could not load memories',
+      toastError(toast, 'Could not load memories', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setLoadingAgents((prev) => {
@@ -105,10 +104,8 @@ export function useMemories(ctx: MemoriesCtx): MemoriesHandlers {
       const fetched = await getAgentMemory(userId, agentId, name);
       setDetail((prev) => ({ ...prev, [key]: fetched }));
     } catch (error) {
-      toast({
-        title: 'Could not load memory content',
+      toastError(toast, 'Could not load memory content', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setLoadingDetailKeys((prev) => {
@@ -144,10 +141,8 @@ export function useMemories(ctx: MemoriesCtx): MemoriesHandlers {
       await deleteAgentMemory(userId, agentId, name);
     } catch (error) {
       setMemories((prev) => ({ ...prev, [agentId]: prevList }));
-      toast({
-        title: 'Could not delete the memory',
+      toastError(toast, 'Could not delete the memory', error, {
         description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
       });
     } finally {
       setDeletingKeys((prev) => {

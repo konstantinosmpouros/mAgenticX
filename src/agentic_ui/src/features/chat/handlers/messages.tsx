@@ -6,6 +6,7 @@ import {
   dislikeMessage as apiDislikeMessage,
   generateMessageReadAloudAudio,
 } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 
 // Message handlers cover chat actions that stay within the current UI shell
 // and do not start a brand new inference pipeline.
@@ -104,13 +105,12 @@ export const createFeedbackHandlers = ({
       const updated = await apiLikeMessage(userId, currentConversation.id, message.id);
       setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
     } catch (error) {
-      console.error('Failed to like message:', error);
-      toast?.({
-        title: 'Could not send feedback',
-        description: 'Please try again in a moment.',
-        variant: 'destructive',
-        duration: 2500,
-      });
+      if (toast) {
+        toastError(toast, 'Could not send feedback', error, {
+          description: 'Please try again in a moment.',
+          duration: 2500,
+        });
+      }
     }
   };
 
@@ -121,13 +121,12 @@ export const createFeedbackHandlers = ({
       const updated = await apiDislikeMessage(userId, currentConversation.id, message.id);
       setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
     } catch (error) {
-      console.error('Failed to dislike message:', error);
-      toast?.({
-        title: 'Could not send feedback',
-        description: 'Please try again in a moment.',
-        variant: 'destructive',
-        duration: 2500,
-      });
+      if (toast) {
+        toastError(toast, 'Could not send feedback', error, {
+          description: 'Please try again in a moment.',
+          duration: 2500,
+        });
+      }
     }
   };
 
@@ -212,11 +211,9 @@ export function createReadAloudHandlers(ctx: ReadAloudHandlersCtx) {
       if (readAloudRequestId === requestId) {
         clearActiveAudio();
         setActiveSpeechMessage(null);
-        toast?.({
-          title: "Read aloud failed",
-          description,
-          variant: "destructive",
-        });
+        if (toast) {
+          toastError(toast, "Read aloud failed", error, { description });
+        }
       }
       return;
     }
@@ -252,11 +249,11 @@ export function createReadAloudHandlers(ctx: ReadAloudHandlersCtx) {
       if (readAloudRequestId === requestId) {
         clearActiveAudio();
         setActiveSpeechMessage(null);
-        toast?.({
-          title: "Read aloud failed",
-          description: "The generated audio could not be played.",
-          variant: "destructive",
-        });
+        if (toast) {
+          toastError(toast, "Read aloud failed", error, {
+            description: "The generated audio could not be played.",
+          });
+        }
       }
     }
   };
@@ -384,7 +381,7 @@ export function createUIHandlers(ctx: UIHandlersCtx) {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 1200);
     } catch (err) {
-      toast({ title: 'Copy failed', variant: 'destructive' });
+      toastError(toast, 'Copy failed', err);
     }
   };
 

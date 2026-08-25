@@ -58,7 +58,6 @@ export default function AgentsTab({
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     const canAuthor = Boolean(onCreateAgent && onValidateAgent);
-    const myAgentIds = useMemo(() => new Set(myAgents.map((a) => a.id)), [myAgents]);
 
     const openCreate = () => {
         setEditing(null);

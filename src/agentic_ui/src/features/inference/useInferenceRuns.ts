@@ -7,6 +7,7 @@ import {
   startInference,
   type ResumeInferenceRunBody,
 } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
 import {
   createTimeline,
@@ -262,11 +263,8 @@ export function useInferenceRuns({
         if ((error as any)?.name === "AbortError") {
           return;
         }
-        console.error("Failed to observe inference run:", error);
-        toast({
-          title: "Stream observer lost",
+        toastError(toast, "Stream observer lost", error, {
           description: "The run is still owned by the server. Reopen the conversation to refresh its latest state.",
-          variant: "destructive",
         });
       });
   }, [applyRunEvent, toast, userId]);
@@ -348,6 +346,14 @@ export function useInferenceRuns({
     }
     const response = await startInference(userId, request);
     setConversations((prev) => {
+      // A private conversation must never enter the sidebar list. Every bridge
+      // listing endpoint filters `is_private`, so a row inserted here is a
+      // phantom: it appears the moment the first message is sent and vanishes
+      // on the next refresh. Filter rather than skip, so a conversation that is
+      // switched to private while listed is removed too.
+      if (response.summary.isPrivate) {
+        return prev.filter((conversation) => conversation.id !== response.summary.id);
+      }
       const found = prev.some((conversation) => conversation.id === response.summary.id);
       const next = found
         ? prev.map((conversation) => (conversation.id === response.summary.id ? response.summary : conversation))

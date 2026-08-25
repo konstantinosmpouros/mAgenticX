@@ -1,5 +1,3 @@
-import * as React from "react";
-
 type DocxPreviewProps = {
   viewerUrl: string;
   name: string;
