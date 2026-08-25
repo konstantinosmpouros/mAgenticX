@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser, require_csrf_protection
 from core.database import get_db
-from schemas import ScheduledTaskCreate, ScheduledTaskOut, ScheduledTaskUpdate
+from schema import ScheduledTaskCreate, ScheduledTaskOut, ScheduledTaskUpdate
 from utils import validate_userId
 from utils.scheduled_tasks import (
     build_scheduled_task_out,

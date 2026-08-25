@@ -16,7 +16,7 @@ from core.database import (
     UserTable,
     b64_decode,
 )
-from schemas import (
+from schema import (
     ConversationShareListItem,
     MessageIn,
 )

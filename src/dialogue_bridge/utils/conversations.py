@@ -18,7 +18,7 @@ from core.database import (
     MessageTable,
     UserTable,
 )
-from schemas import AttachmentIn, MessageIn
+from schema import AttachmentIn, MessageIn
 
 
 async def init_conv(

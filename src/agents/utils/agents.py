@@ -32,7 +32,7 @@ from runtime.tools.registry import is_known_native_tool
 from utils.declarative import manifest_from_spec
 from core.settings import settings
 from core.logging import get_logger
-from schemas import AgentDefinition
+from schema import AgentDefinition
 
 logger = get_logger(__name__)
 

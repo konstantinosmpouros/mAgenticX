@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.database import AttachmentTable, MessageTable
-from schemas import MessageUpdate
+from schema import MessageUpdate
 
 
 async def get_owned_message(

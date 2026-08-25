@@ -27,7 +27,7 @@ from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
 from core.logging import get_context, get_logger
-from schemas import MemoryMessageMatch
+from schema import MemoryMessageMatch
 
 logger = get_logger(__name__)
 

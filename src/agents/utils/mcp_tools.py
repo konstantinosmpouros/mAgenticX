@@ -7,7 +7,7 @@ from mcp.client.sse import sse_client
 
 from core.settings import settings
 from core.logging import get_logger
-from schemas import ToolManifest
+from schema import ToolManifest
 
 logger = get_logger(__name__)
 

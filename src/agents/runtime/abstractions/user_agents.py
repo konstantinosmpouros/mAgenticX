@@ -49,7 +49,7 @@ from runtime.abstractions.agent_spec import AgentSpec
 from runtime.filesystem import layout
 from runtime.skill_registry.user_registry import sync_agent_default_skills
 from runtime.tools.registry import is_known_native_tool
-from schemas import AgentFile, UserAgentDetail, UserAgentSummary
+from schema import AgentFile, UserAgentDetail, UserAgentSummary
 
 logger = get_logger(__name__)
 

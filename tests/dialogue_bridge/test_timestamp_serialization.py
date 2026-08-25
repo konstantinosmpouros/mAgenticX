@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 
 from pydantic import BaseModel
 
-from schemas import UTCDateTime
+from schema import UTCDateTime
 
 
 class _M(BaseModel):

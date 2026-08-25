@@ -121,10 +121,10 @@ The tool is built **per run**, closing over the current `user_id` + `conversatio
 | Bridge URL config (agents) | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `BridgeSettings.memory_search_url`, `DIALOGUE_BRIDGE_URL` |
 | Sweeper + message search + agents client | [src/dialogue_bridge/utils/embeddings.py](../../src/dialogue_bridge/utils/embeddings.py) | `run_embedding_sweeper`, `search_user_messages`, `embed_texts` |
 | ORM model | [src/dialogue_bridge/core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `MessageEmbeddingTable`, `EMBEDDING_DIMENSIONS` |
-| Migration | [src/dialogue_bridge/migrations/versions/0010_message_embeddings.py](../../src/dialogue_bridge/migrations/versions/0010_message_embeddings.py) | `CREATE EXTENSION`, table, HNSW index |
+| Migration | [src/dialogue_bridge/core/database/migrations/versions/0010_message_embeddings.py](../../src/dialogue_bridge/core/database/migrations/versions/0010_message_embeddings.py) | `CREATE EXTENSION`, table, HNSW index |
 | Internal search endpoint | [src/dialogue_bridge/router/internal_memory.py](../../src/dialogue_bridge/router/internal_memory.py) | `searchUserMemory` (`POST /v1/internal/memory/search`) |
 | Internal-caller guard | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` |
 | nginx edge deny | [src/agentic_ui/nginx.conf.template](../../src/agentic_ui/nginx.conf.template) | `location ^~ /api/v1/internal/` |
 | Pipeline config (bridge) | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `EmbeddingsSettings`, `HttpTimeoutSettings.embeddings_timeout` |
 | Sweeper lifecycle | [src/dialogue_bridge/main.py](../../src/dialogue_bridge/main.py) | lifespan: `run_embedding_sweeper` start/stop |
-| Request / result schemas | [src/dialogue_bridge/schemas/__init__.py](../../src/dialogue_bridge/schemas/__init__.py) | `MemorySearchRequest`, `MemoryMessageMatch` |
+| Request / result schemas | [src/dialogue_bridge/schema/internal_memory.py](../../src/dialogue_bridge/schema/internal_memory.py) | `MemorySearchRequest`, `MemoryMessageMatch` |

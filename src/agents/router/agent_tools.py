@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
-from schemas import AgentToolsResponse, ToolToggleRequest
+from schema import AgentToolsResponse, ToolToggleRequest
 from utils.agent_tools import list_agent_tools, toggle_agent_tool
 from utils.mcp_tools import MCPToolsClientError, list_mcp_tools
 

@@ -3,7 +3,7 @@ from core.logging import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from schemas import AgentPublic, ToolManifest
+from schema import AgentPublic, ToolManifest
 from utils import (
     fetch_tools_from_agents_service,
     generate_conversation_suggestions,

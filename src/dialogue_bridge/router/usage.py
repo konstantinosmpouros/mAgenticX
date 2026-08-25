@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser
 from core.database import get_db
-from schemas import UsageSummary
+from schema import UsageSummary
 from utils import compute_usage_summary, validate_userId
 
 

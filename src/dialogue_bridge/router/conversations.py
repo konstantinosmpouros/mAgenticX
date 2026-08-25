@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 
 from core.database import ConversationReportTable, ConversationShareTable, ConversationTable, get_db
-from schemas import (
+from schema import (
     ConversationDetail,
     ConversationForkIn,
     ConversationIn,

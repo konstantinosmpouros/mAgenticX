@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import AttachmentTable, BlobTable, ConversationTable, MessageTable
 from core.settings import settings
-from schemas import ImageOut
+from schema import ImageOut
 
 
 logger = get_logger(__name__)

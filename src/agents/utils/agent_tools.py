@@ -30,7 +30,7 @@ from typing import Dict, List, Optional, Set
 from core.logging import get_logger
 from runtime.filesystem.tool_prefs import read_tool_prefs, write_tool_prefs
 from runtime.tools.registry import native_catalog
-from schemas import AgentToolRow
+from schema import AgentToolRow
 from utils.agents import resolve_agent_definition
 from utils.mcp_tools import build_tool_cache_key, get_cached_tool_manifests_map
 

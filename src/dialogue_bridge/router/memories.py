@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, status
 from core.logging import get_logger, set_context
 
 from core.auth.session import AuthUser, require_csrf_protection
-from schemas import MemoryDetail, MemoryEntry
+from schema import MemoryDetail, MemoryEntry
 from utils import validate_userId
 from utils.memories import (
     delete_agent_memory,

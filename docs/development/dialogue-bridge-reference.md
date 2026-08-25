@@ -81,10 +81,12 @@ src/dialogue_bridge/
 │   ├── logging/                config, context, events, filters, formatters, middleware, redaction, stream_metrics, exception_handlers
 │   └── database/
 │       ├── engine.py           async engine, SessionLocal, get_db, Postgres verify-full SSL, Base, gen_uuid
-│       └── models.py           EVERY ORM table
+│       ├── models.py           EVERY ORM table
+│       └── migrations/         env.py (sync-driver migrations) + versions/ 0001_baseline …
 ├── router/                     auth, inference, speech, voice, catalog, preferences, usage, conversations, messages,
 │                               attachments, shared_conv, search, skills, memories, scheduled_tasks, internal_memory
-├── schemas/__init__.py         ALL Pydantic request/response models (flat)
+├── schema/                     one module per concept (auth, conversations, messages, attachments,
+│                               sharing, inference, voice, skills, scheduled_tasks, …) + re-exporting __init__.py
 ├── utils/                      business logic + DB queries (one file per domain)
 │   ├── inference_runs.py       ★ InferenceRunManager, InferenceRunRuntime, run state machine, SSE parse, persistence
 │   ├── inference_start.py      the 5 start modes → placeholder creation
@@ -93,7 +95,6 @@ src/dialogue_bridge/
 │   ├── conversations.py · messages.py · attachments.py · embeddings.py · shared_conv.py · share_export.py
 │   ├── scheduled_tasks.py (Scheduler loop) · agents.py (agent cache) · titles.py · suggestions.py
 │   ├── speech.py · voice.py · search.py · skills.py · skills_cache.py · memories.py · usage.py · validators.py
-├── migrations/versions/        0001_baseline … 0015_personalization
 ├── requirements.txt · Dockerfile
 ```
 
@@ -259,7 +260,7 @@ nginx strips `/api/`, so the browser calls `/api/v1/...` and FastAPI sees `/v1/.
 
 **Shared** `/v1/shared-conversations/{token}` (**public**). **Search** `/v1/search/{uid}` (`?q&limit`). **Skills** `/v1/skills` (+ user pool + per-(user,agent) enablement — proxies to agents, Redis-cached). **Memories** `/v1/memories/users/{uid}/agents/{aid}[/{name}]` (read + delete; agent owns writes). **Scheduled tasks** `/v1/scheduled-tasks/{uid}` (list/create/patch/delete). **Internal** `POST /v1/internal/memory/search` (`require_internal_caller`, pgvector search backing the agent's `search_past_conversations` tool).
 
-Schemas are all in `schemas/__init__.py` — camelCase response aliases + snake_case `validation_alias` for ORM ingestion, UTC ISO-8601 `Z` timestamps. Key models: `AuthRequest`/`AuthResponse`/`UserProfile`, `ConversationSummary`/`ConversationDetail`/`MessageOut`/`AttachmentOut`, `MessageIn`/`AttachmentIn` (base64 `validate=True` + size caps), `ConversationIn`/`ConversationShareIn`/`ConversationPdfExportIn`, `UserPreferences` (the `ToolsPreferences`/`ToolPreference` schemas were deleted in the tool-enablement retirement), `ScheduledTaskCreate`/`Update`/`Out`, `MemorySearchRequest`/`MemoryMessageMatch`, and the inference DTOs below.
+Schemas live in the `schema/` package — one module per concept, all re-exported from `__init__.py`; wire shape: camelCase response aliases + snake_case `validation_alias` for ORM ingestion, UTC ISO-8601 `Z` timestamps. Key models: `AuthRequest`/`AuthResponse`/`UserProfile`, `ConversationSummary`/`ConversationDetail`/`MessageOut`/`AttachmentOut`, `MessageIn`/`AttachmentIn` (base64 `validate=True` + size caps), `ConversationIn`/`ConversationShareIn`/`ConversationPdfExportIn`, `UserPreferences` (the `ToolsPreferences`/`ToolPreference` schemas were deleted in the tool-enablement retirement), `ScheduledTaskCreate`/`Update`/`Out`, `MemorySearchRequest`/`MemoryMessageMatch`, and the inference DTOs below.
 
 ---
 

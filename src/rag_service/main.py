@@ -30,7 +30,7 @@ from core.database import TABLES, db
 from core.settings import settings
 from core.error_handling import rag_operation_error_handler
 from core.security.internal_trust import require_internal_caller
-from schemas import Query, ExcelSQLQuery
+from schema import Query, ExcelSQLQuery
 
 
 _FORBIDDEN_SQL_TOKENS = re.compile(

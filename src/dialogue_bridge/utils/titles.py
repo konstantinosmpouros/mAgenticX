@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from schemas import MessageIn, TitleOut
+from schema import MessageIn, TitleOut
 from core.logging import get_context, get_logger
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings

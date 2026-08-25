@@ -5,7 +5,7 @@ from core.logging import get_logger, logged_db_operation, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import ConversationTable, get_db
-from schemas import (
+from schema import (
     ConversationSummary,
     MessageIn,
     MessageOut,

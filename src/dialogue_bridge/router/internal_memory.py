@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.security.internal_trust import require_internal_caller
-from schemas import MemoryMessageMatch, MemorySearchRequest
+from schema import MemoryMessageMatch, MemorySearchRequest
 from utils.embeddings import search_user_messages
 
 router = APIRouter()

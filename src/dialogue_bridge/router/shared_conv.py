@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.logging import get_logger, set_context
-from schemas import SharedConversationDetail
+from schema import SharedConversationDetail
 from utils.shared_conv import load_active_share
 
 

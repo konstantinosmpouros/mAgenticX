@@ -41,7 +41,7 @@ def _load_agents_service(monkeypatch):
     monkeypatch.setenv("MCP_GATEWAY_URL", "http://mcp.test/sse")
 
     main_module = importlib.import_module("main")
-    schemas_module = importlib.import_module("schemas")
+    schemas_module = importlib.import_module("schema")
     prompts_module = importlib.import_module("utils.prompts")
     title_module = importlib.import_module("utils.title")
     mcp_tools_module = importlib.import_module("utils.mcp_tools")

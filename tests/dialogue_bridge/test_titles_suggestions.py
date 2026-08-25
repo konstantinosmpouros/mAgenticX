@@ -13,7 +13,7 @@ import pytest
 
 import utils.titles as titles_mod
 import utils.suggestions as suggestions_mod
-from schemas import AttachmentIn, MessageIn
+from schema import AttachmentIn, MessageIn
 from utils.suggestions import (
     build_suggestion_context_payload,
     generate_conversation_suggestions,

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser, require_csrf_protection
 from core.database import UserPreferencesTable, get_db
-from schemas import UserPreferences
+from schema import UserPreferences
 from utils import normalize_realtime_voice, normalize_voice_mode_language, validate_userId
 
 

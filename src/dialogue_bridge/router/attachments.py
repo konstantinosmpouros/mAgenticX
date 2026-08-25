@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.auth.session import AuthUser
 from core.settings import settings
-from schemas import DocxPreviewTokenOut, ImageOut
+from schema import DocxPreviewTokenOut, ImageOut
 from utils import validate_userId
 from utils.attachments import (
     _get_attachment_blob_row,

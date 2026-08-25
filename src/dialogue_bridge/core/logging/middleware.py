@@ -9,7 +9,7 @@ from core.logging.context import clear_context, set_context
 from core.logging.events import get_logger
 from core.logging.operations import elapsed_ms
 from core.logging.redaction import sanitize_for_logging, sanitize_request_id
-from core.security.internal_trust import resolve_client_ip
+import core.security.internal_trust as internal_trust
 
 
 logger = get_logger("dialogue_bridge.request")
@@ -24,7 +24,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         if request.url.path in _SILENT_PATHS:
             return await call_next(request)
         request_id = sanitize_request_id(request.headers.get("X-Request-ID"))
-        client_ip = resolve_client_ip(request)
+        client_ip = internal_trust.resolve_client_ip(request)
         path_params = request.scope.get("path_params") or {}
 
         set_context(

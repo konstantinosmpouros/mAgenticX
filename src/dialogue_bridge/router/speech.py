@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.auth.session import AuthUser, require_csrf_protection
 from core.database import ConversationTable, MessageTable, UserPreferencesTable, get_db
 from core.security.rate_limit import speech_rate_limit
-from schemas import DictationResponse, ReadAloudPreviewRequest
+from schema import DictationResponse, ReadAloudPreviewRequest
 from utils import (
     generate_read_aloud_audio,
     normalize_realtime_voice,

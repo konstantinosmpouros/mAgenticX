@@ -6,7 +6,7 @@ from core.logging import get_logger, set_context
 
 from core.database import SessionLocal, get_db
 from core.settings import settings
-from schemas import (
+from schema import (
     InferenceStartPayload,
     InferenceStartResponse,
     InferenceRunOut,

@@ -34,7 +34,7 @@ from core.auth.session import (
 from core.database import SessionLocal, UserTable
 from core.settings import settings
 from core.logging import get_logger, set_context
-from schemas import AccountSummary
+from schema import AccountSummary
 
 logger = get_logger(__name__)
 

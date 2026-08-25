@@ -18,6 +18,18 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+# Optional at import (module top, mirroring schema.scheduled_tasks): the
+# next-fire computation degrades gracefully when croniter/tzdata are absent on
+# a bare host — prod/containers always carry both.
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
+try:
+    from croniter import croniter
+except ImportError:
+    croniter = None
+
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -33,7 +45,7 @@ from core.database import (
 )
 from core.settings import settings
 from core.logging import get_logger
-from schemas import (
+from schema import (
     InferenceStartPayload,
     MessageIn,
     ScheduledTaskCreate,
@@ -59,18 +71,15 @@ def _next_cron(expr: str, tz: str | None, after: datetime) -> datetime | None:
 
     croniter is computed in the task's IANA timezone so a "08:00" rule means
     08:00 *local*, then the result is converted back to naive UTC for storage.
-    Lazily imported so this module loads even where croniter isn't installed.
+    croniter/zoneinfo are optional at module import (guarded at the top) so this
+    module loads even where they aren't installed.
     """
-    try:
-        from croniter import croniter
-    except ImportError:
+    if croniter is None:
         logger.error("croniter_missing", "croniter is not installed; cannot compute cron next-fire")
         return None
     zone = timezone.utc
-    if tz:
+    if tz and ZoneInfo is not None:
         try:
-            from zoneinfo import ZoneInfo
-
             zone = ZoneInfo(tz)
         except Exception:
             zone = timezone.utc

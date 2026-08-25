@@ -28,7 +28,7 @@ from core.logging import get_logger, set_context
 
 from core.auth.session import AuthUser, require_csrf_protection, require_current_user
 from core.security.rate_limit import skill_upload_rate_limit
-from schemas import (
+from schema import (
     CustomSkillCreateRequest,
     Skill,
     UserSkill,

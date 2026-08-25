@@ -25,7 +25,7 @@ from core.database import (
     b64_encode,
 )
 from core.settings import settings
-from schemas import MessageIn
+from schema import MessageIn
 from utils.shared_conv import (
     build_share_list_item,
     create_conversation_from_share_record,

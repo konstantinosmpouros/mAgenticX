@@ -35,7 +35,7 @@ from pathlib import Path
 
 from core.logging import get_logger
 from runtime.filesystem import layout
-from schemas import SkillManifestEntry, GlobalManifest
+from schema import SkillManifestEntry, GlobalManifest
 
 logger = get_logger(__name__)
 

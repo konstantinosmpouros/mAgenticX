@@ -7,7 +7,7 @@ import pytest
 
 import utils.scheduled_tasks as scheduled_tasks_util
 from core.database import MessageTable, ScheduledTaskTable
-from schemas import ScheduledTaskCreate
+from schema import ScheduledTaskCreate
 from utils.scheduled_tasks import claim_due_tasks, compute_next_run_at
 
 try:

@@ -6,7 +6,7 @@ from langchain_core.runnables import RunnableLambda
 from core.settings import settings
 from core.error_handling import provider_error_handler
 from core.logging import get_logger
-from schemas import ConversationSuggestions, SuggestionsRequest
+from schema import ConversationSuggestions, SuggestionsRequest
 from utils import make_merge_with_template
 
 logger = get_logger(__name__)

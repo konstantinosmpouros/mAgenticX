@@ -37,7 +37,7 @@ from runtime.skill_registry import (
     assign_user_skill_to_agent as _assign_user_skill_to_agent,
     get_global_manifest,
 )
-from schemas import SkillManifest
+from schema import SkillManifest
 
 logger = get_logger(__name__)
 

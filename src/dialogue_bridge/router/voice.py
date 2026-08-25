@@ -10,7 +10,7 @@ from core.auth.session import AuthUser, require_csrf_protection
 from core.security.rate_limit import voice_session_rate_limit
 from core.database import AttachmentTable, ConversationTable, MessageTable, get_db
 from core.settings import settings
-from schemas import (
+from schema import (
     ConversationSummary,
     MessageIn,
     MessageOut,

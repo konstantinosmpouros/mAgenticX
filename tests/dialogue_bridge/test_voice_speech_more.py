@@ -16,7 +16,7 @@ import pytest
 import utils.speech as speech_mod
 import utils.voice as voice_mod
 from core.database import AgentTable, UserPreferencesTable
-from schemas import DictationResponse
+from schema import DictationResponse
 from utils.speech import (
     generate_read_aloud_audio,
     read_aloud_response,

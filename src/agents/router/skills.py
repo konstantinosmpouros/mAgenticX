@@ -13,7 +13,7 @@ from runtime.skill_registry import (
     rebuild_global_manifest,
     remove_from_user,
 )
-from schemas import (
+from schema import (
     CustomSkillCreate,
     SkillManifest,
     SkillManifestEntry,

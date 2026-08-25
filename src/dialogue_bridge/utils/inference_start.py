@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from core.database import AgentTable, AttachmentTable, ConversationTable, MessageTable, UserTable
-from schemas import (
+from schema import (
     ConversationDetail,
     ConversationSummary,
     InferenceStartPayload,

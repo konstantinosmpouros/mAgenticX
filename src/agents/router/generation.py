@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
-from schemas import (
+from schema import (
     ConversationSuggestions,
     ConversationTitle,
     SuggestionsRequest,

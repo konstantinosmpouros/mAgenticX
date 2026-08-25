@@ -3,6 +3,7 @@ import secrets
 
 from fastapi import HTTPException, Request, status
 from core.settings import settings
+from core.logging.context import get_context
 
 
 TRUSTED_PROXY_HEADER_NAME = settings.proxy.trusted_proxy_header_name
@@ -50,9 +51,6 @@ def require_internal_caller(request: Request) -> None:
 def internal_service_headers(
     request_id: str | None = None, session_id: str | None = None, user_id: str | None = None
 ) -> dict[str, str]:
-    # Local imports avoid an import cycle (core.logging.middleware imports this module).
-    from core.logging.context import get_context
-
     headers: dict[str, str] = {
         TRUSTED_PROXY_HEADER_NAME: settings.proxy.trusted_proxy_secret.get_secret_value(),
     }

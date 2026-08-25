@@ -17,7 +17,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import ConversationTable, MessageTable
-from schemas import UsageAgentBreakdown, UsageDailyPoint, UsageSummary, UsageWindow
+from schema import UsageAgentBreakdown, UsageDailyPoint, UsageSummary, UsageWindow
 
 # Cap the per-agent breakdown so the payload stays bounded no matter how many
 # agents a user has talked to; the UI shows a ranked list, not a full export.

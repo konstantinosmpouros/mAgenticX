@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import UserTable, get_db, upsert_user_from_identity, IdentityConflictError
-from schemas import (
+from schema import (
     AccountListResponse,
     AccountSummary,
     AuthRequest,

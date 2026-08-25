@@ -11,7 +11,7 @@ from core.logging import get_context, get_logger, set_context
 from runtime.checkpointer import get_checkpointer, has_checkpointer_initialized
 from runtime.checkpointer.fork import seed_thread_from_checkpoint
 from runtime.filesystem import delete_conversation_files, read_output_files, seed_input_files
-from schemas import (
+from schema import (
     AgentResumeRequest,
     OutputFileOut,
     ReadOutputFilesResponse,

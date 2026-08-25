@@ -31,7 +31,7 @@ Two schema changes (migration `0009_add_scheduled_tasks`):
 
 `scheduled_tasks.last_run_message_id` is a **plain String, not an FK** — an FK there would close a `messages → scheduled_tasks → conversations → messages` cycle. The latest fire's true status is derived by looking that message up, so the task row never goes stale.
 
-Model: [`core/database/models.py`](../../src/dialogue_bridge/core/database/models.py) (`ScheduledTaskTable`). Schemas: [`schemas/__init__.py`](../../src/dialogue_bridge/schemas/__init__.py) (`ScheduledTaskCreate` / `ScheduledTaskUpdate` / `ScheduledTaskOut`).
+Model: [`core/database/models.py`](../../src/dialogue_bridge/core/database/models.py) (`ScheduledTaskTable`). Schemas: [`schema/scheduled_tasks.py`](../../src/dialogue_bridge/schema/scheduled_tasks.py) (`ScheduledTaskCreate` / `ScheduledTaskUpdate` / `ScheduledTaskOut`).
 
 ---
 

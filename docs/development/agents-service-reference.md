@@ -63,7 +63,7 @@ flowchart LR
 ```text
 src/agents/
 ├── main.py                     App factory, lifespan, durable checkpointer, /health, router registration
-├── schemas.py                  ALL Pydantic request/response models + AgentDefinition (flat, single file)
+├── schema/                     one module per concept (inference, embeddings, generation, voice, catalog, skills, user_agents, memories, agent_tools) + re-exporting __init__.py
 ├── Dockerfile                  python:3.12-slim image; plain uvicorn CMD on :8003
 ├── requirements.txt            Pinned deps
 ├── .dockerignore               Excludes secrets/TLS; KEEPS *.md + skills_registry (runtime-discovered)
@@ -149,13 +149,13 @@ src/agents/
 2. `seed_global_registry()` — copy the in-image skills seed (`/opt/skills_registry_seed`) into the mounted global volume (`cp -rn` semantics; existing folders win).
 3. `rebuild_global_manifest()` — scan the global registry → write `manifest.json`.
 4. `reconcile_all_user_manifests()` — heal each user's manifest vs disk.
-5. `await _init_durable_checkpointer(app)` — **fail fast/loud** if `agent_runtime` is unreachable.
+5. `await init_durable_checkpointer(app)` (`runtime/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
 6. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `runtime/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
 7. `yield`.
 8. Shutdown: cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
 
-**Durable checkpointer init** — `_init_durable_checkpointer` (`main.py:115-182`), heavy deps imported lazily:
-- `_ensure_checkpointer_database(conninfo)` (`main.py:71-112`) — idempotently `CREATE DATABASE agent_runtime` via the `postgres` maintenance DB (returns early for empty/`postgres` target; **10 retries, 2s apart** on `OperationalError`; race-safe against `DuplicateDatabase`). Needed because `POSTGRES_DB` bootstraps only one DB and `setup()` creates tables, not the database.
+**Durable checkpointer init** — `init_durable_checkpointer` (`runtime/checkpointer/bootstrap.py`), heavy deps imported lazily:
+- `_ensure_checkpointer_database(conninfo)` (same module) — idempotently `CREATE DATABASE agent_runtime` via the `postgres` maintenance DB (returns early for empty/`postgres` target; **10 retries, 2s apart** on `OperationalError`; race-safe against `DuplicateDatabase`). Needed because `POSTGRES_DB` bootstraps only one DB and `setup()` creates tables, not the database.
 - Mirrors `LANGGRAPH_STRICT_MSGPACK` into `os.environ` (the lib reads it from env).
 - Opens `AsyncConnectionPool(conninfo=…, min/max/idle/timeout from settings, open=False, check=AsyncConnectionPool.check_connection)` with `conn_kwargs={autocommit:True, row_factory:dict_row, prepare_threshold:None, keepalives:1, keepalives_idle:300, keepalives_interval:30, keepalives_count:3}` (pgbouncer-safe), then `pool.open()` + `pool.wait()`. Stored at `app.state.checkpointer_pool`. The `check=` checkout health-check plus TCP keepalives exist because the Swarm overlay on Dennis drops TCP flows idle ~15 min — without them the `min_size` baseline connections go half-dead overnight and the first morning checkpoint op fails once with `SSL SYSCALL error: EOF detected`.
 - **AES at-rest encryption**: if `LANGGRAPH_AES_KEY` set → `EncryptedSerializer.from_pycryptodome_aes()`; else `serde=None`.
@@ -524,7 +524,7 @@ Structured, async, per-request-context logging.
 
 ---
 
-## 21. Schemas reference (`schemas.py`, flat single module)
+## 21. Schemas reference (`schema/` package — one module per concept, re-exporting `__init__.py`)
 
 `Request{messages, config}` · `ResumeActionDecision{decision, reason?}` · `AgentResumeRequest{config, thread_id, decision, reason?, value?, interrupt_id?, decisions?}` · `InputFileIn{filename, mime, base64, size}` · `SeedInputFilesRequest{files}` · `SeedInputFilesResponse{written}` · `EmbedRequest{texts}` · `EmbedResponse{embeddings, model, dimensions}` · `ReapConversationRequest{thread_ids}` · `TitleRequest{user_input}` · `ConversationTitle{titles}` · `SuggestionsRequest{user_input}` · `ConversationSuggestions{suggestions}` · `ReadAloudRequest{text, voice?}` · `TranscriptionResponse{text}` · `RealtimeSessionRequest{sdp, model?, voice?, instructions, metadata}` · `RealtimeSessionResponse{sdp, model, voice}` · `AgentManifest{id, slug, name, version?, type, description, icon}` · `ToolManifest{server_id, tool_name, description, parameter_count}` · `SkillManifest{name, description, content, category}` · `SkillManifestEntry{name, type, description, source_path, category}` · `GlobalManifest{version, skills}` · `UserManifest{version, skills}` · `SkillFile{path, content, encoding, size}` · `CustomSkillCreate{name, description, files}` · `UserSkillDetail{…entry + content + files}` · `MemoryEntry{name, summary, created_at?, updated_at?, source_conversation_id?}` · `MemoryDetail{…entry + content}` · `@dataclass(frozen=True) AgentDefinition{slug, cls, manifest}`.
 

@@ -10,7 +10,7 @@ from core.error_handling import provider_error_handler
 from core.security.internal_trust import require_internal_caller
 from core.settings import settings
 from core.logging import get_logger
-from schemas import (
+from schema import (
     ReadAloudRequest,
     RealtimeSessionRequest,
     RealtimeSessionResponse,

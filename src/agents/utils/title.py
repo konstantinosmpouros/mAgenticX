@@ -7,7 +7,7 @@ from core.settings import settings
 from core.error_handling import provider_error_handler
 from core.logging import get_logger
 from utils import make_merge_with_template
-from schemas import TitleRequest, ConversationTitle
+from schema import TitleRequest, ConversationTitle
 
 logger = get_logger(__name__)
 

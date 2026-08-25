@@ -342,7 +342,7 @@ There are no endpoints to list or resolve reports via the public API. Report man
 | Owner share endpoints | [src/dialogue_bridge/router/conversations.py](../../src/dialogue_bridge/router/conversations.py) | `shareConversation()`, `revokeConversationShare()`, `getConversationShares()`, `exportConversationPdf()` |
 | Snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `build_share_snapshot()`, `build_message_lineage()`, `clone_branch_to_conversation()` |
 | Scoped message selection + PDF | [src/dialogue_bridge/utils/share_export.py](../../src/dialogue_bridge/utils/share_export.py) | `select_scoped_messages()`, `render_conversation_pdf()`, `_PdfDocument`, `_FontRegistry` |
-| Pydantic schemas | [src/dialogue_bridge/schemas/\_\_init\_\_.py](../../src/dialogue_bridge/schemas/__init__.py) | `ConversationShareIn`, `ConversationShareResponse`, `SharedConversationDetail` |
+| Pydantic schemas | [src/dialogue_bridge/schema/sharing.py](../../src/dialogue_bridge/schema/sharing.py) | `ConversationShareIn`, `ConversationShareResponse`, `SharedConversationDetail` |
 | Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `shareConversation()`, `revokeSharedConversationLink()`, `getSharedConversation()`, `startInference()`, `downloadConversationPdfExport()` |
 | Frontend types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `ConversationShareMode`, `ConversationShareResponse`, `SharedConversationDetail` |
 | Share UI handlers | [src/agentic_ui/src/handlers/share.ts](../../src/agentic_ui/src/handlers/share.ts) | `handleCreateShareLink()`, `handleRevokeSharedConversation()`, `loadSharedConversationPage()` |

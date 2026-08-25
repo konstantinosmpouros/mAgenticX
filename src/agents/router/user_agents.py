@@ -22,7 +22,7 @@ from runtime.abstractions.user_agents import (
     write_user_agent,
 )
 from runtime.skill_registry.user_registry import list_user_skill_names
-from schemas import (
+from schema import (
     CustomAgentValidation,
     CustomAgentWrite,
     UserAgentDetail,

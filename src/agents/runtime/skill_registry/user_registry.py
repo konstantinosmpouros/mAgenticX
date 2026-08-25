@@ -52,7 +52,7 @@ from core.logging import get_logger
 from runtime.filesystem import layout
 from runtime.filesystem.provisioner import _safe_segment
 from runtime.skill_registry.global_manifest import get_global_manifest, is_global_skill
-from schemas import (
+from schema import (
     CustomSkillCreate,
     SkillFile,
     SkillManifestEntry,

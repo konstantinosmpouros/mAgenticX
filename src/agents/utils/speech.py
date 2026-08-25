@@ -8,7 +8,7 @@ from core.clients import get_openai_client
 from core.settings import settings
 from core.error_handling import provider_error_handler
 from core.logging import get_logger
-from schemas import ReadAloudRequest
+from schema import ReadAloudRequest
 
 logger = get_logger(__name__)
 
