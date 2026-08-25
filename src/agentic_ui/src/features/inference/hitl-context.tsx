@@ -13,7 +13,13 @@ export type HitlContextValue = {
 
 const HitlContext = createContext<HitlContextValue | null>(null);
 
-export function HitlProvider({ value, children }: { value: HitlContextValue; children: ReactNode }) {
+export function HitlProvider({
+  value,
+  children,
+}: {
+  value: HitlContextValue;
+  children: ReactNode;
+}) {
   return <HitlContext.Provider value={value}>{children}</HitlContext.Provider>;
 }
 

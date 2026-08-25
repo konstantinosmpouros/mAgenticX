@@ -91,11 +91,17 @@ export default function AccountMenu({
                 {account.displayName || account.username}
               </span>
               <span className="block truncate text-xs text-muted-foreground">
-                {account.expired ? "Signed out — select to sign in again" : account.email || account.username}
+                {account.expired
+                  ? "Signed out — select to sign in again"
+                  : account.email || account.username}
               </span>
             </span>
             {isBusy ? (
-              <Loader2 size={15} className="shrink-0 animate-spin text-muted-foreground" aria-hidden />
+              <Loader2
+                size={15}
+                className="shrink-0 animate-spin text-muted-foreground"
+                aria-hidden
+              />
             ) : isCurrent ? (
               <Check size={16} className="shrink-0 text-foreground" aria-hidden />
             ) : null}

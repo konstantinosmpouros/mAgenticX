@@ -14,20 +14,18 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting.
-       `strict` / `noImplicitAny` stay off for now: turning them on surfaces ~100
-       pre-existing errors, which would bury the in-flight cleanup work. They get
-       enabled directory-by-directory in a later pass. The three flags below cost
-       nothing to keep green and are what stop dead imports and unused bindings
-       from accumulating silently — the reason so much of it built up already. */
-    "strict": false,
+    /* Linting. All on, and green — keep it that way.
+       `strict` enables the whole family (noImplicitAny, strictNullChecks,
+       strictFunctionTypes, …). It was expected to cost ~100 errors; the real
+       figure after the cleanup was 52, and 44 of those traced to a single
+       over-wide `ToastLike` parameter type. Do not switch any of these back off
+       to land a change — a new error here is a real defect, not friction. */
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noImplicitAny": false,
     "noFallthroughCasesInSwitch": true,
-
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
+    /* No `baseUrl`: it is deprecated in TS 6+, and `paths` resolves relative to
+       this file on its own since TS 5.0. See tsconfig.json for the full story. */
     "paths": {
       "@/*": ["./src/*"]
     }

@@ -73,7 +73,10 @@ function matchesShortcut(event: KeyboardEvent, combo: ShortcutCombo): boolean {
   );
 }
 
-function isShortcutEnabled(definition: ShortcutDefinition, context: ShortcutRuntimeContext): boolean {
+function isShortcutEnabled(
+  definition: ShortcutDefinition,
+  context: ShortcutRuntimeContext,
+): boolean {
   if (definition.id === "private.toggle") {
     return context.canTogglePrivateMode;
   }
@@ -89,10 +92,10 @@ export function useKeyboardShortcuts({
   useEffect(() => {
     const platform = detectShortcutPlatform();
 
-        const handleKeyDown = (event: KeyboardEvent) => {
-          if (event.defaultPrevented) {
-            return;
-          }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
 
       const editableTarget = isEditableTarget(event.target);
 

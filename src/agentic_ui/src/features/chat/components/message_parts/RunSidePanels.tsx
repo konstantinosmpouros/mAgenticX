@@ -1,12 +1,6 @@
 import { useMemo } from "react";
 import { Bot, ListTodo } from "lucide-react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/shared/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
 import { PlanItems } from "./PlanningContainer";
 import { SubagentCard } from "./SubagentContainer";
 import { subagentBlockToItem } from "@/features/inference";
@@ -27,7 +21,10 @@ export function PlanSidePanel({ plan, open, onOpenChange }: PlanSidePanelProps) 
   const completed = plan.items.filter((item) => item.status === "completed").length;
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+      >
         <SheetHeader className="border-b border-border/70 px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2.5 text-base">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary">
@@ -61,7 +58,10 @@ export function SubagentsSidePanel({ timeline, open, onOpenChange }: SubagentsSi
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+      >
         <SheetHeader className="border-b border-border/70 px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2.5 text-base">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-secondary/55 text-primary">

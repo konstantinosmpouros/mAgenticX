@@ -374,10 +374,10 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 | Share snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |
 | Pydantic schemas | [src/dialogue_bridge/schema/attachments.py](../../src/dialogue_bridge/schema/attachments.py) | `AttachmentIn`, `AttachmentOut`, `ImageOut`, `DocxPreviewTokenOut` |
 | HMAC token helpers | [src/dialogue_bridge/utils/attachments.py](../../src/dialogue_bridge/utils/attachments.py) | `generate_docx_preview_token()`, `validate_docx_preview_token()` |
-| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `downloadAttachment()`, `fetchAttachmentBlob()`, `fetchAttachmentPreviewBlob()`, `getAttachmentPreviewUrl()`, `fetchDocxPreviewToken()` |
-| Frontend types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `AttachmentIn`, `AttachmentOut` |
-| Upload validation | [src/agentic_ui/src/lib/uploadGuards.ts](../../src/agentic_ui/src/lib/uploadGuards.ts) | size limits, count limits, base64 inflation check |
-| Upload handlers | [src/agentic_ui/src/handlers/attachments.ts](../../src/agentic_ui/src/handlers/attachments.ts) | `handleFileUpload()`, `handlePaste()`, `fileToAttachmentIn()` |
-| Preview registry | [src/agentic_ui/src/components/chat/attachment_preview/registry.ts](../../src/agentic_ui/src/components/chat/attachment_preview/registry.ts) | MIME → preview kind mapping, size limits per type |
-| Preview panel | [src/agentic_ui/src/components/chat/AttachmentPreviewPanel.tsx](../../src/agentic_ui/src/components/chat/AttachmentPreviewPanel.tsx) | per-type renderer dispatch |
-| Message attachment display | [src/agentic_ui/src/components/chat/message_parts/MessageAttachments.tsx](../../src/agentic_ui/src/components/chat/message_parts/MessageAttachments.tsx) | inline chat attachment UI, image lightbox |
+| Frontend API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `downloadAttachment()`, `fetchAttachmentBlob()`, `fetchAttachmentPreviewBlob()`, `getAttachmentPreviewUrl()`, `fetchDocxPreviewToken()` |
+| Frontend types | [src/agentic_ui/src/shared/lib/types/](../../src/agentic_ui/src/shared/lib/types/) | `AttachmentIn`, `AttachmentOut` |
+| Upload validation | [src/agentic_ui/src/shared/lib/uploadGuards.ts](../../src/agentic_ui/src/shared/lib/uploadGuards.ts) | size limits, count limits, base64 inflation check |
+| Upload handlers | [src/agentic_ui/src/features/attachments/handlers/attachments.ts](../../src/agentic_ui/src/features/attachments/handlers/attachments.ts) | `handleFileUpload()`, `handlePaste()`, `fileToAttachmentIn()` |
+| Preview registry | [src/agentic_ui/src/features/attachments/components/attachment_preview_parts/registry.ts](../../src/agentic_ui/src/features/attachments/components/attachment_preview_parts/registry.ts) | MIME → preview kind mapping, size limits per type |
+| Preview panel | [src/agentic_ui/src/features/attachments/components/AttachmentPreviewPanel.tsx](../../src/agentic_ui/src/features/attachments/components/AttachmentPreviewPanel.tsx) | per-type renderer dispatch |
+| Message attachment display | [src/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx](../../src/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx) | inline chat attachment UI, image lightbox |

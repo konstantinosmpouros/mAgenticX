@@ -2,7 +2,15 @@ import { useEffect, useState } from "react";
 import { Card } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { Textarea } from "@/shared/ui/textarea";
-import { AlertTriangle, Check, Flag, Loader2, MessageSquareQuote, ShieldCheck, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Flag,
+  Loader2,
+  MessageSquareQuote,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 
 export const REPORT_REASONS = [
   "Unsafe",
@@ -18,7 +26,11 @@ export const REPORT_REASONS = [
 type ReportConversationDialogProps = {
   open: boolean;
   onClose: () => void;
-  onSubmit: (payload: { reason: string; details?: string; messageId?: string | null }) => Promise<void> | void;
+  onSubmit: (payload: {
+    reason: string;
+    details?: string;
+    messageId?: string | null;
+  }) => Promise<void> | void;
   submitting?: boolean;
   messageId?: string | null;
   messagePreview?: string | null;

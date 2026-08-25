@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import {
   cancelInferenceRun,
   connectInferenceWebSocket,
@@ -36,15 +43,23 @@ type UseInferenceRunsOptions = {
   setCurrentConversation: Dispatch<SetStateAction<ConversationDetail | null>>;
   setThinkingState: (updater: any) => void;
   setShowAiTransition?: (value: boolean) => void;
-  toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
 };
 
 const patchMessage = (messages: MessageOut[], message: MessageOut) => {
   const found = messages.some((item) => item.id === message.id);
-  return found ? messages.map((item) => (item.id === message.id ? message : item)) : [...messages, message];
+  return found
+    ? messages.map((item) => (item.id === message.id ? message : item))
+    : [...messages, message];
 };
 
-const isActiveRun = (run: InferenceRun | null | undefined) => Boolean(run && ACTIVE_STATUSES.has(String(run.status)));
+const isActiveRun = (run: InferenceRun | null | undefined) =>
+  Boolean(run && ACTIVE_STATUSES.has(String(run.status)));
 
 const foldRunSnapshot = (run: InferenceRun): InferenceRun => ({
   ...run,
@@ -59,7 +74,10 @@ const foldRunSnapshot = (run: InferenceRun): InferenceRun => ({
 // full state (rawEvents = the coalesced log) and are re-folded from scratch.
 // "update" is the client-local merge of cancel/resume REST responses — meta
 // only, so the in-progress timeline is preserved.
-const mergeRunEvent = (existing: InferenceRun | null | undefined, event: InferenceRunEvent): InferenceRun => {
+const mergeRunEvent = (
+  existing: InferenceRun | null | undefined,
+  event: InferenceRunEvent,
+): InferenceRun => {
   const incoming = event.run;
   const base = existing && existing.id === incoming.id ? existing : null;
 
@@ -74,7 +92,9 @@ const mergeRunEvent = (existing: InferenceRun | null | undefined, event: Inferen
       completedAt: incoming.completedAt ?? fallback.completedAt ?? null,
       cancelRequestedAt: incoming.cancelRequestedAt ?? fallback.cancelRequestedAt ?? null,
       updatedAt: incoming.updatedAt,
-      timeline: event.events?.length ? reduceTimelineEvents(previousTimeline, event.events) : previousTimeline,
+      timeline: event.events?.length
+        ? reduceTimelineEvents(previousTimeline, event.events)
+        : previousTimeline,
     };
   }
 
@@ -118,164 +138,186 @@ export function useInferenceRuns({
     currentConversationIdRef.current = currentConversationId;
   }, [currentConversationId]);
 
-  const applyRunEvent = useCallback((event: InferenceRunEvent) => {
-    const { message, summary } = event;
-    const run = mergeRunEvent(runsRef.current[event.run.conversationId], event);
-    const active = isActiveRun(run);
-    const resolvedSummary = summary
-      ? {
-          ...summary,
-          activeRunId: active ? (summary.activeRunId ?? run.id) : null,
-          isStreaming: active,
+  const applyRunEvent = useCallback(
+    (event: InferenceRunEvent) => {
+      const { message, summary } = event;
+      const run = mergeRunEvent(runsRef.current[event.run.conversationId], event);
+      const active = isActiveRun(run);
+      const resolvedSummary = summary
+        ? {
+            ...summary,
+            activeRunId: active ? (summary.activeRunId ?? run.id) : null,
+            isStreaming: active,
+          }
+        : null;
+
+      {
+        const next = { ...runsRef.current };
+        if (active) {
+          next[run.conversationId] = run;
+        } else {
+          delete next[run.conversationId];
         }
-      : null;
+        runsRef.current = next;
+        setRunsByConversation(next);
+      }
 
-    {
-      const next = { ...runsRef.current };
-      if (active) {
-        next[run.conversationId] = run;
+      if (resolvedSummary) {
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === resolvedSummary.id
+              ? { ...conversation, ...resolvedSummary }
+              : conversation,
+          ),
+        );
       } else {
-        delete next[run.conversationId];
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === run.conversationId
+              ? { ...conversation, activeRunId: active ? run.id : null, isStreaming: active }
+              : conversation,
+          ),
+        );
       }
-      runsRef.current = next;
-      setRunsByConversation(next);
-    }
 
-    if (resolvedSummary) {
-      setConversations((prev) =>
-        prev.map((conversation) => (conversation.id === resolvedSummary.id ? { ...conversation, ...resolvedSummary } : conversation))
-      );
-    } else {
-      setConversations((prev) =>
-        prev.map((conversation) =>
-          conversation.id === run.conversationId
-            ? { ...conversation, activeRunId: active ? run.id : null, isStreaming: active }
-            : conversation
-        )
-      );
-    }
-
-    setCurrentConversation((prev) => {
-      if (!prev || prev.id !== run.conversationId) {
-        return prev;
-      }
-      const nextMessages = message ? patchMessage(prev.messages ?? [], message) : prev.messages;
-      return {
-        ...prev,
-        ...(resolvedSummary
-          ? {
-              title: resolvedSummary.title ?? prev.title,
-              updated_at: new Date(resolvedSummary.updated_at),
-              activeRunId: resolvedSummary.activeRunId ?? null,
-              isStreaming: Boolean(resolvedSummary.isStreaming),
-            }
-          : {
-              activeRunId: active ? run.id : null,
-              isStreaming: active,
-            }),
-        messages: nextMessages,
-      };
-    });
-
-    if (run.conversationId === currentConversationIdRef.current) {
-      const thoughts = message?.thinking ?? (run.timeline ? timelineThoughtStrings(run.timeline) : run.thinking ?? []);
-      // "First real signal" = the agent has actually started doing something:
-      // a timeline block (thinking/tool/content), a thought, a pending HITL
-      // interrupt, or the run reaching a terminal state. The /start snapshot
-      // alone is NOT a signal — until one arrives the transition dot keeps
-      // pulsing under the user's message and no thinking UI is shown.
-      const hasAgentSignal =
-        !active ||
-        thoughts.length > 0 ||
-        (run.timeline?.blocks.length ?? 0) > 0 ||
-        (run.pendingInterrupts ?? 0) > 0;
-      if (hasAgentSignal) {
-        setShowAiTransition?.(false);
-      }
-      setThinkingState((prev: ThinkingState | null) => {
-        if (!active && (!prev || prev.messageId !== run.assistantMessageId)) {
+      setCurrentConversation((prev) => {
+        if (!prev || prev.id !== run.conversationId) {
           return prev;
         }
-        if (!active) {
-          return prev
-            ? { ...prev, thoughts, isActive: false, isDone: true, endTime: prev.endTime ?? Date.now() }
-            : null;
-        }
-        if (!hasAgentSignal) {
-          // Still in the transition phase. A lingering done-state from a
-          // PREVIOUS run must be dropped here: retry/edit switch the view to a
-          // new sibling branch, and the old state's branchPath would fail the
-          // transition dot's branch-visibility check and hide it. Null state
-          // (no branchPath) always passes, so the dot shows on the new branch.
-          return prev && prev.messageId === run.assistantMessageId ? prev : null;
-        }
+        const nextMessages = message ? patchMessage(prev.messages ?? [], message) : prev.messages;
         return {
-          messageId: run.assistantMessageId,
-          thoughts,
-          currentThoughtIndex: Math.max(0, thoughts.length - 1),
-          isActive: true,
-          isDone: false,
-          startTime: run.startedAt.getTime(),
-          branchPath: [...run.messagePath],
+          ...prev,
+          ...(resolvedSummary
+            ? {
+                title: resolvedSummary.title ?? prev.title,
+                updated_at: new Date(resolvedSummary.updated_at),
+                activeRunId: resolvedSummary.activeRunId ?? null,
+                isStreaming: Boolean(resolvedSummary.isStreaming),
+              }
+            : {
+                activeRunId: active ? run.id : null,
+                isStreaming: active,
+              }),
+          messages: nextMessages,
         };
       });
-    }
 
-    if (!active) {
-      controllersRef.current[run.id]?.abort();
-      delete controllersRef.current[run.id];
-    }
-  }, [setConversations, setCurrentConversation, setShowAiTransition, setThinkingState]);
+      if (run.conversationId === currentConversationIdRef.current) {
+        const thoughts =
+          message?.thinking ??
+          (run.timeline ? timelineThoughtStrings(run.timeline) : (run.thinking ?? []));
+        // "First real signal" = the agent has actually started doing something:
+        // a timeline block (thinking/tool/content), a thought, a pending HITL
+        // interrupt, or the run reaching a terminal state. The /start snapshot
+        // alone is NOT a signal — until one arrives the transition dot keeps
+        // pulsing under the user's message and no thinking UI is shown.
+        const hasAgentSignal =
+          !active ||
+          thoughts.length > 0 ||
+          (run.timeline?.blocks.length ?? 0) > 0 ||
+          (run.pendingInterrupts ?? 0) > 0;
+        if (hasAgentSignal) {
+          setShowAiTransition?.(false);
+        }
+        setThinkingState((prev: ThinkingState | null) => {
+          if (!active && (!prev || prev.messageId !== run.assistantMessageId)) {
+            return prev;
+          }
+          if (!active) {
+            return prev
+              ? {
+                  ...prev,
+                  thoughts,
+                  isActive: false,
+                  isDone: true,
+                  endTime: prev.endTime ?? Date.now(),
+                }
+              : null;
+          }
+          if (!hasAgentSignal) {
+            // Still in the transition phase. A lingering done-state from a
+            // PREVIOUS run must be dropped here: retry/edit switch the view to a
+            // new sibling branch, and the old state's branchPath would fail the
+            // transition dot's branch-visibility check and hide it. Null state
+            // (no branchPath) always passes, so the dot shows on the new branch.
+            return prev && prev.messageId === run.assistantMessageId ? prev : null;
+          }
+          return {
+            messageId: run.assistantMessageId,
+            thoughts,
+            currentThoughtIndex: Math.max(0, thoughts.length - 1),
+            isActive: true,
+            isDone: false,
+            startTime: run.startedAt.getTime(),
+            branchPath: [...run.messagePath],
+          };
+        });
+      }
+
+      if (!active) {
+        controllersRef.current[run.id]?.abort();
+        delete controllersRef.current[run.id];
+      }
+    },
+    [setConversations, setCurrentConversation, setShowAiTransition, setThinkingState],
+  );
 
   // Self-reference for the clean-resolve retry below — a useCallback cannot
   // list itself as a dependency.
   const observeRunIdRef = useRef<(runId?: string | null) => void>(() => {});
 
-  const observeRunId = useCallback((runId?: string | null) => {
-    if (!userId || !runId || controllersRef.current[runId]) {
-      return;
-    }
-    const controller = new AbortController();
-    controllersRef.current[runId] = controller;
-    // connectInferenceWebSocket auto-reconnects with `since=<lastSeenSeq>` and
-    // only rejects after a sustained failure (5 consecutive failed attempts)
-    // or a permanent error (401/403/404). The toast below is therefore a true
-    // "we gave up" signal, not a transient blip.
-    void connectInferenceWebSocket(userId, runId, applyRunEvent, controller.signal)
-      .then(() => {
-        // Without this delete a cleanly-resolved run could never be
-        // re-observed — the guard above would see the stale controller.
-        delete controllersRef.current[runId];
-        if (controller.signal.aborted) {
-          return;
-        }
-        // Safety net: the socket closed on a terminal frame but the run is
-        // still active in state — the terminal payload never landed. The
-        // server answers a finished run with its DB snapshot (terminal
-        // status), so one re-observe converges the state.
-        const lingering = Object.values(runsRef.current).find((run) => run.id === runId);
-        if (lingering && isActiveRun(lingering)) {
-          window.setTimeout(() => observeRunIdRef.current(runId), 1000);
-        }
-      })
-      .catch((error) => {
-        delete controllersRef.current[runId];
-        if ((error as any)?.name === "AbortError") {
-          return;
-        }
-        toastError(toast, "Stream observer lost", error, {
-          description: "The run is still owned by the server. Reopen the conversation to refresh its latest state.",
+  const observeRunId = useCallback(
+    (runId?: string | null) => {
+      if (!userId || !runId || controllersRef.current[runId]) {
+        return;
+      }
+      const controller = new AbortController();
+      controllersRef.current[runId] = controller;
+      // connectInferenceWebSocket auto-reconnects with `since=<lastSeenSeq>` and
+      // only rejects after a sustained failure (5 consecutive failed attempts)
+      // or a permanent error (401/403/404). The toast below is therefore a true
+      // "we gave up" signal, not a transient blip.
+      void connectInferenceWebSocket(userId, runId, applyRunEvent, controller.signal)
+        .then(() => {
+          // Without this delete a cleanly-resolved run could never be
+          // re-observed — the guard above would see the stale controller.
+          delete controllersRef.current[runId];
+          if (controller.signal.aborted) {
+            return;
+          }
+          // Safety net: the socket closed on a terminal frame but the run is
+          // still active in state — the terminal payload never landed. The
+          // server answers a finished run with its DB snapshot (terminal
+          // status), so one re-observe converges the state.
+          const lingering = Object.values(runsRef.current).find((run) => run.id === runId);
+          if (lingering && isActiveRun(lingering)) {
+            window.setTimeout(() => observeRunIdRef.current(runId), 1000);
+          }
+        })
+        .catch((error) => {
+          delete controllersRef.current[runId];
+          if ((error as any)?.name === "AbortError") {
+            return;
+          }
+          toastError(toast, "Stream observer lost", error, {
+            description:
+              "The run is still owned by the server. Reopen the conversation to refresh its latest state.",
+          });
         });
-      });
-  }, [applyRunEvent, toast, userId]);
+    },
+    [applyRunEvent, toast, userId],
+  );
 
   useEffect(() => {
     observeRunIdRef.current = observeRunId;
   }, [observeRunId]);
 
-  const observeRun = useCallback((run: InferenceRun) => {
-    observeRunId(run.id);
-  }, [observeRunId]);
+  const observeRun = useCallback(
+    (run: InferenceRun) => {
+      observeRunId(run.id);
+    },
+    [observeRunId],
+  );
 
   useEffect(() => {
     observeRunId(currentActiveRunId);
@@ -303,7 +345,7 @@ export function useInferenceRuns({
             return run
               ? { ...conversation, activeRunId: run.id, isStreaming: true }
               : { ...conversation, activeRunId: null, isStreaming: false };
-          })
+          }),
         );
         setCurrentConversation((prev) => {
           if (!prev) return prev;
@@ -338,71 +380,80 @@ export function useInferenceRuns({
     };
   }, [observeRun, setConversations, setCurrentConversation, userId]);
 
-  const beginRun = useCallback(async (
-    request: InferenceStartRequest,
-  ): Promise<InferenceStartResponse> => {
-    if (!userId) {
-      throw new Error("Not authenticated.");
-    }
-    const response = await startInference(userId, request);
-    setConversations((prev) => {
-      // A private conversation must never enter the sidebar list. Every bridge
-      // listing endpoint filters `is_private`, so a row inserted here is a
-      // phantom: it appears the moment the first message is sent and vanishes
-      // on the next refresh. Filter rather than skip, so a conversation that is
-      // switched to private while listed is removed too.
-      if (response.summary.isPrivate) {
-        return prev.filter((conversation) => conversation.id !== response.summary.id);
+  const beginRun = useCallback(
+    async (request: InferenceStartRequest): Promise<InferenceStartResponse> => {
+      if (!userId) {
+        throw new Error("Not authenticated.");
       }
-      const found = prev.some((conversation) => conversation.id === response.summary.id);
-      const next = found
-        ? prev.map((conversation) => (conversation.id === response.summary.id ? response.summary : conversation))
-        : [response.summary, ...prev];
-      return sortByUpdatedAtDesc(next);
-    });
-    setCurrentConversation((prev) => {
-      // Empty id = the optimistic conversation shell created by the send flow
-      // for a brand-new chat — always replace it with the real server detail.
-      if (!prev || !prev.id || prev.id === response.detail.id) {
-        return response.detail;
-      }
-      return prev;
-    });
-    applyRunEvent({
-      type: "snapshot",
-      run: response.run,
-      message: response.message,
-      summary: response.summary,
-    });
-    observeRun(response.run);
-    return response;
-  }, [applyRunEvent, observeRun, setConversations, setCurrentConversation, userId]);
+      const response = await startInference(userId, request);
+      setConversations((prev) => {
+        // A private conversation must never enter the sidebar list. Every bridge
+        // listing endpoint filters `is_private`, so a row inserted here is a
+        // phantom: it appears the moment the first message is sent and vanishes
+        // on the next refresh. Filter rather than skip, so a conversation that is
+        // switched to private while listed is removed too.
+        if (response.summary.isPrivate) {
+          return prev.filter((conversation) => conversation.id !== response.summary.id);
+        }
+        const found = prev.some((conversation) => conversation.id === response.summary.id);
+        const next = found
+          ? prev.map((conversation) =>
+              conversation.id === response.summary.id ? response.summary : conversation,
+            )
+          : [response.summary, ...prev];
+        return sortByUpdatedAtDesc(next);
+      });
+      setCurrentConversation((prev) => {
+        // Empty id = the optimistic conversation shell created by the send flow
+        // for a brand-new chat — always replace it with the real server detail.
+        if (!prev || !prev.id || prev.id === response.detail.id) {
+          return response.detail;
+        }
+        return prev;
+      });
+      applyRunEvent({
+        type: "snapshot",
+        run: response.run,
+        message: response.message,
+        summary: response.summary,
+      });
+      observeRun(response.run);
+      return response;
+    },
+    [applyRunEvent, observeRun, setConversations, setCurrentConversation, userId],
+  );
 
-  const stopRun = useCallback(async (runId?: string | null) => {
-    if (!userId || !runId) return;
-    const run = await cancelInferenceRun(userId, runId);
-    applyRunEvent({ type: "update", run });
-  }, [applyRunEvent, userId]);
+  const stopRun = useCallback(
+    async (runId?: string | null) => {
+      if (!userId || !runId) return;
+      const run = await cancelInferenceRun(userId, runId);
+      applyRunEvent({ type: "update", run });
+    },
+    [applyRunEvent, userId],
+  );
 
-  const resumeRun = useCallback(async (runId: string, body: ResumeInferenceRunBody) => {
-    if (!userId) throw new Error("Not authenticated.");
-    // Keyed by interruptId — every HITL in a conversation shares the same
-    // thread_id, so threadId would mark every subsequent interrupt as already
-    // resolved and the modal would never re-open for the next one.
-    const key = `${runId}:${body.interruptId}`;
-    // We deliberately do NOT optimistically flip resolved here — the modal
-    // filters its cards by `isResolved`, so an optimistic flip would unmount
-    // the card mid-click and steal the spinner feedback. Mark resolved only
-    // after the bridge confirms the resume signal landed.
-    const run = await resumeInferenceRun(userId, runId, body);
-    applyRunEvent({ type: "update", run });
-    setResolvedInterrupts((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-  }, [applyRunEvent, userId]);
+  const resumeRun = useCallback(
+    async (runId: string, body: ResumeInferenceRunBody) => {
+      if (!userId) throw new Error("Not authenticated.");
+      // Keyed by interruptId — every HITL in a conversation shares the same
+      // thread_id, so threadId would mark every subsequent interrupt as already
+      // resolved and the modal would never re-open for the next one.
+      const key = `${runId}:${body.interruptId}`;
+      // We deliberately do NOT optimistically flip resolved here — the modal
+      // filters its cards by `isResolved`, so an optimistic flip would unmount
+      // the card mid-click and steal the spinner feedback. Mark resolved only
+      // after the bridge confirms the resume signal landed.
+      const run = await resumeInferenceRun(userId, runId, body);
+      applyRunEvent({ type: "update", run });
+      setResolvedInterrupts((prev) => {
+        if (prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+    },
+    [applyRunEvent, userId],
+  );
 
   const isInterruptResolved = useCallback(
     (runId: string, interruptId: string) => resolvedInterrupts.has(`${runId}:${interruptId}`),
@@ -453,11 +504,13 @@ export function useInferenceRuns({
     isInterruptResolved,
     deriveBranchSelectionsForActiveRun,
     getRunForConversation: useCallback(
-      (conversationId?: string | null) => (conversationId ? runsByConversation[conversationId] ?? null : null),
+      (conversationId?: string | null) =>
+        conversationId ? (runsByConversation[conversationId] ?? null) : null,
       [runsByConversation],
     ),
     isConversationStreaming: useCallback(
-      (conversationId?: string | null) => Boolean(conversationId && isActiveRun(runsByConversation[conversationId])),
+      (conversationId?: string | null) =>
+        Boolean(conversationId && isActiveRun(runsByConversation[conversationId])),
       [runsByConversation],
     ),
   };

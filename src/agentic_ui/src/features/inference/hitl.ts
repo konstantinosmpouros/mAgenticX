@@ -7,7 +7,8 @@ import type { ParsedHitlAction, ParsedHitlRequest } from "@/shared/lib/types";
 const parseHitlAction = (request: unknown): ParsedHitlAction => {
   if (!request || typeof request !== "object") return {};
   const r = request as Record<string, any>;
-  const toolName = typeof r.action === "string" ? r.action : typeof r.name === "string" ? r.name : undefined;
+  const toolName =
+    typeof r.action === "string" ? r.action : typeof r.name === "string" ? r.name : undefined;
   const description = typeof r.description === "string" ? r.description.trim() : undefined;
   let argsText: string | undefined;
   if (r.args !== undefined && r.args !== null) {

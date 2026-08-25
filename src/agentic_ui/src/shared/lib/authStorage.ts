@@ -1,4 +1,4 @@
-import type { UserProfile } from './types';
+import type { UserProfile } from "./types";
 
 export type StoredSession = {
   userId: string;
@@ -9,7 +9,7 @@ export type StoredSession = {
   isPrivateMode?: boolean;
 };
 
-type PersistedUserProfile = Omit<UserProfile, 'createdAt' | 'updatedAt' | 'lastLoginAt'> & {
+type PersistedUserProfile = Omit<UserProfile, "createdAt" | "updatedAt" | "lastLoginAt"> & {
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
@@ -24,7 +24,7 @@ type PersistedSession = {
   isPrivateMode?: boolean;
 };
 
-const KEY = 'mx_auth_session';
+const KEY = "mx_auth_session";
 const DEFAULT_TTL_MS = 60 * 60 * 1000;
 
 function serializeUser(user?: UserProfile): PersistedUserProfile | undefined {
@@ -80,7 +80,10 @@ export function loadSession(): StoredSession | null {
   }
 }
 
-export function isSessionValid(data: StoredSession | null): boolean {
+// A type predicate, not a plain boolean: callers immediately read `session.userId`
+// after checking, and only `data is StoredSession` lets the compiler carry the
+// non-null result through to that access.
+export function isSessionValid(data: StoredSession | null): data is StoredSession {
   if (!data) return false;
   return Date.now() <= data.expiresAt;
 }
@@ -94,7 +97,7 @@ export function clearSession() {
 }
 
 // Merge updates into current session, preserving original TTL unless overridden
-export function updateSession(partial: Partial<Omit<StoredSession, 'expiresAt'>>) {
+export function updateSession(partial: Partial<Omit<StoredSession, "expiresAt">>) {
   try {
     const existing = loadSession();
     if (!existing) return;

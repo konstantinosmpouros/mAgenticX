@@ -8,10 +8,7 @@ const NotFound = () => {
   const attemptedPath = location.pathname || "/";
 
   useEffect(() => {
-    console.error(
-      "404 Error: User attempted to access non-existent route:",
-      location.pathname
-    );
+    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
   }, [location.pathname]);
 
   return (
@@ -26,7 +23,9 @@ const NotFound = () => {
         <div className="w-full rounded-3xl border border-white/60 bg-white/70 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.65)] backdrop-blur-xl transition-slow dark:border-white/10 dark:bg-white/5 dark:shadow-[0_18px_80px_-36px_rgba(0,0,0,0.9)]">
           <div className="grid items-center gap-10 px-8 py-12 md:grid-cols-[1.05fr_0.95fr] md:px-12 md:py-14">
             <div className="space-y-6">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">Off the map</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">
+                Off the map
+              </p>
 
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-3 rounded-full border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10 dark:text-slate-100">
@@ -34,7 +33,9 @@ const NotFound = () => {
                   mAgenticX can't find this route
                 </div>
                 <h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-                  <span className="bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-amber-400 bg-clip-text text-transparent">404</span>{" "}
+                  <span className="bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-amber-400 bg-clip-text text-transparent">
+                    404
+                  </span>{" "}
                   Page not found
                 </h1>
                 <p className="text-base text-slate-600 dark:text-slate-300">
@@ -42,7 +43,8 @@ const NotFound = () => {
                   <span className="rounded-full border border-white/60 bg-white/80 px-2 py-1 text-sm font-semibold text-slate-800 shadow-sm dark:border-white/15 dark:bg-white/10 dark:text-slate-100">
                     {attemptedPath}
                   </span>{" "}
-                  but it isn't part of this workspace. Continue from the home screen or jump into the docs.
+                  but it isn't part of this workspace. Continue from the home screen or jump into
+                  the docs.
                 </p>
                 <div className="inline-flex items-center gap-2 rounded-xl border border-white/70 bg-white/80 px-4 py-3 text-xs font-semibold text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
                   <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_6px_rgba(52,211,153,0.18)]" />
@@ -85,7 +87,9 @@ const NotFound = () => {
                       </div>
                       <div className="text-left">
                         <p className="text-sm font-semibold">Back to chat</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Rejoin your agents and messages.</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Rejoin your agents and messages.
+                        </p>
                       </div>
                     </div>
                     <ArrowLeft className="h-4 w-4 text-indigo-400 transition group-hover:-translate-x-1 group-hover:text-indigo-500 dark:text-indigo-200" />
@@ -101,12 +105,13 @@ const NotFound = () => {
                       </div>
                       <div className="text-left">
                         <p className="text-sm font-semibold">Switch account</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Sign in again to refresh your session.</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Sign in again to refresh your session.
+                        </p>
                       </div>
                     </div>
                     <ArrowLeft className="h-4 w-4 text-fuchsia-400 transition group-hover:-translate-x-1 group-hover:text-fuchsia-500 dark:text-fuchsia-200" />
                   </Link>
-
                 </div>
               </div>
             </div>

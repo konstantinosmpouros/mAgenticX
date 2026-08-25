@@ -1,0 +1,23 @@
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground transition-colors duration-300;
+  }
+}
+
+/* Smooth state transition utilities */
+.transition-smooth {
+  transition: var(--transition-smooth);
+}
+.transition-slow {
+  transition: var(--transition-slow);
+}
+
+.messages-container {
+  transition:
+    opacity 0.4s ease,
+    transform 0.4s ease;
+}

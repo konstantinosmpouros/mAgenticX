@@ -14,6 +14,42 @@ INFERENCE_FEATURE = UI_ROOT / "src" / "features" / "inference"
 ATTACHMENTS_COMPONENTS = UI_ROOT / "src" / "features" / "attachments" / "components"
 
 
+def read_module_source(base: Path, name: str) -> str:
+    """Read a shared/lib module as one string, whether it is a single file or a
+    folder of domain modules behind a barrel.
+
+    `api`, `types` and `consts` were each split from one large file into a
+    directory + `index.ts`. These contract tests assert on substrings ("does the
+    transformer still read `archived_at`?"), which is a question about the module
+    as a whole, not about which file inside it happens to hold the line — so the
+    directory form is concatenated rather than requiring the tests to know the
+    internal layout. Without this the split turns every one of these asserts into
+    an IsADirectoryError.
+    """
+    single = base / f"{name}.ts"
+    if single.is_file():
+        return single.read_text(encoding="utf-8")
+
+    folder = base / name
+    if folder.is_dir():
+        return "\n".join(
+            path.read_text(encoding="utf-8") for path in sorted(folder.rglob("*.ts"))
+        )
+
+    raise FileNotFoundError(f"No module named {name!r} under {base}")
+
+
+def assert_inference_mode(source: str, mode: str) -> None:
+    """Assert the frontend still sends a given inference `mode`, in either quote style.
+
+    The contract is "this mode literal is sent", not "it is written with a
+    particular quote character". The source is Prettier-formatted, so pinning the
+    quote made this test fail on a pure reformat — a formatting change should
+    never be able to break a contract assertion.
+    """
+    assert f'mode: "{mode}"' in source or f"mode: '{mode}'" in source, mode
+
+
 def test_frontend_package_exposes_build_and_lint_scripts():
     package = json.loads((UI_ROOT / "package.json").read_text(encoding="utf-8"))
 
@@ -24,7 +60,7 @@ def test_frontend_package_exposes_build_and_lint_scripts():
 
 
 def test_frontend_api_uses_bridge_v1_route_prefixes():
-    api_source = (SHARED_LIB / "api.ts").read_text(encoding="utf-8")
+    api_source = read_module_source(SHARED_LIB, "api")
 
     expected_prefixes = [
         'const API_BASE_PATH = "/api/v1";',
@@ -45,7 +81,7 @@ def test_frontend_api_uses_bridge_v1_route_prefixes():
 
 
 def test_frontend_api_sends_csrf_for_mutating_requests():
-    api_source = (SHARED_LIB / "api.ts").read_text(encoding="utf-8")
+    api_source = read_module_source(SHARED_LIB, "api")
 
     mutating_functions = [
         "refreshSession",
@@ -84,16 +120,13 @@ def test_frontend_api_sends_csrf_for_mutating_requests():
 def test_inference_runtime_starts_normal_flows_through_backend_start_api():
     runtime_source = (INFERENCE_FEATURE / "inference.ts").read_text(encoding="utf-8")
     hook_source = (INFERENCE_FEATURE / "useInferenceRuns.ts").read_text(encoding="utf-8")
-    api_source = (SHARED_LIB / "api.ts").read_text(encoding="utf-8")
+    api_source = read_module_source(SHARED_LIB, "api")
 
     assert "createConversation" not in runtime_source
     assert "addMessageToConversation" not in runtime_source
-    assert 'mode: "new"' in runtime_source
-    assert 'mode: "shared_continue"' in runtime_source
+    for mode in ["new", "shared_continue", "send", "edit", "retry"]:
+        assert_inference_mode(runtime_source, mode)
     assert "continueSharedConversation" not in api_source
-    assert 'mode: "send"' in runtime_source
-    assert "mode: 'edit'" in runtime_source
-    assert "mode: 'retry'" in runtime_source
     assert "startInference(userId, request)" in hook_source
     assert "/runs/${userId}/start" in api_source
     assert "startInferenceRun" not in api_source
@@ -103,7 +136,7 @@ def test_attachment_preview_registry_covers_requested_formats():
     registry_source = (
         ATTACHMENTS_COMPONENTS / "attachment_preview_parts" / "registry.ts"
     ).read_text(encoding="utf-8")
-    api_source = (SHARED_LIB / "api.ts").read_text(encoding="utf-8")
+    api_source = read_module_source(SHARED_LIB, "api")
 
     for expected in [
         '"pdf"',
@@ -155,7 +188,7 @@ def test_word_and_excel_share_office_online_viewer_path():
 
 
 def test_frontend_upload_utils_infer_missing_browser_mime_types():
-    utils_source = (SHARED_LIB / "utils.ts").read_text(encoding="utf-8")
+    utils_source = read_module_source(SHARED_LIB, "utils")
 
     assert "resolveUploadMimeType" in utils_source
     assert 'md: "text/markdown"' in utils_source
@@ -166,8 +199,8 @@ def test_frontend_upload_utils_infer_missing_browser_mime_types():
 
 
 def test_frontend_transformers_handle_backend_aliases_for_shared_features():
-    consts_source = (SHARED_LIB / "consts.ts").read_text(encoding="utf-8")
-    types_source = (SHARED_LIB / "types.ts").read_text(encoding="utf-8")
+    consts_source = read_module_source(SHARED_LIB, "consts")
+    types_source = read_module_source(SHARED_LIB, "types")
 
     for field in ["forkedParentId", "forkedMessageId", "isArchived", "archivedAt", "isReported", "reportedAt"]:
         assert field in consts_source
@@ -179,8 +212,8 @@ def test_frontend_transformers_handle_backend_aliases_for_shared_features():
 
 
 def test_frontend_carries_per_message_agent_attribution():
-    consts_source = (SHARED_LIB / "consts.ts").read_text(encoding="utf-8")
-    types_source = (SHARED_LIB / "types.ts").read_text(encoding="utf-8")
+    consts_source = read_module_source(SHARED_LIB, "consts")
+    types_source = read_module_source(SHARED_LIB, "types")
     inference_source = (INFERENCE_FEATURE / "inference.ts").read_text(encoding="utf-8")
 
     # MessageOut type + transformer carry the per-message agent (both casings).

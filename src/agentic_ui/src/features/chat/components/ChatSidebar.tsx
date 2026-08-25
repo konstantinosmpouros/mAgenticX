@@ -90,10 +90,7 @@ type ChatSidebarProps = {
   onLogoutAllAccounts?: () => void;
   dismissFloatingUiSignal?: number;
   onFloatingUiStateChange?: (open: boolean) => void;
-  sidebarInteractionHook: (args: {
-    isCollapsed: boolean;
-    toggleSidebar: () => void;
-  }) => {
+  sidebarInteractionHook: (args: { isCollapsed: boolean; toggleSidebar: () => void }) => {
     isLogoHovered: boolean;
     handleSidebarMouseEnter: () => void;
     handleSidebarMouseLeave: () => void;
@@ -104,10 +101,7 @@ type ChatSidebarProps = {
 const ConversationLoadingSkeleton = ({ count = 3 }: { count?: number }) => (
   <div className="space-y-2 pt-2" aria-hidden="true">
     {Array.from({ length: count }).map((_, index) => (
-      <div
-        key={`conversation-skeleton-${index}`}
-        className="rounded-lg px-3 py-3"
-      >
+      <div key={`conversation-skeleton-${index}`} className="rounded-lg px-3 py-3">
         <div className="flex items-center gap-3">
           <Skeleton className="h-9 w-9 rounded-full" />
           <div className="flex flex-1 flex-col gap-2">
@@ -194,7 +188,7 @@ export default function ChatSidebar({
         setOpenMobile(false);
       }
     },
-    [onSelectConversation, isMobile, setOpenMobile, setOpenActionMenuId]
+    [onSelectConversation, isMobile, setOpenMobile, setOpenActionMenuId],
   );
 
   const handleTitleClickInternal = React.useCallback(() => {
@@ -245,7 +239,7 @@ export default function ChatSidebar({
         setOpenMobile(false);
       }
     },
-    [isMobile, setOpenMobile]
+    [isMobile, setOpenMobile],
   );
 
   const handleScroll: React.UIEventHandler<HTMLDivElement> = React.useCallback(
@@ -257,7 +251,7 @@ export default function ChatSidebar({
         onLoadMore();
       }
     },
-    [isLoadingMore, hasMore, onLoadMore]
+    [isLoadingMore, hasMore, onLoadMore],
   );
 
   React.useEffect(() => {
@@ -291,7 +285,7 @@ export default function ChatSidebar({
       setRenameDraft(currentTitle);
       setIsSubmittingRename(false);
     },
-    [onRenameConversation]
+    [onRenameConversation],
   );
 
   const handleCancelRename = React.useCallback(() => {
@@ -348,7 +342,9 @@ export default function ChatSidebar({
   }, [handleCancelRename, renamingConversationId]);
 
   React.useEffect(() => {
-    onFloatingUiStateChange?.(Boolean(openActionMenuId || renamingConversationId || profileMenuOpen));
+    onFloatingUiStateChange?.(
+      Boolean(openActionMenuId || renamingConversationId || profileMenuOpen),
+    );
   }, [onFloatingUiStateChange, openActionMenuId, renamingConversationId, profileMenuOpen]);
 
   const lastDismissFloatingUiSignalRef = React.useRef(dismissFloatingUiSignal);
@@ -429,14 +425,12 @@ export default function ChatSidebar({
         "relative overflow-hidden",
         isCollapsed
           ? "bg-transparent [&_[data-sidebar=sidebar]]:bg-transparent [&_[data-sidebar=sidebar]]:text-foreground"
-          : "bg-sidebar"
+          : "bg-sidebar",
       )}
       onMouseEnter={handleSidebarMouseEnter}
       onMouseLeave={handleSidebarMouseLeave}
     >
-      <SidebarHeader
-        className="gap-3 py-4 px-2"
-      >
+      <SidebarHeader className="gap-3 py-4 px-2">
         <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -449,24 +443,22 @@ export default function ChatSidebar({
                 // width) so the logo centers at the same x as every other icon. Height
                 // stays h-12 (size lg) in BOTH states — changing it would shift the logo
                 // and push the action menu below it up/down.
-                "group-data-[collapsible=icon]:px-1.5"
+                "group-data-[collapsible=icon]:px-1.5",
               )}
             >
-              <div
-                className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg transition bg-transparent"
-              >
+              <div className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg transition bg-transparent">
                 <img
                   src={logoSrc}
                   alt="mAgenticX logo"
                   className={cn(
                     "h-full w-full object-contain transition-opacity",
-                    isCollapsed && isLogoHovered ? "opacity-0" : "opacity-100"
+                    isCollapsed && isLogoHovered ? "opacity-0" : "opacity-100",
                   )}
                 />
                 <PanelLeft
                   className={cn(
                     "absolute inset-0 h-full w-full p-2 text-foreground transition-opacity",
-                    isCollapsed && isLogoHovered ? "opacity-100" : "opacity-0"
+                    isCollapsed && isLogoHovered ? "opacity-100" : "opacity-0",
                   )}
                 />
               </div>
@@ -494,7 +486,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]"
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
               )}
               tooltip="Search"
             >
@@ -512,7 +504,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]"
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
               )}
               tooltip="New chat"
             >
@@ -535,7 +527,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]"
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
               )}
               tooltip="Voice mode"
             >
@@ -553,7 +545,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]"
+                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
               )}
               tooltip="Scheduled tasks"
             >
@@ -585,9 +577,7 @@ export default function ChatSidebar({
             <SidebarGroupLabel className="pr-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Chats
             </SidebarGroupLabel>
-            <SidebarGroupContent
-              className="min-h-0 flex-1 space-y-2"
-            >
+            <SidebarGroupContent className="min-h-0 flex-1 space-y-2">
               {showInitialSkeleton ? (
                 <ConversationLoadingSkeleton />
               ) : showEmptyState ? (
@@ -600,7 +590,8 @@ export default function ChatSidebar({
                   {conversations.map((conversation) => {
                     const agent = conversation.agent;
                     const Icon = agent?.icon ?? Building2;
-                    const rawTitle = typeof conversation.title === "string" ? conversation.title.trim() : "";
+                    const rawTitle =
+                      typeof conversation.title === "string" ? conversation.title.trim() : "";
                     const lastMessage = (conversation.lastMessage ?? "").trim();
                     const fallbackTitle = lastMessage || agent?.name || "Untitled chat";
                     const resolvedTitle = rawTitle || fallbackTitle;
@@ -692,8 +683,8 @@ export default function ChatSidebar({
                             </span>
                           )}
                         </SidebarMenuButton>
-                        {!isRenaming && (
-                          conversation.isStreaming ? (
+                        {!isRenaming &&
+                          (conversation.isStreaming ? (
                             <SidebarMenuAction
                               aria-label="Conversation is streaming"
                               onClick={(event) => event.stopPropagation()}
@@ -705,83 +696,82 @@ export default function ChatSidebar({
                             </SidebarMenuAction>
                           ) : (
                             <DropdownMenu.Root
-                            open={openActionMenuId === conversation.id}
-                            onOpenChange={(isOpen) => {
-                              setOpenActionMenuId(isOpen ? conversation.id : null);
-                            }}
-                          >
-                            <DropdownMenu.Trigger asChild>
-                              <SidebarMenuAction
-                                aria-label="Conversation actions"
-                                onClick={(event) => event.stopPropagation()}
-                                onMouseDown={(event) => event.stopPropagation()}
-                                onPointerDown={(event) => event.stopPropagation()}
-                                showOnHover
-                                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
-                              >
-                                <MoreHorizontal size={14} />
-                              </SidebarMenuAction>
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Portal>
-                              <DropdownMenu.Content
-                                side="right"
-                                sideOffset={8}
-                                align="end"
-                                className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
-                                onCloseAutoFocus={(event) => event.preventDefault()}
-                              >
-                                <DropdownMenu.Item
-                                  onSelect={() => {
-                                    handleStartRename(conversation.id, resolvedTitle);
-                                  }}
-                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                              open={openActionMenuId === conversation.id}
+                              onOpenChange={(isOpen) => {
+                                setOpenActionMenuId(isOpen ? conversation.id : null);
+                              }}
+                            >
+                              <DropdownMenu.Trigger asChild>
+                                <SidebarMenuAction
+                                  aria-label="Conversation actions"
+                                  onClick={(event) => event.stopPropagation()}
+                                  onMouseDown={(event) => event.stopPropagation()}
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  showOnHover
+                                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:!bg-transparent hover:!text-muted-foreground active:!bg-transparent focus-visible:!bg-transparent focus-visible:text-foreground peer-data-[size=lg]/menu-button:!top-1/2 peer-data-[size=lg]/menu-button:-translate-y-1/2"
                                 >
-                                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                    <Pencil size={15} />
-                                  </div>
-                                  <span>Rename</span>
-                                </DropdownMenu.Item>
-                                <DropdownMenu.Item
-                                  onSelect={() => {
-                                    onArchiveConversation?.(conversation.id);
-                                  }}
-                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                  <MoreHorizontal size={14} />
+                                </SidebarMenuAction>
+                              </DropdownMenu.Trigger>
+                              <DropdownMenu.Portal>
+                                <DropdownMenu.Content
+                                  side="right"
+                                  sideOffset={8}
+                                  align="end"
+                                  className="z-50 w-48 rounded-lg border border-border bg-background p-1.5 text-sm text-foreground shadow-lg focus:outline-none"
+                                  onCloseAutoFocus={(event) => event.preventDefault()}
                                 >
-                                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                    <Archive size={15} />
-                                  </div>
-                                  <span>Archive</span>
-                                </DropdownMenu.Item>
-                                {!conversation.isReported && (
                                   <DropdownMenu.Item
                                     onSelect={() => {
-                                      onReportConversation?.(conversation.id);
+                                      handleStartRename(conversation.id, resolvedTitle);
                                     }}
                                     className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
                                   >
                                     <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
-                                      <Flag size={15} />
+                                      <Pencil size={15} />
                                     </div>
-                                    <span>Report</span>
+                                    <span>Rename</span>
                                   </DropdownMenu.Item>
-                                )}
-                                <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
-                                <DropdownMenu.Item
-                                  onSelect={() => {
-                                    onDeleteConversation(conversation.id);
-                                  }}
-                                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
-                                >
-                                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
-                                    <Trash2 size={15} />
-                                  </div>
-                                  <span>Delete</span>
-                                </DropdownMenu.Item>
-                              </DropdownMenu.Content>
-                            </DropdownMenu.Portal>
-                          </DropdownMenu.Root>
-                          )
-                        )}
+                                  <DropdownMenu.Item
+                                    onSelect={() => {
+                                      onArchiveConversation?.(conversation.id);
+                                    }}
+                                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                  >
+                                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                      <Archive size={15} />
+                                    </div>
+                                    <span>Archive</span>
+                                  </DropdownMenu.Item>
+                                  {!conversation.isReported && (
+                                    <DropdownMenu.Item
+                                      onSelect={() => {
+                                        onReportConversation?.(conversation.id);
+                                      }}
+                                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors data-[highlighted]:bg-muted data-[highlighted]:text-foreground focus-visible:outline-none data-[highlighted]:outline-none"
+                                    >
+                                      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-muted-foreground">
+                                        <Flag size={15} />
+                                      </div>
+                                      <span>Report</span>
+                                    </DropdownMenu.Item>
+                                  )}
+                                  <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                                  <DropdownMenu.Item
+                                    onSelect={() => {
+                                      onDeleteConversation(conversation.id);
+                                    }}
+                                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm text-destructive transition-colors data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive focus-visible:outline-none data-[highlighted]:outline-none"
+                                  >
+                                    <div className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-destructive">
+                                      <Trash2 size={15} />
+                                    </div>
+                                    <span>Delete</span>
+                                  </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                              </DropdownMenu.Portal>
+                            </DropdownMenu.Root>
+                          ))}
                       </SidebarMenuItem>
                     );
                   })}
@@ -794,10 +784,7 @@ export default function ChatSidebar({
       </SidebarContent>
 
       <SidebarFooter
-        className={cn(
-          "py-3 px-2",
-          !isCollapsed && "border-t border-sidebar-border/40"
-        )}
+        className={cn("py-3 px-2", !isCollapsed && "border-t border-sidebar-border/40")}
       >
         <SidebarMenu className="!gap-0">
           <SidebarMenuItem>
@@ -818,19 +805,27 @@ export default function ChatSidebar({
                         "!flex items-center gap-1 rounded-lg bg-transparent px-1.5 py-2 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
                         "group-data-[collapsible=icon]:!h-12",
                         "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent",
-                        profileMenuOpen && "bg-[hsl(var(--hover-surface))]"
+                        profileMenuOpen && "bg-[hsl(var(--hover-surface))]",
                       )}
                     >
                       <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
                         {avatarUrl ? (
-                          <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                          <img
+                            src={avatarUrl}
+                            alt={profileName}
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
                           <span className="text-sm font-semibold">{profileInitials}</span>
                         )}
                       </div>
                       <div className="flex min-w-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
-                        <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
-                        <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {profileName}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {profileEmail}
+                        </span>
                       </div>
                       <ChevronsUpDown className="ml-auto h-4 w-4 flex-shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden" />
                     </SidebarMenuButton>
@@ -865,16 +860,27 @@ export default function ChatSidebar({
                       <DropdownMenu.SubTrigger className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] data-[state=open]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none">
                         <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
                           {avatarUrl ? (
-                            <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                            <img
+                              src={avatarUrl}
+                              alt={profileName}
+                              className="h-full w-full object-cover"
+                            />
                           ) : (
                             <span className="text-sm font-semibold">{profileInitials}</span>
                           )}
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
-                          <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {profileName}
+                          </span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {profileEmail}
+                          </span>
                         </div>
-                        <ChevronRight size={15} className="ml-auto flex-shrink-0 text-muted-foreground" />
+                        <ChevronRight
+                          size={15}
+                          className="ml-auto flex-shrink-0 text-muted-foreground"
+                        />
                       </DropdownMenu.SubTrigger>
                       <DropdownMenu.Portal>
                         <DropdownMenu.SubContent
@@ -905,23 +911,36 @@ export default function ChatSidebar({
                     >
                       <div className="sidebar-icon-badge grid size-9 flex-shrink-0 place-items-center overflow-hidden rounded-xl text-primary">
                         {avatarUrl ? (
-                          <img src={avatarUrl} alt={profileName} className="h-full w-full object-cover" />
+                          <img
+                            src={avatarUrl}
+                            alt={profileName}
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
                           <span className="text-sm font-semibold">{profileInitials}</span>
                         )}
                       </div>
                       <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-sm font-medium text-foreground">{profileName}</span>
-                        <span className="truncate text-xs text-muted-foreground">{profileEmail}</span>
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {profileName}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {profileEmail}
+                        </span>
                       </div>
-                      <ChevronRight size={15} className="ml-auto flex-shrink-0 text-muted-foreground" />
+                      <ChevronRight
+                        size={15}
+                        className="ml-auto flex-shrink-0 text-muted-foreground"
+                      />
                     </DropdownMenu.Item>
                   )}
 
                   <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
 
                   <DropdownMenu.Item
-                    onSelect={() => handleProfileMenuAction(() => onOpenSettings("personalization"))}
+                    onSelect={() =>
+                      handleProfileMenuAction(() => onOpenSettings("personalization"))
+                    }
                     className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
                   >
                     <div className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground">
@@ -995,7 +1014,9 @@ export default function ChatSidebar({
                           {accounts.map((account) => (
                             <DropdownMenu.Item
                               key={account.id}
-                              onSelect={() => handleProfileMenuAction(() => onLogoutAccount?.(account))}
+                              onSelect={() =>
+                                handleProfileMenuAction(() => onLogoutAccount?.(account))
+                              }
                               className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors data-[highlighted]:bg-[hsl(var(--hover-surface))] focus-visible:outline-none data-[highlighted]:outline-none"
                             >
                               <span

@@ -46,7 +46,13 @@ export function summariseInterrupt(content: unknown): string {
 // Thinking block of the run timeline (and in the Test.tsx demo). The pending
 // approval also surfaces as the input-bar takeover (HitlInputTakeover), which
 // drives the same resolver.
-export function HitlInterruptCard({ interrupt, resolved, resolution, onResolve, className }: HitlInterruptCardProps) {
+export function HitlInterruptCard({
+  interrupt,
+  resolved,
+  resolution,
+  onResolve,
+  className,
+}: HitlInterruptCardProps) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -68,13 +74,15 @@ export function HitlInterruptCard({ interrupt, resolved, resolution, onResolve, 
   if (resolved) {
     const isRejected = resolution === "rejected";
     return (
-      <div className={cn(
-        "flex items-center gap-2 rounded-2xl border px-3 py-2 text-[12px]",
-        isRejected
-          ? "border-orange-500/25 bg-orange-500/[0.06] text-orange-500"
-          : "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-500",
-        className,
-      )}>
+      <div
+        className={cn(
+          "flex items-center gap-2 rounded-2xl border px-3 py-2 text-[12px]",
+          isRejected
+            ? "border-orange-500/25 bg-orange-500/[0.06] text-orange-500"
+            : "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-500",
+          className,
+        )}
+      >
         {isRejected ? <X className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
         <span className="font-medium">
           {resolution === "approved" ? "Approved" : isRejected ? "Rejected" : "Decision sent"}
@@ -87,10 +95,12 @@ export function HitlInterruptCard({ interrupt, resolved, resolution, onResolve, 
   }
 
   return (
-    <div className={cn(
-      "relative overflow-hidden rounded-[24px] border border-amber-500/45 bg-card px-4 py-3.5 shadow-card",
-      className,
-    )}>
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-[24px] border border-amber-500/45 bg-card px-4 py-3.5 shadow-card",
+        className,
+      )}
+    >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-amber-500/[0.10] via-amber-500/[0.04] to-transparent" />
 
       <div className="relative mb-2.5 flex items-center gap-2">
@@ -120,9 +130,7 @@ export function HitlInterruptCard({ interrupt, resolved, resolution, onResolve, 
         className="relative mb-3 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-[12.5px] leading-5 text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
       />
 
-      {error ? (
-        <p className="relative mb-2 text-[11.5px] text-destructive">{error}</p>
-      ) : null}
+      {error ? <p className="relative mb-2 text-[11.5px] text-destructive">{error}</p> : null}
 
       <div className="relative flex items-center justify-end gap-2">
         <Button
@@ -133,7 +141,11 @@ export function HitlInterruptCard({ interrupt, resolved, resolution, onResolve, 
           disabled={busy !== null}
           className="gap-1.5 text-foreground/80"
         >
-          {busy === "reject" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+          {busy === "reject" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <X className="h-3.5 w-3.5" />
+          )}
           Reject
         </Button>
         <Button
@@ -143,11 +155,14 @@ export function HitlInterruptCard({ interrupt, resolved, resolution, onResolve, 
           disabled={busy !== null}
           className="gap-1.5 bg-emerald-500/90 text-white hover:bg-emerald-500"
         >
-          {busy === "approve" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          {busy === "approve" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Check className="h-3.5 w-3.5" />
+          )}
           Approve
         </Button>
       </div>
     </div>
   );
 }
-

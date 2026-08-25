@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { deleteAgentMemory, getAgentMemory, listAgentMemories } from '@/shared/lib/api';
-import { toastError } from '@/shared/lib/toast';
-import type { MemoryDetail, MemorySummary } from '@/shared/lib/types';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { deleteAgentMemory, getAgentMemory, listAgentMemories } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
+import type { MemoryDetail, MemorySummary } from "@/shared/lib/types";
 
 // Owns the read + delete state for the ProfilePanel "Memories" tab. Memory is
 // per-(user, agent) on the agents-service filesystem; the bridge proxies. The
@@ -14,7 +14,12 @@ import type { MemoryDetail, MemorySummary } from '@/shared/lib/types';
 //      `${agentId}::${name}`, so opening a row doesn't refetch every time.
 //   3. Delete — optimistically drops the row from the list (and detail cache),
 //      then proxies the delete (which removes the yml + its AGENTS.md row).
-type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastFn = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 export type MemoriesHandlers = {
   memories: Record<string, MemorySummary[]>;
@@ -56,34 +61,43 @@ export function useMemories(ctx: MemoriesCtx): MemoriesHandlers {
     loadedRef.current = new Set();
   }, [userId]);
 
-  const loadAgent = useCallback(async (agentId: string) => {
-    if (!userId || !agentId) return;
-    setLoadingAgents((prev) => new Set(prev).add(agentId));
-    try {
-      const fetched = await listAgentMemories(userId, agentId);
-      setMemories((prev) => ({ ...prev, [agentId]: fetched }));
-      loadedRef.current.add(agentId);
-    } catch (error) {
-      toastError(toast, 'Could not load memories', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-    } finally {
-      setLoadingAgents((prev) => {
-        const next = new Set(prev);
-        next.delete(agentId);
-        return next;
-      });
-    }
-  }, [userId, toast]);
+  const loadAgent = useCallback(
+    async (agentId: string) => {
+      if (!userId || !agentId) return;
+      setLoadingAgents((prev) => new Set(prev).add(agentId));
+      try {
+        const fetched = await listAgentMemories(userId, agentId);
+        setMemories((prev) => ({ ...prev, [agentId]: fetched }));
+        loadedRef.current.add(agentId);
+      } catch (error) {
+        toastError(toast, "Could not load memories", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setLoadingAgents((prev) => {
+          const next = new Set(prev);
+          next.delete(agentId);
+          return next;
+        });
+      }
+    },
+    [userId, toast],
+  );
 
-  const ensureLoaded = useCallback(async (agentId: string) => {
-    if (loadedRef.current.has(agentId)) return;
-    await loadAgent(agentId);
-  }, [loadAgent]);
+  const ensureLoaded = useCallback(
+    async (agentId: string) => {
+      if (loadedRef.current.has(agentId)) return;
+      await loadAgent(agentId);
+    },
+    [loadAgent],
+  );
 
-  const refreshAgent = useCallback(async (agentId: string) => {
-    await loadAgent(agentId);
-  }, [loadAgent]);
+  const refreshAgent = useCallback(
+    async (agentId: string) => {
+      await loadAgent(agentId);
+    },
+    [loadAgent],
+  );
 
   const isAgentLoading = useCallback(
     (agentId: string) => loadingAgents.has(agentId),
@@ -95,63 +109,73 @@ export function useMemories(ctx: MemoriesCtx): MemoriesHandlers {
     [loadingDetailKeys],
   );
 
-  const ensureDetail = useCallback(async (agentId: string, name: string) => {
-    if (!userId) return;
-    const key = detailKey(agentId, name);
-    if (detail[key] || loadingDetailKeys.has(key)) return;
-    setLoadingDetailKeys((prev) => new Set(prev).add(key));
-    try {
-      const fetched = await getAgentMemory(userId, agentId, name);
-      setDetail((prev) => ({ ...prev, [key]: fetched }));
-    } catch (error) {
-      toastError(toast, 'Could not load memory content', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-    } finally {
-      setLoadingDetailKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-    }
-  }, [userId, detail, loadingDetailKeys, toast]);
+  const ensureDetail = useCallback(
+    async (agentId: string, name: string) => {
+      if (!userId) return;
+      const key = detailKey(agentId, name);
+      if (detail[key] || loadingDetailKeys.has(key)) return;
+      setLoadingDetailKeys((prev) => new Set(prev).add(key));
+      try {
+        const fetched = await getAgentMemory(userId, agentId, name);
+        setDetail((prev) => ({ ...prev, [key]: fetched }));
+      } catch (error) {
+        toastError(toast, "Could not load memory content", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setLoadingDetailKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [userId, detail, loadingDetailKeys, toast],
+  );
 
   const isDeleting = useCallback(
     (agentId: string, name: string) => deletingKeys.has(detailKey(agentId, name)),
     [deletingKeys],
   );
 
-  const deleteMemory = useCallback(async (agentId: string, name: string) => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    const key = detailKey(agentId, name);
-    if (deletingKeys.has(key)) return;
-    const prevList = memories[agentId] ?? [];
-    // Optimistically drop the row + its cached detail; restore on failure.
-    setMemories((prev) => ({ ...prev, [agentId]: prevList.filter((m) => m.name !== name) }));
-    setDetail((prev) => {
-      if (!(key in prev)) return prev;
-      const { [key]: _gone, ...rest } = prev;
-      return rest;
-    });
-    setDeletingKeys((prev) => new Set(prev).add(key));
-    try {
-      await deleteAgentMemory(userId, agentId, name);
-    } catch (error) {
-      setMemories((prev) => ({ ...prev, [agentId]: prevList }));
-      toastError(toast, 'Could not delete the memory', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
+  const deleteMemory = useCallback(
+    async (agentId: string, name: string) => {
+      if (!userId) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const key = detailKey(agentId, name);
+      if (deletingKeys.has(key)) return;
+      const prevList = memories[agentId] ?? [];
+      // Optimistically drop the row + its cached detail; restore on failure.
+      setMemories((prev) => ({ ...prev, [agentId]: prevList.filter((m) => m.name !== name) }));
+      setDetail((prev) => {
+        if (!(key in prev)) return prev;
+        const { [key]: _gone, ...rest } = prev;
+        return rest;
       });
-    } finally {
-      setDeletingKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-    }
-  }, [userId, memories, deletingKeys, toast]);
+      setDeletingKeys((prev) => new Set(prev).add(key));
+      try {
+        await deleteAgentMemory(userId, agentId, name);
+      } catch (error) {
+        setMemories((prev) => ({ ...prev, [agentId]: prevList }));
+        toastError(toast, "Could not delete the memory", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setDeletingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [userId, memories, deletingKeys, toast],
+  );
 
   return {
     memories,

@@ -51,7 +51,10 @@ export const BLOCK_REGISTRY: Record<
     />
   ),
   subagent: (block, ctx) => (
-    <SubagentCard subagent={subagentBlockToItem(block as SubagentBlock)} index={ctx.subagentIndex} />
+    <SubagentCard
+      subagent={subagentBlockToItem(block as SubagentBlock)}
+      index={ctx.subagentIndex}
+    />
   ),
   thinking: (block, ctx) => (
     <CoTBlock

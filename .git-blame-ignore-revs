@@ -1,0 +1,13 @@
+# Commits that are pure formatting — no behaviour change.
+#
+# `git blame` skips these so a line's blame points at the change that actually
+# introduced it, not at the reformat that reflowed it. GitHub honours this file
+# automatically. Locally, enable it once per clone:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Add ONLY commits that are provably behaviour-neutral (a formatter run), and
+# add the full 40-character hash after the commit exists.
+
+# agentic_ui: first repo-wide Prettier run (171 files).
+# <add the commit hash here once the reformat is committed>

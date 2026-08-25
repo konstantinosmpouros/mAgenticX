@@ -1,14 +1,5 @@
 export type AttachmentPreviewKind =
-  | "pdf"
-  | "docx"
-  | "xlsx"
-  | "pptx"
-  | "markdown"
-  | "json"
-  | "csv"
-  | "code"
-  | "text"
-  | "unsupported";
+  "pdf" | "docx" | "xlsx" | "pptx" | "markdown" | "json" | "csv" | "code" | "text" | "unsupported";
 
 export type AttachmentPreviewMeta = {
   name: string;
@@ -67,7 +58,11 @@ const codeLanguages: Record<string, string> = {
 const textExtensions = new Set(["log", "text", "txt"]);
 const markdownExtensions = new Set(["markdown", "md", "mdx"]);
 
-function tooLarge(meta: AttachmentPreviewMeta, limit: number, label: string): AttachmentPreviewDescriptor | null {
+function tooLarge(
+  meta: AttachmentPreviewMeta,
+  limit: number,
+  label: string,
+): AttachmentPreviewDescriptor | null {
   if (typeof meta.size !== "number" || meta.size <= limit) {
     return null;
   }
@@ -81,7 +76,9 @@ function tooLarge(meta: AttachmentPreviewMeta, limit: number, label: string): At
   };
 }
 
-export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): AttachmentPreviewDescriptor {
+export function classifyAttachmentPreview(
+  meta: AttachmentPreviewMeta,
+): AttachmentPreviewDescriptor {
   const mime = meta.mime.trim().toLowerCase();
   const ext = extensionOf(meta.name);
 
@@ -103,12 +100,14 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
     mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     ext === "docx"
   ) {
-    return tooLarge(meta, OFFICE_PREVIEW_LIMIT_BYTES, "Word document") ?? {
-      kind: "docx",
-      previewable: true,
-      label: "Word document",
-      requiresBlob: false,
-    };
+    return (
+      tooLarge(meta, OFFICE_PREVIEW_LIMIT_BYTES, "Word document") ?? {
+        kind: "docx",
+        previewable: true,
+        label: "Word document",
+        requiresBlob: false,
+      }
+    );
   }
 
   if (
@@ -117,12 +116,14 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
     ext === "xlsx" ||
     ext === "xlsm"
   ) {
-    return tooLarge(meta, OFFICE_PREVIEW_LIMIT_BYTES, "Excel workbook") ?? {
-      kind: "xlsx",
-      previewable: true,
-      label: "Excel workbook",
-      requiresBlob: false,
-    };
+    return (
+      tooLarge(meta, OFFICE_PREVIEW_LIMIT_BYTES, "Excel workbook") ?? {
+        kind: "xlsx",
+        previewable: true,
+        label: "Excel workbook",
+        requiresBlob: false,
+      }
+    );
   }
 
   if (
@@ -131,12 +132,14 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
     ext === "ppt" ||
     ext === "pptx"
   ) {
-    return tooLarge(meta, OFFICE_PREVIEW_LIMIT_BYTES, "PowerPoint deck") ?? {
-      kind: "pptx",
-      previewable: true,
-      label: "PowerPoint deck",
-      requiresBlob: false,
-    };
+    return (
+      tooLarge(meta, OFFICE_PREVIEW_LIMIT_BYTES, "PowerPoint deck") ?? {
+        kind: "pptx",
+        previewable: true,
+        label: "PowerPoint deck",
+        requiresBlob: false,
+      }
+    );
   }
 
   if (["doc", "xls"].includes(ext)) {
@@ -150,51 +153,61 @@ export function classifyAttachmentPreview(meta: AttachmentPreviewMeta): Attachme
   }
 
   if (mime === "text/csv" || ext === "csv") {
-    return tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "CSV") ?? {
-      kind: "csv",
-      previewable: true,
-      label: "CSV",
-      requiresBlob: true,
-    };
+    return (
+      tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "CSV") ?? {
+        kind: "csv",
+        previewable: true,
+        label: "CSV",
+        requiresBlob: true,
+      }
+    );
   }
 
   if (mime === "application/json" || ext === "json") {
-    return tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "JSON") ?? {
-      kind: "json",
-      previewable: true,
-      label: "JSON",
-      language: "json",
-      requiresBlob: true,
-    };
+    return (
+      tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "JSON") ?? {
+        kind: "json",
+        previewable: true,
+        label: "JSON",
+        language: "json",
+        requiresBlob: true,
+      }
+    );
   }
 
   if (markdownExtensions.has(ext) || mime === "text/markdown") {
-    return tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "Markdown") ?? {
-      kind: "markdown",
-      previewable: true,
-      label: "Markdown",
-      language: "markdown",
-      requiresBlob: true,
-    };
+    return (
+      tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "Markdown") ?? {
+        kind: "markdown",
+        previewable: true,
+        label: "Markdown",
+        language: "markdown",
+        requiresBlob: true,
+      }
+    );
   }
 
   if (codeLanguages[ext]) {
-    return tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "Code") ?? {
-      kind: "code",
-      previewable: true,
-      label: "Code",
-      language: codeLanguages[ext],
-      requiresBlob: true,
-    };
+    return (
+      tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "Code") ?? {
+        kind: "code",
+        previewable: true,
+        label: "Code",
+        language: codeLanguages[ext],
+        requiresBlob: true,
+      }
+    );
   }
 
   if (mime.startsWith("text/") || textExtensions.has(ext)) {
-    return tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "Text") ?? {
-      kind: "text",
-      previewable: true,
-      label: "Text",
-      requiresBlob: true,
-    };
+    return (
+      tooLarge(meta, TEXT_PREVIEW_LIMIT_BYTES, "Text") ?? {
+        kind: "text",
+        previewable: true,
+        label: "Text",
+        requiresBlob: true,
+      }
+    );
   }
 
   return {

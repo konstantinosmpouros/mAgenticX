@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, ShieldAlert, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  ShieldAlert,
+  X,
+} from "lucide-react";
 import { Button } from "@/shared/ui/button";
-import { summariseInterrupt, type HitlInterrupt } from "@/features/chat/components/message_parts/HitlInterruptCard";
+import {
+  summariseInterrupt,
+  type HitlInterrupt,
+} from "@/features/chat/components/message_parts/HitlInterruptCard";
 import { cn } from "@/shared/lib/utils";
 import { parseHitlInterrupt } from "@/features/inference";
 
@@ -38,15 +49,19 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
   // Deck state (batch path): the top card, a per-card decision + reason that can
   // be revisited and overwritten, and the exit gesture for the slide animation.
   const [index, setIndex] = useState(0);
-  const [decisions, setDecisions] = useState<("approve" | "reject" | null)[]>(() => actions.map(() => null));
+  const [decisions, setDecisions] = useState<("approve" | "reject" | null)[]>(() =>
+    actions.map(() => null),
+  );
   const [reasons, setReasons] = useState<string[]>(() => actions.map(() => ""));
   const [exitKind, setExitKind] = useState<"approve" | "reject" | "next" | "prev">("next");
 
   const summaryLine = parsed.toolName
     ? `The agent wants to run: ${parsed.toolName}${parsed.requestCount > 1 ? ` (+${parsed.requestCount - 1} more)` : ""}`
-    : parsed.description?.split("\n").find((line) => line.trim()) ??
-      summariseInterrupt(interrupt.content).split("\n").find((line) => line.trim()) ??
-      "The agent is asking for your approval.";
+    : (parsed.description?.split("\n").find((line) => line.trim()) ??
+      summariseInterrupt(interrupt.content)
+        .split("\n")
+        .find((line) => line.trim()) ??
+      "The agent is asking for your approval.");
 
   useEffect(() => {
     // New interrupt → fresh deck + form state.
@@ -61,7 +76,10 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interrupt.interruptId]);
 
-  const submit = async (decisions: HitlActionDecision[], busyKind: "approve" | "reject" | "submit") => {
+  const submit = async (
+    decisions: HitlActionDecision[],
+    busyKind: "approve" | "reject" | "submit",
+  ) => {
     setBusy(busyKind);
     setError(null);
     try {
@@ -118,12 +136,13 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
     );
   };
 
-  const exitTargets: Record<"approve" | "reject" | "next" | "prev", { x: number; rotate: number }> = {
-    approve: { x: 180, rotate: 8 },
-    reject: { x: -180, rotate: -8 },
-    next: { x: -150, rotate: 0 },
-    prev: { x: 150, rotate: 0 },
-  };
+  const exitTargets: Record<"approve" | "reject" | "next" | "prev", { x: number; rotate: number }> =
+    {
+      approve: { x: 180, rotate: 8 },
+      reject: { x: -180, rotate: -8 },
+      next: { x: -150, rotate: 0 },
+      prev: { x: 150, rotate: 0 },
+    };
   const cardVariants: Variants = {
     enter: reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.92, y: 16 },
     center: { opacity: 1, scale: 1, x: 0, y: 0, rotate: 0 },
@@ -144,7 +163,9 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
         {isBatch ? (
           <>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-foreground">Approval required</span>
+              <span className="block truncate text-sm font-semibold text-foreground">
+                Approval required
+              </span>
               <span className="block truncate text-xs text-muted-foreground">
                 Review each action — approve some, reject others.
               </span>
@@ -268,7 +289,11 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                 initial="enter"
                 animate="center"
                 exit="exit"
-                transition={reduceMotion ? { duration: 0.12 } : { type: "spring", stiffness: 420, damping: 34 }}
+                transition={
+                  reduceMotion
+                    ? { duration: 0.12 }
+                    : { type: "spring", stiffness: 420, damping: 34 }
+                }
                 className="relative rounded-2xl border border-amber-500/40 bg-background px-3.5 py-3 shadow-sm"
               >
                 <div className="mb-2 flex items-center gap-2">
@@ -381,7 +406,11 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
           </span>
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-muted-foreground">
-              {allDecided ? (rejectedCount ? `${rejectedCount} rejected` : "all approved") : `${decidedCount} of ${total} decided`}
+              {allDecided
+                ? rejectedCount
+                  ? `${rejectedCount} rejected`
+                  : "all approved"
+                : `${decidedCount} of ${total} decided`}
             </span>
             <Button
               type="button"
@@ -389,7 +418,11 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
               disabled={busy !== null || !allDecided}
               className="h-10 gap-1.5 rounded-full bg-amber-500/90 px-5 text-white hover:bg-amber-500 disabled:opacity-50"
             >
-              {busy === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {busy === "submit" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
               Submit
             </Button>
           </div>
@@ -417,7 +450,11 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
             disabled={busy !== null}
             className="h-11 gap-1.5 rounded-full px-4 text-foreground/80"
           >
-            {busy === "reject" ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+            {busy === "reject" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <X className="h-4 w-4" />
+            )}
             Reject
           </Button>
           <Button
@@ -426,7 +463,11 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
             disabled={busy !== null}
             className="h-11 gap-1.5 rounded-full bg-emerald-500/90 px-4 text-white hover:bg-emerald-500"
           >
-            {busy === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {busy === "approve" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
             Approve
           </Button>
         </div>

@@ -1,14 +1,26 @@
-import { Building2 } from 'lucide-react';
-import { getConversationDetail, deleteConversation, getConversations, renameConversation, archiveConversation, unarchiveConversation, getArchivedConversations, forkConversation } from '@/shared/lib/api';
-import { toastError } from '@/shared/lib/toast';
-import type { Dispatch, SetStateAction } from 'react';
-import type { Agent, ConversationDetail, ConversationSummary, MessageOut } from '@/shared/lib/types';
+import { Building2 } from "lucide-react";
+import {
+  getConversationDetail,
+  deleteConversation,
+  getConversations,
+  renameConversation,
+  archiveConversation,
+  unarchiveConversation,
+  getArchivedConversations,
+  forkConversation,
+} from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
+import type { Dispatch, SetStateAction } from "react";
+import type {
+  Agent,
+  ConversationDetail,
+  ConversationSummary,
+  MessageOut,
+} from "@/shared/lib/types";
 
 // Conversation handlers own chat navigation and sidebar state:
 // selecting threads, clearing the current chat, pagination, and row-level mutations.
-export type ConversationMessagesUpdater =
-  | MessageOut[]
-  | ((prev: MessageOut[]) => MessageOut[]);
+export type ConversationMessagesUpdater = MessageOut[] | ((prev: MessageOut[]) => MessageOut[]);
 
 export type SetConversationMessages = (updater: ConversationMessagesUpdater) => void;
 
@@ -26,10 +38,7 @@ export function createConversationMessageSetter({
   return (updater) => {
     setCurrentConversation((prev) => {
       const prevMessages = prev?.messages ?? [];
-      const nextMessages =
-        typeof updater === 'function'
-          ? updater(prevMessages)
-          : updater;
+      const nextMessages = typeof updater === "function" ? updater(prevMessages) : updater;
 
       if (prev) {
         // Existing conversation detail only needs its message list swapped in place.
@@ -41,17 +50,20 @@ export function createConversationMessageSetter({
       const agentMeta = agents.find((agent) => agent.id === selectedAgent);
       const now = new Date();
       return {
-        id: '',
-        agent:
-          agentMeta ?? {
-            id: selectedAgent,
-            name: agentMeta?.name || 'Unknown agent',
-            description: agentMeta?.description ?? '',
-            icon: agentMeta?.icon ?? Building2,
-            version: agentMeta?.version,
-            isActive: agentMeta?.isActive ?? true,
-          },
-        title: '',
+        id: "",
+        // The fallback branch is only reached when `agentMeta` is undefined, so it
+        // must not read fields off it — the previous `agentMeta?.name || …` chain
+        // could only ever yield the literal defaults anyway.
+        agent: agentMeta ?? {
+          id: selectedAgent,
+          name: "Unknown agent",
+          description: "",
+          icon: Building2,
+          iconName: null,
+          version: undefined,
+          isActive: true,
+        },
+        title: "",
         isPrivate: isPrivateMode,
         created_at: now,
         updated_at: now,
@@ -94,7 +106,12 @@ type ConversationsCtx = {
   setIsPrivateMode: (v: boolean) => void;
   setAttachments: (v: File[] | ((prev: File[]) => File[])) => void;
   setCurrentMessage: (v: string) => void;
-  toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
   onSearch?: () => void;
   persistUIState: () => void;
 };
@@ -109,7 +126,7 @@ const getConversationUpdatedTime = (value: string | Date | undefined | null) => 
 
 const sortConversationSummaries = (items: ConversationSummary[]) =>
   [...items].sort(
-    (a, b) => getConversationUpdatedTime(b.updated_at) - getConversationUpdatedTime(a.updated_at)
+    (a, b) => getConversationUpdatedTime(b.updated_at) - getConversationUpdatedTime(a.updated_at),
   );
 
 export function createConversationHandlers(ctx: ConversationsCtx) {
@@ -144,43 +161,47 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     persistUIState,
   } = ctx;
 
-
   // Going back to the empty new-chat state is just navigating to root. The
   // URL-driven load effect in ChatPage erases conversation state when there is
   // no :conversationId in the route — no timers, no animation gating.
   const clearChatAndStopThinking = () => {
-    navigate('/');
+    navigate("/");
   };
-
 
   const handleTitleClick = () => {
     // The title acts as a shortcut back to the empty-state composer.
-    navigate('/');
+    navigate("/");
   };
-
 
   const handleNewChat = () => {
     // "New chat" === navigate to root (empty state).
-    navigate('/');
+    navigate("/");
   };
-
 
   // Selecting a conversation only changes the URL. The generation-guarded load
   // effect in ChatPage fetches it; the latest navigation always wins, so this
   // is safe to call rapidly / mid-animation (the bug that caused the prior
   // revert was a blocking `if (loadingConversation) return` guard here).
   const handleConversationSelect = (conversation: ConversationSummary) => {
-    navigate('/c/' + conversation.id);
+    navigate("/c/" + conversation.id);
   };
-
 
   const handleForkConversation = async (message: MessageOut) => {
     if (!userId || !currentConversation?.id) {
-      toast({ title: 'No conversation selected', description: 'Open a conversation before forking.', duration: 2000 });
+      toast({
+        title: "No conversation selected",
+        description: "Open a conversation before forking.",
+        duration: 2000,
+      });
       return;
     }
-    if (message.sender !== 'ai') {
-      toast({ title: 'Unable to fork', description: 'Only AI messages can start a fork.', variant: 'destructive', duration: 2500 });
+    if (message.sender !== "ai") {
+      toast({
+        title: "Unable to fork",
+        description: "Only AI messages can start a fork.",
+        variant: "destructive",
+        duration: 2500,
+      });
       return;
     }
 
@@ -190,9 +211,11 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       // A fork inherits the source conversation's privacy, and private
       // conversations are excluded from every listing endpoint — so a private
       // fork must not be inserted into the sidebar (see beginRun for the full note).
-      setConversations(prev => {
-        const withoutFork = prev.filter(c => c.id !== summary.id);
-        return summary.isPrivate ? withoutFork : sortConversationSummaries([summary, ...withoutFork]);
+      setConversations((prev) => {
+        const withoutFork = prev.filter((c) => c.id !== summary.id);
+        return summary.isPrivate
+          ? withoutFork
+          : sortConversationSummaries([summary, ...withoutFork]);
       });
 
       // Seed the fetched detail so the route's load effect short-circuits
@@ -203,18 +226,17 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setCurrentConversation(detail);
       setIsPrivateMode(detail.isPrivate || false);
       setBranchSelections?.({});
-      setCurrentMessage('');
+      setCurrentMessage("");
       setAttachments([]);
-      navigate('/c/' + summary.id);
-      toast({ title: 'Conversation forked', duration: 2000 });
+      navigate("/c/" + summary.id);
+      toast({ title: "Conversation forked", duration: 2000 });
       persistUIState();
     } catch (error) {
-      toastError(toast, 'Failed to fork conversation', error, { duration: 3000 });
+      toastError(toast, "Failed to fork conversation", error, { duration: 3000 });
     } finally {
       setLoadingConversation(false);
     }
   };
-
 
   const handleLoadMoreConversations = async () => {
     if (!userId || convIsLoadingMore || !convHasMore) return;
@@ -227,10 +249,10 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       if (!items || items.length === 0) {
         setConvHasMore(false);
       } else {
-        setConversations(prev => {
-          const ids = new Set(prev.map(c => c.id));
+        setConversations((prev) => {
+          const ids = new Set(prev.map((c) => c.id));
           // Defend against overlap between pages when recent mutations reorder the server list.
-          const dedup = items.filter(item => !ids.has(item.id));
+          const dedup = items.filter((item) => !ids.has(item.id));
           return [...prev, ...dedup];
         });
         persistUIState();
@@ -240,13 +262,12 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
         }
       }
     } catch (error) {
-      console.error('Failed to load more conversations:', error);
+      console.error("Failed to load more conversations:", error);
       setConvHasMore(false);
     } finally {
       setTimeout(() => setConvIsLoadingMore(false), 120);
     }
   };
-
 
   const handleDeleteConversation = async (conversationId: string, event?: React.MouseEvent) => {
     event?.stopPropagation();
@@ -254,53 +275,69 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     try {
       await deleteConversation(userId, conversationId);
       // Remove the row locally as soon as the delete succeeds so sidebar and detail stay aligned.
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
       if (conversationId === currentConversation?.id) clearChatAndStopThinking();
-      toast({ title: 'Conversation deleted', description: 'The conversation has been removed from your history', duration: 2000 });
+      toast({
+        title: "Conversation deleted",
+        description: "The conversation has been removed from your history",
+        duration: 2000,
+      });
       persistUIState();
     } catch (error) {
-      toastError(toast, 'Failed to delete conversation', error, {
-        description: 'There was an error deleting the conversation. Please try again.',
+      toastError(toast, "Failed to delete conversation", error, {
+        description: "There was an error deleting the conversation. Please try again.",
         duration: 3000,
       });
     }
   };
 
-
   const handleDeleteCurrentConversation = () => {
     if (!currentConversation?.id) {
-      toast({ title: 'No conversation selected', description: 'Select a conversation to delete first.', duration: 2000 });
+      toast({
+        title: "No conversation selected",
+        description: "Select a conversation to delete first.",
+        duration: 2000,
+      });
       return;
     }
     // Route toolbar deletion through the shared delete logic.
     void handleDeleteConversation(currentConversation.id);
   };
 
-
   const handleRenameConversation = async (conversationId: string, newTitle: string) => {
     const trimmed = (newTitle || "").trim();
     if (!conversationId) {
-      toast({ title: 'No conversation selected', description: 'Select a conversation to rename first.', duration: 2000 });
+      toast({
+        title: "No conversation selected",
+        description: "Select a conversation to rename first.",
+        duration: 2000,
+      });
       return;
     }
     if (!trimmed) {
-      toast({ title: 'Title required', description: 'Please enter a new title to rename this conversation.', duration: 2000 });
+      toast({
+        title: "Title required",
+        description: "Please enter a new title to rename this conversation.",
+        duration: 2000,
+      });
       return;
     }
     if (!userId) {
-      toast({ title: 'Not signed in', description: 'You need to be signed in to rename conversations.', duration: 2000 });
+      toast({
+        title: "Not signed in",
+        description: "You need to be signed in to rename conversations.",
+        duration: 2000,
+      });
       return;
     }
     try {
       const summary = await renameConversation(userId, conversationId, trimmed);
-      setConversations(prev => {
-        const updated = prev.map((c) =>
-          c.id === summary.id ? { ...c, ...summary } : c
-        );
+      setConversations((prev) => {
+        const updated = prev.map((c) => (c.id === summary.id ? { ...c, ...summary } : c));
         // Keep the list sorted by recent updates so the renamed chat stays current.
         return sortConversationSummaries(updated);
       });
-      setCurrentConversation(prev => {
+      setCurrentConversation((prev) => {
         if (!prev || prev.id !== summary.id) return prev;
         // Mirror the rename into the open detail view without forcing a refetch.
         return {
@@ -312,61 +349,81 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       });
       persistUIState();
     } catch (error) {
-      toastError(toast, 'Failed to rename conversation', error, {
-        description: 'There was an error renaming the conversation. Please try again.',
+      toastError(toast, "Failed to rename conversation", error, {
+        description: "There was an error renaming the conversation. Please try again.",
         duration: 3000,
       });
     }
   };
 
-
   const handleArchiveConversation = async (conversationId?: string | null) => {
     if (!conversationId) {
-      toast({ title: 'No conversation selected', description: 'Select a conversation to archive first.', duration: 2000 });
+      toast({
+        title: "No conversation selected",
+        description: "Select a conversation to archive first.",
+        duration: 2000,
+      });
       return;
     }
     if (!userId) {
-      toast({ title: 'Not signed in', description: 'You need to be signed in to archive conversations.', duration: 2000 });
+      toast({
+        title: "Not signed in",
+        description: "You need to be signed in to archive conversations.",
+        duration: 2000,
+      });
       return;
     }
     try {
       const summary = await archiveConversation(userId, conversationId);
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
-      setArchivedConversations(prev => {
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      setArchivedConversations((prev) => {
         const next = prev.filter((conversation) => conversation.id !== summary.id);
         return [summary, ...next];
       });
       if (conversationId === currentConversation?.id) {
         clearChatAndStopThinking();
       }
-      toast({ title: 'Conversation archived', description: 'The conversation has been moved out of the sidebar.', duration: 2200 });
+      toast({
+        title: "Conversation archived",
+        description: "The conversation has been moved out of the sidebar.",
+        duration: 2200,
+      });
       persistUIState();
     } catch (error) {
-      toastError(toast, 'Failed to archive conversation', error, {
-        description: 'There was an error archiving the conversation. Please try again.',
+      toastError(toast, "Failed to archive conversation", error, {
+        description: "There was an error archiving the conversation. Please try again.",
         duration: 3000,
       });
     }
   };
 
-
   const handleUnarchiveConversation = async (conversationId?: string | null) => {
     if (!conversationId) {
-      toast({ title: 'No conversation selected', description: 'Select a conversation to unarchive first.', duration: 2000 });
+      toast({
+        title: "No conversation selected",
+        description: "Select a conversation to unarchive first.",
+        duration: 2000,
+      });
       return;
     }
     if (!userId) {
-      toast({ title: 'Not signed in', description: 'You need to be signed in to unarchive conversations.', duration: 2000 });
+      toast({
+        title: "Not signed in",
+        description: "You need to be signed in to unarchive conversations.",
+        duration: 2000,
+      });
       return;
     }
     try {
       const summary = await unarchiveConversation(userId, conversationId);
-      setArchivedConversations(prev => prev.filter((conversation) => conversation.id !== conversationId));
-      setConversations(prev => {
+      setArchivedConversations((prev) =>
+        prev.filter((conversation) => conversation.id !== conversationId),
+      );
+      setConversations((prev) => {
         const next = prev.filter((conversation) => conversation.id !== summary.id);
         return sortConversationSummaries([summary, ...next]);
       });
-      setCurrentConversation(prev => {
+      setCurrentConversation((prev) => {
         if (!prev || prev.id !== summary.id) return prev;
         return {
           ...prev,
@@ -377,22 +434,24 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
           archivedAt: null,
         };
       });
-      toast({ title: 'Conversation unarchived', description: 'The conversation is back in the sidebar.', duration: 2200 });
+      toast({
+        title: "Conversation unarchived",
+        description: "The conversation is back in the sidebar.",
+        duration: 2200,
+      });
       persistUIState();
     } catch (error) {
-      toastError(toast, 'Failed to unarchive conversation', error, {
-        description: 'There was an error unarchiving the conversation. Please try again.',
+      toastError(toast, "Failed to unarchive conversation", error, {
+        description: "There was an error unarchiving the conversation. Please try again.",
         duration: 3000,
       });
     }
   };
 
-
   const handleArchiveCurrentConversation = () => {
     // Keep current-thread actions as thin wrappers over the shared row-level handlers.
     void handleArchiveConversation(currentConversation?.id);
   };
-
 
   const handleUnarchiveCurrentConversation = () => {
     // Keep current-thread actions as thin wrappers over the shared row-level handlers.
@@ -406,12 +465,11 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
     // If the host shell has no search surface yet, fall back to a product placeholder toast.
     toast({
-      title: 'Conversation search coming soon',
-      description: 'We’re building a smarter search experience.',
+      title: "Conversation search coming soon",
+      description: "We’re building a smarter search experience.",
       duration: 2500,
     });
   };
-
 
   const loadArchivedConversationPage = async (page: number, options?: { reset?: boolean }) => {
     if (!userId || archivedConvIsLoading) {
@@ -430,8 +488,8 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
       setArchivedConvPage(page);
       setArchivedConvHasMore(items.length >= archivedPageSize);
     } catch (error) {
-      toastError(toast, 'Failed to load archived chats', error, {
-        description: 'There was an error loading archived conversations. Please try again.',
+      toastError(toast, "Failed to load archived chats", error, {
+        description: "There was an error loading archived conversations. Please try again.",
         duration: 3000,
       });
       if (options?.reset) {
@@ -443,7 +501,6 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     }
   };
 
-
   const refreshArchivedConversations = async () => {
     setArchivedConvPage(1);
     setArchivedConvHasMore(true);
@@ -451,14 +508,12 @@ export function createConversationHandlers(ctx: ConversationsCtx) {
     await loadArchivedConversationPage(1, { reset: true });
   };
 
-
   const handleLoadMoreArchivedConversations = async () => {
     if (!archivedConvHasMore || archivedConvIsLoading) {
       return;
     }
     await loadArchivedConversationPage(archivedConvPage + 1);
   };
-
 
   return {
     handleConversationSelect,

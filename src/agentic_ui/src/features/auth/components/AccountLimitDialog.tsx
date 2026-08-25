@@ -43,7 +43,8 @@ export default function AccountLimitDialog({
           Choose an account to log out
         </DialogTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          You&apos;re already logged in to {countWord} accounts. Log out of one to add a new account.
+          You&apos;re already logged in to {countWord} accounts. Log out of one to add a new
+          account.
         </p>
 
         <div role="radiogroup" aria-label="Accounts" className="mt-5 flex flex-col gap-1">

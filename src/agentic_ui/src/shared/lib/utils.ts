@@ -1,6 +1,14 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-import type { AttachmentIn, AuthResponse, ConversationUsage, CustomInstructions, FileAttachment, MessageOut, SkillTreeNode } from "./types";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+import type {
+  AttachmentIn,
+  AuthResponse,
+  ConversationUsage,
+  CustomInstructions,
+  FileAttachment,
+  MessageOut,
+  SkillTreeNode,
+} from "./types";
 import {
   CUSTOM_INSTRUCTIONS_LIMITS,
   DEFAULT_PERSONALITY,
@@ -17,7 +25,7 @@ import {
 } from "./consts";
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 // Build a nested folder tree from a flat list of "/"-separated skill file
@@ -115,7 +123,10 @@ export function getCsrfToken(): string | null {
   return null;
 }
 
-export function withSessionRequest(init: RequestInit = {}, opts: { csrf?: boolean } = {}): RequestInit {
+export function withSessionRequest(
+  init: RequestInit = {},
+  opts: { csrf?: boolean } = {},
+): RequestInit {
   const headers = new Headers(init.headers ?? {});
   if (opts.csrf) {
     const csrf = getCsrfToken();
@@ -154,7 +165,11 @@ function isAuthResponseRecord(value: unknown): value is AuthResponseRecord {
 export function normalizeAuthResponse(data: unknown): AuthResponse {
   const normalized = isAuthResponseRecord(data) ? ({ ...data } as AuthResponseRecord) : data;
   if (isAuthResponseRecord(normalized) && normalized.user) {
-    const { prefersAgenticChat: _prefersAgenticChat, prefers_agentic_chat: _ignored, ...rest } = normalized.user;
+    const {
+      prefersAgenticChat: _prefersAgenticChat,
+      prefers_agentic_chat: _ignored,
+      ...rest
+    } = normalized.user;
     normalized.user = {
       ...rest,
       createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),
@@ -216,12 +231,12 @@ async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
     reader.onload = () => {
       const base64String = reader.result as string;
       // Remove the data:mime;base64, prefix
-      const dataB64 = base64String.split(',')[1];
+      const dataB64 = base64String.split(",")[1];
       resolve({
         name: file.name,
         mime: resolveUploadMimeType(file),
         dataB64,
-        size: file.size
+        size: file.size,
       });
     };
     reader.onerror = reject;
@@ -230,9 +245,11 @@ async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
 }
 
 // Convert FileAttachment array to AttachmentIn array
-export async function convertFileAttachments(fileAttachments: FileAttachment[]): Promise<AttachmentIn[]> {
-  const attachmentPromises = fileAttachments.map(attachment => 
-    fileToAttachmentIn(attachment.file)
+export async function convertFileAttachments(
+  fileAttachments: FileAttachment[],
+): Promise<AttachmentIn[]> {
+  const attachmentPromises = fileAttachments.map((attachment) =>
+    fileToAttachmentIn(attachment.file),
   );
   return Promise.all(attachmentPromises);
 }
@@ -243,8 +260,10 @@ type WithUpdatedAt = { updated_at: string | Date };
 export function sortByUpdatedAtDesc<T extends WithUpdatedAt>(items: T[]): T[] {
   // Defensive copy + robust parsing for string or Date
   return [...items].sort((a, b) => {
-    const ta = typeof a.updated_at === 'string' ? new Date(a.updated_at).getTime() : a.updated_at.getTime();
-    const tb = typeof b.updated_at === 'string' ? new Date(b.updated_at).getTime() : b.updated_at.getTime();
+    const ta =
+      typeof a.updated_at === "string" ? new Date(a.updated_at).getTime() : a.updated_at.getTime();
+    const tb =
+      typeof b.updated_at === "string" ? new Date(b.updated_at).getTime() : b.updated_at.getTime();
     return tb - ta; // newest first
   });
 }
@@ -286,9 +305,7 @@ export const skillMatchesTokens = (
   tokens: string[],
 ): boolean => {
   if (tokens.length === 0) return true;
-  const haystack = `${s.name} ${s.description} ${s.category}`
-    .toLowerCase()
-    .replace(/[-_./]/g, "");
+  const haystack = `${s.name} ${s.description} ${s.category}`.toLowerCase().replace(/[-_./]/g, "");
   return tokens.every((tok) => haystack.includes(tok));
 };
 
@@ -307,7 +324,8 @@ export const computeConversationUsage = (messages: MessageOut[]): ConversationUs
   let aiMessageCount = 0;
   for (const message of messages) {
     if (message.sender !== "ai") continue;
-    if (typeof message.inputTokens !== "number" && typeof message.outputTokens !== "number") continue;
+    if (typeof message.inputTokens !== "number" && typeof message.outputTokens !== "number")
+      continue;
     totalInput += message.inputTokens ?? 0;
     totalOutput += message.outputTokens ?? 0;
     aiMessageCount += 1;

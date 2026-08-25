@@ -60,8 +60,16 @@ const MODEL_CHOICES = [
 // A short list of Lucide names, so the icon is a pick rather than free text
 // (mapIcon falls back to Building2 for anything unknown).
 const ICON_CHOICES = [
-  "Bot", "BrainCircuit", "Telescope", "Sparkles", "Compass", "Scale",
-  "FlaskConical", "Library", "PenLine", "Wrench",
+  "Bot",
+  "BrainCircuit",
+  "Telescope",
+  "Sparkles",
+  "Compass",
+  "Scale",
+  "FlaskConical",
+  "Library",
+  "PenLine",
+  "Wrench",
 ] as const;
 
 // Approval gates the platform mandates. Shown as a locked row so the rule is
@@ -108,7 +116,11 @@ const isAllowedExt = (path: string): boolean =>
 const byteLength = (text: string): number => new TextEncoder().encode(text).length;
 
 const formatBytes = (n: number): string =>
-  n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  n < 1024
+    ? `${n} B`
+    : n < 1024 * 1024
+      ? `${(n / 1024).toFixed(1)} KB`
+      : `${(n / (1024 * 1024)).toFixed(1)} MB`;
 
 /**
  * Normalise a user-typed or uploaded path, or return null if unusable.
@@ -216,8 +228,7 @@ export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload =>
  */
 const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
   const spec = (detail.spec ?? {}) as Record<string, any>;
-  const fileFor = (path: string) =>
-    detail.files.find((f) => f.path === path)?.content ?? "";
+  const fileFor = (path: string) => detail.files.find((f) => f.path === path)?.content ?? "";
   // Paths the form regenerates from prompt fields; the rest are the user's own.
   const claimed = new Set<string>([PROMPT_FILE, MANIFEST_FILE]);
   const subagents: AgentDraftSubAgent[] = Array.isArray(spec.subagents)
@@ -304,11 +315,7 @@ export default function AgentBuilder({
 
   const takenSlugs = useMemo(
     () =>
-      new Set(
-        agents
-          .filter((a) => !isEdit || a.id !== initial?.id)
-          .map((a) => slugify(a.name)),
-      ),
+      new Set(agents.filter((a) => !isEdit || a.id !== initial?.id).map((a) => slugify(a.name))),
     [agents, isEdit, initial?.id],
   );
 
@@ -599,14 +606,19 @@ export default function AgentBuilder({
       <label className={labelClass}>
         <span className={captionClass}>Instructions</span>
         <textarea
-          className={cn(inputClass, "min-h-[9rem] resize-y font-mono text-[0.8rem]", promptError && "border-destructive")}
+          className={cn(
+            inputClass,
+            "min-h-[9rem] resize-y font-mono text-[0.8rem]",
+            promptError && "border-destructive",
+          )}
           value={draft.prompt}
           onChange={(event) => set("prompt", event.target.value)}
           placeholder="You are Research Bot. You dig into topics and return sourced findings…"
           aria-invalid={Boolean(promptError)}
         />
         <span className="text-[0.7rem] text-muted-foreground">
-          {draft.prompt.length.toLocaleString()} / {MAX_PROMPT_CHARS.toLocaleString()} · saved as {PROMPT_FILE}
+          {draft.prompt.length.toLocaleString()} / {MAX_PROMPT_CHARS.toLocaleString()} · saved as{" "}
+          {PROMPT_FILE}
         </span>
       </label>
 
@@ -626,7 +638,9 @@ export default function AgentBuilder({
           onClick={() => set("memory", !draft.memory)}
           className={cn(
             "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-            draft.memory ? "border-primary/40 bg-primary/20" : "border-transparent bg-background/80",
+            draft.memory
+              ? "border-primary/40 bg-primary/20"
+              : "border-transparent bg-background/80",
           )}
         >
           <span
@@ -722,7 +736,9 @@ export default function AgentBuilder({
                     <Wrench className="h-3.5 w-3.5" aria-hidden />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-foreground">{name}</span>
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {name}
+                    </span>
                     {skill?.description ? (
                       <span className="block truncate text-xs text-muted-foreground">
                         {skill.description}
@@ -780,7 +796,9 @@ export default function AgentBuilder({
                     <input
                       className={inputClass}
                       value={sa.description}
-                      onChange={(event) => updateSubagent(index, { description: event.target.value })}
+                      onChange={(event) =>
+                        updateSubagent(index, { description: event.target.value })
+                      }
                       placeholder="Gathers and verifies sources"
                       aria-label="Sub-agent description"
                     />
@@ -821,7 +839,9 @@ export default function AgentBuilder({
         onDrop={handleDrop}
         className={cn(
           "flex flex-col gap-2 rounded-[1.2rem] p-2 transition-shadow",
-          dragOver ? "ring-2 ring-primary ring-offset-2 ring-offset-card" : "ring-1 ring-transparent",
+          dragOver
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-card"
+            : "ring-1 ring-transparent",
         )}
       >
         <div className="flex items-center justify-between gap-3">

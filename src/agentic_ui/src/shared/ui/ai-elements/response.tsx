@@ -39,7 +39,7 @@ export const Response = memo(
       className={cn(
         "chat-markdown size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         "leading-relaxed break-words text-inherit",
-        className
+        className,
       )}
       mermaidConfig={{
         ...defaultMermaidConfig,
@@ -86,7 +86,7 @@ export const Response = memo(
       {...props}
     />
   ),
-  (prevProps, nextProps) => prevProps.children === nextProps.children
+  (prevProps, nextProps) => prevProps.children === nextProps.children,
 );
 
 Response.displayName = "Response";

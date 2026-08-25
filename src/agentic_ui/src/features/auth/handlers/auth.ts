@@ -1,4 +1,10 @@
-import type { Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/shared/lib/types';
+import type {
+  Skill,
+  ToolMetadata,
+  UserPreferences,
+  UserProfile,
+  UserSkill,
+} from "@/shared/lib/types";
 import {
   authenticate,
   getAccounts,
@@ -12,11 +18,11 @@ import {
   logoutAllAccounts,
   logoutSession,
   switchAccount,
-} from '@/shared/lib/api';
-import { toastError } from '@/shared/lib/toast';
-import { sortByUpdatedAtDesc } from '@/shared/lib/utils';
-import { saveSession, clearSession, loadSession } from '@/shared/lib/authStorage';
-import { setUnauthorizedSuppressed } from '@/shared/lib/consts';
+} from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
+import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
+import { saveSession, clearSession, loadSession } from "@/shared/lib/authStorage";
+import { setUnauthorizedSuppressed } from "@/shared/lib/consts";
 
 // Auth handlers bridge API auth with local session persistence and a full chat-shell reset.
 type AuthCtx = {
@@ -35,13 +41,22 @@ type AuthCtx = {
   setShowUserProfile: (v: boolean) => void;
   clearChatAndStopThinking: () => void;
   persistUIState: () => void;
-  toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
   loginUsername?: string;
   loginPassword?: string;
   onLoggedOut?: () => void;
   onClearUISnapshot?: (userId: string) => void;
   /** Drives the full-screen switch interstitial owned by the shell. */
-  onSwitchStateChange?: (state: { active: boolean; detail?: string; error?: string | null }) => void;
+  onSwitchStateChange?: (state: {
+    active: boolean;
+    detail?: string;
+    error?: string | null;
+  }) => void;
   /** Leave the current conversation route before the identity changes. */
   navigateHome?: () => void;
   /** Clear every per-user slice of the workspace store before a switch. */
@@ -81,26 +96,35 @@ export function createAuthHandlers(ctx: AuthCtx) {
   const handleLogin = async () => {
     try {
       // Authenticate first; all follow-up bootstrap requests depend on the user id from this response.
-      const response = await authenticate({ username: (loginUsername || "").trim(), password: loginPassword || "" });
+      const response = await authenticate({
+        username: (loginUsername || "").trim(),
+        password: loginPassword || "",
+      });
 
       if (response.authenticated && response.user && response.user.id) {
         const user = response.user;
-        const ttlSeconds = typeof response.tokenTtl === 'number' && response.tokenTtl > 0 ? response.tokenTtl : 3600;
+        const ttlSeconds =
+          typeof response.tokenTtl === "number" && response.tokenTtl > 0 ? response.tokenTtl : 3600;
         const ttlMs = ttlSeconds * 1000;
         setTimeout(() => {
           // Delay the heavy state swap slightly so the login transition can settle visually.
           void bootstrapUser(user, ttlMs);
         }, 600);
 
-        setLoginUsername?.('');
-        setLoginPassword?.('');
+        setLoginUsername?.("");
+        setLoginPassword?.("");
       } else {
         // The API can reject credentials without throwing, so surface that branch explicitly.
-        toast({ title: 'Authentication failed', description: 'Please check your credentials and try again.', variant: 'destructive', duration: 2000 });
+        toast({
+          title: "Authentication failed",
+          description: "Please check your credentials and try again.",
+          variant: "destructive",
+          duration: 2000,
+        });
       }
     } catch (error) {
-      toastError(toast, 'Login Failed', error, {
-        description: 'Unable to connect to authentication service',
+      toastError(toast, "Login Failed", error, {
+        description: "Unable to connect to authentication service",
       });
     }
   };
@@ -115,73 +139,73 @@ export function createAuthHandlers(ctx: AuthCtx) {
    */
   const bootstrapUser = async (user: UserProfile, ttlMs: number) => {
     {
-          setIsLoggedIn(true);
-          setUserProfile(user);
-          setUserId(user.id);
-          // Persist session with 1 hour TTL
-          saveSession(user, ttlMs);
-          setConversationsLoading(true);
-          // Fetch all bootstrap data in parallel; each result can fail independently without blocking login.
-          const agentsPromise = getAgents();
-          const toolsPromise = getTools();
-          const skillsPromise = getSkills();
-          const mySkillsPromise = setMyRegistrySkills ? getMySkills(user.id) : null;
-          const preferencesPromise = getUserPreferences(user.id);
-          const conversationsPromise = getConversations(user.id);
+      setIsLoggedIn(true);
+      setUserProfile(user);
+      setUserId(user.id);
+      // Persist session with 1 hour TTL
+      saveSession(user, ttlMs);
+      setConversationsLoading(true);
+      // Fetch all bootstrap data in parallel; each result can fail independently without blocking login.
+      const agentsPromise = getAgents();
+      const toolsPromise = getTools();
+      const skillsPromise = getSkills();
+      const mySkillsPromise = setMyRegistrySkills ? getMySkills(user.id) : null;
+      const preferencesPromise = getUserPreferences(user.id);
+      const conversationsPromise = getConversations(user.id);
 
-          try {
-            const agentsList = await agentsPromise;
-            setAgents(agentsList);
-          } catch (e) {
-            console.error("Failed to fetch agents after login:", e);
-            // Keep the app responsive even if one bootstrap endpoint is temporarily unavailable.
-            setAgents([]);
-          }
+      try {
+        const agentsList = await agentsPromise;
+        setAgents(agentsList);
+      } catch (e) {
+        console.error("Failed to fetch agents after login:", e);
+        // Keep the app responsive even if one bootstrap endpoint is temporarily unavailable.
+        setAgents([]);
+      }
 
-          try {
-            const toolsList = await toolsPromise;
-            setAvailableTools(toolsList);
-          } catch (e) {
-            console.error("Failed to fetch tools after login:", e);
-            setAvailableTools([]);
-          }
+      try {
+        const toolsList = await toolsPromise;
+        setAvailableTools(toolsList);
+      } catch (e) {
+        console.error("Failed to fetch tools after login:", e);
+        setAvailableTools([]);
+      }
 
-          try {
-            const skillsList = await skillsPromise;
-            setAvailableSkills(skillsList);
-          } catch (e) {
-            console.error("Failed to fetch skills after login:", e);
-            setAvailableSkills([]);
-          }
+      try {
+        const skillsList = await skillsPromise;
+        setAvailableSkills(skillsList);
+      } catch (e) {
+        console.error("Failed to fetch skills after login:", e);
+        setAvailableSkills([]);
+      }
 
-          if (mySkillsPromise && setMyRegistrySkills) {
-            try {
-              const pool = await mySkillsPromise;
-              setMyRegistrySkills(pool);
-            } catch (e) {
-              console.error("Failed to fetch user skill pool after login:", e);
-              setMyRegistrySkills([]);
-            }
-          }
+      if (mySkillsPromise && setMyRegistrySkills) {
+        try {
+          const pool = await mySkillsPromise;
+          setMyRegistrySkills(pool);
+        } catch (e) {
+          console.error("Failed to fetch user skill pool after login:", e);
+          setMyRegistrySkills([]);
+        }
+      }
 
-          try {
-            const prefs = await preferencesPromise;
-            setUserPreferences(prefs);
-          } catch (e) {
-            console.error("Failed to fetch preferences after login:", e);
-            setUserPreferences(null);
-          }
+      try {
+        const prefs = await preferencesPromise;
+        setUserPreferences(prefs);
+      } catch (e) {
+        console.error("Failed to fetch preferences after login:", e);
+        setUserPreferences(null);
+      }
 
-          try {
-            const conversationsList = await conversationsPromise;
-            setConversations(sortByUpdatedAtDesc(conversationsList));
-            persistUIState();
-          } catch (e) {
-            console.error("Failed to fetch conversations after login:", e);
-            setConversations([]);
-          } finally {
-            setConversationsLoading(false);
-          }
+      try {
+        const conversationsList = await conversationsPromise;
+        setConversations(sortByUpdatedAtDesc(conversationsList));
+        persistUIState();
+      } catch (e) {
+        console.error("Failed to fetch conversations after login:", e);
+        setConversations([]);
+      } finally {
+        setConversationsLoading(false);
+      }
     }
   };
 
@@ -227,7 +251,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
     }, 300);
   };
 
-
   /**
    * Load the accounts this browser can switch between.
    *
@@ -255,7 +278,11 @@ export function createAuthHandlers(ctx: AuthCtx) {
    * by user id, so leaving it means switching back restores their view.
    */
   const handleSwitchAccount = async (accountId: string, label?: string) => {
-    onSwitchStateChange?.({ active: true, detail: label ? `Signing in as ${label}` : undefined, error: null });
+    onSwitchStateChange?.({
+      active: true,
+      detail: label ? `Signing in as ${label}` : undefined,
+      error: null,
+    });
     const startedAt = Date.now();
     try {
       // Leave any conversation route first: the id in the URL belongs to the
@@ -317,7 +344,6 @@ export function createAuthHandlers(ctx: AuthCtx) {
     handleLogout();
   };
 
-
   /**
    * Sign out of one account from the switcher.
    *
@@ -330,7 +356,10 @@ export function createAuthHandlers(ctx: AuthCtx) {
    *   browser at the login screen with accounts still parked;
    * * the **last** account — a plain logout.
    */
-  const handleLogoutAccount = async (accountId: string, others: { id: string; label?: string }[]) => {
+  const handleLogoutAccount = async (
+    accountId: string,
+    others: { id: string; label?: string }[],
+  ) => {
     const isActive = accountId === activeUserId?.();
 
     if (!isActive) {

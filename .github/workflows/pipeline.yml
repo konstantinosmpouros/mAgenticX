@@ -65,8 +65,9 @@ jobs:
           path: coverage-${{ matrix.service }}.xml
           if-no-files-found: ignore
 
-  # Frontend service: lint + build, plus the Python static-contract checks that
-  # guard the frontend↔bridge API contract. Coverage is N/A (no JS test runner).
+  # Frontend service: lint (against a warning ceiling), type-check, build, plus the
+  # Python static-contract checks that guard the frontend↔bridge API contract.
+  # Coverage is N/A (no JS test runner yet).
   agentic_ui:
     name: ci / agentic_ui
     runs-on: ubuntu-latest
@@ -86,9 +87,19 @@ jobs:
         working-directory: src/agentic_ui
         run: npm ci
 
-      - name: Lint frontend
+      # `lint:ceiling` is `eslint . --max-warnings=125`, the measured baseline.
+      # Plain `npm run lint` exits 0 on warnings, so it could never fail the build
+      # and the warning count was free to climb. The ceiling only ever goes DOWN:
+      # when you remove warnings, lower the number in package.json to lock it in.
+      - name: Lint frontend (warning ceiling)
         working-directory: src/agentic_ui
-        run: npm run lint
+        run: npm run lint:ceiling
+
+      # `npm run build` is `vite build`, which does NOT type-check — esbuild strips
+      # types without reading them. Without this step a type error reaches Docker.
+      - name: Type-check frontend
+        working-directory: src/agentic_ui
+        run: npm run typecheck
 
       - name: Build frontend
         working-directory: src/agentic_ui

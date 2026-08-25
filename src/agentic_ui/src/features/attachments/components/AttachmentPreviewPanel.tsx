@@ -1,10 +1,7 @@
 import * as React from "react";
 import { Download, X } from "lucide-react";
 
-import {
-  fetchAttachmentPreviewBlob,
-  fetchDocxPreviewToken,
-} from "@/shared/lib/api";
+import { fetchAttachmentPreviewBlob, fetchDocxPreviewToken } from "@/shared/lib/api";
 import type { AttachmentOut, MessageOut } from "@/shared/lib/types";
 import { Button } from "@/shared/ui/button";
 import {
@@ -39,8 +36,18 @@ type AttachmentPreviewPanelProps = {
 
 type PreviewState =
   | { status: "idle"; meta: AttachmentPreviewMeta; descriptor: AttachmentPreviewDescriptor }
-  | { status: "loading"; meta: AttachmentPreviewMeta; descriptor: AttachmentPreviewDescriptor; previewUrl?: string }
-  | { status: "error"; meta: AttachmentPreviewMeta; descriptor: AttachmentPreviewDescriptor; error: string }
+  | {
+      status: "loading";
+      meta: AttachmentPreviewMeta;
+      descriptor: AttachmentPreviewDescriptor;
+      previewUrl?: string;
+    }
+  | {
+      status: "error";
+      meta: AttachmentPreviewMeta;
+      descriptor: AttachmentPreviewDescriptor;
+      error: string;
+    }
   | {
       status: "ready";
       meta: AttachmentPreviewMeta;
@@ -136,11 +143,11 @@ export default function AttachmentPreviewPanel({
   const open = Boolean(preview);
   const meta = React.useMemo(
     () => (preview ? extractAttachmentMeta(preview.attachment) : null),
-    [preview]
+    [preview],
   );
   const descriptor = React.useMemo(
     () => classifyAttachmentPreview(meta ?? { name: "", mime: "" }),
-    [meta]
+    [meta],
   );
   const [state, setState] = React.useState<PreviewState>({
     status: "idle",
@@ -218,11 +225,7 @@ export default function AttachmentPreviewPanel({
         return;
       }
 
-      if (
-        descriptor.kind === "docx" ||
-        descriptor.kind === "xlsx" ||
-        descriptor.kind === "pptx"
-      ) {
+      if (descriptor.kind === "docx" || descriptor.kind === "xlsx" || descriptor.kind === "pptx") {
         if (meta.file) {
           setState({
             status: "error",
@@ -234,7 +237,12 @@ export default function AttachmentPreviewPanel({
         }
 
         if (!userId || !conversationId || !meta.blobId) {
-          setState({ status: "error", meta, descriptor, error: "Preview is unavailable for this attachment." });
+          setState({
+            status: "error",
+            meta,
+            descriptor,
+            error: "Preview is unavailable for this attachment.",
+          });
           return;
         }
 
@@ -270,12 +278,14 @@ export default function AttachmentPreviewPanel({
         if (!meta.file && (!userId || !conversationId || !meta.blobId)) {
           throw new Error("Preview is unavailable for this attachment.");
         }
-        const blob = meta.file ?? await fetchAttachmentPreviewBlob({
-          userId: userId as string,
-          conversationId: conversationId as string,
-          messageId: preview.message.id,
-          blobId: meta.blobId as string,
-        });
+        const blob =
+          meta.file ??
+          (await fetchAttachmentPreviewBlob({
+            userId: userId as string,
+            conversationId: conversationId as string,
+            messageId: preview.message.id,
+            blobId: meta.blobId as string,
+          }));
         const text = shouldReadText(descriptor) ? await blob.text() : undefined;
         if (!cancelled) {
           setState({ status: "ready", meta, descriptor, blob, text });
@@ -306,7 +316,9 @@ export default function AttachmentPreviewPanel({
 
   const handleDownload = () => onDownload(preview.attachment, preview.message);
   const readyContent = state.status === "ready" ? renderReadyState(state) : null;
-  const subtitle = [descriptor.label, meta.mime, formatBytes(meta.size)].filter(Boolean).join(" · ");
+  const subtitle = [descriptor.label, meta.mime, formatBytes(meta.size)]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div
@@ -319,7 +331,9 @@ export default function AttachmentPreviewPanel({
       >
         <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-5">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-medium text-white sm:text-[1.2rem]">{meta.name}</h2>
+            <h2 className="truncate text-base font-medium text-white sm:text-[1.2rem]">
+              {meta.name}
+            </h2>
             {subtitle ? <p className="mt-1 truncate text-xs text-white/45">{subtitle}</p> : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -359,7 +373,9 @@ export default function AttachmentPreviewPanel({
           {state.status === "ready" && !descriptor.previewable ? (
             <PreviewMessage
               title="Preview unavailable"
-              description={descriptor.reason ?? "Download this file to open it in its native application."}
+              description={
+                descriptor.reason ?? "Download this file to open it in its native application."
+              }
               onDownload={handleDownload}
             />
           ) : null}

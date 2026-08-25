@@ -3,7 +3,6 @@ import { LuCircleCheck } from "react-icons/lu";
 import { MarkdownRenderer } from "@/shared/ui/markdownRenderer";
 import { BiSolidCog } from "react-icons/bi";
 
-
 type ThinkingListProps = {
   thoughts: string[];
   className?: string;

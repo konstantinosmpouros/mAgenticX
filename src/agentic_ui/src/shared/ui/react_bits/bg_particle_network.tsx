@@ -50,9 +50,14 @@ function resolveRgb(input?: string): [number, number, number] {
   }
   const resolved = String(probe.fillStyle);
   if (resolved.startsWith("#")) {
-    const hex = resolved.length === 4
-      ? resolved.slice(1).split("").map((c) => c + c).join("")
-      : resolved.slice(1);
+    const hex =
+      resolved.length === 4
+        ? resolved
+            .slice(1)
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : resolved.slice(1);
     const n = parseInt(hex, 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
@@ -228,7 +233,18 @@ export default function ParticleNetwork({
       window.removeEventListener("blur", onPointerOut);
       document.removeEventListener("pointerleave", onPointerOut);
     };
-  }, [reduceMotion, density, maxDistance, speed, color, accentColor, lineColor, accentRatio, interactive, maxParticles]);
+  }, [
+    reduceMotion,
+    density,
+    maxDistance,
+    speed,
+    color,
+    accentColor,
+    lineColor,
+    accentRatio,
+    interactive,
+    maxParticles,
+  ]);
 
   return <canvas ref={canvasRef} className={cn("h-full w-full", className)} aria-hidden="true" />;
 }

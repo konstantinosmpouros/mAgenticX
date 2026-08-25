@@ -1,0 +1,125 @@
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Light theme */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 293 89% 74%;
+    --primary-foreground: 0 0% 9%;
+    --primary-glow: 293 89% 84%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+
+    --accent: 216 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status colors — consumed by the toast system (see shared/ui/toast-card.tsx)
+       and available for any status UI. Light-theme lightness is tuned for AA
+       contrast against white surfaces. */
+    --success: 142 71% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+
+    --info: 216 100% 50%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: transparent;
+
+    /* Neutral hover surfaces for light theme */
+    --hover-surface: 240 5% 90%;
+    --hover-surface-strong: 240 5% 86%;
+
+    /* Professional chat colors - light theme */
+    /* Match user bubble to dark mode for consistency in light theme */
+    --chat-user: 240 6% 12%;
+    --chat-user-foreground: 0 0% 95%;
+    --chat-agent: 240 4.8% 95.9%;
+    --chat-agent-foreground: 240 10% 3.9%;
+
+    /* Light theme gradients */
+    --gradient-bg-1: linear-gradient(
+      135deg,
+      hsl(0, 0%, 100%) 0%,
+      hsl(240, 4.8%, 95.9%) 50%,
+      hsl(216, 50%, 92%) 100%
+    );
+    --gradient-bg-2: linear-gradient(
+      135deg,
+      hsl(260, 15%, 98%) 0%,
+      hsl(280, 20%, 95%) 50%,
+      hsl(293, 60%, 92%) 100%
+    );
+    --gradient-bg-3: linear-gradient(
+      135deg,
+      hsl(220, 25%, 98%) 0%,
+      hsl(240, 30%, 95%) 50%,
+      hsl(260, 40%, 92%) 100%
+    );
+    --gradient-bg-4: linear-gradient(
+      135deg,
+      hsl(200, 35%, 98%) 0%,
+      hsl(220, 40%, 95%) 50%,
+      hsl(240, 50%, 92%) 100%
+    );
+    --gradient-bg-5: linear-gradient(
+      135deg,
+      hsl(180, 45%, 98%) 0%,
+      hsl(200, 50%, 95%) 50%,
+      hsl(220, 60%, 92%) 100%
+    );
+    --gradient-bg-6: linear-gradient(
+      135deg,
+      hsl(160, 35%, 98%) 0%,
+      hsl(180, 40%, 95%) 50%,
+      hsl(200, 50%, 92%) 100%
+    );
+
+    /* Current animated gradient */
+    --gradient-bg: var(--gradient-bg-1);
+    --gradient-card: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(240, 4.8%, 97%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(293, 89%, 74%) 0%, hsl(293, 89%, 84%) 100%);
+
+    /* Light theme shadows */
+    --shadow-elegant: 0 10px 40px -10px hsl(293, 89%, 74%, 0.15);
+    --shadow-soft: 0 4px 20px -4px hsl(240, 10%, 3.9%, 0.1);
+    --shadow-card: 0 2px 8px -2px hsl(240, 10%, 3.9%, 0.1);
+
+    /* Smooth transitions with different speeds */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --radius: 0.5rem;
+
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: var(--background);
+    --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 25%, hsl(var(--background)));
+  }
+}

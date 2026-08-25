@@ -22,7 +22,7 @@ export function ArtifactCard({ block, message, onDownload, onPreview }: Artifact
   const isMobile = useIsMobile();
 
   const attachment = message?.attachments?.find(
-    (a) => a.origin === "generated" && a.name === block.filename
+    (a) => a.origin === "generated" && a.name === block.filename,
   ) as AttachmentOut | undefined;
 
   const ready = Boolean(attachment?.blobId);

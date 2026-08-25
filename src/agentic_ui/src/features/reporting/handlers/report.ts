@@ -1,9 +1,19 @@
 import { reportConversation } from "@/shared/lib/api";
 import { toastError } from "@/shared/lib/toast";
-import type { ConversationDetail, ConversationReportPayload, ConversationSummary, MessageOut } from "@/shared/lib/types";
+import type {
+  ConversationDetail,
+  ConversationReportPayload,
+  ConversationSummary,
+  MessageOut,
+} from "@/shared/lib/types";
 import type { Dispatch, SetStateAction } from "react";
 
-type ToastHandler = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastHandler = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 type ReportDialogOptions = {
   messageId?: string | null;
@@ -11,10 +21,10 @@ type ReportDialogOptions = {
   title?: string | null;
 };
 
-const mergeConversationSummary = (
-  items: ConversationSummary[],
-  summary: ConversationSummary,
-) => items.map((conversation) => (conversation.id === summary.id ? { ...conversation, ...summary } : conversation));
+const mergeConversationSummary = (items: ConversationSummary[], summary: ConversationSummary) =>
+  items.map((conversation) =>
+    conversation.id === summary.id ? { ...conversation, ...summary } : conversation,
+  );
 
 type ReportHandlersCtx = {
   userId: string | null;
@@ -75,11 +85,19 @@ export function createReportHandlers(ctx: ReportHandlersCtx) {
     payload: ConversationReportPayload,
   ) => {
     if (!conversationId) {
-      toast({ title: "No conversation selected", description: "Select a conversation to report first.", duration: 2000 });
+      toast({
+        title: "No conversation selected",
+        description: "Select a conversation to report first.",
+        duration: 2000,
+      });
       return false;
     }
     if (!userId) {
-      toast({ title: "Not signed in", description: "You need to be signed in to report conversations.", duration: 2000 });
+      toast({
+        title: "Not signed in",
+        description: "You need to be signed in to report conversations.",
+        duration: 2000,
+      });
       return false;
     }
     try {

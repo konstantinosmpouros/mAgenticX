@@ -19,7 +19,13 @@ The organising rule — and the answer to "shared or dedicated?":
 ```text
 src/
   main.tsx  App.tsx  error_boundary.tsx   # composition root (routing + providers)
-  index.css  App.css  vite-env.d.ts
+  index.css                  # entry point only — an ordered @import list, no rules
+  App.css  vite-env.d.ts
+  styles/                    # the actual CSS, split by domain
+    tokens.light.css  tokens.dark.css     #   design tokens (:root / .dark)
+    base.css                              #   reset, body, shared transition utils
+    voice-transitions.css  voice-orb.css  #   voice UI + its keyframes
+    skeleton.css  toast.css  markdown.css scrollbars.css  misc.css
 
   pages/                     # one file per route — composes a feature, wires routing
     ChatPage.tsx             #   the persistent workspace shell (ChatShell) + Outlet
@@ -61,7 +67,6 @@ src/
     stores/                  # workspaceStore (Zustand)
     hooks/                   # use-mobile, use-toast (framework-generic)
 
-  handlers/index.ts          # TRANSITIONAL aggregator — see "Known transitional state"
 ```
 
 ## Layering rules
@@ -78,6 +83,15 @@ src/
 5. **`@/` is the only alias**, mapped to `src/` (vite + tsconfig). Imports read
    `@/features/<f>/…` and `@/shared/…`. Prefer absolute `@/` imports over deep
    relative chains.
+6. **Barrels are for outside consumers; inside a folder, deep-import the leaf.**
+   `shared/lib/{api,types,consts}` are folders whose `index.ts` re-exports the
+   domain modules, so all ~110 importing files keep a single stable import path.
+   A module *within* one of those folders must import its sibling directly
+   (`from "./agents"`), never `from "."` — a barrel self-import is a real cycle.
+   Same rule across folders: `types/preferences.ts` reaches into
+   `consts/personalization` (a leaf), not the `consts` barrel. This is what
+   dissolved the pre-existing `types ↔ consts` cycle, which had been survivable
+   only because both directions happened to be type-only and got erased.
 
 ## Shared vs dedicated (the current verdict)
 
@@ -93,16 +107,17 @@ src/
 
 ## Known transitional state (intentional, tracked)
 
-Two follow-ups remain; both are isolated and do not block the structure:
+One follow-up remains; it is isolated and does not block the structure:
 
-1. **`src/handlers/index.ts` is a transitional aggregator.** The handler *modules*
-   now live in their features (`features/<f>/handlers/*`); this barrel only
-   re-exports them so the still-monolithic shell's single `@/handlers` import keeps
-   working. It disappears when the shell is thinned (below).
-2. **`pages/ChatPage.tsx` (the workspace shell / `ChatShell`) is still a large
+1. **`pages/ChatPage.tsx` (the workspace shell / `ChatShell`) is still a large
    component.** Thinning it into an `app/WorkspaceShell` that reads the Zustand
-   store + a services context, and switching it to per-feature imports, is the
-   next step. It is deliberately deferred (highest coupling) and tracked separately.
+   store + a services context is the next step. It is deliberately deferred
+   (highest coupling) and tracked separately.
+
+The former `src/handlers/index.ts` aggregator is **gone**. It re-exported the
+feature handler modules so the shell could keep a single `@/handlers` import;
+the shell now imports each handler from the feature that owns it, which is what
+makes the dependency direction visible at the import site.
 
 Also pending (low priority): per-feature `index.ts` **barrels** as the public
 import surface, then routing cross-feature imports through them instead of deep

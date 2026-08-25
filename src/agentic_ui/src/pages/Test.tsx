@@ -1,17 +1,36 @@
 import { useState } from "react";
 
-import { HitlInterruptCard, type HitlInterrupt } from "@/features/chat/components/message_parts/HitlInterruptCard";
+import {
+  HitlInterruptCard,
+  type HitlInterrupt,
+} from "@/features/chat/components/message_parts/HitlInterruptCard";
 import { Button } from "@/shared/ui/button";
 import { useToast } from "@/shared/hooks/use-toast";
 
 // Toast demo fixtures — one entry per status variant so the branded card,
 // icon chip, and per-variant countdown-bar colour can all be eyeballed.
 const TOAST_DEMOS: Array<{ variant: string; title: string; description: string }> = [
-    { variant: "default", title: "Heads up", description: "A neutral, informational notification." },
-    { variant: "info", title: "Sync started", description: "We're pulling the latest changes in the background." },
-    { variant: "success", title: "Conversation added", description: "The agent response is now running in your workspace." },
-    { variant: "warning", title: "Session ending soon", description: "You'll be asked to sign in again shortly." },
-    { variant: "destructive", title: "Something went wrong", description: "There was an error loading the conversation. Please try again." },
+  { variant: "default", title: "Heads up", description: "A neutral, informational notification." },
+  {
+    variant: "info",
+    title: "Sync started",
+    description: "We're pulling the latest changes in the background.",
+  },
+  {
+    variant: "success",
+    title: "Conversation added",
+    description: "The agent response is now running in your workspace.",
+  },
+  {
+    variant: "warning",
+    title: "Session ending soon",
+    description: "You'll be asked to sign in again shortly.",
+  },
+  {
+    variant: "destructive",
+    title: "Something went wrong",
+    description: "There was an error loading the conversation. Please try again.",
+  },
 ];
 
 // HITL demo fixtures — three interrupt shapes so we can eyeball how the card
@@ -74,8 +93,9 @@ export default function Test() {
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 Each button fires a branded toast with a depleting countdown bar. Hover the stack to
-                pause the countdown and fan the toasts out (fold). Use <span className="font-medium text-foreground">Fire 5</span>{" "}
-                to see the collapsed stack.
+                pause the countdown and fan the toasts out (fold). Use{" "}
+                <span className="font-medium text-foreground">Fire 5</span> to see the collapsed
+                stack.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -103,7 +123,11 @@ export default function Test() {
                   });
                   window.setTimeout(() => {
                     dismiss();
-                    toast({ variant: "success", title: "All done", description: "The task finished successfully." });
+                    toast({
+                      variant: "success",
+                      title: "All done",
+                      description: "The task finished successfully.",
+                    });
                   }, 2200);
                   void id;
                 }}
@@ -114,7 +138,9 @@ export default function Test() {
                 type="button"
                 variant="default"
                 size="sm"
-                onClick={() => TOAST_DEMOS.forEach((demo, i) => window.setTimeout(() => toast(demo), i * 250))}
+                onClick={() =>
+                  TOAST_DEMOS.forEach((demo, i) => window.setTimeout(() => toast(demo), i * 250))
+                }
               >
                 Fire 5
               </Button>

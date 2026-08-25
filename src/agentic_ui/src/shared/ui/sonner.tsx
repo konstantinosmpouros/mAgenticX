@@ -15,19 +15,19 @@ type ToasterProps = React.ComponentProps<typeof SonnerToaster>;
  * the dismiss timer, and the ARIA live region.
  */
 export function Toaster(props: ToasterProps) {
-    const { theme = "system" } = useTheme();
-    const isMobile = useIsMobile();
+  const { theme = "system" } = useTheme();
+  const isMobile = useIsMobile();
 
-    return (
-        <SonnerToaster
-            theme={theme as ToasterProps["theme"]}
-            position={isMobile ? "top-center" : "bottom-right"}
-            expand={false}
-            visibleToasts={3}
-            gap={12}
-            offset={16}
-            className="toaster group"
-            {...props}
-        />
-    );
+  return (
+    <SonnerToaster
+      theme={theme as ToasterProps["theme"]}
+      position={isMobile ? "top-center" : "bottom-right"}
+      expand={false}
+      visibleToasts={3}
+      gap={12}
+      offset={16}
+      className="toaster group"
+      {...props}
+    />
+  );
 }

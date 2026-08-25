@@ -28,7 +28,9 @@ const ErrorPage = ({ error, onRetry }: ErrorPageProps) => {
         <div className="w-full rounded-3xl border border-white/60 bg-white/70 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.65)] backdrop-blur-xl transition-slow dark:border-white/10 dark:bg-white/5 dark:shadow-[0_18px_80px_-36px_rgba(0,0,0,0.9)]">
           <div className="grid items-center gap-10 px-8 py-12 md:grid-cols-[1.05fr_0.95fr] md:px-12 md:py-14">
             <div className="space-y-6">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">Something went wrong</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">
+                Something went wrong
+              </p>
 
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-3 rounded-full border border-white/60 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10 dark:text-slate-100">
@@ -42,7 +44,8 @@ const ErrorPage = ({ error, onRetry }: ErrorPageProps) => {
                   but your session is safe
                 </h1>
                 <p className="text-base text-slate-600 dark:text-slate-300">
-                  The UI encountered a problem. You can retry to reload the session, or head back home while we keep the agents ready.
+                  The UI encountered a problem. You can retry to reload the session, or head back
+                  home while we keep the agents ready.
                 </p>
                 {error?.message && (
                   <div className="rounded-2xl border border-amber-200/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 shadow-sm dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
@@ -53,7 +56,10 @@ const ErrorPage = ({ error, onRetry }: ErrorPageProps) => {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <Button onClick={handleRetry} className="shadow-[0_16px_40px_-24px_rgba(59,130,246,0.75)]">
+                <Button
+                  onClick={handleRetry}
+                  className="shadow-[0_16px_40px_-24px_rgba(59,130,246,0.75)]"
+                >
                   <RefreshCw className="h-4 w-4" />
                   Try again
                 </Button>
@@ -92,10 +98,17 @@ const ErrorPage = ({ error, onRetry }: ErrorPageProps) => {
                       </div>
                       <div className="text-left">
                         <p className="text-sm font-semibold">Restart the UI</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Reload the session and reconnect your agents.</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Reload the session and reconnect your agents.
+                        </p>
                       </div>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={handleRetry} className="text-amber-600 hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleRetry}
+                      className="text-amber-600 hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+                    >
                       Retry
                     </Button>
                   </div>

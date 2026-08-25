@@ -103,8 +103,7 @@ const TimelineToolItem = memo(
     const duration = toolDurationLabel(tool);
 
     const approval = tool.approval;
-    const clientResolved =
-      approval && hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
+    const clientResolved = approval && hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
     const face: ToolApprovalFace = !approval
       ? null
       : approval.status === "pending"
@@ -131,7 +130,9 @@ const TimelineToolItem = memo(
             >
               <span className="truncate font-medium">{tool.name}</span>
               {duration ? (
-                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{duration}</span>
+                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+                  {duration}
+                </span>
               ) : null}
               {face === "pending" ? (
                 <span className="shrink-0 text-amber-500 text-xs font-medium">Needs approval</span>
@@ -157,7 +158,8 @@ const TimelineToolItem = memo(
             ) : null}
             {face === "rejected" ? (
               <div className="rounded-md border border-orange-500/25 bg-orange-500/[0.06] px-3 py-2 text-orange-500 text-xs">
-                Rejected by you{approval?.reason ? ` — ${approval.reason}` : ""}. The tool never ran.
+                Rejected by you{approval?.reason ? ` — ${approval.reason}` : ""}. The tool never
+                ran.
               </div>
             ) : null}
             <ToolOutput output={tool.result} truncated={tool.resultTruncated} />
@@ -175,7 +177,15 @@ TimelineToolItem.displayName = "TimelineToolItem";
 // "Waiting for approval…"). Once resolved, this compact record keeps the
 // decision visible in the settled conversation's history.
 const TimelineHitlItem = memo(
-  ({ approval, runId, isLast }: { approval: TimelineHitlApproval; runId: string; isLast: boolean }) => {
+  ({
+    approval,
+    runId,
+    isLast,
+  }: {
+    approval: TimelineHitlApproval;
+    runId: string;
+    isLast: boolean;
+  }) => {
     const hitl = useHitl();
     const clientResolved = hitl ? hitl.isInterruptResolved(runId, approval.id) : false;
     const parsed = useMemo(() => parseHitlInterrupt(approval.content), [approval.content]);
@@ -236,7 +246,15 @@ type ThinkingBlockViewProps = {
 };
 
 export const CoTBlock = memo(
-  ({ block, runId, isLiveActive, doneStatus, fallbackDurationSeconds, open, onOpenChange }: ThinkingBlockViewProps) => {
+  ({
+    block,
+    runId,
+    isLiveActive,
+    doneStatus,
+    fallbackDurationSeconds,
+    open,
+    onOpenChange,
+  }: ThinkingBlockViewProps) => {
     const durationLabel = formatThinkingDuration(
       blockDurationSeconds(block) ?? fallbackDurationSeconds ?? null,
     );
@@ -249,7 +267,11 @@ export const CoTBlock = memo(
     if (!block.items.length && !sentinel && !isLiveActive) return null;
 
     return (
-      <ChainOfThought className="w-full max-w-full space-y-2" open={open} onOpenChange={onOpenChange}>
+      <ChainOfThought
+        className="w-full max-w-full space-y-2"
+        open={open}
+        onOpenChange={onOpenChange}
+      >
         <ChainOfThoughtHeader className="text-sm md:text-[0.95rem] font-medium text-muted-foreground hover:text-foreground">
           {isLiveActive ? (
             <ShimmeringText
@@ -286,9 +308,18 @@ export const CoTBlock = memo(
               );
             }
             if (item.kind === "tool") {
-              return <TimelineToolItem key={item.id} tool={item} runId={runId} isLast={isLastRendered} />;
+              return (
+                <TimelineToolItem key={item.id} tool={item} runId={runId} isLast={isLastRendered} />
+              );
             }
-            return <TimelineHitlItem key={item.id} approval={item} runId={runId} isLast={isLastRendered} />;
+            return (
+              <TimelineHitlItem
+                key={item.id}
+                approval={item}
+                runId={runId}
+                isLast={isLastRendered}
+              />
+            );
           })}
           {sentinel ? (
             <ChainOfThoughtStep

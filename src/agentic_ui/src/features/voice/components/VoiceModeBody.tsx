@@ -49,7 +49,8 @@ function ObsidianSphere({ status, muted }: { status: VoiceModeStatus; muted: boo
         listening && "voice-persona-orb-listening",
         thinking && "voice-persona-orb-thinking",
         speaking && "voice-persona-orb-speaking",
-        speaking && "scale-110 shadow-[0_0_0_10px_rgba(168,85,247,0.08),0_0_70px_rgba(168,85,247,0.24),0_24px_64px_rgba(0,0,0,0.72),inset_0_1px_2px_rgba(255,255,255,0.75),inset_4px_4px_12px_rgba(255,255,255,0.24),inset_-16px_-14px_26px_rgba(0,0,0,0.92),inset_0_0_0_2px_rgba(255,255,255,0.04)]",
+        speaking &&
+          "scale-110 shadow-[0_0_0_10px_rgba(168,85,247,0.08),0_0_70px_rgba(168,85,247,0.24),0_24px_64px_rgba(0,0,0,0.72),inset_0_1px_2px_rgba(255,255,255,0.75),inset_4px_4px_12px_rgba(255,255,255,0.24),inset_-16px_-14px_26px_rgba(0,0,0,0.92),inset_0_0_0_2px_rgba(255,255,255,0.04)]",
         listening && "scale-105",
       )}
     >
@@ -102,7 +103,8 @@ export default function VoiceModeBody({
           <p className="mx-auto max-w-md text-sm text-muted-foreground">
             {status === "error"
               ? errorMessage || "Realtime voice is unavailable right now."
-              : currentAgent?.description || "Speak naturally. The assistant will listen, think, and answer aloud."}
+              : currentAgent?.description ||
+                "Speak naturally. The assistant will listen, think, and answer aloud."}
           </p>
         </div>
       </div>

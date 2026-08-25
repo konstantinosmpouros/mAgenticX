@@ -289,9 +289,14 @@ The `close()` call in `useRealtimeVoiceSession` does all cleanup client-side:
 
 Default: `"alloy"`. Invalid values are silently normalized to the default by both `normalizeRealtimeVoice()` (frontend) and `normalize_realtime_voice()` (backend).
 
-### `READ_ALOUD_VOICES` (TTS playback)
-
-A superset of realtime voices — also includes `fable`, `nova`, `onyx` which are not available in realtime mode. Default: `"alloy"`.
+> **There is no separate read-aloud voice catalog.** Read-aloud once had its own
+> list and a `readAloudVoice` preference; both were collapsed into `voiceModeVoice`,
+> and the bridge resolves the TTS voice server-side through the realtime allow-list
+> above (`normalize_realtime_voice`). The single picker in Settings → Voice drives
+> live voice mode and read-aloud alike — its per-voice preview button even calls the
+> read-aloud endpoint. An earlier revision of this doc described a `READ_ALOUD_VOICES`
+> superset containing `fable`/`nova`/`onyx`; that constant had already been orphaned
+> when this page was written and has since been deleted.
 
 ### Languages
 
@@ -331,10 +336,10 @@ A superset of realtime voices — also includes `fable`, `nova`, `onyx` which ar
 | Realtime session endpoint (agents) | [src/agents/main.py](../../src/agents/main.py) | `create_realtime_session()` |
 | TTS endpoint (agents) | [src/agents/main.py](../../src/agents/main.py) | `generate_read_aloud_speech()` |
 | Whisper endpoint (agents) | [src/agents/main.py](../../src/agents/main.py) | `transcribe_audio()` |
-| WebRTC session hook | [src/agentic_ui/src/hooks/useRealtimeVoiceSession.ts](../../src/agentic_ui/src/hooks/useRealtimeVoiceSession.ts) | `start()`, `close()`, `toggleMute()`, `interrupt()`, `handleRealtimeEvent()` |
-| Voice mode chat hook | [src/agentic_ui/src/hooks/useChatVoiceMode.ts](../../src/agentic_ui/src/hooks/useChatVoiceMode.ts) | `handleStartVoiceMode()` |
-| Voice mode status type | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `VoiceModeStatus` |
-| Voice catalogs | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `READ_ALOUD_VOICES`, `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES` |
-| Voice API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `createRealtimeVoiceSession()`, `persistRealtimeVoiceConversationEvent()`, `transcribeDictation()`, `generateMessageReadAloudAudio()` |
-| Voice normalization (frontend) | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `normalizeRealtimeVoice()`, `normalizeVoiceModeLanguage()` |
-| Voice selector component | [src/agentic_ui/src/components/ui/ai-elements/voice-selector.tsx](../../src/agentic_ui/src/components/ui/ai-elements/voice-selector.tsx) | `VoiceSelector`, `VoiceSelectorItem`, `VoiceSelectorPreview` |
+| WebRTC session hook | [src/agentic_ui/src/features/voice/hooks/useRealtimeVoiceSession.ts](../../src/agentic_ui/src/features/voice/hooks/useRealtimeVoiceSession.ts) | `start()`, `close()`, `toggleMute()`, `interrupt()`, `handleRealtimeEvent()` |
+| Voice mode chat hook | [src/agentic_ui/src/features/voice/hooks/useChatVoiceMode.ts](../../src/agentic_ui/src/features/voice/hooks/useChatVoiceMode.ts) | `handleStartVoiceMode()` |
+| Voice mode status type | [src/agentic_ui/src/shared/lib/types/](../../src/agentic_ui/src/shared/lib/types/) | `VoiceModeStatus` |
+| Voice catalogs | [src/agentic_ui/src/shared/lib/consts/voice.ts](../../src/agentic_ui/src/shared/lib/consts/voice.ts) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES` |
+| Voice API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `createRealtimeVoiceSession()`, `persistRealtimeVoiceConversationEvent()`, `transcribeDictation()`, `generateMessageReadAloudAudio()` |
+| Voice normalization (frontend) | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `normalizeRealtimeVoice()`, `normalizeVoiceModeLanguage()` |
+| Voice selector component | [src/agentic_ui/src/shared/ui/ai-elements/voice-selector.tsx](../../src/agentic_ui/src/shared/ui/ai-elements/voice-selector.tsx) | `VoiceSelector`, `VoiceSelectorItem`, `VoiceSelectorPreview` |

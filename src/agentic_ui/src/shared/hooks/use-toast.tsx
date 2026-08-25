@@ -14,47 +14,47 @@ import { ToastCard, type ToastAction, type ToastVariant } from "@/shared/ui/toas
  * bar. See shared/ui/sonner (the portal) and shared/ui/toast-card (the surface).
  */
 export interface ToastOptions {
-    title?: ReactNode;
-    description?: ReactNode;
-    /**
-     * Status variant. Accepts the app's variants plus the legacy `"error"`
-     * alias (mapped to `destructive`); anything unrecognised degrades to
-     * `default`. Typed as `string` on purpose — the many structurally-typed
-     * `toast` call slots across features pass a plain `string`, so widening here
-     * keeps them all assignable without a churn of casts.
-     */
-    variant?: string;
-    /** Auto-dismiss window in ms. Omit to use the per-variant default. */
-    duration?: number;
-    action?: ToastAction;
+  title?: ReactNode;
+  description?: ReactNode;
+  /**
+   * Status variant. Accepts the app's variants plus the legacy `"error"`
+   * alias (mapped to `destructive`); anything unrecognised degrades to
+   * `default`. Typed as `string` on purpose — the many structurally-typed
+   * `toast` call slots across features pass a plain `string`, so widening here
+   * keeps them all assignable without a churn of casts.
+   */
+  variant?: string;
+  /** Auto-dismiss window in ms. Omit to use the per-variant default. */
+  duration?: number;
+  action?: ToastAction;
 }
 
 const KNOWN_VARIANTS: readonly ToastVariant[] = [
-    "default",
-    "info",
-    "success",
-    "warning",
-    "destructive",
-    "loading",
+  "default",
+  "info",
+  "success",
+  "warning",
+  "destructive",
+  "loading",
 ];
 
 /** Errors linger a little longer than confirmations; loading never expires on
  *  its own (the caller dismisses/updates it). */
 const DEFAULT_DURATION: Record<ToastVariant, number> = {
-    default: 4000,
-    info: 4000,
-    success: 4000,
-    warning: 5000,
-    destructive: 6000,
-    loading: Infinity,
+  default: 4000,
+  info: 4000,
+  success: 4000,
+  warning: 5000,
+  destructive: 6000,
+  loading: Infinity,
 };
 
 function resolveVariant(variant?: string): ToastVariant {
-    if (variant === "error") return "destructive";
-    if (variant && (KNOWN_VARIANTS as readonly string[]).includes(variant)) {
-        return variant as ToastVariant;
-    }
-    return "default";
+  if (variant === "error") return "destructive";
+  if (variant && (KNOWN_VARIANTS as readonly string[]).includes(variant)) {
+    return variant as ToastVariant;
+  }
+  return "default";
 }
 
 /**
@@ -62,29 +62,29 @@ function resolveVariant(variant?: string): ToastVariant {
  * it early (e.g. resolving a loading toast).
  */
 function toast(options: ToastOptions) {
-    const variant = resolveVariant(options.variant);
-    const duration = options.duration ?? DEFAULT_DURATION[variant];
+  const variant = resolveVariant(options.variant);
+  const duration = options.duration ?? DEFAULT_DURATION[variant];
 
-    const id = sonnerToast.custom(
-        (toastId) => (
-            <ToastCard
-                id={toastId}
-                variant={variant}
-                title={options.title}
-                description={options.description}
-                duration={duration}
-                action={options.action}
-            />
-        ),
-        { duration },
-    );
+  const id = sonnerToast.custom(
+    (toastId) => (
+      <ToastCard
+        id={toastId}
+        variant={variant}
+        title={options.title}
+        description={options.description}
+        duration={duration}
+        action={options.action}
+      />
+    ),
+    { duration },
+  );
 
-    return { id, dismiss: () => sonnerToast.dismiss(id) };
+  return { id, dismiss: () => sonnerToast.dismiss(id) };
 }
 
 /** Dismiss a single toast by id, or all toasts when called with no id. */
 function dismiss(id?: string | number) {
-    sonnerToast.dismiss(id);
+  sonnerToast.dismiss(id);
 }
 
 /**
@@ -93,7 +93,7 @@ function dismiss(id?: string | number) {
  * here — the returned handles are stable module-level functions.
  */
 export function useToast() {
-    return { toast, dismiss };
+  return { toast, dismiss };
 }
 
 export { toast };

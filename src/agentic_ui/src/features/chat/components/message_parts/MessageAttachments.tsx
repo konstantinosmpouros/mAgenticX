@@ -4,11 +4,7 @@ import { classifyAttachmentPreview } from "@/features/attachments/components/att
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 
 export type AttachmentLike =
-  | AttachmentIn
-  | FileAttachment
-  | File
-  | string
-  | Record<string, unknown>;
+  AttachmentIn | FileAttachment | File | string | Record<string, unknown>;
 
 type MessageAttachmentsProps = {
   message: MessageOut;
@@ -45,7 +41,7 @@ const asAttachmentRecord = (attachment: AttachmentLike): AttachmentRecord =>
 
 const normalizeAttachment = (
   attachment: AttachmentLike,
-  isImageFile: (attachment: AttachmentLike) => boolean
+  isImageFile: (attachment: AttachmentLike) => boolean,
 ): AttachmentItem => {
   const isImage = isImageFile(attachment);
   let imageUrl = "";
@@ -71,11 +67,13 @@ const normalizeAttachment = (
   } else {
     imageUrl = "";
     fileName =
-      isStructuredAttachment && record.name ? record.name : record.file_name ?? "Unknown file";
+      isStructuredAttachment && record.name ? record.name : (record.file_name ?? "Unknown file");
   }
 
   const mimeValue: string =
-    attachment instanceof File ? attachment.type : (isStructuredAttachment && (record.mime || record.mime_type)) || "";
+    attachment instanceof File
+      ? attachment.type
+      : (isStructuredAttachment && (record.mime || record.mime_type)) || "";
 
   const typeLabel = mimeValue || (isImage ? "Image" : "File");
 
@@ -83,10 +81,10 @@ const normalizeAttachment = (
     attachment instanceof File
       ? attachment.size
       : isStructuredAttachment && typeof record.size === "number"
-      ? record.size
-      : isStructuredAttachment && typeof record.size_bytes === "number"
-        ? record.size_bytes
-        : undefined;
+        ? record.size
+        : isStructuredAttachment && typeof record.size_bytes === "number"
+          ? record.size_bytes
+          : undefined;
   const isPreviewable = classifyAttachmentPreview({
     name: fileName,
     mime: mimeValue,
@@ -94,15 +92,18 @@ const normalizeAttachment = (
   }).previewable;
 
   return { attachment, isImage, imageUrl, fileName, typeLabel, isPreviewable };
-}
+};
 
 // Files the agent presented via present_artifact (origin === "generated") are
 // rendered inline in the run timeline as artifact cards (see ArtifactCard), not
 // in this top-of-message stack — which stays dedicated to user uploads.
 function isGeneratedAttachment(attachment: AttachmentLike): boolean {
-  return typeof attachment === "object" && attachment !== null
-    && (attachment as AttachmentRecord).origin === "generated";
-};
+  return (
+    typeof attachment === "object" &&
+    attachment !== null &&
+    (attachment as AttachmentRecord).origin === "generated"
+  );
+}
 
 export function MessageAttachments({
   message,
@@ -116,14 +117,14 @@ export function MessageAttachments({
   // Generated deliverables render inline in the timeline (ArtifactCard); this
   // stack is user uploads only.
   const uploads = (message.attachments ?? []).filter(
-    (attachment) => !isGeneratedAttachment(attachment as AttachmentLike)
+    (attachment) => !isGeneratedAttachment(attachment as AttachmentLike),
   );
   if (!uploads.length) {
     return null;
   }
 
   const items = uploads.map((attachment) =>
-    normalizeAttachment(attachment as AttachmentLike, isImageFile)
+    normalizeAttachment(attachment as AttachmentLike, isImageFile),
   );
   const images = items.filter((item) => item.isImage);
   const files = items.filter((item) => !item.isImage);
@@ -210,7 +211,10 @@ export function MessageAttachments({
                   key={`img-${idx}`}
                   className={`${images.length % 2 === 1 && idx === images.length - 1 ? "col-span-2" : ""}`}
                 >
-                  <div className="relative group cursor-pointer" onClick={() => onImageClick(img.imageUrl)}>
+                  <div
+                    className="relative group cursor-pointer"
+                    onClick={() => onImageClick(img.imageUrl)}
+                  >
                     <img
                       src={img.imageUrl}
                       alt="Image"

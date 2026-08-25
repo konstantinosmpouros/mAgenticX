@@ -13,7 +13,12 @@ type VoiceDictationCtx = {
   setCurrentMessage: Dispatch<SetStateAction<string>>;
   setDictationStatus: Dispatch<SetStateAction<DictationStatus>>;
   textareaRef?: MutableRefObject<HTMLTextAreaElement | null>;
-  toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
 };
 
 export function createVoiceModeHandlers(ctx: VoiceModeCtx) {
@@ -22,7 +27,11 @@ export function createVoiceModeHandlers(ctx: VoiceModeCtx) {
       void ctx.onStartVoiceMode();
       return;
     }
-    ctx.toast({ title: "Voice mode unavailable", description: "The voice session controller is not ready.", duration: 3000 });
+    ctx.toast({
+      title: "Voice mode unavailable",
+      description: "The voice session controller is not ready.",
+      duration: 3000,
+    });
   };
 
   return { handleVoiceMode };
@@ -71,7 +80,8 @@ export function createVoiceDictationHandlers(ctx: VoiceDictationCtx) {
         ctx.textareaRef?.current?.focus();
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Voice transcription failed. Please try again.";
+      const message =
+        error instanceof Error ? error.message : "Voice transcription failed. Please try again.";
       toastError(ctx.toast, "Dictation failed", error, { description: message });
     } finally {
       ctx.setDictationStatus("idle");

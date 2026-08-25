@@ -1,12 +1,6 @@
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  CheckCircle2,
-  Circle,
-  ListTodo,
-  LoaderCircle,
-  Sparkles,
-} from "lucide-react";
+import { CheckCircle2, Circle, ListTodo, LoaderCircle, Sparkles } from "lucide-react";
 
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import type { PlanItemStatus, PlanSnapshot } from "@/features/inference/agui";
@@ -75,9 +69,7 @@ function PlanSummary({
           <ListTodo className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-foreground">
-            {title}
-          </h3>
+          <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
           <p className="truncate text-[11px] text-muted-foreground transition-colors duration-500 ease-out">
             {plan.items.length} steps
             {updatedLabel ? ` · updated ${updatedLabel}` : ""}
@@ -119,7 +111,7 @@ export function PlanItems({ plan }: { plan: PlanSnapshot }) {
                 ? "border-emerald-500/18 bg-emerald-500/[0.05]"
                 : item.status === "in_progress"
                   ? "border-sky-500/18 bg-sky-500/[0.05]"
-                  : "border-border/70 bg-secondary/30"
+                  : "border-border/70 bg-secondary/30",
             )}
           >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background transition-colors duration-200 ease-out">
@@ -137,7 +129,7 @@ export function PlanItems({ plan }: { plan: PlanSnapshot }) {
                       className={cn(
                         "h-3.5 w-3.5 transition-colors duration-200 ease-out",
                         tone,
-                        item.status === "in_progress" && "animate-spin [animation-duration:1.8s]"
+                        item.status === "in_progress" && "animate-spin [animation-duration:1.8s]",
                       )}
                     />
                   </motion.div>
@@ -169,7 +161,7 @@ export function PlanItems({ plan }: { plan: PlanSnapshot }) {
                       transition={{ duration: 0.34, ease: "easeOut" }}
                       className={cn(
                         "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors duration-200 ease-out",
-                        badge
+                        badge,
                       )}
                     >
                       {label}
@@ -232,7 +224,7 @@ export function PlanCard({
       onKeyDown={handleKeyDown}
       className={cn(
         "group relative block w-full cursor-pointer select-none text-left outline-none",
-        className
+        className,
       )}
     >
       <div className="absolute inset-x-12 top-2 h-10 rounded-full bg-[hsl(var(--primary)/0.1)] blur-3xl transition-opacity duration-300 group-hover:opacity-90" />
@@ -244,7 +236,7 @@ export function PlanCard({
           <div
             className={cn(
               "flex items-start justify-between gap-3 px-3.5 py-3",
-              expanded && "border-b border-border/70"
+              expanded && "border-b border-border/70",
             )}
           >
             <PlanSummary plan={plan} title={title} subtitle={subtitle} />
@@ -254,13 +246,10 @@ export function PlanCard({
           <div
             className={cn(
               "overflow-hidden transition-[height,opacity] duration-300 ease-out",
-              expanded ? "h-[184px] opacity-100" : "h-0 opacity-0"
+              expanded ? "h-[184px] opacity-100" : "h-0 opacity-0",
             )}
           >
-            <ScrollArea
-              className="h-full px-2.5"
-              onClick={(event) => event.stopPropagation()}
-            >
+            <ScrollArea className="h-full px-2.5" onClick={(event) => event.stopPropagation()}>
               <PlanItems plan={plan} />
             </ScrollArea>
           </div>
@@ -269,4 +258,3 @@ export function PlanCard({
     </div>
   );
 }
-

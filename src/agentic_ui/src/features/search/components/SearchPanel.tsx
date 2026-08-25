@@ -103,7 +103,7 @@ export default function SearchPanel({
       <div
         ref={panelRef}
         className={cn(
-          "pointer-events-auto fixed left-1/2 top-1/2 flex max-h-[min(38rem,calc(100svh-2rem))] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border/70 bg-background/95 text-foreground shadow-2xl backdrop-blur-xl animate-in fade-in-0 duration-200"
+          "pointer-events-auto fixed left-1/2 top-1/2 flex max-h-[min(38rem,calc(100svh-2rem))] w-[min(34rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border/70 bg-background/95 text-foreground shadow-2xl backdrop-blur-xl animate-in fade-in-0 duration-200",
         )}
       >
         <div className="flex items-center gap-2 border-b border-border/70 px-3 py-2">
@@ -153,9 +153,13 @@ export default function SearchPanel({
                             <ResultIcon kind={result.kind} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-foreground">{result.title}</div>
+                            <div className="truncate text-sm font-medium text-foreground">
+                              {result.title}
+                            </div>
                             <div className="truncate text-xs text-muted-foreground">
-                              {result.snippet || result.subtitle || RESULT_GROUP_LABELS[result.kind]}
+                              {result.snippet ||
+                                result.subtitle ||
+                                RESULT_GROUP_LABELS[result.kind]}
                             </div>
                           </div>
                         </button>
@@ -192,7 +196,9 @@ export default function SearchPanel({
                           <ResultIcon kind={result.kind} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-foreground">{result.title}</div>
+                          <div className="truncate text-sm font-medium text-foreground">
+                            {result.title}
+                          </div>
                           <div className="truncate text-xs text-muted-foreground">
                             {result.snippet || result.subtitle || RESULT_GROUP_LABELS[result.kind]}
                           </div>

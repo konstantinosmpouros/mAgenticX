@@ -112,6 +112,6 @@ flowchart LR
 | Cap setting (`MEMORY_MAX_ENTRIES`) | [src/agents/core/settings.py](../../src/agents/core/settings.py) (`FilesystemSettings`) |
 | Agents inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) |
 | Bridge proxy + router | [src/dialogue_bridge/utils/memories.py](../../src/dialogue_bridge/utils/memories.py) · [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) |
-| Frontend API + hook + tab | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) · [src/agentic_ui/src/hooks/useMemories.ts](../../src/agentic_ui/src/hooks/useMemories.ts) · [src/agentic_ui/src/components/chat/profile_parts/MemoriesTab.tsx](../../src/agentic_ui/src/components/chat/profile_parts/MemoriesTab.tsx) |
+| Frontend API + hook + tab | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) · [src/agentic_ui/src/features/settings/hooks/useMemories.ts](../../src/agentic_ui/src/features/settings/hooks/useMemories.ts) · [src/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) |
 
 See also: [user-preferences](user-preferences.md#agent-memory) (the `use_memory` gate), [conversation-embeddings](conversation-embeddings.md) (the separate `search_past_conversations` recall tool), [agent-development](../development/agent-development.md#per-user-agent-long-term-memory).

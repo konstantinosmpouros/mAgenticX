@@ -9,5 +9,5 @@ createRoot(document.getElementById("root")!).render(
     <RootErrorBoundary>
       <App />
     </RootErrorBoundary>
-  </BrowserRouter>
+  </BrowserRouter>,
 );

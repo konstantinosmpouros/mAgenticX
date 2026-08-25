@@ -4,12 +4,7 @@ import { useReducedMotion } from "framer-motion";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { ArrowDown } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type {
-  Agent,
-  MessageOut,
-  RunTimeline,
-  ThinkingState,
-} from "@/shared/lib/types";
+import type { Agent, MessageOut, RunTimeline, ThinkingState } from "@/shared/lib/types";
 import { cn } from "@/shared/lib/utils";
 import type { AttachmentLike } from "./message_parts/MessageAttachments";
 import { ChatMessage } from "./ChatMessage";
@@ -87,7 +82,12 @@ type ChatBody = {
   onChangeEditDraft?: (value: string) => void;
   onCancelEdit?: () => void;
   onSubmitEdit?: () => void;
-  toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast?: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
   onShareMessage?: (message: MessageOut) => void;
@@ -258,14 +258,17 @@ export default function ChatBody({
     glidingRef.current = false;
   }, []);
 
-  const snapScrollTo = React.useCallback((target: number) => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    stopScrollAnim();
-    const to = Math.max(0, target);
-    viewport.scrollTop = to;
-    lastWrittenTopRef.current = to;
-  }, [stopScrollAnim]);
+  const snapScrollTo = React.useCallback(
+    (target: number) => {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      stopScrollAnim();
+      const to = Math.max(0, target);
+      viewport.scrollTop = to;
+      lastWrittenTopRef.current = to;
+    },
+    [stopScrollAnim],
+  );
 
   // Deliberate move: a FIXED-DURATION ease-in-out from the current position to the
   // target. Used for the entrance, re-stick and the jump button so a big jump feels
@@ -308,7 +311,7 @@ export default function ChatBody({
       };
       animFrameRef.current = window.requestAnimationFrame(step);
     },
-    [prefersReducedMotion, stopScrollAnim, snapScrollTo]
+    [prefersReducedMotion, stopScrollAnim, snapScrollTo],
   );
 
   // Ride-along: exponential approach toward an ever-moving target. Retargeting is just
@@ -349,7 +352,7 @@ export default function ChatBody({
       };
       animFrameRef.current = window.requestAnimationFrame(step);
     },
-    [prefersReducedMotion, snapScrollTo]
+    [prefersReducedMotion, snapScrollTo],
   );
 
   // Single source of truth for "keep the stream in view": sizes the spacer and moves
@@ -399,7 +402,15 @@ export default function ChatBody({
         glideScrollTo(to, mode === "glideButton" ? BUTTON_GLIDE_MS : GLIDE_MS);
       }
     },
-    [measure, isStreaming, prefersReducedMotion, setSpacerHeight, snapScrollTo, springScrollTo, glideScrollTo]
+    [
+      measure,
+      isStreaming,
+      prefersReducedMotion,
+      setSpacerHeight,
+      snapScrollTo,
+      springScrollTo,
+      glideScrollTo,
+    ],
   );
 
   const scheduleFollow = React.useCallback(
@@ -420,7 +431,7 @@ export default function ChatBody({
         followTick(resolved);
       });
     },
-    [followTick]
+    [followTick],
   );
 
   React.useEffect(() => {
@@ -499,7 +510,7 @@ export default function ChatBody({
   // keeping the final answer where it is.
   React.useEffect(() => {
     const wasStreaming = wasStreamingRef.current;
-    wasStreamingRef.current = isStreaming;
+    wasStreamingRef.current = Boolean(isStreaming);
     // Only act on the run's END transition — never on later re-renders, or a stray
     // messages/callback change would keep yanking the user back down after they've
     // scrolled up to read.
@@ -520,7 +531,7 @@ export default function ChatBody({
       suppressFollowRef.current = true;
       onSelectBranch?.(parentId, branchIndex);
     },
-    [onSelectBranch]
+    [onSelectBranch],
   );
 
   // A manual wheel ALWAYS cancels an in-flight glide (up, or down while gliding) so the
@@ -534,7 +545,7 @@ export default function ChatBody({
       if (up || (down && glidingRef.current)) stopScrollAnim();
       if (up) setIsPinnedToBottom(false);
     },
-    [stopScrollAnim]
+    [stopScrollAnim],
   );
 
   const handleTouchStart = React.useCallback((event: React.TouchEvent<HTMLDivElement>) => {
@@ -553,7 +564,7 @@ export default function ChatBody({
       if (up || (down && glidingRef.current)) stopScrollAnim();
       if (up) setIsPinnedToBottom(false);
     },
-    [stopScrollAnim]
+    [stopScrollAnim],
   );
 
   const handleScroll = React.useCallback(
@@ -589,7 +600,7 @@ export default function ChatBody({
         setIsPinnedToBottom(true);
       }
     },
-    [distanceFromBottom, isStreaming, isPinnedToBottom, onScrolledPastTop, stopScrollAnim]
+    [distanceFromBottom, isStreaming, isPinnedToBottom, onScrolledPastTop, stopScrollAnim],
   );
 
   React.useEffect(() => {
@@ -648,13 +659,16 @@ export default function ChatBody({
                 ? branchChildrenMap[parentId]
                 : branchChildrenMap[branchRootKey];
 
-              const branchSelection =
-                parentId
-                  ? branchSelections[parentId] ?? 0
-                  : branchSelections[branchRootKey] ?? 0;
+              const branchSelection = parentId
+                ? (branchSelections[parentId] ?? 0)
+                : (branchSelections[branchRootKey] ?? 0);
 
               return (
-                <div key={message.id} data-message-id={message.id} className="animate-message-in space-y-2">
+                <div
+                  key={message.id}
+                  data-message-id={message.id}
+                  className="animate-message-in space-y-2"
+                >
                   <ChatMessage
                     message={message}
                     showMessageTokenUsage={showMessageTokenUsage}
@@ -703,8 +717,7 @@ export default function ChatBody({
                   />
                 </div>
               );
-            })
-          }
+            })}
 
           {AiTransitionIndicator ? <AiTransitionIndicator /> : null}
 
@@ -729,7 +742,7 @@ export default function ChatBody({
           "transition-[opacity,transform,background-color,color] duration-500 ease-out hover:bg-background/92 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           showJumpToBottom
             ? "translate-y-0 scale-100 opacity-100"
-            : "pointer-events-none translate-y-4 scale-90 opacity-0"
+            : "pointer-events-none translate-y-4 scale-90 opacity-0",
         )}
       >
         <ArrowDown className="h-5 w-5" aria-hidden="true" />
@@ -737,5 +750,3 @@ export default function ChatBody({
     </div>
   );
 }
-
-

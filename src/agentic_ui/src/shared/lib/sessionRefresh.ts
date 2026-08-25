@@ -64,7 +64,9 @@ async function postRefresh(): Promise<AuthResponse> {
 function persist(result: AuthResponse): UserProfile | null {
   const existing = loadSession();
   const ttlMs =
-    typeof result.tokenTtl === "number" && result.tokenTtl > 0 ? result.tokenTtl * 1000 : DEFAULT_TTL_MS;
+    typeof result.tokenTtl === "number" && result.tokenTtl > 0
+      ? result.tokenTtl * 1000
+      : DEFAULT_TTL_MS;
   const user = result.user ?? existing?.user ?? null;
   if (user) {
     saveSession(user, ttlMs);

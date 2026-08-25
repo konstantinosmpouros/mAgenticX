@@ -241,7 +241,8 @@ export const SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "ui.escape",
     title: "Dismiss active UI",
-    description: "Blur the active control and let focused UI elements close themselves without stopping inference.",
+    description:
+      "Blur the active control and let focused UI elements close themselves without stopping inference.",
     category: "Dismiss",
     scope: "Contextual",
     implementation: "global",
@@ -291,7 +292,8 @@ export const SHORTCUTS: ShortcutDefinition[] = [
   {
     id: "composer.newline",
     title: "Insert newline",
-    description: "Insert a newline instead of sending from the main composer or the inline edit textarea.",
+    description:
+      "Insert a newline instead of sending from the main composer or the inline edit textarea.",
     category: "Composer",
     scope: "Composer",
     implementation: "local",
@@ -315,7 +317,10 @@ export function detectShortcutPlatform(): ShortcutPlatform {
   return platform.includes("mac") ? "mac" : "win";
 }
 
-export function getShortcutLabel(definition: ShortcutDefinition, platform: ShortcutPlatform): string {
+export function getShortcutLabel(
+  definition: ShortcutDefinition,
+  platform: ShortcutPlatform,
+): string {
   return definition.labels[platform];
 }
 

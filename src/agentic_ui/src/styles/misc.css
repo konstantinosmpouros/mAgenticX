@@ -1,0 +1,36 @@
+@layer components {
+  .sidebar-icon-badge {
+    background-color: var(--sidebar-icon-bg);
+  }
+}
+
+/* Text shimmer for the account-switch interstitial. The gradient is clipped to
+   the glyphs and swept by the `animate-shimmer-text` keyframe; the base colour
+   is kept as a fallback so the text is never invisible if bg-clip is unsupported
+   or the animation is disabled by prefers-reduced-motion. */
+.shimmer-text {
+  color: hsl(var(--foreground));
+  background-image: linear-gradient(
+    90deg,
+    hsl(var(--foreground)) 20%,
+    hsl(var(--muted-foreground)) 40%,
+    hsl(var(--foreground)) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .shimmer-text {
+    color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text {
+    color: hsl(var(--foreground));
+    background-image: none;
+    animation: none;
+  }
+}

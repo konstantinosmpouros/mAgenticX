@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
-import { updateUserPreferences } from '@/shared/lib/api';
-import { toastError } from '@/shared/lib/toast';
-import type { CustomInstructions, UserPreferences } from '@/shared/lib/types';
+import { useMemo } from "react";
+import { updateUserPreferences } from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
+import type { CustomInstructions, UserPreferences } from "@/shared/lib/types";
 import {
   DEFAULT_PERSONALITY,
   DEFAULT_REALTIME_VOICE,
@@ -9,16 +9,21 @@ import {
   type PersonalityId,
   type RealtimeVoice,
   type VoiceModeLanguage,
-} from '@/shared/lib/consts';
+} from "@/shared/lib/consts";
 import {
   normalizeCustomInstructions,
   normalizePersonality,
   normalizeRealtimeVoice,
   normalizeVoiceModeLanguage,
-} from '@/shared/lib/utils';
+} from "@/shared/lib/utils";
 
 // Preferences handlers derive the tool toggle model shown in settings and persist changes optimistically.
-type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastFn = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 export type PreferencesHandlers = {
   resolvedPreferences: UserPreferences;
@@ -65,7 +70,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
       voiceModeVoice: DEFAULT_REALTIME_VOICE,
       voiceModeLanguage: DEFAULT_VOICE_MODE_LANGUAGE,
     }),
-    []
+    [],
   );
   const resolvedPreferences = {
     ...defaultPreferences,
@@ -97,7 +102,11 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   // gate UI on it (the custom-instructions dialog closes only on success).
   const persistPrefs = async (nextPrefs: UserPreferences, errorTitle: string): Promise<boolean> => {
     if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
+      toast({
+        title: "Authentication required",
+        description: "Please sign in again.",
+        variant: "destructive",
+      });
       return false;
     }
     const prevPrefs = resolvedPreferences;
@@ -112,7 +121,7 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     } catch (error) {
       setUserPreferences(prevPrefs);
       toastError(toast, errorTitle, error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
+        description: error instanceof Error ? error.message : "Please try again.",
       });
       return false;
     } finally {
@@ -123,28 +132,30 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   const handleToggleSuggestionsEnabled = async () => {
     await persistPrefs(
       snapshotPrefs({ suggestionsEnabled: !(resolvedPreferences.suggestionsEnabled !== false) }),
-      'Could not update preferences'
+      "Could not update preferences",
     );
   };
 
   const handleToggleShowMessageTokenUsage = async () => {
     await persistPrefs(
-      snapshotPrefs({ showMessageTokenUsage: !(resolvedPreferences.showMessageTokenUsage === true) }),
-      'Could not update preferences'
+      snapshotPrefs({
+        showMessageTokenUsage: !(resolvedPreferences.showMessageTokenUsage === true),
+      }),
+      "Could not update preferences",
     );
   };
 
   const handleToggleSearchPastConvs = async () => {
     await persistPrefs(
       snapshotPrefs({ searchPastConvs: !(resolvedPreferences.searchPastConvs === true) }),
-      'Could not update preferences'
+      "Could not update preferences",
     );
   };
 
   const handleToggleUseMemory = async () => {
     await persistPrefs(
       snapshotPrefs({ useMemory: !(resolvedPreferences.useMemory !== false) }),
-      'Could not update preferences'
+      "Could not update preferences",
     );
   };
 
@@ -153,27 +164,35 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
     if (nextPersonality === resolvedPreferences.personality) return;
     await persistPrefs(
       snapshotPrefs({ personality: nextPersonality }),
-      'Could not update personality'
+      "Could not update personality",
     );
   };
 
-  const handleSaveCustomInstructions = async (customInstructions: CustomInstructions): Promise<boolean> => {
+  const handleSaveCustomInstructions = async (
+    customInstructions: CustomInstructions,
+  ): Promise<boolean> => {
     return persistPrefs(
       snapshotPrefs({ customInstructions: normalizeCustomInstructions(customInstructions) }),
-      'Could not save custom instructions'
+      "Could not save custom instructions",
     );
   };
 
   const handleSelectVoiceModeVoice = async (voice: RealtimeVoice) => {
     const nextVoice = normalizeRealtimeVoice(voice);
     if (nextVoice === normalizeRealtimeVoice(resolvedPreferences.voiceModeVoice)) return;
-    await persistPrefs(snapshotPrefs({ voiceModeVoice: nextVoice }), 'Could not update voice mode voice');
+    await persistPrefs(
+      snapshotPrefs({ voiceModeVoice: nextVoice }),
+      "Could not update voice mode voice",
+    );
   };
 
   const handleSelectVoiceModeLanguage = async (language: VoiceModeLanguage) => {
     const nextLanguage = normalizeVoiceModeLanguage(language);
     if (nextLanguage === normalizeVoiceModeLanguage(resolvedPreferences.voiceModeLanguage)) return;
-    await persistPrefs(snapshotPrefs({ voiceModeLanguage: nextLanguage }), 'Could not update voice mode language');
+    await persistPrefs(
+      snapshotPrefs({ voiceModeLanguage: nextLanguage }),
+      "Could not update voice mode language",
+    );
   };
 
   return {

@@ -1,0 +1,48 @@
+/* Toast countdown bar (shared/ui/toast-card.tsx). GPU-composited transform only
+   (never width/height). The bar depletes left→right over the toast's duration;
+   `.toast-progress-bar` gets its `animation-duration` inline per toast. It pauses
+   whenever the toaster region is hovered so the visible countdown stays in sync
+   with Sonner pausing its dismiss timer on hover. The indeterminate variant is
+   for loading toasts that have no fixed expiry. */
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@keyframes toast-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.toast-progress-bar {
+  transform-origin: left;
+  animation-name: toast-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+.toast-progress-indeterminate {
+  width: 35%;
+  animation: toast-progress-indeterminate 1.4s ease-in-out infinite;
+}
+[data-sonner-toaster]:hover .toast-progress-bar,
+[data-sonner-toaster]:hover .toast-progress-indeterminate {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No depleting motion — the bar stays a full static accent stripe and Sonner
+     still auto-dismisses on its own timer. */
+  .toast-progress-bar {
+    animation: none;
+    transform: scaleX(1);
+  }
+  .toast-progress-indeterminate {
+    animation: none;
+    width: 100%;
+  }
+}

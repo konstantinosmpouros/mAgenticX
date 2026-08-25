@@ -49,9 +49,16 @@ export function CodeTextPreview({ content, language, className }: TextPreviewPro
   }, [content, language]);
 
   return (
-    <div className={cn("flex h-full min-h-0 flex-col overflow-hidden rounded-[1.4rem] border border-white/10 bg-[#151515]", className)}>
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col overflow-hidden rounded-[1.4rem] border border-white/10 bg-[#151515]",
+        className,
+      )}
+    >
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-white/45">{language || "text"}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-white/45">
+          {language || "text"}
+        </span>
         <CopyButton content={content} />
       </div>
       <pre className="min-h-0 flex-1 overflow-auto p-4 text-[0.82rem] leading-6 text-white/85">
@@ -99,7 +106,10 @@ export function CsvPreview({ content }: { content: string }) {
     return (parsed.data || []).slice(0, 500);
   }, [content]);
 
-  const maxColumns = Math.min(80, rows.reduce((max, row) => Math.max(max, row.length), 0));
+  const maxColumns = Math.min(
+    80,
+    rows.reduce((max, row) => Math.max(max, row.length), 0),
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[1.4rem] border border-white/10 bg-[#171717]">
@@ -113,7 +123,10 @@ export function CsvPreview({ content }: { content: string }) {
         <table className="min-w-full border-collapse text-left text-xs text-white/80">
           <tbody>
             {rows.map((row, rowIndex) => (
-              <tr key={`csv-row-${rowIndex}`} className={rowIndex === 0 ? "bg-white/[0.06] text-white" : undefined}>
+              <tr
+                key={`csv-row-${rowIndex}`}
+                className={rowIndex === 0 ? "bg-white/[0.06] text-white" : undefined}
+              >
                 {Array.from({ length: maxColumns }).map((_, columnIndex) => (
                   <td
                     key={`csv-cell-${rowIndex}-${columnIndex}`}

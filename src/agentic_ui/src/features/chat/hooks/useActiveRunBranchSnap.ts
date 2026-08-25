@@ -52,5 +52,10 @@ export function useActiveRunBranchSnap({
     if (convChanged) {
       setBranchSelections({});
     }
-  }, [currentConversation, activeConversationRun, deriveBranchSelectionsForActiveRun, setBranchSelections]);
+  }, [
+    currentConversation,
+    activeConversationRun,
+    deriveBranchSelectionsForActiveRun,
+    setBranchSelections,
+  ]);
 }

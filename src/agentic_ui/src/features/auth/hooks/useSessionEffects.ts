@@ -1,7 +1,20 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
-import type { Agent, ConversationDetail, ConversationSummary, Skill, ToolMetadata, UserPreferences, UserProfile, UserSkill } from '@/shared/lib/types';
-import { loadSession, clearSession, updateSession, saveSession } from '@/shared/lib/authStorage';
-import { loadUISnapshot, saveUISnapshot, UISnapshotSerializable } from '@/shared/lib/uiStateStorage';
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import type {
+  Agent,
+  ConversationDetail,
+  ConversationSummary,
+  Skill,
+  ToolMetadata,
+  UserPreferences,
+  UserProfile,
+  UserSkill,
+} from "@/shared/lib/types";
+import { loadSession, clearSession, updateSession, saveSession } from "@/shared/lib/authStorage";
+import {
+  loadUISnapshot,
+  saveUISnapshot,
+  UISnapshotSerializable,
+} from "@/shared/lib/uiStateStorage";
 import {
   getAgents,
   getConversations,
@@ -9,21 +22,20 @@ import {
   getTools,
   getUserPreferences,
   restoreSession,
-} from '@/shared/lib/api';
-import { ensureFreshSession } from '@/shared/lib/sessionRefresh';
-import { sortByUpdatedAtDesc } from '@/shared/lib/utils';
+} from "@/shared/lib/api";
+import { ensureFreshSession } from "@/shared/lib/sessionRefresh";
+import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Initial session state helper
 // ---------------------------------------------------------------------------
 export function useInitialSessionState() {
-  const initialSession = typeof window !== 'undefined' ? loadSession() : null;
+  const initialSession = typeof window !== "undefined" ? loadSession() : null;
   const initialUserId = initialSession?.userId ?? null;
   const initialUserProfile = initialSession?.user ?? null;
   const initialLoggedIn = false;
   return { initialUserId, initialUserProfile, initialLoggedIn };
 }
-
 
 // ---------------------------------------------------------------------------
 // Auth rehydrate effect
@@ -47,7 +59,12 @@ export function useAuthRehydrateEffect(params: {
   setActiveProfileTab?: (v: string) => void;
   setSidebarOpen?: (v: boolean) => void;
   persistUIState?: () => void;
-  toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast?: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
 }) {
   const {
     setIsLoggedIn,
@@ -96,7 +113,7 @@ export function useAuthRehydrateEffect(params: {
         }
 
         const ttlMs =
-          typeof restored.tokenTtl === 'number' && restored.tokenTtl > 0
+          typeof restored.tokenTtl === "number" && restored.tokenTtl > 0
             ? restored.tokenTtl * 1000
             : 60 * 60 * 1000;
         saveSession(restored.user, ttlMs);
@@ -129,16 +146,17 @@ export function useAuthRehydrateEffect(params: {
         try {
           const snapshot = await loadUISnapshot(restored.user.id);
           if (snapshot) {
-            if (typeof snapshot.selectedAgent === 'string' && setSelectedAgent) {
+            if (typeof snapshot.selectedAgent === "string" && setSelectedAgent) {
               setSelectedAgent(snapshot.selectedAgent);
             }
-            if (typeof snapshot.isPrivateMode === 'boolean' && setIsPrivateMode) {
+            if (typeof snapshot.isPrivateMode === "boolean" && setIsPrivateMode) {
               setIsPrivateMode(snapshot.isPrivateMode);
             }
-            if (typeof snapshot.sidebarOpen === 'boolean' && setSidebarOpen) {
+            if (typeof snapshot.sidebarOpen === "boolean" && setSidebarOpen) {
               setSidebarOpen(snapshot.sidebarOpen);
             }
-            if (snapshot.activeProfileTab && setActiveProfileTab) setActiveProfileTab(snapshot.activeProfileTab);
+            if (snapshot.activeProfileTab && setActiveProfileTab)
+              setActiveProfileTab(snapshot.activeProfileTab);
 
             setAgents(snapshot.agents ?? []);
             hasSnapshotAgents = Boolean(snapshot.agents && snapshot.agents.length > 0);
@@ -151,12 +169,13 @@ export function useAuthRehydrateEffect(params: {
             setConversations(snapshot.conversations ?? []);
 
             needsTools =
-              Boolean(setAvailableTools) && !(snapshot.availableTools && snapshot.availableTools.length > 0);
+              Boolean(setAvailableTools) &&
+              !(snapshot.availableTools && snapshot.availableTools.length > 0);
             needsPreferences = Boolean(setUserPreferences) && !snapshot.userPreferences;
             needsConversations = true;
           }
         } catch (error) {
-          console.error('Failed to hydrate from snapshot', error);
+          console.error("Failed to hydrate from snapshot", error);
         }
 
         const requests: Promise<unknown>[] = [];
@@ -165,7 +184,7 @@ export function useAuthRehydrateEffect(params: {
           getAgents()
             .then((agents) => setAgents(agents))
             .catch((error) => {
-              console.error('Failed to fetch agents on rehydrate', error);
+              console.error("Failed to fetch agents on rehydrate", error);
               if (!hasSnapshotAgents) {
                 setAgents([]);
               }
@@ -177,7 +196,7 @@ export function useAuthRehydrateEffect(params: {
             getTools()
               .then((tools) => setAvailableTools?.(tools))
               .catch((error) => {
-                console.error('Failed to fetch tools on rehydrate', error);
+                console.error("Failed to fetch tools on rehydrate", error);
                 setAvailableTools?.([]);
               }),
           );
@@ -188,7 +207,7 @@ export function useAuthRehydrateEffect(params: {
             getSkills()
               .then((skills) => setAvailableSkills?.(skills))
               .catch((error) => {
-                console.error('Failed to fetch skills on rehydrate', error);
+                console.error("Failed to fetch skills on rehydrate", error);
                 setAvailableSkills?.([]);
               }),
           );
@@ -203,7 +222,7 @@ export function useAuthRehydrateEffect(params: {
             getUserPreferences(restored.user.id)
               .then((prefs) => setUserPreferences?.(prefs))
               .catch((error) => {
-                console.error('Failed to fetch preferences on rehydrate', error);
+                console.error("Failed to fetch preferences on rehydrate", error);
                 setUserPreferences?.(null);
               }),
           );
@@ -214,7 +233,7 @@ export function useAuthRehydrateEffect(params: {
             getConversations(restored.user.id)
               .then((conversationList) => setConversations(sortByUpdatedAtDesc(conversationList)))
               .catch((error) => {
-                console.error('Failed to fetch conversations on rehydrate', error);
+                console.error("Failed to fetch conversations on rehydrate", error);
                 setConversations([]);
               }),
           );
@@ -233,7 +252,7 @@ export function useAuthRehydrateEffect(params: {
         setConversationsLoading?.(false);
         setAuthResolved?.(true);
       } catch (error) {
-        console.error('Failed to restore session', error);
+        console.error("Failed to restore session", error);
         clearSession();
         setIsLoggedIn(false);
         setUserId(null);
@@ -252,7 +271,6 @@ export function useAuthRehydrateEffect(params: {
     void run();
   }, []);
 }
-
 
 // ---------------------------------------------------------------------------
 // UI snapshot persistence helper
@@ -350,7 +368,6 @@ export function useUISnapshotPersistence(params: {
   return { uiSnapshot, requestPersist };
 }
 
-
 // ---------------------------------------------------------------------------
 // Session auto-refresh effect
 // ---------------------------------------------------------------------------
@@ -363,7 +380,12 @@ export function useSessionAutoRefreshEffect(params: {
   setIsLoggedIn: (v: boolean) => void;
   setUserId: (v: string | null) => void;
   setUserProfile: (v: UserProfile | null) => void;
-  toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast?: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
 }) {
   const { isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast } = params;
   const timerRef = useRef<number | null>(null);
@@ -384,16 +406,16 @@ export function useSessionAutoRefreshEffect(params: {
       // ensureFreshSession does the single-flight refresh (cross-tab lock + fresh
       // marker skip + local persistence). We only sync React state and re-arm.
       const outcome = await ensureFreshSession();
-      if (outcome.status === 'failed') {
+      if (outcome.status === "failed") {
         // Refresh token gone/expired (idle >12d, absolute >20d, or revoked) —
         // the session is genuinely over.
-        throw new Error('session refresh failed');
+        throw new Error("session refresh failed");
       }
 
       // 'refreshed' carries the rotated user; 'already-fresh' means another tab
       // just refreshed, so read the shared persisted session for the profile.
       const existing = loadSession();
-      const user = outcome.status === 'refreshed' ? outcome.user : existing?.user ?? null;
+      const user = outcome.status === "refreshed" ? outcome.user : (existing?.user ?? null);
       if (user) {
         setUserProfile(user);
         if (user.id) setUserId(user.id);
@@ -404,16 +426,16 @@ export function useSessionAutoRefreshEffect(params: {
       setIsLoggedIn(true);
       scheduleRef.current();
     } catch (error) {
-      console.error('Session refresh failed:', error);
+      console.error("Session refresh failed:", error);
       clearTimer();
       clearSession();
       setIsLoggedIn(false);
       setUserId(null);
       setUserProfile(null);
       toast?.({
-        title: 'Session expired',
-        description: 'Please sign in again.',
-        variant: 'warning',
+        title: "Session expired",
+        description: "Please sign in again.",
+        variant: "warning",
         duration: 4000,
       });
     } finally {
@@ -485,7 +507,6 @@ export function useSessionAutoRefreshEffect(params: {
   }, [isLoggedIn, scheduleRefresh, clearTimer]);
 }
 
-
 // ---------------------------------------------------------------------------
 // Session state sync effect
 // ---------------------------------------------------------------------------
@@ -498,8 +519,11 @@ export function useSessionStateSyncEffect(params: {
   const { userId, selectedAgent, currentConversationId, isPrivateMode } = params;
   useEffect(() => {
     if (!userId) return;
-    updateSession({ userId, selectedAgent, lastConversationId: currentConversationId, isPrivateMode });
+    updateSession({
+      userId,
+      selectedAgent,
+      lastConversationId: currentConversationId,
+      isPrivateMode,
+    });
   }, [userId, selectedAgent, currentConversationId, isPrivateMode]);
 }
-
-

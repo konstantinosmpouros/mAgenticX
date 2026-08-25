@@ -72,13 +72,7 @@ function toDisplayText(value: unknown): string {
   }
 }
 
-function SectionLabel({
-  icon,
-  title,
-}: {
-  icon: React.ReactNode;
-  title: string;
-}) {
+function SectionLabel({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/[0.08] text-primary">
@@ -91,11 +85,7 @@ function SectionLabel({
 
 function getSubagentTitle(subagent: SubagentItem, index: number): string {
   return (
-    subagent.label ||
-    subagent.type ||
-    subagent.namespace ||
-    subagent.id ||
-    `Subagent ${index + 1}`
+    subagent.label || subagent.type || subagent.namespace || subagent.id || `Subagent ${index + 1}`
   );
 }
 
@@ -111,10 +101,7 @@ function InterruptList({ interrupts }: { interrupts: SubagentInterrupt[] }) {
   return (
     <div className="space-y-3 pl-5">
       {interrupts.map((interrupt, index) => (
-        <div
-          key={`${interrupt.threadId}-${index}`}
-          className="relative pl-7"
-        >
+        <div key={`${interrupt.threadId}-${index}`} className="relative pl-7">
           <span className="absolute left-0 top-1 h-2.5 w-2.5 rounded-full bg-amber-500 shadow-[0_0_0_6px_hsl(var(--background))]" />
           <div className="absolute left-[5px] top-4 bottom-[-12px] w-px bg-gradient-to-b from-amber-500/35 to-transparent last:hidden" />
 
@@ -122,9 +109,7 @@ function InterruptList({ interrupts }: { interrupts: SubagentInterrupt[] }) {
             <span className="rounded-full bg-amber-500/[0.12] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-500">
               Interrupt
             </span>
-            <span className="text-[11px] text-muted-foreground">
-              thread {interrupt.threadId}
-            </span>
+            <span className="text-[11px] text-muted-foreground">thread {interrupt.threadId}</span>
           </div>
           <CopyableContentBox content={toDisplayText(interrupt.content)} tone="code" size="md">
             <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] leading-6 text-white">
@@ -160,12 +145,7 @@ function CopyableContentBox({
   };
 
   return (
-    <div
-      className={cn(
-        "group relative overflow-hidden rounded-[20px] px-4 py-3",
-        "bg-zinc-950",
-      )}
-    >
+    <div className={cn("group relative overflow-hidden rounded-[20px] px-4 py-3", "bg-zinc-950")}>
       <div className="absolute right-9 top-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
@@ -218,9 +198,7 @@ function CopyableContentBox({
           "text-zinc-100",
         )}
       >
-        <div className="max-w-[calc(100%-1rem)]">
-          {children}
-        </div>
+        <div className="max-w-[calc(100%-1rem)]">{children}</div>
       </div>
     </div>
   );
@@ -245,10 +223,7 @@ function DisclosureButton({
       onClick={onClick}
       aria-expanded={expanded}
       aria-label={title}
-      className={cn(
-        "flex w-full items-center gap-3 text-left",
-        className,
-      )}
+      className={cn("flex w-full items-center gap-3 text-left", className)}
     >
       <span className="min-w-0 flex-1">{children}</span>
     </button>
@@ -291,9 +266,7 @@ function ToolCallItem({
         className="mb-1.5"
       >
         <span className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
-            {toolCall.name}
-          </span>
+          <span className="text-sm font-medium text-foreground">{toolCall.name}</span>
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
@@ -301,10 +274,14 @@ function ToolCallItem({
                 ? "bg-destructive/[0.12] text-destructive"
                 : toolCall.status === "completed"
                   ? "bg-emerald-500/[0.12] text-emerald-500"
-                  : "bg-sky-500/[0.12] text-sky-500"
+                  : "bg-sky-500/[0.12] text-sky-500",
             )}
           >
-            {toolCall.status === "error" ? "failed" : toolCall.status === "completed" ? "completed" : "running"}
+            {toolCall.status === "error"
+              ? "failed"
+              : toolCall.status === "completed"
+                ? "completed"
+                : "running"}
           </span>
         </span>
       </DisclosureButton>
@@ -390,7 +367,8 @@ export function SubagentCard({
   const [promptClampHeight, setPromptClampHeight] = React.useState(72);
   const promptRef = React.useRef<HTMLParagraphElement>(null);
   const reduceMotion = useReducedMotion();
-  const promptText = subagent.prompt || subagent.description || "Delegated subagent task in progress.";
+  const promptText =
+    subagent.prompt || subagent.description || "Delegated subagent task in progress.";
 
   // Measure the paragraph's true full height and the height of its first three
   // lines from real line metrics (line-height rounds per browser, so a hard 72px
@@ -451,7 +429,12 @@ export function SubagentCard({
                 cardExpanded ? "h-10 w-10" : "h-7 w-7",
               )}
             >
-              <Bot className={cn("transition-[height,width] duration-300", cardExpanded ? "h-4 w-4" : "h-3.5 w-3.5")} />
+              <Bot
+                className={cn(
+                  "transition-[height,width] duration-300",
+                  cardExpanded ? "h-4 w-4" : "h-3.5 w-3.5",
+                )}
+              />
             </div>
             <h4
               className={cn(
@@ -508,77 +491,74 @@ export function SubagentCard({
       ) : null}
 
       <SmoothCollapse open={cardExpanded}>
-      <div className="relative flex flex-col gap-6 pl-8 pr-4 pt-2">
+        <div className="relative flex flex-col gap-6 pl-8 pr-4 pt-2">
           {hasTranscript ? (
-          <section>
-            <DisclosureButton
-              title="Toggle streamed text"
-              expanded={textExpanded}
-              onClick={() => setTextExpanded((current) => !current)}
-              className="mb-3"
-            >
-              <SectionLabel
-                icon={<MessageSquareText className="h-3.5 w-3.5" />}
-                title="Response"
-              />
-            </DisclosureButton>
-            <SmoothCollapse open={textExpanded}>
-              <CopyableContentBox content={transcript} size="xl">
-                <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[14px] leading-7 text-zinc-100">
-                  {transcript}
-                </p>
-              </CopyableContentBox>
-            </SmoothCollapse>
-          </section>
+            <section>
+              <DisclosureButton
+                title="Toggle streamed text"
+                expanded={textExpanded}
+                onClick={() => setTextExpanded((current) => !current)}
+                className="mb-3"
+              >
+                <SectionLabel
+                  icon={<MessageSquareText className="h-3.5 w-3.5" />}
+                  title="Response"
+                />
+              </DisclosureButton>
+              <SmoothCollapse open={textExpanded}>
+                <CopyableContentBox content={transcript} size="xl">
+                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[14px] leading-7 text-zinc-100">
+                    {transcript}
+                  </p>
+                </CopyableContentBox>
+              </SmoothCollapse>
+            </section>
           ) : null}
 
           {hasTools ? (
-          <section>
-            <DisclosureButton
-              title="Toggle tool activity"
-              expanded={toolsExpanded}
-              onClick={() => setToolsExpanded((current) => !current)}
-              className="mb-3"
-            >
-              <SectionLabel
-                icon={<Wrench className="h-3.5 w-3.5" />}
-                title="Tool Activity"
-              />
-            </DisclosureButton>
-            <SmoothCollapse open={toolsExpanded}>
-              <div className="space-y-4 pl-5">
-                {tools.map((toolCall, toolIndex) => (
-                  <div key={toolCall.id} className="relative">
-                    {toolIndex < tools.length - 1 ? (
-                      <span className="absolute left-[5px] top-4 bottom-[-16px] w-px bg-gradient-to-b from-primary/35 via-border/80 to-transparent" />
-                    ) : null}
-                    <ToolCallItem toolCall={toolCall} defaultExpanded={!defaultCollapsedSections} />
-                  </div>
-                ))}
-              </div>
-            </SmoothCollapse>
-          </section>
+            <section>
+              <DisclosureButton
+                title="Toggle tool activity"
+                expanded={toolsExpanded}
+                onClick={() => setToolsExpanded((current) => !current)}
+                className="mb-3"
+              >
+                <SectionLabel icon={<Wrench className="h-3.5 w-3.5" />} title="Tool Activity" />
+              </DisclosureButton>
+              <SmoothCollapse open={toolsExpanded}>
+                <div className="space-y-4 pl-5">
+                  {tools.map((toolCall, toolIndex) => (
+                    <div key={toolCall.id} className="relative">
+                      {toolIndex < tools.length - 1 ? (
+                        <span className="absolute left-[5px] top-4 bottom-[-16px] w-px bg-gradient-to-b from-primary/35 via-border/80 to-transparent" />
+                      ) : null}
+                      <ToolCallItem
+                        toolCall={toolCall}
+                        defaultExpanded={!defaultCollapsedSections}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </SmoothCollapse>
+            </section>
           ) : null}
 
           {hasInterrupts ? (
-          <section>
-            <DisclosureButton
-              title="Toggle HITL interrupts"
-              expanded={interruptsExpanded}
-              onClick={() => setInterruptsExpanded((current) => !current)}
-              className="mb-3"
-            >
-              <SectionLabel
-                icon={<Hand className="h-3.5 w-3.5" />}
-                title="HITL Interrupts"
-              />
-            </DisclosureButton>
-            <SmoothCollapse open={interruptsExpanded}>
-              <InterruptList interrupts={interrupts} />
-            </SmoothCollapse>
-          </section>
+            <section>
+              <DisclosureButton
+                title="Toggle HITL interrupts"
+                expanded={interruptsExpanded}
+                onClick={() => setInterruptsExpanded((current) => !current)}
+                className="mb-3"
+              >
+                <SectionLabel icon={<Hand className="h-3.5 w-3.5" />} title="HITL Interrupts" />
+              </DisclosureButton>
+              <SmoothCollapse open={interruptsExpanded}>
+                <InterruptList interrupts={interrupts} />
+              </SmoothCollapse>
+            </section>
           ) : null}
-      </div>
+        </div>
       </SmoothCollapse>
     </div>
   );

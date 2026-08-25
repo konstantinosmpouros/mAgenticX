@@ -78,7 +78,7 @@ The browser application is a React 18 SPA built with Vite and served in producti
 
 ### State architecture & routing
 
-The chat workspace is a **layout-route shell + route views**, with shared state in a **Zustand store** (`src/agentic_ui/src/stores/workspaceStore.ts`):
+The chat workspace is a **layout-route shell + route views**, with shared state in a **Zustand store** (`src/agentic_ui/src/shared/stores/workspaceStore.ts`):
 
 - **`ChatShell`** ([pages/ChatPage.tsx](../../src/agentic_ui/src/pages/ChatPage.tsx)) is the persistent shell — sidebar, search, profile/dialog modals, and the chrome. It renders `<Outlet/>` and **never unmounts** across the chat routes. All workspace logic (state, hooks, handlers, effects) lives in the `useChatWorkspace` hook it calls.
 - **Route views** render in the Outlet: [`pages/ChatView.tsx`](../../src/agentic_ui/src/pages/ChatView.tsx) for `/` and `/c/:conversationId` (header + message body + composer), [`pages/TasksView.tsx`](../../src/agentic_ui/src/pages/TasksView.tsx) for `/tasks`. `SharedConvPage` renders the shell directly with `<ChatShell><ChatView/></ChatShell>` (the `children ?? <Outlet/>` slot) for full shared conversations.
@@ -464,5 +464,5 @@ Only `agentic_ui` (port 8050) is bound to the host. All other services are inter
 | RAG settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | Chroma host/port, proxy secret |
 | Internal proxy trust | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `require_internal_caller` dependency |
 | MCP tool catalog | [src/mcp_gateway/mcp_catalog.yaml](../../src/mcp_gateway/mcp_catalog.yaml) | list of registered MCP servers |
-| Frontend API client | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | all REST call definitions, base URL construction |
-| Frontend constants | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `API_BASE`, feature flags |
+| Frontend API client | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | all REST call definitions, base URL construction |
+| Frontend constants | [src/agentic_ui/src/shared/lib/consts/](../../src/agentic_ui/src/shared/lib/consts/) | `API_BASE`, feature flags |

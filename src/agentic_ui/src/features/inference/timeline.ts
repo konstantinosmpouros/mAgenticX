@@ -94,7 +94,10 @@ function cloneFold(fold: TimelineFoldIndexes): TimelineFoldIndexes {
     namespaceToKey: { ...fold.namespaceToKey },
     toolPaths: { ...fold.toolPaths },
     subFolds: Object.fromEntries(
-      Object.entries(fold.subFolds).map(([key, sub]) => [key, { ...sub, toolPaths: { ...sub.toolPaths } }]),
+      Object.entries(fold.subFolds).map(([key, sub]) => [
+        key,
+        { ...sub, toolPaths: { ...sub.toolPaths } },
+      ]),
     ),
   };
 }
@@ -186,7 +189,12 @@ function ensureThinking(session: Session, ts?: number): ThinkingBlock {
     return blockForWrite<ThinkingBlock>(session, fold.openThinkingIndex);
   }
   fold.openContentIndex = null;
-  const block: ThinkingBlock = { kind: "thinking", id: nextBlockId(session), items: [], startedAt: ts };
+  const block: ThinkingBlock = {
+    kind: "thinking",
+    id: nextBlockId(session),
+    items: [],
+    startedAt: ts,
+  };
   session.state.blocks.push(block);
   fold.openThinkingIndex = session.state.blocks.length - 1;
   session.clonedBlocks.add(fold.openThinkingIndex);
@@ -354,7 +362,11 @@ function applyToolEvent(
 // ------------------------------------------------------
 // HITL interrupts
 // ------------------------------------------------------
-function pushInterrupt(session: Session, raw: RawEvent, subagentId?: string): TimelineHitlApproval | null {
+function pushInterrupt(
+  session: Session,
+  raw: RawEvent,
+  subagentId?: string,
+): TimelineHitlApproval | null {
   const parsed = HITLInterruptPayloadSchema.safeParse(raw);
   if (!parsed.success) return null;
   const value = parsed.data;
@@ -403,7 +415,11 @@ function bindInterruptToTool(block: ThinkingBlock, approval: TimelineHitlApprova
   const used = new Set<number>();
   let boundAny = false;
   actions.forEach((action, actionIndex) => {
-    let pick = candidates.find((ci) => !used.has(ci) && (!action.toolName || (block.items[ci] as TimelineToolExecution).name === action.toolName));
+    let pick = candidates.find(
+      (ci) =>
+        !used.has(ci) &&
+        (!action.toolName || (block.items[ci] as TimelineToolExecution).name === action.toolName),
+    );
     if (pick === undefined) pick = candidates.find((ci) => !used.has(ci));
     if (pick === undefined) return;
     used.add(pick);
@@ -422,8 +438,7 @@ function resolveInterrupt(
   decisions?: TimelineHitlActionOutcome[],
 ): void {
   const interrupts = session.state.interrupts;
-  const targetId =
-    interruptId ?? interrupts.find((item) => item.status === "pending")?.id ?? null;
+  const targetId = interruptId ?? interrupts.find((item) => item.status === "pending")?.id ?? null;
   if (!targetId) return;
   const status: TimelineHitlApproval["status"] = decision === "reject" ? "rejected" : "approved";
 
@@ -505,7 +520,10 @@ function toTitleCase(value?: string): string | undefined {
 function parseRawSseEvent(raw: string): RawEvent | null {
   let text = String(raw ?? "").trim();
   if (!text) return null;
-  if ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith('"') && text.endsWith('"'))) {
+  if (
+    (text.startsWith("'") && text.endsWith("'")) ||
+    (text.startsWith('"') && text.endsWith('"'))
+  ) {
     text = text.slice(1, -1);
   }
   const dataIndex = text.indexOf("data:");
@@ -532,7 +550,11 @@ function parseRawSseEvent(raw: string): RawEvent | null {
   return null;
 }
 
-function ensureSubagentBlock(session: Session, key: string, ts?: number): { block: SubagentBlock; index: number } {
+function ensureSubagentBlock(
+  session: Session,
+  key: string,
+  ts?: number,
+): { block: SubagentBlock; index: number } {
   const fold = session.state.fold;
   const existing = fold.subagentIndexByKey[key];
   if (existing !== undefined) {
@@ -551,7 +573,12 @@ function ensureSubagentBlock(session: Session, key: string, ts?: number): { bloc
   session.state.blocks.push(block);
   const index = session.state.blocks.length - 1;
   fold.subagentIndexByKey[key] = index;
-  fold.subFolds[key] = { openThinkingIndex: null, openContentIndex: null, toolPaths: {}, pendingRetool: null };
+  fold.subFolds[key] = {
+    openThinkingIndex: null,
+    openContentIndex: null,
+    toolPaths: {},
+    pendingRetool: null,
+  };
   session.state.subagentCount = Object.keys(fold.subagentIndexByKey).length;
   session.clonedBlocks.add(index);
   return { block, index };
@@ -568,7 +595,12 @@ function subEnsureThinking(
     return subBlockForWrite<ThinkingBlock>(session, parentIndex, subFold.openThinkingIndex);
   }
   subFold.openContentIndex = null;
-  const block: ThinkingBlock = { kind: "thinking", id: nextBlockId(session), items: [], startedAt: ts };
+  const block: ThinkingBlock = {
+    kind: "thinking",
+    id: nextBlockId(session),
+    items: [],
+    startedAt: ts,
+  };
   parent.blocks.push(block);
   subFold.openThinkingIndex = parent.blocks.length - 1;
   let cloned = session.clonedSubBlocks.get(parentIndex);
@@ -588,7 +620,11 @@ function subEnsureContent(
 ): ContentBlock {
   const parent = blockForWrite<SubagentBlock>(session, parentIndex);
   if (subFold.openThinkingIndex !== null) {
-    const thinking = subBlockForWrite<ThinkingBlock>(session, parentIndex, subFold.openThinkingIndex);
+    const thinking = subBlockForWrite<ThinkingBlock>(
+      session,
+      parentIndex,
+      subFold.openThinkingIndex,
+    );
     if (thinking.endedAt === undefined && ts !== undefined) thinking.endedAt = ts;
     subFold.openThinkingIndex = null;
   }
@@ -637,7 +673,11 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
     // tool step in the sub-agent's open block; a chip item is the fallback
     // for interrupts that don't gate a tool call.
     if (approval && subFold.openThinkingIndex !== null) {
-      const thinking = subBlockForWrite<ThinkingBlock>(session, parentIndex, subFold.openThinkingIndex);
+      const thinking = subBlockForWrite<ThinkingBlock>(
+        session,
+        parentIndex,
+        subFold.openThinkingIndex,
+      );
       if (!bindInterruptToTool(thinking, approval)) {
         thinking.items.push(approval);
       }
@@ -647,7 +687,11 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
 
   if (type === "THINKING_TEXT_MESSAGE_CONTENT") {
     const thinking = subEnsureThinking(session, parentIndex, subFold, eventTimestamp(inner));
-    const thought: TimelineThought = { kind: "thought", id: nextItemId(session), text: String(inner.delta ?? "") };
+    const thought: TimelineThought = {
+      kind: "thought",
+      id: nextItemId(session),
+      text: String(inner.delta ?? ""),
+    };
     thinking.items.push(thought);
     return;
   }
@@ -663,7 +707,12 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
     return;
   }
 
-  if (type === "TOOL_CALL_START" || type === "TOOL_CALL_ARGS" || type === "TOOL_CALL_END" || type === "TOOL_CALL_RESULT") {
+  if (
+    type === "TOOL_CALL_START" ||
+    type === "TOOL_CALL_ARGS" ||
+    type === "TOOL_CALL_END" ||
+    type === "TOOL_CALL_RESULT"
+  ) {
     applyToolEvent(
       session,
       inner,
@@ -767,7 +816,10 @@ function applyEvent(session: Session, event: RawEvent): void {
       // approval binds onto the stalled tool step; a chip item is the
       // fallback for interrupts that don't gate a tool call.
       if (approval && session.state.fold.openThinkingIndex !== null) {
-        const thinking = blockForWrite<ThinkingBlock>(session, session.state.fold.openThinkingIndex);
+        const thinking = blockForWrite<ThinkingBlock>(
+          session,
+          session.state.fold.openThinkingIndex,
+        );
         if (!bindInterruptToTool(thinking, approval)) {
           thinking.items.push(approval);
         }
@@ -801,7 +853,11 @@ function applyEvent(session: Session, event: RawEvent): void {
 
   if (type === "THINKING_TEXT_MESSAGE_CONTENT") {
     const thinking = ensureThinking(session, eventTimestamp(event));
-    const thought: TimelineThought = { kind: "thought", id: nextItemId(session), text: String(event.delta ?? "") };
+    const thought: TimelineThought = {
+      kind: "thought",
+      id: nextItemId(session),
+      text: String(event.delta ?? ""),
+    };
     thinking.items.push(thought);
     return;
   }
@@ -811,7 +867,12 @@ function applyEvent(session: Session, event: RawEvent): void {
     return;
   }
 
-  if (type === "TOOL_CALL_START" || type === "TOOL_CALL_ARGS" || type === "TOOL_CALL_END" || type === "TOOL_CALL_RESULT") {
+  if (
+    type === "TOOL_CALL_START" ||
+    type === "TOOL_CALL_ARGS" ||
+    type === "TOOL_CALL_END" ||
+    type === "TOOL_CALL_RESULT"
+  ) {
     applyToolEvent(
       session,
       event,
@@ -888,7 +949,9 @@ export function finalizeTimeline(state: RunTimeline, status: TimelineTerminalSta
 export const TERMINAL_TIMELINE_STATUSES = new Set(["completed", "cancelled", "failed"]);
 
 function asTerminalStatus(status?: string | null): TimelineTerminalStatus | null {
-  return status && TERMINAL_TIMELINE_STATUSES.has(status) ? (status as TimelineTerminalStatus) : null;
+  return status && TERMINAL_TIMELINE_STATUSES.has(status)
+    ? (status as TimelineTerminalStatus)
+    : null;
 }
 
 type LegacyMessageShape = {
@@ -897,7 +960,9 @@ type LegacyMessageShape = {
 };
 
 function isFullEventLog(events: RawEvent[]): boolean {
-  return events.some((event) => event && typeof event === "object" && FULL_LOG_TYPES.has(event.type));
+  return events.some(
+    (event) => event && typeof event === "object" && FULL_LOG_TYPES.has(event.type),
+  );
 }
 
 // Pre-rebuild messages persisted a CUSTOM-only log (plan/subagent/HITL); text
@@ -912,7 +977,9 @@ function foldLegacyTimeline(
   // Seed the thinking block BEFORE folding the CUSTOM events so the fold's
   // block indexes (subagent positions, open-block pointers) stay valid.
   const base = createTimeline();
-  const thoughts = (legacy.thinking ?? []).filter((entry) => typeof entry === "string" && entry.trim());
+  const thoughts = (legacy.thinking ?? []).filter(
+    (entry) => typeof entry === "string" && entry.trim(),
+  );
   if (thoughts.length) {
     const items = thoughts.map((entry, index): ThinkingBlock["items"][number] => {
       const toolMatch = entry.match(/^\[tool\]\s*(.+)$/);
@@ -934,7 +1001,10 @@ function foldLegacyTimeline(
   if ((legacy.content ?? "").trim()) {
     state = {
       ...state,
-      blocks: [...state.blocks, { kind: "content", id: "legacy-content", text: legacy.content ?? "" }],
+      blocks: [
+        ...state.blocks,
+        { kind: "content", id: "legacy-content", text: legacy.content ?? "" },
+      ],
     };
   }
   return finalizeTimeline(state, status ?? "completed");
@@ -947,7 +1017,9 @@ export function foldTimeline(
   const safeEvents = Array.isArray(events) ? events : [];
   const terminalStatus = asTerminalStatus(opts?.status);
   const legacy = opts?.legacyMessage;
-  const hasLegacyAggregates = Boolean(legacy && ((legacy.content ?? "").trim() || legacy.thinking?.length));
+  const hasLegacyAggregates = Boolean(
+    legacy && ((legacy.content ?? "").trim() || legacy.thinking?.length),
+  );
 
   if (!isFullEventLog(safeEvents) && hasLegacyAggregates) {
     return foldLegacyTimeline(safeEvents, legacy as LegacyMessageShape, terminalStatus);
@@ -960,7 +1032,9 @@ export function foldTimeline(
   return state;
 }
 
-export function pendingTimelineInterrupts(timeline: RunTimeline | null | undefined): TimelineHitlApproval[] {
+export function pendingTimelineInterrupts(
+  timeline: RunTimeline | null | undefined,
+): TimelineHitlApproval[] {
   if (!timeline) return [];
   return timeline.interrupts.filter((item) => item.status === "pending");
 }

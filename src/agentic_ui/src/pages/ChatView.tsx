@@ -122,114 +122,118 @@ export default function ChatView() {
           includes the header) is what makes it structurally impossible for the
           centered greeting/composer to overlap the header and steal its clicks. */}
       <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
-      {/* Chat Messages Container*/}
-      <div className="voice-chat-transition-shell relative flex flex-1 min-h-0 overflow-hidden">
-        {bodyTransition.exiting ? (
+        {/* Chat Messages Container*/}
+        <div className="voice-chat-transition-shell relative flex flex-1 min-h-0 overflow-hidden">
+          {bodyTransition.exiting ? (
+            <div
+              className={`voice-chat-panel voice-chat-panel-${bodyTransition.exiting} voice-chat-panel-exit`}
+              aria-hidden="true"
+            >
+              {renderConversationBody(bodyTransition.exiting)}
+            </div>
+          ) : null}
           <div
-            className={`voice-chat-panel voice-chat-panel-${bodyTransition.exiting} voice-chat-panel-exit`}
-            aria-hidden="true"
+            className={`voice-chat-panel voice-chat-panel-${bodyTransition.current} voice-chat-panel-enter`}
           >
-            {renderConversationBody(bodyTransition.exiting)}
+            {renderConversationBody(bodyTransition.current)}
           </div>
-        ) : null}
-        <div className={`voice-chat-panel voice-chat-panel-${bodyTransition.current} voice-chat-panel-enter`}>
-          {renderConversationBody(bodyTransition.current)}
         </div>
-      </div>
 
-      {/* Input Area */}
-      <ChatInputBar
-        mode={voiceSession.isActive ? "voice" : "chat"}
-        voiceBarVisible={voiceBarReady}
-        chatBarVisible={chatBarReady}
-        // Centered empty state
-        isMessagesEmpty={isMessagesEmpty}
-        positionClass={
-          settledVoiceActive
-            ? "sticky bottom-0 left-0 right-0 z-30 p-6"
-            : isMessagesEmpty
-            ? "absolute left-1/2 top-[35%] z-40 w-full p-6"
-            : "sticky bottom-0 left-0 right-0 z-30 p-6"
-        }
+        {/* Input Area */}
+        <ChatInputBar
+          mode={voiceSession.isActive ? "voice" : "chat"}
+          voiceBarVisible={voiceBarReady}
+          chatBarVisible={chatBarReady}
+          // Centered empty state
+          isMessagesEmpty={isMessagesEmpty}
+          positionClass={
+            settledVoiceActive
+              ? "sticky bottom-0 left-0 right-0 z-30 p-6"
+              : isMessagesEmpty
+                ? "absolute left-1/2 top-[35%] z-40 w-full p-6"
+                : "sticky bottom-0 left-0 right-0 z-30 p-6"
+          }
 
-        // pass through your existing state/handlers/refs
-        attachments={attachments}
-        isPrivateMode={isPrivateMode}
-        thinkingActive={isCurrentConversationBusy && thinkingState?.isActive}
-        isStreaming={isCurrentConversationBusy}
-        currentMessage={currentMessage}
-        setCurrentMessage={setCurrentMessage}
-        handlePaste={handlePaste}
-        handleSendMessage={handleSendMessage}
-        handleStopStreaming={handleStopStreaming}
-        isImageFile={isImageFile}
-        getImageUrl={getImageUrl}
-        handleImageClick={handleImageClick}
-        removeAttachment={removeAttachment}
-        handleFileUpload={handleFileUpload}
-        fileInputRef={fileInputRef}
-        textareaRef={textareaRef}
-        containerRef={composerContainerRef}
-        emptyWrapperStyle={settledVoiceActive ? undefined : emptyWrapperStyle}
-        textareaMaxHeight={textareaMaxHeight}
-        onDictationSubmit={handleDictationSubmit}
-        onDictationStatusChange={handleDictationStatusChange}
-        dictationStatus={dictationStatus}
-        dictationRequestSignal={dictationRequestSignal}
-        dictationCancelSignal={dictationCancelSignal}
-        onVoiceMode={triggerVoiceMode}
-        voiceStatus={voiceSession.status}
-        voiceMuted={voiceSession.muted}
-        onCloseVoiceMode={voiceSession.close}
-        onToggleVoiceMute={voiceSession.toggleMute}
-        onVoiceTextSubmit={voiceSession.sendText}
+          // pass through your existing state/handlers/refs
+          attachments={attachments}
+          isPrivateMode={isPrivateMode}
+          thinkingActive={isCurrentConversationBusy && thinkingState?.isActive}
+          isStreaming={isCurrentConversationBusy}
+          currentMessage={currentMessage}
+          setCurrentMessage={setCurrentMessage}
+          handlePaste={handlePaste}
+          handleSendMessage={handleSendMessage}
+          handleStopStreaming={handleStopStreaming}
+          isImageFile={isImageFile}
+          getImageUrl={getImageUrl}
+          handleImageClick={handleImageClick}
+          removeAttachment={removeAttachment}
+          handleFileUpload={handleFileUpload}
+          fileInputRef={fileInputRef}
+          textareaRef={textareaRef}
+          containerRef={composerContainerRef}
+          emptyWrapperStyle={settledVoiceActive ? undefined : emptyWrapperStyle}
+          textareaMaxHeight={textareaMaxHeight}
+          onDictationSubmit={handleDictationSubmit}
+          onDictationStatusChange={handleDictationStatusChange}
+          dictationStatus={dictationStatus}
+          dictationRequestSignal={dictationRequestSignal}
+          dictationCancelSignal={dictationCancelSignal}
+          onVoiceMode={triggerVoiceMode}
+          voiceStatus={voiceSession.status}
+          voiceMuted={voiceSession.muted}
+          onCloseVoiceMode={voiceSession.close}
+          onToggleVoiceMute={voiceSession.toggleMute}
+          onVoiceTextSubmit={voiceSession.sendText}
 
-        // UI deps
-        AgentIcon={AgentIcon}
-        Tooltip={Tooltip}
-        TooltipTrigger={TooltipTrigger}
-        TooltipContent={TooltipContent}
-        toast={toast}
-        currentAgent={inputBarAgent ?? undefined}
-        Textarea={Textarea}
-        topAccessory={
-          showPlanningCard && activePlan ? (
-            <PlanCard
-              plan={activePlan}
-              expanded={isPlanExpanded}
-              onToggle={() => setIsPlanExpanded((prev) => !prev)}
-              title="Deep agent execution plan"
-              className="absolute bottom-[calc(100%-1px)] left-1/2 z-10 w-[min(100%,39rem)] -translate-x-1/2"
-            />
-          ) : null
-        }
-        hitlTakeover={
-          activeHitlInterrupt && activeConversationRun ? (
-            <HitlInputTakeover
-              interrupt={{
-                interruptId: activeHitlInterrupt.id,
-                threadId: activeHitlInterrupt.threadId,
-                content: activeHitlInterrupt.content,
-              }}
-              pendingCount={pendingRunInterrupts.length}
-              onResolve={(decisions) =>
-                resumeInferenceRunHandler(activeConversationRun.id, {
+          // UI deps
+          AgentIcon={AgentIcon}
+          Tooltip={Tooltip}
+          TooltipTrigger={TooltipTrigger}
+          TooltipContent={TooltipContent}
+          toast={toast}
+          currentAgent={inputBarAgent ?? undefined}
+          Textarea={Textarea}
+          topAccessory={
+            showPlanningCard && activePlan ? (
+              <PlanCard
+                plan={activePlan}
+                expanded={isPlanExpanded}
+                onToggle={() => setIsPlanExpanded((prev) => !prev)}
+                title="Deep agent execution plan"
+                className="absolute bottom-[calc(100%-1px)] left-1/2 z-10 w-[min(100%,39rem)] -translate-x-1/2"
+              />
+            ) : null
+          }
+          hitlTakeover={
+            activeHitlInterrupt && activeConversationRun ? (
+              <HitlInputTakeover
+                interrupt={{
                   interruptId: activeHitlInterrupt.id,
                   threadId: activeHitlInterrupt.threadId,
-                  // Overall decision (legacy/back-compat field): approve
-                  // unless every action was rejected. Per-action outcomes
-                  // ride in `decisions`.
-                  decision: decisions.some((d) => d.decision === "approve") ? "approve" : "reject",
-                  reason: decisions.find((d) => d.decision === "reject" && d.reason)?.reason,
-                  decisions,
-                })
-              }
-            />
-          ) : null
-        }
-        starterSuggestions={canShowStarterSuggestions ? starterSuggestions : []}
-        onStarterSuggestionSelect={handleStarterSuggestionSelect}
-      />
+                  content: activeHitlInterrupt.content,
+                }}
+                pendingCount={pendingRunInterrupts.length}
+                onResolve={(decisions) =>
+                  resumeInferenceRunHandler(activeConversationRun.id, {
+                    interruptId: activeHitlInterrupt.id,
+                    threadId: activeHitlInterrupt.threadId,
+                    // Overall decision (legacy/back-compat field): approve
+                    // unless every action was rejected. Per-action outcomes
+                    // ride in `decisions`.
+                    decision: decisions.some((d) => d.decision === "approve")
+                      ? "approve"
+                      : "reject",
+                    reason: decisions.find((d) => d.decision === "reject" && d.reason)?.reason,
+                    decisions,
+                  })
+                }
+              />
+            ) : null
+          }
+          starterSuggestions={canShowStarterSuggestions ? starterSuggestions : []}
+          onStarterSuggestionSelect={handleStarterSuggestionSelect}
+        />
       </div>
 
       {loadingConversation && (

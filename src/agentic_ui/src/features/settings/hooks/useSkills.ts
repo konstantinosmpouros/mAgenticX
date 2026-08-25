@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addGlobalSkillToPool,
   createCustomSkill,
@@ -8,14 +8,14 @@ import {
   getMySkills,
   getUserAgentSkills,
   removeSkillFromPool,
-} from '@/shared/lib/api';
-import { toastError } from '@/shared/lib/toast';
+} from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 import type {
   CustomSkillCreatePayload,
   UserAgentSkillSelection,
   UserSkill,
   UserSkillDetail,
-} from '@/shared/lib/types';
+} from "@/shared/lib/types";
 
 // Owns three pieces of per-user skill state for the ProfilePanel "Skills" tab:
 //
@@ -31,7 +31,12 @@ import type {
 // The hook does not own the global catalog (``availableSkills``); that lives
 // in page-level state and is fetched alongside ``getAgents`` / ``getTools``
 // during the auth-rehydrate flow.
-type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastFn = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 export type SkillsHandlers = {
   // Per-(user, agent) selection
@@ -98,81 +103,93 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
   // -----------------------------------------------------------------
   // Per-(user, agent) selection
   // -----------------------------------------------------------------
-  const ensureLoaded = useCallback(async (agentId: string) => {
-    if (!userId || !agentId) return;
-    if (loadedRef.current.has(agentId)) return;
-    setLoadingAgents((prev) => {
-      const next = new Set(prev);
-      next.add(agentId);
-      return next;
-    });
-    try {
-      const fetched = await getUserAgentSkills(userId, agentId);
-      setSelections((prev) => ({ ...prev, [agentId]: fetched }));
-      loadedRef.current.add(agentId);
-    } catch (error) {
-      toastError(toast, 'Could not load skills', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-    } finally {
+  const ensureLoaded = useCallback(
+    async (agentId: string) => {
+      if (!userId || !agentId) return;
+      if (loadedRef.current.has(agentId)) return;
       setLoadingAgents((prev) => {
         const next = new Set(prev);
-        next.delete(agentId);
+        next.add(agentId);
         return next;
       });
-    }
-  }, [userId, toast]);
-
-  const isLoading = useCallback(
-    (agentId: string) => loadingAgents.has(agentId),
-    [loadingAgents],
+      try {
+        const fetched = await getUserAgentSkills(userId, agentId);
+        setSelections((prev) => ({ ...prev, [agentId]: fetched }));
+        loadedRef.current.add(agentId);
+      } catch (error) {
+        toastError(toast, "Could not load skills", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setLoadingAgents((prev) => {
+          const next = new Set(prev);
+          next.delete(agentId);
+          return next;
+        });
+      }
+    },
+    [userId, toast],
   );
+
+  const isLoading = useCallback((agentId: string) => loadingAgents.has(agentId), [loadingAgents]);
 
   const isToggling = useCallback(
     (agentId: string, skillName: string) => togglingKeys.has(`${agentId}::${skillName}`),
     [togglingKeys],
   );
 
-  const toggleSkill = useCallback(async (agentId: string, skillName: string) => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    const key = `${agentId}::${skillName}`;
-    if (togglingKeys.has(key)) return;
-
-    const current = selections[agentId] ?? [];
-    const isCurrentlyEnabled = current.includes(skillName);
-    const optimistic = isCurrentlyEnabled
-      ? current.filter((name) => name !== skillName)
-      : [...current, skillName].sort();
-
-    setSelections((prev) => ({ ...prev, [agentId]: optimistic }));
-    setTogglingKeys((prev) => {
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-
-    try {
-      if (isCurrentlyEnabled) {
-        await disableUserAgentSkill(userId, agentId, skillName);
-      } else {
-        await enableUserAgentSkill(userId, agentId, skillName);
+  const toggleSkill = useCallback(
+    async (agentId: string, skillName: string) => {
+      if (!userId) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in again.",
+          variant: "destructive",
+        });
+        return;
       }
-    } catch (error) {
-      setSelections((prev) => ({ ...prev, [agentId]: current }));
-      toastError(toast, isCurrentlyEnabled ? 'Could not disable skill' : 'Could not enable skill', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-    } finally {
+      const key = `${agentId}::${skillName}`;
+      if (togglingKeys.has(key)) return;
+
+      const current = selections[agentId] ?? [];
+      const isCurrentlyEnabled = current.includes(skillName);
+      const optimistic = isCurrentlyEnabled
+        ? current.filter((name) => name !== skillName)
+        : [...current, skillName].sort();
+
+      setSelections((prev) => ({ ...prev, [agentId]: optimistic }));
       setTogglingKeys((prev) => {
         const next = new Set(prev);
-        next.delete(key);
+        next.add(key);
         return next;
       });
-    }
-  }, [userId, selections, togglingKeys, toast]);
+
+      try {
+        if (isCurrentlyEnabled) {
+          await disableUserAgentSkill(userId, agentId, skillName);
+        } else {
+          await enableUserAgentSkill(userId, agentId, skillName);
+        }
+      } catch (error) {
+        setSelections((prev) => ({ ...prev, [agentId]: current }));
+        toastError(
+          toast,
+          isCurrentlyEnabled ? "Could not disable skill" : "Could not enable skill",
+          error,
+          {
+            description: error instanceof Error ? error.message : "Please try again.",
+          },
+        );
+      } finally {
+        setTogglingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [userId, selections, togglingKeys, toast],
+  );
 
   const pruneSkillFromAssignments = useCallback((skillName: string) => {
     // Mirror the server-side cascade — when a skill is removed from the
@@ -189,24 +206,27 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
   // -----------------------------------------------------------------
   // User pool
   // -----------------------------------------------------------------
-  const refreshMySkills = useCallback(async (opts?: { bypassRedis?: boolean }) => {
-    if (!userId) return;
-    setLoadingMySkills(true);
-    try {
-      const fetched = await getMySkills(userId, opts);
-      setMySkills(fetched);
-    } catch (error) {
-      // A 401 means the session ended (e.g. logged out while this background
-      // refresh was in flight) — already handled by the global unauthorized
-      // redirect, so don't surface a "try again" toast on the way out.
-      if ((error as { status?: number })?.status === 401) return;
-      toastError(toast, 'Could not refresh your skills', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-    } finally {
-      setLoadingMySkills(false);
-    }
-  }, [userId, toast]);
+  const refreshMySkills = useCallback(
+    async (opts?: { bypassRedis?: boolean }) => {
+      if (!userId) return;
+      setLoadingMySkills(true);
+      try {
+        const fetched = await getMySkills(userId, opts);
+        setMySkills(fetched);
+      } catch (error) {
+        // A 401 means the session ended (e.g. logged out while this background
+        // refresh was in flight) — already handled by the global unauthorized
+        // redirect, so don't surface a "try again" toast on the way out.
+        if ((error as { status?: number })?.status === 401) return;
+        toastError(toast, "Could not refresh your skills", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setLoadingMySkills(false);
+      }
+    },
+    [userId, toast],
+  );
 
   // Authoritative pool load: whenever the user resolves, refetch from the
   // server. The initialPool seed (in the userId reset effect above) is only an
@@ -225,66 +245,87 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, authResolved]);
 
-  const addGlobalToPool = useCallback(async (skillName: string) => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    if (mySkills.some((s) => s.name === skillName)) return; // already in pool
-    try {
-      await addGlobalSkillToPool(userId, skillName);
-      // Refetch so the new entry carries the canonical description/source_path
-      // from the backend rather than something the frontend guessed.
-      await refreshMySkills({ bypassRedis: true });
-    } catch (error) {
-      toastError(toast, 'Could not add skill to your pool', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-    }
-  }, [userId, mySkills, refreshMySkills, toast]);
+  const addGlobalToPool = useCallback(
+    async (skillName: string) => {
+      if (!userId) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (mySkills.some((s) => s.name === skillName)) return; // already in pool
+      try {
+        await addGlobalSkillToPool(userId, skillName);
+        // Refetch so the new entry carries the canonical description/source_path
+        // from the backend rather than something the frontend guessed.
+        await refreshMySkills({ bypassRedis: true });
+      } catch (error) {
+        toastError(toast, "Could not add skill to your pool", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      }
+    },
+    [userId, mySkills, refreshMySkills, toast],
+  );
 
-  const createCustomInPool = useCallback(async (payload: CustomSkillCreatePayload): Promise<UserSkill | null> => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return null;
-    }
-    try {
-      const created = await createCustomSkill(userId, payload);
-      setMySkills((prev) => [...prev, created]);
-      return created;
-    } catch (error) {
-      toastError(toast, 'Could not create the skill', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-      return null;
-    }
-  }, [userId, toast]);
+  const createCustomInPool = useCallback(
+    async (payload: CustomSkillCreatePayload): Promise<UserSkill | null> => {
+      if (!userId) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in again.",
+          variant: "destructive",
+        });
+        return null;
+      }
+      try {
+        const created = await createCustomSkill(userId, payload);
+        setMySkills((prev) => [...prev, created]);
+        return created;
+      } catch (error) {
+        toastError(toast, "Could not create the skill", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+        return null;
+      }
+    },
+    [userId, toast],
+  );
 
-  const removeFromPool = useCallback(async (skillName: string) => {
-    if (!userId) {
-      toast({ title: 'Authentication required', description: 'Please sign in again.', variant: 'destructive' });
-      return;
-    }
-    const prev = mySkills;
-    setMySkills((curr) => curr.filter((s) => s.name !== skillName));
-    pruneSkillFromAssignments(skillName);
-    setSkillDetail((prevDetail) => {
-      if (!(skillName in prevDetail)) return prevDetail;
-      const { [skillName]: _gone, ...rest } = prevDetail;
-      return rest;
-    });
-    try {
-      await removeSkillFromPool(userId, skillName);
-      // Drop our lazy-load memo so any per-agent card opened later refetches
-      // and reflects the cascade.
-      loadedRef.current = new Set();
-    } catch (error) {
-      setMySkills(prev);
-      toastError(toast, 'Could not remove the skill', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
+  const removeFromPool = useCallback(
+    async (skillName: string) => {
+      if (!userId) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const prev = mySkills;
+      setMySkills((curr) => curr.filter((s) => s.name !== skillName));
+      pruneSkillFromAssignments(skillName);
+      setSkillDetail((prevDetail) => {
+        if (!(skillName in prevDetail)) return prevDetail;
+        const { [skillName]: _gone, ...rest } = prevDetail;
+        return rest;
       });
-    }
-  }, [userId, mySkills, pruneSkillFromAssignments, toast]);
+      try {
+        await removeSkillFromPool(userId, skillName);
+        // Drop our lazy-load memo so any per-agent card opened later refetches
+        // and reflects the cascade.
+        loadedRef.current = new Set();
+      } catch (error) {
+        setMySkills(prev);
+        toastError(toast, "Could not remove the skill", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      }
+    },
+    [userId, mySkills, pruneSkillFromAssignments, toast],
+  );
 
   // -----------------------------------------------------------------
   // Per-skill SKILL.md body cache
@@ -294,30 +335,33 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
     [loadingDetailKeys],
   );
 
-  const ensureSkillDetail = useCallback(async (skillName: string) => {
-    if (!userId) return;
-    if (skillDetail[skillName]) return;
-    if (loadingDetailKeys.has(skillName)) return;
-    setLoadingDetailKeys((prev) => {
-      const next = new Set(prev);
-      next.add(skillName);
-      return next;
-    });
-    try {
-      const detail = await getMySkillDetail(userId, skillName);
-      setSkillDetail((prev) => ({ ...prev, [skillName]: detail }));
-    } catch (error) {
-      toastError(toast, 'Could not load skill content', error, {
-        description: error instanceof Error ? error.message : 'Please try again.',
-      });
-    } finally {
+  const ensureSkillDetail = useCallback(
+    async (skillName: string) => {
+      if (!userId) return;
+      if (skillDetail[skillName]) return;
+      if (loadingDetailKeys.has(skillName)) return;
       setLoadingDetailKeys((prev) => {
         const next = new Set(prev);
-        next.delete(skillName);
+        next.add(skillName);
         return next;
       });
-    }
-  }, [userId, skillDetail, loadingDetailKeys, toast]);
+      try {
+        const detail = await getMySkillDetail(userId, skillName);
+        setSkillDetail((prev) => ({ ...prev, [skillName]: detail }));
+      } catch (error) {
+        toastError(toast, "Could not load skill content", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      } finally {
+        setLoadingDetailKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(skillName);
+          return next;
+        });
+      }
+    },
+    [userId, skillDetail, loadingDetailKeys, toast],
+  );
 
   return {
     selections,

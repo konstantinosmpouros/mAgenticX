@@ -46,8 +46,8 @@ export default function ShareConversationDialog({
     : copied
       ? "Copied"
       : linkCreated
-      ? "Copy link"
-      : "Create link";
+        ? "Copy link"
+        : "Create link";
   const modeOptions: Array<{ value: ConversationShareMode; label: string }> = [
     { value: "full", label: "Full conversation" },
     { value: "branch", label: "Up to response" },
@@ -95,7 +95,7 @@ export default function ShareConversationDialog({
                   <span>Share link</span>
                 </div>
                 <h3 className="line-clamp-2 text-2xl font-semibold leading-tight tracking-tight md:text-[2rem]">
-                {title || "Shared conversation"}
+                  {title || "Shared conversation"}
                 </h3>
               </div>
             </div>
@@ -130,22 +130,22 @@ export default function ShareConversationDialog({
                     <span>Expiration</span>
                   </div>
                   <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/20 p-1 text-xs font-semibold text-white/62">
-                  <button
-                    type="button"
-                    disabled={creating}
-                    onClick={() => setExpiryInDays(30)}
-                    className="h-9 rounded-lg px-3 transition hover:bg-white/[0.08] hover:text-white disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    1 month
-                  </button>
-                  <button
-                    type="button"
-                    disabled={creating}
-                    onClick={() => setExpiryInDays(7)}
-                    className="h-9 rounded-lg px-3 transition hover:bg-white/[0.08] hover:text-white disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    7 days
-                  </button>
+                    <button
+                      type="button"
+                      disabled={creating}
+                      onClick={() => setExpiryInDays(30)}
+                      className="h-9 rounded-lg px-3 transition hover:bg-white/[0.08] hover:text-white disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      1 month
+                    </button>
+                    <button
+                      type="button"
+                      disabled={creating}
+                      onClick={() => setExpiryInDays(7)}
+                      className="h-9 rounded-lg px-3 transition hover:bg-white/[0.08] hover:text-white disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      7 days
+                    </button>
                   </div>
                 </div>
                 <label className="block sm:w-[10rem]">

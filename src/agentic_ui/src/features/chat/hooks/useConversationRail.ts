@@ -65,7 +65,7 @@ export function useConversationRail({
       },
       // Thin band near the top of the viewport so exactly the message the user
       // is reading registers as active.
-      { root: viewport, rootMargin: "0px 0px -70% 0px", threshold: 0 }
+      { root: viewport, rootMargin: "0px 0px -70% 0px", threshold: 0 },
     );
 
     const nodes = viewport.querySelectorAll<HTMLElement>("[data-message-id]");
@@ -79,8 +79,7 @@ export function useConversationRail({
     if (!viewport || !column) return;
 
     const measure = () => {
-      const gutter =
-        viewport.getBoundingClientRect().right - column.getBoundingClientRect().right;
+      const gutter = viewport.getBoundingClientRect().right - column.getBoundingClientRect().right;
       setHidden(gutter < OVERLAP_RESERVE_PX);
     };
 
@@ -98,15 +97,14 @@ export function useConversationRail({
       const target = viewport.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
       if (!target) return;
       const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      const delta =
-        target.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+      const delta = target.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
       viewport.scrollTo({
         top: viewport.scrollTop + delta - 12,
         behavior: prefersReduced ? "auto" : "smooth",
       });
       setActiveId(id);
     },
-    [viewportRef]
+    [viewportRef],
   );
 
   return { activeId, hidden, scrollToMessage };

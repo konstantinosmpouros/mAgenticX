@@ -28,7 +28,6 @@ import { emitUnauthorized } from "./consts";
 import { ensureFreshSession } from "./sessionRefresh";
 import { withSessionRequest } from "./utils";
 
-
 /**
  * Error thrown for any non-2xx response (except statuses the caller explicitly
  * ignores). `status` mirrors the HTTP status; `detail` is the backend's
@@ -51,7 +50,6 @@ export class ApiError extends Error {
     this.retryAfterSeconds = init.retryAfterSeconds;
   }
 }
-
 
 export type ApiRequestOptions = {
   method?: string;
@@ -85,7 +83,6 @@ export type ApiRequestOptions = {
   signal?: AbortSignal;
 };
 
-
 // Build the RequestInit from the options: serialize JSON bodies, set Accept
 // unless suppressed, and let FormData set its own multipart boundary.
 function buildInit(opts: ApiRequestOptions): RequestInit {
@@ -110,13 +107,16 @@ function buildInit(opts: ApiRequestOptions): RequestInit {
   };
 }
 
-
 // Pull the backend `detail` string out of a JSON error body, tolerating
 // non-JSON payloads (nginx HTML, empty bodies) by returning undefined.
 async function extractDetail(res: Response): Promise<string | undefined> {
   try {
     const data = await res.json();
-    if (data && typeof data === "object" && typeof (data as { detail?: unknown }).detail === "string") {
+    if (
+      data &&
+      typeof data === "object" &&
+      typeof (data as { detail?: unknown }).detail === "string"
+    ) {
       return (data as { detail: string }).detail;
     }
   } catch {
@@ -124,7 +124,6 @@ async function extractDetail(res: Response): Promise<string | undefined> {
   }
   return undefined;
 }
-
 
 /**
  * Core request: returns the `Response` on success, throws `ApiError` otherwise.
@@ -168,11 +167,13 @@ export async function requestRaw(path: string, opts: ApiRequestOptions = {}): Pr
   }
 
   const message =
-    opts.errorMessages?.[res.status] ?? detail ?? opts.fallbackMessage ?? `Request failed: ${res.status}`;
+    opts.errorMessages?.[res.status] ??
+    detail ??
+    opts.fallbackMessage ??
+    `Request failed: ${res.status}`;
 
   throw new ApiError(message, { status: res.status, detail, retryAfterSeconds });
 }
-
 
 /**
  * Request a JSON response. With a `schema`, the body is validated and the
@@ -204,7 +205,10 @@ export async function requestJson(
   if (import.meta.env.DEV) {
     // Loud in development/CI: a contract mismatch is a bug to fix now, not later.
     // eslint-disable-next-line no-console
-    console.error(`[api] response validation failed: ${opts.method ?? "GET"} ${path}`, parsed.error.issues);
+    console.error(
+      `[api] response validation failed: ${opts.method ?? "GET"} ${path}`,
+      parsed.error.issues,
+    );
     throw parsed.error;
   }
   // Production: fail open. An over-strict schema must never crash the UI; return
@@ -212,12 +216,10 @@ export async function requestJson(
   return data;
 }
 
-
 /** Request an endpoint that returns no body (204) or whose body is ignored. */
 export async function requestVoid(path: string, opts: ApiRequestOptions = {}): Promise<void> {
   await requestRaw(path, opts);
 }
-
 
 /** Request a binary response (audio, PDF, attachment blobs). */
 export async function requestBlob(path: string, opts: ApiRequestOptions = {}): Promise<Blob> {

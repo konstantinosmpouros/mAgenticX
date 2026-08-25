@@ -3,7 +3,12 @@ import type { RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
 import { createVoiceModeHandlers } from "@/features/voice/handlers/voice";
 import { useRealtimeVoiceSession } from "@/features/voice/hooks/useRealtimeVoiceSession";
 
-type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastFn = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 type UseChatVoiceModeArgs = {
   toast: ToastFn;
@@ -24,11 +29,19 @@ export function useChatVoiceMode({
 
   const handleStartVoiceMode = useCallback(async () => {
     if (!userId) {
-      toast({ title: "Authentication required", description: "Please sign in again to use voice mode.", variant: "destructive" });
+      toast({
+        title: "Authentication required",
+        description: "Please sign in again to use voice mode.",
+        variant: "destructive",
+      });
       return;
     }
     if (!selectedAgent) {
-      toast({ title: "No agent selected", description: "Choose an agent before starting voice mode.", variant: "destructive" });
+      toast({
+        title: "No agent selected",
+        description: "Choose an agent before starting voice mode.",
+        variant: "destructive",
+      });
       return;
     }
     if (voiceSession.isActive) return;
@@ -40,7 +53,10 @@ export function useChatVoiceMode({
     });
   }, [selectedAgent, toast, userId, voiceModeLanguage, voiceModeVoice, voiceSession]);
 
-  const { handleVoiceMode } = createVoiceModeHandlers({ toast, onStartVoiceMode: handleStartVoiceMode });
+  const { handleVoiceMode } = createVoiceModeHandlers({
+    toast,
+    onStartVoiceMode: handleStartVoiceMode,
+  });
 
   return {
     voiceSession,

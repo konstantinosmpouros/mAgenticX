@@ -38,8 +38,16 @@ const INTERVAL_UNITS = [
 ] as const;
 
 const TARGET_MODES: { id: TaskTargetMode; label: string; hint: string }[] = [
-  { id: "fresh", label: "New chat each run", hint: "Every run starts a fresh, isolated conversation." },
-  { id: "bound", label: "One ongoing chat", hint: "Runs continue one conversation, so the agent remembers prior runs." },
+  {
+    id: "fresh",
+    label: "New chat each run",
+    hint: "Every run starts a fresh, isolated conversation.",
+  },
+  {
+    id: "bound",
+    label: "One ongoing chat",
+    hint: "Runs continue one conversation, so the agent remembers prior runs.",
+  },
 ];
 
 const SCHEDULE_KINDS: { id: ScheduleKind; label: string }[] = [
@@ -64,7 +72,9 @@ const defaultLocalDateTime = (): string => {
 };
 
 // Derive the form's interval value+unit from a stored seconds count.
-const intervalFromSeconds = (seconds: number): { value: number; unit: "minutes" | "hours" | "days" } => {
+const intervalFromSeconds = (
+  seconds: number,
+): { value: number; unit: "minutes" | "hours" | "days" } => {
   if (seconds > 0 && seconds % 86400 === 0) return { value: seconds / 86400, unit: "days" };
   if (seconds > 0 && seconds % 3600 === 0) return { value: seconds / 3600, unit: "hours" };
   return { value: Math.max(1, Math.round(seconds / 60)), unit: "minutes" };
@@ -91,7 +101,11 @@ const Segmented = <T extends string>({
   onChange: (id: T) => void;
   ariaLabel: string;
 }) => (
-  <div role="group" aria-label={ariaLabel} className="flex flex-wrap gap-1 rounded-lg bg-muted/40 p-1">
+  <div
+    role="group"
+    aria-label={ariaLabel}
+    className="flex flex-wrap gap-1 rounded-lg bg-muted/40 p-1"
+  >
     {options.map((opt) => (
       <button
         key={opt.id}
@@ -125,15 +139,25 @@ export default function ScheduledTaskForm({
       ? intervalFromSeconds(Number(init.scheduleSpec?.interval_seconds) || 3600)
       : null;
   const activeAgents = React.useMemo(() => agents.filter((a) => a.isActive), [agents]);
-  const [agentId, setAgentId] = React.useState<string>(init?.agentId ?? activeAgents[0]?.id ?? agents[0]?.id ?? "");
+  const [agentId, setAgentId] = React.useState<string>(
+    init?.agentId ?? activeAgents[0]?.id ?? agents[0]?.id ?? "",
+  );
   const [title, setTitle] = React.useState(init?.title ?? "");
   const [prompt, setPrompt] = React.useState(init?.prompt ?? "");
-  const [targetMode, setTargetMode] = React.useState<TaskTargetMode>((init?.targetMode as TaskTargetMode) ?? "fresh");
-  const [scheduleKind, setScheduleKind] = React.useState<ScheduleKind>((init?.scheduleKind as ScheduleKind) ?? "interval");
+  const [targetMode, setTargetMode] = React.useState<TaskTargetMode>(
+    (init?.targetMode as TaskTargetMode) ?? "fresh",
+  );
+  const [scheduleKind, setScheduleKind] = React.useState<ScheduleKind>(
+    (init?.scheduleKind as ScheduleKind) ?? "interval",
+  );
   const [intervalValue, setIntervalValue] = React.useState(initInterval?.value ?? 6);
-  const [intervalUnit, setIntervalUnit] = React.useState<(typeof INTERVAL_UNITS)[number]["id"]>(initInterval?.unit ?? "hours");
+  const [intervalUnit, setIntervalUnit] = React.useState<(typeof INTERVAL_UNITS)[number]["id"]>(
+    initInterval?.unit ?? "hours",
+  );
   const [cronExpr, setCronExpr] = React.useState(
-    init?.scheduleKind === "cron" ? String(init.scheduleSpec?.cron_expr ?? "0 8 * * *") : "0 8 * * *",
+    init?.scheduleKind === "cron"
+      ? String(init.scheduleSpec?.cron_expr ?? "0 8 * * *")
+      : "0 8 * * *",
   );
   const [timezone, setTimezone] = React.useState(init?.timezone ?? browserTimezone());
   const [runAtLocal, setRunAtLocal] = React.useState(

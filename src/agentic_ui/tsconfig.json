@@ -4,17 +4,24 @@
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
   ],
+  /* Solution-style root: the real settings live in the two referenced projects.
+     These options only affect editors and any file no project claims, so they
+     must not contradict tsconfig.app.json — they previously turned strictness
+     back OFF here, which meant the IDE reported a file as clean while the
+     `typecheck` script rejected it.
+
+     `baseUrl` is gone, and with it the `ignoreDeprecations: "6.0"` that existed
+     only to silence its deprecation warning. That pairing was the source of a
+     long-running split: newer TypeScript errors on `baseUrl` *without* the
+     escape hatch, while TypeScript older than 5.7 rejects the value `"6.0"`
+     itself — so the config could satisfy the editor or the CLI, never both.
+     `paths` has resolved relative to the tsconfig since TS 5.0, so dropping
+     `baseUrl` removes the deprecation instead of suppressing it. */
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
-    "noImplicitAny": false,
-    "noUnusedParameters": false,
     "skipLibCheck": true,
-    "allowJs": true,
-    "noUnusedLocals": false,
-    "strictNullChecks": false
+    "allowJs": true
   }
 }

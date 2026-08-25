@@ -30,7 +30,12 @@ type ChatMessageProps = {
   onDislike: (message: MessageOut) => void;
   onReportMessage?: (message: MessageOut) => void;
   conversationIsReported?: boolean;
-  toast?: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast?: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
   onShareMessage?: (message: MessageOut) => void;
@@ -130,17 +135,19 @@ export function ChatMessage({
   }, [thinkingState?.branchPath, activeBranchPath]);
 
   const isStreamingThisMessage = Boolean(
-    isAi && isStreaming && streamingMessageId && streamingMessageId === message.id
+    isAi && isStreaming && streamingMessageId && streamingMessageId === message.id,
   );
   const isStreamingTarget = Boolean(
-    isStreamingThisMessage && thinkingState?.isActive && branchPathActive
+    isStreamingThisMessage && thinkingState?.isActive && branchPathActive,
   );
 
   const settledTimeline = useRunTimeline(isAi ? message : null);
   const timeline = isStreamingThisMessage && liveTimeline ? liveTimeline : settledTimeline;
 
   const showAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
-  const showActionBar = isAi ? !(isStreamingTarget || isStreamingThisMessage) : !isTempUserMessage && !isEditing;
+  const showActionBar = isAi
+    ? !(isStreamingTarget || isStreamingThisMessage)
+    : !isTempUserMessage && !isEditing;
   const showUserSending = isTempUserMessage && !isEditing;
 
   const planForPanel = !isStreamingThisMessage && timeline?.terminal ? timeline.plan : null;
@@ -152,11 +159,13 @@ export function ChatMessage({
         hour: "2-digit",
         minute: "2-digit",
       }),
-    [message.created_at]
+    [message.created_at],
   );
 
   return (
-    <div className={`space-y-2 md:space-y-2 ${isUser ? "flex flex-col items-end" : ""} group/message`}>
+    <div
+      className={`space-y-2 md:space-y-2 ${isUser ? "flex flex-col items-end" : ""} group/message`}
+    >
       {showAttachments && (
         <MessageAttachments
           message={message}
@@ -257,7 +266,9 @@ export function ChatMessage({
                     AgentIcon={aiAgent.Icon}
                     timestampLabel={timestampLabel}
                     onOpenPlan={planForPanel ? () => setOpenRunPanel("plan") : undefined}
-                    onOpenSubagents={subagentCount > 0 ? () => setOpenRunPanel("subagents") : undefined}
+                    onOpenSubagents={
+                      subagentCount > 0 ? () => setOpenRunPanel("subagents") : undefined
+                    }
                     subagentCount={subagentCount}
                   />
                 </div>

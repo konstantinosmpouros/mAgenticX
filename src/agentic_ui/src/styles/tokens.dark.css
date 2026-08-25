@@ -1,0 +1,113 @@
+@layer base {
+  .dark {
+    /* Dark theme - preserving current colors */
+    --background: 240 6% 6%;
+    --foreground: 0 0% 95%;
+
+    --card: 240 6% 8%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 240 6% 8%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 293 89% 74%;
+    --primary-foreground: 0 0% 9%;
+    --primary-glow: 293 89% 84%;
+
+    --secondary: 240 4% 12%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 240 4% 12%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 216 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status colors — brighter lightness so they stay legible on the dark
+       surfaces (see shared/ui/toast-card.tsx). */
+    --success: 142 65% 55%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 95% 58%;
+    --warning-foreground: 240 10% 4%;
+
+    --info: 211 100% 66%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: transparent;
+
+    /* Neutral hover surfaces for dark theme */
+    --hover-surface: 240 4% 16%;
+    --hover-surface-strong: 240 4% 12%;
+
+    /* Professional chat colors - dark theme */
+    --chat-user: 240 6% 12%;
+    --chat-user-foreground: 0 0% 95%;
+    --chat-agent: 240 4% 14%;
+    --chat-agent-foreground: 0 0% 95%;
+
+    /* Dark theme gradients - preserving current */
+    --gradient-bg-1: linear-gradient(
+      135deg,
+      hsl(240, 6%, 6%) 0%,
+      hsl(240, 8%, 10%) 50%,
+      hsl(216, 100%, 8%) 100%
+    );
+    --gradient-bg-2: linear-gradient(
+      135deg,
+      hsl(260, 15%, 8%) 0%,
+      hsl(280, 20%, 12%) 50%,
+      hsl(293, 60%, 10%) 100%
+    );
+    --gradient-bg-3: linear-gradient(
+      135deg,
+      hsl(220, 25%, 8%) 0%,
+      hsl(240, 30%, 12%) 50%,
+      hsl(260, 40%, 10%) 100%
+    );
+    --gradient-bg-4: linear-gradient(
+      135deg,
+      hsl(200, 35%, 8%) 0%,
+      hsl(220, 40%, 12%) 50%,
+      hsl(240, 50%, 10%) 100%
+    );
+    --gradient-bg-5: linear-gradient(
+      135deg,
+      hsl(180, 45%, 8%) 0%,
+      hsl(200, 50%, 12%) 50%,
+      hsl(220, 60%, 10%) 100%
+    );
+    --gradient-bg-6: linear-gradient(
+      135deg,
+      hsl(160, 35%, 8%) 0%,
+      hsl(180, 40%, 12%) 50%,
+      hsl(200, 50%, 10%) 100%
+    );
+
+    /* Current animated gradient */
+    --gradient-bg: var(--gradient-bg-1);
+    --gradient-card: linear-gradient(135deg, hsl(240, 4%, 12%) 0%, hsl(240, 6%, 15%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(293, 89%, 74%) 0%, hsl(293, 89%, 84%) 100%);
+
+    /* Dark theme shadows - preserving current */
+    --shadow-elegant: 0 10px 40px -10px hsl(293, 89%, 74%, 0.25);
+    --shadow-soft: 0 4px 20px -4px hsl(240, 6%, 3%, 0.4);
+    --shadow-card: 0 2px 8px -2px hsl(240, 6%, 3%, 0.3);
+
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: var(--background);
+    --sidebar-icon-bg: color-mix(in srgb, hsl(var(--primary)) 20%, hsl(var(--background)));
+  }
+}

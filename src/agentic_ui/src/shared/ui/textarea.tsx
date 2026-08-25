@@ -1,6 +1,6 @@
-import * as React from "react"
+import * as React from "react";
 
-import { cn } from "@/shared/lib/utils"
+import { cn } from "@/shared/lib/utils";
 
 export type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 
@@ -22,14 +22,14 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           "[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20",
           "[&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/30",
 
-          className
+          className,
         )}
         ref={ref}
         {...props}
       />
-    )
-  }
-)
-Textarea.displayName = "Textarea"
+    );
+  },
+);
+Textarea.displayName = "Textarea";
 
-export { Textarea }
+export { Textarea };

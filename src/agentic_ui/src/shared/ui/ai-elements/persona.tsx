@@ -29,12 +29,7 @@ const useStrictModeSafeInit = () => {
   return ready;
 };
 
-export type PersonaState =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "speaking"
-  | "asleep";
+export type PersonaState = "idle" | "listening" | "thinking" | "speaking" | "asleep";
 
 interface PersonaProps {
   state: PersonaState;
@@ -56,38 +51,32 @@ const sources = {
   command: {
     dynamicColor: true,
     hasModel: true,
-    source:
-      "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/command-2.0.riv",
+    source: "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/command-2.0.riv",
   },
   glint: {
     dynamicColor: true,
     hasModel: true,
-    source:
-      "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/glint-2.0.riv",
+    source: "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/glint-2.0.riv",
   },
   halo: {
     dynamicColor: true,
     hasModel: true,
-    source:
-      "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/halo-2.0.riv",
+    source: "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/halo-2.0.riv",
   },
   mana: {
     dynamicColor: false,
     hasModel: true,
-    source:
-      "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/mana-2.0.riv",
+    source: "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/mana-2.0.riv",
   },
   obsidian: {
     dynamicColor: true,
     hasModel: true,
-    source:
-      "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/obsidian-2.0.riv",
+    source: "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/obsidian-2.0.riv",
   },
   opal: {
     dynamicColor: false,
     hasModel: false,
-    source:
-      "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/orb-1.2.riv",
+    source: "https://ejiidnob33g9ap1r.public.blob.vercel-storage.com/orb-1.2.riv",
   },
 };
 
@@ -104,9 +93,7 @@ const getCurrentTheme = (): "light" | "dark" => {
 };
 
 const useTheme = (enabled: boolean, forcedTheme?: "light" | "dark") => {
-  const [theme, setTheme] = useState<"light" | "dark">(
-    forcedTheme ?? getCurrentTheme
-  );
+  const [theme, setTheme] = useState<"light" | "dark">(forcedTheme ?? getCurrentTheme);
 
   useEffect(() => {
     if (forcedTheme) {
@@ -166,10 +153,7 @@ const PersonaWithModel = memo(
       rive,
       useDefault: true,
     });
-    const viewModelInstanceColor = useViewModelInstanceColor(
-      "color",
-      viewModelInstance
-    );
+    const viewModelInstanceColor = useViewModelInstanceColor("color", viewModelInstance);
 
     useEffect(() => {
       if (!(viewModelInstanceColor && source.dynamicColor)) {
@@ -181,7 +165,7 @@ const PersonaWithModel = memo(
     }, [viewModelInstanceColor, theme, source.dynamicColor]);
 
     return children;
-  }
+  },
 );
 
 PersonaWithModel.displayName = "PersonaWithModel";
@@ -190,9 +174,7 @@ interface PersonaWithoutModelProps {
   children: ReactNode;
 }
 
-const PersonaWithoutModel = memo(
-  ({ children }: PersonaWithoutModelProps) => children
-);
+const PersonaWithoutModel = memo(({ children }: PersonaWithoutModelProps) => children);
 
 PersonaWithoutModel.displayName = "PersonaWithoutModel";
 
@@ -239,22 +221,15 @@ export const Persona: FC<PersonaProps> = memo(
     const stableCallbacks = useMemo(
       () => ({
         onLoad: ((loadedRive) =>
-          callbacksRef.current.onLoad?.(
-            loadedRive
-          )) as RiveParameters["onLoad"],
+          callbacksRef.current.onLoad?.(loadedRive)) as RiveParameters["onLoad"],
         onLoadError: ((err) =>
-          callbacksRef.current.onLoadError?.(
-            err
-          )) as RiveParameters["onLoadError"],
-        onPause: ((event) =>
-          callbacksRef.current.onPause?.(event)) as RiveParameters["onPause"],
-        onPlay: ((event) =>
-          callbacksRef.current.onPlay?.(event)) as RiveParameters["onPlay"],
+          callbacksRef.current.onLoadError?.(err)) as RiveParameters["onLoadError"],
+        onPause: ((event) => callbacksRef.current.onPause?.(event)) as RiveParameters["onPause"],
+        onPlay: ((event) => callbacksRef.current.onPlay?.(event)) as RiveParameters["onPlay"],
         onReady: () => callbacksRef.current.onReady?.(),
-        onStop: ((event) =>
-          callbacksRef.current.onStop?.(event)) as RiveParameters["onStop"],
+        onStop: ((event) => callbacksRef.current.onStop?.(event)) as RiveParameters["onStop"],
       }),
-      []
+      [],
     );
 
     // Delay initialisation by one frame to avoid creating (and leaking)
@@ -274,14 +249,10 @@ export const Persona: FC<PersonaProps> = memo(
             src: source.source,
             stateMachines: stateMachine,
           }
-        : null
+        : null,
     );
 
-    const listeningInput = useStateMachineInput(
-      rive,
-      stateMachine,
-      "listening"
-    );
+    const listeningInput = useStateMachineInput(rive, stateMachine, "listening");
     const thinkingInput = useStateMachineInput(rive, stateMachine, "thinking");
     const speakingInput = useStateMachineInput(rive, stateMachine, "speaking");
     const asleepInput = useStateMachineInput(rive, stateMachine, "asleep");
@@ -310,7 +281,7 @@ export const Persona: FC<PersonaProps> = memo(
         <RiveComponent className={cn("size-16 shrink-0", className)} />
       </Component>
     );
-  }
+  },
 );
 
 Persona.displayName = "Persona";

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeVoice, VoiceModeLanguage } from "@/shared/lib/consts";
 import type { VoiceModeStatus } from "@/shared/lib/types";
-import {
-  createRealtimeVoiceSession,
-} from "@/shared/lib/api";
+import { createRealtimeVoiceSession } from "@/shared/lib/api";
 import { toastError } from "@/shared/lib/toast";
 
-type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastFn = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 type StartVoiceSessionArgs = {
   userId: string;
@@ -22,13 +25,11 @@ type UseRealtimeVoiceSessionArgs = {
 type RealtimeEvent = Record<string, unknown>;
 
 const asRecord = (value: unknown): RealtimeEvent =>
-  value && typeof value === "object" ? value as RealtimeEvent : {};
+  value && typeof value === "object" ? (value as RealtimeEvent) : {};
 
 const readString = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function useRealtimeVoiceSession({
-  toast,
-}: UseRealtimeVoiceSessionArgs) {
+export function useRealtimeVoiceSession({ toast }: UseRealtimeVoiceSessionArgs) {
   const [status, setStatus] = useState<VoiceModeStatus>("closed");
   const [muted, setMuted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -71,8 +72,10 @@ export function useRealtimeVoiceSession({
       if (type === "input_audio_buffer.speech_started") setStatus("listening");
       if (type === "input_audio_buffer.speech_stopped") setStatus("thinking");
       if (type === "response.created") setStatus("thinking");
-      if (type === "response.audio.delta" || type === "response.output_audio.delta") setStatus("speaking");
-      if (type === "response.done" || type === "response.audio.done") setStatus(muted ? "muted" : "listening");
+      if (type === "response.audio.delta" || type === "response.output_audio.delta")
+        setStatus("speaking");
+      if (type === "response.done" || type === "response.audio.done")
+        setStatus(muted ? "muted" : "listening");
       if (type === "error") {
         const error = asRecord(event.error);
         setErrorMessage(readString(error.message) || "Realtime voice session failed.");
@@ -182,23 +185,22 @@ export function useRealtimeVoiceSession({
     }
   }, [muted]);
 
-  const sendText = useCallback(
-    (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || dcRef.current?.readyState !== "open") return;
-      dcRef.current.send(JSON.stringify({
+  const sendText = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || dcRef.current?.readyState !== "open") return;
+    dcRef.current.send(
+      JSON.stringify({
         type: "conversation.item.create",
         item: {
           type: "message",
           role: "user",
           content: [{ type: "input_text", text: trimmed }],
         },
-      }));
-      dcRef.current.send(JSON.stringify({ type: "response.create" }));
-      setStatus("thinking");
-    },
-    [],
-  );
+      }),
+    );
+    dcRef.current.send(JSON.stringify({ type: "response.create" }));
+    setStatus("thinking");
+  }, []);
 
   useEffect(() => () => cleanup(), [cleanup]);
 

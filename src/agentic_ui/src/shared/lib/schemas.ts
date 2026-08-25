@@ -23,7 +23,7 @@
  *      whereas a `.catch`-ed object field is inferred as an OPTIONAL key.
  *   2. Loose gates (`WireObjectSchema`, `WireObjectArraySchema`) — used for the
  *      complex domain objects (messages, conversations, runs, tasks) whose
- *      snake→camel mapping still lives in the proven `consts.ts` transforms. The
+ *      snake→camel mapping still lives in the proven `consts/transforms/` modules. The
  *      gate only asserts "this is an object / array of objects" so a malformed
  *      body is caught before it reaches the transform.
  *
@@ -33,13 +33,28 @@
  */
 import { z } from "zod";
 
-
 // ---------------------------------------------------------------------------
 // Loose gates — assert the container shape only. The camel-mapping for these
-// domain objects stays in consts.ts (transformMessage, transformConversation…).
+// domain objects stays in consts/transforms/ (transformMessage, transformConversation…).
 // ---------------------------------------------------------------------------
 export const WireObjectSchema = z.record(z.unknown());
 export const WireObjectArraySchema = z.array(z.record(z.unknown())).catch([]);
+
+// A fastapi-pagination `Page` envelope — `{ items, total, page, size, pages }` —
+// unwrapped to just the rows. A bare array is accepted too: not every list
+// endpoint is paginated, and these callers have always tolerated both shapes.
+//
+// Use this, NOT WireObjectArraySchema, for any paginated endpoint. That schema
+// is `z.array(...).catch([])`, so a Page object fails its array check, hits the
+// `.catch`, and yields an EMPTY LIST. Because `.catch` makes `safeParse`
+// *succeed*, the dev-strict branch in http.ts never fires — the list would come
+// back silently empty in every environment.
+export const WirePageItemsSchema = z
+  .union([
+    z.array(z.record(z.unknown())),
+    z.object({ items: z.array(z.record(z.unknown())).catch([]) }).transform((page) => page.items),
+  ])
+  .catch([]);
 
 // A plain string list (e.g. the per-(user, agent) enabled-skill names). Non-string
 // entries are coerced with String(); a non-array body degrades to [].
@@ -47,7 +62,6 @@ export const StringListSchema = z
   .array(z.unknown())
   .catch([])
   .transform((entries) => entries.map(String));
-
 
 // ---------------------------------------------------------------------------
 // Skills catalog + user pool
@@ -150,7 +164,6 @@ export const CustomAgentValidationSchema = z.object({
 });
 export type CustomAgentValidation = z.infer<typeof CustomAgentValidationSchema>;
 
-
 // ---------------------------------------------------------------------------
 // Agent long-term memory (snake_case wire → camelCase app)
 // ---------------------------------------------------------------------------
@@ -160,8 +173,7 @@ const toMemorySummary = (raw: Record<string, unknown>) => ({
   createdAt: (raw.createdAt ?? raw.created_at ?? null) as string | null,
   updatedAt: (raw.updatedAt ?? raw.updated_at ?? null) as string | null,
   sourceConversationId: (raw.sourceConversationId ?? raw.source_conversation_id ?? null) as
-    | string
-    | null,
+    string | null,
 });
 
 export const MemorySummarySchema = z.record(z.unknown()).transform(toMemorySummary);
@@ -177,7 +189,6 @@ export const MemoryDetailSchema = z.record(z.unknown()).transform((raw) => ({
 }));
 export type MemoryDetail = z.infer<typeof MemoryDetailSchema>;
 
-
 // ---------------------------------------------------------------------------
 // Tools catalog (snake_case wire → camelCase app)
 // ---------------------------------------------------------------------------
@@ -185,7 +196,9 @@ const toToolMetadata = (raw: Record<string, unknown>) => ({
   serverId: typeof raw.server_id === "string" ? raw.server_id : "",
   toolName: typeof raw.tool_name === "string" ? raw.tool_name : "unknown-tool",
   description: typeof raw.description === "string" ? raw.description : "",
-  parameterCount: Number.isFinite(raw.parameter_count) ? Math.max(0, Number(raw.parameter_count)) : 0,
+  parameterCount: Number.isFinite(raw.parameter_count)
+    ? Math.max(0, Number(raw.parameter_count))
+    : 0,
 });
 export const ToolMetadataSchema = z.record(z.unknown()).transform(toToolMetadata);
 export const ToolMetadataListSchema = z
@@ -193,7 +206,6 @@ export const ToolMetadataListSchema = z
   .catch([])
   .transform((rows) => rows.map((row) => toToolMetadata(row as Record<string, unknown>)));
 export type ToolMetadata = z.infer<typeof ToolMetadataSchema>;
-
 
 // ---------------------------------------------------------------------------
 // Per-agent tools (Agents tab) — GET/POST /v1/agents/{user}/{slug}/tools
@@ -213,7 +225,6 @@ export const AgentToolsResponseSchema = z.object({
 export type AgentToolRow = z.infer<typeof AgentToolRowSchema>;
 export type AgentToolsResponse = z.infer<typeof AgentToolsResponseSchema>;
 
-
 // ---------------------------------------------------------------------------
 // Catalog suggestions — { suggestions: string[] } → filtered string[]
 // ---------------------------------------------------------------------------
@@ -225,7 +236,6 @@ export const SuggestionsSchema = z
       (value): value is string => typeof value === "string" && value.trim().length > 0,
     ),
   );
-
 
 // ---------------------------------------------------------------------------
 // Attachment preview token (DOCX) — accept camel or snake, default safely.
@@ -240,7 +250,6 @@ export const DocxPreviewTokenSchema = z.record(z.unknown()).transform((raw) => (
 }));
 export type DocxPreviewTokenResponse = z.infer<typeof DocxPreviewTokenSchema>;
 
-
 // ---------------------------------------------------------------------------
 // Realtime voice session (WebRTC SDP answer)
 // ---------------------------------------------------------------------------
@@ -250,7 +259,6 @@ export const RealtimeVoiceSessionResponseSchema = z.record(z.unknown()).transfor
   voice: typeof raw.voice === "string" ? raw.voice : "",
 }));
 export type RealtimeVoiceSessionResponse = z.infer<typeof RealtimeVoiceSessionResponseSchema>;
-
 
 // ---------------------------------------------------------------------------
 // Workspace search results
@@ -293,7 +301,6 @@ export const WorkspaceSearchResultListSchema = z
   .catch([])
   .transform((rows) => rows.map((row) => toWorkspaceSearchResult(row as Record<string, unknown>)));
 
-
 // ---------------------------------------------------------------------------
 // Usage summary (Settings → Usage tab) — camelCase wire, defaulted per field
 // ---------------------------------------------------------------------------
@@ -327,7 +334,10 @@ const toUsageSummary = (raw: Record<string, unknown>) => ({
     const record = (row ?? {}) as Record<string, unknown>;
     return {
       ...toUsageWindow(record),
-      agentName: typeof record.agentName === "string" && record.agentName ? record.agentName : "Unknown agent",
+      agentName:
+        typeof record.agentName === "string" && record.agentName
+          ? record.agentName
+          : "Unknown agent",
     };
   }),
   daily: (Array.isArray(raw.daily) ? raw.daily : []).map((row) => {

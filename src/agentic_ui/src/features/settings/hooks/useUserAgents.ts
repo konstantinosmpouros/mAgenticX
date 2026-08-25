@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 
 import {
   createMyAgent,
@@ -7,14 +7,14 @@ import {
   getMyAgents,
   updateMyAgent,
   validateMyAgent,
-} from '@/shared/lib/api';
-import { toastError } from '@/shared/lib/toast';
+} from "@/shared/lib/api";
+import { toastError } from "@/shared/lib/toast";
 import type {
   Agent,
   CustomAgentDetail,
   CustomAgentValidation,
   CustomAgentWritePayload,
-} from '@/shared/lib/types';
+} from "@/shared/lib/types";
 
 /**
  * The agents this user authored: load, create, edit, delete.
@@ -26,7 +26,12 @@ import type {
  * Delete is optimistic with a rollback, since removing a row from a list is the
  * one operation where waiting feels sluggish.
  */
-type ToastFn = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastFn = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 export type UserAgentsHandlers = {
   myAgents: Agent[];
@@ -84,9 +89,9 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
   const requireUser = useCallback((): boolean => {
     if (userId) return true;
     toast({
-      title: 'Authentication required',
-      description: 'Please sign in again.',
-      variant: 'destructive',
+      title: "Authentication required",
+      description: "Please sign in again.",
+      variant: "destructive",
     });
     return false;
   }, [userId, toast]);
@@ -97,8 +102,8 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       try {
         return await getMyAgentDetail(userId, agentId);
       } catch (error) {
-        toastError(toast, 'Could not open the agent', error, {
-          description: error instanceof Error ? error.message : 'Please try again.',
+        toastError(toast, "Could not open the agent", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
         });
         return null;
       }
@@ -115,8 +120,8 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       try {
         return await validateMyAgent(userId, payload);
       } catch (error) {
-        toastError(toast, 'Could not validate the agent', error, {
-          description: error instanceof Error ? error.message : 'Please try again.',
+        toastError(toast, "Could not validate the agent", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
         });
         return null;
       }
@@ -127,15 +132,15 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
   const createAgent = useCallback(
     async (payload: CustomAgentWritePayload): Promise<Agent | null> => {
       if (!requireUser() || !userId || busyAgentId) return null;
-      setBusyAgentId('__create__');
+      setBusyAgentId("__create__");
       try {
         const created = await createMyAgent(userId, payload);
         setMyAgents((prev) => [...prev, created]);
-        toast({ title: 'Agent created', description: `${created.name} is ready to use.` });
+        toast({ title: "Agent created", description: `${created.name} is ready to use.` });
         return created;
       } catch (error) {
-        toastError(toast, 'Could not create the agent', error, {
-          description: error instanceof Error ? error.message : 'Please try again.',
+        toastError(toast, "Could not create the agent", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
         });
         return null;
       } finally {
@@ -152,11 +157,11 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       try {
         const saved = await updateMyAgent(userId, agentId, payload);
         setMyAgents((prev) => prev.map((a) => (a.id === saved.id ? saved : a)));
-        toast({ title: 'Agent saved', description: `${saved.name} was updated.` });
+        toast({ title: "Agent saved", description: `${saved.name} was updated.` });
         return saved;
       } catch (error) {
-        toastError(toast, 'Could not save the agent', error, {
-          description: error instanceof Error ? error.message : 'Please try again.',
+        toastError(toast, "Could not save the agent", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
         });
         return null;
       } finally {
@@ -177,16 +182,16 @@ export function useUserAgents({ userId, toast, authResolved }: UserAgentsCtx): U
       try {
         await deleteMyAgent(userId, agentId);
         toast({
-          title: 'Agent deleted',
+          title: "Agent deleted",
           description: removed
             ? `${removed.name} was removed. Your conversations with it are kept.`
-            : 'Your conversations with it are kept.',
+            : "Your conversations with it are kept.",
         });
         return true;
       } catch (error) {
         setMyAgents(previous);
-        toastError(toast, 'Could not delete the agent', error, {
-          description: error instanceof Error ? error.message : 'Please try again.',
+        toastError(toast, "Could not delete the agent", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
         });
         return false;
       } finally {

@@ -35,7 +35,7 @@ import type { ChatWorkspace } from "@/pages/ChatPage";
  */
 
 type SetStateArg<T> = T | ((prev: T) => T);
-const resolve = <T,>(arg: SetStateArg<T>, prev: T): T =>
+const resolve = <T>(arg: SetStateArg<T>, prev: T): T =>
   typeof arg === "function" ? (arg as (p: T) => T)(prev) : arg;
 
 export type WorkspaceState = {
@@ -222,26 +222,37 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setAvailableSkills: (v) => set((s) => ({ availableSkills: resolve(v, s.availableSkills) })),
   setMyRegistrySkills: (v) => set((s) => ({ myRegistrySkills: resolve(v, s.myRegistrySkills) })),
   setUserPreferences: (v) => set((s) => ({ userPreferences: resolve(v, s.userPreferences) })),
-  setIsSavingPreferences: (v) => set((s) => ({ isSavingPreferences: resolve(v, s.isSavingPreferences) })),
+  setIsSavingPreferences: (v) =>
+    set((s) => ({ isSavingPreferences: resolve(v, s.isSavingPreferences) })),
   setSelectedAgent: (v) => set((s) => ({ selectedAgent: resolve(v, s.selectedAgent) })),
   setIsPrivateMode: (v) => set((s) => ({ isPrivateMode: resolve(v, s.isPrivateMode) })),
-  setInactiveAgentFallback: (v) => set((s) => ({ inactiveAgentFallback: resolve(v, s.inactiveAgentFallback) })),
-  setCurrentConversation: (v) => set((s) => ({ currentConversation: resolve(v, s.currentConversation) })),
-  setLoadingConversation: (v) => set((s) => ({ loadingConversation: resolve(v, s.loadingConversation) })),
+  setInactiveAgentFallback: (v) =>
+    set((s) => ({ inactiveAgentFallback: resolve(v, s.inactiveAgentFallback) })),
+  setCurrentConversation: (v) =>
+    set((s) => ({ currentConversation: resolve(v, s.currentConversation) })),
+  setLoadingConversation: (v) =>
+    set((s) => ({ loadingConversation: resolve(v, s.loadingConversation) })),
   setConversations: (v) => set((s) => ({ conversations: resolve(v, s.conversations) })),
-  setConversationsLoading: (v) => set((s) => ({ conversationsLoading: resolve(v, s.conversationsLoading) })),
+  setConversationsLoading: (v) =>
+    set((s) => ({ conversationsLoading: resolve(v, s.conversationsLoading) })),
   setConvPage: (v) => set((s) => ({ convPage: resolve(v, s.convPage) })),
   setConvHasMore: (v) => set((s) => ({ convHasMore: resolve(v, s.convHasMore) })),
   setConvIsLoadingMore: (v) => set((s) => ({ convIsLoadingMore: resolve(v, s.convIsLoadingMore) })),
-  setArchivedConversations: (v) => set((s) => ({ archivedConversations: resolve(v, s.archivedConversations) })),
+  setArchivedConversations: (v) =>
+    set((s) => ({ archivedConversations: resolve(v, s.archivedConversations) })),
   setArchivedConvPage: (v) => set((s) => ({ archivedConvPage: resolve(v, s.archivedConvPage) })),
-  setArchivedConvHasMore: (v) => set((s) => ({ archivedConvHasMore: resolve(v, s.archivedConvHasMore) })),
-  setArchivedConvIsLoading: (v) => set((s) => ({ archivedConvIsLoading: resolve(v, s.archivedConvIsLoading) })),
-  setSharedConversations: (v) => set((s) => ({ sharedConversations: resolve(v, s.sharedConversations) })),
+  setArchivedConvHasMore: (v) =>
+    set((s) => ({ archivedConvHasMore: resolve(v, s.archivedConvHasMore) })),
+  setArchivedConvIsLoading: (v) =>
+    set((s) => ({ archivedConvIsLoading: resolve(v, s.archivedConvIsLoading) })),
+  setSharedConversations: (v) =>
+    set((s) => ({ sharedConversations: resolve(v, s.sharedConversations) })),
   setSharedConvPage: (v) => set((s) => ({ sharedConvPage: resolve(v, s.sharedConvPage) })),
   setSharedConvHasMore: (v) => set((s) => ({ sharedConvHasMore: resolve(v, s.sharedConvHasMore) })),
-  setSharedConvIsLoading: (v) => set((s) => ({ sharedConvIsLoading: resolve(v, s.sharedConvIsLoading) })),
-  setStarterSuggestions: (v) => set((s) => ({ starterSuggestions: resolve(v, s.starterSuggestions) })),
+  setSharedConvIsLoading: (v) =>
+    set((s) => ({ sharedConvIsLoading: resolve(v, s.sharedConvIsLoading) })),
+  setStarterSuggestions: (v) =>
+    set((s) => ({ starterSuggestions: resolve(v, s.starterSuggestions) })),
   setSidebarOpen: (v) => set((s) => ({ sidebarOpen: resolve(v, s.sidebarOpen) })),
   setActiveProfileTab: (v) => set((s) => ({ activeProfileTab: resolve(v, s.activeProfileTab) })),
 }));

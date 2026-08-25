@@ -1,15 +1,15 @@
-import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import 'highlight.js/styles/github-dark.css';
+import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import "highlight.js/styles/github-dark.css";
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = '' }) => {
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className = "" }) => {
   return (
     <div className={`prose prose-sm max-w-none dark:prose-invert ${className}`}>
       <ReactMarkdown
@@ -18,7 +18,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
         components={{
           // Customize rendering of specific elements
           code: ({ node, className, children, ...props }) => {
-            const match = /language-(\w+)/.exec(className || '');
+            const match = /language-(\w+)/.exec(className || "");
             return match ? (
               <code className={className} {...props}>
                 {children}
@@ -30,12 +30,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
             );
           },
           pre: ({ children, ...props }) => (
-            <pre className="bg-muted/50 border border-border rounded-lg p-4 overflow-x-auto" {...props}>
+            <pre
+              className="bg-muted/50 border border-border rounded-lg p-4 overflow-x-auto"
+              {...props}
+            >
               {children}
             </pre>
           ),
           blockquote: ({ children, ...props }) => (
-            <blockquote className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground" {...props}>
+            <blockquote
+              className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground"
+              {...props}
+            >
               {children}
             </blockquote>
           ),
@@ -47,7 +53,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
             </div>
           ),
           th: ({ children, ...props }) => (
-            <th className="border border-border bg-muted/50 px-3 py-2 text-left font-semibold" {...props}>
+            <th
+              className="border border-border bg-muted/50 px-3 py-2 text-left font-semibold"
+              {...props}
+            >
               {children}
             </th>
           ),
@@ -57,8 +66,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, cla
             </td>
           ),
           a: ({ children, href, ...props }) => (
-            <a 
-              href={href} 
+            <a
+              href={href}
               className="text-primary hover:text-primary/80 underline decoration-primary/30 hover:decoration-primary/60 transition-colors"
               target="_blank"
               rel="noopener noreferrer"

@@ -1,9 +1,25 @@
-import { downloadConversationPdfExport, getConversationDetail, getSharedConversationLinks, revokeSharedConversationLink, shareConversation } from "@/shared/lib/api";
+import {
+  downloadConversationPdfExport,
+  getConversationDetail,
+  getSharedConversationLinks,
+  revokeSharedConversationLink,
+  shareConversation,
+} from "@/shared/lib/api";
 import { toastError } from "@/shared/lib/toast";
-import type { ConversationDetail, ConversationShareListItem, ConversationShareMode, MessageOut } from "@/shared/lib/types";
+import type {
+  ConversationDetail,
+  ConversationShareListItem,
+  ConversationShareMode,
+  MessageOut,
+} from "@/shared/lib/types";
 import type { Dispatch, SetStateAction } from "react";
 
-type ToastHandler = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastHandler = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 export const defaultShareExpiresAt = () => {
   const date = new Date();
@@ -60,18 +76,38 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
     onShareCreated,
   } = ctx;
 
-  const handleShareConversation = async (message: MessageOut, mode: ConversationShareMode = "full", expiresAt?: Date | null) => {
+  const handleShareConversation = async (
+    message: MessageOut,
+    mode: ConversationShareMode = "full",
+    expiresAt?: Date | null,
+  ) => {
     if (!userId || !currentConversation?.id) {
-      toast({ title: "No conversation selected", description: "Open a conversation before sharing.", duration: 2000 });
+      toast({
+        title: "No conversation selected",
+        description: "Open a conversation before sharing.",
+        duration: 2000,
+      });
       return;
     }
     if (message.sender !== "ai") {
-      toast({ title: "Unable to share", description: "Only AI messages can create a share link.", variant: "destructive", duration: 2500 });
+      toast({
+        title: "Unable to share",
+        description: "Only AI messages can create a share link.",
+        variant: "destructive",
+        duration: 2500,
+      });
       return;
     }
 
     try {
-      const share = await shareConversation(userId, currentConversation.id, message.id, mode, expiresAt, activeBranchPath);
+      const share = await shareConversation(
+        userId,
+        currentConversation.id,
+        message.id,
+        mode,
+        expiresAt,
+        activeBranchPath,
+      );
       const absoluteUrl =
         typeof window !== "undefined"
           ? new URL(share.shareUrl, window.location.origin).toString()
@@ -137,11 +173,12 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
 
     const shareTarget = [...activeMessages]
       .reverse()
-      .find((message) => (
-        message.sender === "ai" &&
-        !String(message.id).startsWith("temp-") &&
-        (Boolean(message.content?.trim()) || (message.attachments?.length ?? 0) > 0)
-      ));
+      .find(
+        (message) =>
+          message.sender === "ai" &&
+          !String(message.id).startsWith("temp-") &&
+          (Boolean(message.content?.trim()) || (message.attachments?.length ?? 0) > 0),
+      );
 
     if (!shareTarget) {
       toast({
@@ -342,12 +379,14 @@ export function createSharedConversationHandlers(ctx: SharedConversationHandlers
       const revokedAt = new Date();
       setSharedConversations((prev) =>
         prev.map((item) =>
-          item.id === share.id
-            ? { ...item, isActive: false, status: "revoked", revokedAt }
-            : item,
+          item.id === share.id ? { ...item, isActive: false, status: "revoked", revokedAt } : item,
         ),
       );
-      toast({ title: "Share link revoked", description: "That link can no longer be accessed.", duration: 2200 });
+      toast({
+        title: "Share link revoked",
+        description: "That link can no longer be accessed.",
+        duration: 2200,
+      });
     } catch (error) {
       toastError(toast, "Failed to revoke link", error, {
         description: error instanceof Error ? error.message : "Please try again.",

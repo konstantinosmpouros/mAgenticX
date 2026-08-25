@@ -12,7 +12,8 @@ import type {
   ConversationDetail,
   ConversationSummary,
   ConversationShareMode,
-  SharedConversationDetail } from "@/shared/lib/types";
+  SharedConversationDetail,
+} from "@/shared/lib/types";
 import { usePreferencesHandlers } from "@/features/settings/handlers/preferences";
 import { computeConversationUsage } from "@/shared/lib/utils";
 import { useProfilePanel } from "@/features/settings/hooks/useProfilePanel";
@@ -35,29 +36,35 @@ import { useActiveRunBranchSnap } from "@/features/chat/hooks/useActiveRunBranch
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import ChatView from "./ChatView";
 
-// Handlers (modularized)
+// Handlers, imported from the feature that owns each one.
+import { createAttachmentHandlers } from "@/features/attachments/handlers/attachments";
+import { createAuthHandlers } from "@/features/auth/handlers/auth";
+import { createAgentHandlers } from "@/features/catalog/handlers/agents";
 import {
-  createAttachmentHandlers,
   createConversationHandlers,
-  createAgentHandlers,
-  createAuthHandlers,
-  createUIHandlers,
-  createAiTransitionHandlers,
   createConversationMessageSetter,
+} from "@/features/chat/handlers/conversations";
+import {
+  createAiTransitionHandlers,
   createFeedbackHandlers,
-  createVoiceDictationHandlers,
-  createReadAloudHandlers,
   createMessageEditUiHandlers,
-  createReportHandlers,
+  createReadAloudHandlers,
+  createUIHandlers,
+  useBranchingHandlers,
+} from "@/features/chat/handlers/messages";
+import { runActiveUiDismissal } from "@/features/chat/handlers/ui";
+import { createReportHandlers } from "@/features/reporting/handlers/report";
+import {
+  buildDefaultConversationSearchResults,
+  createSearchResultHandlers,
+  useWorkspaceSearch,
+} from "@/features/search/handlers/search";
+import {
   createShareConversationHandlers,
   createSharedConversationHandlers,
   defaultShareExpiresAt,
-  useBranchingHandlers,
-  createSearchResultHandlers,
-  useWorkspaceSearch,
-  buildDefaultConversationSearchResults,
-  runActiveUiDismissal,
-} from "@/handlers";
+} from "@/features/sharing/handlers/share";
+import { createVoiceDictationHandlers } from "@/features/voice/handlers/voice";
 import {
   createInferenceHandlers,
   createMessageEditHandlers,
@@ -66,14 +73,22 @@ import {
   HitlProvider,
   pendingTimelineInterrupts,
 } from "@/features/inference";
-import { getAgents, getConversationDetail, getSkills, getSuggestions, logoutAccount } from "@/shared/lib/api";
+import {
+  getAgents,
+  getConversationDetail,
+  getSkills,
+  getSuggestions,
+  logoutAccount,
+} from "@/shared/lib/api";
 import type { AccountSummary } from "@/shared/lib/types";
 
 // Chat Interface component
 import ChatSidebar from "@/features/chat/components/ChatSidebar";
 import SwitchingAccounts from "@/features/auth/components/SwitchingAccounts";
 import AccountLimitDialog from "@/features/auth/components/AccountLimitDialog";
-import AttachmentPreviewPanel, { type AttachmentPreviewTarget } from "@/features/attachments/components/AttachmentPreviewPanel";
+import AttachmentPreviewPanel, {
+  type AttachmentPreviewTarget,
+} from "@/features/attachments/components/AttachmentPreviewPanel";
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
 import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
 import ProfilePanel from "@/features/settings/components/ProfilePanel";
@@ -169,20 +184,42 @@ export function useChatWorkspace({
   const sidebarOpen = useWorkspaceStore((s) => s.sidebarOpen);
   // Setters are stable for the store's lifetime — read once without subscribing.
   const {
-    setCurrentConversation, setSelectedAgent, setIsPrivateMode, setAgents,
-    setAvailableTools, setAvailableSkills, setMyRegistrySkills, setUserPreferences,
-    setIsSavingPreferences, setInactiveAgentFallback, setConversations,
-    setConversationsLoading, setStarterSuggestions, setConvPage, setConvHasMore,
-    setConvIsLoadingMore, setArchivedConversations, setArchivedConvPage,
-    setArchivedConvHasMore, setArchivedConvIsLoading, setSharedConversations,
-    setSharedConvPage, setSharedConvHasMore, setSharedConvIsLoading,
-    setUserProfile, setIsLoggedIn, setUserId, setAuthResolved,
-    setLoadingConversation, setActiveProfileTab, setSidebarOpen,
+    setCurrentConversation,
+    setSelectedAgent,
+    setIsPrivateMode,
+    setAgents,
+    setAvailableTools,
+    setAvailableSkills,
+    setMyRegistrySkills,
+    setUserPreferences,
+    setIsSavingPreferences,
+    setInactiveAgentFallback,
+    setConversations,
+    setConversationsLoading,
+    setStarterSuggestions,
+    setConvPage,
+    setConvHasMore,
+    setConvIsLoadingMore,
+    setArchivedConversations,
+    setArchivedConvPage,
+    setArchivedConvHasMore,
+    setArchivedConvIsLoading,
+    setSharedConversations,
+    setSharedConvPage,
+    setSharedConvHasMore,
+    setSharedConvIsLoading,
+    setUserProfile,
+    setIsLoggedIn,
+    setUserId,
+    setAuthResolved,
+    setLoadingConversation,
+    setActiveProfileTab,
+    setSidebarOpen,
     resetForAccountSwitch,
   } = useWorkspaceStore.getState();
 
   // ── View-local state ────────────────────────────────────────────────────
-  const [currentMessage, setCurrentMessage] = useState('');
+  const [currentMessage, setCurrentMessage] = useState("");
   // --- multi-account -------------------------------------------------------
   // `accountSwitch.active` blanks the workspace: see the early return below.
   const [accountSwitch, setAccountSwitch] = useState<{
@@ -203,7 +240,7 @@ export function useChatWorkspace({
   const SHARED_CONV_PAGE_SIZE = 10;
 
   // Thinking variables (will be changed)
-  const [expandedThinking, setExpandedThinking] = useState<{[key: string]: boolean}>({});
+  const [expandedThinking, setExpandedThinking] = useState<{ [key: string]: boolean }>({});
   const [thinkingState, setThinkingState] = useState<ThinkingState | null>(null);
   const [showAiTransition, setShowAiTransition] = useState(false);
 
@@ -233,7 +270,9 @@ export function useChatWorkspace({
 
   // Image preview
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedFilePreview, setSelectedFilePreview] = useState<AttachmentPreviewTarget | null>(null);
+  const [selectedFilePreview, setSelectedFilePreview] = useState<AttachmentPreviewTarget | null>(
+    null,
+  );
   const [isAgentPickerOpen, setIsAgentPickerOpen] = useState(false);
   const [isHeaderActionMenuOpen, setIsHeaderActionMenuOpen] = useState(false);
   const [isSidebarFloatingUiOpen, setIsSidebarFloatingUiOpen] = useState(false);
@@ -279,14 +318,18 @@ export function useChatWorkspace({
   const loadGenRef = useRef(0);
 
   // Create toast wrapper for handlers
-  const toastWrapper = useCallback((opts: { title: string; description?: string; variant?: string; duration?: number }) => {
-    toast({
-      title: opts.title,
-      description: opts.description,
-      variant: (opts.variant === 'error' ? 'destructive' : opts.variant) as 'default' | 'destructive' | undefined,
-      duration: opts.duration,
-    });
-  }, [toast]);
+  const toastWrapper = useCallback(
+    (opts: { title: string; description?: string; variant?: string; duration?: number }) => {
+      toast({
+        title: opts.title,
+        description: opts.description,
+        variant: (opts.variant === "error" ? "destructive" : opts.variant) as
+          "default" | "destructive" | undefined,
+        duration: opts.duration,
+      });
+    },
+    [toast],
+  );
 
   const {
     beginRun: beginInferenceRun,
@@ -308,7 +351,9 @@ export function useChatWorkspace({
   });
 
   const activeConversationRun = getRunForConversation(currentConversation?.id ?? null);
-  const isCurrentConversationStreaming = isConversationStreaming(currentConversation?.id ?? null) || Boolean(currentConversation?.activeRunId);
+  const isCurrentConversationStreaming =
+    isConversationStreaming(currentConversation?.id ?? null) ||
+    Boolean(currentConversation?.activeRunId);
   const isCurrentConversationBusy = isSendingMessage || isCurrentConversationStreaming;
   const stopActiveInferenceRun = useCallback(() => {
     void stopInferenceRun(activeConversationRun?.id ?? currentConversation?.activeRunId ?? null);
@@ -506,7 +551,14 @@ export function useChatWorkspace({
 
   const hydratedSharedTokenRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!sharedConversationToken || !initialSharedConversation || !authResolved || !isLoggedIn || !userId) return;
+    if (
+      !sharedConversationToken ||
+      !initialSharedConversation ||
+      !authResolved ||
+      !isLoggedIn ||
+      !userId
+    )
+      return;
     if (hydratedSharedTokenRef.current === sharedConversationToken) return;
 
     hydratedSharedTokenRef.current = sharedConversationToken;
@@ -524,21 +576,20 @@ export function useChatWorkspace({
   }, [authResolved, initialSharedConversation, isLoggedIn, sharedConversationToken, userId]);
 
   // Branching handlers
-  const {
-    activeMessages,
-    branchChildrenMap,
-    handleBranchSelectionChange,
-    activeBranchPath,
-  } = useBranchingHandlers({
-    messages: currentConversation?.messages,
-    branchSelections,
-    setBranchSelections,
-    rootKey: ROOT_BRANCH_KEY,
-  });
+  const { activeMessages, branchChildrenMap, handleBranchSelectionChange, activeBranchPath } =
+    useBranchingHandlers({
+      messages: currentConversation?.messages,
+      branchSelections,
+      setBranchSelections,
+      rootKey: ROOT_BRANCH_KEY,
+    });
 
   // Per-conversation token usage (AI messages only) for the Settings → Usage
   // tab's "This conversation" card.
-  const conversationUsage = useMemo(() => computeConversationUsage(activeMessages), [activeMessages]);
+  const conversationUsage = useMemo(
+    () => computeConversationUsage(activeMessages),
+    [activeMessages],
+  );
 
   // Reset message editing state on conversation change
   useEffect(() => {
@@ -560,12 +611,13 @@ export function useChatWorkspace({
   // Memoized because it is threaded into the edit / retry / inference / feedback
   // factories below — an unstable identity here invalidates all of them.
   const setConversationMessages = useMemo(
-    () => createConversationMessageSetter({
-      agents,
-      selectedAgent,
-      isPrivateMode,
-      setCurrentConversation,
-    }),
+    () =>
+      createConversationMessageSetter({
+        agents,
+        selectedAgent,
+        isPrivateMode,
+        setCurrentConversation,
+      }),
     [agents, selectedAgent, isPrivateMode, setCurrentConversation],
   );
 
@@ -598,13 +650,14 @@ export function useChatWorkspace({
   }, [dictationStatus, isCurrentConversationBusy]);
 
   const { handleDictationSubmit, handleDictationStatusChange } = useMemo(
-    () => createVoiceDictationHandlers({
-      userId,
-      setCurrentMessage,
-      setDictationStatus,
-      textareaRef,
-      toast: toastWrapper,
-    }),
+    () =>
+      createVoiceDictationHandlers({
+        userId,
+        setCurrentMessage,
+        setDictationStatus,
+        textareaRef,
+        toast: toastWrapper,
+      }),
     [userId, setCurrentMessage, setDictationStatus, textareaRef, toastWrapper],
   );
 
@@ -878,10 +931,21 @@ export function useChatWorkspace({
   }, [conversationId, currentConversation, agents, selectedAgent]);
 
   // Session auto-refresh effect
-  useSessionAutoRefreshEffect({ isLoggedIn, setIsLoggedIn, setUserId, setUserProfile, toast: toastWrapper });
+  useSessionAutoRefreshEffect({
+    isLoggedIn,
+    setIsLoggedIn,
+    setUserId,
+    setUserProfile,
+    toast: toastWrapper,
+  });
 
   // Session state sync effect
-  useSessionStateSyncEffect({ userId, selectedAgent, currentConversationId: currentConversation?.id || null, isPrivateMode });
+  useSessionStateSyncEffect({
+    userId,
+    selectedAgent,
+    currentConversationId: currentConversation?.id || null,
+    isPrivateMode,
+  });
 
   // ── URL-driven conversation loading ────────────────────────────────────
   // The route's :conversationId is the single source of truth. This one effect
@@ -994,14 +1058,22 @@ export function useChatWorkspace({
   });
 
   // Create attachment handlers
-  const { handleFileUpload, handlePaste, removeAttachment, isImageFile, getImageUrl, handleFileDownload } = useMemo(
-    () => createAttachmentHandlers({
-      attachments,
-      setAttachments,
-      toast: toastWrapper,
-      userId,
-      currentConversation,
-    }),
+  const {
+    handleFileUpload,
+    handlePaste,
+    removeAttachment,
+    isImageFile,
+    getImageUrl,
+    handleFileDownload,
+  } = useMemo(
+    () =>
+      createAttachmentHandlers({
+        attachments,
+        setAttachments,
+        toast: toastWrapper,
+        userId,
+        currentConversation,
+      }),
     [attachments, setAttachments, toastWrapper, userId, currentConversation],
   );
 
@@ -1011,12 +1083,13 @@ export function useChatWorkspace({
     [toastWrapper, setCopiedId, setSelectedImage],
   );
   const { handleReadAloud, stopReadAloud } = useMemo(
-    () => createReadAloudHandlers({
-      userId,
-      conversationId: currentConversation?.id ?? null,
-      setSpeakingMessageId,
-      toast: toastWrapper,
-    }),
+    () =>
+      createReadAloudHandlers({
+        userId,
+        conversationId: currentConversation?.id ?? null,
+        setSpeakingMessageId,
+        toast: toastWrapper,
+      }),
     [userId, currentConversation?.id, setSpeakingMessageId, toastWrapper],
   );
 
@@ -1094,11 +1167,12 @@ export function useChatWorkspace({
   // a brand-new type on every render, so the indicator's DOM was torn down and
   // rebuilt on every streamed token instead of simply re-rendering.
   const { AiTransitionIndicator } = useMemo(
-    () => createAiTransitionHandlers({
-      showAiTransition,
-      thinkingState,
-      activeBranchPath,
-    }),
+    () =>
+      createAiTransitionHandlers({
+        showAiTransition,
+        thinkingState,
+        activeBranchPath,
+      }),
     [showAiTransition, thinkingState, activeBranchPath],
   );
 
@@ -1235,7 +1309,10 @@ export function useChatWorkspace({
   useEffect(() => {
     // "archived" is the pre-taxonomy id for the Data controls section; stale
     // persisted snapshots may still carry it, so honor both.
-    if (!showUserProfile || (activeProfileTab !== "data-controls" && activeProfileTab !== "archived")) {
+    if (
+      !showUserProfile ||
+      (activeProfileTab !== "data-controls" && activeProfileTab !== "archived")
+    ) {
       return;
     }
 
@@ -1243,27 +1320,32 @@ export function useChatWorkspace({
     void refreshSharedConversations();
   }, [activeProfileTab, showUserProfile, userId]);
 
-  const handleOpenArchivedConversation = useCallback(async (conversation: ConversationSummary) => {
-    closeProfilePanel();
-    await handleConversationSelect(conversation);
-  }, [closeProfilePanel, handleConversationSelect]);
+  const handleOpenArchivedConversation = useCallback(
+    async (conversation: ConversationSummary) => {
+      closeProfilePanel();
+      await handleConversationSelect(conversation);
+    },
+    [closeProfilePanel, handleConversationSelect],
+  );
 
   // Agent change handler
   const { handleAgentChange } = useMemo(
-    () => createAgentHandlers({
-      setSelectedAgent,
-      persistUIState: requestPersist,
-    }),
+    () =>
+      createAgentHandlers({
+        setSelectedAgent,
+        persistUIState: requestPersist,
+      }),
     [setSelectedAgent, requestPersist],
   );
 
   const { handleSearchResultSelect } = useMemo(
-    () => createSearchResultHandlers({
-      agents,
-      onAgentSelect: handleAgentChange,
-      onConversationSelect: (conversation) => void handleConversationSelect(conversation),
-      onCloseSearch: closeSearchPanel,
-    }),
+    () =>
+      createSearchResultHandlers({
+        agents,
+        onAgentSelect: handleAgentChange,
+        onConversationSelect: (conversation) => void handleConversationSelect(conversation),
+        onCloseSearch: closeSearchPanel,
+      }),
     [agents, handleAgentChange, handleConversationSelect, closeSearchPanel],
   );
   const defaultSearchResults = useMemo(
@@ -1275,9 +1357,9 @@ export function useChatWorkspace({
   // block's default (absent from the record) is open — a bare flip of an
   // unset key would no-op visually on the first click.
   const toggleThinking = (messageId: string, next?: boolean) => {
-    setExpandedThinking(prev => ({
+    setExpandedThinking((prev) => ({
       ...prev,
-      [messageId]: next ?? !prev[messageId]
+      [messageId]: next ?? !prev[messageId],
     }));
   };
 
@@ -1430,15 +1512,15 @@ export function useChatWorkspace({
     const handleUnauthorized = () => {
       handleLogout();
       toast({
-        title: 'Session expired',
-        description: 'Please sign in again to continue.',
-        variant: 'destructive',
+        title: "Session expired",
+        description: "Please sign in again to continue.",
+        variant: "destructive",
         duration: 3000,
       });
     };
-    window.addEventListener('mx:unauthorized', handleUnauthorized);
+    window.addEventListener("mx:unauthorized", handleUnauthorized);
     return () => {
-      window.removeEventListener('mx:unauthorized', handleUnauthorized);
+      window.removeEventListener("mx:unauthorized", handleUnauthorized);
     };
   }, [handleLogout, toast]);
 
@@ -1472,8 +1554,11 @@ export function useChatWorkspace({
 
   // Determine current agent and its icon
   const conversationAgent = currentConversation?.agent ?? null;
-  const selectedAgentFromList = agents.find(a => a.id === selectedAgent) ?? null;
-  const fallbackSelectedAgent = inactiveAgentFallback && inactiveAgentFallback.id === selectedAgent ? inactiveAgentFallback : null;
+  const selectedAgentFromList = agents.find((a) => a.id === selectedAgent) ?? null;
+  const fallbackSelectedAgent =
+    inactiveAgentFallback && inactiveAgentFallback.id === selectedAgent
+      ? inactiveAgentFallback
+      : null;
   const effectiveSelectedAgent = selectedAgentFromList ?? fallbackSelectedAgent ?? null;
   const currentAgent = conversationAgent ?? effectiveSelectedAgent ?? null;
   // The input bar reflects ONLY the header dropdown selection (the agent the
@@ -1487,14 +1572,17 @@ export function useChatWorkspace({
   // resolved from the catalog by id, falling back to the denormalized
   // agentName (deactivated/removed agent) and finally the conversation agent
   // (pre-migration messages with no agentId).
-  const resolveMessageAgent = useCallback((message: MessageOut) => {
-    if (message.agentId) {
-      const found = agents.find(a => a.id === message.agentId);
-      if (found) return { name: found.name, Icon: found.icon };
-      if (message.agentName) return { name: message.agentName, Icon: Building2 };
-    }
-    return { name: currentAgent?.name ?? "Unknown agent", Icon: AgentIcon };
-  }, [agents, currentAgent, AgentIcon]);
+  const resolveMessageAgent = useCallback(
+    (message: MessageOut) => {
+      if (message.agentId) {
+        const found = agents.find((a) => a.id === message.agentId);
+        if (found) return { name: found.name, Icon: found.icon };
+        if (message.agentName) return { name: message.agentName, Icon: Building2 };
+      }
+      return { name: currentAgent?.name ?? "Unknown agent", Icon: AgentIcon };
+    },
+    [agents, currentAgent, AgentIcon],
+  );
   const activePlan = activeConversationRun?.timeline?.plan?.items?.length
     ? activeConversationRun.timeline.plan
     : null;
@@ -1511,12 +1599,17 @@ export function useChatWorkspace({
     );
   }, [activeConversationRun, isInterruptResolved]);
   const activeHitlInterrupt = pendingRunInterrupts[0] ?? null;
-  const canShareCurrentConversation = Boolean(currentConversation?.id && !currentConversation.id.startsWith("shared:"));
-  const canShareFullConversation = canShareCurrentConversation && activeMessages.some((message) => (
-    message.sender === "ai" &&
-    !String(message.id).startsWith("temp-") &&
-    (Boolean(message.content?.trim()) || (message.attachments?.length ?? 0) > 0)
-  ));
+  const canShareCurrentConversation = Boolean(
+    currentConversation?.id && !currentConversation.id.startsWith("shared:"),
+  );
+  const canShareFullConversation =
+    canShareCurrentConversation &&
+    activeMessages.some(
+      (message) =>
+        message.sender === "ai" &&
+        !String(message.id).startsWith("temp-") &&
+        (Boolean(message.content?.trim()) || (message.attachments?.length ?? 0) > 0),
+    );
   const canTogglePrivateMode = (currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode;
   const canShowStarterSuggestions =
     !currentConversation &&
@@ -1636,73 +1729,220 @@ export function useChatWorkspace({
   // gate and renders the chrome; the route views consume slices of this.
   return {
     // auth / gate
-    authResolved, isLoggedIn, userId,
+    authResolved,
+    isLoggedIn,
+    userId,
     // store data
-    currentConversation, selectedAgent, isPrivateMode, agents, availableTools,
-    availableSkills, myRegistrySkills, userPreferences, isSavingPreferences,
-    inactiveAgentFallback, conversations, conversationsLoading, starterSuggestions,
-    convHasMore, convIsLoadingMore, archivedConversations, archivedConvIsLoading,
-    archivedConvHasMore, sharedConversations, sharedConvIsLoading, sharedConvHasMore,
-    userProfile, loadingConversation, activeProfileTab, sidebarOpen,
+    currentConversation,
+    selectedAgent,
+    isPrivateMode,
+    agents,
+    availableTools,
+    availableSkills,
+    myRegistrySkills,
+    userPreferences,
+    isSavingPreferences,
+    inactiveAgentFallback,
+    conversations,
+    conversationsLoading,
+    starterSuggestions,
+    convHasMore,
+    convIsLoadingMore,
+    archivedConversations,
+    archivedConvIsLoading,
+    archivedConvHasMore,
+    sharedConversations,
+    sharedConvIsLoading,
+    sharedConvHasMore,
+    userProfile,
+    loadingConversation,
+    activeProfileTab,
+    sidebarOpen,
     // view-local state
-    currentMessage, setCurrentMessage, attachments, thinkingState, showUserProfile,
-    showEditProfile, setShowEditProfile, showShortcutsPanel, setShowShortcutsPanel,
-    showHelpPanel, setShowHelpPanel,
-    selectedImage, selectedFilePreview, isAgentPickerOpen, setIsAgentPickerOpen,
-    isHeaderActionMenuOpen, setIsHeaderActionMenuOpen, setIsSidebarFloatingUiOpen,
-    sidebarDismissFloatingUiSignal, isReportDialogOpen, shareDialogUrl,
-    shareTargetMessage, shareMode, shareForceFullConversation, shareExpiresAt,
-    isCreatingShareLink, isExportingSharePdf, isShareCopyPulse, reportTargetMessageId,
-    reportTargetMessagePreview, reportConversationTitle, isSubmittingReport,
-    isPlanExpanded, setIsPlanExpanded, bodyTransition, voiceBarReady, chatBarReady,
-    dictationStatus, dictationRequestSignal, dictationCancelSignal,
+    currentMessage,
+    setCurrentMessage,
+    attachments,
+    thinkingState,
+    showUserProfile,
+    showEditProfile,
+    setShowEditProfile,
+    showShortcutsPanel,
+    setShowShortcutsPanel,
+    showHelpPanel,
+    setShowHelpPanel,
+    selectedImage,
+    selectedFilePreview,
+    isAgentPickerOpen,
+    setIsAgentPickerOpen,
+    isHeaderActionMenuOpen,
+    setIsHeaderActionMenuOpen,
+    setIsSidebarFloatingUiOpen,
+    sidebarDismissFloatingUiSignal,
+    isReportDialogOpen,
+    shareDialogUrl,
+    shareTargetMessage,
+    shareMode,
+    shareForceFullConversation,
+    shareExpiresAt,
+    isCreatingShareLink,
+    isExportingSharePdf,
+    isShareCopyPulse,
+    reportTargetMessageId,
+    reportTargetMessagePreview,
+    reportConversationTitle,
+    isSubmittingReport,
+    isPlanExpanded,
+    setIsPlanExpanded,
+    bodyTransition,
+    voiceBarReady,
+    chatBarReady,
+    dictationStatus,
+    dictationRequestSignal,
+    dictationCancelSignal,
     // refs
-    agentTriggerRef, fileInputRef, textareaRef, composerContainerRef,
+    agentTriggerRef,
+    fileInputRef,
+    textareaRef,
+    composerContainerRef,
     // hook outputs / context
-    headerHasDivider, navigate, isTasksRoute, reduceMotion, voiceSession, scheduledTasks,
-    resumeInferenceRunHandler, isInterruptResolved, resolvedPreferences,
-    toast, isSearchOpen, searchQuery,
-    searchResults, searchLoading, searchError, setSearchQuery, closeSearchPanel,
-    conversationUsage, activeConversationRun, pendingRunInterrupts, activeHitlInterrupt,
+    headerHasDivider,
+    navigate,
+    isTasksRoute,
+    reduceMotion,
+    voiceSession,
+    scheduledTasks,
+    resumeInferenceRunHandler,
+    isInterruptResolved,
+    resolvedPreferences,
+    toast,
+    isSearchOpen,
+    searchQuery,
+    searchResults,
+    searchLoading,
+    searchError,
+    setSearchQuery,
+    closeSearchPanel,
+    conversationUsage,
+    activeConversationRun,
+    pendingRunInterrupts,
+    activeHitlInterrupt,
     // profile/skills
-    skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading,
-    isSkillToggling, mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail,
-    ensureSkillDetail, handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill,
+    skillSelections,
+    loadAgentSkills,
+    toggleUserAgentSkill,
+    isAgentSkillLoading,
+    isSkillToggling,
+    mySkills,
+    loadingMySkills,
+    mySkillDetails,
+    loadingSkillDetail,
+    ensureSkillDetail,
+    handleRefreshMySkills,
+    handleAddGlobalSkill,
+    handleCreateCustomSkill,
     handleRemoveSkillFromPool,
     // profile/agents (the Agents-tab builder)
-    myAgents, busyAgentId, getAgentDefinition, validateAgent,
-    handleCreateAgent, handleUpdateAgent, handleDeleteAgent,
+    myAgents,
+    busyAgentId,
+    getAgentDefinition,
+    validateAgent,
+    handleCreateAgent,
+    handleUpdateAgent,
+    handleDeleteAgent,
     // multi-account switcher
-    accountSwitch, accounts, accountsMeta, busyAccountId, onSelectAccount, onAddAccount,
-    onLogoutAccount, onLogoutAllAccounts,
-    accountLimitOpen, setAccountLimitOpen, onConfirmAccountLimit,
+    accountSwitch,
+    accounts,
+    accountsMeta,
+    busyAccountId,
+    onSelectAccount,
+    onAddAccount,
+    onLogoutAccount,
+    onLogoutAllAccounts,
+    accountLimitOpen,
+    setAccountLimitOpen,
+    onConfirmAccountLimit,
     memoryInspector,
     // derived
-    AgentIcon, inputBarAgent, isMessagesEmpty, settledVoiceActive, isCurrentConversationBusy,
-    activePlan, showPlanningCard, canShareFullConversation, canTogglePrivateMode,
-    canShowStarterSuggestions, defaultSearchResults, emptyWrapperStyle, textareaMaxHeight,
+    AgentIcon,
+    inputBarAgent,
+    isMessagesEmpty,
+    settledVoiceActive,
+    isCurrentConversationBusy,
+    activePlan,
+    showPlanningCard,
+    canShareFullConversation,
+    canTogglePrivateMode,
+    canShowStarterSuggestions,
+    defaultSearchResults,
+    emptyWrapperStyle,
+    textareaMaxHeight,
     renderConversationBody,
     // handlers
-    handleSidebarOpenChange, handleOpenSearch, focusComposer, openAttachments, startDictation,
-    triggerVoiceMode, openAgentPicker, handleTogglePrivateMode, openProfilePanel,
-    closeProfilePanel, handleNewChat, dismissActiveUi, handleConversationSelect,
-    handleDeleteConversation, handleRenameConversation, handleArchiveConversation,
-    handleReportConversationFromSidebar, handleLoadMoreConversations, handleTitleClick,
-    handleSearchResultSelect, handleAgentChange, handleArchiveCurrentConversation,
-    handleUnarchiveCurrentConversation, handleReportCurrentConversation,
-    handleDeleteCurrentConversation, openFullConversationShareDialog,
-    handleToggleShowMessageTokenUsage, handlePaste, handleSendMessage, handleStopStreaming,
-    isImageFile, getImageUrl, handleImageClick, removeAttachment, handleFileUpload,
-    handleDictationSubmit, handleDictationStatusChange, handleStarterSuggestionSelect,
-    handleSetActiveProfileTab, handleLogout, handleRefreshSkills,
-    handleLoadMoreArchivedConversations, handleOpenArchivedConversation,
-    handleUnarchiveConversation, handleLoadMoreSharedConversations, handleOpenSharedConversation,
-    handleRevokeSharedConversation, handleToggleSuggestionsEnabled,
-    handleToggleSearchPastConvs, handleToggleUseMemory, handleSelectPersonality, handleSaveCustomInstructions,
-    handleSelectVoiceModeVoice, handleSelectVoiceModeLanguage, closeReportDialog,
-    handleSubmitConversationReport, handleShareModeChange, handleShareExpiresAtChange,
-    closeShareDialog, copyShareDialogUrl, handleCreateShareLink, handleDownloadSharePdf,
-    handleCloseFilePreview, handleFileDownload, handleCloseImagePreview,
+    handleSidebarOpenChange,
+    handleOpenSearch,
+    focusComposer,
+    openAttachments,
+    startDictation,
+    triggerVoiceMode,
+    openAgentPicker,
+    handleTogglePrivateMode,
+    openProfilePanel,
+    closeProfilePanel,
+    handleNewChat,
+    dismissActiveUi,
+    handleConversationSelect,
+    handleDeleteConversation,
+    handleRenameConversation,
+    handleArchiveConversation,
+    handleReportConversationFromSidebar,
+    handleLoadMoreConversations,
+    handleTitleClick,
+    handleSearchResultSelect,
+    handleAgentChange,
+    handleArchiveCurrentConversation,
+    handleUnarchiveCurrentConversation,
+    handleReportCurrentConversation,
+    handleDeleteCurrentConversation,
+    openFullConversationShareDialog,
+    handleToggleShowMessageTokenUsage,
+    handlePaste,
+    handleSendMessage,
+    handleStopStreaming,
+    isImageFile,
+    getImageUrl,
+    handleImageClick,
+    removeAttachment,
+    handleFileUpload,
+    handleDictationSubmit,
+    handleDictationStatusChange,
+    handleStarterSuggestionSelect,
+    handleSetActiveProfileTab,
+    handleLogout,
+    handleRefreshSkills,
+    handleLoadMoreArchivedConversations,
+    handleOpenArchivedConversation,
+    handleUnarchiveConversation,
+    handleLoadMoreSharedConversations,
+    handleOpenSharedConversation,
+    handleRevokeSharedConversation,
+    handleToggleSuggestionsEnabled,
+    handleToggleSearchPastConvs,
+    handleToggleUseMemory,
+    handleSelectPersonality,
+    handleSaveCustomInstructions,
+    handleSelectVoiceModeVoice,
+    handleSelectVoiceModeLanguage,
+    closeReportDialog,
+    handleSubmitConversationReport,
+    handleShareModeChange,
+    handleShareExpiresAtChange,
+    closeShareDialog,
+    copyShareDialogUrl,
+    handleCreateShareLink,
+    handleDownloadSharePdf,
+    handleCloseFilePreview,
+    handleFileDownload,
+    handleCloseImagePreview,
   };
 }
 
@@ -1727,42 +1967,147 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
   // external-store write (useSyncExternalStore-safe), not a React setState.
   useWorkspaceStore.setState({ workspace: ws });
   const {
-    authResolved, isLoggedIn, userId, sidebarOpen, handleSidebarOpenChange,
-    canTogglePrivateMode, handleOpenSearch, focusComposer, openAttachments, startDictation,
-    triggerVoiceMode, openAgentPicker, handleTogglePrivateMode, openProfilePanel, handleNewChat,
-    dismissActiveUi, conversations, currentConversation, handleConversationSelect,
-    handleDeleteConversation, handleRenameConversation, handleArchiveConversation,
-    handleReportConversationFromSidebar, handleLoadMoreConversations, handleTitleClick,
-    navigate, scheduledTasks, agents, userProfile, sidebarDismissFloatingUiSignal,
-    setIsSidebarFloatingUiOpen, convIsLoadingMore, conversationsLoading, convHasMore,
-    isSearchOpen, searchQuery, searchResults, defaultSearchResults, searchLoading, searchError,
-    setSearchQuery, closeSearchPanel, handleSearchResultSelect, resumeInferenceRunHandler,
-    isInterruptResolved, showUserProfile, showEditProfile, setShowEditProfile,
-    showShortcutsPanel, setShowShortcutsPanel, showHelpPanel, setShowHelpPanel,
-    closeProfilePanel, activeProfileTab,
-    handleSetActiveProfileTab, handleLogout, availableTools, availableSkills, handleRefreshSkills,
-    mySkills, loadingMySkills, mySkillDetails, loadingSkillDetail, ensureSkillDetail,
-    handleRefreshMySkills, handleAddGlobalSkill, handleCreateCustomSkill, handleRemoveSkillFromPool,
-    myAgents, busyAgentId, getAgentDefinition, validateAgent,
-    handleCreateAgent, handleUpdateAgent, handleDeleteAgent,
-    skillSelections, loadAgentSkills, toggleUserAgentSkill, isAgentSkillLoading, isSkillToggling,
-    memoryInspector, conversationUsage,
-    resolvedPreferences, archivedConversations, archivedConvIsLoading, archivedConvHasMore,
-    handleLoadMoreArchivedConversations, handleOpenArchivedConversation, handleUnarchiveConversation,
-    sharedConversations, sharedConvIsLoading, sharedConvHasMore, handleLoadMoreSharedConversations,
-    handleOpenSharedConversation, handleRevokeSharedConversation,
-    handleToggleSuggestionsEnabled, handleToggleShowMessageTokenUsage, handleToggleSearchPastConvs,
-    handleToggleUseMemory, handleSelectPersonality, handleSaveCustomInstructions, handleSelectVoiceModeVoice,
-    handleSelectVoiceModeLanguage, isSavingPreferences, isReportDialogOpen, closeReportDialog,
-    accountSwitch, accounts, accountsMeta, busyAccountId, onSelectAccount, onAddAccount,
-    onLogoutAccount, onLogoutAllAccounts,
-    accountLimitOpen, setAccountLimitOpen, onConfirmAccountLimit,
-    handleSubmitConversationReport, isSubmittingReport, reportTargetMessageId,
-    reportTargetMessagePreview, reportConversationTitle, shareTargetMessage, isCreatingShareLink,
-    isExportingSharePdf, shareDialogUrl, isShareCopyPulse, shareMode, shareForceFullConversation,
-    shareExpiresAt, handleShareModeChange, handleShareExpiresAtChange, closeShareDialog,
-    copyShareDialogUrl, handleCreateShareLink, handleDownloadSharePdf, selectedFilePreview,
-    handleCloseFilePreview, handleFileDownload, selectedImage, handleCloseImagePreview,
+    authResolved,
+    isLoggedIn,
+    userId,
+    sidebarOpen,
+    handleSidebarOpenChange,
+    canTogglePrivateMode,
+    handleOpenSearch,
+    focusComposer,
+    openAttachments,
+    startDictation,
+    triggerVoiceMode,
+    openAgentPicker,
+    handleTogglePrivateMode,
+    openProfilePanel,
+    handleNewChat,
+    dismissActiveUi,
+    conversations,
+    currentConversation,
+    handleConversationSelect,
+    handleDeleteConversation,
+    handleRenameConversation,
+    handleArchiveConversation,
+    handleReportConversationFromSidebar,
+    handleLoadMoreConversations,
+    handleTitleClick,
+    navigate,
+    scheduledTasks,
+    agents,
+    userProfile,
+    sidebarDismissFloatingUiSignal,
+    setIsSidebarFloatingUiOpen,
+    convIsLoadingMore,
+    conversationsLoading,
+    convHasMore,
+    isSearchOpen,
+    searchQuery,
+    searchResults,
+    defaultSearchResults,
+    searchLoading,
+    searchError,
+    setSearchQuery,
+    closeSearchPanel,
+    handleSearchResultSelect,
+    resumeInferenceRunHandler,
+    isInterruptResolved,
+    showUserProfile,
+    showEditProfile,
+    setShowEditProfile,
+    showShortcutsPanel,
+    setShowShortcutsPanel,
+    showHelpPanel,
+    setShowHelpPanel,
+    closeProfilePanel,
+    activeProfileTab,
+    handleSetActiveProfileTab,
+    handleLogout,
+    availableTools,
+    availableSkills,
+    handleRefreshSkills,
+    mySkills,
+    loadingMySkills,
+    mySkillDetails,
+    loadingSkillDetail,
+    ensureSkillDetail,
+    handleRefreshMySkills,
+    handleAddGlobalSkill,
+    handleCreateCustomSkill,
+    handleRemoveSkillFromPool,
+    myAgents,
+    busyAgentId,
+    getAgentDefinition,
+    validateAgent,
+    handleCreateAgent,
+    handleUpdateAgent,
+    handleDeleteAgent,
+    skillSelections,
+    loadAgentSkills,
+    toggleUserAgentSkill,
+    isAgentSkillLoading,
+    isSkillToggling,
+    memoryInspector,
+    conversationUsage,
+    resolvedPreferences,
+    archivedConversations,
+    archivedConvIsLoading,
+    archivedConvHasMore,
+    handleLoadMoreArchivedConversations,
+    handleOpenArchivedConversation,
+    handleUnarchiveConversation,
+    sharedConversations,
+    sharedConvIsLoading,
+    sharedConvHasMore,
+    handleLoadMoreSharedConversations,
+    handleOpenSharedConversation,
+    handleRevokeSharedConversation,
+    handleToggleSuggestionsEnabled,
+    handleToggleShowMessageTokenUsage,
+    handleToggleSearchPastConvs,
+    handleToggleUseMemory,
+    handleSelectPersonality,
+    handleSaveCustomInstructions,
+    handleSelectVoiceModeVoice,
+    handleSelectVoiceModeLanguage,
+    isSavingPreferences,
+    isReportDialogOpen,
+    closeReportDialog,
+    accountSwitch,
+    accounts,
+    accountsMeta,
+    busyAccountId,
+    onSelectAccount,
+    onAddAccount,
+    onLogoutAccount,
+    onLogoutAllAccounts,
+    accountLimitOpen,
+    setAccountLimitOpen,
+    onConfirmAccountLimit,
+    handleSubmitConversationReport,
+    isSubmittingReport,
+    reportTargetMessageId,
+    reportTargetMessagePreview,
+    reportConversationTitle,
+    shareTargetMessage,
+    isCreatingShareLink,
+    isExportingSharePdf,
+    shareDialogUrl,
+    isShareCopyPulse,
+    shareMode,
+    shareForceFullConversation,
+    shareExpiresAt,
+    handleShareModeChange,
+    handleShareExpiresAtChange,
+    closeShareDialog,
+    copyShareDialogUrl,
+    handleCreateShareLink,
+    handleDownloadSharePdf,
+    selectedFilePreview,
+    handleCloseFilePreview,
+    handleFileDownload,
+    selectedImage,
+    handleCloseImagePreview,
   } = ws;
   // Main Chat Interface
   if (!authResolved) {
@@ -1861,161 +2206,166 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
         />
         <SidebarInset className="bg-transparent">
           <TooltipProvider>
-          <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isInterruptResolved }}>
-            <div id={OVERLAY_HOST_ID} className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow">
-              {/* The routed view: ChatView ("/", "/c/:id") or TasksView ("/tasks"),
+            <HitlProvider value={{ resumeRun: resumeInferenceRunHandler, isInterruptResolved }}>
+              <div
+                id={OVERLAY_HOST_ID}
+                className="animate-fade-in flex min-h-svh max-h-svh flex-col relative overflow-hidden transition-slow"
+              >
+                {/* The routed view: ChatView ("/", "/c/:id") or TasksView ("/tasks"),
                   or `children` when ChatShell is used directly (shared conversation).
                   The chat surface + tasks page now live in pages/ChatView and
                   pages/TasksView. */}
-              {children ?? <Outlet />}
+                {children ?? <Outlet />}
 
-              <AccountLimitDialog
-                open={accountLimitOpen}
-                accounts={accounts}
-                submitting={Boolean(busyAccountId)}
-                onCancel={() => setAccountLimitOpen(false)}
-                onConfirm={(account) => void onConfirmAccountLimit(account)}
-              />
+                <AccountLimitDialog
+                  open={accountLimitOpen}
+                  accounts={accounts}
+                  submitting={Boolean(busyAccountId)}
+                  onCancel={() => setAccountLimitOpen(false)}
+                  onConfirm={(account) => void onConfirmAccountLimit(account)}
+                />
 
-              {/* User Profile Modal */}
-              <ProfilePanel
-              open={showUserProfile}
-                onClose={closeProfilePanel}
-                activeTab={activeProfileTab}
-                setActiveTab={handleSetActiveProfileTab}
-                onLogout={handleLogout}
-                user={userProfile}
-                availableTools={availableTools}
-                availableSkills={availableSkills}
-                onRefreshSkills={handleRefreshSkills}
-                mySkills={mySkills}
-                loadingMySkills={loadingMySkills}
-                mySkillDetails={mySkillDetails}
-                isMySkillDetailLoading={loadingSkillDetail}
-                onLoadMySkillDetail={ensureSkillDetail}
-                onRefreshMySkills={handleRefreshMySkills}
-                onAddGlobalSkillToPool={handleAddGlobalSkill}
-                onCreateCustomSkill={handleCreateCustomSkill}
-                onRemoveSkillFromPool={handleRemoveSkillFromPool}
-                myAgents={myAgents}
-                busyAgentId={busyAgentId}
-                onCreateAgent={handleCreateAgent}
-                onUpdateAgent={handleUpdateAgent}
-                onDeleteAgent={handleDeleteAgent}
-                onValidateAgent={validateAgent}
-                onLoadAgentDefinition={getAgentDefinition}
-                agents={agents}
-                skillSelections={skillSelections}
-                onLoadAgentSkills={loadAgentSkills}
-                onToggleUserAgentSkill={toggleUserAgentSkill}
-                isAgentSkillLoading={isAgentSkillLoading}
-                isSkillToggling={isSkillToggling}
-                memoryInspector={memoryInspector}
-                userPreferences={resolvedPreferences}
-                archivedConversations={archivedConversations}
-                archivedConversationsLoading={archivedConvIsLoading}
-                archivedConversationsHasMore={archivedConvHasMore}
-                onLoadMoreArchivedConversations={handleLoadMoreArchivedConversations}
-                onSelectArchivedConversation={handleOpenArchivedConversation}
-                onUnarchiveConversation={(conversation) => void handleUnarchiveConversation(conversation.id)}
-                sharedConversations={sharedConversations}
-                sharedConversationsLoading={sharedConvIsLoading}
-                sharedConversationsHasMore={sharedConvHasMore}
-                onLoadMoreSharedConversations={handleLoadMoreSharedConversations}
-                onSelectSharedConversation={handleOpenSharedConversation}
-                onRevokeSharedConversation={handleRevokeSharedConversation}
-                onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
-                onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
-                onToggleSearchPastConvs={handleToggleSearchPastConvs}
-                onToggleUseMemory={handleToggleUseMemory}
-                onSelectPersonality={handleSelectPersonality}
-                onSaveCustomInstructions={handleSaveCustomInstructions}
-                onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
-                onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
-                preferencesSaving={isSavingPreferences}
-                conversationUsage={currentConversation ? conversationUsage : null}
-                conversationTitle={currentConversation?.title ?? null}
-              />
+                {/* User Profile Modal */}
+                <ProfilePanel
+                  open={showUserProfile}
+                  onClose={closeProfilePanel}
+                  activeTab={activeProfileTab}
+                  setActiveTab={handleSetActiveProfileTab}
+                  onLogout={handleLogout}
+                  user={userProfile}
+                  availableTools={availableTools}
+                  availableSkills={availableSkills}
+                  onRefreshSkills={handleRefreshSkills}
+                  mySkills={mySkills}
+                  loadingMySkills={loadingMySkills}
+                  mySkillDetails={mySkillDetails}
+                  isMySkillDetailLoading={loadingSkillDetail}
+                  onLoadMySkillDetail={ensureSkillDetail}
+                  onRefreshMySkills={handleRefreshMySkills}
+                  onAddGlobalSkillToPool={handleAddGlobalSkill}
+                  onCreateCustomSkill={handleCreateCustomSkill}
+                  onRemoveSkillFromPool={handleRemoveSkillFromPool}
+                  myAgents={myAgents}
+                  busyAgentId={busyAgentId}
+                  onCreateAgent={handleCreateAgent}
+                  onUpdateAgent={handleUpdateAgent}
+                  onDeleteAgent={handleDeleteAgent}
+                  onValidateAgent={validateAgent}
+                  onLoadAgentDefinition={getAgentDefinition}
+                  agents={agents}
+                  skillSelections={skillSelections}
+                  onLoadAgentSkills={loadAgentSkills}
+                  onToggleUserAgentSkill={toggleUserAgentSkill}
+                  isAgentSkillLoading={isAgentSkillLoading}
+                  isSkillToggling={isSkillToggling}
+                  memoryInspector={memoryInspector}
+                  userPreferences={resolvedPreferences}
+                  archivedConversations={archivedConversations}
+                  archivedConversationsLoading={archivedConvIsLoading}
+                  archivedConversationsHasMore={archivedConvHasMore}
+                  onLoadMoreArchivedConversations={handleLoadMoreArchivedConversations}
+                  onSelectArchivedConversation={handleOpenArchivedConversation}
+                  onUnarchiveConversation={(conversation) =>
+                    void handleUnarchiveConversation(conversation.id)
+                  }
+                  sharedConversations={sharedConversations}
+                  sharedConversationsLoading={sharedConvIsLoading}
+                  sharedConversationsHasMore={sharedConvHasMore}
+                  onLoadMoreSharedConversations={handleLoadMoreSharedConversations}
+                  onSelectSharedConversation={handleOpenSharedConversation}
+                  onRevokeSharedConversation={handleRevokeSharedConversation}
+                  onToggleSuggestionsEnabled={handleToggleSuggestionsEnabled}
+                  onToggleMessageTokenUsage={handleToggleShowMessageTokenUsage}
+                  onToggleSearchPastConvs={handleToggleSearchPastConvs}
+                  onToggleUseMemory={handleToggleUseMemory}
+                  onSelectPersonality={handleSelectPersonality}
+                  onSaveCustomInstructions={handleSaveCustomInstructions}
+                  onSelectVoiceModeVoice={handleSelectVoiceModeVoice}
+                  onSelectVoiceModeLanguage={handleSelectVoiceModeLanguage}
+                  preferencesSaving={isSavingPreferences}
+                  conversationUsage={currentConversation ? conversationUsage : null}
+                  conversationTitle={currentConversation?.title ?? null}
+                />
 
-              {/* Edit profile — the small identity card from the profile menu */}
-              <EditProfileDialog
-                open={showEditProfile}
-                onClose={() => setShowEditProfile(false)}
-                user={userProfile}
-              />
+                {/* Edit profile — the small identity card from the profile menu */}
+                <EditProfileDialog
+                  open={showEditProfile}
+                  onClose={() => setShowEditProfile(false)}
+                  user={userProfile}
+                />
 
-              {/* Dedicated reference panels from the profile menu's Help submenu */}
-              <ShortcutsPanel
-                open={showShortcutsPanel}
-                onClose={() => setShowShortcutsPanel(false)}
-              />
-              <HelpPanel
-                open={showHelpPanel}
-                onClose={() => setShowHelpPanel(false)}
-                archivedConversations={archivedConversations}
-                availableTools={availableTools}
-              />
+                {/* Dedicated reference panels from the profile menu's Help submenu */}
+                <ShortcutsPanel
+                  open={showShortcutsPanel}
+                  onClose={() => setShowShortcutsPanel(false)}
+                />
+                <HelpPanel
+                  open={showHelpPanel}
+                  onClose={() => setShowHelpPanel(false)}
+                  archivedConversations={archivedConversations}
+                  availableTools={availableTools}
+                />
 
-              <ReportConversationDialog
-                open={isReportDialogOpen}
-                onClose={closeReportDialog}
-                onSubmit={handleSubmitConversationReport}
-                submitting={isSubmittingReport}
-                messageId={reportTargetMessageId}
-                messagePreview={reportTargetMessagePreview}
-                conversationTitle={reportConversationTitle}
-              />
+                <ReportConversationDialog
+                  open={isReportDialogOpen}
+                  onClose={closeReportDialog}
+                  onSubmit={handleSubmitConversationReport}
+                  submitting={isSubmittingReport}
+                  messageId={reportTargetMessageId}
+                  messagePreview={reportTargetMessagePreview}
+                  conversationTitle={reportConversationTitle}
+                />
 
-              <ShareConversationDialog
-                open={Boolean(shareTargetMessage)}
-                title={currentConversation?.title}
-                message={shareTargetMessage}
-                creating={isCreatingShareLink}
-                exportingPdf={isExportingSharePdf}
-                linkCreated={Boolean(shareDialogUrl)}
-                copied={isShareCopyPulse}
-                shareMode={shareMode}
-                forceFullConversation={shareForceFullConversation}
-                expiresAt={shareExpiresAt}
-                onShareModeChange={handleShareModeChange}
-                onExpiresAtChange={handleShareExpiresAtChange}
-                onClose={closeShareDialog}
-                onCreateLink={shareDialogUrl ? copyShareDialogUrl : handleCreateShareLink}
-                onDownloadPdf={handleDownloadSharePdf}
-              />
+                <ShareConversationDialog
+                  open={Boolean(shareTargetMessage)}
+                  title={currentConversation?.title}
+                  message={shareTargetMessage}
+                  creating={isCreatingShareLink}
+                  exportingPdf={isExportingSharePdf}
+                  linkCreated={Boolean(shareDialogUrl)}
+                  copied={isShareCopyPulse}
+                  shareMode={shareMode}
+                  forceFullConversation={shareForceFullConversation}
+                  expiresAt={shareExpiresAt}
+                  onShareModeChange={handleShareModeChange}
+                  onExpiresAtChange={handleShareExpiresAtChange}
+                  onClose={closeShareDialog}
+                  onCreateLink={shareDialogUrl ? copyShareDialogUrl : handleCreateShareLink}
+                  onDownloadPdf={handleDownloadSharePdf}
+                />
 
-              <AttachmentPreviewPanel
-                preview={selectedFilePreview}
-                userId={userId}
-                conversationId={currentConversation?.id ?? null}
-                onClose={handleCloseFilePreview}
-                onDownload={handleFileDownload}
-              />
+                <AttachmentPreviewPanel
+                  preview={selectedFilePreview}
+                  userId={userId}
+                  conversationId={currentConversation?.id ?? null}
+                  onClose={handleCloseFilePreview}
+                  onDownload={handleFileDownload}
+                />
 
-              {/* Image Preview Modal */}
-              {selectedImage && (
-                <div
-                  className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                  onClick={handleCloseImagePreview}
-                >
-                  <div className="relative w-full h-full flex items-center justify-center">
-                    <button
-                      onClick={handleCloseImagePreview}
-                      className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
-                    >
-                      <X size={24} />
-                    </button>
-                    <img
-                      src={selectedImage}
-                      alt="Full preview"
-                      className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                {/* Image Preview Modal */}
+                {selectedImage && (
+                  <div
+                    className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    onClick={handleCloseImagePreview}
+                  >
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      <button
+                        onClick={handleCloseImagePreview}
+                        className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
+                      >
+                        <X size={24} />
+                      </button>
+                      <img
+                        src={selectedImage}
+                        alt="Full preview"
+                        className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </HitlProvider>
+                )}
+              </div>
+            </HitlProvider>
           </TooltipProvider>
         </SidebarInset>
       </SidebarProvider>

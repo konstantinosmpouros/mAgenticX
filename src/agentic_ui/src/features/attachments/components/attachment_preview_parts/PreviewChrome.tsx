@@ -27,12 +27,15 @@ export function PreviewMessage({
   tone = "default",
 }: PreviewMessageProps) {
   const Icon = tone === "error" ? XCircle : FileType2;
-  const iconClass = tone === "error" ? "bg-destructive/10 text-destructive" : "bg-white/[0.06] text-white/75";
+  const iconClass =
+    tone === "error" ? "bg-destructive/10 text-destructive" : "bg-white/[0.06] text-white/75";
 
   return (
     <div className="flex h-full items-center justify-center">
       <div className="max-w-lg rounded-[1.5rem] border border-white/10 bg-[#262626] px-6 py-7 text-center shadow-sm">
-        <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${iconClass}`}>
+        <div
+          className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${iconClass}`}
+        >
           <Icon className="h-6 w-6" />
         </div>
         <h3 className="text-lg font-semibold text-white">{title}</h3>

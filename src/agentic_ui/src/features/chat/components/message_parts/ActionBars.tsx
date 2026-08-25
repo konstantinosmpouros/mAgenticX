@@ -1,6 +1,15 @@
 ﻿import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/shared/ui/tooltip";
-import { Bot, Copy, Check, ListTodo, ThumbsUp, ThumbsDown, Pencil, MoreHorizontal } from "lucide-react";
+import {
+  Bot,
+  Copy,
+  Check,
+  ListTodo,
+  ThumbsUp,
+  ThumbsDown,
+  Pencil,
+  MoreHorizontal,
+} from "lucide-react";
 import { TbGauge } from "react-icons/tb";
 import { formatCompactTokens } from "@/shared/lib/utils";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -188,123 +197,126 @@ export const AIActionBar = ({
   }, [moreMenuOpen]);
 
   return (
-  <div className="flex w-full flex-wrap items-center gap-2">
-    {(timestampLabel || agentName || usageVisible) && (
-      <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
-        {timestampLabel ? <span>{timestampLabel}</span> : null}
-        {agentName ? (
-          <span className="flex items-center gap-1">
-            {AgentIcon ? <AgentIcon className="h-4 w-4" /> : null}
-            <span>{agentName}</span>
-          </span>
-        ) : null}
-        {usageVisible ? (
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <span className="flex cursor-help items-center gap-1" aria-label="Token usage for this message">
-                <TbGauge className="h-4 w-4" aria-hidden="true" />
-                <span className="tabular-nums">
-                  {formatCompactTokens((message.inputTokens ?? 0) + (message.outputTokens ?? 0))}
+    <div className="flex w-full flex-wrap items-center gap-2">
+      {(timestampLabel || agentName || usageVisible) && (
+        <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
+          {timestampLabel ? <span>{timestampLabel}</span> : null}
+          {agentName ? (
+            <span className="flex items-center gap-1">
+              {AgentIcon ? <AgentIcon className="h-4 w-4" /> : null}
+              <span>{agentName}</span>
+            </span>
+          ) : null}
+          {usageVisible ? (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <span
+                  className="flex cursor-help items-center gap-1"
+                  aria-label="Token usage for this message"
+                >
+                  <TbGauge className="h-4 w-4" aria-hidden="true" />
+                  <span className="tabular-nums">
+                    {formatCompactTokens((message.inputTokens ?? 0) + (message.outputTokens ?? 0))}
+                  </span>
                 </span>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="center">
-              <div className="text-xs leading-relaxed">
-                <p>Input: {(message.inputTokens ?? 0).toLocaleString()} tokens</p>
-                <p>Output: {(message.outputTokens ?? 0).toLocaleString()} tokens</p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-      </div>
-    )}
-    <div className="flex items-center gap-0.5">
-      <div className="mt-1">
-        <CopyButton
-          copiedId={copiedId}
-          messageId={message.id}
-          onClick={() => onCopy(message.content ?? "", message.id)}
-        />
-      </div>
-
-      {!readOnly && message.liked !== false && (
-        <div className="mt-1">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
-                  message.liked === true
-                    ? "text-[#de8bff] hover:!text-[#de8bff]"
-                    : "text-muted-foreground hover:!text-muted-foreground"
-                }`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  onLike(message);
-                  likePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
-                }}
-                aria-label={message.liked === true ? "Unlike" : "Like"}
-              >
-                <motion.span animate={likePulse} className="inline-flex">
-                  <ThumbsUp className="h-4 w-4" />
-                </motion.span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="center"
-              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-            >
-              <p>Like</p>
-            </TooltipContent>
-          </Tooltip>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center">
+                <div className="text-xs leading-relaxed">
+                  <p>Input: {(message.inputTokens ?? 0).toLocaleString()} tokens</p>
+                  <p>Output: {(message.outputTokens ?? 0).toLocaleString()} tokens</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
         </div>
       )}
-
-      {!readOnly && message.liked !== true && (
+      <div className="flex items-center gap-0.5">
         <div className="mt-1">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
-                  message.liked === false
-                    ? "text-[#de8bff] hover:!text-[#de8bff]"
-                    : "text-muted-foreground hover:!text-muted-foreground"
-                }`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  onDislike(message);
-                  dislikePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
-                }}
-                aria-label={message.liked === false ? "Clear dislike" : "Dislike"}
-              >
-                <motion.span animate={dislikePulse} className="inline-flex">
-                  <ThumbsDown className="h-4 w-4" />
-                </motion.span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="center"
-              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-            >
-              <p>Dislike</p>
-            </TooltipContent>
-          </Tooltip>
+          <CopyButton
+            copiedId={copiedId}
+            messageId={message.id}
+            onClick={() => onCopy(message.content ?? "", message.id)}
+          />
         </div>
-      )}
 
-      {!readOnly && (
-        <div className="mt-1">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="
+        {!readOnly && message.liked !== false && (
+          <div className="mt-1">
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
+                    message.liked === true
+                      ? "text-[#de8bff] hover:!text-[#de8bff]"
+                      : "text-muted-foreground hover:!text-muted-foreground"
+                  }`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    onLike(message);
+                    likePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                  }}
+                  aria-label={message.liked === true ? "Unlike" : "Like"}
+                >
+                  <motion.span animate={likePulse} className="inline-flex">
+                    <ThumbsUp className="h-4 w-4" />
+                  </motion.span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="center"
+                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+              >
+                <p>Like</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+
+        {!readOnly && message.liked !== true && (
+          <div className="mt-1">
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
+                    message.liked === false
+                      ? "text-[#de8bff] hover:!text-[#de8bff]"
+                      : "text-muted-foreground hover:!text-muted-foreground"
+                  }`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    onDislike(message);
+                    dislikePulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                  }}
+                  aria-label={message.liked === false ? "Clear dislike" : "Dislike"}
+                >
+                  <motion.span animate={dislikePulse} className="inline-flex">
+                    <ThumbsDown className="h-4 w-4" />
+                  </motion.span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="center"
+                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+              >
+                <p>Dislike</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+
+        {!readOnly && (
+          <div className="mt-1">
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
@@ -312,35 +324,35 @@ export const AIActionBar = ({
                   focus:ring-0 focus-visible:ring-0 transition-colors
                   [&_svg]:!size-[18px]
                 "
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onShareMessage?.(message)}
-                disabled={!onShareMessage || isStreaming}
-                aria-label="Share conversation"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onShareMessage?.(message)}
+                  disabled={!onShareMessage || isStreaming}
+                  aria-label="Share conversation"
+                >
+                  <HiOutlineUpload className="size-[18px]" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="center"
+                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
               >
-                <HiOutlineUpload className="size-[18px]" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="center"
-              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-            >
-              <p>Share</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      )}
+                <p>Share</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
 
-      {!readOnly && (
-        <div className="mt-1">
-          <DropdownMenu.Root open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
-                <DropdownMenu.Trigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="
+        {!readOnly && (
+          <div className="mt-1">
+            <DropdownMenu.Root open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <DropdownMenu.Trigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="
                       h-8 w-8 text-muted-foreground
                       hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                       active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
@@ -348,160 +360,160 @@ export const AIActionBar = ({
                       focus:ring-0 focus-visible:ring-0 transition-colors
                       data-[state=open]:bg-[hsl(var(--hover-surface-strong))]
                     "
-                    onMouseDown={(event) => event.preventDefault()}
-                    aria-label="More message actions"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenu.Trigger>
-              </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                align="center"
-                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-              >
-                <p>More</p>
-              </TooltipContent>
-            </Tooltip>
-
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="start"
-                side="top"
-                sideOffset={8}
-                collisionPadding={10}
-                className="z-[70] min-w-[12rem] rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-scale-in"
-              >
-                <DropdownMenu.Item
-                  className={moreMenuItemClass}
-                  disabled={!onRetryMessage || isStreaming}
-                  onSelect={() => onRetryMessage?.(message)}
-                >
-                  <PiArrowsCounterClockwise className="h-4 w-4" />
-                  <span>Try again</span>
-                </DropdownMenu.Item>
-
-                <DropdownMenu.Item
-                  className={moreMenuItemClass}
-                  disabled={!onForkMessage || isStreaming}
-                  onSelect={() => onForkMessage?.(message)}
-                >
-                  <BiGitRepoForked className="h-4 w-4" />
-                  <span>Fork conversation</span>
-                </DropdownMenu.Item>
-
-                <DropdownMenu.Item
-                  className={moreMenuItemClass}
-                  disabled={!onReadAloud || isStreaming}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    onReadAloud?.(message);
-                  }}
-                >
-                  {isSpeaking ? (
-                    <BsStopCircleFill className="h-4 w-4 text-[#de8bff]" />
-                  ) : (
-                    <HiOutlineSpeakerWave className="h-4 w-4" />
-                  )}
-                  <span>{isSpeaking ? "Stop reading" : "Read aloud"}</span>
-                </DropdownMenu.Item>
-
-                {!conversationIsReported && onReportMessage && (
-                  <>
-                    <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
-                    <DropdownMenu.Item
-                      className={moreMenuItemClass}
-                      onSelect={() => onReportMessage(message)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      aria-label="More message actions"
                     >
-                      <LuFlag className="h-4 w-4" />
-                      <span>Report</span>
-                    </DropdownMenu.Item>
-                  </>
-                )}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        </div>
-      )}
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenu.Trigger>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  align="center"
+                  className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
+                >
+                  <p>More</p>
+                </TooltipContent>
+              </Tooltip>
 
-      {onOpenPlan && (
-        <div className="mt-1">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="start"
+                  side="top"
+                  sideOffset={8}
+                  collisionPadding={10}
+                  className="z-[70] min-w-[12rem] rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg animate-scale-in"
+                >
+                  <DropdownMenu.Item
+                    className={moreMenuItemClass}
+                    disabled={!onRetryMessage || isStreaming}
+                    onSelect={() => onRetryMessage?.(message)}
+                  >
+                    <PiArrowsCounterClockwise className="h-4 w-4" />
+                    <span>Try again</span>
+                  </DropdownMenu.Item>
+
+                  <DropdownMenu.Item
+                    className={moreMenuItemClass}
+                    disabled={!onForkMessage || isStreaming}
+                    onSelect={() => onForkMessage?.(message)}
+                  >
+                    <BiGitRepoForked className="h-4 w-4" />
+                    <span>Fork conversation</span>
+                  </DropdownMenu.Item>
+
+                  <DropdownMenu.Item
+                    className={moreMenuItemClass}
+                    disabled={!onReadAloud || isStreaming}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      onReadAloud?.(message);
+                    }}
+                  >
+                    {isSpeaking ? (
+                      <BsStopCircleFill className="h-4 w-4 text-[#de8bff]" />
+                    ) : (
+                      <HiOutlineSpeakerWave className="h-4 w-4" />
+                    )}
+                    <span>{isSpeaking ? "Stop reading" : "Read aloud"}</span>
+                  </DropdownMenu.Item>
+
+                  {!conversationIsReported && onReportMessage && (
+                    <>
+                      <DropdownMenu.Separator className="my-1 h-px bg-border/60" />
+                      <DropdownMenu.Item
+                        className={moreMenuItemClass}
+                        onSelect={() => onReportMessage(message)}
+                      >
+                        <LuFlag className="h-4 w-4" />
+                        <span>Report</span>
+                      </DropdownMenu.Item>
+                    </>
+                  )}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
+        )}
+
+        {onOpenPlan && (
+          <div className="mt-1">
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
                   focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={onOpenPlan}
-                aria-label="Open agent plan"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={onOpenPlan}
+                  aria-label="Open agent plan"
+                >
+                  <ListTodo className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="center"
+                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
               >
-                <ListTodo className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="center"
-              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-            >
-              <p>Plan</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      )}
+                <p>Plan</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
 
-      {onOpenSubagents && (
-        <div className="mt-1">
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="
+        {onOpenSubagents && (
+          <div className="mt-1">
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="
                   relative h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
                   focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={onOpenSubagents}
-                aria-label={`Open sub-agent activity (${subagentCount} delegated)`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={onOpenSubagents}
+                  aria-label={`Open sub-agent activity (${subagentCount} delegated)`}
+                >
+                  <Bot className="h-4 w-4" />
+                  {subagentCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-semibold leading-none text-primary-foreground">
+                      {subagentCount > 9 ? "9+" : subagentCount}
+                    </span>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="center"
+                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
               >
-                <Bot className="h-4 w-4" />
-                {subagentCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-semibold leading-none text-primary-foreground">
-                    {subagentCount > 9 ? "9+" : subagentCount}
-                  </span>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="center"
-              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-            >
-              <p>Sub-agents</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      )}
+                <p>Sub-agents</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
 
-      <BranchControls
-        parentId={branchControls?.parentId ?? null}
-        options={branchControls?.options}
-        selectionIndex={branchControls?.selectionIndex ?? 0}
-        role="assistant"
-        onSelectBranch={branchControls?.onSelectBranch}
-      />
+        <BranchControls
+          parentId={branchControls?.parentId ?? null}
+          options={branchControls?.options}
+          selectionIndex={branchControls?.selectionIndex ?? 0}
+          role="assistant"
+          onSelectBranch={branchControls?.onSelectBranch}
+        />
+      </div>
     </div>
-  </div>
   );
 };
 
@@ -516,59 +528,59 @@ export const UserActionBar = ({
 }: UserActionBarProps) => {
   const editPulse = useAnimationControls();
   return (
-  <div className={`flex w-full justify-end ${className ?? ""}`}>
-    <div className="flex items-center gap-2">
-      <BranchControls
-        parentId={branchControls?.parentId ?? null}
-        options={branchControls?.options}
-        selectionIndex={branchControls?.selectionIndex ?? 0}
-        role="user"
-        onSelectBranch={branchControls?.onSelectBranch}
-      />
-      <div className="flex items-center gap-0.5">
-        <CopyButton
-          copiedId={copiedId}
-          messageId={message.id}
-          onClick={() => onCopy(message.content ?? "", message.id)}
-          onAfterCopy={() => onFlashUserActionBar(message.id)}
+    <div className={`flex w-full justify-end ${className ?? ""}`}>
+      <div className="flex items-center gap-2">
+        <BranchControls
+          parentId={branchControls?.parentId ?? null}
+          options={branchControls?.options}
+          selectionIndex={branchControls?.selectionIndex ?? 0}
+          role="user"
+          onSelectBranch={branchControls?.onSelectBranch}
         />
+        <div className="flex items-center gap-0.5">
+          <CopyButton
+            copiedId={copiedId}
+            messageId={message.id}
+            onClick={() => onCopy(message.content ?? "", message.id)}
+            onAfterCopy={() => onFlashUserActionBar(message.id)}
+          />
 
-        {onRequestEdit && (
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="
+          {onRequestEdit && (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="
                   h-8 w-8 text-muted-foreground
                   hover:bg-[hsl(var(--hover-surface))] hover:text-muted-foreground
                   active:bg-[hsl(var(--hover-surface-strong))] active:text-muted-foreground
                   focus:bg-[hsl(var(--hover-surface-strong))] focus:text-muted-foreground focus:outline-none
                   focus:ring-0 focus-visible:ring-0 transition-colors
                 "
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  onRequestEdit(message);
-                  editPulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
-                }}
-                aria-label="Edit message"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    onRequestEdit(message);
+                    editPulse.start(TAP_PULSE, TAP_PULSE_TRANSITION);
+                  }}
+                  aria-label="Edit message"
+                >
+                  <motion.span animate={editPulse} className="inline-flex">
+                    <Pencil className="h-5 w-5" />
+                  </motion.span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="center"
+                className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
               >
-                <motion.span animate={editPulse} className="inline-flex">
-                  <Pencil className="h-5 w-5" />
-                </motion.span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="center"
-              className="!opacity-100 bg-background text-foreground border border-border shadow-card px-2 py-1 rounded-md"
-            >
-              <p>Edit</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
+                <p>Edit</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
     </div>
-  </div>
   );
 };

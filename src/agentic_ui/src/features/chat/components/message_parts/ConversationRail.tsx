@@ -30,7 +30,7 @@ export function ConversationRail({ messages, viewportRef, columnRef }: Conversat
         "pointer-events-none absolute right-4 top-1/2 z-20 flex max-h-[60vh] -translate-y-1/2",
         "flex-col items-end justify-center gap-0.5 overflow-hidden",
         "transition-opacity duration-300 ease-out motion-reduce:transition-none",
-        hidden ? "opacity-0" : "opacity-100"
+        hidden ? "opacity-0" : "opacity-100",
       )}
     >
       {messages.map((message, index) => {
@@ -49,7 +49,7 @@ export function ConversationRail({ messages, viewportRef, columnRef }: Conversat
             disabled={hidden}
             className={cn(
               "group pointer-events-auto flex h-3 items-center justify-end focus-visible:outline-none",
-              hidden && "pointer-events-none"
+              hidden && "pointer-events-none",
             )}
           >
             <span
@@ -61,7 +61,7 @@ export function ConversationRail({ messages, viewportRef, columnRef }: Conversat
                   ? cn("scale-x-[1.35] opacity-100", activeBg)
                   : "bg-muted-foreground/40 opacity-70 group-hover:bg-muted-foreground group-hover:opacity-100",
                 "group-focus-visible:scale-x-[1.35] group-focus-visible:opacity-100",
-                isAi ? "group-focus-visible:bg-primary" : "group-focus-visible:bg-foreground"
+                isAi ? "group-focus-visible:bg-primary" : "group-focus-visible:bg-foreground",
               )}
             />
           </button>

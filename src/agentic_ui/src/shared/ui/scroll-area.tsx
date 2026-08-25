@@ -1,7 +1,7 @@
-import * as React from "react"
-import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
+import * as React from "react";
+import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 
-import { cn } from "@/shared/lib/utils"
+import { cn } from "@/shared/lib/utils";
 
 type ScrollAreaProps = React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
   onScroll?: React.UIEventHandler<HTMLDivElement>;
@@ -10,7 +10,7 @@ type ScrollAreaProps = React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive
   // whose content runs close to that edge (e.g. the settings nav rail) pass a
   // narrower bar so it sits inside their gutter instead of over the content.
   scrollBarClassName?: string;
-}
+};
 
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
@@ -36,8 +36,8 @@ const ScrollArea = React.forwardRef<
     <ScrollBar className={scrollBarClassName} />
     <ScrollAreaPrimitive.Corner />
   </ScrollAreaPrimitive.Root>
-))
-ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName
+));
+ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName;
 
 const ScrollBar = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>,
@@ -49,17 +49,15 @@ const ScrollBar = React.forwardRef<
     className={cn(
       // make the track transparent (removes the white bg)
       "flex touch-none select-none transition-colors bg-transparent",
-      orientation === "vertical" &&
-        "h-full w-3 border-l border-l-transparent p-[2px]",
-      orientation === "horizontal" &&
-        "h-3 flex-col border-t border-t-transparent p-[2px]",
-      className
+      orientation === "vertical" && "h-full w-3 border-l border-l-transparent p-[2px]",
+      orientation === "horizontal" && "h-3 flex-col border-t border-t-transparent p-[2px]",
+      className,
     )}
     {...props}
   >
     <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-muted-foreground/20 hover:bg-muted-foreground/30 transition-colors" />
   </ScrollAreaPrimitive.ScrollAreaScrollbar>
-))
-ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName
+));
+ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName;
 
-export { ScrollArea, ScrollBar }
+export { ScrollArea, ScrollBar };

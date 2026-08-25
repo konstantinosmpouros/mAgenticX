@@ -344,9 +344,9 @@ Edit, retry, and shared conversation continuation use the same `/start` endpoint
 | Suggestion generation | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `generate_conversation_suggestions()` |
 | MCP catalog registry | [src/mcp_gateway/mcp_catalog.yaml](../../src/mcp_gateway/mcp_catalog.yaml) | registered MCP servers and tool lists |
 | MCP server config | [src/mcp_gateway/mcp_config.yaml](../../src/mcp_gateway/mcp_config.yaml) | runtime parameters per server |
-| Frontend API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `getAgents()`, `getTools()`, `getSuggestions()` |
-| Frontend types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `Agent`, `ToolMetadata` (the `ToolPreference` type was deleted) |
-| Icon mapping | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `mapIcon()`, icon name → LucideIcon lookup |
-| Startup hydration | [src/agentic_ui/src/hooks/useSessionEffects.ts](../../src/agentic_ui/src/hooks/useSessionEffects.ts) | `useAuthRehydrateEffect`, parallel catalog fetches |
-| IndexedDB snapshot | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | `UISnapshotSerializable`, `agents`, `availableTools` fields |
-| Inference request building | [src/agentic_ui/src/runtime/inference.ts](../../src/agentic_ui/src/runtime/inference.ts) | `agentId` and start-mode payloads (no tool list is computed or sent) |
+| Frontend API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `getAgents()`, `getTools()`, `getSuggestions()` |
+| Frontend types | [src/agentic_ui/src/shared/lib/types/](../../src/agentic_ui/src/shared/lib/types/) | `Agent`, `ToolMetadata` (the `ToolPreference` type was deleted) |
+| Icon mapping | [src/agentic_ui/src/shared/lib/consts/](../../src/agentic_ui/src/shared/lib/consts/) | `mapIcon()`, icon name → LucideIcon lookup |
+| Startup hydration | [src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../src/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useAuthRehydrateEffect`, parallel catalog fetches |
+| IndexedDB snapshot | [src/agentic_ui/src/shared/lib/uiStateStorage.ts](../../src/agentic_ui/src/shared/lib/uiStateStorage.ts) | `UISnapshotSerializable`, `agents`, `availableTools` fields |
+| Inference request building | [src/agentic_ui/src/features/inference/inference.ts](../../src/agentic_ui/src/features/inference/inference.ts) | `agentId` and start-mode payloads (no tool list is computed or sent) |

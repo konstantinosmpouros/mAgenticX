@@ -1,5 +1,5 @@
-import { useMemo, useCallback } from 'react';
-import type { FC, Dispatch, SetStateAction } from 'react';
+import { useMemo, useCallback } from "react";
+import type { FC, Dispatch, SetStateAction } from "react";
 import type { MessageOut, ConversationDetail, ThinkingState } from "@/shared/lib/types";
 import {
   likeMessage as apiLikeMessage,
@@ -10,7 +10,6 @@ import { toastError } from "@/shared/lib/toast";
 
 // Message handlers cover chat actions that stay within the current UI shell
 // and do not start a brand new inference pipeline.
-
 
 // ------------------------------------------------------------------------------
 // Message Edit UI Handlers
@@ -80,12 +79,16 @@ export function createMessageEditUiHandlers(ctx: MessageEditUiHandlersCtx) {
   };
 }
 
-
 // ------------------------------------------------------------------------------
 // Feedback Handlers
 // ------------------------------------------------------------------------------
 type SetConversationMessages = (updater: (prev: MessageOut[]) => MessageOut[]) => void;
-type ToastHandler = (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+type ToastHandler = (opts: {
+  title: string;
+  description?: string;
+  variant?: string;
+  duration?: number;
+}) => void;
 
 export const createFeedbackHandlers = ({
   userId,
@@ -106,8 +109,8 @@ export const createFeedbackHandlers = ({
       setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
     } catch (error) {
       if (toast) {
-        toastError(toast, 'Could not send feedback', error, {
-          description: 'Please try again in a moment.',
+        toastError(toast, "Could not send feedback", error, {
+          description: "Please try again in a moment.",
           duration: 2500,
         });
       }
@@ -122,8 +125,8 @@ export const createFeedbackHandlers = ({
       setConversationMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
     } catch (error) {
       if (toast) {
-        toastError(toast, 'Could not send feedback', error, {
-          description: 'Please try again in a moment.',
+        toastError(toast, "Could not send feedback", error, {
+          description: "Please try again in a moment.",
           duration: 2500,
         });
       }
@@ -132,8 +135,6 @@ export const createFeedbackHandlers = ({
 
   return { handleLike, handleDislike };
 };
-
-
 
 // ------------------------------------------------------------------------------
 // Read-aloud Handlers
@@ -205,9 +206,10 @@ export function createReadAloudHandlers(ctx: ReadAloudHandlersCtx) {
     try {
       audioBlob = await generateMessageReadAloudAudio(userId, conversationId, message.id);
     } catch (error) {
-      const description = error instanceof Error && error.message
-        ? error.message
-        : "Audio could not be generated for this response.";
+      const description =
+        error instanceof Error && error.message
+          ? error.message
+          : "Audio could not be generated for this response.";
       if (readAloudRequestId === requestId) {
         clearActiveAudio();
         setActiveSpeechMessage(null);
@@ -261,8 +263,6 @@ export function createReadAloudHandlers(ctx: ReadAloudHandlersCtx) {
   return { handleReadAloud, stopReadAloud };
 }
 
-
-
 // ------------------------------------------------------------------------------
 // Branch selection handlers
 // ------------------------------------------------------------------------------
@@ -279,7 +279,7 @@ export function useBranchingHandlers({
   messages,
   branchSelections,
   setBranchSelections,
-  rootKey = '__root__',
+  rootKey = "__root__",
 }: BranchingHandlersCtx) {
   const { activeMessages, branchChildrenMap } = useMemo(() => {
     const allMessages = messages ?? [];
@@ -342,31 +342,34 @@ export function useBranchingHandlers({
 
   const handleBranchSelectionChange = useCallback(
     (parentId: string | null, index: number) => {
-      setBranchSelections(prev => {
+      setBranchSelections((prev) => {
         const key = parentId ?? rootKey;
         // Preserve referential equality when the selection is unchanged.
         if (prev[key] === index) return prev;
         return { ...prev, [key]: index };
       });
     },
-    [setBranchSelections, rootKey]
+    [setBranchSelections, rootKey],
   );
 
   const activeBranchPath = useMemo(
     () => (activeMessages ?? []).map((msg) => msg.id),
-    [activeMessages]
+    [activeMessages],
   );
 
   return { activeMessages, branchChildrenMap, handleBranchSelectionChange, activeBranchPath };
 }
 
-
-
 // ------------------------------------------------------------------------------
 // UI Handlers (copy + image preview)
 // ------------------------------------------------------------------------------
 type UIHandlersCtx = {
-  toast: (opts: { title: string; description?: string; variant?: string; duration?: number }) => void;
+  toast: (opts: {
+    title: string;
+    description?: string;
+    variant?: string;
+    duration?: number;
+  }) => void;
   setCopiedId: (id: string | null) => void;
   setSelectedImage?: (value: string | null) => void;
 };
@@ -381,7 +384,7 @@ export function createUIHandlers(ctx: UIHandlersCtx) {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 1200);
     } catch (err) {
-      toastError(toast, 'Copy failed', err);
+      toastError(toast, "Copy failed", err);
     }
   };
 
@@ -397,8 +400,6 @@ export function createUIHandlers(ctx: UIHandlersCtx) {
 
   return { handleCopy, handleImageClick, handleCloseImagePreview };
 }
-
-
 
 // ------------------------------------------------------------------------------
 // AI Transition Indicator

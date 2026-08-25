@@ -9,6 +9,7 @@ import { getInferenceStartErrorCopy } from "@/features/inference";
 import type { SharedConversationDetail } from "@/shared/lib/types";
 import type { AttachmentLike } from "@/features/chat/components/message_parts/MessageAttachments";
 import { useToast } from "@/shared/hooks/use-toast";
+import { triggerBrowserDownload } from "@/shared/lib/download";
 import { toastError } from "@/shared/lib/toast";
 import { isSessionValid, loadSession, updateSession } from "@/shared/lib/authStorage";
 import { ChatInterface } from "./ChatPage";
@@ -85,21 +86,17 @@ export default function SharedConversationPage() {
 
   const downloadAttachment = (attachment: AttachmentLike) => {
     if (typeof attachment !== "object" || attachment === null || !(attachment as any).data) {
-      toast({ title: "Download unavailable", description: "This shared attachment has no downloadable data.", variant: "destructive" });
+      toast({
+        title: "Download unavailable",
+        description: "This shared attachment has no downloadable data.",
+        variant: "destructive",
+      });
       return;
     }
 
     const name = String((attachment as any).name || "attachment");
     const mime = String((attachment as any).mime || "application/octet-stream");
-    const blob = b64ToBlob(String((attachment as any).data), mime);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = name;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    triggerBrowserDownload(b64ToBlob(String((attachment as any).data), mime), name);
   };
 
   const previewAttachment = (attachment: AttachmentLike) => {
@@ -124,7 +121,12 @@ export default function SharedConversationPage() {
 
     const session = loadSession();
     if (!isSessionValid(session)) {
-      toast({ title: "Sign in to continue", description: "Create your own copy of this shared conversation after signing in.", variant: "info", duration: 2600 });
+      toast({
+        title: "Sign in to continue",
+        description: "Create your own copy of this shared conversation after signing in.",
+        variant: "info",
+        duration: 2600,
+      });
       navigate("/login");
       return;
     }
@@ -142,7 +144,12 @@ export default function SharedConversationPage() {
         },
       });
       updateSession({ lastConversationId: response.detail.id });
-      toast({ title: "Conversation added", description: "The agent response is now running in your workspace.", variant: "success", duration: 2200 });
+      toast({
+        title: "Conversation added",
+        description: "The agent response is now running in your workspace.",
+        variant: "success",
+        duration: 2200,
+      });
       navigate("/");
     } catch (err) {
       const copy = getInferenceStartErrorCopy(err, {
@@ -172,12 +179,7 @@ export default function SharedConversationPage() {
     : null;
 
   if (!loading && detail?.shareMode === "full" && isSessionValid(loadSession())) {
-    return (
-      <ChatInterface
-        sharedConversationToken={token}
-        initialSharedConversation={detail}
-      />
-    );
+    return <ChatInterface sharedConversationToken={token} initialSharedConversation={detail} />;
   }
 
   return (
@@ -197,9 +199,7 @@ export default function SharedConversationPage() {
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
                 <span>{shareLabel}</span>
               </div>
-              <h1 className="truncate text-sm font-semibold md:text-base">
-                {pageTitle}
-              </h1>
+              <h1 className="truncate text-sm font-semibold md:text-base">{pageTitle}</h1>
             </div>
           </div>
           <Button

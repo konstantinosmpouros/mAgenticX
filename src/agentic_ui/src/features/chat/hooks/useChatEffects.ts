@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { Agent } from '@/shared/lib/types';
-import type { CSSProperties, RefObject } from 'react';
-
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
+import type { Agent } from "@/shared/lib/types";
+import type { CSSProperties, RefObject } from "react";
 
 // ---------------------------------------------------------------------------
 // Ensure that a default agent is selected effect
@@ -37,8 +36,6 @@ export function useEnsureDefaultAgentEffect(params: {
   }, [isLoggedIn, userId, agents, selectedAgent, setSelectedAgent]);
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Header divider appearance effect
 // ---------------------------------------------------------------------------
@@ -51,7 +48,6 @@ export function useHeaderDividerEffect() {
 
   return { headerHasDivider, handleHeaderScrollState };
 }
-
 
 // ---------------------------------------------------------------------------
 // Sidebar click interaction effect
@@ -79,14 +75,11 @@ export function useSidebarInteractionEffect(params: {
     setIsLogoHovered(false);
   }, []);
 
-  const toggleCollapsedOnBlankArea = useCallback(
-    () => {
-      if (isCollapsed) {
-        toggleSidebar();
-      }
-    },
-    [isCollapsed, toggleSidebar],
-  );
+  const toggleCollapsedOnBlankArea = useCallback(() => {
+    if (isCollapsed) {
+      toggleSidebar();
+    }
+  }, [isCollapsed, toggleSidebar]);
 
   return {
     isLogoHovered,
@@ -95,7 +88,6 @@ export function useSidebarInteractionEffect(params: {
     toggleCollapsedOnBlankArea,
   };
 }
-
 
 // ---------------------------------------------------------------------------
 // Sticky user action bar effect
@@ -127,7 +119,6 @@ export function useStickyUserBarEffect(params: {
 
   return { flashUserActionBar };
 }
-
 
 // ---------------------------------------------------------------------------
 // Centered composer layout effect
@@ -168,7 +159,7 @@ export function useCenteredComposerLayout({
     if (!isMessagesEmpty || centerAnchorOffset === null) return undefined;
     const anchorPercent = FLOATING_ANCHOR_RATIO * 100;
     return {
-      transform: 'translateX(-50%)',
+      transform: "translateX(-50%)",
       top: `calc(${anchorPercent}% - ${centerAnchorOffset}px)`,
     };
   }, [isMessagesEmpty, centerAnchorOffset]);
@@ -183,7 +174,7 @@ export function useCenteredComposerLayout({
   // user starts typing we stop updating, freezing the top so the box only ever
   // grows downward.
   const composerRestingRef = useRef(true);
-  composerRestingRef.current = currentMessage.trim() === '' && attachmentsCount === 0;
+  composerRestingRef.current = currentMessage.trim() === "" && attachmentsCount === 0;
 
   useLayoutEffect(() => {
     if (!isMessagesEmpty) {
@@ -199,13 +190,11 @@ export function useCenteredComposerLayout({
       const height = el.getBoundingClientRect().height;
       if (height <= 0) return;
       const next = height / 2;
-      setCenterAnchorOffset((prev) =>
-        prev !== null && Math.abs(prev - next) < 0.5 ? prev : next,
-      );
+      setCenterAnchorOffset((prev) => (prev !== null && Math.abs(prev - next) < 0.5 ? prev : next));
     };
 
     measure();
-    if (typeof ResizeObserver === 'undefined') return;
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
@@ -216,7 +205,7 @@ export function useCenteredComposerLayout({
       setFloatingMaxHeight(DEFAULT_TEXTAREA_MAX);
       return;
     }
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     const el = containerRef.current;
     if (!el) return;
 
@@ -234,22 +223,22 @@ export function useCenteredComposerLayout({
     computeMaxHeight();
 
     const handleResize = () => computeMaxHeight();
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
 
     let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
+    if (typeof ResizeObserver !== "undefined") {
       resizeObserver = new ResizeObserver(() => computeMaxHeight());
       resizeObserver.observe(el);
     }
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener("resize", handleResize);
       resizeObserver?.disconnect();
     };
   }, [isMessagesEmpty]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     const computeViewportMaxHeight = () => {
       const viewportRatio =
@@ -257,16 +246,14 @@ export function useCenteredComposerLayout({
           ? DESKTOP_TEXTAREA_MAX_RATIO
           : MOBILE_TEXTAREA_MAX_RATIO;
 
-      setViewportMaxHeight(
-        Math.max(MIN_TEXTAREA_HEIGHT, window.innerHeight * viewportRatio),
-      );
+      setViewportMaxHeight(Math.max(MIN_TEXTAREA_HEIGHT, window.innerHeight * viewportRatio));
     };
 
     computeViewportMaxHeight();
-    window.addEventListener('resize', computeViewportMaxHeight);
+    window.addEventListener("resize", computeViewportMaxHeight);
 
     return () => {
-      window.removeEventListener('resize', computeViewportMaxHeight);
+      window.removeEventListener("resize", computeViewportMaxHeight);
     };
   }, []);
 
@@ -274,17 +261,11 @@ export function useCenteredComposerLayout({
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.maxHeight = `${effectiveTextareaMax}px`;
-    textarea.style.height = 'auto';
+    textarea.style.height = "auto";
     const nextHeight = Math.min(textarea.scrollHeight, effectiveTextareaMax);
     const clampedHeight = Math.max(nextHeight, MIN_TEXTAREA_HEIGHT);
     textarea.style.height = `${clampedHeight}px`;
-  }, [
-    textareaRef,
-    currentMessage,
-    attachmentsCount,
-    effectiveTextareaMax,
-    isMessagesEmpty,
-  ]);
+  }, [textareaRef, currentMessage, attachmentsCount, effectiveTextareaMax, isMessagesEmpty]);
 
   return {
     containerRef,

@@ -22,12 +22,7 @@ import type {
   ScheduledTaskUpdatePayload,
 } from "@/shared/lib/types";
 import { cn } from "@/shared/lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/shared/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
 import { SidebarTrigger } from "@/shared/ui/sidebar";
 import ScheduledTaskForm, {
   type ScheduledTaskFormInitial,
@@ -52,12 +47,16 @@ type ScheduledTasksPageProps = {
 const RUNNING_STATUSES = new Set(["queued", "running", "cancelling"]);
 
 // schedule_spec stores run_at as naive-UTC ISO (no offset); parse it as UTC.
-const parseMaybeUtc = (value: string): Date =>
-  new Date(/[Z+]/.test(value) ? value : `${value}Z`);
+const parseMaybeUtc = (value: string): Date => new Date(/[Z+]/.test(value) ? value : `${value}Z`);
 
 const fmt = (date: Date | null | undefined): string =>
   date
-    ? date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    ? date.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
     : "—";
 
 const humanizeSeconds = (seconds: number): string => {
@@ -75,9 +74,12 @@ const humanizeSeconds = (seconds: number): string => {
 
 const describeSchedule = (task: ScheduledTask): string => {
   const spec = task.scheduleSpec ?? {};
-  if (task.scheduleKind === "interval") return `Every ${humanizeSeconds(Number(spec.interval_seconds) || 0)}`;
-  if (task.scheduleKind === "cron") return `Cron ${spec.cron_expr ?? ""}${task.timezone ? ` · ${task.timezone}` : ""}`;
-  if (task.scheduleKind === "one_off") return spec.run_at ? `Once · ${fmt(parseMaybeUtc(String(spec.run_at)))}` : "Once";
+  if (task.scheduleKind === "interval")
+    return `Every ${humanizeSeconds(Number(spec.interval_seconds) || 0)}`;
+  if (task.scheduleKind === "cron")
+    return `Cron ${spec.cron_expr ?? ""}${task.timezone ? ` · ${task.timezone}` : ""}`;
+  if (task.scheduleKind === "one_off")
+    return spec.run_at ? `Once · ${fmt(parseMaybeUtc(String(spec.run_at)))}` : "Once";
   return "";
 };
 
@@ -213,7 +215,8 @@ function ScheduledTaskRow({
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const meta = statusMeta(task);
   const isPaused = task.status === "paused";
-  const canToggle = task.status === "active" || task.status === "paused" || task.status === "failed";
+  const canToggle =
+    task.status === "active" || task.status === "paused" || task.status === "failed";
   const resultConversationId = task.lastRunConversationId;
   const AgentIcon = agents.find((agent) => agent.id === task.agentId)?.icon ?? Building2;
 
@@ -327,7 +330,12 @@ function ScheduledTaskRow({
                 {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
               </ActionButton>
             ) : null}
-            <ActionButton label="Delete" onClick={() => setConfirmingDelete(true)} disabled={busy} danger>
+            <ActionButton
+              label="Delete"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={busy}
+              danger
+            >
               <Trash2 className="h-4 w-4" />
             </ActionButton>
           </div>
@@ -451,7 +459,7 @@ function SegmentedTabs({
   tab: "tasks" | "templates";
   onChange: (tab: "tasks" | "templates") => void;
 }) {
-  const options: [("tasks" | "templates"), string][] = [
+  const options: ["tasks" | "templates", string][] = [
     ["tasks", "My Tasks"],
     ["templates", "Templates"],
   ];
@@ -507,7 +515,9 @@ export default function ScheduledTasksPage({
   const [taskView, setTaskView] = React.useState<"list" | "create" | "edit">("list");
   const [editingTask, setEditingTask] = React.useState<ScheduledTask | null>(null);
   const [templateView, setTemplateView] = React.useState<"grid" | "detail" | "use">("grid");
-  const [selectedTemplate, setSelectedTemplate] = React.useState<ScheduledTaskTemplate | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = React.useState<ScheduledTaskTemplate | null>(
+    null,
+  );
   const [templateQuery, setTemplateQuery] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -642,7 +652,7 @@ export default function ScheduledTasksPage({
               <div className="mx-auto w-full max-w-2xl">
                 <ScheduledTaskForm
                   agents={agents}
-                  initial={taskView === "edit" ? editingTask ?? undefined : undefined}
+                  initial={taskView === "edit" ? (editingTask ?? undefined) : undefined}
                   submitLabel={taskView === "edit" ? "Save changes" : "Create task"}
                   submitting={submitting}
                   onSubmit={taskView === "edit" ? handleUpdate : handleCreate}
@@ -666,10 +676,12 @@ export default function ScheduledTasksPage({
                       <MdOutlineSchedule className="h-8 w-8" />
                     </span>
                     <div className="space-y-1.5">
-                      <div className="text-base font-semibold text-foreground">No scheduled tasks yet</div>
+                      <div className="text-base font-semibold text-foreground">
+                        No scheduled tasks yet
+                      </div>
                       <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-                        Schedule an agent to run on its own and it completes while you're away. Start
-                        from scratch or pick a template.
+                        Schedule an agent to run on its own and it completes while you're away.
+                        Start from scratch or pick a template.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

@@ -319,12 +319,12 @@ On the agents side the main logic lives in [`runtime/personalization.py`](../../
 | Voice normalization | [src/dialogue_bridge/utils/voice.py](../../src/dialogue_bridge/utils/voice.py) | `preferred_realtime_voice()`, `preferred_voice_mode_language()`, `normalize_*` functions |
 | Voice router (preference lookup) | [src/dialogue_bridge/router/voice.py](../../src/dialogue_bridge/router/voice.py) | Session config construction, preference resolution |
 | Backend settings (voice) | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `VoiceSettings`, `REALTIME_SUPPORTED_VOICES`, `REALTIME_DEFAULT_VOICE` |
-| TypeScript types | [src/agentic_ui/src/lib/types.ts](../../src/agentic_ui/src/lib/types.ts) | `UserPreferences`, `RealtimeVoice`, `VoiceModeLanguage` (the `ToolPreference` type was deleted) |
+| TypeScript types | [src/agentic_ui/src/shared/lib/types/](../../src/agentic_ui/src/shared/lib/types/) | `UserPreferences`, `RealtimeVoice`, `VoiceModeLanguage` (the `ToolPreference` type was deleted) |
 | Per-(user, agent) tool disabling | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` — the replacement for the old global tool preference |
-| API calls | [src/agentic_ui/src/lib/api.ts](../../src/agentic_ui/src/lib/api.ts) | `getUserPreferences()`, `updateUserPreferences()` |
-| Frontend constants | [src/agentic_ui/src/lib/consts.ts](../../src/agentic_ui/src/lib/consts.ts) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES`, `DEFAULT_REALTIME_VOICE` |
-| Preference handlers | [src/agentic_ui/src/handlers/preferences.ts](../../src/agentic_ui/src/handlers/preferences.ts) | `usePreferencesHandlers()`, `snapshotPrefs`/`persistPrefs`, optimistic update pattern, rollback |
+| API calls | [src/agentic_ui/src/shared/lib/api/](../../src/agentic_ui/src/shared/lib/api/) | `getUserPreferences()`, `updateUserPreferences()` |
+| Frontend constants | [src/agentic_ui/src/shared/lib/consts/](../../src/agentic_ui/src/shared/lib/consts/) | `REALTIME_VOICES`, `VOICE_MODE_LANGUAGES`, `DEFAULT_REALTIME_VOICE` |
+| Preference handlers | [src/agentic_ui/src/features/settings/handlers/preferences.ts](../../src/agentic_ui/src/features/settings/handlers/preferences.ts) | `usePreferencesHandlers()`, `snapshotPrefs`/`persistPrefs`, optimistic update pattern, rollback |
 | Personalization UI | [src/agentic_ui/src/features/settings/components/profile_parts/PersonalizationTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/PersonalizationTab.tsx) | Custom-instructions row + personality select; dialog in `CustomInstructionsDialog.tsx` (owned by `ProfilePanel`, rendered as a shell sibling) |
 | Personalization runtime (agents) | [src/agents/runtime/personalization.py](../../src/agents/runtime/personalization.py) | Preset registry + directives, `parse_personalization()` (fail-closed), `build_personalization_prompt()` |
 | Personalization threading (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_effective_personalization()`, `context.personalization` in the run config |
-| IndexedDB persistence | [src/agentic_ui/src/lib/uiStateStorage.ts](../../src/agentic_ui/src/lib/uiStateStorage.ts) | `loadUISnapshot()`, `saveUISnapshot()`, `clearUISnapshot()` |
+| IndexedDB persistence | [src/agentic_ui/src/shared/lib/uiStateStorage.ts](../../src/agentic_ui/src/shared/lib/uiStateStorage.ts) | `loadUISnapshot()`, `saveUISnapshot()`, `clearUISnapshot()` |

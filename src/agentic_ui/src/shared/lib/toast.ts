@@ -11,25 +11,29 @@
  * Centralising it fixes both problems at once — the duplication and the 401
  * behaviour — and gives us one place to change error presentation later.
  */
-import type { ReactNode } from "react";
-
 /**
  * Structural shape of the `toast` function. Deliberately minimal (rather than
  * importing `ToastOptions`) so every differently-typed `toast` slot threaded
  * through the feature handler contexts stays assignable without casts.
+ *
+ * The fields are typed as narrowly as this helper actually uses them — `title`
+ * required, `description` a plain string. Function parameters are contravariant
+ * under `strictFunctionTypes`, so widening these (e.g. to `ReactNode`) would
+ * make every concrete `toast` in the handler contexts *un*assignable: a callback
+ * that only handles `string` cannot stand in for one that promises to handle any
+ * `ReactNode`. Narrow here, and both the handler-context slots and the richer
+ * `useToast()` toast satisfy it.
  */
 type ToastLike = (options: {
-  title?: ReactNode;
-  description?: ReactNode;
+  title: string;
+  description?: string;
   variant?: string;
   duration?: number;
 }) => unknown;
 
 /** Errors raised by the HTTP layer carry the response status. */
 export const isUnauthorizedError = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  (error as { status?: number }).status === 401;
+  typeof error === "object" && error !== null && (error as { status?: number }).status === 401;
 
 /** Prefer the server's message; fall back to something actionable. */
 const describeError = (error: unknown): string => {
@@ -39,7 +43,7 @@ const describeError = (error: unknown): string => {
 
 export interface ToastErrorOptions {
   /** Overrides the message derived from the error itself. */
-  description?: ReactNode;
+  description?: string;
   /** Auto-dismiss window in ms; omit for the destructive-variant default. */
   duration?: number;
 }
