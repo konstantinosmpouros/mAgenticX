@@ -27,7 +27,7 @@ from runtime.filesystem import (
 )
 from runtime.filesystem.tool_prefs import read_disabled_tools
 from utils import get_tool_cache_key
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

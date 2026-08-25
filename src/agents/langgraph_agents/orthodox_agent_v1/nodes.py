@@ -8,9 +8,9 @@ import httpx
 from pydantic import BaseModel
 
 from core.settings import settings
-from core.tls import get_httpx_client_cert, get_httpx_verify
-from observability import get_context
-from core.proxy import internal_service_headers
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
+from core.logging import get_context
+from core.security.internal_trust import internal_service_headers
 from langgraph_agents.orthodox_agent_v1.agents import OrthodoxAgents
 from langgraph_agents.orthodox_agent_v1.prompt_templates import (
     nonreligious_gen_template,

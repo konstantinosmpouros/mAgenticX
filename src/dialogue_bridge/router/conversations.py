@@ -3,7 +3,7 @@ from secrets import token_urlsafe
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from observability import get_logger, logged_db_operation, set_context
+from core.logging import get_logger, logged_db_operation, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 

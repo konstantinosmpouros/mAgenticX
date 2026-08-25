@@ -8,7 +8,7 @@ from typing import Optional
 
 import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Request, Response, status
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 
 from core.cache import create_redis_client
 from core.settings import settings

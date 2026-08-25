@@ -182,7 +182,10 @@ export default function Login() {
                             isPrivateMode: existing.isPrivateMode,
                         });
                     }
-                    navigate("/", { replace: true });
+                    // Reload rather than a router push, for the same reason as the
+                    // submit path below: the store may still describe a different
+                    // account than the cookies just restored.
+                    window.location.assign("/");
                 }
             } catch (error) {
                 console.error("Session restore failed:", error);
@@ -234,18 +237,15 @@ export default function Login() {
                 if (!reduceMotion) {
                     await new Promise((resolve) => setTimeout(resolve, 450));
                 }
-                if (addAccountMode) {
-                    // A HARD navigation, not a router push. The workspace store is
-                    // module-level, so a client-side navigate would arrive at "/"
-                    // still holding the PREVIOUS account's userId, agents and
-                    // conversations — and every request keyed on that stale id is
-                    // then rejected as "Token does not grant access to this user",
-                    // because the cookies now belong to the account just added.
-                    // Reloading restarts the app from the new session instead.
-                    window.location.assign("/");
-                    return;
-                }
-                navigate("/", { replace: true });
+                // A HARD navigation, not a router push — for EVERY login, not just
+                // the add-account path. The workspace store is module-level, so a
+                // client-side navigate can arrive at "/" still holding a previous
+                // account's userId (the app stays mounted across /login when the
+                // session was changed without a full local teardown). Every request
+                // keyed on that stale id is then rejected as "Token does not grant
+                // access to this user". Reloading starts the app from the session
+                // that actually exists, which is the only way to be sure.
+                window.location.assign("/");
             } else {
                 toast({
                     title: "Authentication failed",

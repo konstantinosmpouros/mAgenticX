@@ -15,10 +15,10 @@ import httpx
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from core.proxy import internal_service_headers
+from core.security.internal_trust import internal_service_headers
 from core.settings import settings
-from core.tls import get_httpx_client_cert, get_httpx_verify
-from observability import get_logger
+from core.security.tls import get_httpx_client_cert, get_httpx_verify
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

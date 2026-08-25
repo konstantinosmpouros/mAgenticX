@@ -1,6 +1,6 @@
 # Observability — Logging, Redaction, and the Traceability Roadmap
 
-Every mAgenticX service emits **structured, event-oriented logs** through an in-house `observability/` package that is intentionally near-identical across `dialogue_bridge`, `agents`, and `rag_service`. Each log line is a single JSON object (or a human-readable console line in dev) carrying a stable `event` name, the request context (`request_id`, **raw** `user_id`/`session_id` that match the database, `conversation_id`, …), and an arbitrary `fields` payload that is **sanitized before it is written** — secrets redacted, content omitted, and the **client IP** HMAC-hashed. Logs go to stdout only; on the production VM Docker's `json-file` driver rotates them on disk. This document is the authoritative reference for what each service logs today, how PII is kept out of the logs, and the phased plan to layer full OpenTelemetry traces + metrics on top of the existing Grafana/Prometheus stack so that one user action can be followed end-to-end. **Phases 0 and 1 of that plan are implemented; Phases 2–7 are the roadmap.**
+Every mAgenticX service emits **structured, event-oriented logs** through an in-house `core/logging/` package that is intentionally near-identical across `dialogue_bridge`, `agents`, and `rag_service`. Each log line is a single JSON object (or a human-readable console line in dev) carrying a stable `event` name, the request context (`request_id`, **raw** `user_id`/`session_id` that match the database, `conversation_id`, …), and an arbitrary `fields` payload that is **sanitized before it is written** — secrets redacted, content omitted, and the **client IP** HMAC-hashed. Logs go to stdout only; on the production VM Docker's `json-file` driver rotates them on disk. This document is the authoritative reference for what each service logs today, how PII is kept out of the logs, and the phased plan to layer full OpenTelemetry traces + metrics on top of the existing Grafana/Prometheus stack so that one user action can be followed end-to-end. **Phases 0 and 1 of that plan are implemented; Phases 2–7 are the roadmap.**
 
 ---
 
@@ -9,9 +9,9 @@ Every mAgenticX service emits **structured, event-oriented logs** through an in-
 ```mermaid
 flowchart LR
     UI["agentic_ui (nginx + React)\nconsole + error_boundary"]
-    Bridge["dialogue_bridge\nobservability/ (queue logger)"]
-    Agents["agents\nobservability/ (queue logger)"]
-    Rag["rag_service\nobservability/ (stream logger)"]
+    Bridge["dialogue_bridge\ncore/logging/ (queue logger)"]
+    Agents["agents\ncore/logging/ (queue logger)"]
+    Rag["rag_service\ncore/logging/ (stream logger)"]
     Docker["Docker json-file driver\n(20–50MB × 3–5, in production)"]
 
     UI -->|"X-Request-ID (partial today)"| Bridge
@@ -226,13 +226,13 @@ The content drop-set was also expanded in all three services to cover LLM/RAG co
 
 | Concept | File | Change |
 | --- | --- | --- |
-| rag redaction (new) | [src/rag_service/observability/redaction.py](../../src/rag_service/observability/redaction.py) | ported `sanitize_for_logging` / `sanitize_context_value` |
-| rag operations (new) | [src/rag_service/observability/operations.py](../../src/rag_service/observability/operations.py) | `elapsed_ms`, `logged_operation` |
-| rag formatters | [src/rag_service/observability/formatters.py](../../src/rag_service/observability/formatters.py) | sanitize `event_data` in JSON + console |
+| rag redaction (new) | [src/rag_service/core/logging/redaction.py](../../src/rag_service/core/logging/redaction.py) | ported `sanitize_for_logging` / `sanitize_context_value` |
+| rag operations (new) | [src/rag_service/core/logging/operations.py](../../src/rag_service/core/logging/operations.py) | `elapsed_ms`, `logged_operation` |
+| rag formatters | [src/rag_service/core/logging/formatters.py](../../src/rag_service/core/logging/formatters.py) | sanitize `event_data` in JSON + console |
 | rag settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | `LoggingSettings.redaction_secret` + random-fallback hardening |
 | rag retrieval/SQL timing | [src/rag_service/main.py](../../src/rag_service/main.py) | `duration_ms` on retrieval + DuckDB events |
 | bridge secret resolution | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `_load_redaction_secret` reads `LOG_REDACTION_SECRET_FILE` |
-| drop-set expansion | [src/dialogue_bridge/observability/redaction.py](../../src/dialogue_bridge/observability/redaction.py), [src/agents/observability/redaction.py](../../src/agents/observability/redaction.py) | content keys added |
+| drop-set expansion | [src/dialogue_bridge/core/logging/redaction.py](../../src/dialogue_bridge/core/logging/redaction.py), [src/agents/core/logging/redaction.py](../../src/agents/core/logging/redaction.py) | content keys added |
 | compose wiring | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | `LOG_REDACTION_SECRET_FILE` env + `log_redaction_secret` secret on all 3 |
 
 > **Operator step:** create the Swarm secret `magenticx_log_redaction_secret` (32-byte hex) in Portainer **before** deploying this stack revision, exactly like the other `magenticx_*` secrets.
@@ -299,19 +299,19 @@ flowchart TD
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Logging setup (bridge) | [src/dialogue_bridge/observability/config.py](../../src/dialogue_bridge/observability/config.py) | `configure_logging`, queue handler |
-| Event API | [src/dialogue_bridge/observability/events.py](../../src/dialogue_bridge/observability/events.py) | `EventLogger`, `get_logger`, `log_event` |
-| Request context | [src/dialogue_bridge/observability/context.py](../../src/dialogue_bridge/observability/context.py) | `set_context` / `get_context` / `clear_context` |
-| Request middleware | [src/dialogue_bridge/observability/middleware.py](../../src/dialogue_bridge/observability/middleware.py) | `RequestLoggingMiddleware`, `duration_ms` |
-| Context binding | [src/dialogue_bridge/observability/filters.py](../../src/dialogue_bridge/observability/filters.py) | `RequestContextFilter.filter` |
-| Formatters | [src/dialogue_bridge/observability/formatters.py](../../src/dialogue_bridge/observability/formatters.py) | `JsonFormatter`, `ConsoleFormatter` |
-| Redaction | [src/dialogue_bridge/observability/redaction.py](../../src/dialogue_bridge/observability/redaction.py) | `sanitize_for_logging`, `_stable_hash`, drop set |
-| DB operation timing | [src/dialogue_bridge/observability/operations.py](../../src/dialogue_bridge/observability/operations.py) | `logged_db_operation`, `elapsed_ms` |
-| Stream metrics | [src/dialogue_bridge/observability/stream_metrics.py](../../src/dialogue_bridge/observability/stream_metrics.py) | `StreamMetrics`, `first_byte_latency_ms` |
+| Logging setup (bridge) | [src/dialogue_bridge/core/logging/config.py](../../src/dialogue_bridge/core/logging/config.py) | `configure_logging`, queue handler |
+| Event API | [src/dialogue_bridge/core/logging/events.py](../../src/dialogue_bridge/core/logging/events.py) | `EventLogger`, `get_logger`, `log_event` |
+| Request context | [src/dialogue_bridge/core/logging/context.py](../../src/dialogue_bridge/core/logging/context.py) | `set_context` / `get_context` / `clear_context` |
+| Request middleware | [src/dialogue_bridge/core/logging/middleware.py](../../src/dialogue_bridge/core/logging/middleware.py) | `RequestLoggingMiddleware`, `duration_ms` |
+| Context binding | [src/dialogue_bridge/core/logging/filters.py](../../src/dialogue_bridge/core/logging/filters.py) | `RequestContextFilter.filter` |
+| Formatters | [src/dialogue_bridge/core/logging/formatters.py](../../src/dialogue_bridge/core/logging/formatters.py) | `JsonFormatter`, `ConsoleFormatter` |
+| Redaction | [src/dialogue_bridge/core/logging/redaction.py](../../src/dialogue_bridge/core/logging/redaction.py) | `sanitize_for_logging`, `_stable_hash`, drop set |
+| DB operation timing | [src/dialogue_bridge/core/logging/operations.py](../../src/dialogue_bridge/core/logging/operations.py) | `logged_db_operation`, `elapsed_ms` |
+| Stream metrics | [src/dialogue_bridge/core/logging/stream_metrics.py](../../src/dialogue_bridge/core/logging/stream_metrics.py) | `StreamMetrics`, `first_byte_latency_ms` |
 | Cross-service headers | [src/dialogue_bridge/core/security/internal_trust.py](../../src/dialogue_bridge/core/security/internal_trust.py) | `internal_service_headers` (X-Request-ID injection) |
 | agents run-lifecycle logs | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `agent_stream_*`, mcp + checkpoint events |
-| agents redaction | [src/agents/observability/redaction.py](../../src/agents/observability/redaction.py) | drop set, `_harden_redaction_secret` (settings) |
-| rag redaction (Phase 1) | [src/rag_service/observability/redaction.py](../../src/rag_service/observability/redaction.py) | ported sanitizer |
+| agents redaction | [src/agents/core/logging/redaction.py](../../src/agents/core/logging/redaction.py) | drop set, `_harden_redaction_secret` (settings) |
+| rag redaction (Phase 1) | [src/rag_service/core/logging/redaction.py](../../src/rag_service/core/logging/redaction.py) | ported sanitizer |
 | rag retrieval/SQL logging | [src/rag_service/main.py](../../src/rag_service/main.py) | `retrieval_*`, `sql_query_*`, `duration_ms` |
 | Redaction secret (all) | [src/dialogue_bridge/core/settings.py](../../src/dialogue_bridge/core/settings.py) | `LoggingSettings.redaction_secret` |
 | Deploy + secret wiring | [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | `deploy.update_config`, `log_redaction_secret` |

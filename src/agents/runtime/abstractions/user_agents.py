@@ -44,7 +44,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from runtime.abstractions.agent_spec import AgentSpec
 from runtime.filesystem import layout
 from runtime.skill_registry.user_registry import sync_agent_default_skills

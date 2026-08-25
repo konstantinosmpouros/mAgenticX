@@ -14,7 +14,7 @@ import chromadb
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
-from observability import (
+from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
     elapsed_ms,
@@ -25,11 +25,11 @@ from observability import (
 configure_logging()
 logger = get_logger(__name__)
 
-from core.chroma import chroma_settings, embeddings_model
-from core.duck_db import TABLES, db
+from core.clients import chroma_settings, embeddings_model
+from core.database import TABLES, db
 from core.settings import settings
 from core.error_handling import rag_operation_error_handler
-from core.proxy import require_internal_caller
+from core.security.internal_trust import require_internal_caller
 from schemas import Query, ExcelSQLQuery
 
 
@@ -50,7 +50,7 @@ def _validate_read_only_sql(sql: str) -> str:
     # comment-splitting (e.g. read/**/_csv) is the documented way to slip a
     # forbidden token past the denylist below — with no comments it cannot be
     # evaded. The DuckDB engine lock (enable_external_access=false +
-    # disabled_filesystems + lock_configuration in core/duck_db.py) remains the
+    # disabled_filesystems + lock_configuration in core/database/duck_db.py) remains the
     # load-bearing control; this is defense-in-depth on top of it.
     if "--" in cleaned or "/*" in cleaned or "*/" in cleaned:
         raise HTTPException(status_code=400, detail="SQL comments are not allowed.")

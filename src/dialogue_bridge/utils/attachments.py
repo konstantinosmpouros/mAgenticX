@@ -8,7 +8,7 @@ from urllib.parse import quote
 from fastapi import HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from fastapi_pagination import Page, Params, create_page
-from observability import StreamMetrics, get_context, get_logger, set_context
+from core.logging import StreamMetrics, get_context, get_logger, set_context
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

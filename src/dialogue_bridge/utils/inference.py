@@ -1,7 +1,7 @@
 import base64
 
 from fastapi import HTTPException, status
-from observability import EventLogger
+from core.logging import EventLogger
 
 from core.database import MessageTable
 

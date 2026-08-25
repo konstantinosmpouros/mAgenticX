@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem.layout import CONVERSATIONS_DIRNAME, users_root
 
 logger = get_logger(__name__)

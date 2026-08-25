@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from observability import set_context
+from core.logging import set_context
 from core.database import (
     AttachmentTable,
     ConversationTable,

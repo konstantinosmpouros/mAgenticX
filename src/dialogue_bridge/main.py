@@ -16,7 +16,7 @@ from core.settings import settings
 from utils.inference_runs import cleanup_orphaned_inference_runs
 from utils.scheduled_tasks import scheduler
 from utils.embeddings import run_embedding_sweeper
-from observability import (
+from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
     get_logger,

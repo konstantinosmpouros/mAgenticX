@@ -8,7 +8,7 @@ session); the mutating toggle additionally requires a CSRF token. Business logic
 """
 from fastapi import APIRouter, Depends, status
 
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from core.auth.session import AuthUser, require_csrf_protection
 from schemas import AgentToolsResponse, ToolToggleRequest
 from utils import fetch_agent_tools, set_agent_tool_disabled, validate_userId

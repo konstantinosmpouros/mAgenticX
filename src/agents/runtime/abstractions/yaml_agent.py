@@ -29,7 +29,7 @@ from utils.declarative import read_prompt
 from runtime.filesystem import layout
 from runtime.filesystem.tool_prefs import read_enabled_tools
 from runtime.tools.registry import NativeToolContext, resolve_native_tool
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

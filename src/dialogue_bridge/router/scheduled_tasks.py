@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser, require_csrf_protection

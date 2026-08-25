@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from core.settings import settings
 from runtime.checkpointer import set_checkpointer
 from runtime.filesystem import run_workspace_retention_loop
-from observability import (
+from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
     get_logger,

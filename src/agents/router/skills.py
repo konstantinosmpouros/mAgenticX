@@ -2,8 +2,8 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from core.proxy import require_internal_caller
-from observability import get_logger
+from core.security.internal_trust import require_internal_caller
+from core.logging import get_logger
 from runtime.skill_registry import (
     SkillNameConflict,
     add_custom_to_user,

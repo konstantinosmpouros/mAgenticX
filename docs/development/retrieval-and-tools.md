@@ -359,8 +359,9 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | --- | --- | --- |
 | RAG service entry & endpoints | [src/rag_service/main.py](../../src/rag_service/main.py) | `retrieve`, `schema`, `sql_query` route handlers |
 | Vector retrieval | [src/rag_service/main.py](../../src/rag_service/main.py) | `POST /retrieve/{collection_name}` handler |
-| Chroma configuration | [src/rag_service/core/chroma.py](../../src/rag_service/core/chroma.py) | `embeddings_model`, `chroma_settings` |
-| DuckDB ingestion | [src/rag_service/core/duck_db.py](../../src/rag_service/core/duck_db.py) | `db`, `TABLES`, Excel loading loop |
+| Chroma configuration | [src/rag_service/core/clients/chroma.py](../../src/rag_service/core/clients/chroma.py) | `chroma_settings` |
+| OpenAI embeddings client | [src/rag_service/core/clients/openai.py](../../src/rag_service/core/clients/openai.py) | `embeddings_model` |
+| DuckDB ingestion | [src/rag_service/core/database/duck_db.py](../../src/rag_service/core/database/duck_db.py) | `db`, `TABLES`, Excel loading loop |
 | SQL validation | [src/rag_service/main.py](../../src/rag_service/main.py) | `_validate_read_only_sql()` |
 | RAG service settings | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | `RagSettings`, `ApiKeysSettings`, `ProxySettings` |
 | RAG error handling | [src/rag_service/core/error_handling.py](../../src/rag_service/core/error_handling.py) | `RagOperationErrorHandler`, `register_exception_handlers` |
@@ -379,4 +380,4 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | Agent catalog endpoints | [src/agents/main.py](../../src/agents/main.py) | `GET /agents`, `GET /tools` |
 | Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `inference_run_websocket()`, `cancelInferenceRun()` |
 | Message history serialization | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `prepare_inference_history()`, `serialise_message_with_images_for_agent()` |
-| Internal caller auth | [src/agents/core/proxy.py](../../src/agents/core/proxy.py) | `require_internal_caller()` |
+| Internal caller auth | [src/agents/core/security/internal_trust.py](../../src/agents/core/security/internal_trust.py) | `require_internal_caller()` |

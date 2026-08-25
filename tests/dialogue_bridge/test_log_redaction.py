@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from observability import scrub_url_credentials
-from observability.redaction import _should_drop_key, sanitize_for_logging
+from core.logging import scrub_url_credentials
+from core.logging.redaction import _should_drop_key, sanitize_for_logging
 
 
 @pytest.mark.parametrize(

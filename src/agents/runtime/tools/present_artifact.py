@@ -22,7 +22,7 @@ from __future__ import annotations
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem import resolve_output_file
 
 logger = get_logger(__name__)

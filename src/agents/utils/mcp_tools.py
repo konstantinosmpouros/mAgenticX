@@ -6,7 +6,7 @@ from mcp import types
 from mcp.client.sse import sse_client
 
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from schemas import ToolManifest
 
 logger = get_logger(__name__)

@@ -32,7 +32,7 @@ from core.database import (
     UserTable,
 )
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from schemas import (
     InferenceStartPayload,
     MessageIn,

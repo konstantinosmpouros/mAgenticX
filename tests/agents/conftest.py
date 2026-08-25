@@ -67,7 +67,7 @@ def _load_agents_service(monkeypatch):
         emitter=importlib.import_module("runtime.agui.emitter"),
         agui_events=importlib.import_module("runtime.agui.events"),
         # core
-        proxy=importlib.import_module("core.proxy"),
+        proxy=importlib.import_module("core.security.internal_trust"),
         error_handling=importlib.import_module("core.error_handling"),
         settings_module=importlib.import_module("core.settings"),
         # runtime

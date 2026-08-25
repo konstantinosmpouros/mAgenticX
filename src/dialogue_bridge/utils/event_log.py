@@ -19,7 +19,7 @@ import redis.asyncio as aioredis
 
 from core.cache import create_redis_client
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 
 
 logger = get_logger(__name__)

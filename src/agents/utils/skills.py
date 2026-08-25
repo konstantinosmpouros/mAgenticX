@@ -26,7 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem import layout
 from runtime.filesystem import (
     disable_skill as _disable_skill_fs,

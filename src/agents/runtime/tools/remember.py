@@ -23,7 +23,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem import (
     AGENTS_MD_TEMPLATE,
     MEMORIES_HEADER,

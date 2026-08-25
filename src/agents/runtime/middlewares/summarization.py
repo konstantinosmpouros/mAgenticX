@@ -5,7 +5,7 @@ from deepagents._models import resolve_model
 from deepagents.middleware.summarization import SummarizationMiddleware
 
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

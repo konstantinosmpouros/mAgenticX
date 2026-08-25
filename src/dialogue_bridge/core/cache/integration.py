@@ -30,7 +30,7 @@ from redis_fastapi import FastAPIRedis, get_settings
 
 from core.settings import settings
 from core.security.rate_limit import USER_BUDGET_RATE, exempt_from_budget, verified_identity
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

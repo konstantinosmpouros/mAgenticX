@@ -34,7 +34,7 @@ from core.error_handling import upstream_error_handler
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
-from observability import get_context, get_logger
+from core.logging import get_context, get_logger
 
 logger = get_logger(__name__)
 

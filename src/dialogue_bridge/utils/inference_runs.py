@@ -26,7 +26,7 @@ from core.database import (
 from core.security.internal_trust import internal_service_headers
 from core.settings import settings
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
-from observability import get_context, get_logger
+from core.logging import get_context, get_logger
 from schemas import ConversationSummary, InferenceRunOut, MessageOut
 from utils.agents import (
     build_agent_input_files_url,

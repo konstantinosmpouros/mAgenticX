@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

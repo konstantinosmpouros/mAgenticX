@@ -16,7 +16,7 @@ from typing import Any
 
 import yaml
 
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem.provisioner import (
     _safe_segment,
     memory_entries_root,

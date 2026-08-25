@@ -11,9 +11,9 @@ because the UI is never the authority.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from core.proxy import require_internal_caller
+from core.security.internal_trust import require_internal_caller
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from runtime.abstractions.user_agents import (
     delete_user_agent,
     get_user_agent,

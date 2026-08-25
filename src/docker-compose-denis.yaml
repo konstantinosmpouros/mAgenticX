@@ -125,9 +125,6 @@ services:
       - /opt/magenticx/agents/tls/tls.key:/app/tls/tls.key:ro
       - /opt/magenticx/agents/tls/tls.crt:/app/tls/tls.crt:ro
       - /opt/magenticx/agents/tls/ca.crt:/app/tls/ca.crt:ro
-      # The whole agents filesystem: global plane (agent definitions + skills
-      # catalogue) and one workspace per user (pool, custom agents, per-agent
-      # memory, tool prefs, conversation files). See runtime/filesystem/layout.py.
       - magenticx_data:/var/magenticx
     networks:
       - backend
@@ -224,7 +221,7 @@ services:
 
   dialogue_bridge: # 8002
     container_name: dialogue_bridge
-    image: konstantinosmpouros/dialogue_bridge:v2.16.0
+    image: konstantinosmpouros/dialogue_bridge:v2.17.0
     entrypoint: ["/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8002", "--no-server-header"]
     user: "1000:1000"
@@ -295,7 +292,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.14.0
+    image: konstantinosmpouros/agentic_ui:v0.15.0
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:
@@ -344,6 +341,7 @@ networks:
 
 
 
+
 secrets:
   openai_api_key:
     external: true
@@ -354,10 +352,6 @@ secrets:
   session_token_secret:
     external: true
     name: magenticx_session_token_secret
-  # Encrypts the refresh tokens of *parked* accounts (multi-account sign-in) at
-  # rest in Redis. Dedicated rather than derived from session_token_secret so it
-  # rotates on its own — rotating it signs every parked account out, which must
-  # not be a side effect of rotating an unrelated key.
   parked_token_key:
     external: true
     name: magenticx_parked_token_key
@@ -385,6 +379,7 @@ secrets:
 
 
 
+
 volumes:
   vectorstore:
     driver: local
@@ -395,10 +390,6 @@ volumes:
 
   chat_convs:
 
-  # Consolidated agents filesystem (global plane + per-user workspaces). Bound to
-  # the VM so it is snapshot-able alongside the other bind-mounted data; the
-  # directory must be owned by 1000:1000 or the agents container cannot write it
-  # (same ownership rule as the TLS material).
   magenticx_data:
     driver: local
     driver_opts:

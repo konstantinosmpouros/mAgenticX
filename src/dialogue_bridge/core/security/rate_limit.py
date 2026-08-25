@@ -30,7 +30,7 @@ from redis_fastapi.deps import get_rate_limit_backend
 from core.auth.tokens import ACCESS_TYPE, verify
 from core.security.internal_trust import resolve_client_ip
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

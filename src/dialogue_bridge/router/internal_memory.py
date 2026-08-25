@@ -8,7 +8,7 @@ on the `backend` network — can call them. They back the agent's
 pgvector index on the user's behalf.
 """
 from fastapi import APIRouter, Depends, status
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db

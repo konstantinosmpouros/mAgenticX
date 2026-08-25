@@ -78,6 +78,7 @@ src/dialogue_bridge/
 │   │   ├── internal_trust.py   require_internal_caller, internal_service_headers, client-IP resolution
 │   │   ├── rate_limit.py       fastapi-redis-sdk policies: verified-identity budget + auth/inference/speech deps
 │   │   └── tls.py              httpx verify=/cert= mTLS helpers
+│   ├── logging/                config, context, events, filters, formatters, middleware, redaction, stream_metrics, exception_handlers
 │   └── database/
 │       ├── engine.py           async engine, SessionLocal, get_db, Postgres verify-full SSL, Base, gen_uuid
 │       └── models.py           EVERY ORM table
@@ -92,7 +93,6 @@ src/dialogue_bridge/
 │   ├── conversations.py · messages.py · attachments.py · embeddings.py · shared_conv.py · share_export.py
 │   ├── scheduled_tasks.py (Scheduler loop) · agents.py (agent cache) · titles.py · suggestions.py
 │   ├── speech.py · voice.py · search.py · skills.py · skills_cache.py · memories.py · usage.py · validators.py
-├── observability/              config, context, events, filters, formatters, middleware, redaction, stream_metrics, exception_handlers
 ├── migrations/versions/        0001_baseline … 0015_personalization
 ├── requirements.txt · Dockerfile
 ```
@@ -347,7 +347,7 @@ The detached task produces into Redis whether or not any browser is attached —
 
 **nginx** (`agentic_ui/nginx.conf.template`) — a dedicated `location ^~ /api/v1/inference/runs/` block forwards `Upgrade`/`Connection` (WS handshake), injects the proxy secret + request id, disables buffering, and sets `proxy_read_timeout/send_timeout 3600s` so live tails aren't dropped. **Browser client** (`agentic_ui/src/lib/api.ts` `connectInferenceWebSocket`) persists `lastSeenInferenceSeq`, resends it as `since` on reconnect (backoff `[250,500,1000,2000,5000]`ms), treats close `4401/4403/4404` as permanent.
 
-**Stream instrumentation** (`observability/stream_metrics.py`) — `StreamMetrics` tracks chunk_count, bytes_forwarded, first-byte latency, total duration, and (with a separator) event_count, for both the upstream inference SSE and blob downloads.
+**Stream instrumentation** (`core/logging/stream_metrics.py`) — `StreamMetrics` tracks chunk_count, bytes_forwarded, first-byte latency, total duration, and (with a separator) event_count, for both the upstream inference SSE and blob downloads.
 
 ---
 

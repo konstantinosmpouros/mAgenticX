@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnableLambda
 
 from core.settings import settings
 from core.error_handling import provider_error_handler
-from observability import get_logger
+from core.logging import get_logger
 from utils import make_merge_with_template
 from schemas import TitleRequest, ConversationTitle
 

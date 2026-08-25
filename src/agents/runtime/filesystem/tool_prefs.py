@@ -32,7 +32,7 @@ import os
 from pathlib import Path
 from typing import Set, Tuple
 
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem.provisioner import agent_root
 
 logger = get_logger(__name__)

@@ -3,7 +3,7 @@ Usage tab. Read-only: aggregates live in ``utils/usage.py``; this router only
 validates ownership and returns the rollup."""
 
 from fastapi import APIRouter, Depends, status
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser

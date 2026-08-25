@@ -31,7 +31,7 @@ from runtime.filesystem import layout
 from runtime.tools.registry import is_known_native_tool
 from utils.declarative import manifest_from_spec
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from schemas import AgentDefinition
 
 logger = get_logger(__name__)

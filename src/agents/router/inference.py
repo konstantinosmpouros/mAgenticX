@@ -6,8 +6,8 @@ from fastapi.responses import StreamingResponse
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.types import Command
 
-from core.proxy import require_internal_caller
-from observability import get_context, get_logger, set_context
+from core.security.internal_trust import require_internal_caller
+from core.logging import get_context, get_logger, set_context
 from runtime.checkpointer import get_checkpointer, has_checkpointer_initialized
 from runtime.checkpointer.fork import seed_thread_from_checkpoint
 from runtime.filesystem import delete_conversation_files, read_output_files, seed_input_files

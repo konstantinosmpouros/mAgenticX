@@ -63,7 +63,7 @@ def _load_rag_service(monkeypatch, tmp_path):
 
     settings_module = importlib.import_module("core.settings")
     main_module = importlib.import_module("main")
-    proxy_module = importlib.import_module("core.proxy")
+    proxy_module = importlib.import_module("core.security.internal_trust")
     return SimpleNamespace(settings=settings_module, main=main_module, proxy=proxy_module)
 
 

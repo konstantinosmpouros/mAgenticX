@@ -70,7 +70,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem import layout
 from runtime.filesystem.agent_md_template import AGENTS_MD_TEMPLATE
 

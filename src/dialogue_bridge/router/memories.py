@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import List
 
 from fastapi import APIRouter, Depends, status
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 
 from core.auth.session import AuthUser, require_csrf_protection
 from schemas import MemoryDetail, MemoryEntry

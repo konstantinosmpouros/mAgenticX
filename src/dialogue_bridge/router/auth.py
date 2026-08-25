@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

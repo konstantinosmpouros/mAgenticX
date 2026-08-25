@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.auth.session import AuthUser, require_csrf_protection
 from core.database import get_db
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from schemas import AgentPublic, CustomAgentDetail, CustomAgentValidation, CustomAgentWrite
 from utils import validate_userId
 from utils.user_agents import (

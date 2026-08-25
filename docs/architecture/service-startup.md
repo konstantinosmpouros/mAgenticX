@@ -84,7 +84,7 @@ The generic retrieval backend — the smallest boot surface. Notably, it does **
 | --- | --- | --- | --- |
 | `TRUSTED_PROXY_SECRET` | 🔴 | `_require_proxy_secret` raises — identical gate to the others. | [rag_service](configuration.md#rag_service) |
 | TLS cert/key (+ CA for mTLS) | 🔒 | `REQUIRE_TLS`/`REQUIRE_MTLS` default `true`. | [Deploy-time safety toggles](configuration.md#deploy-time-safety-toggles-cross-service) |
-| Excel workbooks in `data/` | 🟠 | DuckDB tables are loaded from the `data/` workbooks at import (`core/duck_db.py`). A malformed/missing workbook the loader expects can fail import; a healthy `data/` directory is part of the image. | [rag_service](configuration.md#rag_service) |
+| Excel workbooks in `data/` | 🟠 | DuckDB tables are loaded from the `data/` workbooks at import (`core/database/duck_db.py`). A malformed/missing workbook the loader expects can fail import; a healthy `data/` directory is part of the image. | [rag_service](configuration.md#rag_service) |
 | `OPENAI_API_KEY` | 🟢* | Not a startup raise, but needed to embed queries on every `/retrieve`. Functionally required to serve retrieval. | [rag_service](configuration.md#rag_service) |
 | **vectordb** (Chroma) reachable | 🟢 | The Chroma `HttpClient` is created **per `/retrieve` request**, not at boot. rag_service starts fine with Chroma down; only retrieval calls fail. | [vectordb](configuration.md#vectordb-chromadbchroma063) |
 
@@ -133,7 +133,7 @@ The single most common "service won't boot" cause after secrets is TLS. The `src
 | agents proxy gate | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `_require_proxy_secret` |
 | agents checkpointer boot | [src/agents/main.py](../../src/agents/main.py) | `_init_durable_checkpointer`, `_ensure_checkpointer_database` (fail-fast) |
 | rag start gate | [src/rag_service/core/settings.py](../../src/rag_service/core/settings.py) | `_require_proxy_secret` |
-| rag DuckDB load | [src/rag_service/core/duck_db.py](../../src/rag_service/core/duck_db.py) | `TABLES` loaded from `data/` at import |
+| rag DuckDB load | [src/rag_service/core/database/duck_db.py](../../src/rag_service/core/database/duck_db.py) | `TABLES` loaded from `data/` at import |
 | TLS fail-closed | [src/tls/entrypoint-tls.sh](../../src/tls/entrypoint-tls.sh) | `REQUIRE_TLS`, `REQUIRE_MTLS`, `-r` readability check |
 | full tunable surface | [docs/architecture/configuration.md](configuration.md) | every env var, per service |
 | secret delivery | [docs/architecture/secrets.md](secrets.md) | which var is backed by which secret |

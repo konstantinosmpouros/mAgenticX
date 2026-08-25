@@ -36,7 +36,7 @@ from core.cache.policies import (
     skills_user_registry_key,
 )
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,6 +1,6 @@
 import httpx
 from fastapi import HTTPException, status
-from observability import get_context, get_logger
+from core.logging import get_context, get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

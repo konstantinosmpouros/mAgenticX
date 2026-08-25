@@ -33,7 +33,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem import layout
 from schemas import SkillManifestEntry, GlobalManifest
 

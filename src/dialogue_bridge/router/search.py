@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, status
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db

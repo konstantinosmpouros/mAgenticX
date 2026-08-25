@@ -10,7 +10,7 @@ from jose import jwt as jose_jwt, JWTError
 
 from core.settings import settings
 from core.auth.vault import VaultServiceError, vault_service
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

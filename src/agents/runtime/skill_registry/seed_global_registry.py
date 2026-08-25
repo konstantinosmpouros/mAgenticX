@@ -19,7 +19,7 @@ import os
 import shutil
 from pathlib import Path
 
-from observability import get_logger
+from core.logging import get_logger
 from runtime.filesystem import layout
 
 logger = get_logger(__name__)

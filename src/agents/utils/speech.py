@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from core.clients import get_openai_client
 from core.settings import settings
 from core.error_handling import provider_error_handler
-from observability import get_logger
+from core.logging import get_logger
 from schemas import ReadAloudRequest
 
 logger = get_logger(__name__)

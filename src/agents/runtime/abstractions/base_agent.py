@@ -2,7 +2,7 @@ from uuid import uuid4
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 from core.error_handling import agent_stream_error_handler
-from observability import get_logger
+from core.logging import get_logger
 from runtime.personalization import Personalization, parse_personalization
 from utils import (
     build_tool_cache_key,

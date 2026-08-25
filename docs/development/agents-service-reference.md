@@ -70,10 +70,10 @@ src/agents/
 ├── load-secrets-and-exec.sh    Secret-loading shim (reads /run/secrets → env → exec)
 ├── core/
 │   ├── settings.py             Pydantic-settings; every env var; two boot validators
-│   ├── tls.py                  Outbound mTLS SSLContext helpers
-│   ├── proxy.py                Internal-caller trust + client-IP resolution + internal_service_headers
 │   ├── error_handling.py       HTTP/provider/stream error handlers (RUN_ERROR frame encoder)
-│   └── clients.py              OpenAI client factory
+│   ├── logging/                Structured logging / observability package
+│   ├── security/               internal_trust.py (trusted-proxy gate, client IP, internal headers) + tls.py (outbound mTLS SSLContext)
+│   └── clients/                Outbound API client factories (openai.py — get_openai_client)
 ├── runtime/
 │   ├── __init__.py             re-exports LangGraphAgent, DeepAgent
 │   ├── abstractions/           ★ what an agent IS: base classes + configurable kinds
@@ -133,7 +133,6 @@ src/agents/
 ├── deep_agents/
 │   ├── __init__.py             re-exports OmniAgent
 │   └── omni_agent/             {__init__, system_prompts}.py  (NO AGENT.md / skills/ on disk)
-├── observability/              config, context, events, filters, formatters, middleware, redaction, exception_handlers, operations
 └── skills_registry/            The in-image seed catalog of skills (markdown SKILL.md + scripts) — large
 ```
 
@@ -473,7 +472,7 @@ Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a d
 
 ---
 
-## 16. Observability (`observability/`)
+## 16. Observability (`core/logging/`)
 
 Structured, async, per-request-context logging.
 - **`configure_logging`** — non-blocking `QueueHandler` → `QueueListener` → stdout `StreamHandler`; `ConsoleFormatter` or `JsonFormatter` (per `LOG_FORMAT`); a `RequestContextFilter` injects context fields; `uvicorn.access` and `httpx` pinned to `WARNING`.

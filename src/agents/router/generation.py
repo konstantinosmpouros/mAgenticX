@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
-from core.proxy import require_internal_caller
-from observability import get_logger
+from core.security.internal_trust import require_internal_caller
+from core.logging import get_logger
 from schemas import (
     ConversationSuggestions,
     ConversationTitle,

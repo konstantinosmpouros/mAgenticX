@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from observability import get_logger, set_context
+from core.logging import get_logger, set_context
 
 from core.database import SessionLocal, get_db
 from core.settings import settings

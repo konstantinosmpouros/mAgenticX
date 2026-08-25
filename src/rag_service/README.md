@@ -78,17 +78,17 @@ flowchart TD
 | `main.py` | FastAPI app, routes, and request lifecycle |
 | `core/settings.py` | Environment-driven settings (pydantic-settings) |
 | `core/chroma.py` | Chroma HTTP client and embeddings setup |
-| `core/duck_db.py` | Excel loading and in-memory DuckDB registration |
+| `core/database/duck_db.py` | Excel loading and in-memory DuckDB registration |
 | `schemas.py` | Request schemas for retrieval and SQL |
 | `observability/*` | logging, request context, and exception handling |
 
 ## 5. Startup and Data Loading
 
-The Excel side of the service is initialized at startup from `core/duck_db.py`.
+The Excel side of the service is initialized at startup from `core/database/duck_db.py`.
 
 ```mermaid
 flowchart TD
-    A[Import core/duck_db.py] --> B[Resolve DATA_DIR = data/]
+    A[Import core/database/duck_db.py] --> B[Resolve DATA_DIR = data/]
     B --> C{Directory exists?}
     C -->|No| D[Raise FileNotFoundError]
     C -->|Yes| E[Iterate files]
@@ -361,12 +361,16 @@ src/rag_service/
 ├── schemas.py              Request models
 ├── core/
 │   ├── settings.py         Environment-driven settings (pydantic-settings)
-│   ├── chroma.py           Chroma HTTP client and embeddings setup
-│   ├── duck_db.py          Excel loading and in-memory DuckDB registration
 │   ├── error_handling.py   Provider error handling helpers
-│   └── proxy.py            Trusted proxy IP resolution
+│   ├── clients/            Outbound API clients
+│   │   ├── chroma.py       Chroma HTTP client settings
+│   │   └── openai.py       Embeddings model factory
+│   ├── database/           Tabular data layer
+│   │   └── duck_db.py      Excel loading and in-memory DuckDB registration
+│   ├── logging/            Structured logging, redaction, middleware, handlers
+│   └── security/
+│       └── internal_trust.py  Trusted-proxy gate and client-IP resolution
 ├── data/                   Excel files loaded into DuckDB at startup
-├── observability/          Logging, middleware, exception handlers
 ├── requirements.txt        Python dependencies
 └── Dockerfile              Container image definition
 ```
@@ -445,7 +449,7 @@ You would need to change:
 
 You would need to change:
 
-- the Excel loading loop in `core/duck_db.py`
+- the Excel loading loop in `core/database/duck_db.py`
 - table naming logic to include sheet identity
 - any assumptions in downstream agents about one workbook -> one table
 
@@ -463,7 +467,7 @@ Current implementation executes text-validated read-only SQL against DuckDB. If 
 
 - `main.py`: routes for retrieval, schema, and SQL
 - `core/chroma.py`: Chroma HTTP client and embeddings initialization
-- `core/duck_db.py`: startup-time Excel loading and DuckDB table registration
+- `core/database/duck_db.py`: startup-time Excel loading and DuckDB table registration
 - `core/settings.py`: authoritative environment variable map
 - `schemas.py`: request contracts
 - `observability/middleware.py`: request ID propagation

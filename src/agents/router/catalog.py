@@ -2,8 +2,8 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from core.proxy import require_internal_caller
-from observability import get_logger
+from core.security.internal_trust import require_internal_caller
+from core.logging import get_logger
 from schemas import AgentManifest, ToolManifest
 from utils import MCPToolsClientError, get_cached_tool_manifests, list_mcp_tools
 from utils.agents import AGENT_REGISTRY

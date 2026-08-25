@@ -1387,7 +1387,11 @@ export function useChatWorkspace({
         setAccountLimitOpen(false);
         // Signing out the *active* account leaves no session to park, so the new
         // sign-in has to be a plain login; otherwise it can still be an "add".
-        navigate(account.current ? "/login" : "/login?add=1");
+        // A HARD navigation: this handler changed which identity the cookies
+        // describe without running the local teardown, so the module-level store
+        // still holds the outgoing account. Restarting is what guarantees the
+        // login page (and whatever it navigates to) starts from the new session.
+        window.location.assign(account.current ? "/login" : "/login?add=1");
       } catch (error) {
         toastWrapper({
           title: "Could not sign out of that account",

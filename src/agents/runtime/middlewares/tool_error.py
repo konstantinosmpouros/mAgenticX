@@ -4,7 +4,7 @@ from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
-from observability import get_logger
+from core.logging import get_logger
 
 logger = get_logger(__name__)
 

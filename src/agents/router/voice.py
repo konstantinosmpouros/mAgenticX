@@ -7,9 +7,9 @@ from fastapi.responses import StreamingResponse
 
 from core.clients import get_openai_client
 from core.error_handling import provider_error_handler
-from core.proxy import require_internal_caller
+from core.security.internal_trust import require_internal_caller
 from core.settings import settings
-from observability import get_logger
+from core.logging import get_logger
 from schemas import (
     ReadAloudRequest,
     RealtimeSessionRequest,

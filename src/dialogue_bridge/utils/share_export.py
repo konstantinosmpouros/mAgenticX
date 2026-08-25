@@ -12,7 +12,7 @@ from fontTools.ttLib import TTFont
 from fontTools.subset import Options, Subsetter
 
 from core.database import ConversationTable, MessageTable
-from observability import get_logger
+from core.logging import get_logger
 from utils.conversations import build_message_lineage
 
 logger = get_logger(__name__)
