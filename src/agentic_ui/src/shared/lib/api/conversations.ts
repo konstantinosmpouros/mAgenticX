@@ -1,16 +1,9 @@
 /**
- * Conversation CRUD — list (active/archived), detail, create, fork, and the
+ * Conversation CRUD — list (active/archived), detail, fork, and the
  * lifecycle mutations (delete, archive, unarchive, report, rename).
  */
-import type {
-  ConversationDetail,
-  ConversationIn,
-  ConversationReportPayload,
-  ConversationSummary,
-  CreateConversationResponse,
-} from "../types";
+import type { ConversationDetail, ConversationReportPayload, ConversationSummary } from "../types";
 import { requestJson, requestVoid } from "../http";
-import { PROXY_LIMIT_MB } from "../uploadGuards";
 import { WireObjectSchema, WirePageItemsSchema } from "../schemas";
 import { transformConversationDetail, transformConversationSummary } from "../consts";
 import { CONVERSATIONS_BASE_PATH } from "./paths";
@@ -127,30 +120,6 @@ export async function renameConversation(
     fallbackMessage: "Failed to rename conversation",
   });
   return transformConversationSummary(data);
-}
-
-// Create a new conversation with the first message
-export async function createConversation(
-  userId: string,
-  payload: ConversationIn,
-): Promise<CreateConversationResponse> {
-  const data = (await requestJson(`${CONVERSATIONS_BASE_PATH}/${userId}`, {
-    method: "POST",
-    csrf: true,
-    body: payload,
-    schema: WireObjectSchema,
-    errorMessages: {
-      413:
-        `Your message is too large for the server (limit ${PROXY_LIMIT_MB} MB including base64 overhead). ` +
-        `Try smaller files or fewer attachments.`,
-    },
-    fallbackMessage: "Failed to create conversation",
-  })) as Record<string, unknown>;
-
-  return {
-    detail: transformConversationDetail(data.detail as Record<string, unknown>),
-    summary: transformConversationSummary(data.summary as Record<string, unknown>),
-  };
 }
 
 // Fork the current branch ending at the selected AI message.

@@ -13,9 +13,7 @@
 
 export {
   authenticate,
-  getSessionMe,
   restoreSession,
-  refreshSession,
   logoutSession,
   getAccounts,
   switchAccount,
@@ -66,7 +64,6 @@ export {
   unarchiveConversation,
   reportConversation,
   renameConversation,
-  createConversation,
   forkConversation,
 } from "./conversations";
 
@@ -78,17 +75,10 @@ export {
   getSharedConversation,
 } from "./sharing";
 
-export {
-  addMessageToConversation,
-  updateMessageInConversation,
-  likeMessage,
-  dislikeMessage,
-} from "./messages";
+export { likeMessage, dislikeMessage } from "./messages";
 
 export {
   downloadAttachment,
-  fetchAttachmentBlob,
-  getAttachmentPreviewUrl,
   fetchAttachmentPreviewBlob,
   fetchDocxPreviewToken,
 } from "./attachments";
@@ -98,8 +88,6 @@ export {
   generateReadAloudPreviewAudio,
   transcribeDictation,
   createRealtimeVoiceSession,
-  persistRealtimeVoiceConversationEvent,
-  endRealtimeVoiceSession,
 } from "./voice";
 
 export {
@@ -108,7 +96,7 @@ export {
   cancelInferenceRun,
   resumeInferenceRun,
 } from "./inference";
-export type { ResumeActionDecision, ResumeInferenceRunBody } from "./inference";
+export type { ResumeInferenceRunBody } from "./inference";
 
 export { connectInferenceWebSocket } from "./inference-socket";
 

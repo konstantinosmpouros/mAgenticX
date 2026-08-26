@@ -37,7 +37,7 @@ def test_local_shell_backend_is_never_imported():
 def test_workspace_factory_builds_with_sandbox_execution_disabled(agents_service, skills_fs):
     """The normal path: flag off + StateBackend default builds cleanly."""
     workspace = importlib.import_module("runtime.filesystem.workspace")
-    assert agents_service.main.settings.filesystem.sandbox_execution_enabled is False
+    assert agents_service.settings_module.settings.filesystem.sandbox_execution_enabled is False
     factory = workspace.build_workspace_backend(
         user_id="user-1", agent_slug="agent-1", conversation_id="conv-1", use_memory=True
     )

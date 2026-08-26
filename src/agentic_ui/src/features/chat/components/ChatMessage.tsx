@@ -30,12 +30,6 @@ type ChatMessageProps = {
   onDislike: (message: MessageOut) => void;
   onReportMessage?: (message: MessageOut) => void;
   conversationIsReported?: boolean;
-  toast?: (opts: {
-    title: string;
-    description?: string;
-    variant?: string;
-    duration?: number;
-  }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
   onShareMessage?: (message: MessageOut) => void;
@@ -85,7 +79,6 @@ export function ChatMessage({
   onDislike,
   onReportMessage,
   conversationIsReported = false,
-  toast,
   onRetryMessage,
   onForkMessage,
   onShareMessage,
@@ -253,7 +246,6 @@ export function ChatMessage({
                     onDislike={onDislike}
                     onReportMessage={onReportMessage}
                     conversationIsReported={conversationIsReported}
-                    toast={toast}
                     onRetryMessage={onRetryMessage}
                     onForkMessage={onForkMessage}
                     onShareMessage={onShareMessage}
@@ -312,7 +304,6 @@ export function ChatMessage({
             copiedId={copiedId}
             onCopy={onCopy}
             onFlashUserActionBar={onFlashUserActionBar}
-            toast={toast}
             onRequestEdit={readOnly ? undefined : onRequestEdit}
             branchControls={branchData}
             className={`mt-2 ${userActionVisibilityClass}`}

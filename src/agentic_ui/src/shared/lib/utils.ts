@@ -5,7 +5,6 @@ import type {
   AuthResponse,
   ConversationUsage,
   CustomInstructions,
-  FileAttachment,
   MessageOut,
   SkillTreeNode,
 } from "./types";
@@ -245,13 +244,17 @@ async function fileToAttachmentIn(file: File): Promise<AttachmentIn> {
 }
 
 // Convert FileAttachment array to AttachmentIn array
-export async function convertFileAttachments(
-  fileAttachments: FileAttachment[],
-): Promise<AttachmentIn[]> {
-  const attachmentPromises = fileAttachments.map((attachment) =>
-    fileToAttachmentIn(attachment.file),
-  );
-  return Promise.all(attachmentPromises);
+/**
+ * Base64-encode picked files for the inference start payload.
+ *
+ * Takes `File[]` rather than `FileAttachment[]`: it only ever read `.file`, so
+ * the richer shape forced the single caller to build `{ url, name, type }`
+ * wrappers whose fields were then thrown away. `url` in particular was
+ * `getImageUrl(file)` — an object URL minted per image per message sent, never
+ * rendered and never revoked, pinning the file for the rest of the session.
+ */
+export async function convertFileAttachments(files: File[]): Promise<AttachmentIn[]> {
+  return Promise.all(files.map((file) => fileToAttachmentIn(file)));
 }
 
 // Sort helpers

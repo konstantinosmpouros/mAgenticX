@@ -511,8 +511,20 @@ class VoiceSettings(BaseSettings):
 
     realtime_model: str = Field("gpt-realtime", validation_alias="OPENAI_REALTIME_MODEL")
     default_realtime_voice: str = Field("alloy", validation_alias="REALTIME_DEFAULT_VOICE")
+    # Must stay in sync with REALTIME_VOICES in the frontend
+    # (agentic_ui/src/shared/lib/consts/voice.ts) — this list also gates the
+    # read-aloud voice, so a value the picker cannot display is a value the user
+    # can never see or correct.
+    #
+    # `nova` was previously here: a leftover from when read-aloud had its own TTS
+    # catalog. It is a classic TTS voice, not an OpenAI *realtime* voice, and the
+    # frontend never offered it — so a `nova` written straight to the DB passed
+    # validation here and then silently displayed as the first voice in the
+    # picker instead.
     supported_realtime_voices: frozenset[str] = Field(
-        default=frozenset({"alloy", "ash", "ballad", "coral", "echo", "nova", "sage", "shimmer", "verse", "marin", "cedar"}),
+        default=frozenset(
+            {"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}
+        ),
         validation_alias="REALTIME_SUPPORTED_VOICES",
     )
 

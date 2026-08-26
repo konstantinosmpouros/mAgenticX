@@ -16,20 +16,8 @@ type UseKeyboardShortcutsArgs = {
   shortcuts?: ShortcutDefinition[];
 };
 
-export type ChatKeyboardShortcutOptions = {
-  canTogglePrivateMode: boolean;
-  openSearch: () => void;
-  focusComposer: () => void;
-  openAttachments: () => void;
-  startDictation: () => void;
-  triggerVoiceMode: () => void;
-  openAgentPicker: () => void;
-  togglePrivateMode: () => void;
-  openProfilePanel: (tab?: string) => void;
-  openShortcutsPanel: () => void;
-  startNewChat: () => void;
-  dismissActiveUi: () => boolean;
-};
+import type { ChatKeyboardShortcutOptions } from "@/shared/lib/types";
+export type { ChatKeyboardShortcutOptions };
 
 type SidebarShortcutRuntime = {
   toggleSidebar: () => void;

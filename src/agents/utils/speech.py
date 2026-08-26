@@ -13,14 +13,21 @@ from schema import ReadAloudRequest
 logger = get_logger(__name__)
 
 
+# Last-resort voice. Deliberately a constant, not a setting: the bridge resolves
+# the voice from the user's `voice_mode_voice` preference and always passes one
+# explicitly, so an env var here could never take effect — it only invited
+# someone to set READ_ALOUD_VOICE and wonder why nothing changed.
+_FALLBACK_VOICE = "alloy"
+
+
 def _normalize_voice(voice: str | None) -> str:
-    selected = (voice or settings.runtime_models.read_aloud_voice or "alloy").strip().lower()
-    return selected or "alloy"
+    selected = (voice or _FALLBACK_VOICE).strip().lower()
+    return selected or _FALLBACK_VOICE
 
 
 def normalize_realtime_voice(voice: str | None) -> str:
-    selected = (voice or settings.runtime_models.read_aloud_voice or "alloy").strip().lower()
-    return selected if selected in settings.runtime_models.realtime_voices else "alloy"
+    selected = (voice or _FALLBACK_VOICE).strip().lower()
+    return selected if selected in settings.runtime_models.realtime_voices else _FALLBACK_VOICE
 
 
 def _generate_speech_sync(text: str, voice: str) -> bytes:

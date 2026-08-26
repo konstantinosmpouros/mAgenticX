@@ -1,5 +1,4 @@
 import React from "react";
-import type { LucideIcon } from "lucide-react";
 import { Mic, MicOff, PhoneOff, Plus, FileText, Check, X } from "lucide-react";
 import { HiArrowUp } from "react-icons/hi";
 import { VscMicFilled } from "react-icons/vsc";
@@ -19,7 +18,8 @@ import { useVoiceVisualizer, VoiceVisualizer } from "react-voice-visualizer";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
 
-export type DictationStatus = "idle" | "recording" | "review" | "submitting";
+import type { DictationStatus } from "@/shared/lib/types";
+export type { DictationStatus };
 export type ChatInputMode = "chat" | "voice";
 
 type ChatInputBarProps = {
@@ -64,7 +64,6 @@ type ChatInputBarProps = {
   textareaMaxHeight: number;
 
   // UI bits you already import in the page
-  AgentIcon: LucideIcon;
   Tooltip: any;
   TooltipTrigger: any;
   TooltipContent: any;
@@ -237,6 +236,28 @@ export function ChatInputBar(props: ChatInputBarProps) {
     }));
     return [...indexed.filter((item) => item.isImage), ...indexed.filter((item) => !item.isImage)];
   }, [attachments, isImageFile]);
+
+  // Preview URLs, minted once per attachment list rather than per render.
+  // `getImageUrl` calls URL.createObjectURL for a File, and an object URL has no
+  // TTL and is never garbage collected — it pins the file until revoked or the
+  // document unloads. Calling it inline in the JSX below meant a brand-new,
+  // permanently-pinned URL for every attached image on *every keystroke* in the
+  // composer. Indexed to match `attachments`, so the ordered list can look up by
+  // its original index.
+  const attachmentPreviewUrls = React.useMemo(
+    () => attachments.map((file) => (isImageFile(file) ? getImageUrl(file) : "")),
+    [attachments, isImageFile, getImageUrl],
+  );
+
+  React.useEffect(() => {
+    return () => {
+      // Only revoke what we minted — getImageUrl also returns data: and remote
+      // URLs, which must not be revoked.
+      attachmentPreviewUrls.forEach((url) => {
+        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+      });
+    };
+  }, [attachmentPreviewUrls]);
 
   const updateAttachmentFade = React.useCallback(() => {
     const node = attachmentStripRef.current;
@@ -756,10 +777,12 @@ export function ChatInputBar(props: ChatInputBarProps) {
                                       {isImage ? (
                                         <div className="flex items-center">
                                           <img
-                                            src={getImageUrl(file)}
+                                            src={attachmentPreviewUrls[index]}
                                             alt="Preview"
                                             className="h-14 w-14 rounded-xl object-cover cursor-pointer"
-                                            onClick={() => handleImageClick(getImageUrl(file))}
+                                            onClick={() =>
+                                              handleImageClick(attachmentPreviewUrls[index])
+                                            }
                                           />
                                         </div>
                                       ) : (

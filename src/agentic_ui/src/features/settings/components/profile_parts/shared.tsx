@@ -101,17 +101,25 @@ export const MetricCard = ({
 );
 
 // Preference toggle switch — the pill switch used across settings tabs. Kept as
-// one primitive so General/Personalization rows stay visually identical.
+// one primitive so every toggle in settings stays visually identical.
+//
+// Two sizes because two genuinely different rows exist: `md` for a settings row
+// with its own line, `sm` for the dense per-skill rows inside an agent card.
+// They differ in more than scale (the small one signals an in-flight toggle with
+// `cursor-wait`), so the variants carry their own classes rather than deriving
+// one from the other.
 export const ToggleSwitch = ({
   checked,
   disabled = false,
   onToggle,
   label,
+  size = "md",
 }: {
   checked: boolean;
   disabled?: boolean;
   onToggle?: () => void;
   label: string;
+  size?: "sm" | "md";
 }) => (
   <button
     type="button"
@@ -119,17 +127,33 @@ export const ToggleSwitch = ({
     aria-checked={checked}
     aria-disabled={disabled}
     aria-label={label}
+    disabled={disabled}
     onClick={() => !disabled && onToggle?.()}
     className={cn(
-      "relative inline-flex h-7 w-12 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-      checked ? "border-primary/40 bg-primary/20" : "border-transparent bg-background/80",
-      disabled && "cursor-not-allowed opacity-60",
+      "relative inline-flex shrink-0 items-center rounded-full transition-all",
+      size === "md"
+        ? cn(
+            "h-7 w-12 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+            checked ? "border-primary/40 bg-primary/20" : "border-transparent bg-background/80",
+            disabled && "cursor-not-allowed opacity-60",
+          )
+        : cn(
+            "h-5 w-9 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+            checked ? "bg-primary" : "bg-muted",
+            "disabled:cursor-wait disabled:opacity-70",
+          ),
     )}
   >
     <span
+      aria-hidden
       className={cn(
-        "inline-block h-5 w-5 rounded-full bg-white shadow transition-transform",
-        checked ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60",
+        "inline-block transform rounded-full shadow transition-transform",
+        size === "md"
+          ? cn(
+              "h-5 w-5",
+              checked ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60",
+            )
+          : cn("h-4 w-4 bg-background", checked ? "translate-x-4" : "translate-x-0.5"),
       )}
     />
   </button>

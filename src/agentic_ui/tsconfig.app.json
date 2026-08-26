@@ -27,8 +27,17 @@
     /* No `baseUrl`: it is deprecated in TS 6+, and `paths` resolves relative to
        this file on its own since TS 5.0. See tsconfig.json for the full story. */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      /* The test files sit outside this package, so Node-style resolution walks
+         up from `tests/agentic_ui/` and never reaches this package's
+         node_modules. These two entries point the test-only imports back here. */
+      "vitest": ["./node_modules/vitest"]
     }
   },
-  "include": ["src"]
+  /* The JS tests live outside this package (repo-level `tests/agentic_ui/`,
+     beside the Python contract tests) but are type-checked with the same
+     settings as the app. That is deliberate: `session.test.ts` asserts that
+     `isSessionValid` NARROWS its argument, which is a compile-time claim — it
+     would pass at runtime even if the predicate regressed to plain `boolean`. */
+  "include": ["src", "../../tests/agentic_ui"]
 }

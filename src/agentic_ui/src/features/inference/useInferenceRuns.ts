@@ -255,8 +255,13 @@ export function useInferenceRuns({
       }
 
       if (!active) {
+        // Terminal run — the one non-abort stop condition. Drop the observer and
+        // any pending re-observe so nothing reattaches to a finished run.
         controllersRef.current[run.id]?.abort();
         delete controllersRef.current[run.id];
+        window.clearTimeout(reobserveTimersRef.current[run.id]);
+        delete reobserveTimersRef.current[run.id];
+        delete reobserveAttemptsRef.current[run.id];
       }
     },
     [setConversations, setCurrentConversation, setShowAiTransition, setThinkingState],
@@ -266,6 +271,11 @@ export function useInferenceRuns({
   // list itself as a dependency.
   const observeRunIdRef = useRef<(runId?: string | null) => void>(() => {});
 
+  // Re-observe attempts per run, so a run that keeps failing backs off instead
+  // of hot-looping. Cleared whenever a socket connects or the run goes terminal.
+  const reobserveAttemptsRef = useRef<Record<string, number>>({});
+  const reobserveTimersRef = useRef<Record<string, number>>({});
+
   const observeRunId = useCallback(
     (runId?: string | null) => {
       if (!userId || !runId || controllersRef.current[runId]) {
@@ -273,39 +283,64 @@ export function useInferenceRuns({
       }
       const controller = new AbortController();
       controllersRef.current[runId] = controller;
-      // connectInferenceWebSocket auto-reconnects with `since=<lastSeenSeq>` and
-      // only rejects after a sustained failure (5 consecutive failed attempts)
-      // or a permanent error (401/403/404). The toast below is therefore a true
-      // "we gave up" signal, not a transient blip.
+
+      /**
+       * Re-attach unless the run is genuinely over.
+       *
+       * The invariant: while a conversation is open and its run is active, the
+       * client keeps trying to follow it, full stop. It stops for exactly four
+       * reasons — the run reached a terminal state, the user stopped it, the
+       * user navigated away, or the conversation changed. The last three all
+       * arrive as an abort on the controller.
+       *
+       * Anything else (socket drop, proxy hiccup, sleeping laptop, a server
+       * error) is transient by definition, because the run is server-owned and
+       * durable: it is still executing whether or not we are listening. Giving
+       * up used to leave the UI showing a stale approval prompt for a run that
+       * had long since moved on, and the only recovery was a manual refresh.
+       */
+      const scheduleReobserve = (reason: "closed" | "error") => {
+        if (controller.signal.aborted) return;
+        const current = Object.values(runsRef.current).find((run) => run.id === runId);
+        if (!current || !isActiveRun(current)) {
+          delete reobserveAttemptsRef.current[runId];
+          return;
+        }
+        const attempt = (reobserveAttemptsRef.current[runId] ?? 0) + 1;
+        reobserveAttemptsRef.current[runId] = attempt;
+        // Cap the delay rather than the attempt count — never stop retrying.
+        const delay = reason === "closed" ? 1000 : Math.min(1000 * 2 ** (attempt - 1), 30_000);
+        window.clearTimeout(reobserveTimersRef.current[runId]);
+        reobserveTimersRef.current[runId] = window.setTimeout(() => {
+          delete reobserveTimersRef.current[runId];
+          observeRunIdRef.current(runId);
+        }, delay);
+      };
+
       void connectInferenceWebSocket(userId, runId, applyRunEvent, controller.signal)
         .then(() => {
           // Without this delete a cleanly-resolved run could never be
           // re-observed — the guard above would see the stale controller.
           delete controllersRef.current[runId];
-          if (controller.signal.aborted) {
-            return;
-          }
-          // Safety net: the socket closed on a terminal frame but the run is
-          // still active in state — the terminal payload never landed. The
-          // server answers a finished run with its DB snapshot (terminal
-          // status), so one re-observe converges the state.
-          const lingering = Object.values(runsRef.current).find((run) => run.id === runId);
-          if (lingering && isActiveRun(lingering)) {
-            window.setTimeout(() => observeRunIdRef.current(runId), 1000);
-          }
+          if (controller.signal.aborted) return;
+          // The socket closed but the run is still active in state — the
+          // terminal payload never landed. The server answers a finished run
+          // with its DB snapshot, so re-observing converges either way.
+          scheduleReobserve("closed");
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           delete controllersRef.current[runId];
-          if ((error as any)?.name === "AbortError") {
+          if ((error as { name?: string })?.name === "AbortError") {
+            delete reobserveAttemptsRef.current[runId];
             return;
           }
-          toastError(toast, "Stream observer lost", error, {
-            description:
-              "The run is still owned by the server. Reopen the conversation to refresh its latest state.",
-          });
+          // Deliberately no toast here: this is now a retry, not a failure, and
+          // the run continues regardless. A permanently-dead session still
+          // surfaces via emitUnauthorized() inside the socket client.
+          scheduleReobserve("error");
         });
     },
-    [applyRunEvent, toast, userId],
+    [applyRunEvent, userId],
   );
 
   useEffect(() => {
@@ -329,6 +364,9 @@ export function useInferenceRuns({
       setRunsByConversation({});
       Object.values(controllersRef.current).forEach((controller) => controller.abort());
       controllersRef.current = {};
+      Object.values(reobserveTimersRef.current).forEach((id) => window.clearTimeout(id));
+      reobserveTimersRef.current = {};
+      reobserveAttemptsRef.current = {};
       return;
     }
 
@@ -377,8 +415,44 @@ export function useInferenceRuns({
       cancelled = true;
       Object.values(controllersRef.current).forEach((controller) => controller.abort());
       controllersRef.current = {};
+      Object.values(reobserveTimersRef.current).forEach((id) => window.clearTimeout(id));
+      reobserveTimersRef.current = {};
+      reobserveAttemptsRef.current = {};
     };
   }, [observeRun, setConversations, setCurrentConversation, userId]);
+
+  /**
+   * Reattach the moment the browser can talk again.
+   *
+   * A backgrounded tab is throttled and a sleeping machine runs no timers at
+   * all, so the backoff above can be mid-wait — or the socket can have died
+   * without us noticing — exactly when the user returns and expects the live
+   * view. Waking on `visibilitychange` and `online` closes that window: any
+   * active run without a live observer is re-attached immediately, and
+   * `observeRunId` no-ops for runs that already have one.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    const reattach = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      for (const run of Object.values(runsRef.current)) {
+        if (isActiveRun(run) && !controllersRef.current[run.id]) {
+          window.clearTimeout(reobserveTimersRef.current[run.id]);
+          delete reobserveTimersRef.current[run.id];
+          reobserveAttemptsRef.current[run.id] = 0;
+          observeRunIdRef.current(run.id);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", reattach);
+    window.addEventListener("online", reattach);
+    window.addEventListener("focus", reattach);
+    return () => {
+      document.removeEventListener("visibilitychange", reattach);
+      window.removeEventListener("online", reattach);
+      window.removeEventListener("focus", reattach);
+    };
+  }, [userId]);
 
   const beginRun = useCallback(
     async (request: InferenceStartRequest): Promise<InferenceStartResponse> => {
@@ -443,7 +517,21 @@ export function useInferenceRuns({
       // filters its cards by `isResolved`, so an optimistic flip would unmount
       // the card mid-click and steal the spinner feedback. Mark resolved only
       // after the bridge confirms the resume signal landed.
-      const run = await resumeInferenceRun(userId, runId, body);
+      let run;
+      try {
+        run = await resumeInferenceRun(userId, runId, body);
+      } catch (error) {
+        // Surface as a toast, not only as the takeover's inline error: a failed
+        // resume usually means the run already moved on (409 — the interrupt
+        // the user was looking at is stale), which drives the run terminal and
+        // unmounts the takeover, taking its inline message with it. Without
+        // this the run just stopped showing "Failed" and said nothing.
+        toastError(toast, "Could not send your decision", error, {
+          description:
+            "The run may have already moved past this approval. Reload the conversation to see its current state.",
+        });
+        throw error;
+      }
       applyRunEvent({ type: "update", run });
       setResolvedInterrupts((prev) => {
         if (prev.has(key)) return prev;
@@ -452,7 +540,7 @@ export function useInferenceRuns({
         return next;
       });
     },
-    [applyRunEvent, userId],
+    [applyRunEvent, toast, userId],
   );
 
   const isInterruptResolved = useCallback(

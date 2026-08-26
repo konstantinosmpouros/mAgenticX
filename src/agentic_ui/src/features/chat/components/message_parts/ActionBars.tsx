@@ -31,13 +31,6 @@ import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/shared/lib/types";
 import { BranchControls } from "./BranchControls";
 
-type ToastHandler = (opts: {
-  title: string;
-  description?: string;
-  variant?: string;
-  duration?: number;
-}) => void;
-
 type BranchControlsConfig = {
   parentId: string | null;
   options?: MessageOut[];
@@ -49,7 +42,6 @@ type BaseActionBarProps = {
   message: MessageOut;
   copiedId: string | null;
   onCopy: (content: string, messageId: string) => void;
-  toast?: ToastHandler;
   branchControls?: BranchControlsConfig;
 };
 

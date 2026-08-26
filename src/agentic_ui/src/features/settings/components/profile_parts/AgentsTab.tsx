@@ -15,7 +15,7 @@ import type {
   UserSkill,
 } from "@/shared/lib/types";
 import AgentBuilder from "./AgentBuilder";
-import { InfoCard, SoftPanel } from "./shared";
+import { InfoCard, SoftPanel, ToggleSwitch } from "./shared";
 
 /**
  * AgentsTab — pick a (deep) agent and toggle which tools it may use in your
@@ -183,26 +183,12 @@ export default function AgentsTab({
             </p>
           ) : null}
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          aria-label={`${enabled ? "Disable" : "Enable"} ${row.name}`}
+        <ToggleSwitch
+          checked={enabled}
           disabled={busy}
-          onClick={() => void onToggle(row)}
-          className={cn(
-            "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-            enabled ? "border-primary/40 bg-primary/20" : "border-transparent bg-background/80",
-            busy && "cursor-not-allowed opacity-60",
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-5 w-5 rounded-full shadow transition-transform",
-              enabled ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60",
-            )}
-          />
-        </button>
+          onToggle={() => void onToggle(row)}
+          label={`${enabled ? "Disable" : "Enable"} ${row.name}`}
+        />
       </div>
     );
   };

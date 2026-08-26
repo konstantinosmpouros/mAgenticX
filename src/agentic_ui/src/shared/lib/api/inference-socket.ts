@@ -18,7 +18,20 @@ import { INFERENCE_BASE_PATH } from "./paths";
 // outer promise rejects and the caller surfaces a toast. Successful frames
 // reset the counter — long-running streams that briefly disconnect should
 // recover seamlessly.
-const INFERENCE_RECONNECT_BACKOFF_MS = [250, 500, 1000, 2000, 5000];
+// Reconnect backoff, capped rather than exhausted.
+//
+// This used to be five steps totalling ~9 seconds, after which the client gave
+// up permanently. That is fine for a run streaming tokens, but wrong for a run
+// PAUSED at a human approval: the user may sit on that prompt for minutes while
+// the server holds the run open, and any transient drop in that window (laptop
+// sleep, wifi blip, a backgrounded tab) burned all five attempts in nine seconds
+// and left the UI permanently blind to a run that was still executing. Approving
+// then failed with a stale interrupt and the answer only appeared on refresh.
+//
+// The run is server-owned and durable, so there is no reason to stop trying:
+// back off to 30s and keep going. `waitUntilOnline` below means an offline tab
+// costs nothing while it waits.
+const INFERENCE_RECONNECT_BACKOFF_MS = [250, 500, 1000, 2000, 5000, 10_000, 15_000, 30_000];
 
 // Tracks the last delivered Redis-stream entry ID per active run so reconnects
 // can resume with ``since=lastSeenSeq``. Cleared when the terminal frame is
@@ -196,6 +209,31 @@ function runOneInferenceWebSocketConnection(
   });
 }
 
+export /**
+ * Resolve immediately when online, otherwise wait for the browser's `online`
+ * event. Prevents a sleeping/offline tab from spinning through reconnect
+ * attempts that cannot possibly succeed.
+ */
+function waitUntilOnline(signal?: AbortSignal): Promise<void> {
+  if (typeof navigator === "undefined" || navigator.onLine !== false) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      window.removeEventListener("online", onOnline);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onOnline = () => {
+      cleanup();
+      resolve();
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    window.addEventListener("online", onOnline);
+    signal?.addEventListener("abort", onAbort);
+  });
+}
+
 export async function connectInferenceWebSocket(
   userId: string,
   runId: string,
@@ -235,11 +273,18 @@ export async function connectInferenceWebSocket(
         throw err;
       }
       consecutiveFailures += 1;
-      if (consecutiveFailures > INFERENCE_RECONNECT_BACKOFF_MS.length) {
-        throw new Error("Inference stream lost after repeated reconnect attempts.");
-      }
-      const delay = INFERENCE_RECONNECT_BACKOFF_MS[consecutiveFailures - 1];
+      // Hold at the longest step instead of giving up — see the note on the
+      // backoff table. `runOneInferenceWebSocketConnection` resets this counter
+      // as soon as a connection succeeds, so a flaky link recovers to fast
+      // retries rather than staying pinned at 30s.
+      const delay =
+        INFERENCE_RECONNECT_BACKOFF_MS[
+          Math.min(consecutiveFailures - 1, INFERENCE_RECONNECT_BACKOFF_MS.length - 1)
+        ];
       await inferenceSleepWithAbort(delay, signal);
+      // Don't burn a retry against a known-offline network; resume the moment
+      // the browser reports connectivity again.
+      await waitUntilOnline(signal);
     }
   }
 }

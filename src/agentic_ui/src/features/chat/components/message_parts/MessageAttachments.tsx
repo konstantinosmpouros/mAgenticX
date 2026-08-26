@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { Download, Eye, FileText } from "lucide-react";
 import type { AttachmentIn, FileAttachment, MessageOut } from "@/shared/lib/types";
 import { classifyAttachmentPreview } from "@/features/attachments/components/attachment_preview_parts";
@@ -62,7 +63,10 @@ const normalizeAttachment = (
     imageUrl = record.url;
     fileName = record.name ?? record.file_name ?? "Unknown file";
   } else if (record.file) {
-    imageUrl = URL.createObjectURL(record.file);
+    // Only images consume `imageUrl`; the files branch of the JSX ignores it.
+    // Minting one for a non-image attachment created an object URL that was
+    // never read and never revoked — pure waste, on every render.
+    imageUrl = isImage ? URL.createObjectURL(record.file) : "";
     fileName = record.name ?? record.file.name;
   } else {
     imageUrl = "";
@@ -116,16 +120,38 @@ export function MessageAttachments({
 
   // Generated deliverables render inline in the timeline (ArtifactCard); this
   // stack is user uploads only.
-  const uploads = (message.attachments ?? []).filter(
-    (attachment) => !isGeneratedAttachment(attachment as AttachmentLike),
+  const uploads = useMemo(
+    () =>
+      (message.attachments ?? []).filter(
+        (attachment) => !isGeneratedAttachment(attachment as AttachmentLike),
+      ),
+    [message.attachments],
   );
+
+  // Memoized because `normalizeAttachment` mints an object URL for any
+  // File-backed attachment, and object URLs are never garbage collected. This
+  // component re-renders on every streamed token, so calling it in the render
+  // body leaked one permanently-pinned URL per attachment per token.
+  const items = useMemo(
+    () =>
+      uploads.map((attachment) => normalizeAttachment(attachment as AttachmentLike, isImageFile)),
+    [uploads, isImageFile],
+  );
+
+  useEffect(() => {
+    return () => {
+      // Revoke only what we minted — data: and remote URLs must be left alone.
+      items.forEach((item) => {
+        if (item.imageUrl.startsWith("blob:")) URL.revokeObjectURL(item.imageUrl);
+      });
+    };
+  }, [items]);
+
+  // Hooks must run unconditionally, so this early-out sits below them.
   if (!uploads.length) {
     return null;
   }
 
-  const items = uploads.map((attachment) =>
-    normalizeAttachment(attachment as AttachmentLike, isImageFile),
-  );
   const images = items.filter((item) => item.isImage);
   const files = items.filter((item) => !item.isImage);
 

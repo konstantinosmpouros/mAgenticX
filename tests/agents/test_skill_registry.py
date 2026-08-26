@@ -61,7 +61,7 @@ def test_scan_global_registry_missing_root_returns_empty(skills_fs):
     gm = skills_fs.service.global_manifest
     # Repoint the whole global plane at a path that doesn't exist, so the
     # derived catalogue root (<plane>/skills) is missing too.
-    skills_fs.service.main.settings.filesystem.global_root = skills_fs.global_root / "does-not-exist"
+    skills_fs.service.settings_module.settings.filesystem.global_root = skills_fs.global_root / "does-not-exist"
     assert gm._scan_global_registry() == []
 
 
@@ -360,7 +360,7 @@ def test_reconcile_all_user_manifests_creates_root_when_missing(skills_fs):
     ur = skills_fs.service.user_registry
     # A fresh workspaces plane: its `users/` root must be created on demand.
     fresh_plane = skills_fs.users_root.parent.parent / "fresh-workspaces"
-    skills_fs.service.main.settings.filesystem.workspaces_root = fresh_plane
+    skills_fs.service.settings_module.settings.filesystem.workspaces_root = fresh_plane
     fresh = fresh_plane / "users"
     assert not fresh.exists()
     ur.reconcile_all_user_manifests()

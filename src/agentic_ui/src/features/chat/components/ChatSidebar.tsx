@@ -28,7 +28,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTheme } from "next-themes";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import type { AccountSummary, Agent, ConversationSummary, UserProfile } from "@/shared/lib/types";
+import type { AccountSummary, ConversationSummary, UserProfile } from "@/shared/lib/types";
 import AccountMenu from "@/features/auth/components/AccountMenu";
 import { cn } from "@/shared/lib/utils";
 import {
@@ -76,7 +76,6 @@ type ChatSidebarProps = {
   /** Open the dedicated Help & Resources panel. */
   onOpenHelp: () => void;
   onLogout: () => void;
-  agents: Agent[];
   userProfile: UserProfile | null;
   /** Accounts this browser is signed in to. Empty ⇒ no switcher is shown,
    *  which is also what happens when the feature is disabled server-side. */

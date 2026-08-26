@@ -25,13 +25,14 @@ import { PanelLeft } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { useIsMobile } from "@/shared/hooks/use-mobile";
-import {
-  useChatKeyboardShortcuts,
-  type ChatKeyboardShortcutOptions,
-} from "@/features/chat/hooks/useKeyboardShortcuts";
+import type { ChatKeyboardShortcutOptions, ChatKeyboardShortcutsHook } from "@/shared/lib/types";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
+
+// Default when no shortcut owner is injected. A module-level constant, not an
+// inline arrow: the call below is a hook call, so its identity must be stable.
+const noopShortcutsHook: ChatKeyboardShortcutsHook = () => {};
 
 const SIDEBAR_WIDTH = "16rem";
 // 4.0rem is deliberate: with a 2.25rem (size-9) icon box and a 0.875rem lead
@@ -80,6 +81,16 @@ const SidebarProvider = React.forwardRef<
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     enableKeyboardShortcut?: boolean;
+    /**
+     * Keyboard-shortcut wiring, injected rather than imported.
+     *
+     * The sidebar needs to hand its live `toggleSidebar` to whatever owns the
+     * app's shortcuts, but `shared/ui` must not import from `features/` — the
+     * dependency direction is one-way (pages → features → shared). So the owner
+     * passes its hook and options down; this component stays feature-agnostic
+     * and reusable. Same pattern as `sidebarInteractionHook` below.
+     */
+    keyboardShortcutsHook?: ChatKeyboardShortcutsHook;
     chatKeyboardShortcuts?: ChatKeyboardShortcutOptions;
   }
 >(
@@ -89,6 +100,7 @@ const SidebarProvider = React.forwardRef<
       open: openProp,
       onOpenChange: setOpenProp,
       enableKeyboardShortcut = true,
+      keyboardShortcutsHook,
       chatKeyboardShortcuts,
       className,
       style,
@@ -120,11 +132,12 @@ const SidebarProvider = React.forwardRef<
       return isMobile ? setOpenMobile((value) => !value) : setOpen((value) => !value);
     }, [isMobile, setOpen]);
 
-    // Inject the live toggle into the chat keyboard-shortcut handler so e.g. the
-    // shortcut that focuses the composer can also collapse the rail.
-    useChatKeyboardShortcuts(
-      chatKeyboardShortcuts ? { ...chatKeyboardShortcuts, toggleSidebar } : null,
-    );
+    // Inject the live toggle into the caller's shortcut handler so e.g. the
+    // shortcut that focuses the composer can also collapse the rail. Called
+    // unconditionally with a stable identity requirement: the hook must not
+    // change between renders (pass a module-level function, not an inline one).
+    const useShortcuts = keyboardShortcutsHook ?? noopShortcutsHook;
+    useShortcuts(chatKeyboardShortcuts ? { ...chatKeyboardShortcuts, toggleSidebar } : null);
 
     // Optional Cmd/Ctrl+B toggle. ChatShell disables this and routes the
     // shortcut through `chatKeyboardShortcuts` instead.

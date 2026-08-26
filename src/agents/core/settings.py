@@ -322,7 +322,6 @@ class RuntimeModelsSettings(BaseSettings):
     suggestions: str = Field("openai:gpt-4o-2024-08-06", validation_alias="SUGGESTIONS_MODEL")
     dictation: str = Field("gpt-4o-transcribe", validation_alias="OPENAI_STT_MODEL")
     read_aloud: str = Field("gpt-4o-mini-tts", validation_alias="READ_ALOUD_MODEL")
-    read_aloud_voice: str = Field("alloy", validation_alias="READ_ALOUD_VOICE")
     read_aloud_format: str = Field("mp3", validation_alias="READ_ALOUD_FORMAT")
     # Conversation-message embeddings for the bridge's pgvector store. 1536 dims
     # keeps vectors within pgvector's HNSW/IVFFlat index limit (2000); changing

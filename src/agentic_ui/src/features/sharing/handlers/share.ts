@@ -152,7 +152,11 @@ export function createShareConversationHandlers(ctx: ShareConversationHandlersCt
   const openShareDialog = (message: MessageOut) => {
     setShareDialogUrl(null);
     setShareTargetMessage(message);
-    setShareMode("full");
+    // Opened from one response's action bar, so default to the thread up to
+    // that response — the message the user clicked is the point of the share.
+    // "Full conversation" is still selectable; it is the default only for the
+    // header's Share button (openFullConversationShareDialog below).
+    setShareMode("branch");
     setShareForceFullConversation(false);
     setShareExpiresAt(defaultShareExpiresAt());
     setIsCreatingShareLink(false);

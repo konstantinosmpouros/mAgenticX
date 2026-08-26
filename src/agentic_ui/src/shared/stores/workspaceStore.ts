@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { create } from "zustand";
 
 import { loadSession } from "@/shared/lib/authStorage";
@@ -80,18 +81,6 @@ export type WorkspaceState = {
   sidebarOpen: boolean;
   activeProfileTab: string;
 
-  // The full per-render workspace bundle (state + handlers + derived) built by
-  // ChatShell and consumed by the route views via useChatWorkspaceContext.
-  // It is a per-render snapshot, so it changes identity each render — readers of
-  // it (ChatView/TasksView) re-render with the shell; readers of the data slices
-  // above stay selector-scoped and are unaffected by it.
-  //
-  // Typed `unknown` here (not `ChatWorkspace`) on purpose: useChatWorkspace
-  // reads this WorkspaceState via selectors, so referencing ChatWorkspace (=
-  // that hook's return type) in this type would be circular. The typed view is
-  // restored by the `useChatWorkspaceContext` accessor below.
-  workspace: unknown;
-
   // Setters (setState-compatible)
   setUserId: (v: SetStateArg<string | null>) => void;
   /** Clear every per-user slice before switching accounts. */
@@ -169,7 +158,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   starterSuggestions: [],
   sidebarOpen: false,
   activeProfileTab: "general",
-  workspace: null,
 
   setUserId: (v) => set((s) => ({ userId: resolve(v, s.userId) })),
   /**
@@ -258,14 +246,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 }));
 
 /**
- * The route views' accessor for the workspace bundle (the old React context's
- * role, now served from the store). ChatShell writes `workspace` each render
- * before its children render, so by the time a view calls this it is populated.
+ * The route views' accessor for the workspace bundle.
+ *
+ * This is a React context, not a store slice, and that is deliberate. The
+ * bundle is a per-render snapshot, so publishing it into the store meant
+ * writing to an external store *during render* — zustand notifies listeners
+ * synchronously, so ChatView/TasksView were force-updated from inside
+ * ChatShell's render pass. React answered that with a "Cannot update a
+ * component while rendering a different component" warning and, because the
+ * render-phase branch defers the forced update, every keystroke in the composer
+ * cost two render+commit passes instead of one. The store slot also never
+ * cleared on unmount, so this accessor returned a stale bundle instead of
+ * throwing its guard.
+ *
+ * Context has none of those problems: it delivers the current render's value in
+ * the same pass, and — importantly for this layout — a context update still
+ * reaches consumers even though `<Outlet/>`'s element identity is owned by
+ * `<Routes>` and would otherwise let React bail out of the subtree.
  */
+const ChatWorkspaceContext = createContext<ChatWorkspace | null>(null);
+
+export const ChatWorkspaceProvider = ChatWorkspaceContext.Provider;
+
 export function useChatWorkspaceContext(): ChatWorkspace {
-  const workspace = useWorkspaceStore((s) => s.workspace);
+  const workspace = useContext(ChatWorkspaceContext);
   if (!workspace) {
     throw new Error("useChatWorkspaceContext must be used within a ChatShell.");
   }
-  return workspace as ChatWorkspace;
+  return workspace;
 }

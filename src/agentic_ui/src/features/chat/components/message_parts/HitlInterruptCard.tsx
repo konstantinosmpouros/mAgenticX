@@ -43,7 +43,7 @@ export function summariseInterrupt(content: unknown): string {
 }
 
 // The card is the smallest reusable unit: it renders inline inside the
-// Thinking block of the run timeline (and in the Test.tsx demo). The pending
+// Thinking block of the run timeline. The pending
 // approval also surfaces as the input-bar takeover (HitlInputTakeover), which
 // drives the same resolver.
 export function HitlInterruptCard({

@@ -81,6 +81,30 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
   const [togglingKeys, setTogglingKeys] = useState<Set<string>>(new Set());
   const loadedRef = useRef<Set<string>>(new Set());
 
+  // Mirrors of the two pieces of state that concurrent toggles race over.
+  // React state is only visible to the next render, so two toggles fired in the
+  // same tick — or a toggle landing while a fetch is in flight — would each read
+  // the same stale value and the last write would erase the other. These refs are
+  // updated synchronously at the point of mutation, so every read sees the latest
+  // intent regardless of render timing.
+  const selectionsRef = useRef<UserAgentSkillSelection>({});
+  const togglingKeysRef = useRef<Set<string>>(new Set());
+
+  /** Apply a change to one agent's enabled-set, keeping ref and state in lockstep. */
+  const applySelection = useCallback((agentId: string, next: (current: string[]) => string[]) => {
+    const current = selectionsRef.current[agentId] ?? [];
+    selectionsRef.current = { ...selectionsRef.current, [agentId]: next(current) };
+    setSelections(selectionsRef.current);
+  }, []);
+
+  const markToggling = useCallback((key: string, active: boolean) => {
+    const next = new Set(togglingKeysRef.current);
+    if (active) next.add(key);
+    else next.delete(key);
+    togglingKeysRef.current = next;
+    setTogglingKeys(next);
+  }, []);
+
   const [mySkills, setMySkills] = useState<UserSkill[]>(initialPool ?? []);
   const [loadingMySkills, setLoadingMySkills] = useState<boolean>(false);
   const [skillDetail, setSkillDetail] = useState<Record<string, UserSkillDetail>>({});
@@ -88,6 +112,10 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
 
   useEffect(() => {
     // New user (login/logout) — flush every per-user piece of state.
+    // The mirrors must be cleared alongside their state, or a stale enabled-set
+    // from the previous account would survive the switch.
+    selectionsRef.current = {};
+    togglingKeysRef.current = new Set();
     setSelections({});
     setLoadingAgents(new Set());
     setTogglingKeys(new Set());
@@ -114,7 +142,15 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
       });
       try {
         const fetched = await getUserAgentSkills(userId, agentId);
-        setSelections((prev) => ({ ...prev, [agentId]: fetched }));
+        // A toggle started while this GET was in flight has already written the
+        // newer intent locally; committing the server's pre-toggle list here
+        // would silently revert the user's click.
+        const hasPendingToggle = [...togglingKeysRef.current].some((pending) =>
+          pending.startsWith(`${agentId}::`),
+        );
+        if (!hasPendingToggle) {
+          applySelection(agentId, () => fetched);
+        }
         loadedRef.current.add(agentId);
       } catch (error) {
         toastError(toast, "Could not load skills", error, {
@@ -128,7 +164,7 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
         });
       }
     },
-    [userId, toast],
+    [userId, toast, applySelection],
   );
 
   const isLoading = useCallback((agentId: string) => loadingAgents.has(agentId), [loadingAgents]);
@@ -149,58 +185,58 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
         return;
       }
       const key = `${agentId}::${skillName}`;
-      if (togglingKeys.has(key)) return;
+      if (togglingKeysRef.current.has(key)) return;
 
-      const current = selections[agentId] ?? [];
-      const isCurrentlyEnabled = current.includes(skillName);
-      const optimistic = isCurrentlyEnabled
-        ? current.filter((name) => name !== skillName)
-        : [...current, skillName].sort();
+      // Read the live value, not the render closure's snapshot: a toggle of a
+      // *different* skill on the same agent may already be in flight.
+      const wasEnabled = (selectionsRef.current[agentId] ?? []).includes(skillName);
 
-      setSelections((prev) => ({ ...prev, [agentId]: optimistic }));
-      setTogglingKeys((prev) => {
-        const next = new Set(prev);
-        next.add(key);
-        return next;
-      });
+      applySelection(agentId, (current) =>
+        wasEnabled ? current.filter((name) => name !== skillName) : [...current, skillName].sort(),
+      );
+      markToggling(key, true);
 
       try {
-        if (isCurrentlyEnabled) {
+        if (wasEnabled) {
           await disableUserAgentSkill(userId, agentId, skillName);
         } else {
           await enableUserAgentSkill(userId, agentId, skillName);
         }
       } catch (error) {
-        setSelections((prev) => ({ ...prev, [agentId]: current }));
+        // Undo only THIS skill, against whatever the list holds now. Restoring a
+        // snapshot taken before the request would wipe out any other toggle that
+        // succeeded while this one was in flight.
+        applySelection(agentId, (current) =>
+          wasEnabled
+            ? current.includes(skillName)
+              ? current
+              : [...current, skillName].sort()
+            : current.filter((name) => name !== skillName),
+        );
         toastError(
           toast,
-          isCurrentlyEnabled ? "Could not disable skill" : "Could not enable skill",
+          wasEnabled ? "Could not disable skill" : "Could not enable skill",
           error,
           {
             description: error instanceof Error ? error.message : "Please try again.",
           },
         );
       } finally {
-        setTogglingKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(key);
-          return next;
-        });
+        markToggling(key, false);
       }
     },
-    [userId, selections, togglingKeys, toast],
+    [userId, toast, applySelection, markToggling],
   );
 
   const pruneSkillFromAssignments = useCallback((skillName: string) => {
     // Mirror the server-side cascade — when a skill is removed from the
     // user's pool, every per-agent assignment for that skill is also gone.
-    setSelections((prev) => {
-      const next: UserAgentSkillSelection = {};
-      for (const [agentId, names] of Object.entries(prev)) {
-        next[agentId] = names.filter((name) => name !== skillName);
-      }
-      return next;
-    });
+    const next: UserAgentSkillSelection = {};
+    for (const [agentId, names] of Object.entries(selectionsRef.current)) {
+      next[agentId] = names.filter((name) => name !== skillName);
+    }
+    selectionsRef.current = next;
+    setSelections(next);
   }, []);
 
   // -----------------------------------------------------------------

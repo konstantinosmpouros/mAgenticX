@@ -1,6 +1,6 @@
 import { transcribeDictation } from "@/shared/lib/api";
 import { toastError } from "@/shared/lib/toast";
-import type { DictationStatus } from "@/features/chat/components/ChatInputBar";
+import type { DictationStatus } from "@/shared/lib/types";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
 type VoiceModeCtx = {

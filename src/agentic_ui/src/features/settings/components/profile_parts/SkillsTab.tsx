@@ -27,7 +27,7 @@ import type {
   UserSkill,
   UserSkillDetail,
 } from "@/shared/lib/types";
-import { InfoCard, SkillHubRow, SoftPanel } from "./shared";
+import { InfoCard, SkillHubRow, SoftPanel, ToggleSwitch } from "./shared";
 import SkillBuilder from "./SkillBuilder";
 import SkillFilesViewer from "./SkillFilesViewer";
 
@@ -773,28 +773,17 @@ export default function SkillsTab({
                                       {skill.description || "No description provided."}
                                     </p>
                                   </div>
-                                  <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={enabled}
-                                    aria-label={`${enabled ? "Disable" : "Enable"} ${skill.name} for ${agent.name}`}
-                                    disabled={toggling || !onToggleUserAgentSkill}
-                                    onClick={() => onToggleUserAgentSkill?.(agent.id, skill.name)}
-                                    className={cn(
-                                      "relative mt-1 inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors",
-                                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                                      "disabled:cursor-wait disabled:opacity-70",
-                                      enabled ? "bg-primary" : "bg-muted",
-                                    )}
-                                  >
-                                    <span
-                                      aria-hidden
-                                      className={cn(
-                                        "inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform",
-                                        enabled ? "translate-x-4" : "translate-x-0.5",
-                                      )}
+                                  <div className="mt-1">
+                                    <ToggleSwitch
+                                      size="sm"
+                                      checked={enabled}
+                                      disabled={toggling || !onToggleUserAgentSkill}
+                                      onToggle={() =>
+                                        onToggleUserAgentSkill?.(agent.id, skill.name)
+                                      }
+                                      label={`${enabled ? "Disable" : "Enable"} ${skill.name} for ${agent.name}`}
                                     />
-                                  </button>
+                                  </div>
                                 </div>
                               );
                             })}

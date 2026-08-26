@@ -6,30 +6,9 @@ import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/utils";
 
-export type SubagentInterrupt = {
-  threadId: string;
-  content: unknown;
-};
+import type { SubagentInterrupt, SubagentItem, SubagentTool } from "@/shared/lib/types";
 
-export type SubagentTool = {
-  id: string;
-  name: string;
-  status?: "running" | "completed" | "error";
-  args?: string;
-  result?: string;
-};
-
-export type SubagentItem = {
-  id: string;
-  label?: string;
-  type?: string;
-  description?: string;
-  namespace?: string;
-  prompt?: string;
-  text?: string;
-  tools?: SubagentTool[];
-  interrupts?: SubagentInterrupt[];
-};
+export type { SubagentInterrupt, SubagentItem, SubagentTool };
 
 function SmoothCollapse({
   open,

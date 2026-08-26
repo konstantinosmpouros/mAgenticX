@@ -76,14 +76,17 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interrupt.interruptId]);
 
+  // Named `resolved`, not `decisions`: the component already has a `decisions`
+  // state holding the deck's per-card selections, and shadowing it here made two
+  // different shapes share one name in the same file.
   const submit = async (
-    decisions: HitlActionDecision[],
+    resolved: HitlActionDecision[],
     busyKind: "approve" | "reject" | "submit",
   ) => {
     setBusy(busyKind);
     setError(null);
     try {
-      await onResolve(decisions);
+      await onResolve(resolved);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send decision.");
       setBusy(null);

@@ -73,12 +73,11 @@ flowchart TD
 
 The app defines a small set of browser routes:
 
-- `/` renders `ChatInterface`, the production chat workspace.
+- `/` and `/c/:conversationId` render `ChatView` inside the persistent `ChatShell` (a layout route whose shell never unmounts across chat navigations).
+- `/tasks` renders `TasksView` in that same shell.
 - `/login` renders the credential-based login flow.
 - `/share/:token` renders a public shared conversation snapshot with optional authenticated continuation.
-- `/architecture` renders an in-product architecture explainer page.
 - `/terms` and `/privacy` render legal pages.
-- `/test` renders an internal AG-UI/sub-agent replay playground.
 - Any unknown route falls back to `NotFound`.
 
 ## Main UI Logic
@@ -105,7 +104,7 @@ The UI uses the dialogue bridge as the sole auth surface. It does not store back
 - the UI periodically refreshes the server session via `/api/v1/auth/session/refresh`
 - local storage keeps only a lightweight session snapshot for UX continuity
 
-`src/lib/authStorage.ts` stores:
+`src/shared/lib/authStorage.ts` stores:
 
 - `userId`
 - `expiresAt`
@@ -168,7 +167,7 @@ flowchart TD
 
 ## Data Access Layer
 
-`src/lib/api.ts` centralizes all network traffic and uses `withSessionRequest(...)` from `src/lib/utils.ts` to include credentials and CSRF protection. The UI expects the backend to be exposed under `/api/v1`.
+`src/shared/lib/api/` centralizes all network traffic and uses `withSessionRequest(...)` from `src/shared/lib/utils.ts` to include credentials and CSRF protection. The UI expects the backend to be exposed under `/api/v1`.
 
 Main endpoint groups:
 
@@ -246,7 +245,7 @@ Supported event categories include standard AG-UI events and app-specific custom
   - `TEXT_MESSAGE_CHUNK`
   - `TEXT_MESSAGE_CONTENT`
   - `TEXT_MESSAGE_END`
-- custom agentic extensions from `src/lib/agui.ts`
+- custom agentic extensions from `src/features/inference/agui.ts`
   - `PLAN_SNAPSHOT`
   - `TASK_SUBAGENT`
   - `SUBAGENT_EVENT`
@@ -325,7 +324,7 @@ This allows retries, edits, and alternate continuations without flattening every
 
 ## File Attachments
 
-Attachment validation happens on the client before the UI sends any payload to the bridge. The limits are defined in `src/lib/uploadGuards.ts`:
+Attachment validation happens on the client before the UI sends any payload to the bridge. The limits are defined in `src/shared/lib/uploadGuards.ts`:
 
 - `MAX_SINGLE_FILE_MB = 25`
 - `MAX_TOTAL_FILES_MB = 25`
@@ -363,10 +362,10 @@ The browser never sends audio directly to the agents service.
 
 ## Keyboard Shortcuts
 
-Keyboard shortcuts are defined centrally in `src/lib/shortcuts.ts`. The runtime splits them into:
+Keyboard shortcuts are defined centrally in `src/shared/lib/shortcuts.ts`. The runtime splits them into:
 
-- global shortcuts handled by `src/hooks/useKeyboardShortcuts.ts`
-- page-level action mapping handled by `src/handlers/shortcuts.ts`
+- global shortcuts handled by `src/features/chat/hooks/useKeyboardShortcuts.ts`
+- page-level action mapping handled by `src/features/chat/handlers/shortcuts.ts`
 - composer-local keys handled directly inside `ChatInputBar` and inline edit textareas
 
 The current shortcut set covers:
@@ -445,7 +444,7 @@ flowchart TD
 
 ## Presentational Composition
 
-The chat experience is split into focused surfaces under `src/components/chat`:
+The chat experience is split into focused surfaces under `src/features/chat/components`:
 
 - `ChatHeader`
   - agent selector
@@ -548,29 +547,29 @@ Key files and folders:
   - main orchestration page
 - `src/pages/Login.tsx`
   - login and session-restore entry point
-- `src/components/chat/`
+- `src/features/chat/components/`
   - presentational chat surfaces
-- `src/components/handlers/`
+- `src/features/<feature>/handlers/`
   - stateful domain logic for auth, inference, preferences, attachments, retries, and branching
-- `src/hooks/`
+- `src/features/<feature>/hooks/`
   - session effects, scrolling behavior, thinking progress, and layout helpers
-- `src/hooks/useInferenceRuns.ts`
+- `src/features/inference/useInferenceRuns.ts`
   - global detached run manager — hydration on mount, beginRun, stopRun, observeRunId, applyRunEvent
-- `src/hooks/useKeyboardShortcuts.ts`
+- `src/features/chat/hooks/useKeyboardShortcuts.ts`
   - global shortcut listener and chat shortcut bridge
-- `src/lib/api.ts`
+- `src/shared/lib/api/`
   - bridge API wrapper and inference WebSocket transport (`connectInferenceWebSocket`, `lastSeenInferenceSeq`, `PermanentInferenceWebSocketError`)
-- `src/lib/agui.ts`
+- `src/features/inference/agui.ts`
   - AG-UI event schemas plus custom event definitions
-- `src/lib/shortcuts.ts`
+- `src/shared/lib/shortcuts.ts`
   - shortcut registry, labels, and platform-aware key definitions
-- `src/lib/authStorage.ts`
+- `src/shared/lib/authStorage.ts`
   - browser session snapshot persistence
-- `src/lib/uiStateStorage.ts`
+- `src/shared/lib/uiStateStorage.ts`
   - IndexedDB UI snapshot persistence
-- `src/lib/uploadGuards.ts`
+- `src/shared/lib/uploadGuards.ts`
   - browser-side file limit enforcement
-- `src/handlers/shortcuts.ts`
+- `src/features/chat/handlers/shortcuts.ts`
   - runtime mapping from shortcut IDs to page-owned UI actions
 - `nginx.conf.template`
   - production reverse proxy behavior
@@ -599,8 +598,8 @@ npm run lint
 
 When extending the UI, the existing seams are:
 
-- add new backend endpoints in `src/lib/api.ts`
-- add new AG-UI event schemas in `src/lib/agui.ts`
+- add new backend endpoints in `src/shared/lib/api/`
+- add new AG-UI event schemas in `src/features/inference/agui.ts`
 - normalize run observation behavior in `hooks/useInferenceRuns.ts`
 - expose new controls via `ProfilePanel`, `ChatHeader`, or `ChatInputBar`
 - persist only lightweight metadata to IndexedDB unless there is a strong reason to widen the browser cache
@@ -610,4 +609,3 @@ When extending the UI, the existing seams are:
 - The UI assumes the dialogue bridge owns authentication, conversation persistence, and attachment persistence.
 - WebSocket observation depends on nginx's WebSocket upgrade location at `/api/v1/inference/runs/` (with `$connection_upgrade` map) being intact end-to-end (browser → NPM/Cloudflare → agentic_ui nginx → dialogue_bridge). Buffering must remain disabled in the proxy path for live event delivery.
 - Attachment validation is intentionally stricter in the browser than the raw proxy ceiling when base64 inflation is considered.
-- The `/architecture` and `/test` routes are auxiliary pages and not part of the primary chat runtime.

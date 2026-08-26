@@ -65,9 +65,9 @@ jobs:
           path: coverage-${{ matrix.service }}.xml
           if-no-files-found: ignore
 
-  # Frontend service: lint (against a warning ceiling), type-check, build, plus the
-  # Python static-contract checks that guard the frontend↔bridge API contract.
-  # Coverage is N/A (no JS test runner yet).
+  # Frontend service: lint (against a warning ceiling), type-check, the Vitest
+  # suite, build, plus the Python static-contract checks that guard the
+  # frontend↔bridge API contract. Both test suites live in tests/agentic_ui/.
   agentic_ui:
     name: ci / agentic_ui
     runs-on: ubuntu-latest
@@ -87,7 +87,8 @@ jobs:
         working-directory: src/agentic_ui
         run: npm ci
 
-      # `lint:ceiling` is `eslint . --max-warnings=125`, the measured baseline.
+      # `lint:ceiling` is `eslint .` with --max-warnings pinned to the measured
+      # baseline (currently 124).
       # Plain `npm run lint` exits 0 on warnings, so it could never fail the build
       # and the warning count was free to climb. The ceiling only ever goes DOWN:
       # when you remove warnings, lower the number in package.json to lock it in.
@@ -100,6 +101,12 @@ jobs:
       - name: Type-check frontend
         working-directory: src/agentic_ui
         run: npm run typecheck
+
+      # Vitest suite lives in tests/agentic_ui/ alongside the Python contract
+      # tests, not beside the source it exercises.
+      - name: Test frontend
+        working-directory: src/agentic_ui
+        run: npm run test
 
       - name: Build frontend
         working-directory: src/agentic_ui

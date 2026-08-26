@@ -56,6 +56,34 @@ export const WirePageItemsSchema = z
   ])
   .catch([]);
 
+// ---------------------------------------------------------------------------
+// Agent plan snapshot (the PLAN_SNAPSHOT AG-UI custom event payload).
+//
+// Lives here rather than beside the other AG-UI schemas because `RunTimeline`
+// in shared/lib/types names `PlanSnapshot`, and shared/ must not import from
+// features/. Keeping the schema (not a hand-copied type) in this zod-only leaf
+// means the shared type stays derived from the wire contract and cannot drift.
+// features/inference/agui.ts re-exports these for its own consumers.
+// ---------------------------------------------------------------------------
+const PlanMetadataSchema = z.record(z.string(), z.any());
+
+export const PlanItemStatusSchema = z.enum(["pending", "in_progress", "completed"]);
+export type PlanItemStatus = z.infer<typeof PlanItemStatusSchema>;
+
+export const PlanItemSchema = z.object({
+  content: z.string(),
+  status: PlanItemStatusSchema,
+  metadata: PlanMetadataSchema.nullish(),
+});
+export type PlanItem = z.infer<typeof PlanItemSchema>;
+
+export const PlanSnapshotSchema = z.object({
+  items: z.array(PlanItemSchema),
+  updated_at: z.number().nullish(),
+  metadata: PlanMetadataSchema.nullish(),
+});
+export type PlanSnapshot = z.infer<typeof PlanSnapshotSchema>;
+
 // A plain string list (e.g. the per-(user, agent) enabled-skill names). Non-string
 // entries are coerced with String(); a non-array body degrades to [].
 export const StringListSchema = z

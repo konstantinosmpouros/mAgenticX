@@ -294,7 +294,6 @@ LangGraph + DeepAgents runtime. Configuration splits into runtime infra, the dur
 | `SUGGESTIONS_MODEL` | `openai:gpt-4o-2024-08-06` | Model for follow-up suggestions. |
 | `OPENAI_STT_MODEL` | `gpt-4o-transcribe` | Dictation (speech-to-text) model. |
 | `READ_ALOUD_MODEL` | `gpt-4o-mini-tts` | Read-aloud (TTS) model. |
-| `READ_ALOUD_VOICE` | `alloy` | Read-aloud voice. |
 | `READ_ALOUD_FORMAT` | `mp3` | Read-aloud audio format. |
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime` | Realtime voice model. |
 | `REALTIME_SUPPORTED_VOICES` | `alloy,ash,ballad,coral,echo,sage,shimmer,verse,marin,cedar` (CSV) | Realtime voice allow-list. |

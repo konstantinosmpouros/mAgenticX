@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib
 import sys
 from pathlib import Path
@@ -87,15 +88,178 @@ def _load_agents_service(monkeypatch):
     )
 
 
+# ---------------------------------------------------------------------------
+# Service loading — imported once, then restored between tests
+# ---------------------------------------------------------------------------
+# Importing this service is expensive: `main` pulls in langchain / langgraph /
+# deepagents, and `utils.agents` runs the whole agent discovery at import time
+# (`AGENT_REGISTRY = _build_registry()`). That is ~1s, and paying it per test
+# made a suite of millisecond assertions take ~7 minutes. So the import happens
+# once per session.
+#
+# The per-test reload was buying isolation, not just a namespace: tests and
+# fixtures write straight into settings sub-models (`fs.workspaces_root = tmp`)
+# and into module-level caches, and the reload wiped that. The helpers below
+# give that isolation back explicitly, which is both far cheaper and states the
+# shared state a reader would otherwise have to infer.
+
+
+def _is_model(value: object) -> bool:
+    """Whether `value` is a pydantic model — i.e. a settings sub-tree to recurse into."""
+    return hasattr(value, "__pydantic_fields_set__")
+
+
+def _snapshot_settings(root: object) -> list[tuple[object, dict, set]]:
+    """Capture every field in a settings tree so it can be restored exactly.
+
+    Returns `(model, field_values, fields_set)` triples, parents before children.
+    Values are deep-copied so a test mutating a container in place cannot
+    corrupt the snapshot; sub-models are stored by reference so a test that
+    *rebinds* one (`settings.filesystem = other`) is also undone.
+    """
+    captured: list[tuple[object, dict, set]] = []
+
+    def walk(model: object) -> None:
+        fields: dict = {}
+        children: list[object] = []
+        for name, value in vars(model).items():
+            if _is_model(value):
+                # Keep identity: production modules hold direct references to
+                # these sub-models, so restoring must put the same object back.
+                fields[name] = value
+                children.append(value)
+            else:
+                try:
+                    fields[name] = copy.deepcopy(value)
+                except (TypeError, ValueError, copy.Error):
+                    # Not copyable (e.g. a client handle) — keep the reference.
+                    fields[name] = value
+        captured.append((model, fields, set(getattr(model, "__pydantic_fields_set__", ()))))
+        for child in children:
+            walk(child)
+
+    walk(root)
+    return captured
+
+
+def _restore_settings(captured: list[tuple[object, dict, set]]) -> None:
+    """Write a `_snapshot_settings` capture back in place.
+
+    Writes into `__dict__` on the original objects rather than rebinding them:
+    production code does `from core.settings import settings` and then holds
+    `settings.filesystem`, so rebinding would leave those references stale.
+    Parents are restored first, so a rebound sub-model is back to the original
+    object before that object's own fields are written.
+    """
+    for model, fields, fields_set in captured:
+        model.__dict__.update(fields)
+        model.__pydantic_fields_set__ = set(fields_set)
+
+
+# Process-global caches that a fresh import used to reset for us.
+_DICT_CACHES = (
+    ("utils.agents", "_USER_AGENT_CACHE"),
+    ("utils.mcp_tools", "_MCP_TOOL_MANIFEST_CACHE"),
+)
+_SINGLETON_CACHES = (("runtime.skill_registry.global_manifest", "_MANIFEST_CACHE"),)
+
+
+def _reset_service_caches() -> None:
+    """Drop every process-global cache in the service back to its import state.
+
+    Covers the explicit module-level caches listed above plus every
+    `functools.lru_cache` in the service (the OpenAI client, the mTLS context,
+    the embeddings model). The lru_caches are found by sweeping the service's own
+    modules for a `cache_clear` attribute, so a new one added to the service is
+    handled without anyone remembering this function. The sweep compares raw
+    `__file__` prefixes rather than resolving paths — `Path.resolve()` per module
+    per test would cost more than the reload we are removing.
+    """
+    for module_name, attr in _DICT_CACHES:
+        module = sys.modules.get(module_name)
+        if module is not None:
+            getattr(module, attr).clear()
+
+    for module_name, attr in _SINGLETON_CACHES:
+        module = sys.modules.get(module_name)
+        if module is not None:
+            setattr(module, attr, None)
+
+    service_prefix = str(SERVICE_ROOT)
+    for module in list(sys.modules.values()):
+        file_path = getattr(module, "__file__", None)
+        if not file_path or not file_path.startswith(service_prefix):
+            continue
+        for value in vars(module).values():
+            cache_clear = getattr(value, "cache_clear", None)
+            if callable(cache_clear):
+                cache_clear()
+
+
+def _service_is_live(service: SimpleNamespace) -> bool:
+    """Whether the cached modules are still the ones an `import` would resolve to.
+
+    `tests/rag_service/conftest.py` purges `src/agents` out of `sys.modules` when
+    it loads its own service, so a full-tree local run can evict what we cached.
+    Anything imported lazily afterwards (e.g. the retention module in
+    test_workspace_retention.py) would then bind a *second* copy of
+    `core.settings`, leaving us to snapshot a settings object that the code under
+    test no longer reads. Detect the eviction and reload rather than silently
+    testing against a split-brain service.
+    """
+    return (
+        sys.modules.get("main") is service.main
+        and sys.modules.get("core.settings") is service.settings_module
+    )
+
+
+@pytest.fixture(scope="session")
+def _agents_service_loader():
+    """Owns the single expensive import, plus the env/syspath patches it needs.
+
+    Session-scoped `MonkeyPatch` because the env vars must outlive the test that
+    first triggered the import — `core.settings` reads them at class-instantiation
+    time, so letting a function-scoped patch undo them would leave the singleton
+    describing an environment that no longer exists.
+    """
+    monkeypatch = pytest.MonkeyPatch()
+    cache: dict[str, SimpleNamespace] = {}
+
+    def load() -> SimpleNamespace:
+        service = cache.get("service")
+        if service is None or not _service_is_live(service):
+            service = _load_agents_service(monkeypatch)
+            cache["service"] = service
+        return service
+
+    try:
+        yield load
+    finally:
+        monkeypatch.undo()
+
+
 @pytest.fixture
-def agents_service(monkeypatch):
-    return _load_agents_service(monkeypatch)
+def agents_service(_agents_service_loader):
+    """The loaded agents service, with per-test isolation of its global state.
+
+    Restores the settings tree and clears the service's process-global caches
+    around every test, which is what the old per-test module reload was really
+    providing.
+    """
+    service = _agents_service_loader()
+    snapshot = _snapshot_settings(service.settings_module.settings)
+    _reset_service_caches()
+    try:
+        yield service
+    finally:
+        _restore_settings(snapshot)
+        _reset_service_caches()
 
 
 @pytest.fixture
 def internal_headers(agents_service):
     return {
-        agents_service.main.settings.proxy.trusted_proxy_header_name: agents_service.main.settings.proxy.trusted_proxy_secret.get_secret_value()
+        agents_service.settings_module.settings.proxy.trusted_proxy_header_name: agents_service.settings_module.settings.proxy.trusted_proxy_secret.get_secret_value()
     }
 
 
@@ -131,7 +295,7 @@ def skills_fs(agents_service, tmp_path):
     * ``pool(user)`` — that user's skill pool (``manifest.json`` + ``custom/``).
     * ``workspace(user)`` / ``agent_dir(user, slug)`` — the per-user tree.
     """
-    fs = agents_service.main.settings.filesystem
+    fs = agents_service.settings_module.settings.filesystem
     layout = agents_service.filesystem_layout
 
     global_plane = tmp_path / "global"

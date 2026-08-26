@@ -421,13 +421,18 @@ async def test_generate_suggestions_provider_error_raises_502(agents_service, mo
 # ===========================================================================
 # speech.py
 # ===========================================================================
-def test_normalize_voice_variants(agents_service, monkeypatch):
+def test_normalize_voice_variants(agents_service):
+    """An explicit voice is case-folded; anything blank falls back to the constant.
+
+    The fallback is `_FALLBACK_VOICE`, not a setting — the bridge always resolves
+    the voice from the user's preference and passes one explicitly, so there is
+    no env var to override here.
+    """
     sp = agents_service.speech
     assert sp._normalize_voice("Echo") == "echo"
-    monkeypatch.setattr(sp.settings.runtime_models, "read_aloud_voice", "shimmer")
-    assert sp._normalize_voice(None) == "shimmer"
-    monkeypatch.setattr(sp.settings.runtime_models, "read_aloud_voice", "")
-    assert sp._normalize_voice("   ") == "alloy"
+    assert sp._normalize_voice(None) == sp._FALLBACK_VOICE
+    assert sp._normalize_voice("   ") == sp._FALLBACK_VOICE
+    assert sp._normalize_voice("") == sp._FALLBACK_VOICE
 
 
 def _patch_speech_client(monkeypatch, sp, response):

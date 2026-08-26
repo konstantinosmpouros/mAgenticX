@@ -9,10 +9,33 @@ from __future__ import annotations
 
 import importlib
 import os
+import tempfile
 import time
 from pathlib import Path
 
+import pytest
+
 HOUR = 3600
+
+
+def _can_symlink() -> bool:
+    """Whether this host lets an unprivileged process create a symlink.
+
+    On Windows, ``os.symlink`` needs either Administrator or Developer Mode, so
+    a normal developer shell raises ``OSError`` (WinError 1314). CI runs on
+    Linux where it always succeeds, so the symlink-hostility assertion below is
+    still enforced where it counts — this probe only keeps a Windows dev box
+    from reporting a red suite for a missing OS privilege.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.symlink(tmp, os.path.join(tmp, "probe"))
+        except (OSError, NotImplementedError):
+            return False
+    return True
+
+
+SYMLINKS_SUPPORTED = _can_symlink()
 
 
 def _touch(path: Path, *, age_hours: float) -> None:
@@ -34,7 +57,7 @@ def _conv_dir(root: Path, user: str = "user-1", agent: str = "agent-1", conv: st
 
 
 def _retention(agents_service, tmp_root: Path, *, input_ttl=72, output_ttl=168):
-    fs = agents_service.main.settings.filesystem
+    fs = agents_service.settings_module.settings.filesystem
     fs.workspaces_root = tmp_root
     fs.input_ttl_hours = input_ttl
     fs.output_ttl_hours = output_ttl
@@ -102,6 +125,10 @@ def test_recent_activity_skips_the_conversation(agents_service, tmp_path):
     assert stats.conversations_skipped_active >= 1
 
 
+@pytest.mark.skipif(
+    not SYMLINKS_SUPPORTED,
+    reason="host cannot create symlinks (Windows without Administrator/Developer Mode)",
+)
 def test_symlinks_are_removed_not_followed(agents_service, tmp_path):
     conv = _conv_dir(tmp_path)
     secret = tmp_path / "outside" / "secret.txt"

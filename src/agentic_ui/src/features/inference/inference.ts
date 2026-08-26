@@ -7,7 +7,6 @@ import type {
   ConversationDetail,
   MessageIn,
   MessageOut,
-  FileAttachment,
   InferenceStartRequest,
   InferenceStartResponse,
 } from "@/shared/lib/types";
@@ -46,10 +45,6 @@ type InferenceCtx = {
     variant?: string;
     duration?: number;
   }) => void;
-
-  // helpers from attachments
-  isImageFile: (file: File | any) => boolean;
-  getImageUrl: (file: File | any) => string;
 
   // thinking
   setThinkingState: (updater: any) => void;
@@ -141,8 +136,6 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     setIsSendingMessage,
     setCurrentConversation,
     toast,
-    isImageFile,
-    getImageUrl,
     setThinkingState,
     setShowAiTransition,
     streamAbortRef,
@@ -195,13 +188,7 @@ export function createInferenceHandlers(ctx: InferenceCtx) {
     const currentAgent = agents.find((a) => a.id === selectedAgent);
 
     // Prepare attachments once for the backend-owned start flow.
-    const messageAttachments: FileAttachment[] = attachments.map((file) => ({
-      file,
-      url: isImageFile(file) ? getImageUrl(file) : "",
-      name: file.name,
-      type: file.type,
-    }));
-    const apiAttachments = await convertFileAttachments(messageAttachments);
+    const apiAttachments = await convertFileAttachments(attachments);
 
     const lastPersistedMessageId = resolveLastPersistedMessageId();
 

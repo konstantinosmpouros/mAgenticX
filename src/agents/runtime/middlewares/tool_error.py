@@ -2,6 +2,7 @@ from typing import Any, Awaitable, Callable
 
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import ToolMessage
+from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 
 from core.logging import get_logger
@@ -20,6 +21,15 @@ class ToolErrorMiddleware(AgentMiddleware):
     and surfaces as a normal ``TOOL_CALL_RESULT`` event the UI renders as a
     failed tool step. Applied to the main agent and every sub-agent via the
     base ``DeepAgent`` wiring.
+
+    ``GraphBubbleUp`` is deliberately NOT caught. LangGraph raises it as
+    *control flow*, not failure — ``GraphInterrupt`` (a HITL pause) and
+    ``ParentCommand`` both derive from it, and both must reach the graph runner
+    to do their job. Swallowing it here turned a sub-agent's approval request
+    into a fake "tool failed" result: the ``task`` tool that spawned the
+    sub-agent reported an error, the run limped on, and the approval the user
+    was looking at was already superseded — so approving it returned 409 (stale
+    interrupt) and the run died with no message.
     """
 
     def wrap_tool_call(
@@ -29,6 +39,9 @@ class ToolErrorMiddleware(AgentMiddleware):
     ) -> ToolMessage | Command:
         try:
             return handler(request)
+        except GraphBubbleUp:
+            # Control flow (interrupt / parent command) — must reach the runner.
+            raise
         except Exception as exc:  # noqa: BLE001 — deliberate: never abort the run on a tool error
             return self._error_message(request, exc)
 
@@ -39,6 +52,9 @@ class ToolErrorMiddleware(AgentMiddleware):
     ) -> ToolMessage | Command:
         try:
             return await handler(request)
+        except GraphBubbleUp:
+            # Control flow (interrupt / parent command) — must reach the runner.
+            raise
         except Exception as exc:  # noqa: BLE001 — deliberate: never abort the run on a tool error
             return self._error_message(request, exc)
 

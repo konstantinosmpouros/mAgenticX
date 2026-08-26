@@ -34,7 +34,7 @@ import {
   VoiceSelectorName,
   VoiceSelectorTrigger,
 } from "@/shared/ui/ai-elements/voice-selector";
-import { SoftPanel } from "./shared";
+import { SoftPanel, ToggleSwitch } from "./shared";
 
 /**
  * AgentBuilder — a guided form that *generates* an agent definition.
@@ -630,26 +630,11 @@ export default function AgentBuilder({
             Lets this agent remember durable facts between your conversations.
           </p>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={draft.memory}
-          aria-label={`${draft.memory ? "Disable" : "Enable"} long-term memory`}
-          onClick={() => set("memory", !draft.memory)}
-          className={cn(
-            "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-            draft.memory
-              ? "border-primary/40 bg-primary/20"
-              : "border-transparent bg-background/80",
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-5 w-5 rounded-full shadow transition-transform",
-              draft.memory ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground/60",
-            )}
-          />
-        </button>
+        <ToggleSwitch
+          checked={draft.memory}
+          onToggle={() => set("memory", !draft.memory)}
+          label={`${draft.memory ? "Disable" : "Enable"} long-term memory`}
+        />
       </SoftPanel>
 
       {/* Skills — searched and added from the user's pool */}
@@ -721,47 +706,53 @@ export default function AgentBuilder({
           </p>
         ) : null}
 
+        {/* Caption AND chips, both under `length > 0`. These were previously the
+            two arms of one ternary, so the chip list only rendered when the list
+            was empty — i.e. never. An added skill vanished from the UI entirely
+            (the picker also filters out anything already added) and its Remove
+            button was unreachable, which made an attached skill permanent. */}
         {draft.skills.length > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Copied from your pool when you save, and always available to this agent — you can add
-            more per agent later, but these can't be switched off.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {draft.skills.map((name) => {
-              const skill = mySkills.find((s) => s.name === name);
-              return (
-                <SoftPanel key={name} className="flex items-center gap-3 px-3 py-2">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/15 text-primary">
-                    <Wrench className="h-3.5 w-3.5" aria-hidden />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-foreground">
-                      {name}
+          <>
+            <p className="text-xs text-muted-foreground">
+              Copied from your pool when you save, and always available to this agent — you can add
+              more per agent later, but these can't be switched off.
+            </p>
+            <div className="flex flex-col gap-2">
+              {draft.skills.map((name) => {
+                const skill = mySkills.find((s) => s.name === name);
+                return (
+                  <SoftPanel key={name} className="flex items-center gap-3 px-3 py-2">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/15 text-primary">
+                      <Wrench className="h-3.5 w-3.5" aria-hidden />
                     </span>
-                    {skill?.description ? (
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {skill.description}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-foreground">
+                        {name}
                       </span>
-                    ) : !skill ? (
-                      <span className="block truncate text-xs text-destructive">
-                        No longer in your pool — remove it or re-add the skill.
-                      </span>
-                    ) : null}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeSkill(name)}
-                    aria-label={`Remove skill ${name}`}
-                    className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
-                  >
-                    <Trash2 size={15} aria-hidden />
-                  </button>
-                </SoftPanel>
-              );
-            })}
-          </div>
-        )}
+                      {skill?.description ? (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {skill.description}
+                        </span>
+                      ) : !skill ? (
+                        <span className="block truncate text-xs text-destructive">
+                          No longer in your pool — remove it or re-add the skill.
+                        </span>
+                      ) : null}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeSkill(name)}
+                      aria-label={`Remove skill ${name}`}
+                      className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+                    >
+                      <Trash2 size={15} aria-hidden />
+                    </button>
+                  </SoftPanel>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
       </div>
 
       {/* Sub-agents */}

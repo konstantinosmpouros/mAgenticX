@@ -4,11 +4,11 @@
 // replays persisted message.rawEvents on hydration, so live and hydrated
 // views cannot drift. Never persisted anywhere.
 // ------------------------------------------------------
-// NOTE: `PlanSnapshot` is the single `shared/ → features/` dependency in the
-// types tree. It is deliberately left where it is (owned by the AG-UI protocol
-// module) rather than moved into `shared/`, so the protocol stays the source of
-// truth for its own event shapes.
-import type { PlanSnapshot } from "@/features/inference/agui";
+// `PlanSnapshot` comes from shared/lib/schemas (the zod-only leaf), NOT from
+// features/inference/agui — shared/ must not import from features/. The schema
+// lives there so this type stays derived from the wire contract; agui re-exports
+// it so the AG-UI consumers still have one import site.
+import type { PlanSnapshot } from "../schemas";
 
 export type ToolExecutionState =
   "input-streaming" | "input-available" | "output-available" | "output-error";
@@ -157,4 +157,38 @@ export type RunTimeline = {
   terminalStatus?: TimelineTerminalStatus;
   lastSeq: number;
   fold: TimelineFoldIndexes;
+};
+
+/**
+ * View model for one sub-agent panel, produced by `subagentBlockToItem` in the
+ * timeline reducer and rendered by `SubagentContainer`.
+ *
+ * In `shared` because it sits on the boundary between the two: it was declared
+ * on the chat component, which made `features/inference` (the run engine) import
+ * a presentational module from `features/chat` — the sharpest of the layering
+ * inversions, since it pointed from the engine at the UI.
+ */
+export type SubagentInterrupt = {
+  threadId: string;
+  content: unknown;
+};
+
+export type SubagentTool = {
+  id: string;
+  name: string;
+  status?: "running" | "completed" | "error";
+  args?: string;
+  result?: string;
+};
+
+export type SubagentItem = {
+  id: string;
+  label?: string;
+  type?: string;
+  description?: string;
+  namespace?: string;
+  prompt?: string;
+  text?: string;
+  tools?: SubagentTool[];
+  interrupts?: SubagentInterrupt[];
 };

@@ -77,12 +77,19 @@ export function useRealtimeVoiceSession({ toast }: UseRealtimeVoiceSessionArgs) 
       if (type === "response.done" || type === "response.audio.done")
         setStatus(muted ? "muted" : "listening");
       if (type === "error") {
+        // cleanup() is load-bearing here, not tidiness: without it a server-side
+        // error mid-session left the peer connection open and the microphone
+        // tracks live and unmuted — the browser recording indicator stayed lit
+        // and audio kept flowing — until the user happened to press hang up.
+        // The connect-time catch in start() already cleans up; this is the
+        // in-band path, which did not.
+        cleanup();
         const error = asRecord(event.error);
         setErrorMessage(readString(error.message) || "Realtime voice session failed.");
         setStatus("error");
       }
     },
-    [muted],
+    [muted, cleanup],
   );
 
   const start = useCallback(
@@ -106,6 +113,17 @@ export function useRealtimeVoiceSession({ toast }: UseRealtimeVoiceSessionArgs) 
 
         const pc = new RTCPeerConnection();
         pcRef.current = pc;
+        // Transport death has no other signal: without this the session sat at
+        // "listening" forever after an ICE failure, mic still open, showing no
+        // error at all.
+        pc.onconnectionstatechange = () => {
+          if (isStale()) return;
+          if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+            cleanup();
+            setErrorMessage("Voice connection lost.");
+            setStatus("error");
+          }
+        };
         stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
 
         const audio = document.createElement("audio");

@@ -1,18 +1,12 @@
 /**
- * Voice API — read-aloud TTS, dictation transcription, and the realtime voice
- * session lifecycle (create / persist transcript events / end).
+ * Voice API — read-aloud TTS, dictation transcription, and realtime session
+ * creation.
  */
-import type {
-  ConversationSummary,
-  RealtimeVoiceConversationEventRequest,
-  RealtimeVoiceSessionRequest,
-  RealtimeVoiceSessionResponse,
-  UpdateConversationResponse,
-} from "../types";
+import type { RealtimeVoiceSessionRequest, RealtimeVoiceSessionResponse } from "../types";
 import { requestBlob, requestJson } from "../http";
-import { RealtimeVoiceSessionResponseSchema, WireObjectSchema } from "../schemas";
+import { RealtimeVoiceSessionResponseSchema } from "../schemas";
 import { normalizeRealtimeVoice } from "../utils";
-import { transformConversationSummary, transformMessage, type RealtimeVoice } from "../consts";
+import { type RealtimeVoice } from "../consts";
 import { SPEECH_BASE_PATH, VOICE_BASE_PATH } from "./paths";
 
 // Generate read-aloud audio for an AI message
@@ -79,36 +73,4 @@ export async function createRealtimeVoiceSession(
     schema: RealtimeVoiceSessionResponseSchema,
     fallbackMessage: "Failed to create realtime voice session",
   });
-}
-
-export async function persistRealtimeVoiceConversationEvent(
-  userId: string,
-  payload: RealtimeVoiceConversationEventRequest,
-): Promise<UpdateConversationResponse> {
-  const data = (await requestJson(`${VOICE_BASE_PATH}/realtime/${userId}/conversation-event`, {
-    method: "POST",
-    csrf: true,
-    body: payload,
-    schema: WireObjectSchema,
-    fallbackMessage: "Failed to persist realtime voice transcript",
-  })) as Record<string, unknown>;
-
-  return {
-    message: transformMessage(data.message as Record<string, unknown>),
-    summary: transformConversationSummary(data.summary as Record<string, unknown>),
-  };
-}
-
-export async function endRealtimeVoiceSession(
-  userId: string,
-  conversationId: string,
-): Promise<ConversationSummary> {
-  const data = (await requestJson(`${VOICE_BASE_PATH}/realtime/${userId}/end`, {
-    method: "POST",
-    csrf: true,
-    body: { conversationId },
-    schema: WireObjectSchema,
-    fallbackMessage: "Failed to end realtime voice session",
-  })) as Record<string, unknown>;
-  return transformConversationSummary(data.summary as Record<string, unknown>);
 }

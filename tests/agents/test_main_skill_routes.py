@@ -267,7 +267,7 @@ async def test_realtime_session_normalizes_unknown_voice(client, agents_service,
 
 
 async def test_realtime_session_unconfigured_503(client, agents_service, internal_headers, monkeypatch):
-    monkeypatch.setattr(agents_service.main.settings.api_keys, "openai", None)
+    monkeypatch.setattr(agents_service.settings_module.settings.api_keys, "openai", None)
 
     response = await client.post(
         "/realtime/session",

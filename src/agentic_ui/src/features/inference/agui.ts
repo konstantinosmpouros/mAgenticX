@@ -43,22 +43,17 @@ export const HITLInterruptPayloadSchema = z.object({
 // ------------------------------------------------------
 // Plan Snapshot
 // ------------------------------------------------------
-export const PlanItemStatusSchema = z.enum(["pending", "in_progress", "completed"]);
-export type PlanItemStatus = z.infer<typeof PlanItemStatusSchema>;
-
-export const PlanItemSchema = z.object({
-  content: z.string(),
-  status: PlanItemStatusSchema,
-  metadata: MetadataSchema.nullish(),
-});
-export type PlanItem = z.infer<typeof PlanItemSchema>;
-
-export const PlanSnapshotSchema = z.object({
-  items: z.array(PlanItemSchema),
-  updated_at: z.number().nullish(),
-  metadata: MetadataSchema.nullish(),
-});
-export type PlanSnapshot = z.infer<typeof PlanSnapshotSchema>;
+// Declared in shared/lib/schemas.ts (a zod-only leaf) so shared/lib/types can
+// name PlanSnapshot without importing from features/. Re-exported here so the
+// AG-UI consumers keep one import site for event payloads.
+export {
+  PlanItemStatusSchema,
+  PlanItemSchema,
+  PlanSnapshotSchema,
+  type PlanItemStatus,
+  type PlanItem,
+  type PlanSnapshot,
+} from "@/shared/lib/schemas";
 
 // ------------------------------------------------------
 // SubAgent

@@ -69,7 +69,6 @@ export default function ChatView() {
     dictationRequestSignal,
     dictationCancelSignal,
     triggerVoiceMode,
-    AgentIcon,
     toast,
     inputBarAgent,
     isPlanExpanded,
@@ -187,7 +186,6 @@ export default function ChatView() {
           onVoiceTextSubmit={voiceSession.sendText}
 
           // UI deps
-          AgentIcon={AgentIcon}
           Tooltip={Tooltip}
           TooltipTrigger={TooltipTrigger}
           TooltipContent={TooltipContent}

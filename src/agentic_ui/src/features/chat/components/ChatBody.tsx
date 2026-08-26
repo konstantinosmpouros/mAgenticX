@@ -82,12 +82,6 @@ type ChatBody = {
   onChangeEditDraft?: (value: string) => void;
   onCancelEdit?: () => void;
   onSubmitEdit?: () => void;
-  toast?: (opts: {
-    title: string;
-    description?: string;
-    variant?: string;
-    duration?: number;
-  }) => void;
   onRetryMessage?: (message: MessageOut) => void;
   onForkMessage?: (message: MessageOut) => void;
   onShareMessage?: (message: MessageOut) => void;
@@ -139,7 +133,6 @@ export default function ChatBody({
   onChangeEditDraft,
   onCancelEdit,
   onSubmitEdit,
-  toast,
   onRetryMessage,
   onForkMessage,
   onShareMessage,
@@ -687,7 +680,6 @@ export default function ChatBody({
                     onDislike={onDislike}
                     onReportMessage={onReportMessage}
                     conversationIsReported={conversationIsReported}
-                    toast={toast}
                     onRetryMessage={onRetryMessage}
                     onForkMessage={onForkMessage}
                     onShareMessage={onShareMessage}

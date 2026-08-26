@@ -161,7 +161,6 @@ type ProfilePanelProps = {
   // from the My skills view via the "+ Add" path when the user wants to
   // pull a global into their personal pool.
   availableSkills: Skill[];
-  onRefreshSkills?: () => Promise<void>;
   // User pool ("My skills"): the user's personal registry. Mixed globals
   // (references) + customs (user-authored). Mutation handlers below.
   mySkills?: UserSkill[];

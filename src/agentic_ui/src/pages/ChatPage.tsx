@@ -33,7 +33,7 @@ import {
   useUISnapshotPersistence,
 } from "@/features/auth/hooks/useSessionEffects";
 import { useActiveRunBranchSnap } from "@/features/chat/hooks/useActiveRunBranchSnap";
-import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
+import { ChatWorkspaceProvider, useWorkspaceStore } from "@/shared/stores/workspaceStore";
 import ChatView from "./ChatView";
 
 // Handlers, imported from the feature that owns each one.
@@ -73,13 +73,7 @@ import {
   HitlProvider,
   pendingTimelineInterrupts,
 } from "@/features/inference";
-import {
-  getAgents,
-  getConversationDetail,
-  getSkills,
-  getSuggestions,
-  logoutAccount,
-} from "@/shared/lib/api";
+import { getAgents, getConversationDetail, getSuggestions, logoutAccount } from "@/shared/lib/api";
 import type { AccountSummary } from "@/shared/lib/types";
 
 // Chat Interface component
@@ -91,6 +85,7 @@ import AttachmentPreviewPanel, {
 } from "@/features/attachments/components/AttachmentPreviewPanel";
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
 import { SidebarProvider, SidebarInset } from "@/shared/ui/sidebar";
+import { useChatKeyboardShortcuts } from "@/features/chat/hooks/useKeyboardShortcuts";
 import ProfilePanel from "@/features/settings/components/ProfilePanel";
 import EditProfileDialog from "@/features/settings/components/EditProfileDialog";
 import ShortcutsPanel from "@/features/settings/components/ShortcutsPanel";
@@ -383,19 +378,6 @@ export function useChatWorkspace({
 
   // Manual refresh from the Skills tab — hits the bridge with bypass_redis=true,
   // which refetches from the agents service and upserts the bridge's Redis
-  // cache. State updates immediately so the UI reflects the new list, and the
-  // snapshot is overwritten next time requestPersist fires.
-  const handleRefreshSkills = useCallback(async () => {
-    try {
-      const fresh = await getSkills({ bypassRedis: true });
-      setAvailableSkills(fresh);
-      requestPersist();
-    } catch (error) {
-      toastError(toastWrapper, "Couldn't refresh skills", error, {
-        description: error instanceof Error ? error.message : "Try again in a moment.",
-      });
-    }
-  }, [requestPersist]);
 
   /**
    * Re-pull the agent catalog after the user creates, edits or deletes an agent.
@@ -1212,8 +1194,6 @@ export function useChatWorkspace({
     setCurrentConversation,
     setConversations,
     toast: toastWrapper,
-    isImageFile,
-    getImageUrl,
     setThinkingState,
     setShowAiTransition,
     streamAbortRef,
@@ -1711,7 +1691,6 @@ export function useChatWorkspace({
         onChangeEditDraft={handleEditDraftChange}
         onCancelEdit={handleCancelEditMessage}
         onSubmitEdit={submitEditFromState}
-        toast={toastWrapper}
         onRetryMessage={handleRetryAiMessage}
         onForkMessage={handleForkConversation}
         onShareMessage={openShareDialog}
@@ -1739,8 +1718,6 @@ export function useChatWorkspace({
     agents,
     availableTools,
     availableSkills,
-    myRegistrySkills,
-    userPreferences,
     isSavingPreferences,
     inactiveAgentFallback,
     conversations,
@@ -1807,7 +1784,6 @@ export function useChatWorkspace({
     // hook outputs / context
     headerHasDivider,
     navigate,
-    isTasksRoute,
     reduceMotion,
     voiceSession,
     scheduledTasks,
@@ -1863,7 +1839,6 @@ export function useChatWorkspace({
     onConfirmAccountLimit,
     memoryInspector,
     // derived
-    AgentIcon,
     inputBarAgent,
     isMessagesEmpty,
     settledVoiceActive,
@@ -1918,7 +1893,6 @@ export function useChatWorkspace({
     handleStarterSuggestionSelect,
     handleSetActiveProfileTab,
     handleLogout,
-    handleRefreshSkills,
     handleLoadMoreArchivedConversations,
     handleOpenArchivedConversation,
     handleUnarchiveConversation,
@@ -1961,11 +1935,12 @@ type ChatShellProps = ChatInterfaceProps & { children?: ReactNode };
  */
 export function ChatShell({ children, ...props }: ChatShellProps = {}) {
   const ws = useChatWorkspace(props);
-  // Publish the per-render workspace bundle to the store so the route views can
-  // read it via useChatWorkspaceContext. Set during render (before children
-  // render) so views see the current-render value with no staleness; it is an
-  // external-store write (useSyncExternalStore-safe), not a React setState.
-  useWorkspaceStore.setState({ workspace: ws });
+  // The bundle reaches the route views through ChatWorkspaceProvider at the
+  // content slot below. It used to be published into the Zustand store here,
+  // during render — zustand notifies synchronously, so that force-updated
+  // ChatView/TasksView from inside this component's render pass (React's
+  // "Cannot update a component while rendering a different component"), and the
+  // deferred re-render cost a second commit on every keystroke.
   const {
     authResolved,
     isLoggedIn,
@@ -2025,7 +2000,6 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
     handleLogout,
     availableTools,
     availableSkills,
-    handleRefreshSkills,
     mySkills,
     loadingMySkills,
     mySkillDetails,
@@ -2141,6 +2115,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
         open={sidebarOpen}
         onOpenChange={handleSidebarOpenChange}
         enableKeyboardShortcut={false}
+        keyboardShortcutsHook={useChatKeyboardShortcuts}
         chatKeyboardShortcuts={{
           canTogglePrivateMode,
           openSearch: handleOpenSearch,
@@ -2184,7 +2159,6 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
           onOpenShortcuts={() => setShowShortcutsPanel(true)}
           onOpenHelp={() => setShowHelpPanel(true)}
           onLogout={handleLogout}
-          agents={agents}
           userProfile={userProfile}
           dismissFloatingUiSignal={sidebarDismissFloatingUiSignal}
           onFloatingUiStateChange={setIsSidebarFloatingUiOpen}
@@ -2215,7 +2189,7 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                   or `children` when ChatShell is used directly (shared conversation).
                   The chat surface + tasks page now live in pages/ChatView and
                   pages/TasksView. */}
-                {children ?? <Outlet />}
+                <ChatWorkspaceProvider value={ws}>{children ?? <Outlet />}</ChatWorkspaceProvider>
 
                 <AccountLimitDialog
                   open={accountLimitOpen}
@@ -2235,7 +2209,6 @@ export function ChatShell({ children, ...props }: ChatShellProps = {}) {
                   user={userProfile}
                   availableTools={availableTools}
                   availableSkills={availableSkills}
-                  onRefreshSkills={handleRefreshSkills}
                   mySkills={mySkills}
                   loadingMySkills={loadingMySkills}
                   mySkillDetails={mySkillDetails}
