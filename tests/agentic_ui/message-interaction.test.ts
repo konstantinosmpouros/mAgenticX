@@ -90,6 +90,31 @@ describe("useMessageInteraction", () => {
     expect(result.current.expandedThinking).toEqual({ m1: true, m2: false });
   });
 
+  it("drops the transition dot when the conversation changes", () => {
+    // `showAiTransition` is one flag, not per-conversation state. Leaving a
+    // conversation mid-run used to carry it along, so the dot pulsed under the
+    // last message of whichever conversation you opened next.
+    const { result, rerender } = mount(conversation("c1", [message("m1")]));
+
+    act(() => result.current.setShowAiTransition(true));
+    expect(result.current.showAiTransition).toBe(true);
+
+    rerender({ currentConversation: conversation("c2", [message("m9")]) });
+
+    expect(result.current.showAiTransition).toBe(false);
+  });
+
+  it("keeps the transition dot across a re-render of the same conversation", () => {
+    // The conversation object is replaced on every streamed token; only an id
+    // change may clear the dot, or it would flicker for the whole run.
+    const { result, rerender } = mount(conversation("c1", [message("m1")]));
+
+    act(() => result.current.setShowAiTransition(true));
+    rerender({ currentConversation: conversation("c1", [message("m1"), message("m2", "m1")]) });
+
+    expect(result.current.showAiTransition).toBe(true);
+  });
+
   it("clears the transition dot once thinking goes live", () => {
     // The dot only bridges persistence and the agent's first real signal; leaving
     // it up alongside the thinking block double-renders the pending state.

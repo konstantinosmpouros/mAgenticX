@@ -51,8 +51,16 @@ type SubagentsSidePanelProps = {
 };
 
 export function SubagentsSidePanel({ timeline, open, onOpenChange }: SubagentsSidePanelProps) {
+  // Spawned only. A sub-agent block is opened by TASK_SUBAGENT, which fires when
+  // the orchestrator *calls* the `task` tool — before the HITL gate. A call the
+  // user rejected leaves an unspawned block behind: it is a refused tool
+  // execution, not a sub-agent, and listing it showed a card with no response
+  // and no tool activity next to ones that really ran.
   const subagents = useMemo(
-    () => timeline.blocks.filter((block): block is SubagentBlock => block.kind === "subagent"),
+    () =>
+      timeline.blocks.filter(
+        (block): block is SubagentBlock => block.kind === "subagent" && Boolean(block.spawned),
+      ),
     [timeline.blocks],
   );
 

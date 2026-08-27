@@ -210,10 +210,14 @@ export function ChatMessage({
                 </span>
                 {isEditing && (
                   <div className="flex items-center gap-2">
+                    {/* `secondary`, not a hardcoded surface: this sat on a raw
+                        #262730, which reads as a dark chip in BOTH themes — so in
+                        light mode it was dark `text-foreground` on dark grey. */}
                     <Button
                       type="button"
                       size="sm"
-                      className="gap-1 bg-[#262730] text-foreground hover:bg-[#2f3038]"
+                      variant="secondary"
+                      className="gap-1"
                       disabled={editingBusy}
                       onClick={() => onCancelEdit?.()}
                     >

@@ -34,11 +34,26 @@ const BOTTOM_BREATHING_ROOM = 48;
 const EASE_FOLLOW = 0.26;
 // Below this many px from the target the ride-along tween snaps and stops.
 const SETTLE_EPSILON = 0.5;
-// Deliberate moves (entrance, re-stick, jump button) use a FIXED-DURATION ease-in-out
-// so a large jump reads as a smooth, controlled glide instead of an exponential
-// approach that covers most of the distance in the first frame (a near-teleport).
-const GLIDE_MS = 420;
-const BUTTON_GLIDE_MS = 560;
+// Deliberate moves (turn start, re-stick, jump button) use a FIXED-DURATION
+// ease-in-out so a large jump reads as a smooth, controlled glide instead of an
+// exponential approach that covers most of the distance in the first frame (a
+// near-teleport).
+//
+// The duration is NOT flat. Scroll distance here is unbounded — one screen or
+// fifty — so a single number makes the *velocity* vary wildly: a long trip
+// blurs past while a short one crawls. It scales with distance and clamps at
+// both ends instead.
+type GlideCurve = { minMs: number; maxMs: number; msPerPx: number };
+
+// Turn start and settle-at-end. Automatic, so it stays tighter at the top end —
+// the answer should not sit behind a second of animation on every single reply.
+const TURN_GLIDE: GlideCurve = { minMs: 520, maxMs: 900, msPerPx: 0.28 };
+// The jump-to-bottom button. User-initiated and the longest trip in the app, so
+// it gets room to read as a deliberate move you can follow with your eye.
+const BUTTON_GLIDE: GlideCurve = { minMs: 600, maxMs: 1200, msPerPx: 0.32 };
+
+const glideDuration = (distancePx: number, curve: GlideCurve) =>
+  Math.min(curve.maxMs, curve.minMs + distancePx * curve.msPerPx);
 
 type ChatBody = {
   messages: MessageOut[];
@@ -392,7 +407,11 @@ export default function ChatBody({
       } else if (mode === "follow") {
         springScrollTo(to);
       } else {
-        glideScrollTo(to, mode === "glideButton" ? BUTTON_GLIDE_MS : GLIDE_MS);
+        const distance = Math.abs(to - viewport.scrollTop);
+        glideScrollTo(
+          to,
+          glideDuration(distance, mode === "glideButton" ? BUTTON_GLIDE : TURN_GLIDE),
+        );
       }
     },
     [

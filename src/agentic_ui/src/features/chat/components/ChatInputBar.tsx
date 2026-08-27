@@ -765,11 +765,16 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               className="attachment-strip-scroll overflow-x-auto px-2 pr-7 pb-1"
                             >
                               <div className="flex min-w-max flex-nowrap items-center gap-2">
+                                {/* The chip pairs `bg-secondary` with
+                                    `text-secondary-foreground`. Without the explicit
+                                    foreground the filename inherited from the composer
+                                    and rendered near-white on a near-white chip in
+                                    light mode — invisible. */}
                                 {orderedAttachments.map(({ file, index, isImage }) => {
                                   return (
                                     <div
                                       key={index}
-                                      className={`relative shrink-0 overflow-hidden rounded-2xl border border-border bg-secondary/70 shadow-card ${
+                                      className={`relative shrink-0 overflow-hidden rounded-2xl border border-border bg-secondary/70 text-secondary-foreground shadow-card ${
                                         isImage
                                           ? "flex items-center p-1.5"
                                           : "flex items-center gap-2.5 px-3 py-2.5 max-w-[14rem] md:max-w-[16rem]"

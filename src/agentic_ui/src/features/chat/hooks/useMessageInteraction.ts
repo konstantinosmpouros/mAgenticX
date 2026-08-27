@@ -58,12 +58,20 @@ export function useMessageInteraction({ currentConversation }: UseMessageInterac
       rootKey: ROOT_BRANCH_KEY,
     });
 
-  // Leaving a conversation mid-edit must not carry the draft into the next one —
-  // the message id it belongs to does not exist there.
+  // Everything keyed to the conversation you were just looking at, dropped when
+  // you leave it.
+  //
+  // The edit draft, because the message id it belongs to does not exist in the
+  // next conversation. And the transition dot, because it is a single flag
+  // rather than per-conversation state: leaving a conversation mid-run used to
+  // carry it along, so the dot pulsed under the last message of whatever
+  // conversation you opened next. Clearing here is safe — `useInferenceRuns`
+  // re-raises it from the incoming conversation's own active run, if it has one.
   useEffect(() => {
     setEditingMessageId(null);
     setEditingDraft("");
     setEditingBusy(false);
+    setShowAiTransition(false);
   }, [currentConversation?.id]);
 
   // The transition dot bridges DB persistence and the agent's first real signal.

@@ -579,9 +579,29 @@ function ensureSubagentBlock(
     toolPaths: {},
     pendingRetool: null,
   };
-  session.state.subagentCount = Object.keys(fold.subagentIndexByKey).length;
+  // Deliberately does NOT bump subagentCount: a block starts unspawned, and the
+  // count tracks sub-agents that actually ran. See markSubagentSpawned.
   session.clonedBlocks.add(index);
   return { block, index };
+}
+
+/**
+ * Record that a sub-agent actually started, and keep `subagentCount` in step.
+ *
+ * `subagentCount` drives the action-bar badge and whether the panel opens at
+ * all, so it counts spawned sub-agents only. Counting blocks instead meant a
+ * `task` call the user REJECTED still showed up as a delegated task — it opened
+ * a block via TASK_SUBAGENT (emitted at tool-call time, before the HITL gate)
+ * and then sat there forever with no response and no tool activity.
+ */
+function markSubagentSpawned(session: Session, block: SubagentBlock): void {
+  if (block.spawned) return;
+  block.spawned = true;
+  let count = 0;
+  for (const candidate of session.state.blocks) {
+    if (candidate.kind === "subagent" && candidate.spawned) count += 1;
+  }
+  session.state.subagentCount = count;
 }
 
 function subEnsureThinking(
@@ -868,6 +888,9 @@ function applyEvent(session: Session, event: RawEvent): void {
         if (nsKey) fold.namespaceToKey[nsKey] = key;
       }
       const { block } = ensureSubagentBlock(session, key, eventTimestamp(event));
+      // Receiving any event from inside the sub-agent is the proof it spawned —
+      // an approved `task` call. A rejected one never reaches here.
+      markSubagentSpawned(session, block);
       block.namespace = block.namespace || wrapper.namespace.join(" / ");
       block.label = block.label || toTitleCase(block.type);
       if (inner && typeof inner === "object") {

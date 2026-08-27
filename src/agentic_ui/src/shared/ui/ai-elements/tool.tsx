@@ -6,6 +6,16 @@ import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
 
+/**
+ * Ceiling for a tool payload pane.
+ *
+ * Tool arguments and results are unbounded — a single `write_file` call can
+ * carry a 500-line document, and a `read_file` result more. Rendered unbounded
+ * they expand the message to the height of the payload and push the rest of the
+ * conversation off screen, so each pane caps and scrolls within itself instead.
+ */
+const PAYLOAD_PANE = "scrollbar-muted max-h-72 overflow-auto overscroll-contain";
+
 export type ToolInputProps = ComponentProps<"div"> & {
   input: unknown;
 };
@@ -15,7 +25,7 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
     <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
       Parameters
     </h4>
-    <div className="min-w-0 rounded-md bg-muted/50">
+    <div className={cn("min-w-0 rounded-md bg-muted/50", PAYLOAD_PANE)}>
       <CodeBlock
         className="[&_pre]:whitespace-pre-wrap [&_pre]:break-words"
         code={typeof input === "string" ? input : JSON.stringify(input, null, 2)}
@@ -69,7 +79,8 @@ export const ToolOutput = ({
       </h4>
       <div
         className={cn(
-          "min-w-0 overflow-x-auto rounded-md text-xs [&_table]:w-full",
+          "min-w-0 rounded-md text-xs [&_table]:w-full",
+          PAYLOAD_PANE,
           errorText ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground",
         )}
       >

@@ -99,6 +99,17 @@ export type SubagentBlock = {
   description?: string;
   prompt?: string;
   namespace?: string;
+  /**
+   * True once the sub-agent has actually been spawned — i.e. we have received at
+   * least one SUBAGENT_EVENT for it.
+   *
+   * A block is created by TASK_SUBAGENT, which the agents service emits when the
+   * orchestrator *calls* the `task` tool — before the HITL gate. If that call is
+   * rejected the sub-agent never runs and no SUBAGENT_EVENT ever arrives, so the
+   * block stays unspawned. The panel lists spawned blocks only: an unspawned one
+   * is a refused tool call, not a sub-agent.
+   */
+  spawned?: boolean;
   blocks: (ThinkingBlock | ContentBlock)[];
 };
 

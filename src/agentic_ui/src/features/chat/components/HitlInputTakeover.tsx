@@ -180,7 +180,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                 onClick={goPrev}
                 disabled={busy !== null || index === 0}
                 aria-label="Previous action"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-30"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-30"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -192,7 +192,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                 onClick={goNext}
                 disabled={busy !== null || index === total - 1}
                 aria-label="Next action"
-                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-30"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-30"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -311,8 +311,8 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                       className={cn(
                         "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
                         currentDecision === "approve"
-                          ? "bg-emerald-500/15 text-emerald-500"
-                          : "bg-orange-500/15 text-orange-500",
+                          ? "bg-success/15 text-success"
+                          : "bg-destructive/15 text-destructive",
                       )}
                     >
                       {currentDecision === "approve" ? "Approved" : "Rejected"}
@@ -338,7 +338,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                   placeholder="Reason if you reject (optional)"
                   disabled={busy !== null}
                   aria-label={`Rejection reason for ${actions[index]?.toolName ?? `action ${index + 1}`}`}
-                  className="mt-2.5 h-9 w-full rounded-lg border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-60"
+                  className="mt-2.5 h-9 w-full rounded-lg border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
                 />
 
                 <div className="mt-2.5 flex items-center gap-2">
@@ -351,8 +351,8 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                     className={cn(
                       "h-10 flex-1 gap-1.5 rounded-full border transition-colors",
                       currentDecision === "reject"
-                        ? "border-transparent bg-orange-500/90 text-white hover:bg-orange-500"
-                        : "border-orange-500/40 text-foreground/80 hover:bg-orange-500/10",
+                        ? "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        : "border-border text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive",
                     )}
                   >
                     <X className="h-4 w-4" /> Reject
@@ -366,8 +366,8 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                     className={cn(
                       "h-10 flex-1 gap-1.5 rounded-full border transition-colors",
                       currentDecision === "approve"
-                        ? "border-transparent bg-emerald-500/90 text-white hover:bg-emerald-500"
-                        : "border-emerald-500/40 text-foreground/80 hover:bg-emerald-500/10",
+                        ? "border-transparent bg-success text-success-foreground hover:bg-success/90"
+                        : "border-border text-muted-foreground hover:border-success/40 hover:bg-success/10 hover:text-success",
                     )}
                   >
                     <Check className="h-4 w-4" /> Approve
@@ -395,13 +395,13 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
                 aria-current={i === index}
                 className={cn(
                   "h-2 w-2 rounded-full transition-all",
-                  i === index && "ring-2 ring-amber-500/50 ring-offset-1 ring-offset-background",
+                  i === index && "ring-2 ring-primary/50 ring-offset-1 ring-offset-background",
                   decisions[i] === "approve"
-                    ? "bg-emerald-500"
+                    ? "bg-success"
                     : decisions[i] === "reject"
-                      ? "bg-orange-500"
+                      ? "bg-destructive"
                       : i === index
-                        ? "bg-amber-500"
+                        ? "bg-primary"
                         : "bg-border hover:bg-muted-foreground/50",
                 )}
               />
@@ -419,7 +419,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
               type="button"
               onClick={handleSubmitAll}
               disabled={busy !== null || !allDecided}
-              className="h-10 gap-1.5 rounded-full bg-amber-500/90 px-5 text-white hover:bg-amber-500 disabled:opacity-50"
+              className="h-10 gap-1.5 rounded-full bg-primary px-5 text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               {busy === "submit" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -444,14 +444,17 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
             }}
             placeholder="Reason (optional)"
             disabled={busy !== null}
-            className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-60"
+            className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60"
           />
+          {/* One solid affirmative, one quiet deny — rather than two competing
+              filled pills. Reject stays neutral until you reach for it, then
+              reveals its destructive intent on hover/focus. */}
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             onClick={() => handleSingle("reject")}
             disabled={busy !== null}
-            className="h-11 gap-1.5 rounded-full px-4 text-foreground/80"
+            className="h-11 gap-1.5 rounded-full border-border px-4 text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:text-destructive"
           >
             {busy === "reject" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -464,7 +467,7 @@ export function HitlInputTakeover({ interrupt, pendingCount, onResolve }: HitlIn
             type="button"
             onClick={() => handleSingle("approve")}
             disabled={busy !== null}
-            className="h-11 gap-1.5 rounded-full bg-emerald-500/90 px-4 text-white hover:bg-emerald-500"
+            className="h-11 gap-1.5 rounded-full bg-success px-4 text-success-foreground transition-colors hover:bg-success/90"
           >
             {busy === "approve" ? (
               <Loader2 className="h-4 w-4 animate-spin" />

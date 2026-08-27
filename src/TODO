@@ -23,7 +23,6 @@
 
 ## Agentic UI
 
-- Frontend cleanup & hardening — the phased backlog lives in [docs/draft/agentic-ui-cleanup-plan.md](../docs/draft/agentic-ui-cleanup-plan.md). Phase 0 (toolchain) and the highest-impact Phase 1 bugs are done; Phases 2–5 (dead weight incl. ~25 unused deps, consolidation, a JS test runner, then the ChatPage/workspace-bundle restructure) are still open.
 - Chart can be visualized with [shadcn/charts](https://www.shadcn.io/charts) and the agent can have a custom tool like the todo tool in order to represent the chart and create a custom AGUI event for the interaction with the chart.
 - Profile panel — implement the "coming soon / not implemented" placeholders left by the ChatGPT-taxonomy refactor:
   - **Stub sections** (full ComingSoon pages): Notifications (lands with the Notification system + PWA item above), Plugins (OAuth app connectors — distinct from MCP Servers), Storage (attachment/artifact quotas + cleanup), Safety (content-safety / moderation preferences).

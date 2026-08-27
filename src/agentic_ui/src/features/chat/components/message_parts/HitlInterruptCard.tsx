@@ -78,8 +78,8 @@ export function HitlInterruptCard({
         className={cn(
           "flex items-center gap-2 rounded-2xl border px-3 py-2 text-[12px]",
           isRejected
-            ? "border-orange-500/25 bg-orange-500/[0.06] text-orange-500"
-            : "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-500",
+            ? "border-destructive/25 bg-destructive/[0.06] text-destructive"
+            : "border-success/25 bg-success/[0.06] text-success",
           className,
         )}
       >
@@ -87,7 +87,7 @@ export function HitlInterruptCard({
         <span className="font-medium">
           {resolution === "approved" ? "Approved" : isRejected ? "Rejected" : "Decision sent"}
         </span>
-        <span className={cn("truncate", isRejected ? "text-orange-500/70" : "text-emerald-500/70")}>
+        <span className={cn("truncate", isRejected ? "text-destructive/70" : "text-success/70")}>
           · thread {interrupt.threadId}
         </span>
       </div>
@@ -133,13 +133,15 @@ export function HitlInterruptCard({
       {error ? <p className="relative mb-2 text-[11.5px] text-destructive">{error}</p> : null}
 
       <div className="relative flex items-center justify-end gap-2">
+        {/* Same pairing as the input-bar takeover: one solid affirmative, one
+            quiet deny that only turns destructive on hover/focus. */}
         <Button
           type="button"
           size="sm"
-          variant="ghost"
+          variant="outline"
           onClick={() => handle("reject")}
           disabled={busy !== null}
-          className="gap-1.5 text-foreground/80"
+          className="gap-1.5 border-border text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:text-destructive"
         >
           {busy === "reject" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -153,7 +155,7 @@ export function HitlInterruptCard({
           size="sm"
           onClick={() => handle("approve")}
           disabled={busy !== null}
-          className="gap-1.5 bg-emerald-500/90 text-white hover:bg-emerald-500"
+          className="gap-1.5 bg-success text-success-foreground transition-colors hover:bg-success/90"
         >
           {busy === "approve" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

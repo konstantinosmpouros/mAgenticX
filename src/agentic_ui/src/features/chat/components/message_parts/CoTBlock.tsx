@@ -139,12 +139,12 @@ const TimelineToolItem = memo(
               ) : face === "decision-sent" ? (
                 <span className="shrink-0 text-muted-foreground text-xs">Decision sent</span>
               ) : face === "approved" ? (
-                <span className="flex shrink-0 items-center gap-1 text-emerald-500 text-xs font-medium">
+                <span className="flex shrink-0 items-center gap-1 text-success text-xs font-medium">
                   <Check className="size-3" />
                   Approved
                 </span>
               ) : face === "rejected" ? (
-                <span className="shrink-0 text-orange-500 text-xs font-medium">Rejected</span>
+                <span className="shrink-0 text-destructive text-xs font-medium">Rejected</span>
               ) : null}
             </CollapsibleTrigger>
           }
@@ -157,7 +157,7 @@ const TimelineToolItem = memo(
               </div>
             ) : null}
             {face === "rejected" ? (
-              <div className="rounded-md border border-orange-500/25 bg-orange-500/[0.06] px-3 py-2 text-orange-500 text-xs">
+              <div className="rounded-md border border-destructive/25 bg-destructive/[0.06] px-3 py-2 text-destructive text-xs">
                 Rejected by you{approval?.reason ? ` — ${approval.reason}` : ""}. The tool never
                 ran.
               </div>

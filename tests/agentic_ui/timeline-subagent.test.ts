@@ -39,13 +39,51 @@ const subagentOf = (state: ReturnType<typeof createTimeline>) =>
   state.blocks.find((b) => b.kind === "subagent") as SubagentBlock | undefined;
 
 describe("sub-agent event folding", () => {
-  it("opens a sub-agent panel from the orchestrator event", () => {
+  it("opens a sub-agent block from the orchestrator event, but does not count it yet", () => {
+    // TASK_SUBAGENT fires when the orchestrator CALLS the `task` tool, which is
+    // before the HITL gate — so the block exists but nothing has run.
     const state = reduceTimelineEvents(createTimeline(), spawnSubagent());
     const sub = subagentOf(state);
 
     expect(sub).toBeDefined();
     expect(sub?.description).toBe("Write a file");
+    expect(sub?.spawned).toBeFalsy();
+    expect(state.subagentCount).toBe(0);
+  });
+
+  it("counts the sub-agent once it actually spawns", () => {
+    const state = reduceTimelineEvents(createTimeline(), [
+      ...spawnSubagent(),
+      inSubagent({ type: "THINKING_START", timestamp: 1000 }),
+    ]);
+
+    expect(subagentOf(state)?.spawned).toBe(true);
     expect(state.subagentCount).toBe(1);
+  });
+
+  it("never counts a task call that was rejected at the HITL gate", () => {
+    // The bug this guards: a rejected `task` is a refused TOOL CALL, not a
+    // sub-agent. No SUBAGENT_EVENT ever arrives for it, so it must not appear in
+    // the panel — it used to render as a card with no response and no tools.
+    const state = reduceTimelineEvents(createTimeline(), [
+      ...spawnSubagent(),
+      {
+        type: "CUSTOM",
+        name: "HITL_INTERRUPT",
+        value: {
+          thread_id: "thread-1",
+          interrupt: { id: "int-task", value: { action_requests: [{ action: "task" }] } },
+        },
+      },
+      {
+        type: "CUSTOM",
+        name: "BRIDGE_HITL_RESOLVED",
+        value: { interrupt_id: "int-task", decision: "reject" },
+      },
+    ]);
+
+    expect(subagentOf(state)?.spawned).toBeFalsy();
+    expect(state.subagentCount).toBe(0);
   });
 
   it("folds thinking text into the sub-agent's own block, not the top level", () => {

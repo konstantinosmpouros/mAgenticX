@@ -61,6 +61,22 @@ const patchMessage = (messages: MessageOut[], message: MessageOut) => {
 const isActiveRun = (run: InferenceRun | null | undefined) =>
   Boolean(run && ACTIVE_STATUSES.has(String(run.status)));
 
+/**
+ * Has the agent actually started doing something on this run — a timeline block
+ * (thinking/tool/content), a thought, or a pending HITL interrupt?
+ *
+ * A live run with none of these is still in its transition phase: the UI shows
+ * the pulsing bridge dot under the user's message and no thinking block yet.
+ * Shared by the event fold and the optimistic paint below so the two can never
+ * disagree about what counts as "started".
+ */
+const runHasAgentSignal = (run: InferenceRun, thoughts: string[]) =>
+  thoughts.length > 0 || (run.timeline?.blocks.length ?? 0) > 0 || (run.pendingInterrupts ?? 0) > 0;
+
+/** The thoughts a run currently carries, preferring its folded timeline. */
+const runThoughts = (run: InferenceRun): string[] =>
+  run.timeline ? timelineThoughtStrings(run.timeline) : (run.thinking ?? []);
+
 const foldRunSnapshot = (run: InferenceRun): InferenceRun => ({
   ...run,
   timeline: foldTimeline(run.rawEvents, {
@@ -211,14 +227,14 @@ export function useInferenceRuns({
         // interrupt, or the run reaching a terminal state. The /start snapshot
         // alone is NOT a signal — until one arrives the transition dot keeps
         // pulsing under the user's message and no thinking UI is shown.
-        const hasAgentSignal =
-          !active ||
-          thoughts.length > 0 ||
-          (run.timeline?.blocks.length ?? 0) > 0 ||
-          (run.pendingInterrupts ?? 0) > 0;
-        if (hasAgentSignal) {
-          setShowAiTransition?.(false);
-        }
+        const hasAgentSignal = !active || runHasAgentSignal(run, thoughts);
+        // Symmetric on purpose. This used to only ever turn the dot OFF, which
+        // left `showAiTransition` owned solely by the local send/edit/retry
+        // paths — so a run this client did not START had no way to switch it on.
+        // Rejoining a run in its pre-signal phase (hard refresh, re-login, a
+        // second tab, or just navigating back) therefore rendered nothing at all
+        // under the user's message until the agent's first event arrived.
+        setShowAiTransition?.(!hasAgentSignal);
         setThinkingState((prev: ThinkingState | null) => {
           if (!active && (!prev || prev.messageId !== run.assistantMessageId)) {
             return prev;
@@ -355,8 +371,24 @@ export function useInferenceRuns({
   );
 
   useEffect(() => {
+    if (currentActiveRunId) {
+      // Paint the transition dot from the conversation detail, which reports
+      // `activeRunId` well before `getActiveInferenceRuns` and the WebSocket
+      // handshake resolve. Waiting for the socket's snapshot frame is what left
+      // a refresh showing empty space under the user's message for a beat.
+      //
+      // Only when we hold no evidence to the contrary: if a folded run for this
+      // conversation is already in hand and has emitted something, this is a
+      // reconnect mid-answer, not a fresh pre-signal run. Either way the snapshot
+      // lands moments later and `applyRunEvent` reconciles.
+      const conversationId = currentConversationIdRef.current;
+      const known = conversationId ? runsRef.current[conversationId] : undefined;
+      if (!known || !runHasAgentSignal(known, runThoughts(known))) {
+        setShowAiTransition?.(true);
+      }
+    }
     observeRunId(currentActiveRunId);
-  }, [currentActiveRunId, observeRunId]);
+  }, [currentActiveRunId, observeRunId, setShowAiTransition]);
 
   useEffect(() => {
     if (!userId) {
