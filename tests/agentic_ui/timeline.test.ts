@@ -78,7 +78,10 @@ describe("reduceTimelineEvents", () => {
 
   it("refuses to mutate a terminal timeline", () => {
     // A late frame arriving after the run finished must not reopen it.
-    const finished = finalizeTimeline(reduceTimelineEvents(createTimeline(), [text("done")]), "completed");
+    const finished = finalizeTimeline(
+      reduceTimelineEvents(createTimeline(), [text("done")]),
+      "completed",
+    );
     const after = reduceTimelineEvents(finished, [text(" MORE")]);
 
     expect(after).toBe(finished);
@@ -94,13 +97,18 @@ describe("reduceTimelineEvents", () => {
 
     expect(after).not.toBe(before);
     expect(before.blocks).toBe(beforeBlocks);
-    expect((before.blocks.filter((b) => b.kind === "content")[0] as { text: string }).text).toBe("one");
+    expect((before.blocks.filter((b) => b.kind === "content")[0] as { text: string }).text).toBe(
+      "one",
+    );
   });
 });
 
 describe("finalizeTimeline", () => {
   it("marks the run terminal with its status", () => {
-    const state = finalizeTimeline(reduceTimelineEvents(createTimeline(), [text("hi")]), "completed");
+    const state = finalizeTimeline(
+      reduceTimelineEvents(createTimeline(), [text("hi")]),
+      "completed",
+    );
 
     expect(state.terminal).toBe(true);
     expect(state.terminalStatus).toBe("completed");

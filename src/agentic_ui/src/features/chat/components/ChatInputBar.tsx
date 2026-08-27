@@ -19,6 +19,7 @@ import { Loader } from "@/shared/ui/shadcn-io/loader";
 import { Suggestion, Suggestions } from "@/shared/ui/ai-elements/suggestion";
 
 import type { DictationStatus } from "@/shared/lib/types";
+import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 export type { DictationStatus };
 export type ChatInputMode = "chat" | "voice";
 
@@ -962,7 +963,7 @@ export function ChatInputBar(props: ChatInputBarProps) {
                               <TooltipTrigger asChild>
                                 <button
                                   type="button"
-                                  className="w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  className={`w-10 h-10 rounded-full border border-border text-muted-foreground flex items-center justify-center transition-smooth ${INTERACTIVE_SURFACE} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-muted-foreground/60 disabled:opacity-40 disabled:cursor-not-allowed`}
                                   onClick={handleCancelDictation}
                                   disabled={isCancelDisabled}
                                   aria-label="Cancel voice dictation"

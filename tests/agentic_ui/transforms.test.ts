@@ -58,7 +58,10 @@ describe("transformMessage", () => {
       ],
     });
 
-    expect(message.attachments?.[0]).toMatchObject({ origin: "generated", title: "Report" });
+    expect(message.attachments?.[0]).toMatchObject({
+      origin: "generated",
+      title: "Report",
+    });
     // Anything without an explicit origin is an upload — never undefined, or
     // the generated-vs-upload split silently collapses.
     expect(message.attachments?.[1]).toMatchObject({ origin: "upload" });
@@ -89,8 +92,15 @@ describe("transformAgent", () => {
   });
 
   it("falls back to the supplied defaults when the agent is absent", () => {
-    const agent = transformAgent(undefined, { id: "fallback", name: "Archived agent" });
-    expect(agent).toMatchObject({ id: "fallback", name: "Archived agent", isActive: true });
+    const agent = transformAgent(undefined, {
+      id: "fallback",
+      name: "Archived agent",
+    });
+    expect(agent).toMatchObject({
+      id: "fallback",
+      name: "Archived agent",
+      isActive: true,
+    });
   });
 
   it("ignores wrongly-typed fields rather than passing them through", () => {

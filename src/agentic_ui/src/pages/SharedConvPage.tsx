@@ -12,7 +12,7 @@ import { useToast } from "@/shared/hooks/use-toast";
 import { triggerBrowserDownload } from "@/shared/lib/download";
 import { toastError } from "@/shared/lib/toast";
 import { isSessionValid, loadSession, updateSession } from "@/shared/lib/authStorage";
-import { ChatInterface } from "./ChatPage";
+import { StandaloneWorkspace } from "@/app/WorkspaceShell";
 
 const b64ToBlob = (data: string, mime: string) => {
   const bytes = atob(data);
@@ -179,7 +179,9 @@ export default function SharedConversationPage() {
     : null;
 
   if (!loading && detail?.shareMode === "full" && isSessionValid(loadSession())) {
-    return <ChatInterface sharedConversationToken={token} initialSharedConversation={detail} />;
+    return (
+      <StandaloneWorkspace sharedConversationToken={token} initialSharedConversation={detail} />
+    );
   }
 
   return (

@@ -1,4 +1,3 @@
-import { createContext, useContext } from "react";
 import { create } from "zustand";
 
 import { loadSession } from "@/shared/lib/authStorage";
@@ -13,9 +12,6 @@ import type {
   UserProfile,
   UserSkill,
 } from "@/shared/lib/types";
-// Type-only (no runtime import cycle): the full per-render workspace bundle the
-// shell builds and the route views consume.
-import type { ChatWorkspace } from "@/pages/ChatPage";
 
 /**
  * Workspace store — the shared, cross-view client state for the chat workspace.
@@ -245,33 +241,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setActiveProfileTab: (v) => set((s) => ({ activeProfileTab: resolve(v, s.activeProfileTab) })),
 }));
 
-/**
- * The route views' accessor for the workspace bundle.
- *
- * This is a React context, not a store slice, and that is deliberate. The
- * bundle is a per-render snapshot, so publishing it into the store meant
- * writing to an external store *during render* — zustand notifies listeners
- * synchronously, so ChatView/TasksView were force-updated from inside
- * ChatShell's render pass. React answered that with a "Cannot update a
- * component while rendering a different component" warning and, because the
- * render-phase branch defers the forced update, every keystroke in the composer
- * cost two render+commit passes instead of one. The store slot also never
- * cleared on unmount, so this accessor returned a stale bundle instead of
- * throwing its guard.
- *
- * Context has none of those problems: it delivers the current render's value in
- * the same pass, and — importantly for this layout — a context update still
- * reaches consumers even though `<Outlet/>`'s element identity is owned by
- * `<Routes>` and would otherwise let React bail out of the subtree.
- */
-const ChatWorkspaceContext = createContext<ChatWorkspace | null>(null);
-
-export const ChatWorkspaceProvider = ChatWorkspaceContext.Provider;
-
-export function useChatWorkspaceContext(): ChatWorkspace {
-  const workspace = useContext(ChatWorkspaceContext);
-  if (!workspace) {
-    throw new Error("useChatWorkspaceContext must be used within a ChatShell.");
-  }
-  return workspace;
-}
+// The workspace-bundle context used to live here. It moved to
+// `app/workspaceContext.ts` because it is typed by the bundle, and importing
+// that type into `shared/` inverted the one-way `pages → features → shared`
+// dependency rule. This store now knows nothing about the bundle.

@@ -20,9 +20,34 @@ const TESTS_DIR = path.resolve(__dirname, "../../tests/agentic_ui").replace(/\\/
 
 export default defineConfig({
   plugins: [react()],
+  // The tests live outside this package. Under a DOM environment Vitest serves
+  // modules through Vite, whose `fs.allow` sandbox is rooted at the package and
+  // rejects anything above it ("Cannot find module /@fs/...").
+  server: { fs: { allow: [path.resolve(__dirname, "../..")] } },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // The tests live above this package, so Node resolution starts from
+      // tests/agentic_ui/ and never finds this package's node_modules. React
+      // (and its JSX runtimes, which the SWC transform injects) must therefore
+      // be pinned explicitly, or any test containing JSX fails to resolve.
+      "react/jsx-dev-runtime": path.resolve(__dirname, "node_modules/react/jsx-dev-runtime.js"),
+      "react/jsx-runtime": path.resolve(__dirname, "node_modules/react/jsx-runtime.js"),
+      react: path.resolve(__dirname, "node_modules/react"),
+      "react-dom/client": path.resolve(__dirname, "node_modules/react-dom/client.js"),
+      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+      // Same reason — any third-party package a test imports directly needs an
+      // entry here. Keep this list small: if it grows much, that is the signal
+      // to make the repo a real workspace instead.
+      "@testing-library/react": path.resolve(__dirname, "node_modules/@testing-library/react"),
+      "@testing-library/jest-dom/vitest": path.resolve(
+        __dirname,
+        "node_modules/@testing-library/jest-dom/vitest.js",
+      ),
+      "@testing-library/user-event": path.resolve(
+        __dirname,
+        "node_modules/@testing-library/user-event",
+      ),
     },
   },
   test: {
@@ -32,7 +57,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     root: __dirname,
-    setupFiles: [`${TESTS_DIR}/setup.ts`],
+    // Relative, not absolute: an absolute Windows path is rewritten to a
+    // `/@fs/...` URL under a DOM environment and then fails to resolve.
+    setupFiles: ["../../tests/agentic_ui/setup.ts"],
     include: [`${TESTS_DIR}/**/*.{test,spec}.{ts,tsx}`],
     coverage: {
       provider: "v8",

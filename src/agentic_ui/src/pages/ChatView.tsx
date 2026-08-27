@@ -7,7 +7,8 @@ import { PlanCard } from "@/features/chat/components/message_parts/PlanningConta
 import { HitlInputTakeover } from "@/features/chat/components/HitlInputTakeover";
 import { Loader } from "@/shared/ui/shadcn-io/loader";
 
-import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
+import { useChatWorkspaceContext } from "@/app/workspaceContext";
+import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
 /**
  * The conversation surface for routes "/" and "/c/:conversationId": header,
@@ -18,19 +19,11 @@ import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
  */
 export default function ChatView() {
   const {
-    agents,
-    inactiveAgentFallback,
-    selectedAgent,
     handleAgentChange,
     agentTriggerRef,
-    isAgentPickerOpen,
-    setIsAgentPickerOpen,
-    currentConversation,
-    isPrivateMode,
+    overlayMenus,
     handleTogglePrivateMode,
     headerHasDivider,
-    isHeaderActionMenuOpen,
-    setIsHeaderActionMenuOpen,
     handleArchiveCurrentConversation,
     handleUnarchiveCurrentConversation,
     handleReportCurrentConversation,
@@ -44,30 +37,12 @@ export default function ChatView() {
     voiceSession,
     voiceBarReady,
     chatBarReady,
-    isMessagesEmpty,
     settledVoiceActive,
-    attachments,
     thinkingState,
-    currentMessage,
-    setCurrentMessage,
-    handlePaste,
+    composer,
     handleSendMessage,
     handleStopStreaming,
-    isImageFile,
-    getImageUrl,
     handleImageClick,
-    removeAttachment,
-    handleFileUpload,
-    fileInputRef,
-    textareaRef,
-    composerContainerRef,
-    emptyWrapperStyle,
-    textareaMaxHeight,
-    handleDictationSubmit,
-    handleDictationStatusChange,
-    dictationStatus,
-    dictationRequestSignal,
-    dictationCancelSignal,
     triggerVoiceMode,
     toast,
     inputBarAgent,
@@ -80,10 +55,20 @@ export default function ChatView() {
     pendingRunInterrupts,
     resumeInferenceRunHandler,
     canShowStarterSuggestions,
-    starterSuggestions,
     handleStarterSuggestionSelect,
-    loadingConversation,
   } = useChatWorkspaceContext();
+
+  // Read straight from the store rather than through the workspace bundle.
+  // The bundle is one object rebuilt every render, so taking these from it
+  // re-rendered this whole view on every keystroke and every streamed token.
+  // A selector per value re-renders only when that value actually changes.
+  const agents = useWorkspaceStore((s) => s.agents);
+  const currentConversation = useWorkspaceStore((s) => s.currentConversation);
+  const inactiveAgentFallback = useWorkspaceStore((s) => s.inactiveAgentFallback);
+  const isPrivateMode = useWorkspaceStore((s) => s.isPrivateMode);
+  const loadingConversation = useWorkspaceStore((s) => s.loadingConversation);
+  const selectedAgent = useWorkspaceStore((s) => s.selectedAgent);
+  const starterSuggestions = useWorkspaceStore((s) => s.starterSuggestions);
 
   return (
     <>
@@ -94,8 +79,8 @@ export default function ChatView() {
         selectedAgent={selectedAgent}
         onAgentChange={handleAgentChange}
         agentTriggerRef={agentTriggerRef}
-        agentPickerOpen={isAgentPickerOpen}
-        onAgentPickerOpenChange={setIsAgentPickerOpen}
+        agentPickerOpen={overlayMenus.isAgentPickerOpen}
+        onAgentPickerOpenChange={overlayMenus.setIsAgentPickerOpen}
         showPrivateToggle={(currentConversation?.messages?.length ?? 0) === 0 || isPrivateMode}
         isPrivateMode={isPrivateMode}
         onTogglePrivate={handleTogglePrivateMode}
@@ -103,8 +88,8 @@ export default function ChatView() {
         showConversationActions={Boolean(currentConversation?.id)}
         isConversationArchived={Boolean(currentConversation?.isArchived)}
         isConversationReported={Boolean(currentConversation?.isReported)}
-        conversationActionsOpen={isHeaderActionMenuOpen}
-        onConversationActionsOpenChange={setIsHeaderActionMenuOpen}
+        conversationActionsOpen={overlayMenus.isHeaderActionMenuOpen}
+        onConversationActionsOpenChange={overlayMenus.setIsHeaderActionMenuOpen}
         onArchiveConversation={handleArchiveCurrentConversation}
         onUnarchiveConversation={handleUnarchiveCurrentConversation}
         onReportConversation={handleReportCurrentConversation}
@@ -144,40 +129,40 @@ export default function ChatView() {
           voiceBarVisible={voiceBarReady}
           chatBarVisible={chatBarReady}
           // Centered empty state
-          isMessagesEmpty={isMessagesEmpty}
+          isMessagesEmpty={composer.isMessagesEmpty}
           positionClass={
             settledVoiceActive
               ? "sticky bottom-0 left-0 right-0 z-30 p-6"
-              : isMessagesEmpty
+              : composer.isMessagesEmpty
                 ? "absolute left-1/2 top-[35%] z-40 w-full p-6"
                 : "sticky bottom-0 left-0 right-0 z-30 p-6"
           }
 
           // pass through your existing state/handlers/refs
-          attachments={attachments}
+          attachments={composer.attachments}
           isPrivateMode={isPrivateMode}
           thinkingActive={isCurrentConversationBusy && thinkingState?.isActive}
           isStreaming={isCurrentConversationBusy}
-          currentMessage={currentMessage}
-          setCurrentMessage={setCurrentMessage}
-          handlePaste={handlePaste}
+          currentMessage={composer.currentMessage}
+          setCurrentMessage={composer.setCurrentMessage}
+          handlePaste={composer.handlePaste}
           handleSendMessage={handleSendMessage}
           handleStopStreaming={handleStopStreaming}
-          isImageFile={isImageFile}
-          getImageUrl={getImageUrl}
+          isImageFile={composer.isImageFile}
+          getImageUrl={composer.getImageUrl}
           handleImageClick={handleImageClick}
-          removeAttachment={removeAttachment}
-          handleFileUpload={handleFileUpload}
-          fileInputRef={fileInputRef}
-          textareaRef={textareaRef}
-          containerRef={composerContainerRef}
-          emptyWrapperStyle={settledVoiceActive ? undefined : emptyWrapperStyle}
-          textareaMaxHeight={textareaMaxHeight}
-          onDictationSubmit={handleDictationSubmit}
-          onDictationStatusChange={handleDictationStatusChange}
-          dictationStatus={dictationStatus}
-          dictationRequestSignal={dictationRequestSignal}
-          dictationCancelSignal={dictationCancelSignal}
+          removeAttachment={composer.removeAttachment}
+          handleFileUpload={composer.handleFileUpload}
+          fileInputRef={composer.fileInputRef}
+          textareaRef={composer.textareaRef}
+          containerRef={composer.composerContainerRef}
+          emptyWrapperStyle={settledVoiceActive ? undefined : composer.emptyWrapperStyle}
+          textareaMaxHeight={composer.textareaMaxHeight}
+          onDictationSubmit={composer.handleDictationSubmit}
+          onDictationStatusChange={composer.handleDictationStatusChange}
+          dictationStatus={composer.dictationStatus}
+          dictationRequestSignal={composer.dictationRequestSignal}
+          dictationCancelSignal={composer.dictationCancelSignal}
           onVoiceMode={triggerVoiceMode}
           voiceStatus={voiceSession.status}
           voiceMuted={voiceSession.muted}

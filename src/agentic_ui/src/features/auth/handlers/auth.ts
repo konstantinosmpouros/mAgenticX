@@ -25,7 +25,7 @@ import { saveSession, clearSession, loadSession } from "@/shared/lib/authStorage
 import { setUnauthorizedSuppressed } from "@/shared/lib/consts";
 
 // Auth handlers bridge API auth with local session persistence and a full chat-shell reset.
-type AuthCtx = {
+export type AuthCtx = {
   setIsLoggedIn: (v: boolean) => void;
   setUserId: (v: string | null) => void;
   setUserProfile: (v: UserProfile | null) => void;

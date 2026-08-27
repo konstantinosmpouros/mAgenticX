@@ -2,7 +2,8 @@ import { motion } from "framer-motion";
 
 import ScheduledTasksPage from "@/features/tasks/components/ScheduledTasksPage";
 
-import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
+import { useChatWorkspaceContext } from "@/app/workspaceContext";
+import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
 
 /**
  * The scheduled-tasks page for the "/tasks" route. Fills the shell's content
@@ -10,7 +11,10 @@ import { useChatWorkspaceContext } from "@/shared/stores/workspaceStore";
  * workspace context built by ChatShell; navigation drives open/close.
  */
 export default function TasksView() {
-  const { reduceMotion, navigate, scheduledTasks, agents } = useChatWorkspaceContext();
+  const { reduceMotion, navigate, scheduledTasks } = useChatWorkspaceContext();
+  // Store-backed: selecting it here keeps this view out of the bundle's
+  // per-render churn (see ChatView for the same move).
+  const agents = useWorkspaceStore((s) => s.agents);
 
   return (
     <motion.div

@@ -9,6 +9,7 @@ import { HiOutlineUpload } from "react-icons/hi";
 import { useTheme } from "next-themes";
 import { motion, useAnimationControls } from "framer-motion";
 import type { TargetAndTransition, Transition } from "framer-motion";
+import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 
 const TAP_PULSE: TargetAndTransition = { scale: [1, 1.28, 1] };
 const TAP_PULSE_TRANSITION: Transition = { duration: 0.36, ease: [0.34, 1.56, 0.64, 1] };
@@ -127,7 +128,7 @@ export default function ChatHeader({
               // followed by the "might be inactive" indicator, and a fixed
               // floor left that badge stranded far from the chevron on
               // short names. max-w still caps it; the label truncates.
-              className="w-auto max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] justify-start gap-2 px-3 h-11 rounded-xl"
+              className={`w-auto max-w-[16rem] border-0 bg-transparent text-foreground transition-colors focus:ring-0 focus:ring-offset-0 ${INTERACTIVE_SURFACE} justify-start gap-2 px-3 h-11 rounded-xl`}
             >
               <SelectValue placeholder="Select an agent">
                 <div className="flex items-center">
@@ -213,7 +214,7 @@ export default function ChatHeader({
                   className={`inline-flex items-center justify-center leading-none p-3 rounded-full transition-smooth duration-300 ${
                     isPrivateMode
                       ? "text-fuchsia-600 bg-gradient-to-r from-fuchsia-500/20 via-fuchsia-400/25 to-fuchsia-500/20 shadow-[0_0_20px_rgba(217,70,239,0.4)] border border-fuchsia-500/40 hover:shadow-[0_0_25px_rgba(217,70,239,0.5)]"
-                      : "text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]"
+                      : `text-muted-foreground hover:text-foreground ${INTERACTIVE_SURFACE}`
                   }`}
                 >
                   <motion.span animate={privatePulse} className="inline-flex">
@@ -235,7 +236,7 @@ export default function ChatHeader({
                       type="button"
                       onClick={onNewChat}
                       onMouseDown={(e) => e.preventDefault()}
-                      className="md:hidden inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
+                      className={`md:hidden inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth ${INTERACTIVE_SURFACE} focus-visible:outline-none`}
                       aria-label="New chat"
                     >
                       <img
@@ -259,7 +260,7 @@ export default function ChatHeader({
                       onClick={onShareConversation}
                       onMouseDown={(e) => e.preventDefault()}
                       disabled={!canShareConversation || isStreaming}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl h-10 w-10 md:w-auto md:px-3 text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40"
+                      className={`inline-flex items-center justify-center gap-2 rounded-xl h-10 w-10 md:w-auto md:px-3 text-foreground transition-smooth ${INTERACTIVE_SURFACE} focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40`}
                       aria-label="Share full conversation"
                     >
                       <HiOutlineUpload className="h-5 w-5" aria-hidden="true" />
@@ -281,7 +282,7 @@ export default function ChatHeader({
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => moreMenuPulse.start(TAP_PULSE, TAP_PULSE_TRANSITION)}
-                      className="inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
+                      className={`inline-flex items-center justify-center rounded-xl h-10 w-10 text-foreground transition-smooth ${INTERACTIVE_SURFACE} focus-visible:outline-none`}
                       aria-label="Conversation actions"
                     >
                       <motion.span animate={moreMenuPulse} className="inline-flex">

@@ -1,22 +1,44 @@
+// `toBeInTheDocument` and friends. A static import because the module is a
+// global type augmentation, which cannot be `await import()`-ed; it only
+// registers matchers on `expect`, so it is harmless under the node env too.
+import "@testing-library/jest-dom/vitest";
+
 /**
  * Vitest setup, shared by every JS test in this folder.
  *
- * Intentionally near-empty. The suite is pure logic — reducers, wire transforms,
- * session storage — so it runs in the `node` environment with no DOM and no
- * browser-API stubs to maintain.
+ * Runs under BOTH environments: the default `node` (pure-logic tests: reducers,
+ * wire transforms, storage) and `happy-dom` (component tests, opted into per
+ * file with `// @vitest-environment happy-dom` on line 1). Everything
+ * DOM-related is therefore guarded on `window` existing — without the guard the
+ * node-environment tests fail at import before a single assertion runs.
  *
- * When component tests arrive (they land with the ChatPage/workspace-bundle
- * restructure, which is what actually needs them), this is where the jsdom
- * scaffolding goes:
- *   1. `npm i -D jsdom @testing-library/react @testing-library/jest-dom`
- *   2. add `import "@testing-library/jest-dom/vitest";` as a STATIC import here
- *      (it is a global type augmentation and cannot be `await import()`-ed)
- *   3. stub `window.matchMedia` and `ResizeObserver`, which jsdom lacks and the
- *      shell touches on mount
- *   4. opt individual files in with `// @vitest-environment jsdom` on line 1
- *
- * Those packages are deliberately NOT installed yet: nothing imports them, and
- * jsdom additionally requires Node >= 22 (on Node 20 it fails at import with
- * ERR_REQUIRE_ESM from its CSS parser).
+ * happy-dom rather than jsdom: jsdom's CSS parser does `require()` of an ES
+ * module, which needs Node >= 22, and this repo is developed on Node 20.
  */
-export {};
+const hasDom = typeof window !== "undefined";
+
+if (hasDom) {
+  // Not implemented by happy-dom, and the shell touches both on mount.
+  // Stubbing centrally keeps the failure legible: a missing browser API is one
+  // entry here, not a mystery "not a function" inside an unrelated assertion.
+  if (!window.matchMedia) {
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+  }
+
+  if (!window.ResizeObserver) {
+    window.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+}

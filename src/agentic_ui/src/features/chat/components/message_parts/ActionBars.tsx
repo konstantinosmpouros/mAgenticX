@@ -30,6 +30,7 @@ import { BsStopCircleFill } from "react-icons/bs";
 import type { LucideIcon } from "lucide-react";
 import type { MessageOut } from "@/shared/lib/types";
 import { BranchControls } from "./BranchControls";
+import { INTERACTIVE_SURFACE_QUIET } from "@/shared/lib/consts";
 
 type BranchControlsConfig = {
   parentId: string | null;
@@ -238,7 +239,7 @@ export const AIActionBar = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
+                  className={`h-8 w-8 ${INTERACTIVE_SURFACE_QUIET} focus:bg-[hsl(var(--hover-surface-strong))] ${
                     message.liked === true
                       ? "text-[#de8bff] hover:!text-[#de8bff]"
                       : "text-muted-foreground hover:!text-muted-foreground"
@@ -273,7 +274,7 @@ export const AIActionBar = ({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={`h-8 w-8 hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))] ${
+                  className={`h-8 w-8 ${INTERACTIVE_SURFACE_QUIET} focus:bg-[hsl(var(--hover-surface-strong))] ${
                     message.liked === false
                       ? "text-[#de8bff] hover:!text-[#de8bff]"
                       : "text-muted-foreground hover:!text-muted-foreground"

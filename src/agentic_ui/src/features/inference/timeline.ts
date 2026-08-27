@@ -643,6 +643,41 @@ function subEnsureContent(
   return block;
 }
 
+/** Sub-agent mirror of `closeThinking` — closes the open thinking block of one
+ *  sub-agent panel and stamps its end time. */
+function subCloseThinking(
+  session: Session,
+  parentIndex: number,
+  subFold: SubagentFoldIndexes,
+  ts?: number,
+): void {
+  if (subFold.openThinkingIndex === null) return;
+  const block = subBlockForWrite<ThinkingBlock>(session, parentIndex, subFold.openThinkingIndex);
+  if (block.endedAt === undefined && ts !== undefined) {
+    block.endedAt = ts;
+  }
+  subFold.openThinkingIndex = null;
+}
+
+/**
+ * Fold one event that happened *inside* a sub-agent.
+ *
+ * This mirrors `applyEvent`, differing only in where it writes (a sub-agent
+ * panel's blocks instead of the top-level list). The two tables had silently
+ * drifted: `THINKING_START`, `THINKING_END`, `TEXT_MESSAGE_START` and
+ * `BRIDGE_HITL_RESOLVED` were handled only at top level, so a sub-agent's
+ * thinking block never opened or closed on its own events and — worse — an
+ * approval resolved inside a sub-agent never flipped to resolved.
+ *
+ * The remaining asymmetry is deliberate, not drift:
+ *   - `RAW_SSE_EVENT` is sub-only: nested envelopes only arrive inside a
+ *     sub-agent stream.
+ *   - `TASK_SUBAGENT`, `SUBAGENT_EVENT`, `PRESENT_ARTIFACT` and `TOKEN_USAGE`
+ *     are orchestrator-only: they describe the run as a whole, and the
+ *     orchestrator is the only emitter (a sub-agent does not spawn sub-agents,
+ *     and usage is accounted per run).
+ * Add a new event type to BOTH unless it falls into one of those two groups.
+ */
 function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent): void {
   const fold = session.state.fold;
   const parentIndex = fold.subagentIndexByKey[key];
@@ -653,6 +688,38 @@ function applySubagentInnerEvent(session: Session, key: string, inner: RawEvent)
   if (type === "RAW_SSE_EVENT") {
     const parsed = parseRawSseEvent(String(inner.raw_sse ?? ""));
     if (parsed) applySubagentInnerEvent(session, key, parsed);
+    return;
+  }
+
+  if (type === "THINKING_START") {
+    subEnsureThinking(session, parentIndex, subFold, eventTimestamp(inner));
+    return;
+  }
+
+  if (type === "THINKING_END") {
+    subCloseThinking(session, parentIndex, subFold, eventEndTimestamp(inner));
+    return;
+  }
+
+  if (type === "TEXT_MESSAGE_START") {
+    subCloseThinking(session, parentIndex, subFold, eventTimestamp(inner));
+    return;
+  }
+
+  if (type === "CUSTOM" && inner.name === BRIDGE_HITL_RESOLVED_EVENT_TYPE) {
+    // Interrupts live in one flat list on the run regardless of which scope
+    // raised them, so resolution is scope-agnostic — the sub-agent path simply
+    // never called it, leaving an approved sub-agent action stuck as pending.
+    const value = (inner.value ?? {}) as Record<string, any>;
+    const interruptId = value.interrupt_id != null ? String(value.interrupt_id) : null;
+    const rawDecisions = Array.isArray(value.decisions) ? value.decisions : null;
+    const decisions: TimelineHitlActionOutcome[] | undefined = rawDecisions
+      ? rawDecisions.map((d: Record<string, any>) => ({
+          status: d?.decision === "reject" ? "rejected" : "approved",
+          reason: d?.reason ?? null,
+        }))
+      : undefined;
+    resolveInterrupt(session, interruptId, value.decision, value.reason ?? null, decisions);
     return;
   }
 

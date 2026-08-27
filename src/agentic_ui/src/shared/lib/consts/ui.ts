@@ -33,3 +33,24 @@ export const MCP_VARIANTS = {
   // item is selected, and the MCP PNG must match them.
   active: "white" as const,
 };
+
+/**
+ * The standard interactive surface for icon buttons, menu triggers and rails.
+ *
+ * A plain string of real Tailwind utilities, NOT a custom CSS class. That
+ * distinction is the whole point: these are almost always merged with a
+ * component's own `hover:bg-*` via `cn()`, and `tailwind-merge` can only drop
+ * the losing duplicate if it recognises both sides as the same utility group. A
+ * previous attempt extracted this into a `@layer components` class, which
+ * tailwind-merge cannot classify — so a component's internal `hover:bg-accent`
+ * stopped being de-duplicated and won on layer order, silently removing the
+ * hover state from the branch arrows.
+ *
+ * Interpolate it into the class string; do not wrap it in a class of its own.
+ */
+export const INTERACTIVE_SURFACE =
+  "hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]";
+
+/** Same, without the focus-visible fill — for controls that own their focus ring. */
+export const INTERACTIVE_SURFACE_QUIET =
+  "hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))]";

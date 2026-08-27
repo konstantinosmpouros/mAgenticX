@@ -7,6 +7,7 @@
   BranchSelector,
 } from "@/shared/ui/shadcn-io/branch";
 import type { MessageOut } from "@/shared/lib/types";
+import { INTERACTIVE_SURFACE_QUIET } from "@/shared/lib/consts";
 
 type BranchControlsProps = {
   parentId: string | null;
@@ -46,9 +47,13 @@ export function BranchControls({
         from={role}
         className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground/80 px-0"
       >
-        <BranchPrevious className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))]" />
+        <BranchPrevious
+          className={`h-6 w-6 text-muted-foreground hover:text-foreground ${INTERACTIVE_SURFACE_QUIET} focus:bg-[hsl(var(--hover-surface-strong))]`}
+        />
         <BranchPage className="mx-0" />
-        <BranchNext className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus:bg-[hsl(var(--hover-surface-strong))]" />
+        <BranchNext
+          className={`h-6 w-6 text-muted-foreground hover:text-foreground ${INTERACTIVE_SURFACE_QUIET} focus:bg-[hsl(var(--hover-surface-strong))]`}
+        />
       </BranchSelector>
     </Branch>
   );

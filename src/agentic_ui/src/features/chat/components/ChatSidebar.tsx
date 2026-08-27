@@ -48,6 +48,7 @@ import {
 } from "@/shared/ui/sidebar";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { INTERACTIVE_SURFACE } from "@/shared/lib/consts";
 
 type ChatSidebarProps = {
   conversations: ConversationSummary[];
@@ -437,7 +438,7 @@ export default function ChatSidebar({
               tooltip="Go to workspace"
               onClick={handleTitleClickInternal}
               className={cn(
-                "group items-center gap-3 rounded-lg bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                `group items-center gap-3 rounded-lg bg-transparent px-3 py-3 text-left transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
                 // Collapsed: only drop to the shared px-1.5 lead (justify-start, full
                 // width) so the logo centers at the same x as every other icon. Height
                 // stays h-12 (size lg) in BOTH states — changing it would shift the logo
@@ -471,7 +472,9 @@ export default function ChatSidebar({
               showOnHover={false}
               className="right-2 top-1.5 -translate-y-0.5 group-data-[collapsible=icon]:hidden"
             >
-              <SidebarTrigger className="size-9 [&_svg]:h-5 [&_svg]:w-5 supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]" />
+              <SidebarTrigger
+                className={`size-9 [&_svg]:h-5 [&_svg]:w-5 supports-[hover:hover]:${INTERACTIVE_SURFACE}`}
+              />
             </SidebarMenuAction>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -485,7 +488,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
               tooltip="Search"
             >
@@ -503,7 +506,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
               tooltip="New chat"
             >
@@ -526,7 +529,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
               tooltip="Voice mode"
             >
@@ -544,7 +547,7 @@ export default function ChatSidebar({
                 // Frozen by construction: a constant px-1.5 lead + full width in both
                 // states keeps the icon pinned at the same x (centered when collapsed,
                 // see SIDEBAR_WIDTH_ICON), so only the rail width animates around it.
-                "!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                `!flex !h-10 gap-1 items-center rounded-lg bg-transparent px-1.5 py-1 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
               )}
               tooltip="Scheduled tasks"
             >
@@ -801,7 +804,7 @@ export default function ChatSidebar({
                         // a constant px-1.5 lead keeps the avatar pinned at the same x in both
                         // states (centered when collapsed, see SIDEBAR_WIDTH_ICON), so toggling
                         // the rail never shifts it.
-                        "!flex items-center gap-1 rounded-lg bg-transparent px-1.5 py-2 transition supports-[hover:hover]:hover:bg-[hsl(var(--hover-surface))] active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))]",
+                        `!flex items-center gap-1 rounded-lg bg-transparent px-1.5 py-2 transition supports-[hover:hover]:${INTERACTIVE_SURFACE}`,
                         "group-data-[collapsible=icon]:!h-12",
                         "group-data-[collapsible=icon]:supports-[hover:hover]:hover:bg-transparent group-data-[collapsible=icon]:focus-visible:bg-transparent group-data-[collapsible=icon]:active:bg-transparent",
                         profileMenuOpen && "bg-[hsl(var(--hover-surface))]",

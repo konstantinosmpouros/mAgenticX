@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { ChatShell } from "./pages/ChatPage";
+import { WorkspaceShell } from "./app/WorkspaceShell";
 import ChatView from "./pages/ChatView";
 import TasksView from "./pages/TasksView";
 import NotFound from "./pages/NotFound";
@@ -33,11 +33,11 @@ const App = () => {
           <Toaster />
           {consented ? (
             <Routes>
-              {/* Layout route: ChatShell is the persistent shell (sidebar,
+              {/* Layout route: WorkspaceShell is the persistent shell (sidebar,
                   providers, modals) and never unmounts across these children.
                   The URL is the single source of truth for which view renders
                   in the shell's <Outlet/>. */}
-              <Route element={<ChatShell />}>
+              <Route element={<WorkspaceShell />}>
                 <Route path="/" element={<ChatView />} />
                 <Route path="/c/:conversationId" element={<ChatView />} />
                 <Route path="/tasks" element={<TasksView />} />

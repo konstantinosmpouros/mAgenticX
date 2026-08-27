@@ -1,5 +1,3 @@
-import type { Dispatch, SetStateAction } from "react";
-
 // Global "dismiss the top-most transient UI" cascade, invoked on Escape and
 // click-away. Order is load-bearing: the first open surface is closed and the
 // function returns true so the caller can swallow the event; it returns false
@@ -19,8 +17,8 @@ export type DismissActiveUiCtx = {
   isSidebarFloatingUiOpen: boolean;
   editingMessageId: unknown;
   closeSearchPanel: () => void;
-  handleCloseFilePreview: () => void;
-  handleCloseImagePreview: () => void;
+  closeFilePreview: () => void;
+  closeImagePreview: () => void;
   cancelDictation: () => void;
   closeReportDialog: () => void;
   closeShareDialog: () => void;
@@ -28,9 +26,13 @@ export type DismissActiveUiCtx = {
   closeShortcutsPanel: () => void;
   closeHelpPanel: () => void;
   handleCancelEditMessage: () => void;
-  setIsAgentPickerOpen: Dispatch<SetStateAction<boolean>>;
-  setIsHeaderActionMenuOpen: Dispatch<SetStateAction<boolean>>;
-  setSidebarDismissFloatingUiSignal: Dispatch<SetStateAction<number>>;
+  closeAgentPicker: () => void;
+  closeHeaderActionMenu: () => void;
+  /**
+   * The sidebar's menus are owned by Radix inside ChatSidebar, so this cascade
+   * can only *request* a dismissal rather than perform one.
+   */
+  dismissSidebarFloatingUi: () => void;
 };
 
 export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
@@ -49,8 +51,8 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
     isSidebarFloatingUiOpen,
     editingMessageId,
     closeSearchPanel,
-    handleCloseFilePreview,
-    handleCloseImagePreview,
+    closeFilePreview,
+    closeImagePreview,
     cancelDictation,
     closeReportDialog,
     closeShareDialog,
@@ -58,9 +60,9 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
     closeShortcutsPanel,
     closeHelpPanel,
     handleCancelEditMessage,
-    setIsAgentPickerOpen,
-    setIsHeaderActionMenuOpen,
-    setSidebarDismissFloatingUiSignal,
+    closeAgentPicker,
+    closeHeaderActionMenu,
+    dismissSidebarFloatingUi,
   } = ctx;
 
   if (isSearchOpen) {
@@ -69,12 +71,12 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
   }
 
   if (selectedFilePreview) {
-    handleCloseFilePreview();
+    closeFilePreview();
     return true;
   }
 
   if (selectedImage) {
-    handleCloseImagePreview();
+    closeImagePreview();
     return true;
   }
 
@@ -109,17 +111,17 @@ export function runActiveUiDismissal(ctx: DismissActiveUiCtx): boolean {
   }
 
   if (isAgentPickerOpen) {
-    setIsAgentPickerOpen(false);
+    closeAgentPicker();
     return true;
   }
 
   if (isHeaderActionMenuOpen) {
-    setIsHeaderActionMenuOpen(false);
+    closeHeaderActionMenu();
     return true;
   }
 
   if (isSidebarFloatingUiOpen) {
-    setSidebarDismissFloatingUiSignal((prev) => prev + 1);
+    dismissSidebarFloatingUi();
     return true;
   }
 
