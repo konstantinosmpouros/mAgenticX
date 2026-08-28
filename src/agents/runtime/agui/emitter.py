@@ -33,6 +33,10 @@ from runtime.agui.events import (
     # Agent-designated deliverable
     PRESENT_ARTIFACT_EVENT_TYPE,
     PresentArtifactEvent,
+
+    # Agent-rendered inline chart
+    RENDER_CHART_EVENT_TYPE,
+    RenderChartEvent,
 )
 from ag_ui.core import (
     EventType,
@@ -367,6 +371,50 @@ class AGUIEmitter:
         custom_event = CustomEvent(
             type=EventType.CUSTOM,
             name=PRESENT_ARTIFACT_EVENT_TYPE,
+            value=payload.model_dump(),
+        )
+        return self._emit(custom_event, writer, namespace)
+
+
+    # ---------- Render chart (custom event) ----------
+    def render_chart(
+        self,
+        *,
+        chart_id: str,
+        type: str,
+        title: str,
+        x_key: str,
+        series: list,
+        data: list,
+        subtitle: Optional[str] = None,
+        stacked: bool = False,
+        horizontal: bool = False,
+        show_values: bool = False,
+        writer: Any = None,
+        namespace: Optional[str] = None,
+    ) -> CustomEvent:
+        """Create a render-chart custom event and optionally emit it.
+
+        Synthesized by the normalizer when the orchestrator calls the
+        ``render_chart`` tool — the tool itself never emits (deep agents don't
+        stream the custom channel). Carries the whole chart: a chart has no
+        bytes on disk, so unlike an artifact there is nothing to fetch later.
+        """
+        payload = RenderChartEvent(
+            chart_id=chart_id,
+            type=type,
+            title=title,
+            subtitle=subtitle,
+            x_key=x_key,
+            series=series,
+            data=data,
+            stacked=stacked,
+            horizontal=horizontal,
+            show_values=show_values,
+        )
+        custom_event = CustomEvent(
+            type=EventType.CUSTOM,
+            name=RENDER_CHART_EVENT_TYPE,
             value=payload.model_dump(),
         )
         return self._emit(custom_event, writer, namespace)

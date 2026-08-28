@@ -6,6 +6,8 @@ import {
   PlanSnapshotSchema,
   PRESENT_ARTIFACT_EVENT_TYPE,
   PresentArtifactPayloadSchema,
+  RENDER_CHART_EVENT_TYPE,
+  RenderChartPayloadSchema,
   SUBAGENT_EVENT_TYPE,
   SubAgentPayloadSchema,
   TASK_SUBAGENT_EVENT_TYPE,
@@ -15,6 +17,7 @@ import {
 import { parseHitlInterrupt } from "./hitl";
 import type {
   ArtifactBlock,
+  ChartBlock,
   ContentBlock,
   PendingToolRetool,
   RunTimeline,
@@ -248,6 +251,56 @@ function pushArtifactBlock(
     title: data.title || undefined,
     summary: data.summary || undefined,
     mime: data.mime || undefined,
+  };
+  session.state.blocks.push(block);
+  session.clonedBlocks.add(session.state.blocks.length - 1);
+}
+
+function pushChartBlock(
+  session: Session,
+  data: {
+    chart_id: string;
+    type: ChartBlock["chartType"];
+    title: string;
+    subtitle?: string | null;
+    x_key: string;
+    series: {
+      key: string;
+      label: string;
+      type?: "bar" | "line" | "area" | null;
+      axis?: "left" | "right" | null;
+    }[];
+    data: Record<string, string | number | null>[];
+    stacked?: boolean | null;
+    horizontal?: boolean | null;
+    show_values?: boolean | null;
+  },
+  ts?: number,
+): void {
+  // Interleave at the log position, exactly as an artifact card does: close
+  // both open blocks so any orchestrator text after the chart starts a fresh
+  // content block below it, preserving the "text -> chart -> text" order.
+  const fold = session.state.fold;
+  closeThinking(session, ts);
+  fold.openContentIndex = null;
+  const block: ChartBlock = {
+    kind: "chart",
+    id: nextBlockId(session),
+    chartId: data.chart_id,
+    chartType: data.type,
+    title: data.title,
+    subtitle: data.subtitle || undefined,
+    xKey: data.x_key,
+    series: data.series.map((s) => ({
+      key: s.key,
+      label: s.label,
+      ...(s.type ? { type: s.type } : {}),
+      ...(s.axis ? { axis: s.axis } : {}),
+    })),
+    data: data.data,
+    stacked: Boolean(data.stacked),
+    horizontal: Boolean(data.horizontal),
+    showValues: Boolean(data.show_values),
   };
   session.state.blocks.push(block);
   session.clonedBlocks.add(session.state.blocks.length - 1);
@@ -692,7 +745,8 @@ function subCloseThinking(
  * The remaining asymmetry is deliberate, not drift:
  *   - `RAW_SSE_EVENT` is sub-only: nested envelopes only arrive inside a
  *     sub-agent stream.
- *   - `TASK_SUBAGENT`, `SUBAGENT_EVENT`, `PRESENT_ARTIFACT` and `TOKEN_USAGE`
+ *   - `TASK_SUBAGENT`, `SUBAGENT_EVENT`, `PRESENT_ARTIFACT`, `RENDER_CHART` and
+ *     `TOKEN_USAGE`
  *     are orchestrator-only: they describe the run as a whole, and the
  *     orchestrator is the only emitter (a sub-agent does not spawn sub-agents,
  *     and usage is accounted per run).
@@ -844,6 +898,13 @@ function applyEvent(session: Session, event: RawEvent): void {
       const parsed = PresentArtifactPayloadSchema.safeParse(event.value);
       if (!parsed.success) return;
       pushArtifactBlock(session, parsed.data, eventTimestamp(event));
+      return;
+    }
+
+    if (name === RENDER_CHART_EVENT_TYPE) {
+      const parsed = RenderChartPayloadSchema.safeParse(event.value);
+      if (!parsed.success) return;
+      pushChartBlock(session, parsed.data, eventTimestamp(event));
       return;
     }
 

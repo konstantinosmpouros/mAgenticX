@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from runtime.tools.charts import build_render_chart_tool
 from runtime.tools.create_skill import build_create_skill_tool
 from runtime.tools.memory_search import build_memory_search_tool
 from runtime.tools.present_artifact import build_present_artifact_tool
@@ -82,6 +83,7 @@ def register_native_tool(defn: NativeToolDef) -> NativeToolDef:
 #   search_past_conversations → attached when the user opted into search_past_convs
 #   present_artifact       → attached whenever there is a conversation to point into
 #   create_skill           → always attached (HITL-gated; writes to the user's pool)
+#   render_chart           → attached whenever there is a conversation to draw into
 
 register_native_tool(
     NativeToolDef(
@@ -111,6 +113,25 @@ register_native_tool(
                 conversation_id=ctx.conversation_id,
             )
             if ctx.search_past_convs
+            else None
+        ),
+    )
+)
+
+register_native_tool(
+    NativeToolDef(
+        name="render_chart",
+        description="Draw a chart inline in the reply from data the agent supplies.",
+        auto_attach=True,
+        # Not HITL-gated: it draws, it does not write. Nothing leaves the run —
+        # the payload is projected to the plotted fields and rendered in the
+        # timeline, so there is no side effect for a human to approve.
+        builder=lambda ctx: (
+            build_render_chart_tool(
+                agent_slug=ctx.agent_slug,
+                conversation_id=ctx.conversation_id,
+            )
+            if ctx.conversation_id
             else None
         ),
     )

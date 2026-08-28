@@ -2,6 +2,7 @@ import json
 import mimetypes
 from typing import Any, List, Optional, Tuple, Dict
 from runtime.agui.emitter import AGUIEmitter
+from runtime.tools.charts import normalize_chart_payload
 
 
 _ALLOWED_MODES = {"messages", "updates"}
@@ -412,6 +413,29 @@ class AGUIStreamNormalizer:
                                         summary=summary,
                                         mime=mimetypes.guess_type(filename)[0],
                                         namespace=ns_label,
+                                    ),
+                                )
+                        self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later
+                        continue
+
+                    if tc_name == "render_chart":
+                        # A chart the agent chose to draw → an inline chart
+                        # block. Top-level orchestrator only, same reasoning as
+                        # present_artifact: a sub-agent's chart is scratch, and
+                        # the orchestrator draws what the user should see. The
+                        # payload is normalized here (bounded, coerced, and
+                        # projected to just the plotted fields) so the event
+                        # carries a renderable chart or no event fires at all.
+                        if namespace is None and isinstance(tc_args, dict):
+                            payload = normalize_chart_payload(tc_args)
+                            if payload is not None:
+                                self._end_thinking_if_needed(out, ns_label)
+                                self._push(
+                                    out,
+                                    self.emitter.render_chart(
+                                        chart_id=tc_id,
+                                        namespace=ns_label,
+                                        **payload,
                                     ),
                                 )
                         self._ignored_tool_call_ids.add(tc_id)  # ignore ToolMessage if it appears later

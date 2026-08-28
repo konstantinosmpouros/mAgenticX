@@ -23,7 +23,7 @@
 
 ## Agentic UI
 
-- Chart can be visualized with [shadcn/charts](https://www.shadcn.io/charts) and the agent can have a custom tool like the todo tool in order to represent the chart and create a custom AGUI event for the interaction with the chart.
+- Charts — **rendering is done** (`render_chart` native tool → `RENDER_CHART` AG-UI event → `ChartBlock` in the timeline reducer → `ChartCard` on shadcn/charts; bar/line/area/pie, theme-assigned colors, survives reload via `raw_events`). **Remaining: interaction.** The chart is read-only today — tooltips and legend only. Wanted: click/select a point or slice and feed that selection back to the agent as a follow-up turn, which needs a client→agent event on the AG-UI channel (the protocol is one-way today) and a decision on whether a selection edits the run or starts a new one.
 - Profile panel — implement the "coming soon / not implemented" placeholders left by the ChatGPT-taxonomy refactor:
   - **Stub sections** (full ComingSoon pages): Notifications (lands with the Notification system + PWA item above), Plugins (OAuth app connectors — distinct from MCP Servers), Storage (attachment/artifact quotas + cleanup), Safety (content-safety / moderation preferences).
   - **Stub rows** inside real tabs: General → Accent color, UI language; Data controls → improve-the-model opt-in, Export data, Delete account; Security → Multi-factor authentication, Log out of all devices (needs a revoke-all path in the stateless-JWT auth).

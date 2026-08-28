@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type {
   ArtifactBlock,
+  ChartBlock,
   AttachmentOut,
   ContentBlock,
   MessageOut,
@@ -11,6 +12,7 @@ import type {
 } from "@/shared/lib/types";
 import { subagentBlockToItem } from "@/features/inference";
 import { ArtifactCard } from "./ArtifactCard";
+import { ChartCard } from "./ChartCard";
 import { ContentBlockView } from "./Content";
 import { CoTBlock } from "./CoTBlock";
 import { SubagentCard } from "./SubagentContainer";
@@ -42,6 +44,7 @@ export const BLOCK_REGISTRY: Record<
   (block: TimelineBlock, ctx: BlockRenderContext) => ReactNode
 > = {
   content: (block) => <ContentBlockView block={block as ContentBlock} />,
+  chart: (block) => <ChartCard block={block as ChartBlock} />,
   artifact: (block, ctx) => (
     <ArtifactCard
       block={block as ArtifactBlock}

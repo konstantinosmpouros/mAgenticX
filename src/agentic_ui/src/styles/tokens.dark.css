@@ -41,6 +41,14 @@
     --input: 240 4% 16%;
     --ring: transparent;
 
+    /* Chart series palette — same hues as light, lifted in lightness and eased
+       in saturation so they read against the dark surface without glowing. */
+    --chart-1: 293 82% 72%;
+    --chart-2: 199 85% 62%;
+    --chart-3: 152 55% 56%;
+    --chart-4: 33 90% 62%;
+    --chart-5: 349 82% 70%;
+
     /* Neutral hover surfaces for dark theme */
     --hover-surface: 240 4% 16%;
     --hover-surface-strong: 240 4% 12%;

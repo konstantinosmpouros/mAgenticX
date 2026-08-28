@@ -46,6 +46,16 @@ All colors MUST be HSL.
     --input: 240 5.9% 90%;
     --ring: transparent;
 
+    /* Chart series palette — assigned by series index in ChartCard, so an
+       agent never sends a color and every chart stays theme-correct. Hues are
+       spread around the wheel from the brand primary (293) and kept at a
+       lightness that holds >=3:1 against the light surface. */
+    --chart-1: 293 70% 52%;
+    --chart-2: 199 82% 42%;
+    --chart-3: 152 58% 36%;
+    --chart-4: 33 88% 46%;
+    --chart-5: 349 72% 52%;
+
     /* Neutral hover surfaces for light theme */
     --hover-surface: 240 5% 90%;
     --hover-surface-strong: 240 5% 86%;

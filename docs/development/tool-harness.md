@@ -30,7 +30,7 @@ A deep agent's live toolset is drawn from four distinct sources. Only one class 
 | Class | Examples | Origin | How it attaches | Disable-able |
 | --- | --- | --- | --- | --- |
 | **framework** | `write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `task` | Provided by the **deepagents** library — not our code. | Added inside `create_deep_agent(...)`. Names are *reserved*; a colliding MCP tool is dropped. | No — always present |
-| **native · auto-attach** | `remember`, `search_past_conversations`, `present_artifact`, `create_skill` | **Custom-made, platform-owned.** Registered in `runtime/tools/registry.py` with `auto_attach=True`. | Given to every deep agent via `_builtin_tools()`, each behind a gate. | No via the Agents tab — `remember`/`search_past_conversations` follow the Personalization prefs; `present_artifact` and `create_skill` are always on |
+| **native · auto-attach** | `remember`, `search_past_conversations`, `render_chart`, `present_artifact`, `create_skill` | **Custom-made, platform-owned.** Registered in `runtime/tools/registry.py` with `auto_attach=True`. | Given to every deep agent via `_builtin_tools()`, each behind a gate. | No via the Agents tab — `remember`/`search_past_conversations` follow the Personalization prefs; `render_chart`, `present_artifact` and `create_skill` are always on |
 | **native · opt-in** | *(slot exists; none shipped — the three above are all auto-attach)* | Same registry, `auto_attach=False`. | Declared in `agent.yaml` as `{ native: <name> }`, resolved by `resolve_native_tool()`. | No via the Agents tab (as above) |
 | **MCP** | `tavily/tavily-search`, `arxiv/download_paper` | External servers behind the MCP gateway — a **live manifest**, not code. | Declared in `agent.yaml` (`tool_name` + `server_id`); or **enabled per agent** from the gateway catalog (Agents tab). Filtered from the live manifest at stream time. | Yes — per (user, agent): disable a declared one, or enable any gateway tool |
 
@@ -96,10 +96,11 @@ Each auto-attach builtin's `builder(ctx)` returns the tool **or** `None` when it
 | --- | --- | --- |
 | `remember` | Writes a durable fact to this (user, agent)'s long-term memory. | `use_memory` is on (same flag that mounts `/memories/`) |
 | `search_past_conversations` | Semantic recall across the user's earlier conversations (pgvector). | `search_past_convs` is opted in |
+| `render_chart` | Draws a chart inline in the reply from data the agent supplies — 8 types (`bar`, `line`, `area`, `pie`, `radar`, `radial`, `scatter`, `composed`) and 3 modifiers (`stacked`, `horizontal`, `show_values`). Not HITL-gated — it draws, it does not write. | a `conversation_id` exists (no preference gate) |
 | `present_artifact` | Marks a finished `output/` file as a user-facing deliverable. | a `conversation_id` exists (no preference gate) |
 | `create_skill` | Authors a reusable skill into the user's pool (`add_custom_to_user`) and enables it for the calling agent (`assign_user_skill_to_agent`). Writes the **user-managed** tier, so the user can still disable it in Settings → Agents — not the read-only tier `sync_agent_default_skills` fills from an agent's declared `skills:`. | ungated, but **approval-gated by default** (see below) |
 
-Registration order in `registry.py` is the attach order: `remember → search_past_conversations → present_artifact → create_skill`. These three are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, and `present_artifact` is always on.
+Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → present_artifact → create_skill`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
 
 ---
 
@@ -211,7 +212,7 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Native-tool registry + builtins + gates | [src/agents/runtime/tools/registry.py](../../src/agents/runtime/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
-| Builtin implementations | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | `remember.py`, `memory_search.py`, `present_artifact.py`, `create_skill.py` |
+| Builtin implementations | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | `remember.py`, `memory_search.py`, `charts.py`, `present_artifact.py`, `create_skill.py` |
 | Assembly + builtins + disable filter | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
 | MCP filter (`attach_tools`, cache keys) | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
 | YAML → spec tools (native + MCP) | [src/agents/runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |

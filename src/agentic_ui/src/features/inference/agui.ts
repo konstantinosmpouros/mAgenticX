@@ -22,6 +22,7 @@ export const SUBAGENT_EVENT_TYPE = "SUBAGENT_EVENT" as const;
 export const BEFORE_AGENT_EVENT_TYPE = "BEFORE_AGENT_EVENT" as const;
 export const TOKEN_USAGE_EVENT_TYPE = "TOKEN_USAGE" as const;
 export const PRESENT_ARTIFACT_EVENT_TYPE = "PRESENT_ARTIFACT" as const;
+export const RENDER_CHART_EVENT_TYPE = "RENDER_CHART" as const;
 
 export const PLAN_SNAPSHOT_EVENT_NAMES = [PLAN_SNAPSHOT_EVENT_TYPE, "plan_snapshot"] as const;
 
@@ -101,4 +102,34 @@ export const PresentArtifactPayloadSchema = z.object({
   summary: z.string().nullish(),
   mime: z.string().nullish(),
   status: z.string().nullish(),
+});
+
+// ------------------------------------------------------
+// Render Chart (agent-drawn inline chart)
+// ------------------------------------------------------
+// The agents service normalizes the payload before emitting — rows are already
+// bounded, numerically coerced, and projected to xKey + the series keys — so
+// this contract validates the shape rather than re-parsing the data. A row
+// value is number | null (a null is a real gap) or a string (the category).
+export const ChartSeriesSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  // Composed charts only; absent elsewhere, hence nullish rather than required.
+  type: z.enum(["bar", "line", "area"]).nullish(),
+  axis: z.enum(["left", "right"]).nullish(),
+});
+
+export const RenderChartPayloadSchema = z.object({
+  chart_id: z.string(),
+  type: z.enum(["bar", "line", "area", "pie", "radar", "radial", "scatter", "composed"]),
+  title: z.string(),
+  subtitle: z.string().nullish(),
+  x_key: z.string(),
+  series: z.array(ChartSeriesSchema).min(1),
+  data: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()]))).min(1),
+  // Reconciled against `type` agents-side before emission, so an inapplicable
+  // flag is already false here. Nullish so an older event still parses.
+  stacked: z.boolean().nullish(),
+  horizontal: z.boolean().nullish(),
+  show_values: z.boolean().nullish(),
 });

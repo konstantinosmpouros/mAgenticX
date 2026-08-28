@@ -129,7 +129,51 @@ export type ArtifactBlock = {
   mime?: string;
 };
 
-export type TimelineBlock = ThinkingBlock | ContentBlock | SubagentBlock | ArtifactBlock;
+// A chart the agent drew via render_chart, folded into the timeline at the log
+// position the RENDER_CHART event fired — same interleaving discipline as an
+// artifact card, so "text -> chart -> text" renders in the order the agent
+// produced it. Unlike an artifact this block IS the chart: there are no bytes
+// behind it, so it needs no attachment and survives reload purely by being
+// replayed from the run's raw_events.
+//
+// Colors are deliberately absent. ChartCard assigns them from the theme
+// palette (--chart-1..5) by series index, so the same chart is readable in
+// light and dark mode and no agent can pin a failing contrast.
+export type ChartType =
+  "bar" | "line" | "area" | "pie" | "radar" | "radial" | "scatter" | "composed";
+
+export type ChartSeries = {
+  key: string;
+  label: string;
+  // Composed charts only: how this series draws itself, and which y-axis it is
+  // measured against. Absent on every other type, where chartType decides.
+  type?: "bar" | "line" | "area";
+  axis?: "left" | "right";
+};
+
+export type ChartBlock = {
+  kind: "chart";
+  id: string;
+  chartId: string;
+  chartType: ChartType;
+  title: string;
+  subtitle?: string;
+  // A category label for every type except "scatter", where it names a numeric
+  // field — the one place the two data shapes differ.
+  xKey: string;
+  series: ChartSeries[];
+  // Each row holds xKey plus one numeric field per series key. A null measure
+  // is a genuine gap (the agent had no value), never a zero.
+  data: Record<string, string | number | null>[];
+  // Presentation modifiers, already reconciled against chartType by the agents
+  // service — an inapplicable flag arrives false, so the renderer can trust it.
+  stacked?: boolean;
+  horizontal?: boolean;
+  showValues?: boolean;
+};
+
+export type TimelineBlock =
+  ThinkingBlock | ContentBlock | SubagentBlock | ArtifactBlock | ChartBlock;
 
 export type TimelineTerminalStatus = "completed" | "cancelled" | "failed";
 

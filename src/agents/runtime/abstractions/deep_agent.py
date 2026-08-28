@@ -60,6 +60,7 @@ RESERVED_DEEPAGENT_TOOL_NAMES: Set[str] = {
 
     # built-in deliverables
     "present_artifact",
+    "render_chart",
 
     # built-in skill authoring
     "create_skill",
