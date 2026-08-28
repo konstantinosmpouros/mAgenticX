@@ -20,7 +20,6 @@ export type CustomInstructions = {
 };
 
 export type UserPreferences = {
-  prefersAgenticChat?: boolean;
   suggestionsEnabled?: boolean;
   showMessageTokenUsage?: boolean;
   searchPastConvs?: boolean;

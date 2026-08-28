@@ -32,6 +32,12 @@ class SkillManifestEntry(BaseModel):
 
     ``category`` is the parent folder name in the global hierarchy — empty
     for custom skills.
+
+    ``origin`` records who authored the skill. It defaults to ``"user"`` so every
+    manifest written before agent authoring existed deserialises unchanged and
+    reads as user-authored — which is true. The version stays 1: nothing about
+    the addition is breaking, and bumping it would imply a migration branch that
+    does not exist.
     """
 
     name: str
@@ -39,6 +45,11 @@ class SkillManifestEntry(BaseModel):
     description: str = ""
     source_path: str
     category: str = ""
+    origin: Literal["user", "agent"] = "user"
+    #: Slug of the agent that authored this skill; None for user-authored ones.
+    created_by_agent: str | None = None
+    #: ISO-8601 UTC timestamp of authoring; None for entries predating provenance.
+    created_at: str | None = None
 
 
 class GlobalManifest(BaseModel):

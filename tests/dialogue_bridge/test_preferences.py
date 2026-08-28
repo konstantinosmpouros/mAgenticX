@@ -6,7 +6,6 @@ async def test_get_user_preferences_defaults_when_no_row_exists(client, seeded_u
 
     assert response.status_code == 200
     assert response.json() == {
-        "prefersAgenticChat": False,
         "suggestionsEnabled": True,
         "showMessageTokenUsage": False,
         "searchPastConvs": False,
@@ -28,11 +27,12 @@ async def test_put_user_preferences_normalizes_unsupported_voice_and_language(cl
     """Unknown voice/language values fail closed to the defaults, and the saved
     document round-trips. Tool enablement is deliberately absent: it is no longer
     a preference (see migration 0016) — it lives per (user, agent) on the agents
-    service, so a preferences PUT can neither enable nor disable a tool."""
+    service, so a preferences PUT can neither enable nor disable a tool.
+    `prefersAgenticChat` is absent for the same reason (see migration 0018):
+    it was stored and returned but never consumed, so it was retired."""
     response = await client.put(
         f"/v1/preferences/{seeded_user.id}",
         json={
-            "prefersAgenticChat": True,
             "suggestionsEnabled": False,
             "voiceModeVoice": "unsupported-realtime-voice",
             "voiceModeLanguage": "unsupported-language",
@@ -41,7 +41,6 @@ async def test_put_user_preferences_normalizes_unsupported_voice_and_language(cl
 
     assert response.status_code == 200
     assert response.json() == {
-        "prefersAgenticChat": True,
         "suggestionsEnabled": False,
         "showMessageTokenUsage": False,
         "searchPastConvs": False,

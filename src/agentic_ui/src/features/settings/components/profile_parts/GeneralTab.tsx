@@ -1,7 +1,7 @@
 import { useTheme } from "next-themes";
 import { MoonStar, Sparkles } from "lucide-react";
 
-import { cn, fmtBoolean } from "@/shared/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import type { UserPreferences } from "@/shared/lib/types";
 import { InfoCard, PrefToggleRow, SoftPanel } from "./shared";
 import { ComingSoonRow } from "./ComingSoon";
@@ -48,10 +48,6 @@ export default function GeneralTab({
 
   const suggestionsEnabled = userPreferences?.suggestionsEnabled !== false;
   const showMessageTokenUsage = userPreferences?.showMessageTokenUsage === true;
-  const prefersAgentic =
-    typeof userPreferences?.prefersAgenticChat === "boolean"
-      ? userPreferences.prefersAgenticChat
-      : undefined;
 
   return (
     <div className="space-y-8">
@@ -135,19 +131,6 @@ export default function GeneralTab({
             disabled={preferencesSaving}
             onToggle={onToggleMessageTokenUsage}
           />
-          <div className="px-5 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">Agentic chat</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Whether this profile prefers the agentic chat experience.
-                </p>
-              </div>
-              <span className="inline-flex rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {fmtBoolean(prefersAgentic)}
-              </span>
-            </div>
-          </div>
         </SoftPanel>
       </InfoCard>
 

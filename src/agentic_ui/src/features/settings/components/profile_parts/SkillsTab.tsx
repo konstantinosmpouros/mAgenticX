@@ -548,7 +548,7 @@ export default function SkillsTab({
                           animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
                           exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
                           transition={{ duration: 0.15, ease: "easeOut" }}
-                          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="absolute inset-y-0 right-2 my-auto flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <X className="h-3.5 w-3.5" />
                         </motion.button>

@@ -17,8 +17,6 @@ import { PREFERENCES_BASE_PATH, USAGE_BASE_PATH } from "./paths";
 // drift. Tool disable-list entries are passed through verbatim.
 function mapUserPreferences(data: unknown) {
   const record = (data ?? {}) as Record<string, unknown>;
-  const prefersAgenticChat =
-    typeof record.prefersAgenticChat === "boolean" ? record.prefersAgenticChat : false;
   const suggestionsEnabled =
     typeof record.suggestionsEnabled === "boolean" ? record.suggestionsEnabled : true;
   const showMessageTokenUsage =
@@ -32,7 +30,6 @@ function mapUserPreferences(data: unknown) {
   const voiceModeLanguage = normalizeVoiceModeLanguage(record.voiceModeLanguage);
 
   return {
-    prefersAgenticChat,
     suggestionsEnabled,
     showMessageTokenUsage,
     searchPastConvs,

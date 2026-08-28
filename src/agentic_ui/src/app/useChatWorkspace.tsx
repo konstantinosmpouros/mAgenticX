@@ -53,6 +53,7 @@ import {
 } from "@/features/chat/handlers/conversations";
 import {
   createAiTransitionHandlers,
+  isBranchPathVisible,
   createFeedbackHandlers,
   createMessageEditUiHandlers,
   createReadAloudHandlers,
@@ -892,8 +893,9 @@ export function useChatWorkspace({
         showAiTransition,
         thinkingState,
         activeBranchPath,
+        runBranchPath: activeConversationRun?.messagePath,
       }),
-    [showAiTransition, thinkingState, activeBranchPath],
+    [showAiTransition, thinkingState, activeBranchPath, activeConversationRun?.messagePath],
   );
 
   // Retry handlers
@@ -1177,13 +1179,19 @@ export function useChatWorkspace({
   // The timeline's own resolution state (BRIDGE_HITL_RESOLVED markers) is
   // overlaid with the client-side resolved set so the surface swaps back the
   // instant the bridge confirms the resume, before the next WS frame lands.
+  //
+  // Branch-scoped, like the transition dot: a run lives on ONE branch, so its
+  // approval belongs there. Without this the takeover replaced the composer
+  // while the user was reading a sibling branch, asking them to approve an
+  // action for work they could not see.
   const pendingRunInterrupts = useMemo(() => {
     const run = activeConversationRun;
     if (!run?.timeline) return [];
+    if (!isBranchPathVisible(run.messagePath, activeBranchPath)) return [];
     return pendingTimelineInterrupts(run.timeline).filter(
       (item) => !isInterruptResolved(run.id, item.id),
     );
-  }, [activeConversationRun, isInterruptResolved]);
+  }, [activeConversationRun, activeBranchPath, isInterruptResolved]);
   const activeHitlInterrupt = pendingRunInterrupts[0] ?? null;
   const canShareCurrentConversation = Boolean(
     currentConversation?.id && !currentConversation.id.startsWith("shared:"),

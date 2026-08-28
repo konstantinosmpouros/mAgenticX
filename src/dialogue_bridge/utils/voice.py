@@ -23,8 +23,15 @@ def normalize_realtime_voice(voice: str | None) -> str:
 
 
 def normalize_voice_mode_language(language: str | None) -> str:
-    selected = (language or "english").strip().lower()
-    return selected if selected in {"english", "greek"} else "english"
+    """
+    Clamp a requested voice-mode language to the configured allow-list.
+
+    The value is interpolated into the model's system instruction, so it is
+    validated against settings rather than passed through — arbitrary client
+    text here would be a prompt-injection surface.
+    """
+    selected = (language or settings.voice.default_voice_mode_language).strip().lower()
+    return selected if selected in settings.voice.supported_voice_mode_languages else settings.voice.default_voice_mode_language
 
 
 async def load_realtime_agent(db: AsyncSession, agent_id: str) -> AgentTable:
@@ -57,16 +64,27 @@ def build_voice_instructions(
     language: str | None = None,
 ) -> str:
     recent_history = recent_history_for_voice_instructions(conversation) if conversation else ""
-    language_instruction = {
-        "english": "Use English as the default language for this live voice conversation.",
-        "greek": "Use Greek as the default language for this live voice conversation.",
-    }[normalize_voice_mode_language(language)]
+    # ONE template with the language interpolated — not a hand-written sentence
+    # per language. Adding a language is then a settings entry plus a picker
+    # row, with no prompt to author, which is what makes the list cheap to widen.
+    #
+    # The preference only decides the OPENING language. Detection does the rest:
+    # the Realtime session pins no transcription locale (see agents/router/
+    # voice.py), so the model hears whatever is actually spoken and the second
+    # line below tells it to follow that instead of the opening default.
+    opening_language = normalize_voice_mode_language(language).title()
     parts = [
         f"You are {agent.name}.",
         agent.description,
         "You are speaking in a live voice conversation. Keep responses concise, natural, and interruptible.",
-        language_instruction,
-        "If the user explicitly switches language, follow that instead.",
+        f"Open this conversation in {opening_language}.",
+        (
+            "From the user's first utterance onward, detect the language they are actually "
+            "speaking and reply in that same language, even if it differs from the opening "
+            "one. If they switch language mid-conversation, switch with them immediately and "
+            "stay in the new language until they change again. Never ask which language to "
+            "use — infer it from what you hear."
+        ),
         "Do not describe UI state. Answer as a helpful assistant.",
     ]
     if recent_history:

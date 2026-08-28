@@ -542,6 +542,63 @@ class VoiceSettings(BaseSettings):
         items = _split_csv(v)
         return frozenset(items) if items else v
 
+    # The language voice mode OPENS in. It is not a lock: the instruction built
+    # from it tells the model to mirror whatever language the user actually
+    # speaks, so this only decides the first turn.
+    #
+    # Widening this list costs nothing but a line — the instruction is one
+    # template with the language interpolated, not a hand-written prompt per
+    # language, and the Realtime transcription config pins no language either
+    # (see agents/router/voice.py: `transcription` carries a model, no locale).
+    #
+    # It IS an allow-list rather than free text on purpose: the value is
+    # interpolated into the model's system instruction, so accepting arbitrary
+    # client input here would be a prompt-injection surface.
+    #
+    # Must stay in sync with VOICE_MODE_LANGUAGES in the frontend
+    # (agentic_ui/src/shared/lib/consts/voice.ts) — a value the picker cannot
+    # display is a value the user can never see or correct.
+    default_voice_mode_language: str = Field("english", validation_alias="VOICE_MODE_DEFAULT_LANGUAGE")
+    supported_voice_mode_languages: frozenset[str] = Field(
+        default=frozenset(
+            {
+                "english",
+                "greek",
+                "spanish",
+                "french",
+                "german",
+                "italian",
+                "portuguese",
+                "dutch",
+                "polish",
+                "romanian",
+                "turkish",
+                "arabic",
+                "hindi",
+                "russian",
+                "ukrainian",
+                "chinese",
+                "japanese",
+                "korean",
+            }
+        ),
+        validation_alias="VOICE_MODE_SUPPORTED_LANGUAGES",
+    )
+
+    @field_validator("default_voice_mode_language", mode="after")
+    @classmethod
+    def _normalize_language(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        return normalized or "english"
+
+    @field_validator("supported_voice_mode_languages", mode="before")
+    @classmethod
+    def _parse_languages(cls, v: object) -> object:
+        if isinstance(v, frozenset):
+            return v
+        items = _split_csv(v)
+        return frozenset(items) if items else v
+
 
 class ProxySettings(BaseSettings):
     model_config = _BASE_MODEL_CONFIG

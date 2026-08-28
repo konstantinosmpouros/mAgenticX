@@ -1,6 +1,23 @@
 # `create_skill` tool
 
-> **Status:** Not started
+> **Status:** Partially shipped — see "What shipped" below
+>
+> **What shipped:** the tool itself (`runtime/tools/create_skill.py`), registered
+> `auto_attach=True` so every deep agent has it; pool write + per-(user, agent)
+> enable via the existing registry primitives; §3.4 frontmatter hardening;
+> provenance (`origin` / `created_by_agent` / `created_at`) on the manifest entry;
+> forced approval — `NativeToolDef.hitl_default` now actually feeds `interrupt_on`
+> (it was catalog metadata that gated nothing), and `create_skill` joined
+> `_HITL_FLOOR` so a user-authored agent cannot remove the gate.
+>
+> **Deliberate divergence:** §1 specifies *opt-in per agent*; it ships
+> **auto-attach on every deep agent** at the user's explicit instruction.
+>
+> **Not shipped:** §3.6 quotas, §3.7 visibility without a refresh (the bridge's
+> Redis skill cache is not invalidated — tracked in `src/TODO`), §3.8 review and
+> revoke surface, §5–6 API/UI plumbing of the provenance fields (the backend
+> emits them; `toUserSkill` in `shared/lib/schemas.ts` is field-whitelisted and
+> still drops them), §10 tests.
 > **TODO source:** Agents → "Create a tool for the create_skill capability, so that the agent can create a new skill and add it to the workspace of the user skill registry + that exact user/agent skill registry."
 > **Depends on:** soft — [01 · Custom agents per user](01-custom-agents-per-user.md) (an agent authoring capabilities is most coherent once agents themselves are user-owned)
 > **Blocks:** nothing. Related: [07 · Tool RAG](07-tool-rag.md) (a growing skill pool is one of the things that makes tool/skill retrieval necessary), [11 · Sandbox runner](11-sandbox-runner.md) (the reason this tool writes markdown and not scripts)

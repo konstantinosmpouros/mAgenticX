@@ -60,7 +60,6 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   const defaultPreferences: UserPreferences = useMemo(
     // Keep downstream code simple by always resolving a complete preference object.
     () => ({
-      prefersAgenticChat: false,
       suggestionsEnabled: true,
       showMessageTokenUsage: false,
       searchPastConvs: false,
@@ -85,7 +84,6 @@ export function usePreferencesHandlers(ctx: PreferencesCtx): PreferencesHandlers
   // All handlers build their payload through this snapshot + overrides, so a
   // newly added preference can never be silently wiped by an unrelated toggle.
   const snapshotPrefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
-    prefersAgenticChat: resolvedPreferences.prefersAgenticChat,
     suggestionsEnabled: resolvedPreferences.suggestionsEnabled !== false,
     showMessageTokenUsage: resolvedPreferences.showMessageTokenUsage === true,
     searchPastConvs: resolvedPreferences.searchPastConvs === true,

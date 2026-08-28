@@ -64,7 +64,6 @@ flowchart LR
 ### 3.4 User preferences
 
 - persists disabled tool preferences
-- persists `prefersAgenticChat`
 
 ## 4. High-Level Architecture
 
@@ -538,9 +537,9 @@ The preferences surface is:
 - `GET /v1/preferences/{user_id}`
 - `PUT /v1/preferences/{user_id}`
 
-Current payload fields:
+Current payload fields: `suggestionsEnabled`, `showMessageTokenUsage`, `searchPastConvs`, `useMemory`, `personality`, `customInstructions`, `voiceModeVoice`, `voiceModeLanguage`.
 
-- `prefersAgenticChat`
+`prefersAgenticChat` was removed — it was persisted and returned but never consumed by inference routing or the UI.
 
 Tool control is no longer a global preference. It moved to a per-(user, agent) disabled set on the agents service (Settings → Agents); the old `user_preferences.tools` column was dropped in migration `0016_retire_enabled_tools`.
 

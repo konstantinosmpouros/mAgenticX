@@ -181,7 +181,9 @@ All rate limits are counted in **Redis** via `fastapi-redis-sdk` (they survive r
 | --- | --- | --- |
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime` | Realtime model for voice mode. |
 | `REALTIME_DEFAULT_VOICE` | `alloy` | Default TTS voice (lowercased). |
-| `REALTIME_SUPPORTED_VOICES` | `alloy,ash,ballad,coral,echo,nova,sage,shimmer,verse,marin,cedar` | CSV allow-list of selectable voices. |
+| `REALTIME_SUPPORTED_VOICES` | `alloy,ash,ballad,coral,echo,sage,shimmer,verse,marin,cedar` | CSV allow-list of selectable voices. |
+| `VOICE_MODE_DEFAULT_LANGUAGE` | `english` | Language voice mode *opens* in when the user has no preference. Not a lock — the model switches to whatever the user actually speaks. |
+| `VOICE_MODE_SUPPORTED_LANGUAGES` | 18 languages (`english,greek,spanish,…`) | CSV allow-list for the opening language. An allow-list because the value is interpolated into the model's system instruction. Keep in sync with `VOICE_MODE_LANGUAGES` in the frontend. |
 
 ### HTTP timeouts (`HttpTimeoutSettings`)
 

@@ -31,9 +31,39 @@ export type RealtimeVoice = (typeof REALTIME_VOICES)[number]["id"];
 
 export const DEFAULT_REALTIME_VOICE: RealtimeVoice = "alloy";
 
+/**
+ * The language voice mode OPENS in — not a lock.
+ *
+ * The bridge builds one instruction template with this value interpolated and
+ * then tells the model to mirror whatever language the user actually speaks, so
+ * a mismatch corrects itself on the first utterance. The preference only
+ * decides the first turn, which is why the list can be this wide: there is no
+ * per-language prompt to author, and the Realtime session pins no transcription
+ * locale either.
+ *
+ * Must stay in sync with `supported_voice_mode_languages` in the bridge
+ * (dialogue_bridge/core/settings.py) — an id the bridge rejects silently falls
+ * back to its default, so the picker would show a language that never applies.
+ */
 export const VOICE_MODE_LANGUAGES = [
   { id: "english", label: "English", native: "English" },
   { id: "greek", label: "Greek", native: "Ελληνικά" },
+  { id: "spanish", label: "Spanish", native: "Español" },
+  { id: "french", label: "French", native: "Français" },
+  { id: "german", label: "German", native: "Deutsch" },
+  { id: "italian", label: "Italian", native: "Italiano" },
+  { id: "portuguese", label: "Portuguese", native: "Português" },
+  { id: "dutch", label: "Dutch", native: "Nederlands" },
+  { id: "polish", label: "Polish", native: "Polski" },
+  { id: "romanian", label: "Romanian", native: "Română" },
+  { id: "turkish", label: "Turkish", native: "Türkçe" },
+  { id: "arabic", label: "Arabic", native: "العربية" },
+  { id: "hindi", label: "Hindi", native: "हिन्दी" },
+  { id: "russian", label: "Russian", native: "Русский" },
+  { id: "ukrainian", label: "Ukrainian", native: "Українська" },
+  { id: "chinese", label: "Chinese", native: "中文" },
+  { id: "japanese", label: "Japanese", native: "日本語" },
+  { id: "korean", label: "Korean", native: "한국어" },
 ] as const;
 
 export type VoiceModeLanguage = (typeof VOICE_MODE_LANGUAGES)[number]["id"];

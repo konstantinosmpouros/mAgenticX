@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from runtime.tools.create_skill import build_create_skill_tool
 from runtime.tools.memory_search import build_memory_search_tool
 from runtime.tools.present_artifact import build_present_artifact_tool
 from runtime.tools.remember import build_remember_tool
@@ -80,6 +81,7 @@ def register_native_tool(defn: NativeToolDef) -> NativeToolDef:
 #   remember               → attached when use_memory is on
 #   search_past_conversations → attached when the user opted into search_past_convs
 #   present_artifact       → attached whenever there is a conversation to point into
+#   create_skill           → always attached (HITL-gated; writes to the user's pool)
 
 register_native_tool(
     NativeToolDef(
@@ -131,6 +133,23 @@ register_native_tool(
     )
 )
 
+register_native_tool(
+    NativeToolDef(
+        name="create_skill",
+        description="Author a reusable skill into the user's pool and enable it for this agent.",
+        auto_attach=True,
+        # HITL by default: this writes a new folder into the user's own
+        # workspace, and the platform's stance on agent-initiated writes is
+        # fail-closed. Relaxing this later is one flag; discovering it should
+        # not have been open is not recoverable.
+        hitl_default=True,
+        builder=lambda ctx: build_create_skill_tool(
+            user_id=ctx.user_id,
+            agent_slug=ctx.agent_slug,
+        ),
+    )
+)
+
 
 # --- Public API -------------------------------------------------------------
 def is_known_native_tool(name: str) -> bool:
@@ -157,6 +176,17 @@ def build_auto_attach_tools(ctx: NativeToolContext) -> list[Any]:
         if tool is not None:
             tools.append(tool)
     return tools
+
+
+def native_hitl_defaults() -> dict[str, bool]:
+    """Approval gates every deep agent starts with, from ``hitl_default``.
+
+    Merged UNDER an agent's own ``interrupt_on`` in ``build_deep_agent``, so a
+    spec can still speak for itself while a tool that declares itself dangerous
+    is gated by default rather than only when someone remembers to list it.
+    Without this the flag was catalog metadata that gated nothing.
+    """
+    return {d.name: True for d in NATIVE_TOOLS.values() if d.hitl_default}
 
 
 def native_catalog() -> list[dict[str, Any]]:

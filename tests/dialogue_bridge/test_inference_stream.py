@@ -42,22 +42,25 @@ async def test_dictation_route_rejects_invalid_upstream_payload(client, seeded_u
 
 
 async def test_read_aloud_preview_route_streams_sample_audio(client, seeded_user, monkeypatch):
+    # `shimmer` has to be a voice in settings.voice.supported_realtime_voices —
+    # the route clamps anything else to the default, so an unsupported value here
+    # would assert the fallback rather than the pass-through this test is about.
     async def fake_generate_read_aloud_audio(text, voice):
         assert text == "Hey! I am your AI speaker."
-        assert voice == "nova"
+        assert voice == "shimmer"
         return b"preview-audio", "audio/mpeg"
 
     monkeypatch.setattr(speech_router, "generate_read_aloud_audio", fake_generate_read_aloud_audio)
 
     response = await client.post(
         f"/v1/speech/read-aloud-preview/{seeded_user.id}",
-        json={"voice": "nova", "text": "Hey! I am your AI speaker."},
+        json={"voice": "shimmer", "text": "Hey! I am your AI speaker."},
     )
 
     assert response.status_code == 200
     assert response.content == b"preview-audio"
     assert response.headers["content-type"].startswith("audio/")
-    assert "read-aloud-preview-nova" in response.headers["content-disposition"]
+    assert "read-aloud-preview-shimmer" in response.headers["content-disposition"]
 
 
 async def test_read_aloud_route_rejects_oversized_message(client, seeded_user, conversation_factory):

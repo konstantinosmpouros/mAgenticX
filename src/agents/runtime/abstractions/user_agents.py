@@ -56,7 +56,7 @@ logger = get_logger(__name__)
 _MANIFEST_FILENAME = "agent.yaml"
 # Approval gates a user's spec may add to but never remove. These are the tools
 # whose misuse is irreversible or escapes the conversation.
-_HITL_FLOOR: Tuple[str, ...] = ("write_file", "edit_file", "execute", "task")
+_HITL_FLOOR: Tuple[str, ...] = ("write_file", "edit_file", "execute", "task", "create_skill")
 # An agent folder is prompts + config only — no scripts, no binaries. Narrower
 # than the skill allowlist on purpose.
 _ALLOWED_EXTENSIONS = frozenset({".md", ".txt", ".yaml", ".yml"})

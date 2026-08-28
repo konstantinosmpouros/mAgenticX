@@ -21,3 +21,17 @@
     opacity 0.4s ease,
     transform 0.4s ease;
 }
+
+/* Chromium/WebKit draw their own clear "✕" inside `input[type="search"]`,
+   which appears on hover and sits on top of the app's own clear button — two
+   ✕ glyphs in the same corner, one of which ignores our styling and animation.
+   Every search field here supplies its own button (visible only when there is
+   a query, which is the behaviour we want), so the native decoration is
+   suppressed rather than styled. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}

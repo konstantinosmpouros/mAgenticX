@@ -93,7 +93,18 @@ def install_fake_client(module, monkeypatch, handler):
 # voice.normalize_realtime_voice / normalize_voice_mode_language
 # ---------------------------------------------------------------------------
 def test_normalize_realtime_voice_supported_passthrough():
-    assert normalize_realtime_voice("Nova") == "nova"
+    assert normalize_realtime_voice("Shimmer") == "shimmer"
+
+
+def test_normalize_realtime_voice_rejects_nova():
+    """`nova` is a classic TTS voice, not a Realtime one — it must not pass.
+
+    It used to sit in the allow-list, so a `nova` written straight to the DB
+    validated here and then displayed as the first voice in a picker that never
+    offered it. Pinned as a regression test because the value is plausible
+    enough to be re-added by mistake.
+    """
+    assert normalize_realtime_voice("nova") == "alloy"
 
 
 def test_normalize_realtime_voice_unsupported_falls_back_to_default():
@@ -109,7 +120,7 @@ def test_normalize_voice_mode_language_greek():
 
 
 def test_normalize_voice_mode_language_unknown_defaults_english():
-    assert normalize_voice_mode_language("french") == "english"
+    assert normalize_voice_mode_language("does-not-exist") == "english"
     assert normalize_voice_mode_language(None) == "english"
 
 
@@ -141,7 +152,7 @@ def test_build_voice_instructions_english_no_history():
     text = build_voice_instructions(agent, conversation=None, language="english")
     assert "You are Aria." in text
     assert "A helpful agent" in text
-    assert "Use English as the default language" in text
+    assert "Open this conversation in English." in text
     assert "Recent conversation context:" not in text
 
 
@@ -149,7 +160,7 @@ def test_build_voice_instructions_greek_with_history():
     agent = SimpleNamespace(name="Aria", description="A helpful agent")
     conversation = SimpleNamespace(messages=[SimpleNamespace(sender="user", content="Hi")])
     text = build_voice_instructions(agent, conversation=conversation, language="greek")
-    assert "Use Greek as the default language" in text
+    assert "Open this conversation in Greek." in text
     assert "Recent conversation context:" in text
     assert "User: Hi" in text
 
@@ -390,7 +401,7 @@ async def test_transcribe_dictation_invalid_payload_502(monkeypatch):
 # ---------------------------------------------------------------------------
 async def test_generate_read_aloud_empty_text_400():
     with pytest.raises(Exception) as exc:
-        await generate_read_aloud_audio("   ", voice="nova")
+        await generate_read_aloud_audio("   ", voice="shimmer")
     assert getattr(exc.value, "status_code", None) == 400
 
 
@@ -398,7 +409,7 @@ async def test_generate_read_aloud_too_long_413():
     from utils.speech import MAX_READ_ALOUD_TEXT_CHARS
 
     with pytest.raises(Exception) as exc:
-        await generate_read_aloud_audio("x" * (MAX_READ_ALOUD_TEXT_CHARS + 1), voice="nova")
+        await generate_read_aloud_audio("x" * (MAX_READ_ALOUD_TEXT_CHARS + 1), voice="shimmer")
     assert getattr(exc.value, "status_code", None) == 413
 
 
@@ -408,7 +419,7 @@ async def test_generate_read_aloud_success(monkeypatch):
         monkeypatch,
         lambda url, k: FakeResponse(content=b"mp3-bytes", headers={"content-type": "audio/mpeg; charset=x"}),
     )
-    audio, content_type = await generate_read_aloud_audio("Hello", voice="nova")
+    audio, content_type = await generate_read_aloud_audio("Hello", voice="shimmer")
     assert audio == b"mp3-bytes"
     assert content_type == "audio/mpeg"
 
@@ -430,7 +441,7 @@ async def test_generate_read_aloud_empty_audio_502(monkeypatch):
         lambda url, k: FakeResponse(content=b"", headers={}),
     )
     with pytest.raises(Exception) as exc:
-        await generate_read_aloud_audio("Hello", voice="nova")
+        await generate_read_aloud_audio("Hello", voice="shimmer")
     assert getattr(exc.value, "status_code", None) == 502
 
 
@@ -441,7 +452,7 @@ async def test_generate_read_aloud_http_error_502(monkeypatch):
         lambda url, k: FakeResponse(status_code=500, raise_status=True),
     )
     with pytest.raises(Exception) as exc:
-        await generate_read_aloud_audio("Hello", voice="nova")
+        await generate_read_aloud_audio("Hello", voice="shimmer")
     assert getattr(exc.value, "status_code", None) == 502
 
 
@@ -452,5 +463,5 @@ async def test_generate_read_aloud_request_error_503(monkeypatch):
         lambda url, k: httpx.ConnectError("x", request=httpx.Request("POST", "http://agents.test")),
     )
     with pytest.raises(Exception) as exc:
-        await generate_read_aloud_audio("Hello", voice="nova")
+        await generate_read_aloud_audio("Hello", voice="shimmer")
     assert getattr(exc.value, "status_code", None) == 503

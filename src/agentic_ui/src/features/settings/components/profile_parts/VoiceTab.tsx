@@ -134,7 +134,7 @@ export default function VoiceTab({
                     type="button"
                     disabled={preferencesSaving}
                     className={cn(
-                      "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-56",
+                      "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-56 sm:shrink-0",
                       voiceSelectorOpen && "bg-background/80",
                     )}
                   >
@@ -219,9 +219,9 @@ export default function VoiceTab({
           <div className="px-5 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">Spoken language</p>
+                <p className="text-sm font-semibold text-foreground">Starting language</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Default response language for live voice conversations.
+                  The language voice mode opens in — it switches to match you as you speak.
                 </p>
               </div>
               {/* Language picker mirrors the voice picker above: a trigger
@@ -237,7 +237,7 @@ export default function VoiceTab({
                     type="button"
                     disabled={preferencesSaving}
                     className={cn(
-                      "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-56",
+                      "flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/60 px-3 text-left text-sm transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 sm:w-56 sm:shrink-0",
                       languageSelectorOpen && "bg-background/80",
                     )}
                   >

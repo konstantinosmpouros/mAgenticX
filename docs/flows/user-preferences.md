@@ -70,7 +70,6 @@ The `user_preferences` table has a one-to-one relationship with `users`. A row i
 | --- | --- | --- | --- |
 | `id` | String (UUID) | `gen_uuid()` | Row PK |
 | `user_id` | String (FK) | — | FK to `users.id`; UNIQUE; cascade delete |
-| `prefers_agentic_chat` | Boolean | `false` | Reserved for future agentic-chat UX toggle |
 | `suggestions_enabled` | Boolean | `true` | Show/hide starter suggestion chips in the chat UI |
 | `search_past_convs` | Boolean | `false` | Opt-in: attach the deep-agent `search_past_conversations` memory tool. Migration `0011`. |
 | `use_memory` | Boolean | `true` | On by default: gates a deep agent's persistent memory (AGENT.md `/memories/` mount + future memory folder). Threaded into the run config; turn off to run agents without their stored memory. Migration `0012`. |
@@ -98,7 +97,6 @@ Returns the current preferences for the user. If no row exists, returns a defaul
 
 ```python
 class UserPreferences(BaseModel):
-    prefersAgenticChat: bool           # default: False
     suggestionsEnabled: bool           # default: True
     searchPastConvs: bool              # default: False
     useMemory: bool                    # default: True
@@ -148,24 +146,32 @@ Both are applied **server-side per run** — see Phase 6. Instruction content is
 
 The voice used for OpenAI Realtime API sessions. The set of valid voices is controlled by the `REALTIME_SUPPORTED_VOICES` environment variable (comma-separated), which defaults to:
 
-`alloy`, `ash`, `ballad`, `coral`, `echo`, `nova`, `sage`, `shimmer`, `verse`, `marin`, `cedar`
+`alloy`, `ash`, `ballad`, `cedar`, `coral`, `echo`, `marin`, `sage`, `shimmer`, `verse`
 
-The frontend renders each voice with a label, gender, and description sourced from the `REALTIME_VOICES` constant in `consts.ts`. The stored value is always a lowercase string matching the OpenAI voice name.
+The frontend renders each voice with a label, gender, and description sourced from the `REALTIME_VOICES` constant in `shared/lib/consts/voice.ts`. The stored value is always a lowercase string matching the OpenAI voice name.
 
 ### Voice Mode Language
 
-The language used when building the system prompt for a realtime voice session. Only two values are supported:
+The language the realtime voice session **opens** in. It is not a lock: the
+instruction built from it tells the model to detect the language the user is
+actually speaking and mirror it, switching mid-conversation if they switch, so
+this preference only decides the first turn.
 
-| Value | Effect |
-| --- | --- |
-| `"english"` | System prompt and instructions sent in English (default) |
-| `"greek"` | System prompt and instructions sent in Greek |
+The set of valid values is controlled by the `VOICE_MODE_SUPPORTED_LANGUAGES`
+environment variable (comma-separated), which defaults to:
 
-The language controls the text injected by the voice instruction builder, not any transcription model. Whisper-based dictation uses its own language detection independently.
+`english` (default), `greek`, `spanish`, `french`, `german`, `italian`, `portuguese`, `dutch`, `polish`, `romanian`, `turkish`, `arabic`, `hindi`, `russian`, `ukrainian`, `chinese`, `japanese`, `korean`
 
-### Prefers Agentic Chat
+Must stay in sync with `VOICE_MODE_LANGUAGES` in `shared/lib/consts/voice.ts` — a
+value the picker cannot display is a value the user can never see or correct.
 
-`prefersAgenticChat` is stored but currently not consumed by the inference flow. It is persisted now so that existing user rows are compatible with a future UI toggle for an autonomous agentic chat mode.
+Widening the list costs one entry on each side: the instruction is a single
+template with the language interpolated (`"Open this conversation in
+{Language}."`), not a hand-written prompt per language. It stays an allow-list
+rather than free text because the value is interpolated into the model's system
+instruction, so arbitrary client input here would be a prompt-injection surface.
+
+The language controls the text injected by the voice instruction builder, not any transcription model. The Realtime session pins no transcription locale, and Whisper-based dictation uses its own language detection independently.
 
 ---
 
@@ -299,7 +305,7 @@ On the agents side the main logic lives in [`runtime/personalization.py`](../../
 
 - **No partial PATCH.** There is no `PATCH` endpoint. Every update is a full write. The frontend always sends all fields, so this is safe in practice — but any external client that sends partial payloads will lose fields not included.
 
-- **`prefersAgenticChat` is a no-op.** The field is stored and returned but currently has no effect on inference routing or UI rendering. It exists for forward compatibility.
+- **`prefersAgenticChat` is gone.** It was always a no-op — stored and returned, but never consumed by inference routing or UI rendering — so it was removed from the API schema, the router, the frontend type, the settings screens and the database (migration `0018_retire_prefers_agentic_chat`).
 
 - **CSRF required on PUT.** The update endpoint requires a valid CSRF token in addition to session authentication. Requests without it receive a 403 even with a valid session cookie.
 

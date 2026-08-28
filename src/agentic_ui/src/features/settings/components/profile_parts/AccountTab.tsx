@@ -8,11 +8,7 @@ type AccountTabProps = {
   userPreferences: UserPreferences;
 };
 
-export default function AccountTab({ user, userPreferences }: AccountTabProps) {
-  const prefersAgentic =
-    typeof userPreferences?.prefersAgenticChat === "boolean"
-      ? userPreferences.prefersAgenticChat
-      : undefined;
+export default function AccountTab({ user }: AccountTabProps) {
   const displayName =
     safeText(user?.displayName) !== NA
       ? safeText(user?.displayName)
@@ -23,7 +19,6 @@ export default function AccountTab({ user, userPreferences }: AccountTabProps) {
   const displayDepartment = safeText(user?.department);
   const displayRole = safeText(user?.roleTitle);
   const displayIsActive = fmtBoolean(user?.isActive);
-  const displayPrefersAgentic = fmtBoolean(prefersAgentic);
   const avatarInitial = (displayName !== NA ? displayName : "Profile").charAt(0).toUpperCase();
 
   const identityRows: InfoRow[] = [
@@ -37,11 +32,6 @@ export default function AccountTab({ user, userPreferences }: AccountTabProps) {
     { label: "Department", value: displayDepartment },
     { label: "Role", value: displayRole },
     { label: "Account Status", value: displayIsActive },
-    {
-      label: "Agentic Chat",
-      value: displayPrefersAgentic,
-      hint: "Derived from the stored user preferences profile.",
-    },
   ];
 
   const activityRows: InfoRow[] = [
@@ -96,7 +86,7 @@ export default function AccountTab({ user, userPreferences }: AccountTabProps) {
               </p>
             </div>
           </div>
-          <div className="grid min-w-0 max-w-full gap-4 rounded-[1.4rem] bg-black/10 px-4 py-4 sm:grid-cols-3 lg:w-[22rem] dark:bg-white/[0.03]">
+          <div className="grid min-w-0 max-w-full gap-4 rounded-[1.4rem] bg-black/10 px-4 py-4 sm:grid-cols-2 lg:w-[22rem] dark:bg-white/[0.03]">
             <div className="space-y-1 sm:border-r sm:border-border/30 sm:pr-3">
               <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Last Login
@@ -108,7 +98,7 @@ export default function AccountTab({ user, userPreferences }: AccountTabProps) {
                 Most recent authenticated session
               </p>
             </div>
-            <div className="space-y-1 sm:border-r sm:border-border/30 sm:px-1">
+            <div className="space-y-1">
               <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                 Workspace
               </p>
@@ -117,17 +107,6 @@ export default function AccountTab({ user, userPreferences }: AccountTabProps) {
               </p>
               <p className="break-words text-xs text-muted-foreground">
                 Current team or department
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                Mode
-              </p>
-              <p className="break-words text-base font-semibold text-foreground [overflow-wrap:anywhere]">
-                {displayPrefersAgentic}
-              </p>
-              <p className="break-words text-xs text-muted-foreground">
-                Default agentic chat preference
               </p>
             </div>
           </div>

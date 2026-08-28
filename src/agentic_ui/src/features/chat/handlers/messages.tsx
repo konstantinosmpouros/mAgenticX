@@ -408,9 +408,26 @@ type AiTransitionHandlersCtx = {
   showAiTransition: boolean;
   thinkingState: ThinkingState | null;
   activeBranchPath?: string[];
+  /**
+   * The live run's own message path, used when `thinkingState` has none.
+   *
+   * During the transition phase `thinkingState` is deliberately null (see
+   * useInferenceRuns), and a null state carries no branchPath — so the dot
+   * passed the visibility check on EVERY branch and appeared while the user was
+   * reading a sibling. The run always knows which branch it is writing into,
+   * so that is the authority whenever the thinking state cannot say.
+   */
+  runBranchPath?: string[];
 };
 
-const isBranchPathVisible = (branchPath?: string[], activePath?: string[]) => {
+/**
+ * Is `branchPath` the branch currently on screen (or a prefix of it)?
+ *
+ * Exported because the transition dot and the HITL takeover must agree: both
+ * belong to the run, and a run lives on ONE branch. An empty/absent path means
+ * "unknown", which passes — callers that know the run's path should supply it.
+ */
+export const isBranchPathVisible = (branchPath?: string[], activePath?: string[]) => {
   if (!branchPath || branchPath.length === 0) return true;
   if (!activePath || activePath.length < branchPath.length) return false;
   for (let i = 0; i < branchPath.length; i += 1) {
@@ -423,10 +440,13 @@ const isBranchPathVisible = (branchPath?: string[], activePath?: string[]) => {
 };
 
 export function createAiTransitionHandlers(ctx: AiTransitionHandlersCtx) {
-  const { showAiTransition, thinkingState, activeBranchPath } = ctx;
+  const { showAiTransition, thinkingState, activeBranchPath, runBranchPath } = ctx;
 
   const AiTransitionIndicator: FC = () => {
-    const branchVisible = isBranchPathVisible(thinkingState?.branchPath, activeBranchPath);
+    // Prefer the thinking state's path (it is the more specific signal once the
+    // agent has started), then fall back to the run's own.
+    const branchPath = thinkingState?.branchPath ?? runBranchPath;
+    const branchVisible = isBranchPathVisible(branchPath, activeBranchPath);
     // Hide the bridge dot once real thinking starts or once the user is looking at a different branch.
     if (!showAiTransition || thinkingState?.isActive || !branchVisible) {
       return null;

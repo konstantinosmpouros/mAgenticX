@@ -180,8 +180,10 @@ The session config POSTed to OpenAI contains:
 `build_voice_instructions(agent, conversation, language)` constructs the system prompt for the realtime session:
 
 - Agent name and description
-- Language instruction (English or Greek)
+- **Opening-language instruction, followed by a mirror-the-speaker instruction.** One template with the language interpolated — not a hand-written sentence per language — so widening the catalog needs no prompt authoring.
 - Recent conversation history — last 8 messages, each truncated to 800 characters, formatted as `"User: ..."` / `"Assistant: ..."`
+
+**The language preference sets only the FIRST turn.** The Realtime session pins no transcription locale (`agents/router/voice.py` sends `transcription` with a model and no `language`), so the model hears whatever is actually spoken. The instruction tells it to detect the user's language from their first utterance, reply in that language, and switch whenever the user switches. A mismatched preference therefore self-corrects as soon as the user speaks.
 
 This gives the realtime agent context from the ongoing conversation without the browser needing to transmit the full history over the data channel.
 
@@ -191,7 +193,7 @@ This gives the realtime agent context from the ongoing conversation without the 
 
 `normalize_realtime_voice(voice)` — lowercases and validates against `settings.voice.supported_realtime_voices`. Falls back to `settings.voice.default_realtime_voice` on invalid input.
 
-Supported languages: `"english"` (default), `"greek"`. Invalid values fall back to `"english"`.
+`normalize_voice_mode_language(language)` — lowercases and validates against `settings.voice.supported_voice_mode_languages`, falling back to `settings.voice.default_voice_mode_language`. It is an allow-list rather than free text because the value is interpolated into the model's system instruction, so unvalidated client input would be a prompt-injection surface.
 
 ---
 
@@ -300,7 +302,11 @@ Default: `"alloy"`. Invalid values are silently normalized to the default by bot
 
 ### Languages
 
-`"english"` (default), `"greek"`. Adding a language requires extending both `normalize_voice_mode_language()` in the bridge and the prompt logic in `build_voice_instructions()`.
+Driven by `settings.voice.supported_voice_mode_languages` (`VOICE_MODE_SUPPORTED_LANGUAGES`), defaulting to 18 languages, with `settings.voice.default_voice_mode_language` as the fallback.
+
+Adding one is a **config + catalog** change, not a code change: add the id to the settings frozenset (or the env var) and a `{ id, label, native }` row to `VOICE_MODE_LANGUAGES` in the frontend. There is no prompt to author — `build_voice_instructions()` interpolates the language into a single template.
+
+The two lists must stay in sync. An id the bridge rejects silently falls back to the default, so the picker would offer a language that never takes effect — the same drift that previously shipped a `nova` voice the picker could not display.
 
 ---
 

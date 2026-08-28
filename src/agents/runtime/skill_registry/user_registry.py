@@ -44,6 +44,9 @@ import json
 import os
 import shutil
 import tempfile
+from datetime import datetime, timezone
+
+import yaml
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
@@ -376,13 +379,35 @@ def add_global_to_user(user_id: str, skill_name: str) -> SkillManifestEntry:
 
 
 def _assemble_skill_md(name: str, description: str, body: str) -> str:
-    """Build a SKILL.md string with canonical frontmatter."""
-    safe_desc = description.replace("\n", " ").strip()
-    safe_name = name.strip()
-    return f"---\nname: {safe_name}\ndescription: {safe_desc}\n---\n\n{body or ''}"
+    """Build a SKILL.md string with canonical, YAML-safe frontmatter.
+
+    The two scalars are serialised with ``yaml.safe_dump`` rather than
+    interpolated. Interpolation only stripped newlines from the description,
+    which left every other YAML indicator (``:``, ``#``, quotes, a leading
+    ``&``/``*``/``!``) free to change how the block parses — reading back a
+    different description than was written, or failing the parse outright.
+    That mattered little while a human typed both values; it matters
+    considerably more now that ``create_skill`` lets an agent supply them.
+    Shared code, so the human upload path is hardened identically.
+    """
+    front = yaml.safe_dump(
+        {
+            "name": name.strip(),
+            "description": description.replace("\n", " ").strip(),
+        },
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+    ).strip()
+    return f"---\n{front}\n---\n\n{body or ''}"
 
 
-def add_custom_to_user(user_id: str, payload: CustomSkillCreate) -> SkillManifestEntry:
+def add_custom_to_user(
+    user_id: str,
+    payload: CustomSkillCreate,
+    *,
+    created_by_agent: str | None = None,
+) -> SkillManifestEntry:
     """Create a new custom skill folder (multi-file) + manifest entry.
 
     The payload carries a list of files; exactly one must be ``SKILL.md`` (its
@@ -457,11 +482,17 @@ def add_custom_to_user(user_id: str, payload: CustomSkillCreate) -> SkillManifes
         shutil.rmtree(skill_dir, ignore_errors=True)
         raise
 
+    # Provenance: `created_by_agent` is set only by the `create_skill` tool, so
+    # an agent-authored skill stays distinguishable everywhere it surfaces — the
+    # user has to be able to tell what their agent wrote from what they uploaded.
     entry = SkillManifestEntry(
         name=name,
         type="custom",
         description=payload.description,
         source_path=f"users/{user_id}/custom/{name}",
+        origin="agent" if created_by_agent else "user",
+        created_by_agent=created_by_agent,
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
     manifest.skills.append(entry)
     _write_user_manifest_atomic(user_id, manifest)

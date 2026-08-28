@@ -135,7 +135,6 @@ class UserPreferencesTable(Base):
 
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    prefers_agentic_chat = Column(Boolean, nullable=False, server_default="false")
     suggestions_enabled = Column(Boolean, nullable=False, server_default="true")
     show_message_token_usage = Column(Boolean, nullable=False, server_default="false")
     # Opt-in (default false): when true, deep agents get the cross-conversation

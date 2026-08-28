@@ -13,7 +13,12 @@ from runtime.agui import AGUIEmitter, AGUIStreamNormalizer
 from runtime.abstractions.base_agent import AgentType, BaseAgent
 from runtime.checkpointer import get_checkpointer
 from runtime.personalization import build_personalization_prompt
-from runtime.tools.registry import NATIVE_TOOLS, NativeToolContext, build_auto_attach_tools
+from runtime.tools.registry import (
+    NATIVE_TOOLS,
+    NativeToolContext,
+    build_auto_attach_tools,
+    native_hitl_defaults,
+)
 from runtime.middlewares import (
     ConfigurableSummarizationMiddleware,
     ToolErrorMiddleware,
@@ -55,6 +60,9 @@ RESERVED_DEEPAGENT_TOOL_NAMES: Set[str] = {
 
     # built-in deliverables
     "present_artifact",
+
+    # built-in skill authoring
+    "create_skill",
 }
 
 
@@ -467,13 +475,19 @@ class DeepAgent(BaseAgent, ABC):
                 for spec in subagents
             ]
 
+        # Native tools that declare themselves dangerous are gated by default;
+        # the agent's own spec layers on top and can still speak for itself.
+        # (A user-authored spec additionally cannot lower the _HITL_FLOOR — see
+        # runtime/abstractions/user_agents.py.)
+        resolved_interrupt_on = {**native_hitl_defaults(), **(interrupt_on or {})}
+
         return create_deep_agent(
             model=model,
             name=self.name,
             tools=self._apply_tool_disables(self.tools + self._builtin_tools()),
             system_prompt=system_prompt,
             subagents=augmented_subagents,
-            interrupt_on=interrupt_on,
+            interrupt_on=resolved_interrupt_on,
             middleware=stack,
             # Fixed filesystem — same mounts + permissions for every deep agent.
             memory=self.agent_md_paths,

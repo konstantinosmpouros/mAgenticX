@@ -42,7 +42,9 @@ async def test_realtime_voice_session_creates_empty_conversation(client, seeded_
     assert captured["metadata"]["agent_id"] == seeded_agent.id
     assert captured["metadata"]["voice_mode_language"] == "greek"
     assert "live voice conversation" in captured["instructions"]
-    assert "Use Greek as the default language for this live voice conversation." in captured["instructions"]
+    # The instruction now sets only the OPENING language — the rest of the
+    # template tells the model to mirror whatever the user actually speaks.
+    assert "Open this conversation in Greek." in captured["instructions"]
 
 
 async def test_realtime_voice_event_persists_transcript(client, seeded_user, conversation_factory):

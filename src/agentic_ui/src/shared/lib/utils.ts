@@ -144,8 +144,6 @@ export function withSessionRequest(
 }
 
 type AuthResponseUserRecord = {
-  prefersAgenticChat?: unknown;
-  prefers_agentic_chat?: unknown;
   createdAt?: string | Date;
   updatedAt?: string | Date;
   lastLoginAt?: string | Date;
@@ -164,11 +162,7 @@ function isAuthResponseRecord(value: unknown): value is AuthResponseRecord {
 export function normalizeAuthResponse(data: unknown): AuthResponse {
   const normalized = isAuthResponseRecord(data) ? ({ ...data } as AuthResponseRecord) : data;
   if (isAuthResponseRecord(normalized) && normalized.user) {
-    const {
-      prefersAgenticChat: _prefersAgenticChat,
-      prefers_agentic_chat: _ignored,
-      ...rest
-    } = normalized.user;
+    const rest = normalized.user;
     normalized.user = {
       ...rest,
       createdAt: rest.createdAt ? new Date(rest.createdAt) : new Date(),

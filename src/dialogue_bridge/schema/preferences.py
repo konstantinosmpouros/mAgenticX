@@ -41,11 +41,6 @@ class CustomInstructions(BaseModel):
 class UserPreferences(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    prefersAgenticChat: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("prefers_agentic_chat", "prefersAgenticChat"),
-        serialization_alias="prefersAgenticChat",
-    )
     suggestionsEnabled: bool = Field(
         default=True,
         validation_alias=AliasChoices("suggestions_enabled", "suggestionsEnabled"),

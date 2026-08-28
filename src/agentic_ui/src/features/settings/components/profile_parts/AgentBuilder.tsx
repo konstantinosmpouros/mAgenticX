@@ -11,6 +11,7 @@ import {
   Upload,
   Wrench,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 
 import { cn } from "@/shared/lib/utils";
 import type {
@@ -74,7 +75,9 @@ const ICON_CHOICES = [
 
 // Approval gates the platform mandates. Shown as a locked row so the rule is
 // visible rather than mysterious — the server enforces it regardless.
-const REQUIRED_GATES = ["write_file", "edit_file", "execute", "task"] as const;
+// MUST mirror `_HITL_FLOOR` in agents/runtime/abstractions/user_agents.py: a
+// gate present there but missing here makes *every* save fail validation.
+const REQUIRED_GATES = ["write_file", "edit_file", "execute", "task", "create_skill"] as const;
 
 const PROMPT_FILE = "AGENT.md";
 const MANIFEST_FILE = "agent.yaml";
@@ -551,17 +554,25 @@ export default function AgentBuilder({
 
         <label className={labelClass}>
           <span className={captionClass}>Model</span>
-          <select
-            className={inputClass}
-            value={draft.model}
-            onChange={(event) => set("model", event.target.value)}
-          >
-            {MODEL_CHOICES.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label} — {model.hint}
-              </option>
-            ))}
-          </select>
+          {/* Radix Select, not a native <select>: the native one renders an
+              OS-drawn menu that ignores the app's tokens entirely — light
+              popup in dark mode, wrong type, wrong radius. This is the same
+              primitive the header's agent picker uses. */}
+          <Select value={draft.model} onValueChange={(value) => set("model", value)}>
+            <SelectTrigger className={inputClass} aria-label="Model">
+              <SelectValue placeholder="Select a model" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl border border-border/60 bg-background text-foreground shadow-lg">
+              {MODEL_CHOICES.map((model) => (
+                <SelectItem key={model.id} value={model.id} className="rounded-lg">
+                  <span className="flex items-baseline gap-2">
+                    <span className="font-medium text-foreground">{model.label}</span>
+                    <span className="text-xs text-muted-foreground">{model.hint}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
       </div>
 
@@ -959,20 +970,10 @@ export default function AgentBuilder({
       <SoftPanel className="px-4 py-3">
         <p className="text-sm font-semibold text-foreground">Always asks before</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Writing or editing files, running code, and delegating work always need your approval.
-          This applies to every agent and cannot be turned off.
+          Writing or editing files, running code, delegating work, and creating skills always need
+          your approval. This applies to every agent and cannot be turned off.
         </p>
       </SoftPanel>
-
-      {/* Generated definition */}
-      <details className="rounded-[1.2rem] border border-border/50 bg-background/40 px-4 py-3">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Generated definition
-        </summary>
-        <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[0.72rem] leading-relaxed text-muted-foreground">
-          {JSON.stringify(payload.spec, null, 2)}
-        </pre>
-      </details>
 
       {/* Errors */}
       {(localError || serverErrors.length > 0) && (
