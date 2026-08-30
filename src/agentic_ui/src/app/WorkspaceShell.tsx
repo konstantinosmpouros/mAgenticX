@@ -102,7 +102,6 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     mySkillDetails,
     loadingSkillDetail,
     ensureSkillDetail,
-    handleRefreshMySkills,
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
@@ -290,7 +289,6 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   mySkillDetails={mySkillDetails}
                   isMySkillDetailLoading={loadingSkillDetail}
                   onLoadMySkillDetail={ensureSkillDetail}
-                  onRefreshMySkills={handleRefreshMySkills}
                   onAddGlobalSkillToPool={handleAddGlobalSkill}
                   onCreateCustomSkill={handleCreateCustomSkill}
                   onRemoveSkillFromPool={handleRemoveSkillFromPool}

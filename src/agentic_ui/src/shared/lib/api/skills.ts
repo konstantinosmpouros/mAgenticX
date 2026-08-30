@@ -75,15 +75,13 @@ export async function disableUserAgentSkill(
 // Per-user skill pool (the user's personal registry of globals + customs)
 // ---------------------------------------------------------------------------
 
-// Fetch the user's pool manifest entries (no SKILL.md content). Read-through
-// cached on the bridge with a 5min TTL. ``bypassRedis: true`` forces an
-// upstream fetch and upserts the cache.
-export async function getMySkills(
-  userId: string,
-  options?: { bypassRedis?: boolean },
-): Promise<UserSkill[]> {
-  const base = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}`;
-  const url = options?.bypassRedis ? `${base}?bypass_redis=true` : base;
+// Fetch the user's pool manifest entries (no SKILL.md content).
+//
+// No bypass option: the bridge owns the pool in chat_db and re-imports from the
+// agents service by itself whenever what it holds is missing or incomplete, so
+// there is nothing a caller could usefully force.
+export async function getMySkills(userId: string): Promise<UserSkill[]> {
+  const url = `${SKILLS_BASE_PATH}/users/${encodeURIComponent(userId)}`;
   return requestJson(url, {
     schema: UserSkillListSchema,
     fallbackMessage: "Failed to fetch my skills",

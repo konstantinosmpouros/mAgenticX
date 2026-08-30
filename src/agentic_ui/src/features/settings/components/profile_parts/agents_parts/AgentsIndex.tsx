@@ -48,7 +48,7 @@ type Scope = "all" | "platform" | "mine";
 const SCOPES: { id: Scope; label: string }[] = [
   { id: "all", label: "All" },
   { id: "platform", label: "Platform" },
-  { id: "mine", label: "Yours" },
+  { id: "mine", label: "Custom" },
 ];
 
 /** Build the row's meta line, dropping anything the caller could not supply. */
@@ -237,7 +237,7 @@ export function AgentsIndex({
                             : "bg-background/60 text-muted-foreground",
                         )}
                       >
-                        {summary.mine ? "Yours" : "Platform"}
+                        {summary.mine ? "Custom" : "Platform"}
                       </span>
                     </div>
                     {agent.description ? (

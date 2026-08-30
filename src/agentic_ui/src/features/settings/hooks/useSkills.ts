@@ -50,7 +50,7 @@ export type SkillsHandlers = {
   mySkills: UserSkill[];
   setMySkills: React.Dispatch<React.SetStateAction<UserSkill[]>>;
   loadingMySkills: boolean;
-  refreshMySkills: (opts?: { bypassRedis?: boolean }) => Promise<void>;
+  refreshMySkills: () => Promise<void>;
   addGlobalToPool: (skillName: string) => Promise<void>;
   createCustomInPool: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   removeFromPool: (skillName: string) => Promise<void>;
@@ -242,27 +242,24 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
   // -----------------------------------------------------------------
   // User pool
   // -----------------------------------------------------------------
-  const refreshMySkills = useCallback(
-    async (opts?: { bypassRedis?: boolean }) => {
-      if (!userId) return;
-      setLoadingMySkills(true);
-      try {
-        const fetched = await getMySkills(userId, opts);
-        setMySkills(fetched);
-      } catch (error) {
-        // A 401 means the session ended (e.g. logged out while this background
-        // refresh was in flight) — already handled by the global unauthorized
-        // redirect, so don't surface a "try again" toast on the way out.
-        if ((error as { status?: number })?.status === 401) return;
-        toastError(toast, "Could not refresh your skills", error, {
-          description: error instanceof Error ? error.message : "Please try again.",
-        });
-      } finally {
-        setLoadingMySkills(false);
-      }
-    },
-    [userId, toast],
-  );
+  const refreshMySkills = useCallback(async () => {
+    if (!userId) return;
+    setLoadingMySkills(true);
+    try {
+      const fetched = await getMySkills(userId);
+      setMySkills(fetched);
+    } catch (error) {
+      // A 401 means the session ended (e.g. logged out while this background
+      // refresh was in flight) — already handled by the global unauthorized
+      // redirect, so don't surface a "try again" toast on the way out.
+      if ((error as { status?: number })?.status === 401) return;
+      toastError(toast, "Could not refresh your skills", error, {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setLoadingMySkills(false);
+    }
+  }, [userId, toast]);
 
   // Authoritative pool load: whenever the user resolves, refetch from the
   // server. The initialPool seed (in the userId reset effect above) is only an
@@ -296,7 +293,7 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
         await addGlobalSkillToPool(userId, skillName);
         // Refetch so the new entry carries the canonical description/source_path
         // from the backend rather than something the frontend guessed.
-        await refreshMySkills({ bypassRedis: true });
+        await refreshMySkills();
       } catch (error) {
         toastError(toast, "Could not add skill to your pool", error, {
           description: error instanceof Error ? error.message : "Please try again.",

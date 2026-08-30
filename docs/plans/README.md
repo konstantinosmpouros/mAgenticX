@@ -48,6 +48,7 @@ remaining work named in its status.
 | 18 | [Workspace filesystem consolidation + two-tier skills](18-workspace-filesystem-consolidation.md) | derived (storage half of Projects/Workspaces) | Not started |
 | 19 | [Multi-account sign-in & switching](done/19-multi-account-switching.md) | New Features → multiple accounts per browser | **Delivered** |
 | 20 | [Agents tab UX/UI restructure](20-agents-tab-restructure.md) | Agentic UI | In progress (index + detail + builder shell shipped) |
+| 21 | [Persist user content in Postgres (agents · skills · memory)](21-persist-user-content-in-postgres.md) | derived (durability gap — see the draft state & storage map) | Not started |
 
 ---
 

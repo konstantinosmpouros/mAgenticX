@@ -1,18 +1,30 @@
-"""User-authored agents — proxy to the agents service + the catalog row.
+"""User-authored agents — owned by ``chat_db``, materialised to the agents service.
 
-A custom agent has two halves that must stay in step:
+A custom agent has three parts:
 
-* its **definition**, a folder in the user's workspace on the agents service
+* its **catalog row** in ``agents``, carrying ``owner_user_id`` — the authority
+  on ownership and the id the UI keys off;
+* its **definition**, now stored here as ``agents.definition_spec`` plus
+  ``agent_definition_files``; and
+* a **materialised copy** on the agents-service volume
   (``custom_agents/<slug>/agent.yaml`` + prompt files), which that service
-  validates and writes; and
-* its **catalog row** in ``agents`` here, carrying ``owner_user_id``, which is
-  the authority on ownership and gives the agent the id the UI keys off.
+  generates, validates and loads at run time.
 
-Order of operations on create/update is deliberate: write the definition first,
-then the row. If the row write fails the folder is orphaned but invisible (no row
-⇒ the agent is never listed or resolvable), which is recoverable. The reverse
-order would leave a row pointing at a definition that does not exist — an agent
-the user can select and that then fails at run time.
+Postgres is the source of truth. The volume used to be the *only* copy, and it
+has no backup: losing it left the row pointing at nothing — an agent that listed
+in the UI and failed at run time. The volume is now a cache the agents service
+rebuilds from these rows on boot.
+
+Order on create/update: call the agents service **first**, because that call is
+what validates the spec, then persist. Persisting first would admit an invalid
+definition that the hydrator would keep trying to write. Reads do not call
+upstream at all — the row and its files answer them — so a slow or restarting
+agents service no longer makes a user's own agents vanish from settings.
+
+What is stored is the *submitted payload* (spec + uploaded files), not the
+generated ``agent.yaml``: that file is derived from the spec by the agents
+service, uploading it is explicitly rejected, and keeping the spec avoids giving
+the bridge a YAML dependency it has no other reason to carry.
 
 Delete is a **soft** delete of the row (``is_active=False``) plus removal of the
 definition: ``agents.id`` is referenced by conversations with ``ON DELETE
@@ -25,11 +37,11 @@ from uuid import uuid4
 
 import httpx
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
-from core.database import AgentTable
+from core.database import AgentDefinitionFileTable, AgentTable
 from core.error_handling import upstream_error_handler
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
@@ -156,47 +168,159 @@ async def _upsert_row(
 
 
 # ---------------------------------------------------------------------------
+# Definition persistence — chat_db is the source of truth
+# ---------------------------------------------------------------------------
+# The agents-service volume has no backup, so a definition that lived only there
+# died with it: the catalog row survived and pointed at nothing, leaving an agent
+# that listed in the UI and failed at run time. These helpers keep the authored
+# definition here; the volume is a materialised cache the agents service rebuilds.
+#
+# What is stored is the *submitted payload* — the spec plus the uploaded files —
+# not the generated `agent.yaml`. That file is produced by the agents service
+# from the spec (and uploading it is explicitly rejected), so the spec is the
+# real input, and storing it keeps the bridge free of a YAML dependency.
+
+
+async def _store_definition(
+    db: AsyncSession, agent_id: str, payload: Dict[str, Any]
+) -> None:
+    """Replace this agent's stored definition with the submitted payload.
+
+    Replace, never merge: a save rewrites the whole agent folder upstream, so
+    any file the user did not re-send is deleted there. Merging here would leave
+    Postgres holding files the volume no longer has.
+    """
+    await db.execute(
+        delete(AgentDefinitionFileTable).where(AgentDefinitionFileTable.agent_id == agent_id)
+    )
+    for item in payload.get("files") or []:
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        db.add(
+            AgentDefinitionFileTable(
+                agent_id=agent_id, path=path, content=str(item.get("content") or "")
+            )
+        )
+
+
+async def _load_definition_files(db: AsyncSession, agent_id: str) -> List[Dict[str, Any]]:
+    """The stored files, in a stable order so an edit round-trip is diffable."""
+    result = await db.execute(
+        select(AgentDefinitionFileTable)
+        .where(AgentDefinitionFileTable.agent_id == agent_id)
+        .order_by(AgentDefinitionFileTable.path)
+    )
+    return [
+        {"path": row.path, "content": row.content, "encoding": "utf-8"}
+        for row in result.scalars().all()
+    ]
+
+
+def _summary_from_row(row: AgentTable) -> Dict[str, Any]:
+    """The list-shape a client expects, assembled from the row alone."""
+    return {
+        "id": row.id,
+        "slug": row.slug,
+        "name": row.name,
+        "description": row.description,
+        "icon": row.icon,
+        "version": row.version,
+        "type": row.type,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Public surface
 # ---------------------------------------------------------------------------
 async def list_custom_agent_definitions(db: AsyncSession, user_id: str) -> List[Dict[str, Any]]:
-    """This user's agents, joined: the definition summary + its catalog id.
+    """This user's agents, straight from ``chat_db``.
 
-    Driven by the catalog rows (the ownership authority), so a definition folder
-    without a row is not listed.
+    Used to join a catalog row against a summary fetched from the agents
+    service. The row now carries everything the list needs, so the upstream hop
+    is gone — and with it the failure mode where the agents service being slow
+    or restarting made a user's own agents disappear from their settings.
     """
     result = await db.execute(
         select(AgentTable)
         .where(AgentTable.owner_user_id == user_id, AgentTable.is_active == True)  # noqa: E712
         .order_by(AgentTable.name)
     )
-    rows = {row.slug: row for row in result.scalars().all()}
-    if not rows:
-        return []
-    summaries = await _proxy(
-        "GET", _base_url(user_id),
-        operation="custom_agents_list",
-        public_detail="Your agents could not be loaded. Please try again.",
-    )
-    out: List[Dict[str, Any]] = []
-    for item in summaries or []:
-        row = rows.get(str(item.get("slug") or ""))
-        if row is None:
-            continue
-        out.append({**item, "id": row.id, "type": row.type})
-    return out
+    return [_summary_from_row(row) for row in result.scalars().all()]
 
 
 async def get_custom_agent_definition(
     db: AsyncSession, user_id: str, agent_id: str
 ) -> Dict[str, Any]:
-    """One agent's full definition, keyed by its catalog id."""
+    """One agent's full definition, keyed by its catalog id.
+
+    Assembled here rather than fetched: the spec is on the row and the files are
+    in ``agent_definition_files``, so opening an agent in the builder no longer
+    depends on the agents service being reachable.
+    """
     row = await _require_owned_row(db, user_id, agent_id)
-    detail = await _proxy(
-        "GET", f"{_base_url(user_id)}/{row.slug}",
-        operation="custom_agent_get",
-        public_detail="That agent could not be loaded. Please try again.",
+    files = await _load_definition_files(db, row.id)
+    if not row.definition_spec and not files:
+        # Pre-dates this store: the definition exists only on the volume. Fetch
+        # it once and adopt it, so the migration is lazy and self-healing rather
+        # than a boot pass someone has to remember to run. Without this the
+        # builder would open an empty form and the next save would wipe a
+        # definition the user still has.
+        adopted = await _adopt_definition_from_upstream(db, row)
+        if adopted is not None:
+            return adopted
+    return {
+        **_summary_from_row(row),
+        "spec": row.definition_spec or {},
+        "files": files,
+    }
+
+
+async def _adopt_definition_from_upstream(
+    db: AsyncSession, row: AgentTable
+) -> Optional[Dict[str, Any]]:
+    """Pull a pre-existing definition off the volume into ``chat_db``.
+
+    Returns the detail payload, or None when upstream has nothing to give — an
+    agent whose folder is genuinely gone still opens (empty) rather than 500ing,
+    which is the honest outcome: the row survived and the definition did not.
+    """
+    try:
+        detail = await _proxy(
+            "GET", f"{_base_url(row.owner_user_id)}/{row.slug}",
+            operation="custom_agent_adopt",
+            public_detail="That agent could not be loaded. Please try again.",
+        )
+    except HTTPException:
+        # Upstream said no. Do not fail the read — the caller gets the row's own
+        # (empty) definition and can re-author it.
+        logger.warning(
+            "custom_agent_adopt_failed",
+            "Could not read a pre-existing definition from the agents service",
+            agent_id=row.id,
+            agent_slug=row.slug,
+        )
+        return None
+
+    payload = {"spec": detail.get("spec") or {}, "files": detail.get("files") or []}
+    if not payload["spec"] and not payload["files"]:
+        return None
+
+    row.definition_spec = payload["spec"]
+    await _store_definition(db, row.id, payload)
+    await db.commit()
+    logger.info(
+        "custom_agent_definition_adopted",
+        "Adopted a volume-only agent definition into chat_db",
+        agent_id=row.id,
+        agent_slug=row.slug,
+        file_count=len(payload["files"]),
     )
-    return {**detail, "id": row.id, "slug": row.slug, "type": row.type}
+    return {
+        **_summary_from_row(row),
+        "spec": payload["spec"],
+        "files": await _load_definition_files(db, row.id),
+    }
 
 
 async def validate_custom_agent_definition(
@@ -222,6 +346,16 @@ async def create_custom_agent(
         json_body=payload,
     )
     row = await _upsert_row(db, user_id, summary or {})
+    # Store the authored definition beside the row. Done after the upstream call
+    # because that call is what validates the spec — persisting first would let
+    # an invalid definition into chat_db, and the hydrator would then keep
+    # rewriting a folder the agents service refuses.
+    row.definition_spec = payload.get("spec") or {}
+    await _store_definition(db, row.id, payload)
+    # `_upsert_row` already committed the catalog row; these are a second unit
+    # of work and `get_db` does not commit on close, so without this the
+    # definition is silently discarded and only the volume copy survives.
+    await db.commit()
     logger.info(
         "custom_agent_created",
         "Created a user-authored agent",
@@ -243,6 +377,9 @@ async def update_custom_agent(
         json_body=payload,
     )
     updated = await _upsert_row(db, user_id, summary or {})
+    updated.definition_spec = payload.get("spec") or {}
+    await _store_definition(db, updated.id, payload)
+    await db.commit()
     logger.info(
         "custom_agent_updated",
         "Updated a user-authored agent",
@@ -268,6 +405,13 @@ async def delete_custom_agent(db: AsyncSession, user_id: str, agent_id: str) -> 
     )
     row.is_active = False
     row.updated_at = func.now()
+    # The definition is gone upstream, so drop the stored copy too — keeping it
+    # would leave the hydrator able to resurrect a deleted agent's folder. The
+    # row itself only deactivates (see the docstring).
+    await db.execute(
+        delete(AgentDefinitionFileTable).where(AgentDefinitionFileTable.agent_id == row.id)
+    )
+    row.definition_spec = None
     await db.commit()
     logger.info(
         "custom_agent_deleted",

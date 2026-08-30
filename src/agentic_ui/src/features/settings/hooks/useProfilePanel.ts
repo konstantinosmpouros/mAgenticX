@@ -47,13 +47,8 @@ export function useProfilePanel({
   refreshAgentCatalog,
 }: UseProfilePanelCtx) {
   const skills = useSkills({ userId, toast, initialPool, authResolved });
-  const { refreshMySkills, addGlobalToPool, createCustomInPool, removeFromPool } = skills;
+  const { addGlobalToPool, createCustomInPool, removeFromPool } = skills;
   const userAgents = useUserAgents({ userId, toast, authResolved });
-
-  const handleRefreshMySkills = useCallback(async () => {
-    await refreshMySkills({ bypassRedis: true });
-    requestPersist();
-  }, [refreshMySkills, requestPersist]);
 
   const handleAddGlobalSkill = useCallback(
     async (skillName: string) => {
@@ -120,7 +115,6 @@ export function useProfilePanel({
     handleCreateAgent,
     handleUpdateAgent,
     handleDeleteAgent,
-    handleRefreshMySkills,
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,

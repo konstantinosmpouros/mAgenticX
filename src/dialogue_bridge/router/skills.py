@@ -26,7 +26,10 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, status
 from core.logging import get_logger, set_context
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from core.auth.session import AuthUser, require_csrf_protection, require_current_user
+from core.database import get_db
 from core.security.rate_limit import skill_upload_rate_limit
 from schema import (
     CustomSkillCreateRequest,
@@ -85,18 +88,17 @@ async def get_skills(
 )
 async def get_user_pool(
     user_id: str,
-    bypass_redis: bool = Query(default=False),
     _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
 ) -> List[UserSkill]:
     """Return the user's skill pool manifest (no content)."""
     set_context(user_id=user_id)
-    payload = await list_user_skills(user_id=user_id, bypass_cache=bypass_redis)
+    payload = await list_user_skills(db=db, user_id=user_id)
     logger.info(
         "user_pool_listed",
         "Served user skill pool",
         user_id=user_id,
         count=len(payload),
-        bypass_redis=bypass_redis,
     )
     return [UserSkill.model_validate(item) for item in payload]
 
@@ -110,10 +112,11 @@ async def get_user_skill(
     user_id: str,
     skill_name: str,
     _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
 ) -> UserSkillDetail:
-    """Return a single user-pool skill with its SKILL.md content (no cache)."""
+    """Return a single user-pool skill with its content."""
     set_context(user_id=user_id)
-    payload = await get_user_skill_detail(user_id=user_id, skill_name=skill_name)
+    payload = await get_user_skill_detail(db=db, user_id=user_id, skill_name=skill_name)
     return UserSkillDetail.model_validate(payload)
 
 
@@ -126,10 +129,11 @@ async def add_global_to_pool(
     skill_name: str,
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """Append a global-skill reference to the user's pool."""
     set_context(user_id=user_id)
-    await add_global_skill_to_user_pool(user_id=user_id, skill_name=skill_name)
+    await add_global_skill_to_user_pool(db=db, user_id=user_id, skill_name=skill_name)
 
 
 @router.post(
@@ -144,10 +148,12 @@ async def create_custom_skill(
     payload: CustomSkillCreateRequest,
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
 ) -> UserSkill:
     """Create a user-owned custom skill in the pool."""
     set_context(user_id=user_id)
     body = await create_custom_skill_in_pool(
+        db=db,
         user_id=user_id, payload=payload.model_dump()
     )
     return UserSkill.model_validate(body)
@@ -162,10 +168,11 @@ async def remove_from_pool(
     skill_name: str,
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """Remove a skill from the user's pool, cascading to per-agent assignments."""
     set_context(user_id=user_id)
-    await remove_skill_from_user_pool(user_id=user_id, skill_name=skill_name)
+    await remove_skill_from_user_pool(db=db, user_id=user_id, skill_name=skill_name)
 
 
 @router.get(
@@ -177,6 +184,7 @@ async def get_enabled_skills_for_user_agent(
     user_id: str,
     agent_id: str,
     _: AuthUser = Depends(validate_userId),
+    db: AsyncSession = Depends(get_db),
 ) -> List[str]:
     """Return the names of skills enabled for this (user, agent) pair.
 
@@ -184,7 +192,7 @@ async def get_enabled_skills_for_user_agent(
     the matching key, so the TTL is just a safety net.
     """
     set_context(user_id=user_id, agent_id=agent_id)
-    skills = await get_user_agent_skills(user_id=user_id, agent_id=agent_id)
+    skills = await get_user_agent_skills(db=db, user_id=user_id, agent_id=agent_id)
     logger.info(
         "user_agent_skills_served",
         "Served per-(user, agent) skill selection",
@@ -203,6 +211,7 @@ async def enable_skill_for_user_agent(
     skill_name: str,
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """Enable ``skill_name`` for this (user, agent) pair.
 
@@ -212,6 +221,7 @@ async def enable_skill_for_user_agent(
     """
     set_context(user_id=user_id, agent_id=agent_id)
     await enable_user_agent_skill(
+        db=db,
         user_id=user_id, agent_id=agent_id, skill_name=skill_name
     )
 
@@ -226,6 +236,7 @@ async def disable_skill_for_user_agent(
     skill_name: str,
     _: AuthUser = Depends(validate_userId),
     __: None = Depends(require_csrf_protection),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """Disable ``skill_name`` for this (user, agent) pair.
 
@@ -235,5 +246,6 @@ async def disable_skill_for_user_agent(
     """
     set_context(user_id=user_id, agent_id=agent_id)
     await disable_user_agent_skill(
+        db=db,
         user_id=user_id, agent_id=agent_id, skill_name=skill_name
     )

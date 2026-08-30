@@ -44,6 +44,7 @@ from router import (
     scheduled_tasks_router,
     usage_router,
     internal_memory_router,
+    internal_workspace_router,
 )
 
 configure_logging()
@@ -272,6 +273,14 @@ app.include_router(
 # backend network. Backs the agent's search_past_conversations tool.
 app.include_router(
     internal_memory_router,
+    prefix=f"/v1/internal",
+    tags=["Internal"],
+)
+
+# Same trust model. Backs the agents service's workspace hydrator, which rebuilds
+# a user's custom agents and skills on the volume from chat_db.
+app.include_router(
+    internal_workspace_router,
     prefix=f"/v1/internal",
     tags=["Internal"],
 )

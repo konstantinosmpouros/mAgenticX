@@ -168,7 +168,6 @@ type ProfilePanelProps = {
   mySkillDetails?: Record<string, UserSkillDetail>;
   isMySkillDetailLoading?: (skillName: string) => boolean;
   onLoadMySkillDetail?: (skillName: string) => Promise<void>;
-  onRefreshMySkills?: () => Promise<void>;
   onAddGlobalSkillToPool?: (skillName: string) => Promise<void>;
   onCreateCustomSkill?: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   onRemoveSkillFromPool?: (skillName: string) => Promise<void>;
@@ -239,7 +238,6 @@ export default function ProfilePanel({
   mySkillDetails,
   isMySkillDetailLoading,
   onLoadMySkillDetail,
-  onRefreshMySkills,
   onAddGlobalSkillToPool,
   onCreateCustomSkill,
   onRemoveSkillFromPool,
@@ -507,7 +505,6 @@ export default function ProfilePanel({
                         mySkillDetails={mySkillDetails}
                         isMySkillDetailLoading={isMySkillDetailLoading}
                         onLoadMySkillDetail={onLoadMySkillDetail}
-                        onRefreshMySkills={onRefreshMySkills}
                         onAddGlobalSkillToPool={onAddGlobalSkillToPool}
                         onCreateCustomSkill={onCreateCustomSkill}
                         onRemoveSkillFromPool={onRemoveSkillFromPool}

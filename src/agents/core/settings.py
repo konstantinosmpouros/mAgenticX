@@ -562,6 +562,24 @@ class BridgeSettings(BaseSettings):
     request_timeout_seconds: float = Field(20.0, validation_alias="BRIDGE_REQUEST_TIMEOUT_SECONDS")
     connect_timeout_seconds: float = Field(10.0, validation_alias="BRIDGE_CONNECT_TIMEOUT_SECONDS")
 
+    # Workspace hydration: rebuild a user's authored agents/skills on this
+    # volume from chat_db at boot. On by default — without it a fresh container
+    # or a wiped volume comes up with the content missing, which is the whole
+    # reason chat_db became the source of truth.
+    hydrate_on_startup: bool = Field(True, validation_alias="WORKSPACE_HYDRATE_ON_STARTUP")
+    # The bridge is ALWAYS still starting when this first runs: compose declares
+    # `dialogue_bridge depends_on: agents`, so this service comes up first, and
+    # the reverse edge cannot be added without creating a dependency cycle.
+    # Retrying is therefore the mechanism, not a fallback — and the budget has
+    # to outlast the bridge's own startup, which includes `alembic upgrade head`.
+    #
+    # Backoff is 5s doubling to a 60s cap, so 10 attempts span roughly six
+    # minutes. Generous on purpose: the cost of waiting is nothing (the pass is
+    # backgrounded), while giving up too early leaves the volume missing content
+    # until the next restart.
+    hydrate_retry_seconds: float = Field(5.0, validation_alias="WORKSPACE_HYDRATE_RETRY_SECONDS")
+    hydrate_max_attempts: int = Field(10, validation_alias="WORKSPACE_HYDRATE_MAX_ATTEMPTS")
+
     @property
     def memory_search_url(self) -> str:
         return f"{self.base_url.rstrip('/')}{self.memory_search_path}"

@@ -31,9 +31,6 @@ from typing import Any, List
 from core.cache.policies import (
     SKILLS_GLOBAL_KEY,
     get_cache_backend,
-    skills_user_agent_group,
-    skills_user_agent_key,
-    skills_user_registry_key,
 )
 from core.settings import settings
 from core.logging import get_logger
@@ -73,86 +70,5 @@ class SkillsCache:
     # ------------------------------------------------------------------
     # Per-user registry pool
     # ------------------------------------------------------------------
-    async def get_user_registry(self, user_id: str) -> List[dict[str, Any]] | None:
-        """Return the cached user pool manifest entries, or None on miss / error."""
-        backend = await get_cache_backend()
-        payload = await backend.get(skills_user_registry_key(user_id))
-        return payload if isinstance(payload, list) else None
-
-    async def set_user_registry(
-        self,
-        user_id: str,
-        payload: List[dict[str, Any]],
-        *,
-        ttl_seconds: int = settings.redis.skills_user_registry_ttl_seconds,
-    ) -> None:
-        """Store the user pool manifest with a settings-driven TTL."""
-        backend = await get_cache_backend()
-        await backend.set(skills_user_registry_key(user_id), payload, ttl=ttl_seconds)
-
-    async def invalidate_user_registry(self, user_id: str) -> None:
-        """Drop the user pool cache (call on every mutation to the pool)."""
-        backend = await get_cache_backend()
-        await backend.delete(skills_user_registry_key(user_id))
-
-    # ------------------------------------------------------------------
-    # Per-(user, agent) assignment sets
-    # ------------------------------------------------------------------
-    async def invalidate_all_user_agent_keys(self, user_id: str) -> None:
-        """Drop every per-(user, agent) cache entry for this user in one call.
-
-        Called when the user removes a skill from their pool — the agents
-        service cascade-removes the skill from every per-agent assignment
-        folder, so every cached selection set is potentially stale. All those
-        entries share the per-user eviction group, so this is one
-        ``delete_group`` round trip (server-side Lua SCAN+UNLINK).
-        """
-        backend = await get_cache_backend()
-        deleted = await backend.delete_group(skills_user_agent_group(user_id))
-        if deleted:
-            logger.info(
-                "user_agent_keys_cascade_invalidated",
-                "Cascaded user-agent cache invalidation",
-                user_id=user_id,
-                deleted=deleted,
-            )
-
-    async def get_user_agent_skills(self, user_id: str, agent_id: str) -> List[str] | None:
-        """Return the cached enabled-skill names for a (user, agent) pair."""
-        backend = await get_cache_backend()
-        payload = await backend.get(
-            skills_user_agent_key(user_id, agent_id),
-            eviction_group=skills_user_agent_group(user_id),
-        )
-        if not isinstance(payload, list):
-            return None
-        return [str(item) for item in payload]
-
-    async def set_user_agent_skills(
-        self,
-        user_id: str,
-        agent_id: str,
-        payload: List[str],
-        *,
-        ttl_seconds: int = settings.redis.skills_user_agent_ttl_seconds,
-    ) -> None:
-        """Store the enabled-skill names with a settings-driven TTL — never
-        forever — joined to the per-user group for cascade eviction."""
-        backend = await get_cache_backend()
-        await backend.set(
-            skills_user_agent_key(user_id, agent_id),
-            payload,
-            ttl=ttl_seconds,
-            eviction_group=skills_user_agent_group(user_id),
-        )
-
-    async def invalidate_user_agent_skills(self, user_id: str, agent_id: str) -> None:
-        """Delete the cached enabled-skill names for a (user, agent) pair."""
-        backend = await get_cache_backend()
-        await backend.delete(
-            skills_user_agent_key(user_id, agent_id),
-            eviction_group=skills_user_agent_group(user_id),
-        )
-
 
 skills_cache = SkillsCache()

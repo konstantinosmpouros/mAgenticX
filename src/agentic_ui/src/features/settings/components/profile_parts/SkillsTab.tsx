@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Bot,
@@ -7,7 +7,6 @@ import {
   Library,
   Loader2,
   Plus,
-  RefreshCw,
   Search,
   Sparkles,
   X,
@@ -31,12 +30,6 @@ import { InfoCard, SkillHubRow, SoftPanel, ToggleSwitch } from "./shared";
 import SkillBuilder from "./SkillBuilder";
 import SkillFilesViewer from "./SkillFilesViewer";
 
-// Minimum visible spin duration. The bypass-Redis path is fast enough
-// (~50-150ms on localhost) that without a floor the spinner can flash for
-// a single frame and feel like "nothing happened." 600ms reads as a
-// deliberate refresh without dragging.
-const MIN_REFRESH_SPIN_MS = 600;
-
 type SkillsTabProps = {
   availableSkills: Skill[];
   mySkills?: UserSkill[];
@@ -44,7 +37,6 @@ type SkillsTabProps = {
   mySkillDetails?: Record<string, UserSkillDetail>;
   isMySkillDetailLoading?: (skillName: string) => boolean;
   onLoadMySkillDetail?: (skillName: string) => Promise<void>;
-  onRefreshMySkills?: () => Promise<void>;
   onAddGlobalSkillToPool?: (skillName: string) => Promise<void>;
   onCreateCustomSkill?: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   onRemoveSkillFromPool?: (skillName: string) => Promise<void>;
@@ -63,7 +55,6 @@ export default function SkillsTab({
   mySkillDetails,
   isMySkillDetailLoading,
   onLoadMySkillDetail,
-  onRefreshMySkills,
   onAddGlobalSkillToPool,
   onCreateCustomSkill,
   onRemoveSkillFromPool,
@@ -124,9 +115,10 @@ export default function SkillsTab({
     [prefersReducedMotion],
   );
 
-  // Manage-per-agent UI: which deep-agent cards are expanded. Loading the
-  // selection set is deferred to the first expansion so we don't fan out
-  // N concurrent GETs on Skills-tab open.
+  // Manage-per-agent UI: which deep-agent cards are expanded. Expansion is
+  // presentation only — the selection sets are loaded up front (below), so a
+  // collapsed card already shows its real count instead of "No skills enabled"
+  // until you click it.
   const [expandedAgentSkills, setExpandedAgentSkills] = useState<Record<string, boolean>>({});
 
   const [skillsView, setSkillsView] = useState<SkillsSubView>("hub");
@@ -140,7 +132,6 @@ export default function SkillsTab({
   // Per-skill in-flight state for the catalog "+ Add" button so each card
   // can show its own spinner and guard against double-adds.
   const [addingSkills, setAddingSkills] = useState<Record<string, boolean>>({});
-  const [mySkillsRefreshing, setMySkillsRefreshing] = useState(false);
   // Optional name to prefill the create-skill builder (e.g. when the user
   // clicks "Create 'x' as a custom skill" from the catalog empty state). The
   // builder owns the rest of its form state internally.
@@ -154,31 +145,24 @@ export default function SkillsTab({
     [agents],
   );
 
-  const handleToggleAgentSkillsCard = useCallback(
-    (agentId: string) => {
-      setExpandedAgentSkills((prev) => {
-        const isOpening = !prev[agentId];
-        if (isOpening && onLoadAgentSkills) {
-          // Fire-and-forget — the hook tracks per-agent loading state and
-          // the UI shows a placeholder while the request is in flight.
-          void onLoadAgentSkills(agentId);
-        }
-        return { ...prev, [agentId]: !prev[agentId] };
-      });
-    },
-    [onLoadAgentSkills],
-  );
+  const handleToggleAgentSkillsCard = useCallback((agentId: string) => {
+    setExpandedAgentSkills((prev) => ({ ...prev, [agentId]: !prev[agentId] }));
+  }, []);
 
-  const handleRefreshMySkills = useCallback(async () => {
-    if (!onRefreshMySkills || mySkillsRefreshing) return;
-    setMySkillsRefreshing(true);
-    const minSpin = new Promise((resolve) => setTimeout(resolve, MIN_REFRESH_SPIN_MS));
-    try {
-      await Promise.all([onRefreshMySkills(), minSpin]);
-    } finally {
-      setMySkillsRefreshing(false);
+  // Load every deep agent's selection when the Agent-skills page opens, rather
+  // than on expansion. This used to be deferred because each read was a hop to
+  // the agents service; the bridge now answers from chat_db, so the fan-out is
+  // a handful of cheap local queries — and the collapsed cards can finally show
+  // the truth instead of "No skills enabled" until you click them.
+  //
+  // `onLoadAgentSkills` is itself guarded against repeat fetches per agent, so
+  // re-entering the page costs nothing.
+  useEffect(() => {
+    if (skillsView !== "agents" || !onLoadAgentSkills) return;
+    for (const agent of deepAgents) {
+      void onLoadAgentSkills(agent.id);
     }
-  }, [onRefreshMySkills, mySkillsRefreshing]);
+  }, [skillsView, deepAgents, onLoadAgentSkills]);
 
   // Publish the inner page to the panel's own header instead of stacking a
   // second title under it. The hub keeps the section's static metadata.
@@ -210,17 +194,6 @@ export default function SkillsTab({
           ...subviewHeader,
           backLabel: "Skills",
           onBack: () => setSkillsView("hub"),
-          // Only the pool can be refreshed, and only when the parent wired it.
-          ...(skillsView === "mine" && onRefreshMySkills
-            ? {
-                action: {
-                  icon: RefreshCw,
-                  label: "Refresh your skills",
-                  busy: mySkillsRefreshing,
-                  onClick: () => void handleRefreshMySkills(),
-                },
-              }
-            : {}),
         }
       : null,
   );

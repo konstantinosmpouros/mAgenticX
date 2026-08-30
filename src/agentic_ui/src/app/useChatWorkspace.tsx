@@ -405,9 +405,6 @@ export function useChatWorkspace({
     setShowUserProfile,
   } = settingsPanels;
 
-  // Manual refresh from the Skills tab — hits the bridge with bypass_redis=true,
-  // which refetches from the agents service and upserts the bridge's Redis
-
   /**
    * Re-pull the agent catalog after the user creates, edits or deletes an agent.
    *
@@ -527,7 +524,6 @@ export function useChatWorkspace({
     skillDetail: mySkillDetails,
     loadingSkillDetail,
     ensureSkillDetail,
-    handleRefreshMySkills,
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
@@ -1390,7 +1386,6 @@ export function useChatWorkspace({
     mySkillDetails,
     loadingSkillDetail,
     ensureSkillDetail,
-    handleRefreshMySkills,
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,

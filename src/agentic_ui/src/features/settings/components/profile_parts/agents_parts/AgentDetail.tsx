@@ -121,7 +121,7 @@ export function AgentDetail({
                 { label: "Type", value: agent.type ?? "—" },
                 { label: "Version", value: agent.version ?? "—" },
                 { label: "Tools on", value: `${enabledCount} of ${tools.length}` },
-                { label: "Source", value: mine ? "Authored by you" : "Platform agent" },
+                { label: "Source", value: mine ? "Custom agent" : "Platform agent" },
               ].map((row) => (
                 <div
                   key={row.label}

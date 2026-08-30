@@ -28,26 +28,6 @@ from core.cache.client import create_redis_client
 
 SKILLS_GLOBAL_KEY = "skills:global"
 
-
-def skills_user_registry_key(user_id: str) -> str:
-    """Cache key for one user's skill pool manifest."""
-    return f"skills:user:{user_id}:registry"
-
-
-def skills_user_agent_key(user_id: str, agent_id: str) -> str:
-    """Cache key for one (user, agent) enabled-skill selection set."""
-    return f"skills:user:{user_id}:agent:{agent_id}"
-
-
-def skills_user_agent_group(user_id: str) -> str:
-    """Eviction group joining every per-(user, agent) selection entry.
-
-    Deleting a skill from the user's pool cascade-invalidates all of them via
-    ``delete_group`` on this name.
-    """
-    return f"skills:agents:{user_id}"
-
-
 # --- Shared imperative backend --------------------------------------------
 
 _backend: CacheBackend | None = None

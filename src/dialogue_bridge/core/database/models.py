@@ -75,8 +75,23 @@ class AgentTable(Base):
     # features only deep agents support (e.g. per-user skill selection).
     type = Column(String, nullable=False, server_default="langgraph agent")
     is_active = Column(Boolean, nullable=False, server_default="true")
+    # The authored AgentSpec, for user-authored agents only (NULL = platform,
+    # whose definition ships in the agents-service image).
+    #
+    # Stored as the JSON the builder submitted rather than the generated
+    # `agent.yaml`: that file is produced by the agents service from this spec
+    # and uploading it is explicitly rejected, so the spec is the real input.
+    # It also keeps the bridge free of a YAML dependency it otherwise has no
+    # reason to carry.
+    definition_spec = Column(JSON, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    definition_files = relationship(
+        "AgentDefinitionFileTable",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     conversations = relationship(
         "ConversationTable",
@@ -475,6 +490,141 @@ class ScheduledTaskTable(Base):
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class AgentDefinitionFileTable(Base):
+    """One file of a user-authored agent's definition, owned by ``chat_db``.
+
+    The definition used to live only on the agents-service volume, which has no
+    backup: losing it left the ``agents`` row pointing at nothing — the agent
+    listed in the UI and could not run. Postgres is now the source of truth and
+    the volume is a materialised cache the agents service rebuilds on boot.
+
+    ``content`` is TEXT, not bytea, because the server-side allowlist for an
+    agent definition is ``.md/.txt/.yaml/.yml`` — there is no binary case, so
+    base64 would be dead weight. Rows exist only for user-authored agents;
+    platform definitions ship in the image.
+    """
+
+    __tablename__ = "agent_definition_files"
+    __table_args__ = (UniqueConstraint("agent_id", "path", name="uq_agent_definition_files_path"),)
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    agent_id = Column(
+        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Relative to the agent folder: 'agent.yaml', 'AGENT.md', 'subagents/x.md'.
+    path = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class UserSkillTable(Base):
+    """A skill the user authored (tier ②, ``type='custom'``), owned by ``chat_db``.
+
+    Custom skills previously had **no** database presence at all: the folder on
+    the volume was the only copy. ``origin``/``created_by_agent`` carry the
+    provenance the manifest already tracks, so a skill written by the
+    ``create_skill`` tool stays distinguishable from one the user authored.
+
+    Only custom skills get a row. A pool entry pointing at the global catalogue
+    has no files of its own and lives in :class:`UserSkillPoolTable`.
+    """
+
+    __tablename__ = "user_skills"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_user_skills_name"),)
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=False, server_default="")
+    category = Column(String, nullable=True)
+    # 'user' — authored in the UI; 'agent' — written by the create_skill tool.
+    origin = Column(String, nullable=False, server_default="user")
+    created_by_agent = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    files = relationship(
+        "UserSkillFileTable",
+        back_populates="skill",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class UserSkillFileTable(Base):
+    """One file of a custom skill — ``SKILL.md`` plus any scripts or references.
+
+    Same TEXT-not-bytea reasoning as :class:`AgentDefinitionFileTable`: a skill
+    is a playbook and its supporting text files.
+    """
+
+    __tablename__ = "user_skill_files"
+    __table_args__ = (UniqueConstraint("skill_id", "path", name="uq_user_skill_files_path"),)
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    skill_id = Column(
+        String, ForeignKey("user_skills.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    path = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    skill = relationship("UserSkillTable", back_populates="files")
+
+
+class UserSkillPoolTable(Base):
+    """Membership of the user's skill pool (tier ②) — a *selection*, not content.
+
+    A pool entry is either a custom skill (files in :class:`UserSkillFileTable`)
+    or a reference to one in the global catalogue, which has no per-user copy.
+    Kept separate from ``user_skills`` precisely because of that second case:
+    the pool is a list of names, and only some of them own files.
+    """
+
+    __tablename__ = "user_skill_pool"
+    __table_args__ = (UniqueConstraint("user_id", "skill_name", name="uq_user_skill_pool_name"),)
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    skill_name = Column(String, nullable=False)
+    # 'global' — added from the catalogue; 'custom' — authored by this user.
+    type = Column(String, nullable=False, server_default="custom")
+    # Path relative to the skills-registry root, as the agents manifest records
+    # it (`users/<u>/custom/<name>` or the catalogue path). Carried rather than
+    # derived: the two shapes differ, and the client contract requires it.
+    source_path = Column(String, nullable=False, server_default="")
+    category = Column(String, nullable=False, server_default="")
+    added_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class UserAgentSkillTable(Base):
+    """A skill the user assigned to one agent (tier ③) — also a selection.
+
+    Keyed by ``agent_slug`` rather than ``agents.id`` because the assignment is
+    meaningful for platform agents too, whose rows are synced from the service
+    manifest and can be re-created; the slug is the stable identifier the agents
+    filesystem uses for the same pairing.
+    """
+
+    __tablename__ = "user_agent_skills"
+    __table_args__ = (
+        UniqueConstraint("user_id", "agent_slug", "skill_name", name="uq_user_agent_skills"),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_slug = Column(String, nullable=False, index=True)
+    skill_name = Column(String, nullable=False)
+    assigned_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 
 class MessageEmbeddingTable(Base):
