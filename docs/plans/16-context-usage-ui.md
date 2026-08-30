@@ -5,7 +5,7 @@
 > **Depends on:** nothing
 > **Blocks:** nothing
 > **Services touched:** agentic_ui · dialogue_bridge · agents *(no rag_service, no infra)*
-> **Related:** [13-charts-and-agui-widgets.md](13-charts-and-agui-widgets.md) *(same vendored-shadcn + AG-UI-event mechanics)* · [14-profile-panel-completion.md](14-profile-panel-completion.md) *(the Usage tab lives in the same settings panel)* · [03-projects-and-workspaces.md](03-projects-and-workspaces.md) *(a workspace tier would re-scope the usage rollup)*
+> **Related:** [13-charts-and-agui-widgets.md](done/13-charts-and-agui-widgets.md) *(same vendored-shadcn + AG-UI-event mechanics)* · [14-profile-panel-completion.md](14-profile-panel-completion.md) *(the Usage tab lives in the same settings panel)* · [03-projects-and-workspaces.md](03-projects-and-workspaces.md) *(a workspace tier would re-scope the usage rollup)*
 
 This TODO is a question, not a feature request: *can we use the shadcn.io AI "context" component?* The honest answer is **yes for the visual, no for the data** — and the gap is not small. That component is fundamentally a **context-window meter**: a ring showing `usedTokens / maxTokens`, with a hover breakdown of input / output / reasoning / cached tokens and a dollar cost. We ship three real token surfaces today (a per-message chip, a per-conversation card, a workspace rollup), all of which report **cumulative billed tokens**. We have no context-window size for any model, no model identifier anywhere on the wire the UI can see, and — the subtlest problem — our per-message `input_tokens` is a *sum across every model call and sub-agent in the turn*, which is the wrong numerator for a context gauge and would show 300% occupancy on a long tool-using turn.
 
@@ -130,7 +130,7 @@ Two nullable columns on `messages`, in one migration. Nullable and un-indexed fo
 
 **Alembic slot:** `0017_message_model_and_context_tokens`, `down_revision = "0016_retire_enabled_tools"`. Style reference: `0015_personalization_prefs.py` for the docstring shape (header, `Revision ID:`, `Revises:`, per-column bullets, a closing `Non-destructive:` verdict), `0013_attachment_origin.py:47-48` for plain nullable `add_column` calls.
 
-> **Revision-number collision.** [17-voice-language-dynamic.md](17-voice-language-dynamic.md) also claims `0017`. Both plans are independent and either may land first; whichever merges second renumbers and re-points its `down_revision`. If both land in parallel branches, resolve with `alembic merge` per the CLAUDE.md workflow — do not edit the merged migration.
+> **Revision-number collision.** [17-voice-language-dynamic.md](done/17-voice-language-dynamic.md) also claims `0017`. Both plans are independent and either may land first; whichever merges second renumbers and re-points its `down_revision`. If both land in parallel branches, resolve with `alembic merge` per the CLAUDE.md workflow — do not edit the merged migration.
 
 No backfill. A message with `context_tokens IS NULL` renders no ring; that is the correct display for every message written before this change, and inventing a number from `input_tokens` would be a lie.
 
@@ -179,7 +179,7 @@ Rules this must not break: semantic tokens only (the occupancy bands map to `--p
 
 **AG-UI protocol.** One new optional field on an existing event. No new event type, no new reducer branch required in phase 1–2 — but phase 3's live ring *does* replace the `timeline.ts:698-703` no-op with a real fold, which makes this the first live consumer of `TOKEN_USAGE` and puts it squarely under the agui-protocol doc's ownership.
 
-**Plan interactions.** [13-charts-and-agui-widgets.md](13-charts-and-agui-widgets.md) shares the vendoring and reduced-motion mechanics and, more usefully, shares the finding that a `CUSTOM` event persists in `raw_events` with no bridge code. [03-projects-and-workspaces.md](03-projects-and-workspaces.md) would re-scope the workspace rollup to per-workspace, which is a `compute_usage_summary` join change and does not touch anything here. [02-org-and-user-permissions.md](02-org-and-user-permissions.md) is where org-level spend visibility would live, and it must not be able to read another user's numbers via this route — see § 9.
+**Plan interactions.** [13-charts-and-agui-widgets.md](done/13-charts-and-agui-widgets.md) shares the vendoring and reduced-motion mechanics and, more usefully, shares the finding that a `CUSTOM` event persists in `raw_events` with no bridge code. [03-projects-and-workspaces.md](03-projects-and-workspaces.md) would re-scope the workspace rollup to per-workspace, which is a `compute_usage_summary` join change and does not touch anything here. [02-org-and-user-permissions.md](02-org-and-user-permissions.md) is where org-level spend visibility would live, and it must not be able to read another user's numbers via this route — see § 9.
 
 ---
 
@@ -223,7 +223,7 @@ Token counts are metadata, not content — but they are *inference* metadata, an
 
 **Authorization is per-user and already correct; keep it that way.** `compute_usage_summary` scopes every query through the `conversations` join on `user_id` (`utils/usage.py:67`), and `router/usage.py:22` depends on `validate_userId`. The new fields ride `MessageOut`, which is only ever produced for a conversation the caller owns. **No new endpoint means no new authorization surface** — that is a deliberate design property of this plan, not an accident, and the phase-4 cost work must not break it by adding an unscoped pricing or spend route.
 
-**Window sizes and prices are configuration, never agent-supplied.** `contextWindow` originates from the provider profile inside the agents process; a price, if it ships, comes from `core/settings.py`. Nothing on this path accepts a number from a model, a tool result, or a request body — which is what keeps the ring out of the CSS/render injection class of problem that [13](13-charts-and-agui-widgets.md) § 9 has to handle for agent-supplied colors.
+**Window sizes and prices are configuration, never agent-supplied.** `contextWindow` originates from the provider profile inside the agents process; a price, if it ships, comes from `core/settings.py`. Nothing on this path accepts a number from a model, a tool result, or a request body — which is what keeps the ring out of the CSS/render injection class of problem that [13](done/13-charts-and-agui-widgets.md) § 9 has to handle for agent-supplied colors.
 
 **Logging stays counts-only.** `router/usage.py:30-37` already logs shape, not content. The new `model` field is safe to log; `context_tokens` is a count. Nothing here logs prompt text, and `input_token_details` must not be logged verbatim if a provider ever nests identifying data in it.
 

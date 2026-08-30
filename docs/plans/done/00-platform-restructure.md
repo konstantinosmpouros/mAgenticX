@@ -1,14 +1,14 @@
 # Platform restructure — declarative agents, workspace roots, per-agent tools
 
-> **Status:** **Done** (Phases 0–2). Phase 3 continues in [01 · Custom agents per user](01-custom-agents-per-user.md); Phase 4 is deferred and folded into [10 · RAG via the MCP gateway](10-rag-via-mcp-gateway.md).
+> **Status:** **Done** (Phases 0–2). Phase 3 continues in [01 · Custom agents per user](01-custom-agents-per-user.md); Phase 4 is deferred and folded into [10 · RAG via the MCP gateway](../10-rag-via-mcp-gateway.md).
 > **TODO source:** **Agents** → "Create a functionality for the user to configure a custom agent with a set of tools and instructions … in yml formats" — the *engine* half of that item.
 > **Depends on:** nothing.
-> **Blocks:** [01 · Custom agents per user](01-custom-agents-per-user.md), [07 · Tool RAG](07-tool-rag.md).
+> **Blocks:** [01 · Custom agents per user](01-custom-agents-per-user.md), [07 · Tool RAG](../07-tool-rag.md).
 > **Services touched:** agents · dialogue_bridge · agentic_ui (+ one DB migration)
 
 This is the design record for the restructure that moved mAgenticX from *agents-as-Python-classes with request-selected tools* to *agents-as-declarative-YAML with agent-declared tools*. It is kept as a plan rather than folded away because three later items build directly on its invariants: per-user custom agents inherit its discovery and validation machinery, Tool RAG inherits its "declared tool set is the authoritative superset" rule, and the deferred LangGraph work is the last thing standing between the platform and a fully declarative agent tier.
 
-The restructure had four goals: agents defined by configuration instead of code, a per-user workspace holding everything custom, one global folder for shared assets, and tool control scoped per agent instead of globally per request. The first, third and fourth are delivered. The second exists as a path convention (`/var/magenticx/workspaces`) but the *data* still lives on the legacy volumes — that move is owned by [03 · Projects / Workspaces](03-projects-and-workspaces.md).
+The restructure had four goals: agents defined by configuration instead of code, a per-user workspace holding everything custom, one global folder for shared assets, and tool control scoped per agent instead of globally per request. The first, third and fourth are delivered. The second exists as a path convention (`/var/magenticx/workspaces`) but the *data* still lives on the legacy volumes — that move is owned by [03 · Projects / Workspaces](../03-projects-and-workspaces.md).
 
 ---
 
@@ -63,7 +63,7 @@ effective tools = (declared_mcp ∪ user_enabled) − user_disabled
                 + deepagents framework builtins (added last, never filtered)
 ```
 
-Full mechanics: [tool harness](../development/tool-harness.md).
+Full mechanics: [tool harness](../../development/tool-harness.md).
 
 ---
 
@@ -79,11 +79,11 @@ Per-agent tool overrides live **outside** the database, on the agents service fi
 
 | Phase | Scope | Outcome |
 | --- | --- | --- |
-| **0 · Layout & paths** | `FilesystemSettings.global_root` = `/var/magenticx/global`, `workspaces_root` = `/var/magenticx/workspaces`; dirs created in the image. | **Done.** Path convention only — the legacy data move is [03](03-projects-and-workspaces.md). |
+| **0 · Layout & paths** | `FilesystemSettings.global_root` = `/var/magenticx/global`, `workspaces_root` = `/var/magenticx/workspaces`; dirs created in the image. | **Done.** Path convention only — the legacy data move is [03](../03-projects-and-workspaces.md). |
 | **1 · Declarative agents** | `runtime/abstractions/` (`agent_spec`, `yaml_agent`, `agent_seed`, `utils`); native-tool registry; directory-scan discovery with YAML-overrides-Python; `AgentDefinition` gains `cls`/`factory`/`spec` + `build()`; image seeds `agents_seed/` → global volume (`cp -rn` semantics, existing folders win); omni ported to YAML. | **Done.** |
 | **2 · Per-agent tools** | `tool_prefs.json` two-set store; `_apply_tool_disables`; Agents tab (declared + "available to add" from the gateway catalog); MCP Servers tab made read-only; bridge proxy endpoints; **global `enabledTools` retired** end to end + migration `0016`; native rules fixed (`remember` / `search_past_conversations` follow Personalization prefs, `present_artifact` always on). | **Done.** |
 | **3 · Custom agents per user** | Owner-aware agents, CRUD, authoring UI. | **Not started** → [01](01-custom-agents-per-user.md). |
-| **4 · Declarative LangGraph** | A graph interpreter so the HR / Orthodox / Retail agents become YAML too. | **Deferred.** Prerequisite work in [10](10-rag-via-mcp-gateway.md). |
+| **4 · Declarative LangGraph** | A graph interpreter so the HR / Orthodox / Retail agents become YAML too. | **Deferred.** Prerequisite work in [10](../10-rag-via-mcp-gateway.md). |
 
 ---
 
@@ -91,8 +91,8 @@ Per-agent tool overrides live **outside** the database, on the agents service fi
 
 These are the facts later plans keep tripping over, so they are recorded explicitly:
 
-- **The request no longer carries tools.** `config["tools"]` is neither sent nor read. Anything that wants to influence an agent's tools must go through the spec or the per-agent override — see [07](07-tool-rag.md), which narrows *within* that set and may never widen it.
-- **LangGraph agents were unaffected.** Their retrieval is a graph *node* calling `rag_service` over HTTP, not a bound tool, so an empty tool list changed nothing for them. This is precisely why retiring the global list was safe, and it is the thing [10](10-rag-via-mcp-gateway.md) changes.
+- **The request no longer carries tools.** `config["tools"]` is neither sent nor read. Anything that wants to influence an agent's tools must go through the spec or the per-agent override — see [07](../07-tool-rag.md), which narrows *within* that set and may never widen it.
+- **LangGraph agents were unaffected.** Their retrieval is a graph *node* calling `rag_service` over HTTP, not a bound tool, so an empty tool list changed nothing for them. This is precisely why retiring the global list was safe, and it is the thing [10](../10-rag-via-mcp-gateway.md) changes.
 - **YAML overrides Python on slug collision** during the migration. The seeded omni was later given its own slug (`omni-yaml-v1`) so both tiers are selectable side by side; the override path remains for future ports.
 - **The seeder is no-clobber.** An existing agent folder on the volume wins over the image's copy, so an out-of-band edit survives restarts — but a *renamed* built-in leaves the old folder behind and it must be removed deliberately. Plan 01 inherits this behaviour for user agents.
 - **`AgentTable.slug` is globally unique** and the bridge's `_AGENT_CACHE` is a process-global dict keyed by agent id. Both assumptions break the moment agents are per-user; resolving that is the first phase of plan 01.
@@ -102,7 +102,7 @@ These are the facts later plans keep tripping over, so they are recorded explici
 
 ## 7. Docs produced
 
-[tool-harness.md](../development/tool-harness.md) was written for this work, and nine existing docs were updated to the declared-per-agent model: [user-preferences](../flows/user-preferences.md), [inference-streaming](../flows/inference-streaming.md), [scheduled-tasks](../flows/scheduled-tasks.md), [catalog](../flows/catalog.md), [conversation-management](../flows/conversation-management.md), [database-schema](../architecture/database-schema.md), [retrieval-and-tools](../development/retrieval-and-tools.md), [dialogue-bridge-reference](../development/dialogue-bridge-reference.md), [agents-service-reference](../development/agents-service-reference.md).
+[tool-harness.md](../../development/tool-harness.md) was written for this work, and nine existing docs were updated to the declared-per-agent model: [user-preferences](../../flows/user-preferences.md), [inference-streaming](../../flows/inference-streaming.md), [scheduled-tasks](../../flows/scheduled-tasks.md), [catalog](../../flows/catalog.md), [conversation-management](../../flows/conversation-management.md), [database-schema](../../architecture/database-schema.md), [retrieval-and-tools](../../development/retrieval-and-tools.md), [dialogue-bridge-reference](../../development/dialogue-bridge-reference.md), [agents-service-reference](../../development/agents-service-reference.md).
 
 **Known doc gap:** the agent-development and agents-service references still describe the Python `DeepAgent` + `register_agent()` shape as the way to build an agent and do not document `YamlDeepAgent` / `agent.yaml` as the primary path. Plan 01 should close that as part of its docs step.
 
@@ -120,14 +120,14 @@ These are the facts later plans keep tripping over, so they are recorded explici
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Spec schema | [runtime/abstractions/agent_spec.py](../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`, `ToolRef`, `SubAgentSpec`, `reference_errors` |
-| Generic YAML agent | [runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | per-instance identity, `config_tool_names` seed, `_resolve_native_tools` |
-| Built-in seeding | [runtime/abstractions/agent_seed.py](../../src/agents/runtime/abstractions/agent_seed.py) | `seed_global_agents` (no-clobber) |
-| Discovery / registry | [utils/agents.py](../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
-| Native tool registry | [runtime/tools/registry.py](../../src/agents/runtime/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `native_catalog` |
-| Tool assembly + overrides | [runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables` |
-| Per-agent overrides store | [runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `read_tool_prefs`, `write_tool_prefs` |
-| Agents-tab logic | [utils/agent_tools.py](../../src/agents/utils/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
-| Built-in agent example | [agents_seed/omni-yaml-v1/agent.yaml](../../src/agents/agents_seed/omni-yaml-v1/agent.yaml) | the reference spec |
-| Retirement migration | [migrations/versions/0016_retire_enabled_tools.py](../../src/dialogue_bridge/migrations/versions/0016_retire_enabled_tools.py) | the three dropped columns |
-| Agents tab UI | [profile_parts/AgentsTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | declared vs available groups, optimistic toggle |
+| Spec schema | [runtime/abstractions/agent_spec.py](../../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`, `ToolRef`, `SubAgentSpec`, `reference_errors` |
+| Generic YAML agent | [runtime/abstractions/yaml_agent.py](../../../src/agents/runtime/abstractions/yaml_agent.py) | per-instance identity, `config_tool_names` seed, `_resolve_native_tools` |
+| Built-in seeding | [runtime/abstractions/agent_seed.py](../../../src/agents/runtime/abstractions/agent_seed.py) | `seed_global_agents` (no-clobber) |
+| Discovery / registry | [utils/agents.py](../../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
+| Native tool registry | [runtime/tools/registry.py](../../../src/agents/runtime/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `native_catalog` |
+| Tool assembly + overrides | [runtime/abstractions/deep_agent.py](../../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables` |
+| Per-agent overrides store | [runtime/filesystem/tool_prefs.py](../../../src/agents/runtime/filesystem/tool_prefs.py) | `read_tool_prefs`, `write_tool_prefs` |
+| Agents-tab logic | [utils/agent_tools.py](../../../src/agents/utils/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
+| Built-in agent example | [agents_seed/omni-yaml-v1/agent.yaml](../../../src/agents/agents_seed/omni-yaml-v1/agent.yaml) | the reference spec |
+| Retirement migration | [migrations/versions/0016_retire_enabled_tools.py](../../../src/dialogue_bridge/core/database/migrations/versions/0016_retire_enabled_tools.py) | the three dropped columns |
+| Agents tab UI | [profile_parts/AgentsTab.tsx](../../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | declared vs available groups, optimistic toggle |

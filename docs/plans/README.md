@@ -16,12 +16,19 @@ These plans deliberately cross-reference each other. Most items in `src/TODO` ar
 
 ---
 
+## Where finished plans live
+
+A plan whose scope is complete moves to **`plans/done/`**, keeping its number and
+filename so existing cross-references stay meaningful. The index below links to
+the new location; a plan that is only *partially* shipped stays here, with the
+remaining work named in its status.
+
 ## Index
 
 | # | Plan | TODO section | Status |
 | --- | --- | --- | --- |
-| 00 | [Platform restructure — declarative agents, workspaces, per-agent tools](00-platform-restructure.md) | Agents | **Done** (Phases 0–2) |
-| 01 | [Custom agents per user](01-custom-agents-per-user.md) | Agents | Not started |
+| 00 | [Platform restructure — declarative agents, workspaces, per-agent tools](done/00-platform-restructure.md) | Agents | **Done** (Phases 0–2) |
+| 01 | [Custom agents per user](done/01-custom-agents-per-user.md) | Agents | **Delivered** |
 | 02 | [Org + user permissions (multi-tenancy & RBAC)](02-org-and-user-permissions.md) | General | Not started |
 | 03 | [Projects / Workspaces](03-projects-and-workspaces.md) | New Features | Not started |
 | 04 | [Notification system + PWA](04-notifications-and-pwa.md) | New Features | Not started |
@@ -32,14 +39,15 @@ These plans deliberately cross-reference each other. Most items in `src/TODO` ar
 | 09 | [Email integration](09-email-integration.md) | New Features | Not started |
 | 10 | [RAG via the MCP gateway](10-rag-via-mcp-gateway.md) | Agents | Not started |
 | 11 | [Sandboxed execution — the sandbox runner](11-sandbox-runner.md) | Agents | Partially done (Phase 1 lockdown shipped) |
-| 12 | [`create_skill` tool](12-create-skill-tool.md) | Agents | Not started |
-| 13 | [Charts + AG-UI interactive widgets](13-charts-and-agui-widgets.md) | Agentic UI | Not started |
+| 12 | [`create_skill` tool](done/12-create-skill-tool.md) | Agents | **Delivered** (quotas + review surface deliberately not built) |
+| 13 | [Charts + AG-UI interactive widgets](done/13-charts-and-agui-widgets.md) | Agentic UI | **Delivered** (agent-directed interaction not built — AG-UI is one-way) |
 | 14 | [Profile panel completion](14-profile-panel-completion.md) | Agentic UI | Not started |
 | 15 | [Open-source services on Dennis](15-dennis-open-source-services.md) | General | Not started |
 | 16 | [Context & usage UI](16-context-usage-ui.md) | Bugs / Fixes | Not started |
-| 17 | [Dynamic voice language, per conversation](17-voice-language-dynamic.md) | Bugs / Fixes | Not started |
+| 17 | [Dynamic voice language, per conversation](done/17-voice-language-dynamic.md) | Bugs / Fixes | **Delivered** (stayed a user-wide preference; no per-conversation column) |
 | 18 | [Workspace filesystem consolidation + two-tier skills](18-workspace-filesystem-consolidation.md) | derived (storage half of Projects/Workspaces) | Not started |
-| 19 | [Multi-account sign-in & switching](19-multi-account-switching.md) | New Features → multiple accounts per browser | **Delivered** |
+| 19 | [Multi-account sign-in & switching](done/19-multi-account-switching.md) | New Features → multiple accounts per browser | **Delivered** |
+| 20 | [Agents tab UX/UI restructure](20-agents-tab-restructure.md) | Agentic UI | In progress (index + detail + builder shell shipped) |
 
 ---
 
@@ -117,12 +125,12 @@ The chain head is **`0016_retire_enabled_tools`**. Five plans each drafted their
 
 | Plan | Migration intent | Notes |
 | --- | --- | --- |
-| [01](01-custom-agents-per-user.md) | agent ownership (`owner_user_id`, `runtime_key`, partial unique index) | Hand-written — autogenerate ignores `postgresql_where`. |
+| [01](done/01-custom-agents-per-user.md) | agent ownership (`owner_user_id`, `runtime_key`, partial unique index) | Hand-written — autogenerate ignores `postgresql_where`. |
 | [02](02-org-and-user-permissions.md) | orgs, memberships, audit log (three revisions) | Widest surface; consider taking the first slots. |
 | [03](03-projects-and-workspaces.md) | workspaces, members, files | Follows 02. |
 | [05](05-artifacts-canvas.md) | `artifacts` + `artifact_versions` + `attachments.artifact_id` | |
 | [16](16-context-usage-ui.md) | `messages.context_tokens`, `messages.model` | |
-| [17](17-voice-language-dynamic.md) | `conversations.voice_mode_language` | Smallest; easy to slot anywhere. |
+| [17](done/17-voice-language-dynamic.md) | `conversations.voice_mode_language` | Smallest; easy to slot anywhere. |
 
 Plan [04](04-notifications-and-pwa.md) and [14](14-profile-panel-completion.md) also add `user_preferences` columns and new tables — same rule applies.
 
@@ -173,7 +181,7 @@ Every plan file follows this shape, in this order. Prose over bullets in section
 
 ### Conventions
 
-- **One documented exception:** [00 · Platform restructure](00-platform-restructure.md) is a *retrospective status record*, not a forward plan, so it drops the sections that only make sense before implementation (API/frontend surface, testing strategy, phased execution) in favour of "phases as shipped" and "risks accepted". Every `Not started` / `Partially done` plan uses the full thirteen.
+- **One documented exception:** [00 · Platform restructure](done/00-platform-restructure.md) is a *retrospective status record*, not a forward plan, so it drops the sections that only make sense before implementation (API/frontend surface, testing strategy, phased execution) in favour of "phases as shipped" and "risks accepted". Every `Not started` / `Partially done` plan uses the full thirteen.
 - **File names:** `NN-kebab-case-slug.md`, numbering fixed by the index above.
 - **Links:** relative (`../development/tool-harness.md`, `01-custom-agents-per-user.md`). Code refs as `[path](../../src/…)`.
 - **Don't invent shipped behaviour.** Section 2 describes only what is actually in the repo; anything speculative belongs in section 3 or 12.

@@ -5,12 +5,12 @@
 > **Depends on:** [02 · Org + user permissions](02-org-and-user-permissions.md), [18 · Workspace filesystem consolidation](18-workspace-filesystem-consolidation.md)
 >
 > **Ownership note (added after 18 was written):** the **physical filesystem layout, the `/var/magenticx` volume, and the copy→verify→mark migrator are owned by [18](18-workspace-filesystem-consolidation.md)**. This plan consumes that layout and owns the workspace *entity* — the tables, membership, the switcher UI, and subdividing `workspaces/users/<user_id>/` into per-workspace subtrees plus the `(user, workspace, agent)` memory tier. Where the two overlap below (§2.3, §3.5), 18 is authoritative on paths and the move; do not migrate the same data twice.
-> **Blocks (soft):** [01 · Custom agents per user](01-custom-agents-per-user.md) · [05 · Artifacts / Canvas](05-artifacts-canvas.md)
+> **Blocks (soft):** [01 · Custom agents per user](done/01-custom-agents-per-user.md) · [05 · Artifacts / Canvas](05-artifacts-canvas.md)
 > **Services touched:** dialogue_bridge · agents · agentic_ui · infra
 
 A workspace is a **persistent container for one body of work**: the conversations that belong to it, the files it accumulates, the agents and tools it makes available, the standing instructions every run in it inherits, and — the part that makes it more than a folder — **its own memory**. Today a user has exactly one implicit, unbounded context: every conversation sits in one flat list, and a deep agent's long-term memory is keyed `(user, agent)`, so what it learned while planning a holiday is injected into a run about a quarterly report. Workspaces make that boundary explicit and enforceable.
 
-The memory tier is the load-bearing design decision. The per-`(user, agent)` tier already ships — `AGENTS.md` index plus `entries/*.yml` under `<user_root>/agents/<slug>/memory/`, written by the `remember` tool and inspectable in the Memories tab ([agent-memory](../flows/agent-memory.md)). This plan re-keys it to `(user, workspace, agent)`, which means re-rooting the agents-service filesystem — and that pulls in a migration the platform restructure left pending: user data still lives on the legacy `agents_filesystem` and `skills_registry_users` volumes, while the `/var/magenticx/workspaces` root that [00 · Platform restructure](00-platform-restructure.md) introduced sits unused and unmounted. **This plan owns that move**, plus the boot reconciler that keeps disk and database honest afterwards.
+The memory tier is the load-bearing design decision. The per-`(user, agent)` tier already ships — `AGENTS.md` index plus `entries/*.yml` under `<user_root>/agents/<slug>/memory/`, written by the `remember` tool and inspectable in the Memories tab ([agent-memory](../flows/agent-memory.md)). This plan re-keys it to `(user, workspace, agent)`, which means re-rooting the agents-service filesystem — and that pulls in a migration the platform restructure left pending: user data still lives on the legacy `agents_filesystem` and `skills_registry_users` volumes, while the `/var/magenticx/workspaces` root that [00 · Platform restructure](done/00-platform-restructure.md) introduced sits unused and unmounted. **This plan owns that move**, plus the boot reconciler that keeps disk and database honest afterwards.
 
 ---
 
@@ -263,7 +263,7 @@ Index `(workspace_id, created_at DESC)`. Never `SELECT` the blob on a list endpo
 | --- | --- | --- |
 | `conversations` | `workspace_id` FK, indexed | nullable → backfill → `NOT NULL` |
 | `scheduled_tasks` | `workspace_id` FK, indexed | same |
-| `agents` | `workspace_id` FK, **nullable permanently** | For user-owned agents scoped to one workspace; `NULL` = user-wide or platform ([plan 01](01-custom-agents-per-user.md) owns the semantics) |
+| `agents` | `workspace_id` FK, **nullable permanently** | For user-owned agents scoped to one workspace; `NULL` = user-wide or platform ([plan 01](done/01-custom-agents-per-user.md) owns the semantics) |
 
 New composite indexes replacing the user-only ones on the hot paths: `conversations(workspace_id, user_id, last_message_at DESC)`, `scheduled_tasks(workspace_id, user_id)`, and `workspace_files(workspace_id, created_at DESC)`.
 
@@ -365,8 +365,8 @@ Together with [plan 02](02-org-and-user-permissions.md) this reshapes scoping fo
 | Plan | Impact |
 | --- | --- |
 | [02 · Org + permissions](02-org-and-user-permissions.md) | **Hard dependency.** `workspaces.org_id` is its column; `workspace_members` mirrors its membership pattern; the org switcher (footer) and workspace switcher (sidebar header) must be designed as one navigation story, not two |
-| [00 · Platform restructure](00-platform-restructure.md) (done) | This plan **completes** it: the `workspaces_root` it declared (settings.py:459-462) and the two-plane volume layout finally become real, and `MAGENTICX_GLOBAL_ROOT` gets a persistent volume so `seed_global_agents`' documented "admin edits persist" promise becomes true |
-| [01 · Custom agents per user](01-custom-agents-per-user.md) | **Soft.** A user agent lands at `<workspaces_root>/<user>/agents/<slug>/`; `agents.workspace_id` lets one be workspace-scoped. Its slug-collision rule now resolves across three tiers (platform → user → workspace) |
+| [00 · Platform restructure](done/00-platform-restructure.md) (done) | This plan **completes** it: the `workspaces_root` it declared (settings.py:459-462) and the two-plane volume layout finally become real, and `MAGENTICX_GLOBAL_ROOT` gets a persistent volume so `seed_global_agents`' documented "admin edits persist" promise becomes true |
+| [01 · Custom agents per user](done/01-custom-agents-per-user.md) | **Soft.** A user agent lands at `<workspaces_root>/<user>/agents/<slug>/`; `agents.workspace_id` lets one be workspace-scoped. Its slug-collision rule now resolves across three tiers (platform → user → workspace) |
 | [05 · Artifacts / Canvas](05-artifacts-canvas.md) | **Soft but strong.** `workspace_files` + `/workspace/files/` is the container artifacts persist into; without it every artifact is stranded on one conversation |
 | [06 · Deep Research](06-deep-research-mode.md) | A research run is the canonical long-running workspace job: budgets, source policy, and exported reports all belong to a workspace |
 | [04 · Notifications + PWA](04-notifications-and-pwa.md) | Notifications need a workspace label to be actionable ("your report in *Q3 Planning* finished"); quiet hours arguably per workspace |
@@ -374,7 +374,7 @@ Together with [plan 02](02-org-and-user-permissions.md) this reshapes scoping fo
 | [08 · Workflow builder](08-workflow-automation-builder.md) | The TODO's own example — "run agent X over the new files in workspace Y" — is unbuildable without `workspace_files` |
 | [09 · Email integration](09-email-integration.md) | Triage rules are plausibly per workspace; mailbox credentials stay strictly per user |
 | [11 · Sandbox runner](11-sandbox-runner.md) | The sandbox mounts `input/`/`output/` by path — every path in its bind-mount plan moves one level deeper. **Coordinate before 11 hard-codes the layout** |
-| [12 · `create_skill` tool](12-create-skill-tool.md) | A created skill goes to the *user* pool (`<workspaces_root>/<user>/skills/`) and is *enabled* per workspace-agent — the plan must target the user tier, not the workspace tier |
+| [12 · `create_skill` tool](done/12-create-skill-tool.md) | A created skill goes to the *user* pool (`<workspaces_root>/<user>/skills/`) and is *enabled* per workspace-agent — the plan must target the user tier, not the workspace tier |
 | [16 · Context & usage UI](16-context-usage-ui.md) | Usage rolls up per workspace (`utils/usage.py:67`) — arguably the most useful cut of that data |
 
 Beyond plans:

@@ -84,6 +84,7 @@ import ChatBody from "@/features/chat/components/ChatBody";
 import VoiceModeBody from "@/features/voice/components/VoiceModeBody";
 import { useScheduledTasks } from "@/features/tasks/hooks/useScheduledTasks";
 import { clearUISnapshot } from "@/shared/lib/uiStateStorage";
+import { CONV_PAGE_SIZE } from "@/shared/lib/consts";
 
 const pickVisibleSuggestions = (suggestions: string[]) => {
   const unique = Array.from(new Set(suggestions.map((item) => item.trim()).filter(Boolean)));
@@ -198,7 +199,6 @@ export function useChatWorkspace({
   } = useWorkspaceStore.getState();
 
   // ── View-local state ────────────────────────────────────────────────────
-  const CONV_PAGE_SIZE = 10;
   const ARCHIVED_CONV_PAGE_SIZE = 10;
   const SHARED_CONV_PAGE_SIZE = 10;
 

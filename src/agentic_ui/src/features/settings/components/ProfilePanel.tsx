@@ -1,12 +1,12 @@
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Bell, HardDrive, Puzzle, Shield, type LucideProps } from "lucide-react";
+import { ArrowLeft, Bell, HardDrive, Puzzle, Shield, type LucideProps } from "lucide-react";
 
+import { PanelHeaderContext, type PanelHeader } from "@/features/settings/panel-header-context";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { PremiumModalShell } from "@/shared/ui/premium-modal-shell";
-import { normalizeCustomInstructions, safeText } from "@/shared/lib/utils";
+import { normalizeCustomInstructions } from "@/shared/lib/utils";
 import {
-  NA,
   type PersonalityId,
   type RealtimeVoice,
   type VoiceModeLanguage,
@@ -294,12 +294,6 @@ export default function ProfilePanel({
   useEffect(() => {
     if (!open) setShowCustomInstructions(false);
   }, [open]);
-  const displayName =
-    safeText(user?.displayName) !== NA
-      ? safeText(user?.displayName)
-      : safeText(user?.fullName) !== NA
-        ? safeText(user?.fullName)
-        : safeText(user?.username);
   // Persisted tab ids from before the ChatGPT-taxonomy rename keep working:
   // remap them to their new section, then validate against the nav registry
   // (plus the hidden sections reachable via the Help submenu / shortcuts).
@@ -313,12 +307,19 @@ export default function ProfilePanel({
   // Fall back to the General section if a nav item ever lacks a meta entry,
   // so a missing key degrades gracefully instead of crashing the panel.
   const activeSection = SECTION_META[normalizedActiveTab] ?? SECTION_META.general;
+  // A tab on an inner page publishes its own header; otherwise the section's
+  // static metadata stands. One header either way — never two stacked.
+  const [panelHeader, setPanelHeader] = useState<PanelHeader | null>(null);
+  const panelHeaderStore = useMemo(() => ({ setHeader: setPanelHeader }), []);
+  const headerTitle = panelHeader?.title ?? activeSection.title;
+  const headerDescription = panelHeader ? panelHeader.description : activeSection.description;
+  const headerEyebrow = panelHeader ? panelHeader.eyebrow : activeSection.eyebrow;
   // Bound once so the compiler can narrow it — `Boolean(x) && x.trim()` reads
   // fine but does not tell TypeScript that `x` is defined in the second operand.
-  const activeSectionEyebrow = activeSection.eyebrow?.trim() ?? "";
-  const showActiveSectionEyebrow =
-    activeSectionEyebrow.length > 0 &&
-    activeSectionEyebrow.toLowerCase() !== activeSection.title.trim().toLowerCase();
+  // Suppress an eyebrow that only restates the title — it reads as a stutter.
+  const showHeaderEyebrow =
+    Boolean(headerEyebrow?.trim()) &&
+    headerEyebrow!.trim().toLowerCase() !== headerTitle.trim().toLowerCase();
 
   const stub = STUB_SECTIONS[normalizedActiveTab];
 
@@ -337,179 +338,215 @@ export default function ProfilePanel({
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="border-b border-white/10 px-6 py-5 pr-16 sm:px-8 sm:pr-16 max-[639px]:px-4 max-[639px]:py-3 max-[639px]:pr-12">
-              {showActiveSectionEyebrow ? (
+              {showHeaderEyebrow ? (
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/45 max-[639px]:text-[0.58rem] max-[639px]:tracking-[0.16em]">
-                  {activeSection.eyebrow}
+                  {headerEyebrow}
                 </p>
               ) : null}
               <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between max-[639px]:gap-2">
-                {/* Keyed by section so a tab switch re-runs the entrance. */}
-                <motion.div
-                  key={normalizedActiveTab}
-                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.22, ease: "easeOut" }}
-                  className="min-w-0 space-y-1"
-                >
-                  <h2 className="text-2xl font-semibold leading-tight tracking-tight text-white md:text-[2rem] max-[639px]:text-xl">
-                    {activeSection.title}
-                  </h2>
-                  <p className="max-w-2xl text-sm text-white/55 max-[639px]:text-xs">
-                    {activeSection.description}
-                  </p>
-                </motion.div>
-                <div className="inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-white/[0.12] bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-white/60 sm:max-w-xs max-[639px]:gap-1.5 max-[639px]:px-2 max-[639px]:py-0.5 max-[639px]:text-[0.68rem]">
-                  <span
-                    className="flex h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)] max-[639px]:h-1.5 max-[639px]:w-1.5"
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 truncate">
-                    <span className="text-emerald-400">Signed in</span>
-                    <span className="text-white/55"> as </span>
-                    <span className="font-medium text-white">{displayName}</span>
-                  </span>
-                </div>
+                {/* Keyed by the page, not just the tab, so stepping into an
+                    inner screen re-runs the entrance the same way a tab switch
+                    does — the header is the only thing that changes, so it has
+                    to read as a change.
+
+                    Wrapped in AnimatePresence because without it the outgoing
+                    title is unmounted the instant the key changes: the old text
+                    vanishes, then the new one fades in. `mode="wait"` gives it a
+                    real exit, so one title hands over to the next. */}
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={`${normalizedActiveTab}:${headerTitle}`}
+                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                    transition={{
+                      duration: reduceMotion ? 0.12 : 0.26,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="min-w-0 space-y-1"
+                  >
+                    {panelHeader?.onBack ? (
+                      <button
+                        type="button"
+                        onClick={panelHeader.onBack}
+                        className="-ml-1.5 inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-xs font-medium text-white/50 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                      >
+                        <ArrowLeft size={13} aria-hidden />
+                        {panelHeader.backLabel ?? activeSection.title}
+                      </button>
+                    ) : null}
+                    <h2 className="text-2xl font-semibold leading-tight tracking-tight text-white md:text-[2rem] max-[639px]:text-xl">
+                      {headerTitle}
+                    </h2>
+                    {headerDescription ? (
+                      <p className="max-w-2xl text-sm text-white/55 max-[639px]:text-xs">
+                        {headerDescription}
+                      </p>
+                    ) : null}
+                  </motion.div>
+                </AnimatePresence>
+
+                {panelHeader?.action ? (
+                  <button
+                    type="button"
+                    onClick={panelHeader.action.onClick}
+                    disabled={panelHeader.action.busy}
+                    aria-label={panelHeader.action.label}
+                    title={panelHeader.action.label}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.12] bg-white/[0.06] text-white/60 transition-all hover:bg-white/[0.12] hover:text-white active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60 sm:self-end"
+                  >
+                    <panelHeader.action.icon
+                      size={15}
+                      aria-hidden
+                      className={panelHeader.action.busy ? "animate-spin" : undefined}
+                    />
+                  </button>
+                ) : null}
               </div>
             </div>
 
-            <ScrollArea className="h-full w-full">
-              {/* Animated section swap: outgoing content fades down-out,
+            <PanelHeaderContext.Provider value={panelHeaderStore}>
+              <ScrollArea className="h-full w-full">
+                {/* Animated section swap: outgoing content fades down-out,
                                     incoming rises in (mode="wait" keeps them sequential). */}
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={normalizedActiveTab}
-                  initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
-                  animate={{
-                    opacity: 1,
-                    y: 0,
-                    transition: { duration: 0.22, ease: "easeOut" },
-                  }}
-                  exit={
-                    reduceMotion
-                      ? { opacity: 0, transition: { duration: 0.1 } }
-                      : { opacity: 0, y: -6, transition: { duration: 0.14, ease: "easeIn" } }
-                  }
-                  className="space-y-6 px-6 py-6 sm:px-8"
-                >
-                  {normalizedActiveTab === "general" ? (
-                    <GeneralTab
-                      userPreferences={userPreferences}
-                      preferencesSaving={preferencesSaving}
-                      onToggleSuggestionsEnabled={onToggleSuggestionsEnabled}
-                      onToggleMessageTokenUsage={onToggleMessageTokenUsage}
-                    />
-                  ) : null}
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={normalizedActiveTab}
+                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                      transition: { duration: 0.22, ease: "easeOut" },
+                    }}
+                    exit={
+                      reduceMotion
+                        ? { opacity: 0, transition: { duration: 0.1 } }
+                        : { opacity: 0, y: -6, transition: { duration: 0.14, ease: "easeIn" } }
+                    }
+                    className="space-y-6 px-6 py-6 sm:px-8"
+                  >
+                    {normalizedActiveTab === "general" ? (
+                      <GeneralTab
+                        userPreferences={userPreferences}
+                        preferencesSaving={preferencesSaving}
+                        onToggleSuggestionsEnabled={onToggleSuggestionsEnabled}
+                        onToggleMessageTokenUsage={onToggleMessageTokenUsage}
+                      />
+                    ) : null}
 
-                  {normalizedActiveTab === "personalization" ? (
-                    <PersonalizationTab
-                      userPreferences={userPreferences}
-                      preferencesSaving={preferencesSaving}
-                      onToggleSearchPastConvs={onToggleSearchPastConvs}
-                      onToggleUseMemory={onToggleUseMemory}
-                      onOpenMemories={() => setActiveTab("memories")}
-                      onOpenCustomInstructions={() => setShowCustomInstructions(true)}
-                      onSelectPersonality={onSelectPersonality}
-                    />
-                  ) : null}
+                    {normalizedActiveTab === "personalization" ? (
+                      <PersonalizationTab
+                        userPreferences={userPreferences}
+                        preferencesSaving={preferencesSaving}
+                        onToggleSearchPastConvs={onToggleSearchPastConvs}
+                        onToggleUseMemory={onToggleUseMemory}
+                        onOpenMemories={() => setActiveTab("memories")}
+                        onOpenCustomInstructions={() => setShowCustomInstructions(true)}
+                        onSelectPersonality={onSelectPersonality}
+                      />
+                    ) : null}
 
-                  {normalizedActiveTab === "voice" ? (
-                    <VoiceTab
-                      user={user}
-                      userPreferences={userPreferences}
-                      preferencesSaving={preferencesSaving}
-                      onSelectVoiceModeVoice={onSelectVoiceModeVoice}
-                      onSelectVoiceModeLanguage={onSelectVoiceModeLanguage}
-                    />
-                  ) : null}
+                    {normalizedActiveTab === "voice" ? (
+                      <VoiceTab
+                        user={user}
+                        userPreferences={userPreferences}
+                        preferencesSaving={preferencesSaving}
+                        onSelectVoiceModeVoice={onSelectVoiceModeVoice}
+                        onSelectVoiceModeLanguage={onSelectVoiceModeLanguage}
+                      />
+                    ) : null}
 
-                  {normalizedActiveTab === "security" ? <SecurityTab onLogout={onLogout} /> : null}
+                    {normalizedActiveTab === "security" ? (
+                      <SecurityTab onLogout={onLogout} />
+                    ) : null}
 
-                  {normalizedActiveTab === "account" ? (
-                    <AccountTab user={user} userPreferences={userPreferences} />
-                  ) : null}
+                    {normalizedActiveTab === "account" ? (
+                      <AccountTab user={user} userPreferences={userPreferences} />
+                    ) : null}
 
-                  {normalizedActiveTab === "data-controls" ? (
-                    <DataControlsTab
-                      archivedConversations={archivedConversations}
-                      archivedConversationsLoading={archivedConversationsLoading}
-                      archivedConversationsHasMore={archivedConversationsHasMore}
-                      onLoadMoreArchivedConversations={onLoadMoreArchivedConversations}
-                      onSelectArchivedConversation={onSelectArchivedConversation}
-                      onUnarchiveConversation={onUnarchiveConversation}
-                      sharedConversations={sharedConversations}
-                      sharedConversationsLoading={sharedConversationsLoading}
-                      sharedConversationsHasMore={sharedConversationsHasMore}
-                      onLoadMoreSharedConversations={onLoadMoreSharedConversations}
-                      onSelectSharedConversation={onSelectSharedConversation}
-                      onRevokeSharedConversation={onRevokeSharedConversation}
-                    />
-                  ) : null}
+                    {normalizedActiveTab === "data-controls" ? (
+                      <DataControlsTab
+                        archivedConversations={archivedConversations}
+                        archivedConversationsLoading={archivedConversationsLoading}
+                        archivedConversationsHasMore={archivedConversationsHasMore}
+                        onLoadMoreArchivedConversations={onLoadMoreArchivedConversations}
+                        onSelectArchivedConversation={onSelectArchivedConversation}
+                        onUnarchiveConversation={onUnarchiveConversation}
+                        sharedConversations={sharedConversations}
+                        sharedConversationsLoading={sharedConversationsLoading}
+                        sharedConversationsHasMore={sharedConversationsHasMore}
+                        onLoadMoreSharedConversations={onLoadMoreSharedConversations}
+                        onSelectSharedConversation={onSelectSharedConversation}
+                        onRevokeSharedConversation={onRevokeSharedConversation}
+                      />
+                    ) : null}
 
-                  {normalizedActiveTab === "mcp" ? (
-                    <McpServersTab availableTools={availableTools} />
-                  ) : null}
+                    {normalizedActiveTab === "mcp" ? (
+                      <McpServersTab availableTools={availableTools} />
+                    ) : null}
 
-                  {normalizedActiveTab === "agents" ? (
-                    <AgentsTab
-                      agents={agents ?? []}
-                      myAgents={myAgents ?? []}
-                      mySkills={mySkills ?? []}
-                      busyAgentId={busyAgentId ?? null}
-                      onCreateAgent={onCreateAgent}
-                      onUpdateAgent={onUpdateAgent}
-                      onDeleteAgent={onDeleteAgent}
-                      onValidateAgent={onValidateAgent}
-                      onLoadAgentDefinition={onLoadAgentDefinition}
-                    />
-                  ) : null}
+                    {normalizedActiveTab === "agents" ? (
+                      <AgentsTab
+                        agents={agents ?? []}
+                        myAgents={myAgents ?? []}
+                        mySkills={mySkills ?? []}
+                        busyAgentId={busyAgentId ?? null}
+                        onCreateAgent={onCreateAgent}
+                        onUpdateAgent={onUpdateAgent}
+                        onDeleteAgent={onDeleteAgent}
+                        onValidateAgent={onValidateAgent}
+                        onLoadAgentDefinition={onLoadAgentDefinition}
+                      />
+                    ) : null}
 
-                  {normalizedActiveTab === "skills" ? (
-                    <SkillsTab
-                      availableSkills={availableSkills}
-                      mySkills={mySkills}
-                      loadingMySkills={loadingMySkills}
-                      mySkillDetails={mySkillDetails}
-                      isMySkillDetailLoading={isMySkillDetailLoading}
-                      onLoadMySkillDetail={onLoadMySkillDetail}
-                      onRefreshMySkills={onRefreshMySkills}
-                      onAddGlobalSkillToPool={onAddGlobalSkillToPool}
-                      onCreateCustomSkill={onCreateCustomSkill}
-                      onRemoveSkillFromPool={onRemoveSkillFromPool}
-                      agents={agents}
-                      skillSelections={skillSelections}
-                      onLoadAgentSkills={onLoadAgentSkills}
-                      onToggleUserAgentSkill={onToggleUserAgentSkill}
-                      isAgentSkillLoading={isAgentSkillLoading}
-                      isSkillToggling={isSkillToggling}
-                    />
-                  ) : null}
+                    {normalizedActiveTab === "skills" ? (
+                      <SkillsTab
+                        availableSkills={availableSkills}
+                        mySkills={mySkills}
+                        loadingMySkills={loadingMySkills}
+                        mySkillDetails={mySkillDetails}
+                        isMySkillDetailLoading={isMySkillDetailLoading}
+                        onLoadMySkillDetail={onLoadMySkillDetail}
+                        onRefreshMySkills={onRefreshMySkills}
+                        onAddGlobalSkillToPool={onAddGlobalSkillToPool}
+                        onCreateCustomSkill={onCreateCustomSkill}
+                        onRemoveSkillFromPool={onRemoveSkillFromPool}
+                        agents={agents}
+                        skillSelections={skillSelections}
+                        onLoadAgentSkills={onLoadAgentSkills}
+                        onToggleUserAgentSkill={onToggleUserAgentSkill}
+                        isAgentSkillLoading={isAgentSkillLoading}
+                        isSkillToggling={isSkillToggling}
+                      />
+                    ) : null}
 
-                  {normalizedActiveTab === "memories" && memoryInspector ? (
-                    <MemoriesTab agents={agents} {...memoryInspector} />
-                  ) : null}
+                    {normalizedActiveTab === "memories" && memoryInspector ? (
+                      <MemoriesTab agents={agents} {...memoryInspector} />
+                    ) : null}
 
-                  {normalizedActiveTab === "usage" ? (
-                    <UsageTab
-                      summary={usage.summary}
-                      loading={usage.loading}
-                      error={usage.error}
-                      onRefresh={usage.refresh}
-                      conversationUsage={conversationUsage}
-                      conversationTitle={conversationTitle}
-                    />
-                  ) : null}
+                    {normalizedActiveTab === "usage" ? (
+                      <UsageTab
+                        summary={usage.summary}
+                        loading={usage.loading}
+                        error={usage.error}
+                        onRefresh={usage.refresh}
+                        conversationUsage={conversationUsage}
+                        conversationTitle={conversationTitle}
+                      />
+                    ) : null}
 
-                  {stub ? (
-                    <ComingSoon
-                      icon={stub.icon}
-                      title={stub.title}
-                      description={stub.description}
-                      notes={stub.notes}
-                    />
-                  ) : null}
-                </motion.div>
-              </AnimatePresence>
-            </ScrollArea>
+                    {stub ? (
+                      <ComingSoon
+                        icon={stub.icon}
+                        title={stub.title}
+                        description={stub.description}
+                        notes={stub.notes}
+                      />
+                    ) : null}
+                  </motion.div>
+                </AnimatePresence>
+              </ScrollArea>
+            </PanelHeaderContext.Provider>
           </div>
         </div>
       </PremiumModalShell>

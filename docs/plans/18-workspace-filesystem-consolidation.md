@@ -1,9 +1,9 @@
 # Workspace filesystem consolidation + two-tier skills
 
 > **Status:** Not started
-> **TODO source:** derived — the storage half of **New Features** → "Projects / Workspaces", plus the undelivered Phase 0 promise of [00 · Platform restructure](00-platform-restructure.md) ("a per-user workspace holding all custom things, one global folder for shared assets")
-> **Depends on:** [00 · Platform restructure](00-platform-restructure.md) (done — defined the roots)
-> **Blocks:** [01 · Custom agents per user](01-custom-agents-per-user.md) (needs the persistent mount), [03 · Projects / Workspaces](03-projects-and-workspaces.md) (consumes this layout), [12 · `create_skill` tool](12-create-skill-tool.md)
+> **TODO source:** derived — the storage half of **New Features** → "Projects / Workspaces", plus the undelivered Phase 0 promise of [00 · Platform restructure](done/00-platform-restructure.md) ("a per-user workspace holding all custom things, one global folder for shared assets")
+> **Depends on:** [00 · Platform restructure](done/00-platform-restructure.md) (done — defined the roots)
+> **Blocks:** [01 · Custom agents per user](done/01-custom-agents-per-user.md) (needs the persistent mount), [03 · Projects / Workspaces](03-projects-and-workspaces.md) (consumes this layout), [12 · `create_skill` tool](done/12-create-skill-tool.md)
 > **Services touched:** agents · agentic_ui · infra (compose + Dockerfile) — **no database migration**
 
 Today a single user's data is scattered across three Docker volumes and two path conventions, while the two roots that were *supposed* to unify them (`/var/magenticx/global`, `/var/magenticx/workspaces`) are declared in settings, created in the image, and mounted by nothing. This plan finishes what plan 00's Phase 0 only scaffolded: **one volume, one global plane, one folder per user** holding that user's skill pool, per-agent memory, per-agent tool preferences, and every conversation's files.
@@ -19,7 +19,7 @@ It also lands a behavioural change the layout makes natural: **skills split into
 **Non-goals.**
 
 - **The workspace *entity*.** Multiple named workspaces per user, membership, the switcher UI, and the `(user, workspace, agent)` memory tier belong to [03](03-projects-and-workspaces.md). This plan delivers the **physical layout** that 03 then subdivides; the path deliberately reads `workspaces/users/<user_id>/` so `workspaces/<workspace_id>/` and `workspaces/orgs/<org_id>/` remain available without another move.
-- **User-authored agents.** [01](01-custom-agents-per-user.md) owns those; this plan only reserves their shape (`default_skills/`) so 01 does not have to re-litigate the layout.
+- **User-authored agents.** [01](done/01-custom-agents-per-user.md) owns those; this plan only reserves their shape (`default_skills/`) so 01 does not have to re-litigate the layout.
 - **Any schema change.** Skill enablement has no database table (directory presence is the record) and tool preferences are a file. Nothing here touches Alembic — the chain stays at `0016_retire_enabled_tools`.
 
 ---
@@ -48,7 +48,7 @@ Nothing is mounted at `/var/magenticx` in either `docker-compose.yaml` or `docke
 
 ## 3. Target design
 
-```
+```text
 /var/magenticx/                                 ← ONE volume
 │
 ├── global/                                     ═══ platform-owned; users never write here
@@ -187,7 +187,7 @@ Flip the flag default to `workspace`; after a stability window, remove the three
 ## 9. Security & privacy
 
 - **Path confinement is unchanged and must stay unchanged.** Every segment continues through `_safe_segment()` (rejecting `/`, `\`, `..`, leading dots), and mounts stay structurally disjoint so no `FilesystemBackend` can resolve into another's subtree. Consolidating under one parent makes this *more* important, not less: `workspaces/users/<a>/` and `workspaces/users/<b>/` are now siblings, so a traversal bug would cross a tenant boundary instead of hitting a different volume. Add an explicit test that a crafted `user_id` cannot escape its own directory.
-- **Tier ① is mounted read-only** with a `write` deny on `/skills/default/`, so an agent cannot rewrite its own default behaviour — the same reasoning that makes `create_skill` ([12](12-create-skill-tool.md)) a gated action.
+- **Tier ① is mounted read-only** with a `write` deny on `/skills/default/`, so an agent cannot rewrite its own default behaviour — the same reasoning that makes `create_skill` ([12](done/12-create-skill-tool.md)) a gated action.
 - **Live-mounted defaults widen a blast radius.** Because tier ① is not a snapshot, an edit to `global/agents/<slug>/skills/` changes behaviour for *every* user instantly. That is the feature, but it means write access to the global plane is now a production-behaviour change and belongs behind the same review as shipping code.
 - **The migrator never deletes.** Copy-only, verify-before-mark, report-and-skip on mismatch. No destructive operation runs against user data at any phase; detaching the legacy volumes is a separate, human-initiated deploy.
 - **Least privilege on the mount.** One volume means one set of permissions; keep it `1000:1000`-owned and do not widen it to accommodate a tooling convenience.

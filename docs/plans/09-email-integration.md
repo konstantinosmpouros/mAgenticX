@@ -8,7 +8,7 @@
 
 A user connects their Outlook or Gmail mailbox once, and from then on an agent can search it, read a thread, summarize what happened while they were away, and prepare a reply — while a background policy engine sorts arriving mail into urgency and labels without an LLM being involved at all. The mental model that makes this safe: **mAgenticX is an index and a drafting surface over somebody else's mail server, never a mail store and never an autonomous sender.** Bodies are fetched live and thrown away; only metadata and derived judgements are persisted; and the one irreversible act in the whole feature — pressing send — is gated by a single-use approval record that the *bridge* mints from a *human* action, not by anything the agent says.
 
-That framing exists because email is simultaneously the highest-value tool surface on the roadmap and the highest-risk one. It is the first feature where the platform holds a long-lived credential to a third-party system on a user's behalf, and the first where **untrusted attacker-authored text flows directly into an agent's context**. A stranger can put words in front of our model any time they want, for free, by sending an email. [01 §12](01-custom-agents-per-user.md) already points here for "the sharper version of this problem"; this plan treats prompt injection as a structural constraint on the architecture rather than a prompt-engineering afterthought.
+That framing exists because email is simultaneously the highest-value tool surface on the roadmap and the highest-risk one. It is the first feature where the platform holds a long-lived credential to a third-party system on a user's behalf, and the first where **untrusted attacker-authored text flows directly into an agent's context**. A stranger can put words in front of our model any time they want, for free, by sending an email. [01 §12](done/01-custom-agents-per-user.md) already points here for "the sharper version of this problem"; this plan treats prompt injection as a structural constraint on the architecture rather than a prompt-engineering afterthought.
 
 ---
 
@@ -81,7 +81,7 @@ Swarm secrets are out by construction — they are immutable, platform-scoped, a
 | --- | --- | --- |
 | New Vault surface | New engine mount + new policy + new client code paths | New key + two capabilities on the existing pattern (`transit/encrypt/*`, `transit/decrypt/*`, `transit/rewrap/*`) |
 | Key exposure | Secret material leaves Vault on every read | Key **never** leaves Vault; the bridge only ever holds ciphertext at rest |
-| Write atomicity | Two-system write (Vault + the account row) — the exact non-atomicity trap [01 §12](01-custom-agents-per-user.md) flags | One transaction with the row |
+| Write atomicity | Two-system write (Vault + the account row) — the exact non-atomicity trap [01 §12](done/01-custom-agents-per-user.md) flags | One transaction with the row |
 | Erasure | Deleting a user leaves an orphaned Vault path to reap | `ON DELETE CASCADE` from `users` erases the credential with the row |
 | Backup consistency | Two backup systems that can skew | `pg_dump` captures ciphertext consistently |
 | Rotation | Read, re-write, re-encrypt client-side (plaintext transits) | `transit/keys/<k>/rotate` then `transit/rewrap` — **re-encrypts without the plaintext ever returning to the bridge** |
@@ -118,7 +118,7 @@ The obvious motivations are determinism, auditability ("why was this urgent?" ha
 
 The gate itself is two independent mechanisms, because the send endpoint must not have to believe that HITL happened:
 
-1. **The in-run gate.** `email_send: true` joins `write_file`/`edit_file`/`execute`/`task` in `HITL_GATED_TOOLS` *and* in the platform HITL floor that [01 §9](01-custom-agents-per-user.md) requires the spec validator to enforce server-side — a user-authored `agent.yaml` must not be able to remove it.
+1. **The in-run gate.** `email_send: true` joins `write_file`/`edit_file`/`execute`/`task` in `HITL_GATED_TOOLS` *and* in the platform HITL floor that [01 §9](done/01-custom-agents-per-user.md) requires the spec validator to enforce server-side — a user-authored `agent.yaml` must not be able to remove it.
 2. **The approval record.** When the bridge processes a resume whose approved action is `email_send`, it writes a single-use `mail_send_approvals` row `(draft_id, user_id, run_id, interrupt_id, expires_at)`. `POST /v1/internal/mail/send` **requires an unconsumed, unexpired, user-matching approval for that exact draft** and consumes it in the same transaction. No approval ⇒ 403, even from a trusted internal caller.
 
 Mechanism 2 is what makes the gate hold if the HITL floor is ever mis-declared, if the agents service is compromised, or if a future refactor loses `interrupt_on`. It is also what makes the **second entry path** possible. A triage-originated draft has no live client, and §2 establishes that a headless run cannot be resumed. So drafts created outside a conversation are **not** gated in-run at all: they land in a draft queue, [04](04-notifications-and-pwa.md) notifies the user, and approving in the Mail UI mints the same approval row and calls send directly with no agent involved. Two paths, one chokepoint.
@@ -135,7 +135,7 @@ Learning from corrections is **rule mining, not training**. Every re-tag, urgenc
 
 ## 4. Data model & migrations
 
-Three migrations, one per delivery phase, so no phase carries dead schema. **This plan claims migration *names*, not numbers:** [01](01-custom-agents-per-user.md) already claims `0017_agent_ownership`, and both [02](02-org-and-user-permissions.md) and [04](04-notifications-and-pwa.md) land before this one in the README's suggested order and will certainly add tables. Each `down_revision` is the chain head at implementation time.
+Three migrations, one per delivery phase, so no phase carries dead schema. **This plan claims migration *names*, not numbers:** [01](done/01-custom-agents-per-user.md) already claims `0017_agent_ownership`, and both [02](02-org-and-user-permissions.md) and [04](04-notifications-and-pwa.md) land before this one in the README's suggested order and will certainly add tables. Each `down_revision` is the chain head at implementation time.
 
 | Migration | Phase | Tables |
 | --- | --- | --- |
@@ -200,7 +200,7 @@ The send confirmation gets a dedicated renderer branching off `HitlInterruptCard
 | **Notifications** | [04](04-notifications-and-pwa.md) is a hard dependency twice over: urgency alerts, and delivering a send-approval request to a user who is not looking at the app. Its channel enum and preference model are forward references this plan does not name. |
 | **Workflow builder** | [08](08-workflow-automation-builder.md) gets "email arrived matching rule X" as a trigger. The trigger must fire on the *rule decision*, not on raw arrival, so an n8n workflow inherits the same deterministic boundary. |
 | **Tool RAG** | [07](07-tool-rag.md) narrows within an agent's declared set and may never widen it; five new tools with similar descriptions make this a useful eval case, and `email_send` must never be *retrieved out* of context in a way that hides the gate from the user. |
-| **`create_skill`** | [12](12-create-skill-tool.md) lets an agent author a skill; a skill authored from injected email text is a persistence vector. Decide that approval posture there, informed by §9 here. |
+| **`create_skill`** | [12](done/12-create-skill-tool.md) lets an agent author a skill; a skill authored from injected email text is a persistence vector. Decide that approval posture there, informed by §9 here. |
 | **Permissions** | [02](02-org-and-user-permissions.md) owns per-user credential ownership. A mailbox is personal, never org-shared — model `user_id` as an owner reference now so any later change is additive, and resist "shared team inbox" until org auth exists. |
 | **Observability** | New redaction keys are required (§9). Mail is also the first feature where a *log line* could leak a third party's PII, not just the user's. |
 | **Docs** | A new flow doc plus a row in the `CLAUDE.md` table (§11). |

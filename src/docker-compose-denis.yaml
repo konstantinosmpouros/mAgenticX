@@ -76,7 +76,7 @@ services:
 
   agents: # 8003
     container_name: agents
-    image: konstantinosmpouros/agents:v1.21.1
+    image: konstantinosmpouros/agents:v1.21.2
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/app/tls/entrypoint-tls.sh"]
     command: ["main:app", "--host", "0.0.0.0", "--port", "8003", "--no-server-header"]
     user: "1000:1000"
@@ -292,7 +292,7 @@ services:
 
   agentic_ui: # 8050
     container_name: agentic_ui
-    image: konstantinosmpouros/agentic_ui:v0.15.1
+    image: konstantinosmpouros/agentic_ui:v0.15.3
     entrypoint: ["/usr/local/bin/load-secrets-and-exec.sh", "/bin/sh", "/etc/nginx/tls/entrypoint-nginx-tls.sh"]
     command: ["nginx", "-g", "daemon off;"]
     security_opt:

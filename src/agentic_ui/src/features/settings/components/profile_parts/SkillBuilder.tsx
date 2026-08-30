@@ -18,6 +18,7 @@ import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { buildSkillFileTree, cn } from "@/shared/lib/utils";
 import type { CustomSkillCreatePayload, Skill, SkillTreeNode, UserSkill } from "@/shared/lib/types";
+import { useFillAvailableHeight } from "@/features/settings/hooks/useFillAvailableHeight";
 
 // The "create a custom skill" builder. A custom skill is a folder of files —
 // this lets the user author SKILL.md plus extra scripts/reference files and
@@ -404,327 +405,343 @@ export default function SkillBuilder({
   const activeIsImage = activeFile?.encoding === "base64" && activeExt in IMAGE_MIME;
   const ActiveGlyph = activeFile ? iconForFile(activeFile.path) : FileIcon;
 
+  // Same treatment as the agent builder: the panel's tab wrapper is transformed
+  // and has no definite height, so neither `sticky` nor `h-full` can pin the
+  // actions. Measure the room instead and let flex do the rest.
+  const { ref: shellRef, height: shellHeight } = useFillAvailableHeight<HTMLDivElement>();
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-foreground">
-            Name <span className="text-destructive">*</span>
-          </span>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => setNameTouched(true)}
-            placeholder="my-blog-writer"
-            disabled={submitting}
-            aria-label="Skill name"
-            aria-invalid={nameTouched && Boolean(nameError)}
-            className={cn(
-              inputClass,
-              nameTouched && nameError && "border-destructive focus-visible:ring-destructive",
-            )}
-          />
-          {nameTouched && nameError ? (
-            <span role="alert" className="text-[11px] text-destructive">
-              {nameError}
+    <div
+      ref={shellRef}
+      style={shellHeight ? { height: shellHeight } : undefined}
+      className="flex flex-col"
+    >
+      <div className="scrollbar-muted flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-0.5 pb-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-foreground">
+              Name <span className="text-destructive">*</span>
             </span>
-          ) : (
-            <span className="text-[11px] text-muted-foreground">
-              Lowercase, no slashes, unique.
-            </span>
-          )}
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-foreground">Description</span>
-          <input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Short one-liner — shown on the card."
-            disabled={submitting}
-            aria-label="Skill description"
-            className={inputClass}
-          />
-        </label>
-      </div>
-
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOverPath("");
-        }}
-        onDragLeave={(e) => {
-          // Only clear when the pointer truly leaves the panel, not when
-          // it crosses into a child row (avoids highlight flicker).
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOverPath(null);
-        }}
-        onDrop={handleRootDrop}
-        className={cn(
-          "grid gap-3 rounded-[1.4rem] p-2 transition-shadow md:grid-cols-[minmax(0,15rem),1fr]",
-          dragOverPath === ""
-            ? "ring-2 ring-primary ring-offset-2 ring-offset-card"
-            : "ring-1 ring-transparent",
-        )}
-      >
-        {/* File tree */}
-        <div className="flex max-h-[22rem] flex-col gap-2 rounded-[1.2rem] bg-muted/30 p-2">
-          <div className="flex items-center justify-between px-1.5 pt-0.5">
-            <span className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Files
-            </span>
-            <TreeHeaderUploadButton
-              label="Upload files"
-              onClick={() => uploadInputRef.current?.click()}
-            />
             <input
-              ref={uploadInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleUploadInput}
-              aria-hidden
-              tabIndex={-1}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => setNameTouched(true)}
+              placeholder="my-blog-writer"
+              disabled={submitting}
+              aria-label="Skill name"
+              aria-invalid={nameTouched && Boolean(nameError)}
+              className={cn(
+                inputClass,
+                nameTouched && nameError && "border-destructive focus-visible:ring-destructive",
+              )}
             />
-          </div>
+            {nameTouched && nameError ? (
+              <span role="alert" className="text-[11px] text-destructive">
+                {nameError}
+              </span>
+            ) : (
+              <span className="text-[11px] text-muted-foreground">
+                Lowercase, no slashes, unique.
+              </span>
+            )}
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-foreground">Description</span>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Short one-liner — shown on the card."
+              disabled={submitting}
+              aria-label="Skill description"
+              className={inputClass}
+            />
+          </label>
+        </div>
 
-          <div className="scrollbar-muted min-h-0 flex-1 overflow-y-auto pr-0.5">
-            <AnimatePresence initial={false}>
-              {flatRows.map(({ node, depth }) => {
-                const indent = { paddingLeft: `${depth * 14 + 8}px` };
-                if (node.isDir) {
-                  const isCollapsed = Boolean(collapsed[node.path]);
-                  const FolderGlyph = isCollapsed ? Folder : FolderOpen;
-                  const isDropTarget = dragOverPath === node.path;
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOverPath("");
+          }}
+          onDragLeave={(e) => {
+            // Only clear when the pointer truly leaves the panel, not when
+            // it crosses into a child row (avoids highlight flicker).
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOverPath(null);
+          }}
+          onDrop={handleRootDrop}
+          className={cn(
+            "grid gap-3 rounded-[1.4rem] p-2 transition-shadow md:grid-cols-[minmax(0,15rem),1fr]",
+            dragOverPath === ""
+              ? "ring-2 ring-primary ring-offset-2 ring-offset-card"
+              : "ring-1 ring-transparent",
+          )}
+        >
+          {/* File tree */}
+          <div className="flex max-h-[22rem] flex-col gap-2 rounded-[1.2rem] bg-muted/30 p-2">
+            <div className="flex items-center justify-between px-1.5 pt-0.5">
+              <span className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Files
+              </span>
+              <TreeHeaderUploadButton
+                label="Upload files"
+                onClick={() => uploadInputRef.current?.click()}
+              />
+              <input
+                ref={uploadInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleUploadInput}
+                aria-hidden
+                tabIndex={-1}
+              />
+            </div>
+
+            <div className="scrollbar-muted min-h-0 flex-1 overflow-y-auto pr-0.5">
+              <AnimatePresence initial={false}>
+                {flatRows.map(({ node, depth }) => {
+                  const indent = { paddingLeft: `${depth * 14 + 8}px` };
+                  if (node.isDir) {
+                    const isCollapsed = Boolean(collapsed[node.path]);
+                    const FolderGlyph = isCollapsed ? Folder : FolderOpen;
+                    const isDropTarget = dragOverPath === node.path;
+                    return (
+                      <motion.div key={node.path} {...rowMotion}>
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDragOverPath(node.path);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDragOverPath(null);
+                            setCollapsed((prev) => ({ ...prev, [node.path]: false }));
+                            void ingestFiles(e.dataTransfer.files, node.path);
+                          }}
+                          style={indent}
+                          className={cn(
+                            "group flex items-center gap-1.5 rounded-md py-1 pr-1.5 transition-colors",
+                            isDropTarget
+                              ? "bg-primary/15 text-primary ring-1 ring-primary/40"
+                              : "text-muted-foreground hover:bg-[hsl(var(--hover-surface))]",
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCollapsed((prev) => ({ ...prev, [node.path]: !prev[node.path] }))
+                            }
+                            aria-expanded={!isCollapsed}
+                            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium transition-colors hover:text-foreground focus-visible:outline-none"
+                          >
+                            <FolderGlyph className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            <span className="truncate">{node.name}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteFolder(node.path)}
+                            aria-label={`Delete folder ${node.path} and its contents`}
+                            className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  }
+                  const FileGlyph = iconForFile(node.path);
+                  const isActive = activePath === node.path;
+                  const isEntry = node.path === ENTRY_FILE;
                   return (
                     <motion.div key={node.path} {...rowMotion}>
                       <div
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDragOverPath(node.path);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDragOverPath(null);
-                          setCollapsed((prev) => ({ ...prev, [node.path]: false }));
-                          void ingestFiles(e.dataTransfer.files, node.path);
-                        }}
                         style={indent}
                         className={cn(
                           "group flex items-center gap-1.5 rounded-md py-1 pr-1.5 transition-colors",
-                          isDropTarget
-                            ? "bg-primary/15 text-primary ring-1 ring-primary/40"
-                            : "text-muted-foreground hover:bg-[hsl(var(--hover-surface))]",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-foreground hover:bg-[hsl(var(--hover-surface))]",
                         )}
                       >
                         <button
                           type="button"
-                          onClick={() =>
-                            setCollapsed((prev) => ({ ...prev, [node.path]: !prev[node.path] }))
-                          }
-                          aria-expanded={!isCollapsed}
-                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium transition-colors hover:text-foreground focus-visible:outline-none"
+                          onClick={() => setActivePath(node.path)}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs focus-visible:outline-none"
                         >
-                          <FolderGlyph className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          <FileGlyph className="h-3.5 w-3.5 shrink-0" aria-hidden />
                           <span className="truncate">{node.name}</span>
+                          {isEntry ? (
+                            <span className="ml-1 shrink-0 rounded-sm bg-muted px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              entry
+                            </span>
+                          ) : null}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteFolder(node.path)}
-                          aria-label={`Delete folder ${node.path} and its contents`}
-                          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {!isEntry ? (
+                          <button
+                            type="button"
+                            onClick={() => deleteFile(node.path)}
+                            aria-label={`Delete ${node.path}`}
+                            className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
                       </div>
                     </motion.div>
                   );
-                }
-                const FileGlyph = iconForFile(node.path);
-                const isActive = activePath === node.path;
-                const isEntry = node.path === ENTRY_FILE;
-                return (
-                  <motion.div key={node.path} {...rowMotion}>
-                    <div
-                      style={indent}
-                      className={cn(
-                        "group flex items-center gap-1.5 rounded-md py-1 pr-1.5 transition-colors",
-                        isActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-foreground hover:bg-[hsl(var(--hover-surface))]",
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setActivePath(node.path)}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs focus-visible:outline-none"
-                      >
-                        <FileGlyph className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                        <span className="truncate">{node.name}</span>
-                        {isEntry ? (
-                          <span className="ml-1 shrink-0 rounded-sm bg-muted px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            entry
-                          </span>
-                        ) : null}
-                      </button>
-                      {!isEntry ? (
-                        <button
-                          type="button"
-                          onClick={() => deleteFile(node.path)}
-                          aria-label={`Delete ${node.path}`}
-                          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
+                })}
+              </AnimatePresence>
+            </div>
 
-          <div className="flex flex-wrap gap-1 px-1">
-            {SCAFFOLD_FOLDERS.map((folder) => (
-              <motion.button
-                key={folder}
-                type="button"
-                whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
-                onClick={() => {
-                  setNewPath(folder);
-                  setError("");
-                  newFileInputRef.current?.focus();
-                }}
-                className="rounded-full border border-border/50 bg-background/50 px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {folder}
-              </motion.button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-1.5 px-1 pb-0.5">
-            <input
-              ref={newFileInputRef}
-              type="text"
-              value={newPath}
-              onChange={(e) => setNewPath(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addEntry();
-                }
-              }}
-              placeholder="references/api.md, or references/ for a folder"
-              aria-label="New file or folder path"
-              className="min-w-0 flex-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
-                <Button
+            <div className="flex flex-wrap gap-1 px-1">
+              {SCAFFOLD_FOLDERS.map((folder) => (
+                <motion.button
+                  key={folder}
                   type="button"
-                  size="icon"
-                  variant="ghost"
-                  onClick={addEntry}
-                  disabled={!newPath.trim()}
-                  aria-label="Add file or folder"
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+                  onClick={() => {
+                    setNewPath(folder);
+                    setError("");
+                    newFileInputRef.current?.focus();
+                  }}
+                  className="rounded-full border border-border/50 bg-background/50 px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="center">
-                <p>Add file or folder</p>
-              </TooltipContent>
-            </Tooltip>
+                  {folder}
+                </motion.button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5 px-1 pb-0.5">
+              <input
+                ref={newFileInputRef}
+                type="text"
+                value={newPath}
+                onChange={(e) => setNewPath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addEntry();
+                  }
+                }}
+                placeholder="references/api.md, or references/ for a folder"
+                aria-label="New file or folder path"
+                className="min-w-0 flex-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={addEntry}
+                    disabled={!newPath.trim()}
+                    aria-label="Add file or folder"
+                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="center">
+                  <p>Add file or folder</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+
+          {/* Editor */}
+          <div className="flex max-h-[22rem] min-h-[16rem] flex-col rounded-[1.2rem] bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-2 pb-2">
+              <p className="truncate font-mono text-[11px] text-muted-foreground">
+                {activeFile?.path ?? ENTRY_FILE}
+              </p>
+              {activeFile?.encoding === "utf-8" ? (
+                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                  {activeFile.content.split("\n").length} lines
+                </span>
+              ) : (
+                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                  {formatBytes(activeFile?.size)}
+                </span>
+              )}
+            </div>
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={activeFile?.path ?? ENTRY_FILE}
+                  className="h-full"
+                  {...editorMotion}
+                >
+                  {!activeFile ? null : activeFile.encoding === "utf-8" ? (
+                    <textarea
+                      value={activeFile.content}
+                      onChange={(e) => updateContent(activeFile.path, e.target.value)}
+                      disabled={submitting}
+                      aria-label={`Content of ${activeFile.path}`}
+                      placeholder={
+                        activeFile.path === ENTRY_FILE
+                          ? "# Title\n\nDescribe when and how the agent should use this skill."
+                          : "File content…"
+                      }
+                      className="scrollbar-muted h-full w-full resize-none rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[0.78rem] leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border/60 p-4 text-center">
+                      {activeIsImage ? (
+                        <img
+                          src={`data:${IMAGE_MIME[activeExt]};base64,${activeFile.content}`}
+                          alt={activeFile.path}
+                          className="max-h-32 max-w-full rounded-md object-contain"
+                        />
+                      ) : (
+                        <ActiveGlyph className="h-8 w-8 text-muted-foreground" aria-hidden />
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Binary asset · {formatBytes(activeFile.size)}
+                      </p>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
-        {/* Editor */}
-        <div className="flex max-h-[22rem] min-h-[16rem] flex-col rounded-[1.2rem] bg-muted/30 p-3">
-          <div className="flex items-center justify-between gap-2 pb-2">
-            <p className="truncate font-mono text-[11px] text-muted-foreground">
-              {activeFile?.path ?? ENTRY_FILE}
-            </p>
-            {activeFile?.encoding === "utf-8" ? (
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                {activeFile.content.split("\n").length} lines
-              </span>
-            ) : (
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                {formatBytes(activeFile?.size)}
-              </span>
-            )}
-          </div>
-          <div className="relative min-h-0 flex-1 overflow-hidden">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div key={activeFile?.path ?? ENTRY_FILE} className="h-full" {...editorMotion}>
-                {!activeFile ? null : activeFile.encoding === "utf-8" ? (
-                  <textarea
-                    value={activeFile.content}
-                    onChange={(e) => updateContent(activeFile.path, e.target.value)}
-                    disabled={submitting}
-                    aria-label={`Content of ${activeFile.path}`}
-                    placeholder={
-                      activeFile.path === ENTRY_FILE
-                        ? "# Title\n\nDescribe when and how the agent should use this skill."
-                        : "File content…"
-                    }
-                    className="scrollbar-muted h-full w-full resize-none rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[0.78rem] leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border/60 p-4 text-center">
-                    {activeIsImage ? (
-                      <img
-                        src={`data:${IMAGE_MIME[activeExt]};base64,${activeFile.content}`}
-                        alt={activeFile.path}
-                        className="max-h-32 max-w-full rounded-md object-contain"
-                      />
-                    ) : (
-                      <ActiveGlyph className="h-8 w-8 text-muted-foreground" aria-hidden />
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Binary asset · {formatBytes(activeFile.size)}
-                    </p>
-                  </div>
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </div>
+        <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <Upload className="h-3.5 w-3.5" aria-hidden />
+          Drop files onto a folder (or anywhere for root), or use the upload button.
+        </p>
       </div>
 
-      <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <Upload className="h-3.5 w-3.5" aria-hidden />
-        Drop files onto a folder (or anywhere for root), or use the upload button.
-      </p>
-
-      {error ? (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onClose}
-          disabled={submitting}
-          className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={() => void handleSubmit()}
-          disabled={!canSubmit}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium transition-smooth disabled:pointer-events-none disabled:opacity-50"
-        >
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-          {submitting ? "Creating…" : "Create skill"}
-        </Button>
+      <div className="shrink-0 border-t border-border/50 pt-3">
+        {error ? (
+          <p role="alert" className="mb-2 text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onClose}
+            disabled={submitting}
+            className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={!canSubmit}
+            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium transition-smooth disabled:pointer-events-none disabled:opacity-50"
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            {submitting ? "Creating…" : "Create skill"}
+          </Button>
+        </div>
       </div>
     </div>
   );

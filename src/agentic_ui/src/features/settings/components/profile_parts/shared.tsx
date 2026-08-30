@@ -15,30 +15,48 @@ export const InfoCard = ({
   headerAction,
 }: {
   eyebrow?: string;
-  title: string;
+  /**
+   * Optional: a card on a page whose title the *panel header* already shows
+   * would otherwise state it twice. Such a card keeps its chrome and its
+   * action, and contributes no heading of its own.
+   */
+  title?: string;
   description?: string;
   children: ReactNode;
   className?: string;
   // Optional element rendered to the right of the title row — currently
   // used by the Skills tab to slot a "force refresh / bypass Redis" button.
   headerAction?: ReactNode;
-}) => (
-  <section className={cn("space-y-4", className)}>
-    <div className="space-y-1.5">
-      {eyebrow ? (
-        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-          {eyebrow}
-        </p>
+}) => {
+  const hasHeader = Boolean(eyebrow || title || description || headerAction);
+  return (
+    <section className={cn("space-y-4", className)}>
+      {hasHeader ? (
+        <div className="space-y-1.5">
+          {eyebrow ? (
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              {eyebrow}
+            </p>
+          ) : null}
+          {title || headerAction ? (
+            // Without a title the action still needs to sit at the right edge,
+            // so the row keeps `justify-between` and an empty first child.
+            <div className="flex items-start justify-between gap-3">
+              {title ? (
+                <h3 className="text-base font-semibold text-foreground">{title}</h3>
+              ) : (
+                <span aria-hidden />
+              )}
+              {headerAction}
+            </div>
+          ) : null}
+          {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+        </div>
       ) : null}
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
-        {headerAction}
-      </div>
-      {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
-    </div>
-    <div className="mt-5">{children}</div>
-  </section>
-);
+      <div className={hasHeader ? "mt-5" : undefined}>{children}</div>
+    </section>
+  );
+};
 
 export const SoftPanel = ({ children, className }: { children: ReactNode; className?: string }) => (
   <div className={cn("rounded-[1.4rem] bg-muted/30", className)}>{children}</div>

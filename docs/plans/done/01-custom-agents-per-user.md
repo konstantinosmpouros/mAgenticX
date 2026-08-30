@@ -2,7 +2,7 @@
 
 > **Status:** **Delivered** (2026-08-12, `2efdda9` + `4e2d383`). Kept for the reasoning; the mechanism below is written as shipped, and where it diverged from the original plan the divergence is called out — the abandoned `runtime_key` scheme is described in §3.1 so nobody re-implements it.
 > **TODO source:** **Agents** → "Create a functionality for the user to configure a custom agent with a set of tools and instructions, so that the user can create a custom agent for their own use case with their skills, prompts, tools, filesystem, sub agents and etc in yml formats and then he will be able to use them."
-> **Depends on:** [00 · Platform restructure](00-platform-restructure.md) (done — the engine), [02 · Org + user permissions](02-org-and-user-permissions.md) (ownership semantics)
+> **Depends on:** [00 · Platform restructure](00-platform-restructure.md) (done — the engine), [02 · Org + user permissions](../02-org-and-user-permissions.md) (ownership semantics)
 > **Blocks:** nothing hard. Soft: [12 · `create_skill` tool](12-create-skill-tool.md) (an agent writing into *its own* user-owned definition)
 > **Services touched:** agents · dialogue_bridge · agentic_ui (+ DB migration)
 
@@ -19,7 +19,7 @@ So this plan is mostly not about agent behaviour — it is about teaching three 
 **Non-goals.**
 
 - **User-authored tools.** Tools stay platform-owned (reviewed native code, or MCP servers behind the gateway). A user composes from the catalogue; they never supply executable tool code. This is the load-bearing security decision inherited from plan 00.
-- **Sharing / publishing.** Agent sharing to an org or another user needs the org model — deferred to [02](02-org-and-user-permissions.md).
+- **Sharing / publishing.** Agent sharing to an org or another user needs the org model — deferred to [02](../02-org-and-user-permissions.md).
 - **Declarative LangGraph.** A user agent is a *deep* agent. Graph agents remain Python (plan 00 Phase 4).
 - **Editing built-ins.** A user may not modify a platform agent; they may clone it into their own.
 
@@ -27,7 +27,7 @@ So this plan is mostly not about agent behaviour — it is about teaching three 
 
 ## 2. Current state
 
-**The engine is ready.** `_scan_yaml_agents(root)` walks `<root>/agents/<slug>/agent.yaml`, validates with `AgentSpec.model_validate` plus `reference_errors()` (models + native-tool allowlists), and registers an `AgentDefinition(slug, manifest, factory, spec)` whose factory builds a `YamlDeepAgent`. Invalid specs are logged and skipped, never fatal. See [utils/agents.py](../../src/agents/utils/agents.py) and [runtime/abstractions/](../../src/agents/runtime/abstractions/).
+**The engine is ready.** `_scan_yaml_agents(root)` walks `<root>/agents/<slug>/agent.yaml`, validates with `AgentSpec.model_validate` plus `reference_errors()` (models + native-tool allowlists), and registers an `AgentDefinition(slug, manifest, factory, spec)` whose factory builds a `YamlDeepAgent`. Invalid specs are logged and skipped, never fatal. See [utils/agents.py](../../../src/agents/utils/agents.py) and [runtime/abstractions/](../../../src/agents/runtime/abstractions/).
 
 **But everything about it is global.** Four concrete obstacles:
 
@@ -35,12 +35,12 @@ So this plan is mostly not about agent behaviour — it is about teaching three 
 | --- | --- | --- |
 | Discovery scans one root | `_build_registry()` → `_scan_yaml_agents(settings.filesystem.global_root)` | User workspaces are never looked at. |
 | The registry is a process-global dict keyed by slug | `AGENT_REGISTRY: Dict[str, AgentDefinition]`, mutated in place by `refresh_registry()` | Two users' agents would collide on slug, and one user's agent would be visible to every request. |
-| `AgentTable.slug` is `unique=True`, no owner column | [core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | Two users cannot both have a `research-bot`. |
+| `AgentTable.slug` is `unique=True`, no owner column | [core/database/models.py](../../../src/dialogue_bridge/core/database/models.py) | Two users cannot both have a `research-bot`. |
 | The bridge cache is process-global | `_AGENT_CACHE: Dict[str, AgentTable]`, primed by `prime_agent_cache` from `_load_active_agents` | A per-user agent placed in it leaks across users; and the cache is lazy (refresh on empty), so writes would not appear until restart. |
 
 **Catalog sync.** `sync_agents_with_service(db)` pulls the agents-service manifest and upserts `AgentTable`, making the agents service the source of truth for the agent list. For user agents that direction has to invert — the user creates them through the bridge.
 
-**Filesystem convention exists, data does not — and the path is not even persistent.** `settings.filesystem.workspaces_root` = `/var/magenticx/workspaces` is defined ([core/settings.py](../../src/agents/core/settings.py) `FilesystemSettings`) and the directory is created in the image, but **neither `docker-compose.yaml` nor `docker-compose-denis.yaml` mounts anything at `/var/magenticx`**. The agents service mounts only the legacy roots:
+**Filesystem convention exists, data does not — and the path is not even persistent.** `settings.filesystem.workspaces_root` = `/var/magenticx/workspaces` is defined ([core/settings.py](../../../src/agents/core/settings.py) `FilesystemSettings`) and the directory is created in the image, but **neither `docker-compose.yaml` nor `docker-compose-denis.yaml` mounts anything at `/var/magenticx`**. The agents service mounts only the legacy roots:
 
 ```yaml
 agents_filesystem:/var/agents/filesystem            # user_root → agent_root, tool_prefs, memory, skills
@@ -51,7 +51,7 @@ skills_registry_users:/var/agents/skills_registry/users
 So `global_root` and `workspaces_root` currently resolve to the container's **ephemeral layer**. Two consequences, and they differ in severity:
 
 - **Harmless today:** `global_root` holds only the built-in agent seed, which is re-copied from the image on every start, so platform agents work correctly. What *is* false is plan 00's documented promise that an out-of-band edit to a built-in agent's folder survives a restart — it does not.
-- **Blocking for this plan:** a user-authored agent written to `workspaces_root` would be **destroyed on every container restart or redeploy**. Provisioning a persistent mount is therefore a hard prerequisite of Phase 1, not a detail deferred to [03](03-projects-and-workspaces.md).
+- **Blocking for this plan:** a user-authored agent written to `workspaces_root` would be **destroyed on every container restart or redeploy**. Provisioning a persistent mount is therefore a hard prerequisite of Phase 1, not a detail deferred to [03](../03-projects-and-workspaces.md).
 
 Note that everything shipped so far is unaffected: `agent_root()` derives from `settings.filesystem.user_root` = `/var/agents/filesystem`, which *is* mounted — so `tool_prefs.json`, memory, and skills all persist correctly.
 
@@ -84,7 +84,7 @@ flowchart TD
 | Platform | `NULL` | `omni-yaml-v1` | `resolve_agent_definition("omni-yaml-v1", None)` |
 | User | `<uuid>` | `research-bot` | `resolve_agent_definition("research-bot", "<uuid>")` |
 
-The bridge sets `context.agent_owner_id` when the resolved agent row has an owner ([utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py)); the agents service passes it to the resolver ([router/inference.py](../../src/agents/router/inference.py), both the stream and resume paths). This keeps the same outcome as the plan — **namespacing over override**, a user agent can never shadow a built-in — with no slug mangling, no ambiguous parsing of `/`-containing keys, no migration backfill, and no second identifier to keep in sync with the first.
+The bridge sets `context.agent_owner_id` when the resolved agent row has an owner ([utils/inference_runs.py](../../../src/dialogue_bridge/utils/inference_runs.py)); the agents service passes it to the resolver ([router/inference.py](../../../src/agents/router/inference.py), both the stream and resume paths). This keeps the same outcome as the plan — **namespacing over override**, a user agent can never shadow a built-in — with no slug mangling, no ambiguous parsing of `/`-containing keys, no migration backfill, and no second identifier to keep in sync with the first.
 
 ### 3.2 Resolution instead of registration
 
@@ -105,7 +105,7 @@ Two isolation properties fall out of this and are load-bearing:
 - User agents are never in a shared dict, so they cannot leak or be enumerated across users.
 - Platform lookup happens **first**, so a user agent named after a built-in resolves to the built-in. Creation also reserves platform slugs outright, so the case is rejected up front rather than silently shadowed.
 
-> **A leak this design fixed.** `GET /v1/catalog/agents` originally served the entire process-global cache to any authenticated caller. Once user agents could enter that cache, one user's agents would have been visible to everyone. The fix is structural — the cache is platform-only and owned agents are read per request, scoped to the caller ([router/catalog.py](../../src/dialogue_bridge/router/catalog.py)).
+> **A leak this design fixed.** `GET /v1/catalog/agents` originally served the entire process-global cache to any authenticated caller. Once user agents could enter that cache, one user's agents would have been visible to everyone. The fix is structural — the cache is platform-only and owned agents are read per request, scoped to the caller ([router/catalog.py](../../../src/dialogue_bridge/router/catalog.py)).
 
 ### 3.3 Authoring: form first, YAML visible
 
@@ -175,11 +175,11 @@ Empty state matters here: a first-time user sees an explanatory card with *Creat
 | --- | --- |
 | **Catalog sync** | `sync_agents_with_service` must scope to platform agents only, or it will delete/deactivate user agents it does not see in the manifest. This is the single most likely regression. |
 | **Bridge agent cache** | `_AGENT_CACHE` / `prime_agent_cache` must never hold user agents; `get_agent_by_id` needs an owner-aware path (DB lookup for user agents, cache for platform ones). |
-| **Per-agent tool overrides** | `tool_prefs.json` lives at `<agent_root>` keyed by `(user, agent_slug)`. A user agent's slug is only unique per owner, so the agent-root derivation must use the owner-scoped path — verify [runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) `agent_root()` cannot alias two users' same-named agents. |
-| **Skills & memory** | Both are keyed per `(user, agent)` and will now include user agents; the skills pool and `AGENTS.md` memory tree must be created lazily for a new agent. See [agent-memory](../flows/agent-memory.md). |
-| **Workspaces** | [03](03-projects-and-workspaces.md) may add a workspace tier to the path (`workspaces/<user>/<workspace>/agents/…`). Keep the agent-root derivation in one helper so that change is one edit. |
-| **Permissions** | [02](02-org-and-user-permissions.md) turns `owner_user_id` into a full owner (user *or* org) and adds sharing. Model the column as an owner reference now so that migration is additive. |
-| **Tool RAG** | [07](07-tool-rag.md) narrows within the declared set — user agents simply add more declared sets; no conflict, but the eval corpus should include user-authored agents. |
+| **Per-agent tool overrides** | `tool_prefs.json` lives at `<agent_root>` keyed by `(user, agent_slug)`. A user agent's slug is only unique per owner, so the agent-root derivation must use the owner-scoped path — verify [runtime/filesystem/provisioner.py](../../../src/agents/runtime/filesystem/provisioner.py) `agent_root()` cannot alias two users' same-named agents. |
+| **Skills & memory** | Both are keyed per `(user, agent)` and will now include user agents; the skills pool and `AGENTS.md` memory tree must be created lazily for a new agent. See [agent-memory](../../flows/agent-memory.md). |
+| **Workspaces** | [03](../03-projects-and-workspaces.md) may add a workspace tier to the path (`workspaces/<user>/<workspace>/agents/…`). Keep the agent-root derivation in one helper so that change is one edit. |
+| **Permissions** | [02](../02-org-and-user-permissions.md) turns `owner_user_id` into a full owner (user *or* org) and adds sharing. Model the column as an owner reference now so that migration is additive. |
+| **Tool RAG** | [07](../07-tool-rag.md) narrows within the declared set — user agents simply add more declared sets; no conflict, but the eval corpus should include user-authored agents. |
 | **`create_skill`** | [12](12-create-skill-tool.md) lets an agent author a skill; combined with this plan, an agent could effectively extend its own definition. Decide the approval posture in that plan, not this one. |
 | **Docs** | Closes the gap noted in [00 §7](00-platform-restructure.md): the agent-development reference must finally document `agent.yaml` / `YamlDeepAgent` as the primary way to build an agent. |
 
@@ -219,11 +219,11 @@ The central threat: **a user-authored agent executes with platform credentials**
 - **YAML is configuration, never code.** `AgentSpec` keeps `extra="forbid"`; models validated against an allowlist; native tools validated against the registry; no field may carry a path outside the agent folder (reject `..`, absolute paths, symlinks) or a URL that becomes an outbound call.
 - **Tools remain platform-owned.** A user agent's tool set is still `(declared ∪ user-enabled) − user-disabled` over the gateway/native catalogue. A user cannot introduce a new tool, only select.
 - **HITL gates have a platform floor.** `agent.yaml` can *add* approval gates but must not be able to *remove* the platform-mandated ones (`write_file`, `edit_file`, `execute`, `task`). Otherwise authoring an agent is a one-line bypass of the confirmation gate. Enforce the floor in the builder **and** server-side in the spec validator — the server is the authority.
-- **Isolation is structural, not adversarial.** A user agent gets the same mount confinement as any deep agent (`FilesystemBackend`, `virtual_mode`, read-only `input/`) and inherits the `SANDBOX_EXECUTION_ENABLED=false` fail-closed posture — see [11](11-sandbox-runner.md). No new escape surface is introduced.
+- **Isolation is structural, not adversarial.** A user agent gets the same mount confinement as any deep agent (`FilesystemBackend`, `virtual_mode`, read-only `input/`) and inherits the `SANDBOX_EXECUTION_ENABLED=false` fail-closed posture — see [11](../11-sandbox-runner.md). No new escape surface is introduced.
 - **Authorization on every route.** `validate_userId` for identity plus an explicit ownership check on the target agent; never infer ownership from the path alone.
 - **Data-loss guard.** Because `AgentTable.conversations` cascades, delete must be soft by default. Only allow a hard delete when zero conversations reference the agent, and never in the same transaction as the folder removal.
 - **Quotas** cap agents per user, sub-agents, and total spec bytes to bound both storage and prompt-injection surface.
-- **Logging** records agent ids and event types only — never prompt bodies (user content), consistent with [observability](../development/observability.md).
+- **Logging** records agent ids and event types only — never prompt bodies (user content), consistent with [observability](../../development/observability.md).
 
 ---
 
@@ -235,7 +235,7 @@ Spec validation gets table-driven tests (valid, unknown field, bad model, unknow
 
 ## 11. Docs to update
 
-[agent-development.md](../development/agent-development.md) (make `agent.yaml` the primary path, document the builder), [agents-service-reference.md](../development/agents-service-reference.md) (resolution + user-agent endpoints), [database-schema.md](../architecture/database-schema.md) (ownership columns, partial index, migration `0017`), [catalog.md](../flows/catalog.md) (platform vs user agents in the picker), [tool-harness.md](../development/tool-harness.md) (user agents declare tools too; the HITL floor), and the `CLAUDE.md` doc table if a new doc is added.
+[agent-development.md](../../development/agent-development.md) (make `agent.yaml` the primary path, document the builder), [agents-service-reference.md](../../development/agents-service-reference.md) (resolution + user-agent endpoints), [database-schema.md](../../architecture/database-schema.md) (ownership columns, partial index, migration `0017`), [catalog.md](../../flows/catalog.md) (platform vs user agents in the picker), [tool-harness.md](../../development/tool-harness.md) (user agents declare tools too; the HITL floor), and the `CLAUDE.md` doc table if a new doc is added.
 
 ---
 
@@ -243,11 +243,11 @@ Spec validation gets table-driven tests (valid, unknown field, bad model, unknow
 
 - **Two-system write is not atomic.** The folder lives on the agents-service volume, the row in Postgres. A crash between them orphans one side. Mitigation: write the folder first, then the row, and run a reconciler that reports (never auto-deletes) orphans — deleting user content to satisfy a consistency check is worse than the inconsistency.
 - **Registry vs resolver divergence.** Platform agents stay in a warm dict, user agents go through a scan+cache. Two code paths for "get me an agent" is a latent bug source; keep them behind one `resolve_agent()` façade from Phase 1 rather than letting call sites branch.
-- **Open: does a user agent belong to a workspace?** If [03](03-projects-and-workspaces.md) lands first, agents may need to be workspace-scoped rather than user-scoped. Deciding late is fine *if* the agent-root path is derived in exactly one helper.
-- **Open: model allowlist.** There is still no model registry with context windows or pricing; `_is_known_model` accepts any `provider:model`. Letting users pick a model without a registry means they can select something expensive or nonexistent. A minimal curated list is the pragmatic Phase 3 answer — and see [16](16-context-usage-ui.md), which needs the same registry.
+- **Open: does a user agent belong to a workspace?** If [03](../03-projects-and-workspaces.md) lands first, agents may need to be workspace-scoped rather than user-scoped. Deciding late is fine *if* the agent-root path is derived in exactly one helper.
+- **Open: model allowlist.** There is still no model registry with context windows or pricing; `_is_known_model` accepts any `provider:model`. Letting users pick a model without a registry means they can select something expensive or nonexistent. A minimal curated list is the pragmatic Phase 3 answer — and see [16](../16-context-usage-ui.md), which needs the same registry.
 - **Open: cloning a platform agent** copies a prompt the platform authored. Fine while everything is first-party; revisit if third-party agents ever ship.
-- **YAML sub-agents cannot currently hold MCP tools.** `YamlDeepAgent.register_subagents` drops MCP refs on a sub-agent with a warning, so the builder must either hide per-sub-agent tool selection or wait for the fix tracked in [06 · Deep Research](06-deep-research-mode.md), which hits the same wall. Exposing a field that silently does nothing is worse than omitting it.
-- **Prompt-injection blast radius grows.** More agents with hand-written prompts and broad tool sets means more ways to talk an agent into a bad tool call. The HITL floor is the backstop; [09](09-email-integration.md) has the sharper version of this problem.
+- **YAML sub-agents cannot currently hold MCP tools.** `YamlDeepAgent.register_subagents` drops MCP refs on a sub-agent with a warning, so the builder must either hide per-sub-agent tool selection or wait for the fix tracked in [06 · Deep Research](../06-deep-research-mode.md), which hits the same wall. Exposing a field that silently does nothing is worse than omitting it.
+- **Prompt-injection blast radius grows.** More agents with hand-written prompts and broad tool sets means more ways to talk an agent into a bad tool call. The HITL floor is the backstop; [09](../09-email-integration.md) has the sharper version of this problem.
 
 ---
 
@@ -255,15 +255,15 @@ Spec validation gets table-driven tests (valid, unknown field, bad model, unknow
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Spec + validation to reuse | [runtime/abstractions/agent_spec.py](../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`, `reference_errors` |
-| Generic runtime agent | [runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | `YamlDeepAgent` |
-| Discovery to extend | [utils/agents.py](../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
-| Agent-root derivation | [runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `agent_root` — must be owner-scoped |
-| Workspace roots | [core/settings.py](../../src/agents/core/settings.py) | `FilesystemSettings.workspaces_root` |
+| Spec + validation to reuse | [runtime/abstractions/agent_spec.py](../../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`, `reference_errors` |
+| Generic runtime agent | [runtime/abstractions/yaml_agent.py](../../../src/agents/runtime/abstractions/yaml_agent.py) | `YamlDeepAgent` |
+| Discovery to extend | [utils/agents.py](../../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
+| Agent-root derivation | [runtime/filesystem/provisioner.py](../../../src/agents/runtime/filesystem/provisioner.py) | `agent_root` — must be owner-scoped |
+| Workspace roots | [core/settings.py](../../../src/agents/core/settings.py) | `FilesystemSettings.workspaces_root` |
 | New user-agent endpoints | `src/agents/router/user_agents.py` *(new)* + `src/agents/utils/user_agents.py` *(new)* | write/validate/delete + cache invalidation |
-| Agent table + cascade trap | [core/database/models.py](../../src/dialogue_bridge/core/database/models.py) | `AgentTable`, `conversations` cascade |
-| Catalog sync to scope | [utils/agents.py](../../src/dialogue_bridge/utils/agents.py) | `sync_agents_with_service`, `prime_agent_cache`, `get_agent_by_id`, `_resolve_agent_slug` |
+| Agent table + cascade trap | [core/database/models.py](../../../src/dialogue_bridge/core/database/models.py) | `AgentTable`, `conversations` cascade |
+| Catalog sync to scope | [utils/agents.py](../../../src/dialogue_bridge/utils/agents.py) | `sync_agents_with_service`, `prime_agent_cache`, `get_agent_by_id`, `_resolve_agent_slug` |
 | New bridge router | `src/dialogue_bridge/router/agents_custom.py` *(new)* | CRUD + validate, CSRF + ownership |
-| Migration slot | `src/dialogue_bridge/migrations/versions/0017_agent_ownership.py` *(new)* | hand-written partial index |
-| Agents tab to extend | [profile_parts/AgentsTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | platform vs my-agents split |
+| Migration slot | `src/dialogue_bridge/core/database/migrations/versions/0017_agent_ownership.py` *(new)* | hand-written partial index |
+| Agents tab to extend | [profile_parts/AgentsTab.tsx](../../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | platform vs my-agents split |
 | Builder UI | `src/agentic_ui/src/features/settings/components/agent_builder/` *(new)* | dialog steps, YAML preview |

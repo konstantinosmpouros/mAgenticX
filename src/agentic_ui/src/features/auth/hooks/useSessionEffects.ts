@@ -25,6 +25,7 @@ import {
 } from "@/shared/lib/api";
 import { ensureFreshSession } from "@/shared/lib/sessionRefresh";
 import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
+import { CONV_INITIAL_PAGE_SIZE } from "@/shared/lib/consts";
 
 // ---------------------------------------------------------------------------
 // Initial session state helper
@@ -230,7 +231,7 @@ export function useAuthRehydrateEffect(params: {
 
         if (needsConversations) {
           requests.push(
-            getConversations(restored.user.id)
+            getConversations(restored.user.id, 1, CONV_INITIAL_PAGE_SIZE)
               .then((conversationList) => setConversations(sortByUpdatedAtDesc(conversationList)))
               .catch((error) => {
                 console.error("Failed to fetch conversations on rehydrate", error);

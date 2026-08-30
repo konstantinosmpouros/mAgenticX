@@ -1,7 +1,6 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  ArrowLeft,
   Bot,
   ChevronDown,
   FilePlus,
@@ -27,6 +26,7 @@ import type {
   UserSkill,
   UserSkillDetail,
 } from "@/shared/lib/types";
+import { usePanelHeader } from "@/features/settings/panel-header-context";
 import { InfoCard, SkillHubRow, SoftPanel, ToggleSwitch } from "./shared";
 import SkillBuilder from "./SkillBuilder";
 import SkillFilesViewer from "./SkillFilesViewer";
@@ -130,6 +130,7 @@ export default function SkillsTab({
   const [expandedAgentSkills, setExpandedAgentSkills] = useState<Record<string, boolean>>({});
 
   const [skillsView, setSkillsView] = useState<SkillsSubView>("hub");
+
   // Two independent, clearly-scoped queries: ``registrySearch`` filters the
   // user's own pool; ``catalogSearch`` drives the "add from catalog" search.
   // Splitting them is the fix for the old single-box layout that merged the
@@ -178,6 +179,51 @@ export default function SkillsTab({
       setMySkillsRefreshing(false);
     }
   }, [onRefreshMySkills, mySkillsRefreshing]);
+
+  // Publish the inner page to the panel's own header instead of stacking a
+  // second title under it. The hub keeps the section's static metadata.
+  const SUBVIEW_HEADERS: Partial<Record<SkillsSubView, { title: string; description: string }>> = {
+    mine: {
+      title: "Your skills",
+      description:
+        "Every skill in your pool. Remove one to take it back out, or open it to read what it does.",
+    },
+    global: {
+      title: "Add from catalog",
+      description: "Browse the shared catalog and add a skill to your pool.",
+    },
+    create: {
+      title: "New custom skill",
+      description:
+        "Author a private skill — a SKILL.md playbook plus any scripts or reference files. Assign it from Agent skills once it's saved.",
+    },
+    agents: {
+      title: "Agent skills",
+      description:
+        "Assign skills from your pool to specific deep agents. Toggles take effect on the next conversation.",
+    },
+  };
+  const subviewHeader = SUBVIEW_HEADERS[skillsView];
+  usePanelHeader(
+    subviewHeader
+      ? {
+          ...subviewHeader,
+          backLabel: "Skills",
+          onBack: () => setSkillsView("hub"),
+          // Only the pool can be refreshed, and only when the parent wired it.
+          ...(skillsView === "mine" && onRefreshMySkills
+            ? {
+                action: {
+                  icon: RefreshCw,
+                  label: "Refresh your skills",
+                  busy: mySkillsRefreshing,
+                  onClick: () => void handleRefreshMySkills(),
+                },
+              }
+            : {}),
+        }
+      : null,
+  );
 
   const openAddView = useCallback((prefillName?: string) => {
     setAddPrefillName(typeof prefillName === "string" ? prefillName : "");
@@ -333,48 +379,7 @@ export default function SkillsTab({
 
         {skillsView === "mine" ? (
           <motion.div key="skills-mine" className="space-y-6" {...skillsViewMotionProps}>
-            <InfoCard
-              eyebrow="My pool"
-              title="Your skills"
-              headerAction={
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSkillsView("hub")}
-                    className="h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-                    Back
-                  </Button>
-                  {onRefreshMySkills ? (
-                    <Tooltip delayDuration={0}>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => void handleRefreshMySkills()}
-                          disabled={mySkillsRefreshing}
-                          aria-label="Refresh my skills"
-                          className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-[hsl(var(--hover-surface))] focus:bg-[hsl(var(--hover-surface-strong))] focus:outline-none focus:ring-0 focus-visible:ring-0 transition-colors disabled:opacity-100"
-                        >
-                          <RefreshCw
-                            size={16}
-                            className={cn(mySkillsRefreshing && "animate-spin")}
-                          />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        {mySkillsRefreshing ? "Refreshing…" : "Refresh"}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : null}
-                </div>
-              }
-            >
+            <InfoCard>
               <div className="flex flex-col gap-3">
                 {(mySkills?.length ?? 0) > 6 ? (
                   <div className="relative">
@@ -455,7 +460,7 @@ export default function SkillsTab({
                                         e.stopPropagation();
                                         void onRemoveSkillFromPool(skill.name);
                                       }}
-                                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                      className="h-7 w-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                                     >
                                       <X className="h-3.5 w-3.5" />
                                     </Button>
@@ -506,21 +511,7 @@ export default function SkillsTab({
 
         {skillsView === "global" ? (
           <motion.div key="skills-global" {...skillsViewMotionProps}>
-            <InfoCard
-              eyebrow="Catalog"
-              title="Add from catalog"
-              headerAction={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setSkillsView("hub")}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
-                >
-                  <ArrowLeft className="h-4 w-4" aria-hidden />
-                  Back
-                </Button>
-              }
-            >
+            <InfoCard>
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
@@ -646,22 +637,7 @@ export default function SkillsTab({
 
         {skillsView === "create" ? (
           <motion.div key="skills-create" {...skillsViewMotionProps}>
-            <InfoCard
-              eyebrow="Create"
-              title="New custom skill"
-              description="Author a private skill — a SKILL.md playbook plus any scripts or reference files. Assign it from Agent skills once it's saved."
-              headerAction={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={cancelAddView}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
-                >
-                  <ArrowLeft className="h-4 w-4" aria-hidden />
-                  Back
-                </Button>
-              }
-            >
+            <InfoCard>
               <SkillBuilder
                 mySkills={mySkills ?? []}
                 availableSkills={availableSkills}
@@ -676,22 +652,7 @@ export default function SkillsTab({
 
         {skillsView === "agents" ? (
           <motion.div key="skills-agents" {...skillsViewMotionProps}>
-            <InfoCard
-              eyebrow="Agents"
-              title="Agent skills"
-              description="Assign skills from your pool to specific deep agents. Toggles take effect on the next conversation."
-              headerAction={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setSkillsView("hub")}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm text-foreground transition-smooth hover:bg-[hsl(var(--hover-surface))] hover:text-foreground active:bg-[hsl(var(--hover-surface-strong))] focus-visible:bg-[hsl(var(--hover-surface-strong))] focus-visible:outline-none"
-                >
-                  <ArrowLeft className="h-4 w-4" aria-hidden />
-                  Back
-                </Button>
-              }
-            >
+            <InfoCard>
               <div className="flex flex-col gap-3">
                 {(mySkills?.length ?? 0) === 0 ? (
                   <p className="text-sm text-muted-foreground">

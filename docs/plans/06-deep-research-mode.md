@@ -2,7 +2,7 @@
 
 > **Status:** Not started
 > **TODO source:** New Features → "Deep Research mode: run longer multi-step research workflows with source citations, confidence notes, step traces, and exportable reports. Make it budgeted and steerable from day one: explicit knobs for max sources / max tool calls / wall-clock budget, a plan-first HITL checkpoint (reusing the run takeover interrupt) where the user can prune or redirect branches before execution, per-source trust weighting (domain allow/denylist, prefer-primary-sources toggle), and selectable output templates (executive summary, annotated bibliography, comparison matrix, decision memo)."
-> **Depends on:** [00-platform-restructure.md](00-platform-restructure.md) (**Done** — declarative agents + per-agent tools). Soft: [04-notifications-and-pwa.md](04-notifications-and-pwa.md) (a ten-minute run finishes while the user is elsewhere, and a plan-approval request has to reach them), [05-artifacts-canvas.md](05-artifacts-canvas.md) (the report wants an editable canvas, not just a download), [07-tool-rag.md](07-tool-rag.md) (a research agent is the first with a genuinely wide tool surface).
+> **Depends on:** [00-platform-restructure.md](done/00-platform-restructure.md) (**Done** — declarative agents + per-agent tools). Soft: [04-notifications-and-pwa.md](04-notifications-and-pwa.md) (a ten-minute run finishes while the user is elsewhere, and a plan-approval request has to reach them), [05-artifacts-canvas.md](05-artifacts-canvas.md) (the report wants an editable canvas, not just a download), [07-tool-rag.md](07-tool-rag.md) (a research agent is the first with a genuinely wide tool surface).
 > **Blocks:** nothing.
 > **Services touched:** agents · dialogue_bridge · agentic_ui · infra (MCP gateway servers)
 

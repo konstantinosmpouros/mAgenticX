@@ -96,7 +96,14 @@ export const VoiceSelectorContent = ({
   title = "Voice Selector",
   ...props
 }: VoiceSelectorContentProps) => (
-  <DialogContent aria-describedby={undefined} className={cn("p-0", className)} {...props}>
+  <DialogContent
+    // Opened from inside the settings panel: keep the scrim *behind* that
+    // panel so choosing a skill does not black out the screen around it.
+    overlayClassName="z-50"
+    aria-describedby={undefined}
+    className={cn("p-0", className)}
+    {...props}
+  >
     <DialogTitle className="sr-only">{title}</DialogTitle>
     <Command className="**:data-[slot=command-input-wrapper]:h-auto">{children}</Command>
   </DialogContent>

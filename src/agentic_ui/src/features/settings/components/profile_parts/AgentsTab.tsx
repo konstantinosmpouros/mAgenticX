@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowLeft, Bot, Pencil, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getAgentTools, toggleAgentTool } from "@/shared/lib/api";
 import { loadSession } from "@/shared/lib/authStorage";
-import { cn } from "@/shared/lib/utils";
 import type {
   Agent,
-  AgentsSubView,
   AgentToolRow,
   AgentToolsResponse,
   CustomAgentDetail,
@@ -14,16 +11,26 @@ import type {
   CustomAgentWritePayload,
   UserSkill,
 } from "@/shared/lib/types";
+import { ALWAYS_GATED } from "@/features/settings/lib/agentTools";
+import { usePanelHeader } from "@/features/settings/panel-header-context";
+import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import AgentBuilder from "./AgentBuilder";
-import { InfoCard, SoftPanel, ToggleSwitch } from "./shared";
+import { AgentsIndex, type AgentSummary } from "./agents_parts/AgentsIndex";
+import { AgentDetail } from "./agents_parts/AgentDetail";
+import { InfoCard } from "./shared";
 
 /**
- * AgentsTab — pick a (deep) agent and toggle which tools it may use in your
- * conversations. The disabled set is per-(user, agent); the agents service
- * subtracts it from the agent's declared tools at run time. Self-contained:
- * reads the current user from the session and drives its own load/toggle via
- * the api layer (optimistic, with rollback on failure). Only deep agents expose
- * a tool model, so the selector is filtered to them.
+ * AgentsTab — the agents surface: list every agent, open one to configure what
+ * it can do, or author your own.
+ *
+ * Restructured from a four-state screen that opened on per-agent tool toggles
+ * and hid authoring behind a header button. The list is now the landing page
+ * and tool management is one section of an agent's detail, which is what it
+ * always was.
+ *
+ * Per-(user, agent) tool state still lives here: the disabled set is written
+ * optimistically and rolled back on failure, and the agents service subtracts
+ * it from the agent's declared tools at run time.
  */
 type AgentsTabProps = {
   agents: Agent[];
@@ -38,6 +45,11 @@ type AgentsTabProps = {
   onLoadAgentDefinition?: (agentId: string) => Promise<CustomAgentDetail | null>;
 };
 
+type View = "index" | "detail" | "create" | "edit";
+
+/** Only deep agents expose a tool model, so only they get a tool fetch. */
+const isConfigurable = (agent: Agent) => agent.type === "deep agent";
+
 export default function AgentsTab({
   agents,
   myAgents = [],
@@ -50,57 +62,32 @@ export default function AgentsTab({
   onLoadAgentDefinition,
 }: AgentsTabProps) {
   const userId = loadSession()?.userId ?? null;
-  // Subview state, mirroring the Skills tab: the tab opens on the tool
-  // manager and navigates into the agent list / builder, with Back returning.
-  const [view, setView] = useState<AgentsSubView>("tools");
-  const [editing, setEditing] = useState<CustomAgentDetail | null>(null);
-  const [openingId, setOpeningId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  const canAuthor = Boolean(onCreateAgent && onValidateAgent);
-
-  const openCreate = () => {
-    setEditing(null);
-    setView("create");
-  };
-
-  const openEdit = async (agentId: string) => {
-    if (!onLoadAgentDefinition) return;
-    setOpeningId(agentId);
-    const detail = await onLoadAgentDefinition(agentId);
-    setOpeningId(null);
-    if (detail) {
-      setEditing(detail);
-      setView("edit");
-    }
-  };
-
-  const closeBuilder = () => {
-    setEditing(null);
-    setView("mine");
-  };
-  const toolAgents = useMemo(() => agents.filter((a) => a.type === "deep agent"), [agents]);
-
+  const [view, setView] = useState<View>("index");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CustomAgentDetail | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
+
   const [resp, setResp] = useState<AgentToolsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
 
-  // Default to the first deep agent once the list is known, and re-point if the
-  // selected one leaves the list — deleting the agent whose tools are open
-  // would otherwise keep fetching a dead id and surface a load error.
-  useEffect(() => {
-    setSelectedId((prev) =>
-      prev && toolAgents.some((a) => a.id === prev) ? prev : (toolAgents[0]?.id ?? null),
-    );
-  }, [toolAgents]);
+  // Per-agent tool tallies for the index rows, filled in the background so the
+  // list paints immediately and the meta line fills in as counts arrive. A
+  // failed fetch simply leaves that row's counts absent rather than erroring —
+  // the row is still useful without them.
+  const [counts, setCounts] = useState<Record<string, { tools: number; gated: number }>>({});
+  const countsRequested = useRef<Set<string>>(new Set());
+
+  const canAuthor = Boolean(onCreateAgent && onValidateAgent);
+  const mineIds = useMemo(() => new Set(myAgents.map((a) => a.id)), [myAgents]);
 
   const selectedAgent = useMemo(
-    () => toolAgents.find((a) => a.id === selectedId) ?? null,
-    [toolAgents, selectedId],
+    () => agents.find((a) => a.id === selectedId) ?? null,
+    [agents, selectedId],
   );
 
+  // ---- tools for the open agent ---------------------------------------
   const load = useCallback(
     async (agentId: string) => {
       if (!userId) {
@@ -122,9 +109,89 @@ export default function AgentsTab({
   );
 
   useEffect(() => {
-    if (selectedId) void load(selectedId);
-  }, [selectedId, load]);
+    if (view === "detail" && selectedId && selectedAgent && isConfigurable(selectedAgent)) {
+      void load(selectedId);
+    }
+  }, [view, selectedId, selectedAgent, load]);
 
+  // ---- background tallies for the index --------------------------------
+  useEffect(() => {
+    if (!userId || view !== "index") return;
+    const pending = agents.filter((a) => isConfigurable(a) && !countsRequested.current.has(a.id));
+    if (pending.length === 0) return;
+    pending.forEach((a) => countsRequested.current.add(a.id));
+
+    let cancelled = false;
+    void Promise.all(
+      pending.map(async (agent) => {
+        try {
+          const data = await getAgentTools(userId, agent.id);
+          const enabled = data.tools.filter((t) => !t.disabled);
+          return [
+            agent.id,
+            {
+              tools: enabled.length,
+              gated: enabled.filter((t) => ALWAYS_GATED.has(t.name)).length,
+            },
+          ] as const;
+        } catch {
+          // Silent: the row renders without counts rather than showing an
+          // error for information that is decoration, not the point.
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, { tools: number; gated: number }> = {};
+      for (const entry of entries) if (entry) next[entry[0]] = entry[1];
+      if (Object.keys(next).length) setCounts((prev) => ({ ...prev, ...next }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agents, userId, view]);
+
+  const summaries: AgentSummary[] = useMemo(
+    () =>
+      agents.map((agent) => ({
+        agent,
+        mine: mineIds.has(agent.id),
+        toolCount: counts[agent.id]?.tools ?? null,
+        gatedCount: counts[agent.id]?.gated ?? null,
+      })),
+    [agents, mineIds, counts],
+  );
+
+  // The panel header names the page we are on; the detail and builder screens
+  // therefore drop their own titles rather than stating it a second time.
+  usePanelHeader(
+    view === "create"
+      ? {
+          title: "Create new agent",
+          description:
+            "Describe the agent and it will be available in your composer straight away.",
+          backLabel: "Agents",
+          onBack: () => setView("index"),
+        }
+      : view === "edit"
+        ? {
+            title: `Edit ${editing?.name ?? "agent"}`,
+            description: "Changes apply the next time you start a conversation with it.",
+            backLabel: "Agents",
+            onBack: () => setView("index"),
+          }
+        : view === "detail" && selectedAgent
+          ? {
+              title: selectedAgent.name,
+              description: selectedAgent.description || undefined,
+              backLabel: "Agents",
+              onBack: () => setView("index"),
+            }
+          : null,
+  );
+
+  // ---- actions ---------------------------------------------------------
   const onToggle = async (row: AgentToolRow) => {
     if (!userId || !selectedId || togglingKey) return;
     setTogglingKey(row.key);
@@ -143,6 +210,8 @@ export default function AgentsTab({
     );
     try {
       setResp(await toggleAgentTool(userId, selectedId, row.key, nextDisabled));
+      // The index tally for this agent is now stale; drop it so it refetches.
+      countsRequested.current.delete(selectedId);
     } catch (err) {
       setResp((prev) =>
         prev
@@ -160,67 +229,59 @@ export default function AgentsTab({
     }
   };
 
-  const renderRow = (row: AgentToolRow) => {
-    const enabled = !row.disabled;
-    const busy = togglingKey === row.key;
-    return (
-      <div key={row.key} className="flex items-start justify-between gap-4 px-5 py-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-foreground">{row.name}</p>
-            <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {row.source}
-            </span>
-          </div>
-          {row.description ? (
-            // MCP tools ship a long LLM-facing description; show a 2-line
-            // preview here (full text lives in the read-only MCP Servers tab).
-            <p
-              className="mt-1 line-clamp-2 break-words text-sm text-muted-foreground"
-              title={row.description}
-            >
-              {row.description}
-            </p>
-          ) : null}
-        </div>
-        <ToggleSwitch
-          checked={enabled}
-          disabled={busy}
-          onToggle={() => void onToggle(row)}
-          label={`${enabled ? "Disable" : "Enable"} ${row.name}`}
-        />
-      </div>
-    );
+  const openDetail = (agent: Agent) => {
+    setSelectedId(agent.id);
+    setResp(null);
+    setError(null);
+    setView("detail");
   };
 
-  // Split the agent's baseline tools from the gateway tools the user may add.
-  const declaredRows = resp?.tools.filter((t) => t.declared) ?? [];
-  const availableRows = resp?.tools.filter((t) => !t.declared) ?? [];
+  const openEdit = async (agent: Agent) => {
+    if (!onLoadAgentDefinition) return;
+    const detail = await onLoadAgentDefinition(agent.id);
+    if (detail) {
+      setEditing(detail);
+      setView("edit");
+    }
+  };
 
-  const backButton = (label: string, onClick: () => void) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-    >
-      <ArrowLeft size={13} aria-hidden /> {label}
-    </button>
-  );
+  /**
+   * Duplicate: load the source definition and open the builder in CREATE mode
+   * with a fresh name and slug. The slug must differ — the server rejects a
+   * create whose slug collides — and `-copy` is the least surprising suffix.
+   */
+  const openDuplicate = async (agent: Agent) => {
+    if (!onLoadAgentDefinition) return;
+    const detail = await onLoadAgentDefinition(agent.id);
+    if (!detail) return;
+    const spec = detail.spec as Record<string, unknown>;
+    const baseSlug = typeof spec.slug === "string" ? spec.slug : detail.slug;
+    setEditing({
+      ...detail,
+      id: "",
+      name: `${detail.name} copy`,
+      slug: `${baseSlug}-copy`,
+      spec: { ...spec, slug: `${baseSlug}-copy`, name: `${detail.name} copy` },
+    });
+    setView("create");
+  };
 
-  // --- builder ---------------------------------------------------------
+  const closeBuilder = () => {
+    setEditing(null);
+    setView("index");
+  };
+
+  // ---- render ----------------------------------------------------------
   if (view === "create" || view === "edit") {
     return (
-      <div className="space-y-6 animate-fade-in">
-        <InfoCard
-          eyebrow={view === "edit" ? "Edit" : "Create"}
-          title={view === "edit" ? `Edit ${editing?.name ?? "agent"}` : "New agent"}
-          description="Describe the agent and it will be available in your composer straight away."
-          headerAction={backButton("Back", closeBuilder)}
-        >
+      <div className="animate-fade-in space-y-6">
+        <InfoCard>
           <AgentBuilder
             agents={agents}
             mySkills={mySkills}
-            initial={view === "edit" ? editing : null}
+            // A duplicate seeds CREATE from an existing definition, so `initial`
+            // is not the same question as "are we editing".
+            initial={editing}
             submitting={Boolean(busyAgentId)}
             onValidate={onValidateAgent ?? (async () => null)}
             onSubmit={async (payload) =>
@@ -235,233 +296,55 @@ export default function AgentsTab({
     );
   }
 
-  // --- my agents -------------------------------------------------------
-  if (view === "mine") {
+  if (view === "detail" && selectedAgent) {
+    const configurable = isConfigurable(selectedAgent);
     return (
-      <div className="space-y-6 animate-fade-in">
-        <InfoCard
-          eyebrow="Workspace"
-          title="Your agents"
-          description="Agents you built. Only you can see and use them."
-          headerAction={backButton("Back", () => setView("tools"))}
-        >
-          <div className="space-y-4">
-            {canAuthor ? (
-              <button
-                type="button"
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-              >
-                <Plus size={15} aria-hidden /> New agent
-              </button>
-            ) : null}
-
-            {myAgents.length === 0 ? (
-              <SoftPanel className="px-6 py-10 text-center">
-                <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Bot size={18} aria-hidden />
-                </span>
-                <p className="text-sm font-semibold text-foreground">No agents yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Build one with its own instructions, model, skills and sub-agents.
-                </p>
-              </SoftPanel>
-            ) : (
-              <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-                {myAgents.map((agent) => {
-                  const Icon = agent.icon;
-                  const busy = busyAgentId === agent.id || openingId === agent.id;
-                  const confirming = confirmDeleteId === agent.id;
-                  return (
-                    <div
-                      key={agent.id}
-                      className="flex items-start justify-between gap-4 px-5 py-4"
-                    >
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-background/70 text-muted-foreground">
-                          {Icon ? <Icon size={15} aria-hidden /> : <Bot size={15} aria-hidden />}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{agent.name}</p>
-                          {agent.description ? (
-                            <p className="mt-0.5 break-words text-sm text-muted-foreground">
-                              {agent.description}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {confirming ? (
-                          <>
-                            <span className="text-xs text-muted-foreground">Delete?</span>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={async () => {
-                                setConfirmDeleteId(null);
-                                await onDeleteAgent?.(agent.id);
-                              }}
-                              className="rounded-lg border border-destructive/40 px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
-                            >
-                              Yes
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="rounded-lg border border-border/60 px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                            >
-                              No
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void openEdit(agent.id)}
-                              aria-label={`Edit ${agent.name}`}
-                              className={cn(
-                                "rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                                busy && "cursor-not-allowed opacity-60",
-                              )}
-                            >
-                              <Pencil size={15} aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => setConfirmDeleteId(agent.id)}
-                              aria-label={`Delete ${agent.name}`}
-                              className={cn(
-                                "rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50",
-                                busy && "cursor-not-allowed opacity-60",
-                              )}
-                            >
-                              <Trash2 size={15} aria-hidden />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </SoftPanel>
-            )}
-          </div>
-        </InfoCard>
+      <div className="animate-fade-in">
+        <AgentDetail
+          agent={selectedAgent}
+          mine={mineIds.has(selectedAgent.id)}
+          configurable={configurable}
+          tools={configurable ? (resp?.tools ?? []) : []}
+          loading={configurable && loading}
+          error={configurable ? error : null}
+          togglingKey={togglingKey}
+          onToggleTool={(row) => void onToggle(row)}
+          onEdit={
+            mineIds.has(selectedAgent.id) && onLoadAgentDefinition
+              ? () => void openEdit(selectedAgent)
+              : undefined
+          }
+        />
       </div>
     );
   }
 
-  // --- tools (default) -------------------------------------------------
   return (
-    <div className="space-y-6 animate-fade-in">
-      <InfoCard
-        eyebrow="Workspace"
-        title="Choose an agent"
-        description="Pick an agent to manage its tools. Your choices apply to this agent only."
-        headerAction={
-          canAuthor ? (
-            <button
-              type="button"
-              onClick={() => setView("mine")}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-            >
-              <Bot size={13} aria-hidden /> Your agents
-              {myAgents.length > 0 ? ` (${myAgents.length})` : ""}
-            </button>
-          ) : null
-        }
-      >
-        {toolAgents.length === 0 ? (
-          <SoftPanel className="px-6 py-10 text-center">
-            <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Bot size={18} aria-hidden />
-            </span>
-            <p className="text-sm font-semibold text-foreground">No configurable agents</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Only deep agents expose per-agent tool controls.
-            </p>
-          </SoftPanel>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {toolAgents.map((agent) => {
-              const Icon = agent.icon;
-              const active = agent.id === selectedId;
-              return (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => setSelectedId(agent.id)}
-                  aria-pressed={active}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-                    active
-                      ? "border-primary/40 bg-primary/10 text-foreground"
-                      : "border-border/60 bg-background/60 text-muted-foreground hover:bg-background/80 hover:text-foreground",
-                  )}
-                >
-                  {Icon ? <Icon size={15} aria-hidden /> : <Bot size={15} aria-hidden />}
-                  <span className="font-medium">{agent.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </InfoCard>
+    <div className="animate-fade-in">
+      <AgentsIndex
+        summaries={summaries}
+        canAuthor={canAuthor}
+        busyAgentId={busyAgentId}
+        onOpen={openDetail}
+        onCreate={() => {
+          setEditing(null);
+          setView("create");
+        }}
+        onEdit={(agent) => void openEdit(agent)}
+        onDuplicate={(agent) => void openDuplicate(agent)}
+        onDelete={setPendingDelete}
+      />
 
-      {selectedAgent ? (
-        <InfoCard
-          eyebrow="Tools"
-          title={`${selectedAgent.name}'s tools`}
-          description="Turn off any of the agent's own tools, or turn on extra tools from the connected apps to grant them to just this agent."
-        >
-          {error ? (
-            <SoftPanel className="flex items-center gap-3 px-4 py-3">
-              <AlertCircle size={16} className="shrink-0 text-destructive" aria-hidden />
-              <p className="text-sm text-muted-foreground">{error}</p>
-            </SoftPanel>
-          ) : loading && !resp ? (
-            <SoftPanel className="px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground">Loading tools…</p>
-            </SoftPanel>
-          ) : resp && resp.tools.length > 0 ? (
-            <div className="space-y-5">
-              {declaredRows.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    The agent's tools
-                  </p>
-                  <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-                    {declaredRows.map(renderRow)}
-                  </SoftPanel>
-                </div>
-              ) : null}
-              {availableRows.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Available to add
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Tools from the connected apps. Turn one on to let this agent use it in your
-                    conversations.
-                  </p>
-                  <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-                    {availableRows.map(renderRow)}
-                  </SoftPanel>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <SoftPanel className="px-6 py-10 text-center">
-              <p className="text-sm font-semibold text-foreground">No configurable tools</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                This agent has no tools to toggle right now.
-              </p>
-            </SoftPanel>
-          )}
-        </InfoCard>
-      ) : null}
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title={`Delete ${pendingDelete?.name ?? "agent"}?`}
+        description="Its instructions, skills, sub-agents and files are removed. Conversations that used it are kept, but it will no longer appear in your composer."
+        confirmLabel="Delete agent"
+        onConfirm={async () => {
+          if (pendingDelete) await onDeleteAgent?.(pendingDelete.id);
+        }}
+      />
     </div>
   );
 }

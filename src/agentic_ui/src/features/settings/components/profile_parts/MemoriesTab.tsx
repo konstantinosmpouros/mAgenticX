@@ -1,21 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import {
-  ArrowLeft,
-  Bot,
-  Brain,
-  ChevronDown,
-  FileText,
-  Loader2,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
+import { Bot, Brain, ChevronDown, FileText, Loader2, RefreshCw, Trash2 } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/utils";
 import type { Agent } from "@/shared/lib/types";
 import type { MemoriesHandlers } from "@/features/settings/hooks/useMemories";
+import { usePanelHeader } from "@/features/settings/panel-header-context";
 import { InfoCard, SkillHubRow, SoftPanel } from "./shared";
 
 // Props are the useMemories hook output (spread straight in by ProfilePanel)
@@ -81,6 +73,8 @@ export default function MemoriesTab({
     [deepAgents, selectedAgentId],
   );
 
+  // On an agent's memory page the panel header names that agent, rather than
+  // this tab repeating a title under the one the panel already shows.
   const openAgent = useCallback(
     (agentId: string) => {
       setSelectedAgentId(agentId);
@@ -90,12 +84,6 @@ export default function MemoriesTab({
     },
     [ensureLoaded],
   );
-
-  const backToHub = useCallback(() => {
-    setSelectedAgentId(null);
-    setExpanded(new Set());
-    setConfirmingDelete(null);
-  }, []);
 
   const toggleMemory = useCallback(
     (agentId: string, name: string) => {
@@ -123,6 +111,29 @@ export default function MemoriesTab({
       setRefreshing(false);
     }
   }, [selectedAgentId, refreshing, refreshAgent]);
+
+  const backToHub = useCallback(() => {
+    setSelectedAgentId(null);
+    setExpanded(new Set());
+    setConfirmingDelete(null);
+  }, []);
+
+  usePanelHeader(
+    selectedAgent
+      ? {
+          title: `${selectedAgent.name} memory`,
+          description: "What this agent remembers about you between conversations.",
+          backLabel: "Memory",
+          onBack: backToHub,
+          action: {
+            icon: RefreshCw,
+            label: "Refresh memories",
+            busy: refreshing,
+            onClick: () => void handleRefresh(),
+          },
+        }
+      : null,
+  );
 
   const sortedMemories = useMemo(() => {
     if (!selectedAgentId) return [];
@@ -176,43 +187,7 @@ export default function MemoriesTab({
           </motion.div>
         ) : (
           <motion.div key="memories-agent" {...viewMotionProps}>
-            <InfoCard
-              eyebrow="Agent memory"
-              title={selectedAgent.name}
-              headerAction={
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={backToHub}
-                    className="h-8 gap-1.5 px-2.5 text-xs text-muted-foreground hover:bg-[hsl(var(--hover-surface))] hover:text-foreground focus-visible:outline-none"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-                    Back
-                  </Button>
-                  <Tooltip delayDuration={0}>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => void handleRefresh()}
-                        disabled={refreshing}
-                        aria-label="Refresh memories"
-                        className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-[hsl(var(--hover-surface))] focus:outline-none focus-visible:ring-0 transition-colors disabled:opacity-100"
-                      >
-                        <RefreshCw size={16} className={cn(refreshing && "animate-spin")} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      {refreshing ? "Refreshing…" : "Refresh"}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              }
-            >
+            <InfoCard>
               <div className="flex flex-col gap-2">
                 {agentLoading && !loadedOnce ? (
                   <p className="text-sm text-muted-foreground">Loading memories…</p>

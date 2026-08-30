@@ -1,7 +1,7 @@
 # Multi-account sign-in & switching
 
 > **Status:** **Delivered** (2026-08-24) — backend, switcher UI and interstitial are in and locally verified; three gaps remain, listed in §10. Kept for the reasoning; where the build diverged from this plan the divergence is called out inline.
-> **Depends on:** the stateless-JWT auth already shipped ([authentication-and-session](../flows/authentication-and-session.md))
+> **Depends on:** the stateless-JWT auth already shipped ([authentication-and-session](../../flows/authentication-and-session.md))
 > **Blocks:** nothing. Adjacent: "Log out of all devices" (TODO → Agentic UI → Profile panel), which reuses the same revocation surface
 > **Services touched:** dialogue_bridge · agentic_ui (no DB migration)
 
@@ -29,7 +29,7 @@ flowchart LR
 
 - **Acting as two accounts at once.** One active identity per request, always. Anything else makes every existing ownership check ambiguous.
 - **Cross-account data access.** Switching is re-authentication as another user, not a permission grant. No endpoint ever reads across accounts.
-- **Org / team switching.** That is [02 · Org + user permissions](02-org-and-user-permissions.md); this is *user* accounts only.
+- **Org / team switching.** That is [02 · Org + user permissions](../02-org-and-user-permissions.md); this is *user* accounts only.
 - **Changing logout semantics.** Logout still ends the active session (§6).
 
 ---
@@ -181,10 +181,10 @@ Backend: park / take / drop round-trips; the 5-account cap; a switch rotating bo
 | Concept | File |
 | --- | --- |
 | Parked-session index | `src/dialogue_bridge/core/auth/parked.py` *(new)* |
-| Session cookies, denylist, refresh guard | [core/auth/session.py](../../src/dialogue_bridge/core/auth/session.py) |
-| Mint / verify | [core/auth/tokens.py](../../src/dialogue_bridge/core/auth/tokens.py) |
-| Auth routes | [router/auth.py](../../src/dialogue_bridge/router/auth.py) |
-| Post-login bootstrap (reused by switch) | [features/auth/handlers/auth.ts](../../src/agentic_ui/src/features/auth/handlers/auth.ts) |
+| Session cookies, denylist, refresh guard | [core/auth/session.py](../../../src/dialogue_bridge/core/auth/session.py) |
+| Mint / verify | [core/auth/tokens.py](../../../src/dialogue_bridge/core/auth/tokens.py) |
+| Auth routes | [router/auth.py](../../../src/dialogue_bridge/router/auth.py) |
+| Post-login bootstrap (reused by switch) | [features/auth/handlers/auth.ts](../../../src/agentic_ui/src/features/auth/handlers/auth.ts) |
 | Account menu | `src/agentic_ui/src/features/auth/components/AccountMenu.tsx` *(new)* |
 | Switch interstitial | `src/agentic_ui/src/features/auth/components/SwitchingAccounts.tsx` *(new)* |
 

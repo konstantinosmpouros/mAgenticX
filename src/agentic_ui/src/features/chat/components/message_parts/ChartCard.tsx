@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -25,8 +25,12 @@ import {
   YAxis,
   ZAxis,
 } from "recharts";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Download, Loader2 } from "lucide-react";
 import type { ChartBlock, ChartSeries } from "@/shared/lib/types";
+import { downloadChartPng } from "@/features/chat/lib/chartExport";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
+import { useToast } from "@/shared/hooks/use-toast";
+import { toastError } from "@/shared/lib/toast";
 import {
   ChartContainer,
   ChartLegend,
@@ -63,15 +67,48 @@ const formatCompact = (value: number) =>
  * rendering bug to invent or drop a number.
  */
 export function ChartCard({ block }: ChartCardProps) {
-  // ChartContainer keys its CSS variables off the config, so `var(--color-<key>)`
-  // resolves per series inside the chart without touching a raw hex anywhere.
-  const config = useMemo<ChartConfig>(
-    () =>
-      Object.fromEntries(
-        block.series.map((s, i) => [s.key, { label: s.label, color: seriesColor(i) }]),
-      ),
-    [block.series],
-  );
+  const figureRef = useRef<HTMLElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const isMobile = useIsMobile();
+  const { toast } = useToast();
+
+  // The export reads the *rendered* SVG, so it has to run against the live DOM
+  // rather than the block alone — hence the ref instead of a pure helper call.
+  const exportPng = useCallback(async () => {
+    const figure = figureRef.current;
+    if (!figure || exporting) return;
+    setExporting(true);
+    try {
+      await downloadChartPng(figure, block);
+    } catch (error) {
+      toastError(toast, "Could not save the chart", error);
+    } finally {
+      setExporting(false);
+    }
+  }, [block, exporting, toast]);
+
+  // Pie and radial colour per ROW, and their legend/tooltip look entries up by
+  // CATEGORY name (`nameKey`), not by series key. Keying the config by series
+  // there leaves `itemConfig?.label` undefined and the legend renders bare
+  // swatches with no text. Colour is omitted for that shape on purpose: the
+  // marks already carry it via <Cell>, and a config colour would emit an
+  // invalid `--color-Organic Search` custom property from a spaced label.
+  const perRowLegend = block.chartType === "pie" || block.chartType === "radial";
+  const config = useMemo<ChartConfig>(() => {
+    if (perRowLegend) {
+      return Object.fromEntries(
+        block.data.map((row) => {
+          const name = String(row[block.xKey] ?? "");
+          return [name, { label: name }];
+        }),
+      );
+    }
+    // ChartContainer keys its CSS variables off the config, so
+    // `var(--color-<key>)` resolves per series without touching a raw hex.
+    return Object.fromEntries(
+      block.series.map((s, i) => [s.key, { label: s.label, color: seriesColor(i) }]),
+    );
+  }, [perRowLegend, block.series, block.data, block.xKey]);
 
   // A single-measure pie reads best with its total in the middle — that is
   // usually the number the reader wants, and the slices answer "of what".
@@ -312,8 +349,36 @@ export function ChartCard({ block }: ChartCardProps) {
 
   return (
     <div className="w-full motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1">
-      <figure className="overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-muted/40 to-muted/5 p-3.5">
-        <figcaption className="mb-2">
+      <figure
+        ref={figureRef}
+        className="group/chart relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-muted/40 to-muted/5 p-3.5"
+      >
+        {/* Mirrors ArtifactCard: revealed on hover or keyboard focus so a long
+            conversation isn't peppered with buttons. Mobile has no hover, so
+            the action stays visible there instead of being unreachable. */}
+        <div
+          className={`absolute right-2.5 top-2.5 z-10 transition-opacity duration-200 ${
+            isMobile
+              ? "opacity-100"
+              : "pointer-events-none opacity-0 group-hover/chart:pointer-events-auto group-hover/chart:opacity-100 group-focus-within/chart:pointer-events-auto group-focus-within/chart:opacity-100"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={exportPng}
+            disabled={exporting}
+            aria-label={`Download ${block.title} as an image`}
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-border/50 bg-background/90 text-foreground shadow-sm backdrop-blur-sm transition hover:scale-105 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exporting ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Download size={14} aria-hidden="true" />
+            )}
+          </button>
+        </div>
+
+        <figcaption className="mb-2 pr-9">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/70">
             <BarChart3 size={11} aria-hidden="true" />
             <span>Chart</span>

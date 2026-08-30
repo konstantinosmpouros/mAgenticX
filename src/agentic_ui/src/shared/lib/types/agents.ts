@@ -43,9 +43,6 @@ export type Agent = {
   isActive: boolean;
 };
 
-// Agents tab sub-view — same hub/subview pattern as SkillsSubView.
-export type AgentsSubView = "hub" | "tools" | "mine" | "create" | "edit";
-
 // What the builder collects. Mirrors the fields of the backend AgentSpec that a
 // user may set; everything else (id, version, type) is derived on submit, and
 // the spec document itself is assembled in one place (`buildAgentSpec`) so the

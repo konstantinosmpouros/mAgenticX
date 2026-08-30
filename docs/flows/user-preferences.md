@@ -208,7 +208,7 @@ The same pattern applies to language: if the value is missing or not in `{"engli
 
 **Fallback chain (voice session):**
 
-```
+```text
 1. Value from request payload (per-request override)
 2. Value from user_preferences row in DB
 3. REALTIME_DEFAULT_VOICE env var
@@ -231,7 +231,7 @@ The frontend manages preferences across three layers: React state (live updates)
 
 Every preference mutation follows the same pattern:
 
-```
+```text
 1. Apply change to React state immediately (optimistic)
 2. PUT to /api/v1/preferences/{userId}
 3. On success: call persistUIState() to sync IndexedDB

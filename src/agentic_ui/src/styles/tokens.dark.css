@@ -20,8 +20,14 @@
     --muted: 240 4% 12%;
     --muted-foreground: 240 5% 65%;
 
-    --accent: 216 100% 50%;
-    --accent-foreground: 0 0% 100%;
+    /* shadcn's contract: `accent` is the SUBTLE hover/selected surface used by
+       ghost + outline buttons, dropdown and select items, and the dialog close.
+       It was set to a saturated blue (216 100% 50%), which made every one of
+       those flash bright blue on hover — visible on the Skills tab's remove
+       button. Matched to --hover-surface, which already exists for exactly
+       this job. Nothing in the app used accent as a brand colour. */
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 95%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;

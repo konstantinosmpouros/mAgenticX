@@ -3,7 +3,7 @@
 > **Status:** Not started
 > **TODO source:** General → "Make it a platform with org level and user-level permissions, so that users can have their own workspaces and agents, and orgs can have their own workspaces and agents along with admins."
 > **Depends on:** nothing
-> **Blocks:** [01 · Custom agents per user](01-custom-agents-per-user.md) · [03 · Projects / Workspaces](03-projects-and-workspaces.md) · [14 · Profile panel completion](14-profile-panel-completion.md)
+> **Blocks:** [01 · Custom agents per user](done/01-custom-agents-per-user.md) · [03 · Projects / Workspaces](03-projects-and-workspaces.md) · [14 · Profile panel completion](14-profile-panel-completion.md)
 > **Services touched:** dialogue_bridge · agentic_ui · agents · infra
 
 mAgenticX is single-tenant per user today. Every row of user content hangs off exactly one `users.id`, every agent in the catalog is global and visible to everybody, and the entire authorization surface is one function — `require_bound_user_id` — which asserts that the `{user_id}` in the URL equals the `sub` claim of the caller's JWT. That is a correct and airtight model for "each person sees only their own things", and it is deliberately all that the stateless-auth overhaul built: RBAC, group claims, and any admin surface were explicitly scoped out of that work (see [authentication-and-session](../flows/authentication-and-session.md) — *"there is no admin-disable path wired today"* — and the Vault-side RBAC seam described in [src/vault/README.md](../../src/vault/README.md)). This plan is where that deferral lands.
@@ -20,7 +20,7 @@ The deliverable is a **tenancy and authorization layer**: an `organizations` tab
 2. Introduce a **role model** — `owner`, `admin`, `member` — and a **permission** vocabulary that endpoints are written against, not role names.
 3. Move authorization from "the path parameter matches my token" to **one enforcement point**: a dependency factory that resolves the target resource, resolves the principal's grants, and allows or denies. No scattered `if role == "admin"` branches.
 4. Give every existing user-scoped table an **`org_id`**, backfilled to a **personal organization** created per user, so today's behaviour is bit-for-bit preserved on day one.
-5. Answer **agent visibility**: an agent is `platform`-owned (the curated global catalog), `org`-owned, or `user`-owned, and the catalog query filters by the caller's memberships. This is the column-level foundation [01 · Custom agents per user](01-custom-agents-per-user.md) builds authoring on top of.
+5. Answer **agent visibility**: an agent is `platform`-owned (the curated global catalog), `org`-owned, or `user`-owned, and the catalog query filters by the caller's memberships. This is the column-level foundation [01 · Custom agents per user](done/01-custom-agents-per-user.md) builds authoring on top of.
 6. Ship **admin surfaces**: an Organization + Members settings area (invite, change role, deactivate, transfer ownership) and an audit trail for every membership/role mutation.
 7. Keep the auth hot path **stateless**: role changes must take effect in seconds, without adding a Postgres query to every request.
 
@@ -128,7 +128,7 @@ Endpoints are written against **permissions**, never role strings — so adding 
 | `conversation:read:any` | ❌ | ❌ | ❌ | Nobody reads another member's chats. Deliberate: admin ≠ surveillance |
 | `task:*` (own) | ✅ | ✅ | ✅ | |
 | `agent:use` | ✅ | ✅ | ✅ | Visible agents only (§3.4) |
-| `agent:create:user` | ✅ | ✅ | ✅ | Own agents — [plan 01](01-custom-agents-per-user.md) |
+| `agent:create:user` | ✅ | ✅ | ✅ | Own agents — [plan 01](done/01-custom-agents-per-user.md) |
 | `agent:create:org` | ❌ | ✅ | ✅ | Org-shared agents |
 | `member:invite` / `member:remove` | ❌ | ✅ | ✅ | Cannot act on an `owner` |
 | `member:set_role` | ❌ | ✅* | ✅ | *admin may set `member`↔`admin`, never `owner` |
@@ -193,7 +193,7 @@ Refresh (`rotate_session`, session.py:293-296) re-reads membership from the DB a
 | `org` | `owner_org_id` set | members of that org | org `admin`/`owner` |
 | `user` | `owner_user_id` + `owner_org_id` set | that user only | that user |
 
-The catalog query (`GET /v1/catalog/agents`, [router/catalog.py:25](../../src/dialogue_bridge/router/catalog.py)) becomes `owner_kind = 'platform' OR owner_org_id = :active_org AND (owner_user_id IS NULL OR owner_user_id = :me)`. **The globally-unique `slug` constraint (models.py:44) must go** — it is replaced by a partial-unique triple so a user's `research` agent can coexist with the platform's. The resolution/collision rule (does a user agent *override* a platform slug, or get namespaced?) is owned by [plan 01](01-custom-agents-per-user.md); this plan only guarantees the columns and the visibility filter it needs. The in-process `_AGENT_CACHE` (utils/agents.py) must be re-keyed or bypassed for non-platform agents — a per-process global cache cannot serve per-org visibility, and silently returning another org's agent would be a tenancy breach, so **the cache is narrowed to `platform` agents only** and org/user agents are read per request.
+The catalog query (`GET /v1/catalog/agents`, [router/catalog.py:25](../../src/dialogue_bridge/router/catalog.py)) becomes `owner_kind = 'platform' OR owner_org_id = :active_org AND (owner_user_id IS NULL OR owner_user_id = :me)`. **The globally-unique `slug` constraint (models.py:44) must go** — it is replaced by a partial-unique triple so a user's `research` agent can coexist with the platform's. The resolution/collision rule (does a user agent *override* a platform slug, or get namespaced?) is owned by [plan 01](done/01-custom-agents-per-user.md); this plan only guarantees the columns and the visibility filter it needs. The in-process `_AGENT_CACHE` (utils/agents.py) must be re-keyed or bypassed for non-platform agents — a per-process global cache cannot serve per-org visibility, and silently returning another org's agent would be a tenancy breach, so **the cache is narrowed to `platform` agents only** and org/user agents are read per request.
 
 ### 3.5 Admin surfaces
 
@@ -352,8 +352,8 @@ This plan changes the meaning of "scope" for nearly every other item in [the ind
 
 | Plan | Impact |
 | --- | --- |
-| [00 · Platform restructure](00-platform-restructure.md) (done) | Its per-user filesystem tree gains an org tier above it. `owner_kind` on `AgentTable` is the DB counterpart of its global-vs-user YAML resolution. Nothing shipped there is invalidated |
-| [01 · Custom agents per user](01-custom-agents-per-user.md) | **Hard dependency.** Consumes `owner_kind`/`owner_org_id`/`owner_user_id` and the replaced `slug` uniqueness. Org-owned agents (`agent:create:org`) are a capability that only exists after this plan |
+| [00 · Platform restructure](done/00-platform-restructure.md) (done) | Its per-user filesystem tree gains an org tier above it. `owner_kind` on `AgentTable` is the DB counterpart of its global-vs-user YAML resolution. Nothing shipped there is invalidated |
+| [01 · Custom agents per user](done/01-custom-agents-per-user.md) | **Hard dependency.** Consumes `owner_kind`/`owner_org_id`/`owner_user_id` and the replaced `slug` uniqueness. Org-owned agents (`agent:create:org`) are a capability that only exists after this plan |
 | [03 · Projects / Workspaces](03-projects-and-workspaces.md) | **Hard dependency.** A workspace is org-scoped: `workspaces.org_id`, and workspace membership is bounded by org membership. The `conversations.org_id` column added here is the parent of the `workspace_id` added there |
 | [04 · Notifications + PWA](04-notifications-and-pwa.md) | Channel preferences and quiet hours become per-`(user, org)`. Org admins get a new notification class (invite accepted, role changed) |
 | [05 · Artifacts / Canvas](05-artifacts-canvas.md) | Artifacts are org-scoped rows; "share an artifact" is bounded by org membership |
@@ -362,7 +362,7 @@ This plan changes the meaning of "scope" for nearly every other item in [the ind
 | [08 · Workflow builder](08-workflow-automation-builder.md) | Workflows are org resources; who may create one that acts on shared data is an `admin` question |
 | [09 · Email integration](09-email-integration.md) | Mailbox credentials are per-user but **must never** be readable by an org admin. This plan's "no `conversation:read:any`" stance is the precedent to hold |
 | [11 · Sandbox runner](11-sandbox-runner.md) | Sandbox quotas and the HITL approval chain are per-org budgets |
-| [12 · `create_skill` tool](12-create-skill-tool.md) | A created skill lands in the user's pool; org-shared skills need `owner_kind` on the skill registry too |
+| [12 · `create_skill` tool](done/12-create-skill-tool.md) | A created skill lands in the user's pool; org-shared skills need `owner_kind` on the skill registry too |
 | [14 · Profile panel completion](14-profile-panel-completion.md) | **Hard dependency.** Its "Log out of all devices" stub needs a revoke-all path — which is the same `sid`-denylist + epoch machinery designed here. Its Security/Data-controls rows land in the same nav structure |
 | [16 · Context & usage UI](16-context-usage-ui.md) | Usage aggregation (`utils/usage.py:67`) becomes org-level; "org usage" is a new admin view |
 

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { loadSession } from "@/shared/lib/authStorage";
+import { CONV_FIRST_PAGE_INDEX } from "@/shared/lib/consts";
 import type {
   Agent,
   ConversationDetail,
@@ -139,7 +140,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   conversations: [],
   conversationsLoading: false,
-  convPage: 1,
+  convPage: CONV_FIRST_PAGE_INDEX,
   convHasMore: true,
   convIsLoadingMore: false,
   archivedConversations: [],
@@ -184,7 +185,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       loadingConversation: false,
       conversations: [],
       conversationsLoading: false,
-      convPage: 1,
+      convPage: CONV_FIRST_PAGE_INDEX,
       convHasMore: true,
       convIsLoadingMore: false,
       archivedConversations: [],

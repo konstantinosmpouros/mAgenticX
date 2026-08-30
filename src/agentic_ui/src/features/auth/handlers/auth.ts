@@ -23,6 +23,7 @@ import { toastError } from "@/shared/lib/toast";
 import { sortByUpdatedAtDesc } from "@/shared/lib/utils";
 import { saveSession, clearSession, loadSession } from "@/shared/lib/authStorage";
 import { setUnauthorizedSuppressed } from "@/shared/lib/consts";
+import { CONV_INITIAL_PAGE_SIZE } from "@/shared/lib/consts";
 
 // Auth handlers bridge API auth with local session persistence and a full chat-shell reset.
 export type AuthCtx = {
@@ -151,7 +152,7 @@ export function createAuthHandlers(ctx: AuthCtx) {
       const skillsPromise = getSkills();
       const mySkillsPromise = setMyRegistrySkills ? getMySkills(user.id) : null;
       const preferencesPromise = getUserPreferences(user.id);
-      const conversationsPromise = getConversations(user.id);
+      const conversationsPromise = getConversations(user.id, 1, CONV_INITIAL_PAGE_SIZE);
 
       try {
         const agentsList = await agentsPromise;
