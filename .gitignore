@@ -5,8 +5,6 @@ CLAUDE.md
 .vscode/
 .virtual_documents/
 .idea/
-plan/
-docs/draft/
 
 **/__pycache__/
 **/agent_venv/
