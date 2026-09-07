@@ -24,10 +24,16 @@ import {
   XAxis,
   YAxis,
   ZAxis,
+  type LabelProps,
 } from "recharts";
 import { BarChart3, Download, Loader2 } from "lucide-react";
 import type { ChartBlock, ChartSeries } from "@/shared/lib/types";
 import { downloadChartPng } from "@/features/chat/lib/chartExport";
+import {
+  getChartValueLabelMode,
+  getStackedBarLabelLayout,
+  type ChartMarkKind,
+} from "@/features/chat/lib/chartValueLabels";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { useToast } from "@/shared/hooks/use-toast";
 import { toastError } from "@/shared/lib/toast";
@@ -56,6 +62,33 @@ const seriesColor = (index: number) => `hsl(var(--chart-${(index % PALETTE_SIZE)
 // 1204893 does not. Locale-aware so a Greek viewer sees Greek grouping.
 const formatCompact = (value: number) =>
   new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+
+const StackedBarValueLabel = ({ viewBox, value }: LabelProps) => {
+  const layout = getStackedBarLabelLayout(viewBox, value);
+  if (!layout) return null;
+
+  return (
+    <g aria-hidden="true" data-stacked-bar-label={layout.text} className="pointer-events-none">
+      <rect
+        x={layout.backgroundX}
+        y={layout.backgroundY}
+        width={layout.backgroundWidth}
+        height={layout.backgroundHeight}
+        rx={4}
+        className="fill-background/90"
+      />
+      <text
+        x={layout.x}
+        y={layout.y}
+        dominantBaseline="central"
+        textAnchor="middle"
+        className="fill-foreground text-[10px] font-medium"
+      >
+        {layout.text}
+      </text>
+    </g>
+  );
+};
 
 /**
  * Render a chart the agent drew via `render_chart`, inline in the run timeline.
@@ -131,19 +164,36 @@ export function ChartCard({ block }: ChartCardProps) {
   const grid = (
     <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border/50" />
   );
+  // Recharts draws `top` labels above their point. Reserve explicit headroom
+  // when values are enabled so a series at its domain maximum is not clipped
+  // by the SVG boundary (most visible on lines in composed charts).
+  const cartesianMargin = { top: block.showValues ? 18 : 4, left: 4, right: 8 } as const;
   const legend = block.series.length > 1 ? <ChartLegend content={<ChartLegendContent />} /> : null;
   // Only meaningful where the tool allows it; `stacked` arrives already
   // reconciled against the type, so trusting it here is safe.
   const stackId = block.stacked ? "stack" : undefined;
 
-  const valueLabels = (key: string) =>
-    block.showValues ? (
-      <LabelList dataKey={key} position="top" className="fill-muted-foreground text-[10px]" />
-    ) : null;
+  const valueLabels = (key: string, kind: ChartMarkKind) => {
+    if (!block.showValues) return null;
+
+    // A stacked segment's top edge can be only a few pixels from the next
+    // segment's, so ordinary `top` labels collide. Bars have a concrete box:
+    // centre a contrast-backed label inside it, and omit it when it cannot fit.
+    // The tooltip still exposes every omitted value. Stacked areas have no
+    // bounded segment in which a label can be collision-safe, so keep their
+    // exact figures in the tooltip rather than drawing unreadable text.
+    const mode = getChartValueLabelMode(block.stacked, kind);
+    if (mode === "inside-if-fits") {
+      return <LabelList dataKey={key} content={<StackedBarValueLabel />} />;
+    }
+    if (mode === "tooltip-only") return null;
+
+    return <LabelList dataKey={key} position="top" className="fill-muted-foreground text-[10px]" />;
+  };
 
   // Composed charts let each series pick its own mark and y-axis; every other
   // type draws all series the same way.
-  const drawSeries = (s: ChartSeries, kind: "bar" | "line" | "area") => {
+  const drawSeries = (s: ChartSeries, kind: ChartMarkKind) => {
     const color = `var(--color-${s.key})`;
     const yAxisId = block.chartType === "composed" ? (s.axis ?? "left") : undefined;
     if (kind === "line") {
@@ -160,7 +210,7 @@ export function ChartCard({ block }: ChartCardProps) {
           // rather than interpolating a value the agent never gave.
           connectNulls={false}
         >
-          {valueLabels(s.key)}
+          {valueLabels(s.key, kind)}
         </Line>
       );
     }
@@ -178,7 +228,7 @@ export function ChartCard({ block }: ChartCardProps) {
           strokeWidth={2}
           connectNulls={false}
         >
-          {valueLabels(s.key)}
+          {valueLabels(s.key, kind)}
         </Area>
       );
     }
@@ -191,7 +241,7 @@ export function ChartCard({ block }: ChartCardProps) {
         fill={color}
         radius={block.horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}
       >
-        {valueLabels(s.key)}
+        {valueLabels(s.key, kind)}
       </Bar>
     );
   };
@@ -274,7 +324,7 @@ export function ChartCard({ block }: ChartCardProps) {
 
       case "composed":
         return (
-          <ComposedChart data={block.data} margin={{ left: 4, right: 8 }}>
+          <ComposedChart data={block.data} margin={cartesianMargin}>
             {grid}
             <XAxis dataKey={block.xKey} {...axisProps} />
             <YAxis yAxisId="left" {...axisProps} width={40} />
@@ -291,7 +341,7 @@ export function ChartCard({ block }: ChartCardProps) {
 
       case "line":
         return (
-          <LineChart data={block.data} margin={{ left: 4, right: 8 }}>
+          <LineChart data={block.data} margin={cartesianMargin}>
             {grid}
             <XAxis dataKey={block.xKey} {...axisProps} />
             <YAxis {...axisProps} width={40} />
@@ -303,7 +353,7 @@ export function ChartCard({ block }: ChartCardProps) {
 
       case "area":
         return (
-          <AreaChart data={block.data} margin={{ left: 4, right: 8 }}>
+          <AreaChart data={block.data} margin={cartesianMargin}>
             {grid}
             <XAxis dataKey={block.xKey} {...axisProps} />
             <YAxis {...axisProps} width={40} />
@@ -318,7 +368,7 @@ export function ChartCard({ block }: ChartCardProps) {
           <BarChart
             data={block.data}
             layout={block.horizontal ? "vertical" : "horizontal"}
-            margin={{ left: 4, right: 8 }}
+            margin={cartesianMargin}
           >
             <CartesianGrid
               vertical={Boolean(block.horizontal)}
