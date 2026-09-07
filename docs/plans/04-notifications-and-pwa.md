@@ -393,7 +393,7 @@ This is the plan with the widest downstream surface, because it introduces a *ca
 | [02 · Org + user permissions](02-org-and-user-permissions.md) | Nothing today; later, org-scoped and admin-broadcast notifications. | That `notifications.user_id` is the final scoping tier. When orgs land, an `org_id` column and an authorization check on the inbox are additive but mandatory. |
 | [03 · Projects / Workspaces](03-projects-and-workspaces.md) | Workspace-scoped filtering of the inbox. | That `conversation_id` is enough context. A `workspace_id` column is the natural additive follow-up. |
 | [05 · Artifacts / Canvas](05-artifacts-canvas.md) | An `artifact.ready` type for long generations. | — |
-| [16 · Context & usage UI](16-context-usage-ui.md) | Nothing. Listed only because a "budget exceeded" notification is an obvious later addition. | — |
+| [16 · Estimated model cost UI](16-context-usage-ui.md) | Nothing. Listed only because a "budget exceeded" notification is an obvious later addition. | — |
 
 **Cross-cutting concerns from the [index](README.md#cross-cutting-concerns):**
 

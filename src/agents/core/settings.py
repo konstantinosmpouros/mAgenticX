@@ -562,23 +562,35 @@ class BridgeSettings(BaseSettings):
     request_timeout_seconds: float = Field(20.0, validation_alias="BRIDGE_REQUEST_TIMEOUT_SECONDS")
     connect_timeout_seconds: float = Field(10.0, validation_alias="BRIDGE_CONNECT_TIMEOUT_SECONDS")
 
-    # Workspace hydration: rebuild a user's authored agents/skills on this
-    # volume from chat_db at boot. On by default — without it a fresh container
-    # or a wiped volume comes up with the content missing, which is the whole
-    # reason chat_db became the source of truth.
-    hydrate_on_startup: bool = Field(True, validation_alias="WORKSPACE_HYDRATE_ON_STARTUP")
-    # The bridge is ALWAYS still starting when this first runs: compose declares
-    # `dialogue_bridge depends_on: agents`, so this service comes up first, and
-    # the reverse edge cannot be added without creating a dependency cycle.
-    # Retrying is therefore the mechanism, not a fallback — and the budget has
-    # to outlast the bridge's own startup, which includes `alembic upgrade head`.
+    # Workspace sync: reconcile this volume against chat_db in BOTH directions.
+    # On by default — without it a fresh container or a wiped volume comes up
+    # missing content, and content that exists only here (a create whose persist
+    # failed) stays invisible in the UI and un-recreatable forever.
+    sync_on_startup: bool = Field(True, validation_alias="WORKSPACE_SYNC_ON_STARTUP")
+    # The bridge is ALWAYS still starting when the first pass runs: compose
+    # declares `dialogue_bridge depends_on: agents`, so this service comes up
+    # first, and the reverse edge cannot be added without creating a dependency
+    # cycle. Retrying is therefore the mechanism, not a fallback — and the budget
+    # has to outlast the bridge's own startup, which includes `alembic upgrade
+    # head`.
     #
     # Backoff is 5s doubling to a 60s cap, so 10 attempts span roughly six
     # minutes. Generous on purpose: the cost of waiting is nothing (the pass is
-    # backgrounded), while giving up too early leaves the volume missing content
-    # until the next restart.
-    hydrate_retry_seconds: float = Field(5.0, validation_alias="WORKSPACE_HYDRATE_RETRY_SECONDS")
-    hydrate_max_attempts: int = Field(10, validation_alias="WORKSPACE_HYDRATE_MAX_ATTEMPTS")
+    # backgrounded), while giving up too early leaves the two stores out of step
+    # until the next restart. The budget applies only until the FIRST pass
+    # succeeds; after that a failure is just a skipped interval.
+    sync_retry_seconds: float = Field(5.0, validation_alias="WORKSPACE_SYNC_RETRY_SECONDS")
+    sync_max_attempts: int = Field(10, validation_alias="WORKSPACE_SYNC_MAX_ATTEMPTS")
+    # Repeat interval once settled. A pass over a workspace that has not changed
+    # is two small requests with no file bodies, so this can be frequent without
+    # being expensive — and it is what closes the window on a create whose
+    # persist failed minutes after boot.
+    sync_interval_seconds: float = Field(900.0, validation_alias="WORKSPACE_SYNC_INTERVAL_SECONDS")
+    # Separate from `request_timeout_seconds`: a content exchange carries file
+    # bodies for a whole user and is legitimately slower than a memory search.
+    sync_request_timeout_seconds: float = Field(
+        60.0, validation_alias="WORKSPACE_SYNC_REQUEST_TIMEOUT_SECONDS"
+    )
 
     @property
     def memory_search_url(self) -> str:

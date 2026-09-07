@@ -16,7 +16,7 @@ from router.memories import router as memories_router
 from router.scheduled_tasks import router as scheduled_tasks_router
 from router.usage import router as usage_router
 from router.internal_memory import router as internal_memory_router
-from router.internal_workspace import router as internal_workspace_router
+from router.internal_sync import router as internal_sync_router
 
 __all__ = [
     "auth_router",
@@ -37,5 +37,5 @@ __all__ = [
     "scheduled_tasks_router",
     "usage_router",
     "internal_memory_router",
-    "internal_workspace_router",
+    "internal_sync_router",
 ]

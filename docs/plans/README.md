@@ -43,12 +43,13 @@ remaining work named in its status.
 | 13 | [Charts + AG-UI interactive widgets](done/13-charts-and-agui-widgets.md) | Agentic UI | **Delivered** (agent-directed interaction not built — AG-UI is one-way) |
 | 14 | [Profile panel completion](14-profile-panel-completion.md) | Agentic UI | Not started |
 | 15 | [Open-source services on Dennis](15-dennis-open-source-services.md) | General | Not started |
-| 16 | [Context & usage UI](16-context-usage-ui.md) | Bugs / Fixes | Not started |
+| 16 | [Estimated model cost UI](16-context-usage-ui.md) | New Features | Not started |
 | 17 | [Dynamic voice language, per conversation](done/17-voice-language-dynamic.md) | Bugs / Fixes | **Delivered** (stayed a user-wide preference; no per-conversation column) |
 | 18 | [Workspace filesystem consolidation + two-tier skills](18-workspace-filesystem-consolidation.md) | derived (storage half of Projects/Workspaces) | Not started |
 | 19 | [Multi-account sign-in & switching](done/19-multi-account-switching.md) | New Features → multiple accounts per browser | **Delivered** |
 | 20 | [Agents tab UX/UI restructure](20-agents-tab-restructure.md) | Agentic UI | In progress (index + detail + builder shell shipped) |
-| 21 | [Persist user content in Postgres (agents · skills · memory)](21-persist-user-content-in-postgres.md) | derived (durability gap — see the draft state & storage map) | Not started |
+| 21 | [Persist user content in Postgres (agents · skills · memory)](21-persist-user-content-in-postgres.md) | derived (durability gap — see the draft state & storage map) | Partially done (A · agents, B · skills shipped; C · memory folded into 22) |
+| 22 | [Two-way workspace sync](22-two-way-workspace-sync.md) | derived (consolidates the adoption paths left by 21) | Partially done (Phases 0–4: single-commit writes, skill tombstone, the sync exchange, the client, adoption paths removed. **Remaining:** Phase 5 memory. Not deployed) |
 
 ---
 
@@ -80,7 +81,8 @@ flowchart TD
     P01 -.-> P12
     P11["11 · Sandbox runner"]
     P13["13 · Charts + AG-UI"]
-    P16["16 · Context & usage UI"]
+    P21["21 · Persist user content<br/>(A+B shipped)"] --> P22["22 · Two-way workspace sync"]
+    P16["16 · Estimated model cost UI"]
     P17["17 · Voice language"]
 ```
 
@@ -105,7 +107,7 @@ Every plan must state its impact on these, because they are the seams where mult
 | Concern | Why it recurs |
 | --- | --- |
 | **Ownership & scoping** | Rows and files are keyed by `(user)`, `(user, agent)`, or `(user, workspace, agent)`. Adding a tier is a migration *and* a filesystem-layout change. See 02, 03. |
-| **DB migrations** | Alembic chain in `src/dialogue_bridge/migrations/versions/`, current head `0016_retire_enabled_tools`. Every schema change is model + migration in one commit. |
+| **DB migrations** | Alembic chain in `src/dialogue_bridge/core/database/migrations/versions/`, current head `0019_persist_user_content`. Every schema change is model + migration in one commit. |
 | **Agent tool surface** | Tools are agent-declared (`agent.yaml`) minus per-(user, agent) disables. Any new tool goes through the native registry or the MCP gateway — never the request. See [tool harness](../development/tool-harness.md), plans 07, 10, 12. |
 | **AG-UI event protocol** | New streamed UI affordances need an event type + normalizer + timeline reducer branch. See [agui-protocol](../development/agui-protocol.md), plans 05, 06, 13. |
 | **Filesystem layout** | `/var/magenticx/{global,workspaces}`; agent files go through `FilesystemBackend`. Plans 01, 03, 05, 11, 12 all touch it. |
@@ -122,7 +124,7 @@ Several plans independently reserve the *same* scarce resources. These are the c
 
 ### Alembic revision slots
 
-The chain head is **`0016_retire_enabled_tools`**. Five plans each drafted their migration as `0017`, which cannot all be true. Whichever lands first takes `0017`; the rest rebase their `down_revision`. If two merge in parallel anyway, `alembic heads` shows two tips and the fix is `alembic merge` (see the CLAUDE.md migration workflow).
+The chain head is **`0020_skill_pool_tombstone`**. Several older plans still show provisional migration numbers; every implementation must take the next free revision and rebase its `down_revision`. If two merge in parallel anyway, `alembic heads` shows two tips and the fix is `alembic merge` (see the CLAUDE.md migration workflow).
 
 | Plan | Migration intent | Notes |
 | --- | --- | --- |
@@ -130,7 +132,7 @@ The chain head is **`0016_retire_enabled_tools`**. Five plans each drafted their
 | [02](02-org-and-user-permissions.md) | orgs, memberships, audit log (three revisions) | Widest surface; consider taking the first slots. |
 | [03](03-projects-and-workspaces.md) | workspaces, members, files | Follows 02. |
 | [05](05-artifacts-canvas.md) | `artifacts` + `artifact_versions` + `attachments.artifact_id` | |
-| [16](16-context-usage-ui.md) | `messages.context_tokens`, `messages.model` | |
+| [16](16-context-usage-ui.md) | `messages.estimated_cost_microusd`, `messages.cost_pricing_version` | Expected next slot is `0021`; re-check at implementation time. |
 | [17](done/17-voice-language-dynamic.md) | `conversations.voice_mode_language` | Smallest; easy to slot anywhere. |
 
 Plan [04](04-notifications-and-pwa.md) and [14](14-profile-panel-completion.md) also add `user_preferences` columns and new tables — same rule applies.
@@ -141,7 +143,7 @@ Plan [04](04-notifications-and-pwa.md) and [14](14-profile-panel-completion.md) 
 | --- | --- | --- |
 | `UISnapshotSerializable.version` | 02, 03 (and any plan changing persisted UI state) | **One version bump per deploy.** Bumping twice in one release means the migration branch in `loadUISnapshot()` is never exercised for the intermediate shape. |
 | Sidebar header real estate | 02 (org switcher), 03 (workspace switcher) | Agreed split: org switcher in the footer account dropdown, workspace switcher in the header. |
-| A model registry (context window / pricing) | 01 (model allowlist), 06 (budgets), 16 (context meter) | One registry, built once. The only existing source of truth is the per-model profile already trusted by `summarization.py` — see [16](16-context-usage-ui.md) §1. |
+| Canonical model ids + pricing | 01 (model allowlist), 06 (budgets), 16 (cost estimation) | Use one canonical `provider:model` identity. Plan 16 owns the effective-dated price registry; model selection and budgets should consume it rather than create competing tables. |
 | The `auto_attach=False` native-tool slot | 09 (mail tools), 13 (`render_chart`), 12 (`create_skill`) | Not exclusive, but 13 is documented as its "first inhabitant" — whichever ships first proves the path. |
 | A HITL `edit` decision | 06 (prune/redirect a plan), 09 (edit a draft before send) | Both want to widen `approve`/`reject`. 09 designed around it (edit the draft row, then approve); 06 needs it. Build it once, in whichever lands first. |
 | `/var/magenticx` persistence + physical layout | **18 owns it**; 01 and 03 consume it | The mount does not exist today. [18](18-workspace-filesystem-consolidation.md) provisions the volume (its Phase 0 *is* 01's blocking Phase 0) and owns the copy→verify→mark migrator; 03 keeps the workspace *entity* (tables, membership, switcher, memory tier). Whichever of 01/03 lands second must not re-move data. |

@@ -2,7 +2,8 @@
 
 One module per concept/router — auth, catalog, conversations, messages,
 attachments, sharing, inference, voice, skills, memories, preferences,
-usage, search, scheduled_tasks, agent_tools, user_agents, internal_memory —
+usage, search, scheduled_tasks, agent_tools, user_agents, internal_memory,
+internal_sync —
 on the shared building blocks in ``base``. Re-exported so callers keep the
 stable ``from schema import ...`` import surface regardless of which module
 a DTO lives in.
@@ -58,6 +59,18 @@ from schema.inference import (
 from schema.internal_memory import (
     MemoryMessageMatch,
     MemorySearchRequest,
+)
+from schema.internal_sync import (
+    ContentAgent,
+    ContentSkill,
+    InventoryAgent,
+    InventorySkill,
+    PlanAgent,
+    PlanSkill,
+    SyncAccepted,
+    SyncContent,
+    SyncInventory,
+    SyncPlan,
 )
 from schema.memories import (
     MemoryDetail,
@@ -133,6 +146,8 @@ __all__ = [
     "AuthRequest",
     "AuthResponse",
     "BlobOut",
+    "ContentAgent",
+    "ContentSkill",
     "ConversationDetail",
     "ConversationForkIn",
     "ConversationIn",
@@ -156,6 +171,8 @@ __all__ = [
     "InferenceRunResumeIn",
     "InferenceStartPayload",
     "InferenceStartResponse",
+    "InventoryAgent",
+    "InventorySkill",
     "MemoryDetail",
     "MemoryEntry",
     "MemoryMessageMatch",
@@ -164,6 +181,8 @@ __all__ = [
     "MessageOut",
     "MessageUpdate",
     "PERSONALITY_IDS",
+    "PlanAgent",
+    "PlanSkill",
     "ReadAloudPreviewRequest",
     "RealtimeVoiceConversationEventIn",
     "RealtimeVoiceEndIn",
@@ -171,22 +190,25 @@ __all__ = [
     "RealtimeVoiceSessionIn",
     "RealtimeVoiceSessionOut",
     "ResumeActionDecisionIn",
-    "ScheduleKind",
     "ScheduledTaskCreate",
     "ScheduledTaskOut",
     "ScheduledTaskUpdate",
+    "ScheduleKind",
     "Senders",
     "SharedConversationDetail",
     "Skill",
     "SkillFile",
     "SuggestionsOut",
     "SwitchAccountRequest",
+    "SyncAccepted",
+    "SyncContent",
+    "SyncInventory",
+    "SyncPlan",
     "TaskStatus",
     "TaskTargetMode",
     "TitleOut",
     "ToolManifest",
     "ToolToggleRequest",
-    "UTCDateTime",
     "UpdateConversationResponse",
     "UsageAgentBreakdown",
     "UsageDailyPoint",
@@ -196,5 +218,6 @@ __all__ = [
     "UserProfile",
     "UserSkill",
     "UserSkillDetail",
+    "UTCDateTime",
     "WorkspaceSearchResult",
 ]

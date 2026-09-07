@@ -375,7 +375,7 @@ Together with [plan 02](02-org-and-user-permissions.md) this reshapes scoping fo
 | [09 · Email integration](09-email-integration.md) | Triage rules are plausibly per workspace; mailbox credentials stay strictly per user |
 | [11 · Sandbox runner](11-sandbox-runner.md) | The sandbox mounts `input/`/`output/` by path — every path in its bind-mount plan moves one level deeper. **Coordinate before 11 hard-codes the layout** |
 | [12 · `create_skill` tool](done/12-create-skill-tool.md) | A created skill goes to the *user* pool (`<workspaces_root>/<user>/skills/`) and is *enabled* per workspace-agent — the plan must target the user tier, not the workspace tier |
-| [16 · Context & usage UI](16-context-usage-ui.md) | Usage rolls up per workspace (`utils/usage.py:67`) — arguably the most useful cut of that data |
+| [16 · Estimated model cost UI](16-context-usage-ui.md) | Usage and known estimated cost roll up per workspace (`utils/usage.py:67`) — arguably the most useful cut of that data |
 
 Beyond plans:
 

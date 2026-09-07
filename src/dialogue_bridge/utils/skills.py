@@ -1,11 +1,18 @@
-"""Bridge-side wrapper around the agents-service skills registry endpoint.
+"""Bridge-side skills surface — local reads, proxied writes.
 
-The agents service owns the source of truth (the `skills_registry/` directory
-in its image). The bridge proxies GET requests with the trusted-proxy header
-and **caches the result in Redis with a TTL** so the second request inside
-the TTL window doesn't hit the agents service at all. Per the design, the
-UI never persists skills locally — every page refresh re-hits the bridge,
-which is expected to be cheap thanks to the Redis hit.
+Two different things live behind one module, and the split is the point:
+
+* The **global catalogue** is genuinely remote. The agents service owns it (the
+  ``skills_registry/`` directory in its image), so it is fetched over HTTP and
+  read-through cached in Redis with a TTL.
+* The **user's pool, its content and its per-agent assignments** are owned by
+  ``chat_db``. Those reads are queries against :mod:`utils.skill_store`; nothing
+  is cached, because there is no hop left to avoid.
+
+Writes still go upstream first — that call is what validates, and it is what
+puts the skill on the volume the runtime reads — and are persisted after.
+Keeping the two stores in step is not this module's job: the reconciliation
+exchange (:mod:`utils.workspace_sync`) owns it, and owns it in both directions.
 """
 from __future__ import annotations
 
@@ -20,10 +27,7 @@ from core.settings import settings
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.error_handling import upstream_error_handler
 
-from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.database import AgentTable
 
 from utils import skill_store
 from utils.agents import get_agent_by_id
@@ -165,111 +169,15 @@ async def list_skills(*, bypass_cache: bool = False) -> List[Dict[str, Any]]:
 async def list_user_skills(*, db: AsyncSession, user_id: str) -> List[Dict[str, Any]]:
     """Return the user's pool from ``chat_db``.
 
-    No Redis: the cache existed to avoid a cross-service hop that no longer
-    happens, and it was the reason a tool-created skill stayed invisible for up
-    to two hours. Removing it deletes that bug rather than fixing it.
-
-    No manual refresh either. Adoption re-runs by itself whenever what we hold
-    is missing or incomplete (see ``pool_needs_adoption``), so the button that
-    used to force it has nothing left to do.
+    A plain query, and nothing else. No Redis — the cache existed to avoid a
+    cross-service hop that no longer happens, and it was why a tool-created
+    skill stayed invisible for up to two hours. No import-on-read either: the
+    reconciliation pass owns that repair now, and it does the job properly,
+    because it compares against the volume rather than guessing from an empty
+    result. The old check could only fire when the pool was *entirely* empty, so
+    anything added to a non-empty pool stayed invisible forever.
     """
-    if not await skill_store.pool_needs_adoption(db, user_id):
-        return await skill_store.list_pool(db, user_id)
-
-    manifest = await _fetch_user_pool_upstream(user_id)
-    await skill_store.adopt_pool(db, user_id, manifest)
-    # Adopt the per-agent assignments in the same pass. They used to be pulled
-    # only when the user opened a given agent, which meant an agent nobody
-    # opened never reached chat_db at all — so a volume loss took those
-    # assignments with it. They are a handful of small rows; the first listing
-    # is the natural place to complete the picture.
-    await _adopt_all_agent_assignments(db, user_id)
-    await db.commit()
     return await skill_store.list_pool(db, user_id)
-
-
-async def _adopt_all_agent_assignments(db: AsyncSession, user_id: str) -> None:
-    """Import every deep agent's assignment set for this user.
-
-    Only deep agents have a skill model, so the others are skipped rather than
-    queried. Each pair is guarded, so this is safe to re-run and costs nothing
-    once the picture is complete.
-    """
-    rows = (
-        await db.execute(
-            select(AgentTable).where(
-                AgentTable.is_active == True,  # noqa: E712
-                AgentTable.type == "deep agent",
-                or_(
-                    AgentTable.owner_user_id.is_(None),
-                    AgentTable.owner_user_id == user_id,
-                ),
-            )
-        )
-    ).scalars().all()
-
-    for agent in rows:
-        if not await skill_store.agent_has_no_assignments(db, user_id, agent.slug):
-            continue
-        try:
-            names = await _fetch_user_agent_skills_upstream(
-                user_id=user_id, agent_id=agent.id
-            )
-        except Exception:
-            # One agent being unreadable must not abort the pool listing; the
-            # pair is simply retried the next time the pool is adopted or the
-            # agent's own view is opened.
-            logger.warning(
-                "user_agent_skills_adopt_failed",
-                "Could not read an agent's skill assignments during adoption",
-                user_id=user_id,
-                agent_slug=agent.slug,
-            )
-            continue
-        await skill_store.adopt_agent_skills(db, user_id, agent.slug, names)
-
-
-async def _fetch_user_pool_upstream(user_id: str) -> List[Dict[str, Any]]:
-    """The agents service's view of the pool — used only to adopt or refresh."""
-    timeout = _default_timeout()
-    request_id = get_context().get("request_id")
-    upstream_headers = internal_service_headers(request_id)
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-            resp = await upstream_error_handler.run_with_retries(
-                logger,
-                lambda: client.get(_user_pool_url(user_id), headers=upstream_headers),
-                upstream_service="agents",
-                operation="user_skills_list",
-            )
-            resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        upstream_error_handler.raise_http_error(
-            logger,
-            exc,
-            event="user_skills_list_failed",
-            message="Agents service returned an HTTP error listing user pool",
-            public_detail="Your skill pool is temporarily unavailable. Please try again.",
-            upstream_service="agents",
-            operation="user_skills_list",
-        )
-    except httpx.RequestError as exc:
-        upstream_error_handler.raise_request_error(
-            logger,
-            exc,
-            event="user_skills_list_unreachable",
-            message="Agents service is unreachable listing user pool",
-            public_detail="Your skill pool is temporarily unavailable. Please try again.",
-            upstream_service="agents",
-            operation="user_skills_list",
-        )
-
-    payload = resp.json()
-    if not isinstance(payload, list):
-        logger.warning("user_skills_list_malformed", "Agents service returned non-list payload")
-        return []
-    return payload
 
 
 async def get_user_skill_detail(
@@ -281,57 +189,19 @@ async def get_user_skill_detail(
     is no reason to ask the agents service for them. A **global** entry still
     goes upstream: the catalogue owns that content and it is shared, so copying
     it per user would go stale the moment the catalogue changed.
+
+    Neither branch repairs anything any more. A custom skill we hold no files
+    for, and a row whose folder is gone, are both states reconciliation resolves
+    — and it resolves them in the right direction, which a read cannot: it can
+    see whether the volume actually has the skill, so it knows whether to fetch
+    the content or finish a deletion. Doing it here meant guessing from a 404.
     """
     stored = await skill_store.get_custom_skill(db, user_id, skill_name)
     if stored is not None and stored.get("files"):
         return stored
-
-    try:
-        detail = await _fetch_user_skill_detail_upstream(
-            user_id=user_id, skill_name=skill_name
-        )
-    except HTTPException as exc:
-        if exc.status_code == status.HTTP_404_NOT_FOUND and stored is not None:
-            # We hold a skill the agents service does not. That means our row is
-            # stale — the folder was removed without the removal reaching here
-            # (a delete that predates this store, or one whose second write
-            # failed). Drop it rather than leaving a pool entry that can only
-            # ever 404: adoption heals the create direction, this heals delete.
-            await skill_store.remove_from_pool(db, user_id, skill_name)
-            await db.commit()
-            logger.info(
-                "user_skill_stale_entry_pruned",
-                "Dropped a pool entry the agents service no longer has",
-                user_id=user_id,
-                skill_name=skill_name,
-            )
-        raise
-
-    # Opening a skill is where its body is adopted. Bodies are the large part of
-    # the payload and most are never read, so pulling every one during the pool
-    # import would make the first Skills load pay for content nobody asked for.
-    # This is the moment we know it is wanted — and the moment it becomes
-    # recoverable if the volume is lost.
-    if stored is not None and (detail.get("files") or []):
-        await skill_store.store_custom_skill(
-            db,
-            user_id,
-            name=skill_name,
-            description=str(detail.get("description") or stored.get("description") or ""),
-            category=detail.get("category") or stored.get("category"),
-            origin=str(detail.get("origin") or stored.get("origin") or "user"),
-            created_by_agent=detail.get("createdByAgent") or stored.get("createdByAgent"),
-            files=detail.get("files") or [],
-        )
-        await db.commit()
-        logger.info(
-            "user_skill_content_adopted",
-            "Adopted a custom skill's content into chat_db on first open",
-            user_id=user_id,
-            skill_name=skill_name,
-            file_count=len(detail.get("files") or []),
-        )
-    return detail
+    return await _fetch_user_skill_detail_upstream(
+        user_id=user_id, skill_name=skill_name
+    )
 
 
 async def _fetch_user_skill_detail_upstream(
@@ -543,10 +413,21 @@ async def remove_skill_from_user_pool(
     """Remove a skill from the user's pool, cascading via the agents service.
 
     The agents service deletes the manifest entry, the custom folder (if
-    type=custom), and every per-(user, agent) assignment folder. We mirror
-    the cascade in the bridge cache: pool invalidate + every per-agent key
-    for this user.
+    type=custom), and every per-(user, agent) assignment folder.
+
+    Order is tombstone → upstream → reap. The old order called upstream first
+    and deleted the rows after, so a failure in between left a **live** pool
+    entry for a skill the volume no longer had — a state indistinguishable from
+    "the volume lost this skill", which a reconciliation pass would answer by
+    writing it back. Marking first also means the removal takes effect for the
+    user immediately, whether or not the agents service is reachable.
     """
+    # False here means we hold no live entry — a pool that pre-dates this store,
+    # or one whose adoption has not run yet. Proxy anyway: the agents service
+    # owns the folder and is the one that has to delete it.
+    await skill_store.tombstone_pool_entry(db, user_id, skill_name)
+    await db.commit()
+
     timeout = _default_timeout()
     request_id = get_context().get("request_id")
     upstream_headers = internal_service_headers(request_id)
@@ -582,7 +463,9 @@ async def remove_skill_from_user_pool(
             operation="user_skill_remove",
         )
 
-    await skill_store.remove_from_pool(db, user_id, skill_name)
+    # The volume no longer has it either, so the tombstone has nothing left to
+    # protect — drop the row and its content for real.
+    await skill_store.reap_pool_entry(db, user_id, skill_name)
     await db.commit()
 
 
@@ -594,75 +477,14 @@ async def get_user_agent_skills(
 ) -> List[str]:
     """The skills assigned to this (user, agent), from ``chat_db``.
 
-    Adopts a pre-existing assignment set from the volume the first time we see
-    the pair, for the same reason the pool does: users have assignments that
-    pre-date this store and a boot pass would have to be remembered.
+    Assignments are imported by the reconciliation pass, which reads every
+    agent's directory in one sweep. The read-triggered import this replaced
+    only fired for a pair somebody happened to open, so an agent nobody opened
+    never reached ``chat_db`` at all — and a volume loss took its assignments
+    with it.
     """
     agent_slug = await _resolve_agent_slug(agent_id)
-    if not await skill_store.agent_has_no_assignments(db, user_id, agent_slug):
-        return await skill_store.list_agent_skills(db, user_id, agent_slug)
-
-    names = await _fetch_user_agent_skills_upstream(user_id=user_id, agent_id=agent_id)
-    await skill_store.adopt_agent_skills(db, user_id, agent_slug, names)
-    await db.commit()
     return await skill_store.list_agent_skills(db, user_id, agent_slug)
-
-
-async def _fetch_user_agent_skills_upstream(*, user_id: str, agent_id: str) -> List[str]:
-    """The agents service's view of the pair — used only to adopt."""
-    agent_slug = await _resolve_agent_slug(agent_id)
-    timeout = _default_timeout()
-    request_id = get_context().get("request_id")
-    upstream_headers = internal_service_headers(request_id)
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-            resp = await upstream_error_handler.run_with_retries(
-                logger,
-                lambda: client.get(
-                    _user_agent_skills_url(agent_slug, user_id), headers=upstream_headers
-                ),
-                upstream_service="agents",
-                operation="user_agent_skills_list",
-            )
-            resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        upstream_error_handler.raise_http_error(
-            logger,
-            exc,
-            event="user_agent_skills_list_failed",
-            message="Agents service returned an HTTP error listing user-agent skills",
-            public_detail="Skill selection is temporarily unavailable. Please try again.",
-            upstream_service="agents",
-            operation="user_agent_skills_list",
-        )
-    except httpx.RequestError as exc:
-        upstream_error_handler.raise_request_error(
-            logger,
-            exc,
-            event="user_agent_skills_list_unreachable",
-            message="Agents service is unreachable listing user-agent skills",
-            public_detail="Skill selection is temporarily unavailable. Please try again.",
-            upstream_service="agents",
-            operation="user_agent_skills_list",
-        )
-
-    payload = resp.json()
-    if not isinstance(payload, list):
-        logger.warning(
-            "user_agent_skills_malformed",
-            "Agents service returned non-list payload for user-agent skills",
-        )
-        return []
-    skills = [str(item) for item in payload]
-    logger.info(
-        "user_agent_skills_fetched_upstream",
-        "Fetched per-(user, agent) skills from the agents service for adoption",
-        user_id=user_id,
-        agent_id=agent_id,
-        count=len(skills),
-    )
-    return skills
 
 
 async def _proxy_skill_mutation(

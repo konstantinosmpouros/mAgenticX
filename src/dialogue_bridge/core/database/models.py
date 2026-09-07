@@ -584,6 +584,14 @@ class UserSkillPoolTable(Base):
     or a reference to one in the global catalogue, which has no per-user copy.
     Kept separate from ``user_skills`` precisely because of that second case:
     the pool is a list of names, and only some of them own files.
+
+    ``deleted_at`` is a tombstone, and it is what lets the two stores be
+    reconciled at all. "``chat_db`` has this, the volume does not" is ambiguous
+    on its own — it means either *the volume lost it* (write it back) or *the
+    user just deleted it and the volume half succeeded* (do not write it back).
+    Without a marker, a reconciliation pass silently resurrects deleted skills.
+    Custom agents get this for free from ``is_active``; pool entries had no
+    equivalent until now.
     """
 
     __tablename__ = "user_skill_pool"
@@ -602,6 +610,10 @@ class UserSkillPoolTable(Base):
     source_path = Column(String, nullable=False, server_default="")
     category = Column(String, nullable=False, server_default="")
     added_at = Column(DateTime, server_default=func.now(), nullable=False)
+    # Set when the user removes the skill; the row survives until the removal has
+    # also reached the volume, then it is reaped. Every read filters on this —
+    # a missed predicate shows a deleted skill as still in the pool.
+    deleted_at = Column(DateTime, nullable=True)
 
 
 class UserAgentSkillTable(Base):

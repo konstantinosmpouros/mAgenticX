@@ -364,7 +364,7 @@ This plan changes the meaning of "scope" for nearly every other item in [the ind
 | [11 · Sandbox runner](11-sandbox-runner.md) | Sandbox quotas and the HITL approval chain are per-org budgets |
 | [12 · `create_skill` tool](done/12-create-skill-tool.md) | A created skill lands in the user's pool; org-shared skills need `owner_kind` on the skill registry too |
 | [14 · Profile panel completion](14-profile-panel-completion.md) | **Hard dependency.** Its "Log out of all devices" stub needs a revoke-all path — which is the same `sid`-denylist + epoch machinery designed here. Its Security/Data-controls rows land in the same nav structure |
-| [16 · Context & usage UI](16-context-usage-ui.md) | Usage aggregation (`utils/usage.py:67`) becomes org-level; "org usage" is a new admin view |
+| [16 · Estimated model cost UI](16-context-usage-ui.md) | Usage and known-cost aggregation (`utils/usage.py:67`) become org-level; "org usage" is a new admin view |
 
 Beyond plans, the ripple touches:
 

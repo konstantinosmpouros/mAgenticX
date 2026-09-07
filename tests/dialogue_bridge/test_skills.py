@@ -262,48 +262,10 @@ async def test_list_user_skills_served_from_chat_db_without_upstream(monkeypatch
     assert result[0]["type"] == "global"
 
 
-async def test_list_user_skills_adopts_a_volume_only_pool(monkeypatch, db):
-    # A user whose pool pre-dates this store: fetch the manifest, then each
-    # custom skill's body, adopt both, and serve locally from then on.
-    manifest = [{"name": "p1", "type": "custom", "description": "d"}]
-    detail = {"name": "p1", "type": "custom", "files": [{"path": "SKILL.md", "content": "# P1"}]}
-
-    def handler(method, url, kwargs):
-        # the per-skill detail URL ends with the skill name
-        return FakeResponse(json_data=detail if url.rstrip("/").endswith("/p1") else manifest)
-
-    install_fake_client(monkeypatch, handler)
-    result = await list_user_skills(db=db, user_id="u2")
-    assert [r["name"] for r in result] == ["p1"]
-
-    # Membership is adopted; the body is NOT — file contents are pulled when a
-    # skill is opened, because most are never read and they are the large part
-    # of the payload.
-    stored = await skill_store.get_custom_skill(db, "u2", "p1")
-    assert stored is not None
-    assert stored["files"] == []
-
-    def explode(method, url, kwargs):  # pragma: no cover
-        raise AssertionError("must not re-fetch once membership is adopted")
-
-    install_fake_client(monkeypatch, explode)
-    assert [r["name"] for r in await list_user_skills(db=db, user_id="u2")] == ["p1"]
-
-
 async def test_list_user_skills_non_list_returns_empty(monkeypatch, fake_cache, db):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data="not a list"))
     result = await list_user_skills(db=db, user_id="u3")
     assert result == []
-
-
-async def test_list_user_skills_request_error(monkeypatch, fake_cache, db):
-    install_fake_client(
-        monkeypatch,
-        lambda m, u, k: httpx.ConnectTimeout("t", request=httpx.Request("GET", "http://agents.test")),
-    )
-    with pytest.raises(Exception) as exc:
-        await list_user_skills(db=db, user_id="u4")
-    assert getattr(exc.value, "status_code", None) == 503
 
 
 # ---------------------------------------------------------------------------
@@ -517,44 +479,10 @@ async def test_get_user_agent_skills_served_from_chat_db(monkeypatch, patch_slug
     assert await get_user_agent_skills(db=db, user_id="u", agent_id="a") == ["skill-x"]
 
 
-async def test_get_user_agent_skills_adopts_and_resolves_the_slug(monkeypatch, patch_slug, db):
-    calls: list = []
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=["s1", "s2"]), calls)
-    result = await get_user_agent_skills(db=db, user_id="u", agent_id="a")
-    assert result == ["s1", "s2"]
-    # the resolved slug appears in the upstream URL
-    assert "test-slug" in calls[0][1]
-    # adopted, so the pairing is now local
-    assert await skill_store.list_agent_skills(db, "u", "test-slug") == ["s1", "s2"]
-
-
-async def test_get_user_agent_skills_coerces_items_to_str(monkeypatch, fake_cache, patch_slug, db):
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=[1, 2, 3]))
-    result = await get_user_agent_skills(db=db, user_id="u", agent_id="a")
-    assert result == ["1", "2", "3"]
-
-
 async def test_get_user_agent_skills_non_list_returns_empty(monkeypatch, fake_cache, patch_slug, db):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data={"x": 1}))
     result = await get_user_agent_skills(db=db, user_id="u", agent_id="a")
     assert result == []
-
-
-async def test_get_user_agent_skills_http_error_502(monkeypatch, fake_cache, patch_slug, db):
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=503, raise_status=True))
-    with pytest.raises(Exception) as exc:
-        await get_user_agent_skills(db=db, user_id="u", agent_id="a")
-    assert getattr(exc.value, "status_code", None) == 502
-
-
-async def test_get_user_agent_skills_request_error_503(monkeypatch, fake_cache, patch_slug, db):
-    install_fake_client(
-        monkeypatch,
-        lambda m, u, k: httpx.ConnectError("x", request=httpx.Request("GET", "http://agents.test")),
-    )
-    with pytest.raises(Exception) as exc:
-        await get_user_agent_skills(db=db, user_id="u", agent_id="a")
-    assert getattr(exc.value, "status_code", None) == 503
 
 
 # ---------------------------------------------------------------------------
@@ -604,27 +532,6 @@ async def test_proxy_skill_mutation_request_error_503(monkeypatch, fake_cache, p
     assert getattr(exc.value, "status_code", None) == 503
 
 
-async def test_opening_a_skill_adopts_its_content(monkeypatch, db):
-    # The lazy half: a skill whose body we do not hold is fetched once, stored,
-    # and served locally from then on.
-    await skill_store.store_custom_skill(db, "u9", name="p9", files=[])
-    await db.commit()
-
-    detail = {"name": "p9", "type": "custom", "files": [{"path": "SKILL.md", "content": "# P9"}]}
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=detail))
-    first = await get_user_skill_detail(db=db, user_id="u9", skill_name="p9")
-    assert [f["path"] for f in first["files"]] == ["SKILL.md"]
-
-    def explode(method, url, kwargs):  # pragma: no cover
-        raise AssertionError("must not re-fetch a body we already stored")
-
-    install_fake_client(monkeypatch, explode)
-    again = await get_user_skill_detail(db=db, user_id="u9", skill_name="p9")
-    assert again["files"] == [
-        {"path": "SKILL.md", "content": "# P9", "encoding": "utf-8", "size": 4}
-    ]
-
-
 # ---------------------------------------------------------------------------
 # The store's output must satisfy the response contracts
 # ---------------------------------------------------------------------------
@@ -667,3 +574,56 @@ async def test_get_custom_skill_output_satisfies_the_detail_contract(db):
     # and the file inventory cannot disagree.
     assert model.content == "# Body"
     assert [f.path for f in model.files] == ["SKILL.md", "run.py"]
+
+
+# ---------------------------------------------------------------------------
+# Reads are local — the whole point of the persistence work
+# ---------------------------------------------------------------------------
+# These used to import from the agents service on a cache/row miss. Five such
+# paths existed, each with its own trigger, and none could see content chat_db
+# had never heard of. Reconciliation replaced them, so a read that reaches
+# upstream is now a regression, not a fallback.
+
+
+@pytest_asyncio.fixture
+def no_upstream(monkeypatch):
+    """Make any outbound HTTP from utils.skills an immediate test failure."""
+
+    def _explode(*args, **kwargs):  # pragma: no cover - must never run
+        raise AssertionError("a per-user skills read must not call upstream")
+
+    monkeypatch.setattr(skills_mod.httpx, "AsyncClient", _explode)
+
+
+@pytest.mark.asyncio
+async def test_listing_the_pool_never_calls_upstream(db, no_upstream):
+    await skill_store.add_to_pool(db, "u", "note-taker", pool_type="custom")
+    await db.commit()
+    assert [s["name"] for s in await list_user_skills(db=db, user_id="u")] == ["note-taker"]
+
+
+@pytest.mark.asyncio
+async def test_an_empty_pool_stays_empty_rather_than_importing(db, no_upstream):
+    # The old check fired only when the pool was *entirely* empty, which is both
+    # too eager (a wasted hop for a user with no skills) and too narrow (it
+    # never saw anything added to a non-empty pool).
+    assert await list_user_skills(db=db, user_id="nobody") == []
+
+
+@pytest.mark.asyncio
+async def test_agent_assignments_never_call_upstream(db, patch_slug, no_upstream):
+    await skill_store.set_agent_skill(db, "u", "test-slug", "note-taker", enabled=True)
+    await db.commit()
+    names = await get_user_agent_skills(db=db, user_id="u", agent_id="a1")
+    assert names == ["note-taker"]
+
+
+@pytest.mark.asyncio
+async def test_a_stored_custom_skill_is_served_locally(db, no_upstream):
+    await skill_store.store_custom_skill(
+        db, "u", name="note-taker", files=[{"path": "SKILL.md", "content": "body"}]
+    )
+    await db.commit()
+    detail = await get_user_skill_detail(db=db, user_id="u", skill_name="note-taker")
+    assert detail["name"] == "note-taker"
+    assert [f["path"] for f in detail["files"]] == ["SKILL.md"]

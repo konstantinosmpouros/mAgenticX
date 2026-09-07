@@ -1,6 +1,9 @@
 # 21 — Make Postgres the source of truth for user-created content
 
-**Status:** proposed — not started
+**Status:** Partially shipped — **Part A** (custom agents, §2) and **Part B** (custom skills,
+pool and assignments, §3) are in, behind migration `0019_persist_user_content`. **Part C**
+(memory, §4) is superseded by [22 · Two-way workspace sync](22-two-way-workspace-sync.md),
+which turns its bespoke reconcile endpoint and tombstone design into shared infrastructure.
 **Touches:** `dialogue_bridge` (new tables, new ownership), `agents` (loses read/CRUD surface, gains a hydrator), `agentic_ui` (unchanged contracts)
 **Background:** [state & storage map](../draft/state-and-storage-map.md) §6–§7
 

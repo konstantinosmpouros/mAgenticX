@@ -185,7 +185,7 @@ op.execute("UPDATE user_preferences SET voice_mode_language = 'en' WHERE voice_m
 
 The third statement normalises anything unexpected rather than leaving a value that only resolves correctly by falling through the normalizer — the column is `nullable=False` with `server_default="english"` (`models.py:134`, from `0001_baseline.py:109`), so it always holds *something*. `downgrade()` reverses the mapping and drops the new column. **This is not destructive** — no user content is touched — but it does rewrite a preferences column, so the docstring must say so in the `0015`/`0016` verdict-line style.
 
-> **Revision-number collision.** [16-context-usage-ui.md](../16-context-usage-ui.md) also claims `0017`. Whichever plan lands second renumbers and re-points `down_revision`; if both land in parallel branches, `alembic merge` per the CLAUDE.md workflow.
+> **Historical note:** Plan 16 no longer claims `0017`; it was later rescoped to estimated cost and must use the next free revision at implementation time.
 
 ---
 

@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import func
 
 from core.database import (
     UserAgentSkillTable,
@@ -53,7 +54,10 @@ async def list_pool(db: AsyncSession, user_id: str) -> List[Dict[str, Any]]:
     pool = (
         await db.execute(
             select(UserSkillPoolTable)
-            .where(UserSkillPoolTable.user_id == user_id)
+            .where(
+                UserSkillPoolTable.user_id == user_id,
+                UserSkillPoolTable.deleted_at.is_(None),
+            )
             .order_by(UserSkillPoolTable.skill_name)
         )
     ).scalars().all()
@@ -89,21 +93,6 @@ async def list_pool(db: AsyncSession, user_id: str) -> List[Dict[str, Any]]:
     return out
 
 
-async def pool_needs_adoption(db: AsyncSession, user_id: str) -> bool:
-    """True when we hold no pool for this user yet.
-
-    Only membership is checked. File bodies are adopted lazily when a skill is
-    opened (they are the large part of the payload and most are never read), so
-    a skill without stored files is a normal state here, not an incomplete
-    import — treating it as incomplete would re-run the whole pass on every
-    listing.
-    """
-    found = await db.execute(
-        select(UserSkillPoolTable.id).where(UserSkillPoolTable.user_id == user_id).limit(1)
-    )
-    return found.scalar_one_or_none() is None
-
-
 async def add_to_pool(
     db: AsyncSession,
     user_id: str,
@@ -133,6 +122,11 @@ async def add_to_pool(
         )
     else:
         row.type = pool_type
+        # Re-adding a name the user previously removed revives the same row
+        # rather than inserting a second one — the uniqueness constraint is on
+        # (user_id, skill_name) and would reject the insert anyway. This mirrors
+        # how a dormant agent row reactivates on a same-slug create.
+        row.deleted_at = None
         # Only overwrite when the caller actually knows better — a plain
         # membership write must not blank out a path adoption already recorded.
         if source_path:
@@ -141,12 +135,49 @@ async def add_to_pool(
             row.category = category
 
 
-async def remove_from_pool(db: AsyncSession, user_id: str, skill_name: str) -> None:
-    """Drop the entry, its content, and every assignment that referenced it.
+async def tombstone_pool_entry(
+    db: AsyncSession, user_id: str, skill_name: str
+) -> bool:
+    """Mark the entry removed. Returns False when we hold no such entry.
 
-    Assignments go too: leaving them would let a skill the user removed keep
-    showing as enabled on an agent, and the next hydrate would try to
-    materialise a skill that no longer exists in the pool.
+    The row and the skill's content both survive. If the removal then fails to
+    reach the volume, the tombstone is what tells a reconciliation pass to
+    *finish* the deletion rather than write the skill back — and the content is
+    still here should the removal need undoing.
+
+    Assignments are dropped immediately rather than at reap. They are pure
+    selections, and :func:`list_agent_skills` reads them directly rather than
+    through the pool, so leaving them would show a skill the user just removed
+    as still enabled on an agent.
+    """
+    row = (
+        await db.execute(
+            select(UserSkillPoolTable).where(
+                UserSkillPoolTable.user_id == user_id,
+                UserSkillPoolTable.skill_name == skill_name,
+                UserSkillPoolTable.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return False
+    row.deleted_at = func.now()
+    await db.execute(
+        delete(UserAgentSkillTable).where(
+            UserAgentSkillTable.user_id == user_id,
+            UserAgentSkillTable.skill_name == skill_name,
+        )
+    )
+    return True
+
+
+async def reap_pool_entry(db: AsyncSession, user_id: str, skill_name: str) -> None:
+    """Hard-delete the entry, its content, and any assignment left behind.
+
+    Two callers, both meaning "there is nothing left on the volume either": the
+    second half of a user-initiated delete, and reconciliation dropping an entry
+    that has no content on either side. Neither leaves a pending removal for a
+    tombstone to protect.
     """
     await db.execute(
         delete(UserSkillPoolTable).where(
@@ -233,7 +264,10 @@ async def get_custom_skill(
     """One custom skill with its files, or None when we do not hold it.
 
     None is not an error: a pool entry of type ``global`` legitimately has no
-    content here, and the caller falls back to the catalogue.
+    content here, and the caller falls back to the catalogue. A skill whose pool
+    entry is tombstoned reads as None too — the content outlives the removal so
+    a failed volume delete can still be reconciled, but the user has removed it
+    and must not be served it.
     """
     skill = (
         await db.execute(
@@ -262,6 +296,8 @@ async def get_custom_skill(
             )
         )
     ).scalar_one_or_none()
+    if entry is not None and entry.deleted_at is not None:
+        return None
 
     return {
         "name": skill.name,
@@ -331,82 +367,22 @@ async def set_agent_skill(
         )
 
 
-async def agent_has_no_assignments(
-    db: AsyncSession, user_id: str, agent_slug: str
-) -> bool:
-    """True when we hold nothing for this (user, agent) — the adoption signal."""
-    found = await db.execute(
-        select(UserAgentSkillTable.id)
-        .where(
-            UserAgentSkillTable.user_id == user_id,
-            UserAgentSkillTable.agent_slug == agent_slug,
-        )
-        .limit(1)
-    )
-    return found.scalar_one_or_none() is None
-
-
 # ---------------------------------------------------------------------------
-# Adoption — one-way import of what already exists on the volume
+# Reconciliation support
 # ---------------------------------------------------------------------------
-async def adopt_pool(
-    db: AsyncSession, user_id: str, manifest: List[Dict[str, Any]]
-) -> int:
-    """Take an upstream pool manifest as ours. Returns how many entries landed.
+async def tombstoned_names(db: AsyncSession, user_id: str) -> set[str]:
+    """Names this user has removed but whose removal may not have landed yet.
 
-    Lazy migration: users have pools that pre-date this store, and a boot pass
-    would have to be remembered and re-run. Adopting on first read is
-    self-healing and disappears once every user has been seen.
+    Reconciliation reads the volume, and a removal whose second half failed
+    leaves the skill still on it. Without this set, importing that inventory
+    would revive exactly the entries the user deleted.
     """
-    count = 0
-    for item in manifest or []:
-        name = str(item.get("name") or "").strip()
-        if not name:
-            continue
-        pool_type = POOL_TYPE_GLOBAL if item.get("type") == POOL_TYPE_GLOBAL else POOL_TYPE_CUSTOM
-        if pool_type == POOL_TYPE_CUSTOM:
-            await store_custom_skill(
-                db,
-                user_id,
-                name=name,
-                description=str(item.get("description") or ""),
-                category=item.get("category"),
-                origin=str(item.get("origin") or "user"),
-                created_by_agent=item.get("createdByAgent") or item.get("created_by_agent"),
-                files=item.get("files") or None,
+    rows = (
+        await db.execute(
+            select(UserSkillPoolTable.skill_name).where(
+                UserSkillPoolTable.user_id == user_id,
+                UserSkillPoolTable.deleted_at.isnot(None),
             )
-        else:
-            await add_to_pool(
-                db,
-                user_id,
-                name,
-                pool_type=POOL_TYPE_GLOBAL,
-                source_path=str(item.get("source_path") or ""),
-                category=str(item.get("category") or ""),
-            )
-        count += 1
-
-    if count:
-        logger.info(
-            "user_skill_pool_adopted",
-            "Adopted a volume-only skill pool into chat_db",
-            user_id=user_id,
-            count=count,
         )
-    return count
-
-
-async def adopt_agent_skills(
-    db: AsyncSession, user_id: str, agent_slug: str, names: List[str]
-) -> int:
-    for name in names or []:
-        await set_agent_skill(db, user_id, agent_slug, name, enabled=True)
-    if names:
-        logger.info(
-            "user_agent_skills_adopted",
-            "Adopted volume-only skill assignments into chat_db",
-            user_id=user_id,
-            agent_slug=agent_slug,
-            count=len(names),
-        )
-    return len(names or [])
+    ).scalars().all()
+    return set(rows)

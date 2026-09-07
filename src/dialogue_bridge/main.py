@@ -44,7 +44,7 @@ from router import (
     scheduled_tasks_router,
     usage_router,
     internal_memory_router,
-    internal_workspace_router,
+    internal_sync_router,
 )
 
 configure_logging()
@@ -279,8 +279,12 @@ app.include_router(
 
 # Same trust model. Backs the agents service's workspace hydrator, which rebuilds
 # a user's custom agents and skills on the volume from chat_db.
+# The two-way reconciliation exchange between chat_db and the agents-service
+# volume. Same trust model. Replaced the one-way hydration endpoints, which
+# could only ever write chat_db -> volume and so never saw content the database
+# had not heard of — the state a half-failed create leaves behind.
 app.include_router(
-    internal_workspace_router,
+    internal_sync_router,
     prefix=f"/v1/internal",
     tags=["Internal"],
 )
