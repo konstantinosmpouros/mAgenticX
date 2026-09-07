@@ -64,23 +64,23 @@ def _load_agents_service(monkeypatch):
         mcp_tools=mcp_tools_module,
         agents_utils=agents_utils_module,
         # AG-UI transformation layer
-        normalizer=importlib.import_module("runtime.agui.normalizer"),
-        emitter=importlib.import_module("runtime.agui.emitter"),
-        agui_events=importlib.import_module("runtime.agui.events"),
+        normalizer=importlib.import_module("harness.agui.normalizer"),
+        emitter=importlib.import_module("harness.agui.emitter"),
+        agui_events=importlib.import_module("harness.agui.events"),
         # core
         proxy=importlib.import_module("core.security.internal_trust"),
         error_handling=importlib.import_module("core.error_handling"),
         settings_module=importlib.import_module("core.settings"),
         # runtime
-        filesystem_layout=importlib.import_module("runtime.filesystem.layout"),
-        base_agent=importlib.import_module("runtime.abstractions.base_agent"),
-        checkpointer_store=importlib.import_module("runtime.checkpointer.store"),
-        checkpointer_fork=importlib.import_module("runtime.checkpointer.fork"),
+        filesystem_layout=importlib.import_module("harness.filesystem.layout"),
+        base_agent=importlib.import_module("harness.abstractions.base_agent"),
+        checkpointer_store=importlib.import_module("harness.checkpointer.store"),
+        checkpointer_fork=importlib.import_module("harness.checkpointer.fork"),
         checkpointer_util=importlib.import_module("utils.checkpointer"),
         # skill registry + filesystem
-        user_registry=importlib.import_module("runtime.skill_registry.user_registry"),
-        global_manifest=importlib.import_module("runtime.skill_registry.global_manifest"),
-        provisioner=importlib.import_module("runtime.filesystem.provisioner"),
+        user_registry=importlib.import_module("harness.skill_registry.user_registry"),
+        global_manifest=importlib.import_module("harness.skill_registry.global_manifest"),
+        provisioner=importlib.import_module("harness.filesystem.provisioner"),
         # other utils
         suggestions=importlib.import_module("utils.suggestions"),
         speech=importlib.import_module("utils.speech"),
@@ -161,7 +161,7 @@ _DICT_CACHES = (
     ("utils.agents", "_USER_AGENT_CACHE"),
     ("utils.mcp_tools", "_MCP_TOOL_MANIFEST_CACHE"),
 )
-_SINGLETON_CACHES = (("runtime.skill_registry.global_manifest", "_MANIFEST_CACHE"),)
+_SINGLETON_CACHES = (("harness.skill_registry.global_manifest", "_MANIFEST_CACHE"),)
 
 
 def _reset_service_caches() -> None:

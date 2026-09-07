@@ -296,3 +296,22 @@ async def test_an_entry_with_no_content_on_either_side_is_dropped(db, uid):
 
     assert plan.send_skills == [] and plan.write_skills == []
     assert await skill_store.list_pool(db, uid) == []
+
+
+# ---------------------------------------------------------------------------
+# The cross-service hash contract
+# ---------------------------------------------------------------------------
+# The bridge computes this over its stored rows, the agents service over the
+# folder on disk, and the plan compares the two. If they ever disagree, every
+# pass rewrites every file — silently, because a mismatch looks exactly like a
+# diverged folder. These literals are duplicated in
+# tests/agents/test_workspace_sync.py; changing one without the other is the
+# failure they exist to catch.
+GOLDEN = "72124c6dce55c9a2e40157710f579845ce22b904ad93e2be23a485359a1d32b5"
+GOLDEN_FILES = [("SKILL.md", "# Note taker\n"), ("scripts/run.py", "print(1)\n")]
+GOLDEN_EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def test_hash_matches_the_agents_service_byte_for_byte():
+    assert content_hash(GOLDEN_FILES) == GOLDEN
+    assert content_hash([]) == GOLDEN_EMPTY

@@ -266,7 +266,7 @@ Beyond chat display, uploaded files are made available to **deep agents** at inf
 
 ### Input / output filesystem split
 
-The workspace builder (`runtime/filesystem/workspace.py`, `build_workspace_backend()` — `DeepAgent._build_composite_backend()` delegates to it) splits the per-conversation mount into two routes:
+The workspace builder (`harness/filesystem/workspace.py`, `build_workspace_backend()` — `DeepAgent._build_composite_backend()` delegates to it) splits the per-conversation mount into two routes:
 
 | Route | Mode | Contents |
 | --- | --- | --- |
@@ -290,7 +290,7 @@ sequenceDiagram
     D->>A: POST /agents/{slug}/stream
 ```
 
-- The bridge's `_run` seeds **only the new turn's attachments** (deep agents only) before streaming, via `build_agent_input_files_url()` (`utils/agents.py`) → `PUT .../input-files`. The agents endpoint calls `seed_input_files()` (`runtime/filesystem/provisioner.py`), which writes the bytes under `conversation_input_root()`.
+- The bridge's `_run` seeds **only the new turn's attachments** (deep agents only) before streaming, via `build_agent_input_files_url()` (`utils/agents.py`) → `PUT .../input-files`. The agents endpoint calls `seed_input_files()` (`harness/filesystem/provisioner.py`), which writes the bytes under `conversation_input_root()`.
 - The serialiser `serialise_message_with_images_for_agent()` still **inlines images as base64** in the message content (vision on the upload turn). For deep agents it additionally references each **non-image** file by its `/conversation/input/<name>` path (flag `include_input_paths=True`) so the agent can open it with its filesystem tools.
 - **LangGraph agents have no filesystem** — they are not seeded; they receive message content only (inline images, no input-path references).
 
@@ -364,11 +364,11 @@ The conversation filesystem (`input/` + `output/`) is removed by `delete_convers
 | Attachments router | [src/dialogue_bridge/router/attachments.py](../../src/dialogue_bridge/router/attachments.py) | download, preview, preview-token, public, images endpoints |
 | Upload persistence | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `init_attachments()`, `clone_branch_to_conversation()` |
 | Agent filesystem seeding (bridge) | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) | `build_agent_input_files_url()`, `serialise_message_with_images_for_agent(include_input_paths=...)` |
-| Input/output backend split + permissions | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `build_workspace_backend()` (mount routes), `WORKSPACE_WRITE_DENY` (`/conversation/input/` write-deny) — `DeepAgent._build_composite_backend()` delegates here |
-| Filesystem provisioner | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `seed_input_files()`, `delete_conversation_files()`, `conversation_input_root()`, `conversation_output_root()`, `ensure_user_agent_filesystem()` |
+| Input/output backend split + permissions | [src/agents/harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) | `build_workspace_backend()` (mount routes), `WORKSPACE_WRITE_DENY` (`/conversation/input/` write-deny) — `DeepAgent._build_composite_backend()` delegates here |
+| Filesystem provisioner | [src/agents/harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) | `seed_input_files()`, `delete_conversation_files()`, `conversation_input_root()`, `conversation_output_root()`, `ensure_user_agent_filesystem()` |
 | Input-files seed endpoint | [src/agents/main.py](../../src/agents/main.py) | `PUT /agents/{slug}/users/{user_id}/conversations/{conversation_id}/input-files` |
-| `present_artifact` tool | [src/agents/runtime/tools/present_artifact.py](../../src/agents/runtime/tools/present_artifact.py) | `build_present_artifact_tool()` — path-guarded, returns a confirmation (never emits); registered in `DeepAgent._builtin_tools()` |
-| Output-files read endpoint + util | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `GET …/output-files` → `runtime.filesystem.read_output_files()` / `resolve_output_file()` (path-guarded, size-capped) |
+| `present_artifact` tool | [src/agents/harness/tools/present_artifact.py](../../src/agents/harness/tools/present_artifact.py) | `build_present_artifact_tool()` — path-guarded, returns a confirmation (never emits); registered in `DeepAgent._builtin_tools()` |
+| Output-files read endpoint + util | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `GET …/output-files` → `harness.filesystem.read_output_files()` / `resolve_output_file()` (path-guarded, size-capped) |
 | Generated-artifact capture (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.presented_artifacts`, `_fetch_output_files()`, `_capture_generated_artifacts()` (called in `_finish_run`), `build_agent_output_files_url()` |
 | Generated-artifact rendering (frontend) | [src/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx](../../src/agentic_ui/src/features/chat/components/message_parts/MessageAttachments.tsx) | `origin === "generated"` branch — left-aligned card, Sparkles icon, agent title/summary |
 | Share snapshot builder | [src/dialogue_bridge/utils/conversations.py](../../src/dialogue_bridge/utils/conversations.py) | `_attachment_to_share_snapshot()`, `build_share_snapshot()` |

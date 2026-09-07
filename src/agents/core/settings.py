@@ -458,7 +458,7 @@ class FilesystemSettings(BaseSettings):
     # platform-owned shared assets (built-in agent definitions + the skills
     # catalogue); `workspaces_root` holds one tree per user (their skill pool,
     # their own agent definitions, per-agent memory, tool prefs and every
-    # conversation's files). `runtime.filesystem.layout` derives every concrete
+    # conversation's files). `harness.filesystem.layout` derives every concrete
     # path from these — nothing else should join path segments by hand.
     global_root: Path = Field(
         Path("/var/magenticx/global"),
@@ -494,7 +494,7 @@ class FilesystemSettings(BaseSettings):
     # SandboxBackendProtocol. Today that default is StateBackend (no execution
     # path), but that safety is an accident of defaults — this flag turns it
     # into a verified invariant: while False, workspace assembly REFUSES to
-    # mint a sandbox-capable default backend (see runtime/filesystem/
+    # mint a sandbox-capable default backend (see harness/filesystem/
     # workspace.py). Flipping this to True is reserved for the future
     # sandboxed-execution rollout and must never happen before a real
     # isolation kernel (gVisor-class) is in place.
@@ -506,7 +506,7 @@ class FilesystemSettings(BaseSettings):
     # run finalize and persisted as generated-attachment blobs — so both dirs
     # are caches of DB-owned data and safe to erase after a TTL. 0 disables
     # that scope's sweep (logged loudly at startup). Sweeper details live in
-    # runtime/filesystem/retention.py.
+    # harness/filesystem/retention.py.
     input_ttl_hours: int = Field(72, validation_alias="WORKSPACE_INPUT_TTL_HOURS")
     output_ttl_hours: int = Field(168, validation_alias="WORKSPACE_OUTPUT_TTL_HOURS")
     retention_sweep_interval_minutes: int = Field(

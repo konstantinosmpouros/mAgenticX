@@ -58,14 +58,14 @@ and its **numerator** (used) must be a real occupancy number, not the inflated s
 ### Phase 1 — Agents: publish model facts in the manifest
 
 - Add a model registry map in the agents service (new
-  `src/agents/runtime/model_registry.py`): `MODEL_CONTEXT_WINDOWS: dict[str,int]`
+  `src/agents/harness/model_registry.py`): `MODEL_CONTEXT_WINDOWS: dict[str,int]`
   and `MODEL_PRICING: dict[str, {input, output}]` (per-MTok USD). **Values must be
   verified against current model docs at implementation time.**
 - Give every agent a declared **primary model**:
   - Deep agents: reuse the existing `main_model`.
   - LangGraph agents (HR / Orthodox / Retail): declare one representative model
     (the answer/generation model).
-- Extend `BaseAgent.manifest()` (`src/agents/runtime/base_agent.py:99`) to emit:
+- Extend `BaseAgent.manifest()` (`src/agents/harness/base_agent.py:99`) to emit:
   `mainModel: str`, `contextWindow: int`, `inputPricePerMTok: float`,
   `outputPricePerMTok: float` (resolved from the registry for the agent's
   primary model). Nullable-safe: unknown model → omit window/price (UI hides ring).

@@ -22,7 +22,7 @@ class CustomAgentWrite(BaseModel):
     """Request body for creating/updating a user-authored agent.
 
     ``spec`` is the ``agent.yaml`` document as a mapping — validated straight
-    into :class:`~runtime.abstractions.agent_spec.AgentSpec`, so the wire contract
+    into :class:`~harness.abstractions.agent_spec.AgentSpec`, so the wire contract
     and the runtime contract cannot drift. ``files`` carries the prompt files the
     spec references (``AGENT.md``, ``subagents/*.md``); every path the spec points
     at must be present here.

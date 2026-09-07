@@ -12,8 +12,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from runtime.checkpointer import init_durable_checkpointer
-from runtime.filesystem import run_workspace_retention_loop
+from harness.checkpointer import init_durable_checkpointer
+from harness.filesystem import run_workspace_retention_loop
 from core.logging import (
     RequestLoggingMiddleware,
     configure_logging,
@@ -21,12 +21,12 @@ from core.logging import (
     register_exception_handlers,
     shutdown_logging,
 )
-from runtime.skill_registry import (
+from harness.skill_registry import (
     rebuild_global_manifest,
     reconcile_all_user_manifests,
     seed_global_registry,
 )
-from runtime.abstractions import seed_global_agents
+from harness.abstractions import seed_global_agents
 from utils.agents import refresh_registry
 from utils.workspace_sync import sync_workspaces
 from router.catalog import router as catalog_router

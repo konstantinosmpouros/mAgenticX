@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
-from runtime.filesystem import delete_memory, list_memories, read_memory
+from harness.filesystem import delete_memory, list_memories, read_memory
 from schema import MemoryDetail, MemoryEntry
 
 logger = get_logger(__name__)

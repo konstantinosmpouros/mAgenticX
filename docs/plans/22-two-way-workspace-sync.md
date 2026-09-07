@@ -402,6 +402,6 @@ container comes up with an empty volume and nothing would ever reconcile it.
 | Agent write path (Phase 0) | `dialogue_bridge/utils/user_agents.py` |
 | Adoption paths to delete (Phase 4) | `dialogue_bridge/utils/skills.py` |
 | Sync client + user union | `agents/utils/workspace_sync.py` (replaces `workspace_hydrator.py`) |
-| Volume enumeration | `agents/runtime/filesystem/layout.py` |
-| Write side, unchanged | `agents/runtime/abstractions/user_agents.py`, `runtime/skill_registry/user_registry.py` |
-| Memory (Phase 5) | `agents/runtime/tools/remember.py`, `runtime/filesystem/memory.py` |
+| Volume enumeration | `agents/harness/filesystem/layout.py` |
+| Write side, unchanged | `agents/harness/abstractions/user_agents.py`, `harness/skill_registry/user_registry.py` |
+| Memory (Phase 5) | `agents/harness/tools/remember.py`, `harness/filesystem/memory.py` |

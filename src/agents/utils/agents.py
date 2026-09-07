@@ -7,8 +7,8 @@ sources, hybrid during the migration to declarative agents:
    ``DeepAgent`` reachable from the ``langgraph_agents`` / ``deep_agents``
    packages. Discovered at import.
 2. **Declarative (YAML) agents** — ``<global_root>/agents/<slug>/agent.yaml``
-   parsed into an :class:`~runtime.abstractions.agent_spec.AgentSpec` and served
-   by a shared :class:`~runtime.abstractions.yaml_agent.YamlDeepAgent`. A YAML
+   parsed into an :class:`~harness.abstractions.agent_spec.AgentSpec` and served
+   by a shared :class:`~harness.abstractions.yaml_agent.YamlDeepAgent`. A YAML
    agent **overrides** a
    Python-class agent with the same slug (the migration direction).
 
@@ -26,9 +26,9 @@ import yaml
 
 import langgraph_agents
 import deep_agents
-from runtime.abstractions import AgentSpec, DeepAgent, LangGraphAgent, YamlDeepAgent
-from runtime.filesystem import layout
-from runtime.tools.registry import is_known_native_tool
+from harness.abstractions import AgentSpec, DeepAgent, LangGraphAgent, YamlDeepAgent
+from harness.filesystem import layout
+from harness.tools.registry import is_known_native_tool
 from utils.declarative import manifest_from_spec
 from core.settings import settings
 from core.logging import get_logger

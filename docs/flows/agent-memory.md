@@ -37,7 +37,7 @@ updated_at: 2026-06-30T12:00:00+00:00
 source_conversation_id: <uuid>           # provenance — where it was learned
 ```
 
-The `AGENTS.md` index row format is the single source of truth in `runtime/filesystem/memory.py` (`index_line` / `index_line_pattern`), shared by the write and delete paths so they never drift:
+The `AGENTS.md` index row format is the single source of truth in `harness/filesystem/memory.py` (`index_line` / `index_line_pattern`), shared by the write and delete paths so they never drift:
 
 ```text
 ## Memories
@@ -57,7 +57,7 @@ flowchart LR
     D --> E[upsert AGENTS.md row<br/>idempotent by slug]
 ```
 
-`runtime/tools/remember.py` (`build_remember_tool`, bound per run to `user_id`/`agent_slug`/`conversation_id`):
+`harness/tools/remember.py` (`build_remember_tool`, bound per run to `user_id`/`agent_slug`/`conversation_id`):
 
 1. **Slugify** `name` → `[a-z0-9-]` (also defeats path traversal — no slashes/dots can survive).
 2. **Cap check** — if this is a *new* entry and the count is already at `MEMORY_MAX_ENTRIES` (default **60**, env-tunable), reject with a clear message. Updates to an existing entry always go through.
@@ -76,7 +76,7 @@ The browser talks only to the bridge, which proxies to the agents service (which
 flowchart LR
     UI[ProfilePanel → Memories tab<br/>useMemories] -->|/api/v1/memories| BR[dialogue_bridge<br/>router/memories.py]
     BR -->|mTLS + trusted-proxy<br/>resolve agentId→slug| AG[agents<br/>router/memories.py]
-    AG --> FS[runtime/filesystem/memory.py<br/>list / read / delete]
+    AG --> FS[harness/filesystem/memory.py<br/>list / read / delete]
 ```
 
 | Action | Bridge (`/v1/memories`, `validate_userId`) | Agents (`require_internal_caller`) | Filesystem |
@@ -104,11 +104,11 @@ flowchart LR
 
 | Concern | File |
 | --- | --- |
-| Memory store ops (row format + list/read/delete) | [src/agents/runtime/filesystem/memory.py](../../src/agents/runtime/filesystem/memory.py) |
-| Path helpers + provisioning (`memory_root`, `ensure_user_agent_filesystem`) | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) |
-| `AGENTS.md` seed template | [src/agents/runtime/filesystem/agent_md_template.py](../../src/agents/runtime/filesystem/agent_md_template.py) |
-| `remember` write tool (slugify, cap, upsert) | [src/agents/runtime/tools/remember.py](../../src/agents/runtime/tools/remember.py) |
-| Memory gating + system-prompt block | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `_memory_system_prompt`) |
+| Memory store ops (row format + list/read/delete) | [src/agents/harness/filesystem/memory.py](../../src/agents/harness/filesystem/memory.py) |
+| Path helpers + provisioning (`memory_root`, `ensure_user_agent_filesystem`) | [src/agents/harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) |
+| `AGENTS.md` seed template | [src/agents/harness/filesystem/agent_md_template.py](../../src/agents/harness/filesystem/agent_md_template.py) |
+| `remember` write tool (slugify, cap, upsert) | [src/agents/harness/tools/remember.py](../../src/agents/harness/tools/remember.py) |
+| Memory gating + system-prompt block | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `_memory_system_prompt`) |
 | Cap setting (`MEMORY_MAX_ENTRIES`) | [src/agents/core/settings.py](../../src/agents/core/settings.py) (`FilesystemSettings`) |
 | Agents inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) |
 | Bridge proxy + router | [src/dialogue_bridge/utils/memories.py](../../src/dialogue_bridge/utils/memories.py) · [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) |

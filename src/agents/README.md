@@ -209,7 +209,7 @@ The stream is `text/event-stream` and carries AG-UI compatible frames such as:
 
 ## 6. AG-UI Streaming Normalization
 
-Raw LangGraph and DeepAgent chunks are not sent directly to clients. They are normalized by `runtime/protocols/agui/normalizer.py`.
+Raw LangGraph and DeepAgent chunks are not sent directly to clients. They are normalized by `harness/agui/normalizer.py`.
 
 ```mermaid
 flowchart TD

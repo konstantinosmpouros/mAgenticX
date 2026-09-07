@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class SkillManifest(BaseModel):
-    """One entry in the central skills registry (``runtime/skill_registry/registry/``).
+    """One entry in the central skills registry (``harness/skill_registry/registry/``).
 
     ``content`` is the markdown body that follows the frontmatter — agents
     pull this in via the deepagents ``SkillsMiddleware`` when the user has

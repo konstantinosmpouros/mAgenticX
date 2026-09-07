@@ -244,7 +244,7 @@ mirror.
 ### 4.5 What the UI gains
 
 The Memory tab currently proxies to the agents service to list and delete. It
-becomes a `chat_db` query, and `runtime/filesystem/memory.py`'s read helpers
+becomes a `chat_db` query, and `harness/filesystem/memory.py`'s read helpers
 lose their remote caller.
 
 ---
@@ -310,9 +310,9 @@ run once by hand.
 | Custom agent orchestration (already bridge-side) | `src/dialogue_bridge/utils/user_agents.py` |
 | Skill proxy + cache (to become queries) | `src/dialogue_bridge/utils/skills.py`, `utils/skills_cache.py` |
 | Reverse-channel precedent | `src/dialogue_bridge/router/internal_memory.py` |
-| The `remember` tool | `src/agents/runtime/tools/remember.py` |
-| Memory read helpers | `src/agents/runtime/filesystem/memory.py` |
-| Path authority for materialisation | `src/agents/runtime/filesystem/layout.py` |
-| Agent definition CRUD (write side kept) | `src/agents/runtime/abstractions/user_agents.py` |
-| Skill registry (write side kept) | `src/agents/runtime/skill_registry/user_registry.py` |
+| The `remember` tool | `src/agents/harness/tools/remember.py` |
+| Memory read helpers | `src/agents/harness/filesystem/memory.py` |
+| Path authority for materialisation | `src/agents/harness/filesystem/layout.py` |
+| Agent definition CRUD (write side kept) | `src/agents/harness/abstractions/user_agents.py` |
+| Skill registry (write side kept) | `src/agents/harness/skill_registry/user_registry.py` |
 | Boot sequence for the hydrator | `src/agents/main.py` (lifespan, before `refresh_registry()`) |

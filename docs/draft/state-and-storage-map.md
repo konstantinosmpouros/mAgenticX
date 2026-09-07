@@ -246,12 +246,12 @@ than arriving at.
 | Bridge tables | `src/dialogue_bridge/core/database/models.py` |
 | Checkpointer config | `src/agents/core/settings.py` (`CheckpointerSettings`) |
 | Checkpointer access | `src/agents/utils/checkpointer.py` |
-| Path authority (every volume path) | `src/agents/runtime/filesystem/layout.py` |
-| Workspace mounts + write-deny | `src/agents/runtime/filesystem/workspace.py` |
-| Input/output TTL sweeper | `src/agents/runtime/filesystem/retention.py` |
-| Skill pools ①–④ | `src/agents/runtime/skill_registry/` |
-| Custom agent CRUD + validation | `src/agents/runtime/abstractions/user_agents.py` |
-| YAML agent engine | `src/agents/runtime/abstractions/yaml_agent.py` |
+| Path authority (every volume path) | `src/agents/harness/filesystem/layout.py` |
+| Workspace mounts + write-deny | `src/agents/harness/filesystem/workspace.py` |
+| Input/output TTL sweeper | `src/agents/harness/filesystem/retention.py` |
+| Skill pools ①–④ | `src/agents/harness/skill_registry/` |
+| Custom agent CRUD + validation | `src/agents/harness/abstractions/user_agents.py` |
+| YAML agent engine | `src/agents/harness/abstractions/yaml_agent.py` |
 | Agent resolution (platform vs user) | `src/agents/utils/agents.py` |
 | Run event log | `src/dialogue_bridge/utils/event_log.py` |
 | Redis cache policies | `src/dialogue_bridge/core/cache/policies.py` |

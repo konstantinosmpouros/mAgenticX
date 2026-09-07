@@ -292,7 +292,7 @@ The agents service keeps a **durable LangGraph checkpoint** per branch (an `Asyn
 
 ### Capture-back — `CHECKPOINT_COMMITTED`
 
-So the bridge can record which durable checkpoint a run produced (for the next turn's resume/fork), the agent emits a **terminal AG-UI custom event** `CHECKPOINT_COMMITTED {thread_id, checkpoint_id}` (emitter method `checkpoint_committed`, type `CHECKPOINT_COMMITTED` in [`events.py`](../../src/agents/runtime/agui/events.py)). `InferenceRunRuntime.apply_event` captures it, and `_finish_run` persists `checkpoint_id` (alongside the already-stamped `checkpoint_thread_id`) on the AI message row. A branch's leaf AI message therefore always carries the head its next turn resumes from.
+So the bridge can record which durable checkpoint a run produced (for the next turn's resume/fork), the agent emits a **terminal AG-UI custom event** `CHECKPOINT_COMMITTED {thread_id, checkpoint_id}` (emitter method `checkpoint_committed`, type `CHECKPOINT_COMMITTED` in [`events.py`](../../src/agents/harness/agui/events.py)). `InferenceRunRuntime.apply_event` captures it, and `_finish_run` persists `checkpoint_id` (alongside the already-stamped `checkpoint_thread_id`) on the AI message row. A branch's leaf AI message therefore always carries the head its next turn resumes from.
 
 ---
 
@@ -502,7 +502,7 @@ sequenceDiagram
     Note over Task: loop again if another interrupt arrives,<br/>otherwise normal terminal flow
 ```
 
-The agents service compiles every `/stream` and `/resume` request against **one process-wide `AsyncPostgresSaver`** (accessor in `runtime/checkpointer/store.py`: `get_checkpointer()`), opened in the FastAPI lifespan over a durable connection pool. The resume request — which creates a fresh agent instance — just selects the same `thread_id` and `aget_state` returns the paused state from the `agent_runtime` database. If the targeted interrupt is no longer pending (advanced/duplicate click) the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
+The agents service compiles every `/stream` and `/resume` request against **one process-wide `AsyncPostgresSaver`** (accessor in `harness/checkpointer/store.py`: `get_checkpointer()`), opened in the FastAPI lifespan over a durable connection pool. The resume request — which creates a fresh agent instance — just selects the same `thread_id` and `aget_state` returns the paused state from the `agent_runtime` database. If the targeted interrupt is no longer pending (advanced/duplicate click) the resume endpoint returns 409 and the bridge marks the run failed with a user-readable message.
 
 **`thread_id` is the branch-scoped `checkpoint_thread_id`, not `run.id`.** The bridge sets `configurable.thread_id = run.checkpoint_thread_id` ([`inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py)) — durable and **shared by every run on a branch**, so a continue resumes the branch's prior state and a HITL resume rehydrates the same paused checkpoint. Edit/retry mint a fresh thread (seeded copy-on-fork from the parent), keeping sibling branches isolated. The per-run identity — AG-UI `message_id`, the `_THREAD_NAMESPACE_BINDINGS` key, the WebSocket/Redis run key — is `run.id`, passed separately as `context.run_id`. (Keying the checkpoint by `conversation_id` was the original "agent sees every branch" bug; keying it by `run.id` then prevented any cross-turn resume, which the branch-scoped thread now restores without leaking across branches.)
 
@@ -522,7 +522,7 @@ LangChain's `HumanInTheLoopMiddleware` expects `Command(resume={"decisions": [..
 
 ### interrupt_id contract
 
-Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured in [`normalizer.py`](../../src/agents/runtime/agui/normalizer.py). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:
+Every `HITL_INTERRUPT` event carries `value.interrupt.id` — the LangGraph interrupt's unique id, captured in [`normalizer.py`](../../src/agents/harness/agui/normalizer.py). The full chain uses this id, **not** `thread_id`, for dedup and resolution tracking:
 
 - UI: the timeline reducer ([`lib/timeline.ts`](../../src/agentic_ui/src/features/inference/timeline.ts)) dedupes interrupts on `interrupt.id` and flips their status when the `BRIDGE_HITL_RESOLVED` marker arrives; `useInferenceRuns.resolvedInterrupts` (keyed `${runId}:${interruptId}`) is the instant client-side overlay for the round-trip window between the resume HTTP response and the marker frame.
 - Bridge → agents: `ResumeInferenceRunBody.interruptId` (`api.ts`) → `InferenceRunResumeIn.interruptId` → `_do_resume` body field `interrupt_id` → `AgentResumeRequest.interrupt_id`.
@@ -635,8 +635,8 @@ The original shared conversation is not mutated. The copied conversation belongs
 | HITL resume path | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.pending_interrupts`, `InferenceRunManager.request_resume()`, `_do_resume()`, `request_run_resume()` |
 | Bridge resume route | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `resumeInferenceRun()` route |
 | Agents resume endpoint | [src/agents/main.py](../../src/agents/main.py) | `resume_agent()` route |
-| Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` — single process-wide `AsyncPostgresSaver` |
-| Copy-on-fork seeding | [src/agents/runtime/checkpointer/fork.py](../../src/agents/runtime/checkpointer/fork.py) | `seed_thread_from_checkpoint()` (used by `/stream` on `fork_from`) |
+| Durable checkpointer accessor | [src/agents/harness/checkpointer/store.py](../../src/agents/harness/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` — single process-wide `AsyncPostgresSaver` |
+| Copy-on-fork seeding | [src/agents/harness/checkpointer/fork.py](../../src/agents/harness/checkpointer/fork.py) | `seed_thread_from_checkpoint()` (used by `/stream` on `fork_from`) |
 | Namespace-cache release | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` — drops the per-`run_id` namespace cache only; never deletes Postgres |
 | Payload-mode decision + thread allocation | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `_run()` (delta_resume / delta_fork / full_seed), `create_inference_run_record(mode=...)` |
 | Committed-ancestor lookup | [src/dialogue_bridge/utils/inference.py](../../src/dialogue_bridge/utils/inference.py) | `nearest_committed_ai()`, `prepare_inference_history()` |

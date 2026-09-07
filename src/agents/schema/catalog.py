@@ -36,7 +36,7 @@ class AgentDefinition:
     factory: Optional[Callable[..., Any]] = None
     # The parsed AgentSpec for declarative (YAML) agents; None for Python-class
     # agents. Kept opaque (Any) so this DTO module stays decoupled from
-    # runtime.abstractions. Used to compute the agent's declared tool set for the
+    # harness.abstractions. Used to compute the agent's declared tool set for the
     # per-agent tools endpoint.
     spec: Optional[Any] = None
 

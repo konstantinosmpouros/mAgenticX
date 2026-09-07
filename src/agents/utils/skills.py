@@ -2,7 +2,7 @@
 
 The global registry lives on a mounted volume at
 ``$SKILLS_REGISTRY_GLOBAL_ROOT`` and is indexed by ``manifest.json``
-regenerated on agents-service boot (see ``runtime.skill_registry``). This
+regenerated on agents-service boot (see ``harness.skill_registry``). This
 module exposes:
 
 - ``list_registry_skills()`` — the catalogue served by ``GET /skills`` to
@@ -27,13 +27,13 @@ from pathlib import Path
 from typing import List
 
 from core.logging import get_logger
-from runtime.filesystem import layout
-from runtime.filesystem import (
+from harness.filesystem import layout
+from harness.filesystem import (
     disable_skill as _disable_skill_fs,
     ensure_user_agent_filesystem,
     list_enabled_skills as _list_enabled_skills_fs,
 )
-from runtime.skill_registry import (
+from harness.skill_registry import (
     assign_user_skill_to_agent as _assign_user_skill_to_agent,
     get_global_manifest,
 )

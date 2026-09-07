@@ -1,6 +1,6 @@
 # Agents Service — Complete Reference (Replication Guide)
 
-This is an exhaustive, replicate-from-scratch reference for the **`agents`** service (`src/agents/`) — the inference and orchestration layer of mAgenticX. It is written so you can lift the whole service into another project and modify it with full understanding of every moving part. Everything here reflects the **current shipped code**, not the checked-in `README.md`, which is stale in several places (it claims in-memory checkpointing when the service now runs a durable `AsyncPostgresSaver`; it points at `runtime/protocols/agui/` when the real path is `runtime/agui/`; it lists 4 endpoints when there are 24 across 7 routers; and it describes co-located `AGENT.md`/`skills/` files for deep agents when those are actually runtime *virtual mounts*).
+This is an exhaustive, replicate-from-scratch reference for the **`agents`** service (`src/agents/`) — the inference and orchestration layer of mAgenticX. It is written so you can lift the whole service into another project and modify it with full understanding of every moving part. Everything here reflects the **current shipped code**, not the checked-in `README.md`, which is stale in several places (it claims in-memory checkpointing when the service now runs a durable `AsyncPostgresSaver`; it points at `runtime/protocols/agui/` when the real path is `harness/agui/`; it lists 4 endpoints when there are 24 across 7 routers; and it describes co-located `AGENT.md`/`skills/` files for deep agents when those are actually runtime *virtual mounts*).
 
 **Stack:** Python 3.12 · FastAPI `0.135.3` · uvicorn `0.32.0` · LangGraph `1.2.5` · LangChain `1.3.9` · deepagents `0.6.10` · port **8003** · runs as non-root `1000:1000`.
 
@@ -149,12 +149,12 @@ src/agents/
 2. `seed_global_registry()` — copy the in-image skills seed (`/opt/skills_registry_seed`) into the mounted global volume (`cp -rn` semantics; existing folders win).
 3. `rebuild_global_manifest()` — scan the global registry → write `manifest.json`.
 4. `reconcile_all_user_manifests()` — heal each user's manifest vs disk.
-5. `await init_durable_checkpointer(app)` (`runtime/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
-6. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `runtime/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
+5. `await init_durable_checkpointer(app)` (`harness/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
+6. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `harness/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
 7. `yield`.
 8. Shutdown: cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
 
-**Durable checkpointer init** — `init_durable_checkpointer` (`runtime/checkpointer/bootstrap.py`), heavy deps imported lazily:
+**Durable checkpointer init** — `init_durable_checkpointer` (`harness/checkpointer/bootstrap.py`), heavy deps imported lazily:
 - `_ensure_checkpointer_database(conninfo)` (same module) — idempotently `CREATE DATABASE agent_runtime` via the `postgres` maintenance DB (returns early for empty/`postgres` target; **10 retries, 2s apart** on `OperationalError`; race-safe against `DuplicateDatabase`). Needed because `POSTGRES_DB` bootstraps only one DB and `setup()` creates tables, not the database.
 - Mirrors `LANGGRAPH_STRICT_MSGPACK` into `os.environ` (the lib reads it from env).
 - Opens `AsyncConnectionPool(conninfo=…, min/max/idle/timeout from settings, open=False, check=AsyncConnectionPool.check_connection)` with `conn_kwargs={autocommit:True, row_factory:dict_row, prepare_threshold:None, keepalives:1, keepalives_idle:300, keepalives_interval:30, keepalives_count:3}` (pgbouncer-safe), then `pool.open()` + `pool.wait()`. Stored at `app.state.checkpointer_pool`. The `check=` checkout health-check plus TCP keepalives exist because the Swarm overlay on Dennis drops TCP flows idle ~15 min — without them the `min_size` baseline connections go half-dead overnight and the first morning checkpoint op fails once with `SSL SYSCALL error: EOF detected`.
@@ -168,7 +168,7 @@ src/agents/
 
 **Routers** (`main.py:222-228`) — 7 routers included **with no prefix and no tags**, so paths in each router file are final: `catalog`, `embeddings`, `generation`, `inference`, `memories`, `skills`, `voice`.
 
-**Checkpointer accessor** — `runtime/checkpointer/store.py` holds the module-global saver; `get_checkpointer()` raises if unset, `has_checkpointer_initialized()` is a cheap probe. Kept separate from `main` so agent classes never import `main` (avoids a cycle); typed `Any` so importing it doesn't pull the heavy libs.
+**Checkpointer accessor** — `harness/checkpointer/store.py` holds the module-global saver; `get_checkpointer()` raises if unset, `has_checkpointer_initialized()` is a cheap probe. Kept separate from `main` so agent classes never import `main` (avoids a cycle); typed `Any` so importing it doesn't pull the heavy libs.
 
 ---
 
@@ -277,32 +277,32 @@ Every endpoint below carries `dependencies=[Depends(require_internal_caller)]` (
 
 Every `/stream` and `/resume` builds a **fresh** agent instance; the only shared state is the process-wide durable saver and two module-level caches.
 
-### `BaseAgent` (`runtime/abstractions/base_agent.py`)
+### `BaseAgent` (`harness/abstractions/base_agent.py`)
 Not abstract; shared plumbing. `AgentType = Literal["deep agent","langgraph agent"]`.
 
 Class identity attributes (overridden by subclasses as plain class attrs): `name` (slug — registry key + URL), `agent_id`, `label`, `version`, `type`, `description`, `icon`.
 
-`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), **empty `config_tools`/`config_tool_names`** (no longer seeded from a request tool list — that global model is retired; a deep agent resolves its own tools from `agent.yaml` minus `tool_prefs.json` disables), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True), `personalization` (parsed fail-closed from `context.personalization` by `runtime/personalization.py` — unknown preset → `default`, text re-sanitized + re-capped).
+`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), **empty `config_tools`/`config_tool_names`** (no longer seeded from a request tool list — that global model is retired; a deep agent resolves its own tools from `agent.yaml` minus `tool_prefs.json` disables), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True), `personalization` (parsed fail-closed from `context.personalization` by `harness/personalization.py` — unknown preset → `default`, text re-sanitized + re-capped).
 
 - `manifest()` (classmethod) → the registry dict; reads class attrs only (no instantiation).
 - `attach_tools(live_tools)` → `_apply_live_tools(_filter_live_tools(...))`. `_filter_live_tools` keeps only live tools whose cache-key is in the agent's resolved set (declared − disabled); logs `agent_tools_missing`/`agent_tools_resolved`.
 - Config validation (`_validate_*`) — **`context` must have non-empty `user_id` AND `conversation_id`** (the invariant deep-agent filesystem provisioning relies on).
 - `_encode_run_error(exc)` → the `RUN_ERROR` SSE frame (a raw frame, **not** an AG-UI event).
 
-### `LangGraphAgent(BaseAgent, ABC)` (`runtime/abstractions/langgraph_agent.py`)
+### `LangGraphAgent(BaseAgent, ABC)` (`harness/abstractions/langgraph_agent.py`)
 `stream_mode = "custom"` — nodes push AG-UI bytes directly through the LangGraph StreamWriter. Abstract hooks: `register_agents()` (LLM chains → `self.agents`), `register_nodes()` (callables → `self.nodes`), `register_graph_nodes(graph)`, `register_graph_edges(graph)`.
 
 - `build()` — if no preset saver, `InMemorySaver()`; register agents+nodes; `StateGraph(self.state)` → add nodes → add edges → `compile(checkpointer=self.memory_saver)`. Degenerate case (no state, no nodes) → `self.graph = self.agents` (bare runnable).
 - `ensure_built()` — binds the **shared durable saver** (`get_checkpointer()`) when a `thread_id` exists, else the ephemeral `InMemorySaver`.
 - `astream(payload, *, command=None)` — `graph.astream(command or payload, config=self.run_config, stream_mode="custom")`; str/bytes chunks pass through, structured chunks → `agui_normalizer.handle_chunk`; disconnect → silent, other exception → `RUN_ERROR` frame.
 
-### `DeepAgent(BaseAgent, ABC)` (`runtime/abstractions/deep_agent.py`)
+### `DeepAgent(BaseAgent, ABC)` (`harness/abstractions/deep_agent.py`)
 `stream_mode = ["messages","updates"]`, `type = "deep agent"`. Wraps deepagents' `create_deep_agent`. Concrete agents implement only `register_agent()`.
 
 - `RESERVED_DEEPAGENT_TOOL_NAMES` = `{write_todos, ls, read_file, write_file, edit_file, glob, grep, execute, task, remember}` — stripped from attached MCP tools (`_apply_live_tools` override).
 - `_impl_dir` = the concrete subclass's directory (asset discovery root).
 - Lifecycle hooks run in order in `ensure_built()`: `load_skills()` → `["/skills/"]`; `load_memory()` → None; `load_agent_md()` → `["/memories/AGENTS.md"]` (or `[]` if memory off); `register_subagents()`; **`register_agent()`** (abstract, last).
-- `build_deep_agent(model, system_prompt, subagents, interrupt_on, middleware)` — the base assembler: builds the CompositeBackend factory, composes middleware (`ToolErrorMiddleware` + tuned summarizer; force-guaranteed on main + each subagent; stock summarizer excluded), appends the personalization block (`runtime/personalization.build_personalization_prompt`, empty when no effective personalization) then `_MEMORY_SYSTEM_PROMPT` when memory on — final prompt order: static instructions → personalization → memory — then `create_deep_agent(model, name, tools=self.tools+self._builtin_tools(), system_prompt, subagents, interrupt_on, middleware, memory=self.agent_md_paths, skills=self.skills_paths, backend, permissions=WORKSPACE_WRITE_DENY, context_schema, checkpointer, store=None)`. Personalization applies to the **main agent only**, never sub-agents.
+- `build_deep_agent(model, system_prompt, subagents, interrupt_on, middleware)` — the base assembler: builds the CompositeBackend factory, composes middleware (`ToolErrorMiddleware` + tuned summarizer; force-guaranteed on main + each subagent; stock summarizer excluded), appends the personalization block (`harness/personalization.build_personalization_prompt`, empty when no effective personalization) then `_MEMORY_SYSTEM_PROMPT` when memory on — final prompt order: static instructions → personalization → memory — then `create_deep_agent(model, name, tools=self.tools+self._builtin_tools(), system_prompt, subagents, interrupt_on, middleware, memory=self.agent_md_paths, skills=self.skills_paths, backend, permissions=WORKSPACE_WRITE_DENY, context_schema, checkpointer, store=None)`. Personalization applies to the **main agent only**, never sub-agents.
 - `_builtin_tools()` — `remember` (when `use_memory`) + `search_past_conversations` (opt-in via `context.search_past_convs`) + `present_artifact` (when a `conversation_id` exists) + `create_skill` (ungated, but approval-gated by default via `native_hitl_defaults()`); `[]` if no `user_id`.
 - `astream(...)` — `stream_mode=["messages","updates"]`, **`subgraphs=True`** (surfaces nested sub-agent events).
 
@@ -333,7 +333,7 @@ Two halves: the **emitter** (event object → SSE bytes) and the **normalizer** 
 
 **Custom events** (`EventType.CUSTOM`, `name` + `value`): `PLAN_SNAPSHOT` (from `write_todos`), `TASK_SUBAGENT` (from `task`), `SUBAGENT_EVENT` (wraps a nested normalized event), `BEFORE_AGENT_EVENT`, `TOKEN_USAGE` (from `usage_metadata`), `HITL_INTERRUPT` (from `__interrupt__`), `CHECKPOINT_COMMITTED` (terminal, namespace forced `None`, emitted by the router not the normalizer).
 
-**`AGUIStreamNormalizer`** (`runtime/agui/normalizer.py`) — contract: `messages` mode → assistant text + tool-result messages only; `updates` mode → tool intent, plans, sub-agents, interrupts. Policies: `__interrupt__`→HITL only; `write_todos`→plan snapshot only; `task`→sub-agent event only; other tools→full `start/args/result/end` (result matched later from the `ToolMessage`). Module-global `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`) persists sub-agent namespace↔task bindings across a run's legs so a HITL resume keeps the same UI block; released at run end unless paused. Drops summarization-internal LLM tokens so compaction never renders as a reply.
+**`AGUIStreamNormalizer`** (`harness/agui/normalizer.py`) — contract: `messages` mode → assistant text + tool-result messages only; `updates` mode → tool intent, plans, sub-agents, interrupts. Policies: `__interrupt__`→HITL only; `write_todos`→plan snapshot only; `task`→sub-agent event only; other tools→full `start/args/result/end` (result matched later from the `ToolMessage`). Module-global `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`) persists sub-agent namespace↔task bindings across a run's legs so a HITL resume keeps the same UI block; released at run end unless paused. Drops summarization-internal LLM tokens so compaction never renders as a reply.
 
 ---
 
@@ -421,7 +421,7 @@ flowchart TD
 
 **Durable saver** — a single process-wide `AsyncPostgresSaver` over a long-lived pool on the separate `agent_runtime` DB, built in the lifespan (§3). Bound per agent in `ensure_built()` when a `thread_id` exists (else an ephemeral in-memory saver); the thread is selected per request via `run_config.configurable.thread_id`. **Threads persist indefinitely (no TTL)** — deleted only via the reap endpoint on conversation delete.
 
-**Copy-on-fork** — `seed_thread_from_checkpoint(graph, source_thread_id, source_checkpoint_id, target_thread_id)` (`runtime/checkpointer/fork.py`): edit/retry makes a new `thread_id`; before running the delta, it reads the parent snapshot (`aget_state`) and seeds the empty target via `aupdate_state` (channel reducers merge → exact single-checkpoint copy). Idempotent; degrades to an empty thread on failure (never crashes). Called from `/stream` only, after `ensure_built()`.
+**Copy-on-fork** — `seed_thread_from_checkpoint(graph, source_thread_id, source_checkpoint_id, target_thread_id)` (`harness/checkpointer/fork.py`): edit/retry makes a new `thread_id`; before running the delta, it reads the parent snapshot (`aget_state`) and seeds the empty target via `aupdate_state` (channel reducers merge → exact single-checkpoint copy). Idempotent; degrades to an empty thread on failure (never crashes). Called from `/stream` only, after `ensure_built()`.
 
 **Release** — `release_checkpoint_unless_paused(agent, run_id)` (in the `finally` of both SSE endpoints): probes `aget_state(...).interrupts`; if parked on a HITL interrupt, keeps the RAM namespace bindings (for a later `/resume`), else `release_namespace_bindings(run_id)`. **Durable checkpoint never deleted here.**
 
@@ -431,7 +431,7 @@ flowchart TD
 
 ## 13. Filesystem / workspace model
 
-Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. On-disk tree under `MAGENTICX_WORKSPACES_ROOT` (all paths come from `runtime/filesystem/layout.py`, the single path authority):
+Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. On-disk tree under `MAGENTICX_WORKSPACES_ROOT` (all paths come from `harness/filesystem/layout.py`, the single path authority):
 ```
 <workspaces_root>/users/<user_id>/
 ├── skills/                      the user's skill pool (not mounted)

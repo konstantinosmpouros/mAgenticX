@@ -4,7 +4,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 # Personality presets recognised by the agents service (its registry lives in
-# agents `runtime/personalization.py`). Kept in lockstep manually; the agents
+# agents `harness/personalization.py`). Kept in lockstep manually; the agents
 # side is fail-closed, so an id it doesn't know collapses to "default" there
 # instead of erroring — drift degrades gracefully.
 PERSONALITY_IDS = frozenset(

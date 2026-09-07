@@ -23,7 +23,7 @@ The existing token counts are the correct basis for billing estimates: each assi
 
 ## 2. Current state
 
-The agents service emits one `TOKEN_USAGE` custom event for every settled `AIMessage`, including sub-agent messages. [`TokenUsageEvent`](../../src/agents/runtime/agui/events.py) carries input, output, total, cached-input details, reasoning details, and `message_id`; [`normalizer.py`](../../src/agents/runtime/agui/normalizer.py) reads those values from `AIMessage.usage_metadata`.
+The agents service emits one `TOKEN_USAGE` custom event for every settled `AIMessage`, including sub-agent messages. [`TokenUsageEvent`](../../src/agents/harness/agui/events.py) carries input, output, total, cached-input details, reasoning details, and `message_id`; [`normalizer.py`](../../src/agents/harness/agui/normalizer.py) reads those values from `AIMessage.usage_metadata`.
 
 The bridge's [`InferenceRunRuntime._accumulate_usage`](../../src/dialogue_bridge/utils/inference_runs.py) deduplicates events by `message_id` and sums input/output tokens for the complete turn. [`MessageTable`](../../src/dialogue_bridge/core/database/models.py) persists those totals in `input_tokens` and `output_tokens`. This deliberately includes every main-agent and sub-agent model call and is therefore suitable for cost accounting.
 
@@ -188,9 +188,9 @@ Create `docs/flows/token-usage-and-cost.md` as the owner of token collection, pr
 | Upstream visual | `https://elements.ai-sdk.dev/components/context` |
 | Adapted component | `src/agentic_ui/src/shared/ui/ai-elements/context.tsx` *(new)* |
 | HoverCard primitive | `src/agentic_ui/src/shared/ui/hover-card.tsx` *(new)* |
-| Pricing registry | `src/agents/runtime/models/pricing.py` *(new)* |
-| Token event | [`src/agents/runtime/agui/events.py`](../../src/agents/runtime/agui/events.py) |
-| Cost emission | [`src/agents/runtime/agui/normalizer.py`](../../src/agents/runtime/agui/normalizer.py) and [`emitter.py`](../../src/agents/runtime/agui/emitter.py) |
+| Pricing registry | `src/agents/harness/models/pricing.py` *(new)* |
+| Token event | [`src/agents/harness/agui/events.py`](../../src/agents/harness/agui/events.py) |
+| Cost emission | [`src/agents/harness/agui/normalizer.py`](../../src/agents/harness/agui/normalizer.py) and [`emitter.py`](../../src/agents/harness/agui/emitter.py) |
 | Bridge accumulator | [`src/dialogue_bridge/utils/inference_runs.py`](../../src/dialogue_bridge/utils/inference_runs.py) |
 | Message columns | [`src/dialogue_bridge/core/database/models.py`](../../src/dialogue_bridge/core/database/models.py) |
 | Message schema | [`src/dialogue_bridge/schema/messages.py`](../../src/dialogue_bridge/schema/messages.py) |

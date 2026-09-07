@@ -72,7 +72,7 @@ services:
     volumes:
       # The whole agents filesystem: global plane (agent definitions + skills
       # catalogue) and one workspace per user (pool, custom agents, per-agent
-      # memory, tool prefs, conversation files). See runtime/filesystem/layout.py.
+      # memory, tool prefs, conversation files). See harness/filesystem/layout.py.
       - magenticx_data:/var/magenticx
     depends_on:
       - rag_service

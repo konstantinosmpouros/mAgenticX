@@ -16,7 +16,7 @@ and can never be disabled. So they are never listed and never toggle-able —
 ``DeepAgent._apply_tool_disables`` also refuses to drop any native key.
 
 Effective set the runtime builds: ``(declared_mcp ∪ enabled) − disabled`` — the
-two override sets in ``runtime.filesystem.tool_prefs``, consumed by
+two override sets in ``harness.filesystem.tool_prefs``, consumed by
 ``YamlDeepAgent`` (enabled → ``config_tool_names``) and
 ``DeepAgent._apply_tool_disables`` (disabled). Tool identity is the canonical
 cache key so a toggle here removes/adds exactly the right live tool there.
@@ -28,8 +28,8 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Set
 
 from core.logging import get_logger
-from runtime.filesystem.tool_prefs import read_tool_prefs, write_tool_prefs
-from runtime.tools.registry import native_catalog
+from harness.filesystem.tool_prefs import read_tool_prefs, write_tool_prefs
+from harness.tools.registry import native_catalog
 from schema import AgentToolRow
 from utils.agents import resolve_agent_definition
 from utils.mcp_tools import build_tool_cache_key, get_cached_tool_manifests_map

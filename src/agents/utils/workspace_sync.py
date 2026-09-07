@@ -34,15 +34,15 @@ from core.logging import get_logger
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.settings import settings
-from runtime.abstractions import AgentSpec
-from runtime.abstractions.user_agents import (
+from harness.abstractions import AgentSpec
+from harness.abstractions.user_agents import (
     delete_user_agent,
     get_user_agent,
     list_user_agents,
     write_user_agent,
 )
-from runtime.filesystem import layout
-from runtime.skill_registry.user_registry import (
+from harness.filesystem import layout
+from harness.skill_registry.user_registry import (
     add_custom_to_user,
     add_global_to_user,
     assign_user_skill_to_agent,
