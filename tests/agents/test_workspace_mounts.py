@@ -1,7 +1,7 @@
 """Mount-table invariants for a deep agent's workspace filesystem.
 
 The agent's only view of disk is the ``CompositeBackend`` assembled in
-``runtime.filesystem.workspace``, so these tests pin two things that are easy to
+``harness.filesystem.workspace``, so these tests pin two things that are easy to
 break silently:
 
 * a route that is *supposed* to exist actually resolves to the directory it
@@ -19,7 +19,7 @@ import pytest
 
 @pytest.fixture()
 def workspace(agents_service):
-    return importlib.import_module("runtime.filesystem.workspace")
+    return importlib.import_module("harness.filesystem.workspace")
 
 
 def _backend(workspace, *, reference_dir=None, default_skills_dir=None):

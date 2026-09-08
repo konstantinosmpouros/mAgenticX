@@ -110,7 +110,7 @@ When `MCP_MANIFEST_CACHE_ENABLED=true` and the cache is already populated, a `GE
 Every inference stream request opens a fresh MCP session, but **which** tools attach is decided by the agent itself, not by the request. The old model — where the client computed an `enabledTools` list and the bridge forwarded it as `config["tools"]` — is retired. `BaseAgent.__init__` no longer seeds its tool filter from the request config; `config_tools` / `config_tool_names` default empty. Instead:
 
 - A **deep agent declares its tools per agent** in its `agent.yaml` `tools:` list (native + MCP). A `YamlDeepAgent` resolves that declared set from its spec at build time.
-- A user **disables specific tools per (user, agent)** in Settings → Agents. That disabled set is persisted server-side in a `tool_prefs.json` at the agent's root (`runtime/filesystem/tool_prefs.py`). The agent's **effective tool set = declared − disabled** (`_apply_tool_disables`).
+- A user **disables specific tools per (user, agent)** in Settings → Agents. That disabled set is persisted server-side in a `tool_prefs.json` at the agent's root (`harness/filesystem/tool_prefs.py`). The agent's **effective tool set = declared − disabled** (`_apply_tool_disables`).
 
 ```mermaid
 flowchart TD
@@ -368,14 +368,14 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | MCP tool cache & manifest | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`, `list_mcp_tools()`, `_prime_manifest_cache()` |
 | MCP session per request | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `mcp_session_context()`, `load_mcp_tools()` |
 | Tool server ID overrides | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
-| Agent base (tool filtering) | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
-| Per-(user, agent) tool disables | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
-| LangGraph agent build & stream | [src/agents/runtime/abstractions/langgraph_agent.py](../../src/agents/runtime/abstractions/langgraph_agent.py) | `build()`, `astream()` |
-| Deep agent build lifecycle | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
-| Tool call lifecycle events | [src/agents/runtime/protocols/agui/emitter.py](../../src/agents/runtime/protocols/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
-| Stream normalization & routing | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
-| Special tool handling | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |
-| HITL, plan, sub-agent event models | [src/agents/runtime/protocols/agui/events.py](../../src/agents/runtime/protocols/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
+| Agent base (tool filtering) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
+| Per-(user, agent) tool disables | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
+| LangGraph agent build & stream | [src/agents/harness/abstractions/langgraph_agent.py](../../src/agents/harness/abstractions/langgraph_agent.py) | `build()`, `astream()` |
+| Deep agent build lifecycle | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
+| Tool call lifecycle events | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
+| Stream normalization & routing | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
+| Special tool handling | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |
+| HITL, plan, sub-agent event models | [src/agents/harness/agui/events.py](../../src/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
 | Agent stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{agent_slug}/stream` |
 | Agent catalog endpoints | [src/agents/main.py](../../src/agents/main.py) | `GET /agents`, `GET /tools` |
 | Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `inference_run_websocket()`, `cancelInferenceRun()` |

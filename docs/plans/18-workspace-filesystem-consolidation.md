@@ -38,9 +38,9 @@ Nothing is mounted at `/var/magenticx` in either `docker-compose.yaml` or `docke
 
 **A user's data is split across two trees.** The pool lives at `skills_registry/users/<user_id>/` (`manifest.json` + `custom/<skill>/`), while the runtime tree lives at `filesystem/<user_id>/agents/<slug>/` (`memory/`, `skills/`, `tool_prefs.json`, `<conversation_id>/`) — different volumes, no shared parent, so "delete everything for this user" is two operations on two mounts.
 
-**Conversation dirs are direct children of the agent root**, which forces [`retention.py`](../../src/agents/runtime/filesystem/retention.py) to carry `_NON_CONVERSATION_DIRS = {"memory", "skills"}` and skip by name while iterating agent-root children. Every new directory sibling has to be added to that set or it is treated as a conversation. `tool_prefs.json` escapes only because it is a file.
+**Conversation dirs are direct children of the agent root**, which forces [`retention.py`](../../src/agents/harness/filesystem/retention.py) to carry `_NON_CONVERSATION_DIRS = {"memory", "skills"}` and skip by name while iterating agent-root children. Every new directory sibling has to be added to that set or it is treated as a conversation. `tool_prefs.json` escapes only because it is a file.
 
-**Default skills are not mounted.** [`deep_agent.load_skills()`](../../src/agents/runtime/abstractions/deep_agent.py) returns `["/skills/"]` — the per-`(user, agent)` directory — and nothing else, even though the class docstring advertises `<impl_dir>/skills/` auto-discovery. `agent.yaml` carries a `skills:` list and the seeded omni ships `skills: []`, so the *convention* exists with no runtime behind it. Critically, `create_deep_agent(skills=[...])` already accepts a **list**, so a second root needs no upstream change.
+**Default skills are not mounted.** [`deep_agent.load_skills()`](../../src/agents/harness/abstractions/deep_agent.py) returns `["/skills/"]` — the per-`(user, agent)` directory — and nothing else, even though the class docstring advertises `<impl_dir>/skills/` auto-discovery. `agent.yaml` carries a `skills:` list and the seeded omni ships `skills: []`, so the *convention* exists with no runtime behind it. Critically, `create_deep_agent(skills=[...])` already accepts a **list**, so a second root needs no upstream change.
 
 **Enabling a skill copies it.** `assign_user_skill_to_agent` → `shutil.copytree`, sourcing from the global catalogue for `type="global"` entries and from `users/<u>/custom/` for `type="custom"`. Directory presence is the enabled record; there is no DB mirror.
 
@@ -163,7 +163,7 @@ Add `magenticx_data:/var/magenticx` to the agents service in both compose files 
 *Acceptance:* a file written under `/var/magenticx/workspaces/` survives `up -d --build --no-deps agents`; on the second start `agents_global_seed_completed` reports `skipped=[…]` rather than `copied=[…]`, proving the global plane is now persistent.
 
 **Phase 1 — One path authority, no data moved.**
-Introduce `runtime/filesystem/layout.py` as the single owner of every path, deriving all roots from `global_root` / `workspaces_root`, behind `FILESYSTEM_LAYOUT=legacy|workspace` defaulting to **legacy**. Route every caller (`provisioner`, `user_registry`, `seed_global_registry`, `agent_seed`, `workspace`, `retention`) through it. No behaviour change.
+Introduce `harness/filesystem/layout.py` as the single owner of every path, deriving all roots from `global_root` / `workspaces_root`, behind `FILESYSTEM_LAYOUT=legacy|workspace` defaulting to **legacy**. Route every caller (`provisioner`, `user_registry`, `seed_global_registry`, `agent_seed`, `workspace`, `retention`) through it. No behaviour change.
 *Acceptance:* with the flag `legacy`, every existing agents test passes untouched; table-driven tests assert both mappings for all path helpers; no module outside `layout.py` references a root setting directly.
 
 **Phase 2 — The migrator.**
@@ -222,15 +222,15 @@ Flip the flag default to `workspace`; after a stability window, remove the three
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Roots to collapse | [core/settings.py](../../src/agents/core/settings.py) | `FilesystemSettings` — five roots today |
-| New path authority | `src/agents/runtime/filesystem/layout.py` *(new)* | every root + helper, behind the layout flag |
-| Path helpers to re-root | [runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `user_root`, `agent_root`, `memory_root`, `skills_root`, `conversation_root`, `_safe_segment` |
-| Mount routes | [runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `CompositeBackend` routes + `WORKSPACE_WRITE_DENY` |
-| Skill roots exposed to the agent | [runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `load_skills()` (returns one route today), `skills_paths` |
-| Pool + enable/copy | [runtime/skill_registry/user_registry.py](../../src/agents/runtime/skill_registry/user_registry.py) | `resolve_skill_path`, `_enable_skill_for_agent`, `reconcile_user_manifest` |
-| Catalogue seeding | [runtime/skill_registry/seed_global_registry.py](../../src/agents/runtime/skill_registry/seed_global_registry.py) | seed target root |
-| Agent seeding | [runtime/abstractions/agent_seed.py](../../src/agents/runtime/abstractions/agent_seed.py) | `seed_global_agents` (no-clobber) |
-| Retention scan | [runtime/filesystem/retention.py](../../src/agents/runtime/filesystem/retention.py) | `_NON_CONVERSATION_DIRS`, `_iter_scope_dirs` |
-| Migrator | `src/agents/runtime/filesystem/migrate_layout.py` *(new)* | copy→verify→mark, dry-run, per-user marker |
+| New path authority | `src/agents/harness/filesystem/layout.py` *(new)* | every root + helper, behind the layout flag |
+| Path helpers to re-root | [harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) | `user_root`, `agent_root`, `memory_root`, `skills_root`, `conversation_root`, `_safe_segment` |
+| Mount routes | [harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) | `CompositeBackend` routes + `WORKSPACE_WRITE_DENY` |
+| Skill roots exposed to the agent | [harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `load_skills()` (returns one route today), `skills_paths` |
+| Pool + enable/copy | [harness/skill_registry/user_registry.py](../../src/agents/harness/skill_registry/user_registry.py) | `resolve_skill_path`, `_enable_skill_for_agent`, `reconcile_user_manifest` |
+| Catalogue seeding | [harness/skill_registry/seed_global_registry.py](../../src/agents/harness/skill_registry/seed_global_registry.py) | seed target root |
+| Agent seeding | [harness/abstractions/agent_seed.py](../../src/agents/harness/abstractions/agent_seed.py) | `seed_global_agents` (no-clobber) |
+| Retention scan | [harness/filesystem/retention.py](../../src/agents/harness/filesystem/retention.py) | `_NON_CONVERSATION_DIRS`, `_iter_scope_dirs` |
+| Migrator | `src/agents/harness/filesystem/migrate_layout.py` *(new)* | copy→verify→mark, dry-run, per-user marker |
 | Volumes | [src/docker-compose.yaml](../../src/docker-compose.yaml) · [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) | agents `volumes:` + top-level declarations |
 | Dir creation / ownership | [src/agents/Dockerfile](../../src/agents/Dockerfile) | `mkdir -p` + `chown 1000:1000` |
 | Skills UI | [features/settings/components/profile_parts/](../../src/agentic_ui/src/features/settings/components/profile_parts/) | the Skills surface — add the locked "From the agent" group |

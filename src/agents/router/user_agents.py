@@ -1,6 +1,6 @@
 """User-authored agent endpoints (the agent builder's backend).
 
-Thin handlers over ``runtime.abstractions.user_agents``: list, read, validate,
+Thin handlers over ``harness.abstractions.user_agents``: list, read, validate,
 write and delete the agent definitions in one user's workspace. Internal-caller
 only — the bridge proxies these and owns the session/CSRF checks, exactly like
 the per-user skill endpoints.
@@ -14,14 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from core.security.internal_trust import require_internal_caller
 from core.settings import settings
 from core.logging import get_logger
-from runtime.abstractions.user_agents import (
+from harness.abstractions.user_agents import (
     delete_user_agent,
     get_user_agent,
     list_user_agents,
     validate_write,
     write_user_agent,
 )
-from runtime.skill_registry.user_registry import list_user_skill_names
+from harness.skill_registry.user_registry import list_user_skill_names
 from schema import (
     CustomAgentValidation,
     CustomAgentWrite,

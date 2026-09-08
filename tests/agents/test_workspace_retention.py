@@ -61,7 +61,7 @@ def _retention(agents_service, tmp_root: Path, *, input_ttl=72, output_ttl=168):
     fs.workspaces_root = tmp_root
     fs.input_ttl_hours = input_ttl
     fs.output_ttl_hours = output_ttl
-    return importlib.import_module("runtime.filesystem.retention")
+    return importlib.import_module("harness.filesystem.retention")
 
 
 def test_sweep_deletes_only_expired_cache_files(agents_service, tmp_path):

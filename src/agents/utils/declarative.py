@@ -1,6 +1,6 @@
 """Helpers for declarative (YAML-defined) agents.
 
-Kept out of ``runtime/abstractions/`` so the *runtime* package holds only the
+Kept out of ``harness/abstractions/`` so the *runtime* package holds only the
 agent machinery itself (the spec model, the generic agent, the seeder, the
 authoring CRUD) while these shared helpers live with the service's other
 utilities, per the repo's layer convention:
@@ -12,9 +12,9 @@ utilities, per the repo's layer convention:
 
 **The dependency on ``AgentSpec`` is deliberately type-only.** ``utils/__init__``
 eagerly imports modules that reach into ``runtime`` (``checkpointer``,
-``skills``), and ``runtime.abstractions``'s own package init imports
+``skills``), and ``harness.abstractions``'s own package init imports
 ``yaml_agent``, which imports this module — so a real import of
-``runtime.abstractions.agent_spec`` here would make the resulting cycle
+``harness.abstractions.agent_spec`` here would make the resulting cycle
 order-dependent: whichever side is imported first wins, and the other raises
 ``ImportError`` on a half-initialised module. Under ``TYPE_CHECKING`` the edge
 exists for type checkers only, and there is no cycle to trip over at runtime.
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, see the module docstring
-    from runtime.abstractions.agent_spec import AgentSpec
+    from harness.abstractions.agent_spec import AgentSpec
 
 
 def read_prompt(value: str, source_dir: Path) -> str:

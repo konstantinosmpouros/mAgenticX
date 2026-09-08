@@ -49,7 +49,7 @@ Alembic head is `0016_retire_enabled_tools` ([migrations/versions/0016_retire_en
 
 ### 2.2 The agents-service filesystem is keyed `(user, agent, conversation)`
 
-[`runtime/filesystem/provisioner.py`](../../src/agents/runtime/filesystem/provisioner.py) is the single owner of every path. The layout it documents (provisioner.py:14-24) and builds:
+[`harness/filesystem/provisioner.py`](../../src/agents/harness/filesystem/provisioner.py) is the single owner of every path. The layout it documents (provisioner.py:14-24) and builds:
 
 ```text
 <user_root>/<user_id>/agents/<agent_slug>/
@@ -61,14 +61,14 @@ Alembic head is `0016_retire_enabled_tools` ([migrations/versions/0016_retire_en
     large_tool_results/ conversation_history/  ← deepagents offload (workspace.py:100-103)
 ```
 
-The helpers are `user_root` (provisioner.py:89-95), `memory_root` (98-105), `agent_root` (118-125), `skills_root` (128-130), `conversation_root` (133-140), and `ensure_user_agent_filesystem` (252-300). Mounts are assembled by `build_workspace_backend` ([runtime/filesystem/workspace.py:51-157](../../src/agents/runtime/filesystem/workspace.py), routes at workspace.py:128-154) with the write-deny ladder at workspace.py:42-48. The deep agent calls it with exactly three identity values — `user_id`, `agent_slug`, `conversation_id` ([runtime/abstractions/deep_agent.py:258-262](../../src/agents/runtime/abstractions/deep_agent.py)) — and `load_agent_md` (deep_agent.py:501-519) returns `["/memories/AGENTS.md"]` when memory is on.
+The helpers are `user_root` (provisioner.py:89-95), `memory_root` (98-105), `agent_root` (118-125), `skills_root` (128-130), `conversation_root` (133-140), and `ensure_user_agent_filesystem` (252-300). Mounts are assembled by `build_workspace_backend` ([harness/filesystem/workspace.py:51-157](../../src/agents/harness/filesystem/workspace.py), routes at workspace.py:128-154) with the write-deny ladder at workspace.py:42-48. The deep agent calls it with exactly three identity values — `user_id`, `agent_slug`, `conversation_id` ([harness/abstractions/deep_agent.py:258-262](../../src/agents/harness/abstractions/deep_agent.py)) — and `load_agent_md` (deep_agent.py:501-519) returns `["/memories/AGENTS.md"]` when memory is on.
 
-**The run context is a loose dict**, which is what makes threading a fourth key cheap: `Request.config` is `Dict[str, Any]` ([schemas.py:6-9](../../src/agents/schemas.py)), `self.context = self.config.get("context", {})` ([runtime/abstractions/base_agent.py:73](../../src/agents/runtime/abstractions/base_agent.py)), and `_validate_context_config` (base_agent.py:200-210) requires exactly `user_id` and `conversation_id` to be non-empty strings. Adding `workspace_id` is one entry in that required-key tuple.
+**The run context is a loose dict**, which is what makes threading a fourth key cheap: `Request.config` is `Dict[str, Any]` ([schemas.py:6-9](../../src/agents/schemas.py)), `self.context = self.config.get("context", {})` ([harness/abstractions/base_agent.py:73](../../src/agents/harness/abstractions/base_agent.py)), and `_validate_context_config` (base_agent.py:200-210) requires exactly `user_id` and `conversation_id` to be non-empty strings. Adding `workspace_id` is one entry in that required-key tuple.
 
 Two places hard-code the *shape* of the tree and will break silently if it deepens:
 
-- **`retention.py`** — `_iter_scope_dirs` ([runtime/filesystem/retention.py:70-105](../../src/agents/runtime/filesystem/retention.py)) walks `<root>/<user_id>/agents/<agent_slug>/<conversation_id>/{input,output}` with `scandir`, skipping `_NON_CONVERSATION_DIRS = {"memory", "skills"}` (retention.py:47). One extra path level and the sweep quietly stops finding anything.
-- **`user_registry.py`** — the per-user skill pool layout `$SKILLS_REGISTRY_USERS_ROOT/<user_id>/{manifest.json,custom/}` is documented and enforced at [user_registry.py:1-38](../../src/agents/runtime/skill_registry/user_registry.py), with `reconcile_user_manifest` healing drift at boot (called from [main.py:215](../../src/agents/main.py)).
+- **`retention.py`** — `_iter_scope_dirs` ([harness/filesystem/retention.py:70-105](../../src/agents/harness/filesystem/retention.py)) walks `<root>/<user_id>/agents/<agent_slug>/<conversation_id>/{input,output}` with `scandir`, skipping `_NON_CONVERSATION_DIRS = {"memory", "skills"}` (retention.py:47). One extra path level and the sweep quietly stops finding anything.
+- **`user_registry.py`** — the per-user skill pool layout `$SKILLS_REGISTRY_USERS_ROOT/<user_id>/{manifest.json,custom/}` is documented and enforced at [user_registry.py:1-38](../../src/agents/harness/skill_registry/user_registry.py), with `reconcile_user_manifest` healing drift at boot (called from [main.py:215](../../src/agents/main.py)).
 
 ### 2.3 The pending storage migration — the concrete gap
 
@@ -79,7 +79,7 @@ Two places hard-code the *shape* of the tree and will break silently if it deepe
 | `user_root` (settings.py:426-429, `AGENTS_FILESYSTEM_ROOT`) | `/var/agents/filesystem` | **live** — every provisioner path |
 | `skills_registry_global_root` (settings.py:434-437) | `/var/agents/skills_registry/global` | **live** |
 | `skills_registry_users_root` (settings.py:442-445) | `/var/agents/skills_registry/users` | **live** |
-| `global_root` (settings.py:455-458, `MAGENTICX_GLOBAL_ROOT`) | `/var/magenticx/global` | **partly live** — `_scan_yaml_agents` reads `<global_root>/agents` ([utils/agents.py:126](../../src/agents/utils/agents.py)) and `seed_global_agents` writes it ([runtime/abstractions/agent_seed.py:43](../../src/agents/runtime/abstractions/agent_seed.py)) |
+| `global_root` (settings.py:455-458, `MAGENTICX_GLOBAL_ROOT`) | `/var/magenticx/global` | **partly live** — `_scan_yaml_agents` reads `<global_root>/agents` ([utils/agents.py:126](../../src/agents/utils/agents.py)) and `seed_global_agents` writes it ([harness/abstractions/agent_seed.py:43](../../src/agents/harness/abstractions/agent_seed.py)) |
 | `workspaces_root` (settings.py:459-462, `MAGENTICX_WORKSPACES_ROOT`) | `/var/magenticx/workspaces` | **dead** — declared and referenced by nothing |
 
 The compose files confirm it. `src/docker-compose.yaml` sets `AGENTS_FILESYSTEM_ROOT` + both `SKILLS_REGISTRY_*` (compose:63-66) and mounts three named volumes (compose:72-75, declared at compose:210-214); `docker-compose-denis.yaml` mirrors it (env at :97-98, mounts at :128-130, declarations at :388-392). **Neither compose sets `MAGENTICX_*` or mounts anything at `/var/magenticx`.** The Dockerfile creates `/var/magenticx/{global,workspaces}` and chowns them to UID 1000 (`Dockerfile:40-42`), so the directories exist — inside the container's ephemeral layer. Consequences today:
@@ -89,7 +89,7 @@ The compose files confirm it. `src/docker-compose.yaml` sets `AGENTS_FILESYSTEM_
 
 ### 2.4 Memory, tools, and instructions are all one tier too shallow
 
-- **Memory** — `(user, agent)`. Store ops in [runtime/filesystem/memory.py](../../src/agents/runtime/filesystem/memory.py) (`list_memories` :68, `read_memory` :88, `delete_memory` :109, index row format `index_line`/`index_line_pattern` :31-43); cap `MEMORY_MAX_ENTRIES` = 60 (settings.py:481). Proxied to the UI through `router/memories.py` on both services ([agent-memory](../flows/agent-memory.md) has the endpoint table).
+- **Memory** — `(user, agent)`. Store ops in [harness/memory/store.py](../../src/agents/harness/memory/store.py) (`list_memories` :68, `read_memory` :88, `delete_memory` :109, index row format `index_line`/`index_line_pattern` :31-43); cap `MEMORY_MAX_ENTRIES` = 60 (settings.py:481). Proxied to the UI through `router/memories.py` on both services ([agent-memory](../flows/agent-memory.md) has the endpoint table).
 - **Tool prefs** — `(user, agent)`, stored at `<agent_root>/tool_prefs.json` (tool_prefs.py:44-45) with the effective set `(declared ∪ user_enabled) − user_disabled` (tool_prefs.py:13-19).
 - **Instructions** — one per user: `user_preferences.custom_instructions` (models.py:129-132), parsed into the run via `parse_personalization(self.context)` (base_agent.py:86).
 - **Skills** — `(user, agent)` by folder presence under `skills/` (provisioner.py:372-382), sourced from the user's pool.
@@ -294,7 +294,7 @@ The partial unique index on `is_default` and the one on `(owner_user_id, slug)` 
 
 ### 4.5 The filesystem migrator
 
-A separate one-shot module in the agents service (`runtime/filesystem/migrate_layout.py`), invoked from the lifespan before the reconciler, driven by the DB's default-workspace ids (fetched from the bridge over the internal-trust hop, or read from a bridge-provided map — it must not guess). Per user:
+A separate one-shot module in the agents service (`harness/filesystem/migrate_layout.py`), invoked from the lifespan before the reconciler, driven by the DB's default-workspace ids (fetched from the bridge over the internal-trust hop, or read from a bridge-provided map — it must not guess). Per user:
 
 ```text
 <legacy user_root>/<uid>/agents/<slug>/memory/     → <workspaces_root>/<uid>/<default_ws>/agents/<slug>/memory/
@@ -518,17 +518,17 @@ Types, contracts, api functions, store slices, the sidebar switcher, refetch-on-
 | Migration chain head | [src/dialogue_bridge/migrations/versions/0016_retire_enabled_tools.py](../../src/dialogue_bridge/migrations/versions/0016_retire_enabled_tools.py) | `revision`/`down_revision` 34-35 (this plan starts at `0020`, after plan 02's `0019`) |
 | Row-ownership dependencies | [src/dialogue_bridge/utils/validators.py](../../src/dialogue_bridge/utils/validators.py) | `validate_convId` 25-44, `validate_convId_full` 47-71 — the model for `validate_workspaceId` |
 | Scoped query sites | `src/dialogue_bridge/utils/` | `search.py:44,77,112` · `conversations.py:285` · `scheduled_tasks.py:328` · `suggestions.py:27` · `usage.py:67` · `attachments.py:99,312` |
-| **Every filesystem path** | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | Layout docblock 14-24; `_safe_segment` 70-86, `user_root` 89-95, `memory_root` 98-115, `agent_root` 118-125, `skills_root` 128-130, `conversation_root` 133-152, `ensure_user_agent_filesystem` 252-300, `seed_input_files` 303-350, `delete_conversation_files` 353-369, `list_enabled_skills` 372-382 |
-| Mount assembly + write-deny | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `WORKSPACE_WRITE_DENY` 42-48, `build_workspace_backend` 51-157, routes 128-154 |
-| Memory store ops | [src/agents/runtime/filesystem/memory.py](../../src/agents/runtime/filesystem/memory.py) | `index_line`/`index_line_pattern` 31-43, `list_memories` 68, `read_memory` 88, `delete_memory` 109 |
-| Retention walk (breaks on re-root) | [src/agents/runtime/filesystem/retention.py](../../src/agents/runtime/filesystem/retention.py) | `_NON_CONVERSATION_DIRS` 47, `_iter_scope_dirs` 70-105, `sweep_workspace_retention_once` 187 |
-| Per-(user, agent) tool prefs | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `_tool_prefs_path` 44-45, effective-set formula 13-19, `read_tool_prefs` 55-77 |
+| **Every filesystem path** | [src/agents/harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) | Layout docblock 14-24; `_safe_segment` 70-86, `user_root` 89-95, `memory_root` 98-115, `agent_root` 118-125, `skills_root` 128-130, `conversation_root` 133-152, `ensure_user_agent_filesystem` 252-300, `seed_input_files` 303-350, `delete_conversation_files` 353-369, `list_enabled_skills` 372-382 |
+| Mount assembly + write-deny | [src/agents/harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) | `WORKSPACE_WRITE_DENY` 42-48, `build_workspace_backend` 51-157, routes 128-154 |
+| Memory store ops | [src/agents/harness/memory/store.py](../../src/agents/harness/memory/store.py) | `index_line`/`index_line_pattern` 31-43, `list_memories` 68, `read_memory` 88, `delete_memory` 109 |
+| Retention walk (breaks on re-root) | [src/agents/harness/filesystem/retention.py](../../src/agents/harness/filesystem/retention.py) | `_NON_CONVERSATION_DIRS` 47, `_iter_scope_dirs` 70-105, `sweep_workspace_retention_once` 187 |
+| Per-(user, agent) tool prefs | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `_tool_prefs_path` 44-45, effective-set formula 13-19, `read_tool_prefs` 55-77 |
 | Filesystem roots (incl. the dead one) | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `user_root` 426-429, `skills_registry_*` 434-445, `global_root` 455-458, **`workspaces_root` 459-462 (unused)**, TTLs 502-506, `memory_max_entries` 481 |
-| Run context (needs `workspace_id`) | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) · [src/agents/schemas.py](../../src/agents/schemas.py) | `self.context` 73, `use_memory` 79, `personalization` 86, `_validate_context_config` 200-210 (required keys 205) · `Request` 6-9 |
-| Deep-agent wiring | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `_build_composite_backend` 245-262, `load_agent_md` 501-519, permissions applied 465 |
+| Run context (needs `workspace_id`) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) · [src/agents/schemas.py](../../src/agents/schemas.py) | `self.context` 73, `use_memory` 79, `personalization` 86, `_validate_context_config` 200-210 (required keys 205) · `Request` 6-9 |
+| Deep-agent wiring | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `_build_composite_backend` 245-262, `load_agent_md` 501-519, permissions applied 465 |
 | Boot sequence (migrator + reconciler slot) | [src/agents/main.py](../../src/agents/main.py) | `_lifespan` 202+, `reconcile_all_user_manifests` 215, `seed_global_agents` 218, `refresh_registry` 219 |
-| Global YAML agent seed + scan | [src/agents/runtime/abstractions/agent_seed.py](../../src/agents/runtime/abstractions/agent_seed.py) · [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `seed_global_agents` 35+ (target 43) · `_scan_yaml_agents` 78-115, called at 126 |
-| Per-user skill pool | [src/agents/runtime/skill_registry/user_registry.py](../../src/agents/runtime/skill_registry/user_registry.py) | Layout + reconciliation rules 1-38 |
+| Global YAML agent seed + scan | [src/agents/harness/abstractions/agent_seed.py](../../src/agents/harness/abstractions/agent_seed.py) · [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `seed_global_agents` 35+ (target 43) · `_scan_yaml_agents` 78-115, called at 126 |
+| Per-user skill pool | [src/agents/harness/skill_registry/user_registry.py](../../src/agents/harness/skill_registry/user_registry.py) | Layout + reconciliation rules 1-38 |
 | Volumes / roots to add | [src/docker-compose.yaml](../../src/docker-compose.yaml) · [src/docker-compose-denis.yaml](../../src/docker-compose-denis.yaml) · [src/agents/Dockerfile](../../src/agents/Dockerfile) | env 63-66 / 97-98, mounts 72-75 / 128-130, declarations 200-214 / 388-392 · `mkdir`+`chown` 40-42 (dirs exist, no volume behind them) |
 | Sidebar + switcher slot | `src/agentic_ui/src/features/chat/components/ChatSidebar.tsx` | props 51-91, header row 419-465 (`"Workspace"` subtitle 454, rail lead 427-431), list render 579, scroll 230-240, footer dropdown 783-923 |
 | Conversation fetch sites | `src/agentic_ui/src/features/chat/handlers/conversations.ts` · `features/auth/handlers/auth.ts` · `features/auth/hooks/useSessionEffects.ts` | load-more 223, archived 419, sort 109-112, archive/unarchive 334-338/362-366 · 78 · 210-214 |

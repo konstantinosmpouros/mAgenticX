@@ -48,8 +48,8 @@ remaining work named in its status.
 | 18 | [Workspace filesystem consolidation + two-tier skills](18-workspace-filesystem-consolidation.md) | derived (storage half of Projects/Workspaces) | Not started |
 | 19 | [Multi-account sign-in & switching](done/19-multi-account-switching.md) | New Features → multiple accounts per browser | **Delivered** |
 | 20 | [Agents tab UX/UI restructure](20-agents-tab-restructure.md) | Agentic UI | In progress (index + detail + builder shell shipped) |
-| 21 | [Persist user content in Postgres (agents · skills · memory)](21-persist-user-content-in-postgres.md) | derived (durability gap — see the draft state & storage map) | Partially done (A · agents, B · skills shipped; C · memory folded into 22) |
-| 22 | [Two-way workspace sync](22-two-way-workspace-sync.md) | derived (consolidates the adoption paths left by 21) | Partially done (Phases 0–4: single-commit writes, skill tombstone, the sync exchange, the client, adoption paths removed. **Remaining:** Phase 5 memory. Not deployed) |
+| 21 | [Persist user content in Postgres (agents · skills · memory)](done/21-persist-user-content-in-postgres.md) | derived (durability gap — see the draft state & storage map) | **Delivered** (Part C shipped as a store in `agent_runtime` instead — see §4) |
+| 22 | [Two-way workspace sync](done/22-two-way-workspace-sync.md) | derived (consolidates the adoption paths left by 21) | **Delivered** (Phases 0–4; Phase 5 dropped — memory ships separately, see §10) |
 
 ---
 

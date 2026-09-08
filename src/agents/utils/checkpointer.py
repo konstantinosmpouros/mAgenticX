@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.logging import get_logger
-from runtime.agui.normalizer import release_namespace_bindings
+from harness.agui.normalizer import release_namespace_bindings
 
 logger = get_logger(__name__)
 

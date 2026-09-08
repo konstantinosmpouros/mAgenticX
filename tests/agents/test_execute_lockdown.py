@@ -36,7 +36,7 @@ def test_local_shell_backend_is_never_imported():
 
 def test_workspace_factory_builds_with_sandbox_execution_disabled(agents_service, skills_fs):
     """The normal path: flag off + StateBackend default builds cleanly."""
-    workspace = importlib.import_module("runtime.filesystem.workspace")
+    workspace = importlib.import_module("harness.filesystem.workspace")
     assert agents_service.settings_module.settings.filesystem.sandbox_execution_enabled is False
     factory = workspace.build_workspace_backend(
         user_id="user-1", agent_slug="agent-1", conversation_id="conv-1", use_memory=True
@@ -51,7 +51,7 @@ def test_workspace_factory_refuses_sandbox_default_when_disabled(
     """The guard's teeth: if a refactor ever swaps the default backend for a
     sandbox-capable one while the flag is off, minting the backend must raise
     instead of silently exposing `execute`."""
-    workspace = importlib.import_module("runtime.filesystem.workspace")
+    workspace = importlib.import_module("harness.filesystem.workspace")
     from deepagents.backends.protocol import SandboxBackendProtocol
 
     class _SandboxLookalike(workspace.StateBackend):
@@ -72,14 +72,14 @@ def test_execute_stays_a_reserved_tool_name(agents_service):
     self.tools), but dynamically-attached MCP tools are name-filtered against
     this set — 'execute' must stay in it so an external tool can't smuggle the
     name in."""
-    deep_agent = importlib.import_module("runtime.abstractions.deep_agent")
+    deep_agent = importlib.import_module("harness.abstractions.deep_agent")
     assert "execute" in deep_agent.RESERVED_DEEPAGENT_TOOL_NAMES
 
 
 def test_write_deny_ladder_regressions(agents_service):
     """The FilesystemPermission lockdown that is already load-bearing: input/
     (plus skills and the offload dirs) must stay write-denied."""
-    workspace = importlib.import_module("runtime.filesystem.workspace")
+    workspace = importlib.import_module("harness.filesystem.workspace")
 
     def has_write_deny(path_fragment: str) -> bool:
         return any(

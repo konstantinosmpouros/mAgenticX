@@ -580,28 +580,28 @@ Sub-agent rendering folds entirely from the `TASK_SUBAGENT` / `SUBAGENT_EVENT` e
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Custom event type constants | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, `CHECKPOINT_COMMITTED_EVENT_TYPE`, `PRESENT_ARTIFACT_EVENT_TYPE`, `RENDER_CHART_EVENT_TYPE`, etc. |
-| Custom event Pydantic models | [src/agents/runtime/agui/events.py](../../src/agents/runtime/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `CheckpointCommittedEvent`, `PresentArtifactEvent` |
-| `present_artifact` detection (orchestrator-only) | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | tool-call switch in `_handle_updates_payload()` — `if tc_name == "present_artifact"` gated on `namespace is None` |
-| `present_artifact` tool | [src/agents/runtime/tools/present_artifact.py](../../src/agents/runtime/tools/present_artifact.py) | `build_present_artifact_tool()` — validates the output/ path, returns a confirmation (never emits) |
-| Output-file read-back | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `GET …/output-files` → `runtime.filesystem.read_output_files()` |
+| Custom event type constants | [src/agents/harness/agui/events.py](../../src/agents/harness/agui/events.py) | `HITL_INTERRUPT_EVENT_TYPE`, `PLAN_SNAPSHOT_EVENT_TYPE`, `CHECKPOINT_COMMITTED_EVENT_TYPE`, `PRESENT_ARTIFACT_EVENT_TYPE`, `RENDER_CHART_EVENT_TYPE`, etc. |
+| Custom event Pydantic models | [src/agents/harness/agui/events.py](../../src/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `PlanItem`, `TaskSubAgentEvent`, `SubAgentEvent`, `BeforeAgentEvent`, `TokenUsageEvent`, `CheckpointCommittedEvent`, `PresentArtifactEvent` |
+| `present_artifact` detection (orchestrator-only) | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | tool-call switch in `_handle_updates_payload()` — `if tc_name == "present_artifact"` gated on `namespace is None` |
+| `present_artifact` tool | [src/agents/harness/tools/present_artifact.py](../../src/agents/harness/tools/present_artifact.py) | `build_present_artifact_tool()` — validates the output/ path, returns a confirmation (never emits) |
+| Output-file read-back | [src/agents/router/inference.py](../../src/agents/router/inference.py) | `GET …/output-files` → `harness.filesystem.read_output_files()` |
 | `PRESENT_ARTIFACT` capture + persist (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.presented_artifacts`, `_capture_generated_artifacts()` called from `_finish_run()` |
-| `RENDER_CHART` payload normalizer (agents) | [src/agents/runtime/tools/charts.py](../../src/agents/runtime/tools/charts.py) | `normalize_chart_payload()` — bounds, coerces, and projects rows before the event is emitted |
+| `RENDER_CHART` payload normalizer (agents) | [src/agents/harness/tools/charts.py](../../src/agents/harness/tools/charts.py) | `normalize_chart_payload()` — bounds, coerces, and projects rows before the event is emitted |
 | `RENDER_CHART` fold + render (UI) | [src/agentic_ui/src/features/inference/timeline.ts](../../src/agentic_ui/src/features/inference/timeline.ts) | `pushChartBlock()` → `ChartBlock` → `ChartCard` via `BLOCK_REGISTRY` |
-| AG-UI event emission | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `AGUIEmitter` — all public methods |
-| Namespace attachment | [src/agents/runtime/agui/emitter.py](../../src/agents/runtime/agui/emitter.py) | `_attach_namespace()` |
-| LangGraph → AG-UI translation | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
-| Envelope unwrapping | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_unwrap_envelope()` |
-| Messages mode handling | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_handle_messages_payload()` |
-| Updates mode handling | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_handle_updates_payload()` |
-| Tool call correlation sets | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_pending_tool_call_ids`, `_started_tool_call_ids`, `_finished_tool_call_ids`, `_ignored_tool_call_ids` |
-| Plan snapshot deduplication | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_fingerprint()`, `_last_plan_fingerprint` |
-| Sub-agent namespace binding | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_bind_namespace_to_next_task()`, `_resolve_namespace_label()`, `_namespace_task_id()` |
-| Namespace binding persistence across resume | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`), `release_namespace_bindings()` (cleared via `utils/checkpointer.py` `release_checkpoint_unless_paused()`) |
-| Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `get_checkpointer()` — single process-wide `AsyncPostgresSaver` resume reads via `aget_state` |
+| AG-UI event emission | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `AGUIEmitter` — all public methods |
+| Namespace attachment | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `_attach_namespace()` |
+| LangGraph → AG-UI translation | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
+| Envelope unwrapping | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_unwrap_envelope()` |
+| Messages mode handling | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_handle_messages_payload()` |
+| Updates mode handling | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_handle_updates_payload()` |
+| Tool call correlation sets | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_pending_tool_call_ids`, `_started_tool_call_ids`, `_finished_tool_call_ids`, `_ignored_tool_call_ids` |
+| Plan snapshot deduplication | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_fingerprint()`, `_last_plan_fingerprint` |
+| Sub-agent namespace binding | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_bind_namespace_to_next_task()`, `_resolve_namespace_label()`, `_namespace_task_id()` |
+| Namespace binding persistence across resume | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_THREAD_NAMESPACE_BINDINGS` (keyed by `run_id`), `release_namespace_bindings()` (cleared via `utils/checkpointer.py` `release_checkpoint_unless_paused()`) |
+| Durable checkpointer accessor | [src/agents/harness/checkpointer/store.py](../../src/agents/harness/checkpointer/store.py) | `get_checkpointer()` — single process-wide `AsyncPostgresSaver` resume reads via `aget_state` |
 | `CHECKPOINT_COMMITTED` capture (bridge) | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()`, `_finish_run()` persisting `checkpoint_id` |
-| Sub-agent event wrapping | [src/agents/runtime/agui/normalizer.py](../../src/agents/runtime/agui/normalizer.py) | `_wrap_subagent_events_if_needed()` |
-| Protocol package exports | [src/agents/runtime/agui/\_\_init\_\_.py](../../src/agents/runtime/agui/__init__.py) | All exported symbols |
+| Sub-agent event wrapping | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `_wrap_subagent_events_if_needed()` |
+| Protocol package exports | [src/agents/harness/agui/\_\_init\_\_.py](../../src/agents/harness/agui/__init__.py) | All exported symbols |
 | Bridge log keeping | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunRuntime.apply_event()`, `_append_raw()`, `_coalesce_key()`, `_truncate_tool_result()` |
 | Delta frame publishing | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `InferenceRunManager._publish_delta()`, `build_live_snapshot()` |
 | Thinking duration calculation | [src/dialogue_bridge/utils/inference_runs.py](../../src/dialogue_bridge/utils/inference_runs.py) | `thinking_duration_seconds()` |

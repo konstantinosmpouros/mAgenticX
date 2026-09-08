@@ -27,7 +27,7 @@ So this plan is mostly not about agent behaviour — it is about teaching three 
 
 ## 2. Current state
 
-**The engine is ready.** `_scan_yaml_agents(root)` walks `<root>/agents/<slug>/agent.yaml`, validates with `AgentSpec.model_validate` plus `reference_errors()` (models + native-tool allowlists), and registers an `AgentDefinition(slug, manifest, factory, spec)` whose factory builds a `YamlDeepAgent`. Invalid specs are logged and skipped, never fatal. See [utils/agents.py](../../../src/agents/utils/agents.py) and [runtime/abstractions/](../../../src/agents/runtime/abstractions/).
+**The engine is ready.** `_scan_yaml_agents(root)` walks `<root>/agents/<slug>/agent.yaml`, validates with `AgentSpec.model_validate` plus `reference_errors()` (models + native-tool allowlists), and registers an `AgentDefinition(slug, manifest, factory, spec)` whose factory builds a `YamlDeepAgent`. Invalid specs are logged and skipped, never fatal. See [utils/agents.py](../../../src/agents/utils/agents.py) and [harness/abstractions/](../../../src/agents/harness/abstractions/).
 
 **But everything about it is global.** Four concrete obstacles:
 
@@ -175,7 +175,7 @@ Empty state matters here: a first-time user sees an explanatory card with *Creat
 | --- | --- |
 | **Catalog sync** | `sync_agents_with_service` must scope to platform agents only, or it will delete/deactivate user agents it does not see in the manifest. This is the single most likely regression. |
 | **Bridge agent cache** | `_AGENT_CACHE` / `prime_agent_cache` must never hold user agents; `get_agent_by_id` needs an owner-aware path (DB lookup for user agents, cache for platform ones). |
-| **Per-agent tool overrides** | `tool_prefs.json` lives at `<agent_root>` keyed by `(user, agent_slug)`. A user agent's slug is only unique per owner, so the agent-root derivation must use the owner-scoped path — verify [runtime/filesystem/provisioner.py](../../../src/agents/runtime/filesystem/provisioner.py) `agent_root()` cannot alias two users' same-named agents. |
+| **Per-agent tool overrides** | `tool_prefs.json` lives at `<agent_root>` keyed by `(user, agent_slug)`. A user agent's slug is only unique per owner, so the agent-root derivation must use the owner-scoped path — verify [harness/filesystem/provisioner.py](../../../src/agents/harness/filesystem/provisioner.py) `agent_root()` cannot alias two users' same-named agents. |
 | **Skills & memory** | Both are keyed per `(user, agent)` and will now include user agents; the skills pool and `AGENTS.md` memory tree must be created lazily for a new agent. See [agent-memory](../../flows/agent-memory.md). |
 | **Workspaces** | [03](../03-projects-and-workspaces.md) may add a workspace tier to the path (`workspaces/<user>/<workspace>/agents/…`). Keep the agent-root derivation in one helper so that change is one edit. |
 | **Permissions** | [02](../02-org-and-user-permissions.md) turns `owner_user_id` into a full owner (user *or* org) and adds sharing. Model the column as an owner reference now so that migration is additive. |
@@ -255,10 +255,10 @@ Spec validation gets table-driven tests (valid, unknown field, bad model, unknow
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Spec + validation to reuse | [runtime/abstractions/agent_spec.py](../../../src/agents/runtime/abstractions/agent_spec.py) | `AgentSpec`, `reference_errors` |
-| Generic runtime agent | [runtime/abstractions/yaml_agent.py](../../../src/agents/runtime/abstractions/yaml_agent.py) | `YamlDeepAgent` |
+| Spec + validation to reuse | [harness/abstractions/agent_spec.py](../../../src/agents/harness/abstractions/agent_spec.py) | `AgentSpec`, `reference_errors` |
+| Generic runtime agent | [harness/abstractions/yaml_agent.py](../../../src/agents/harness/abstractions/yaml_agent.py) | `YamlDeepAgent` |
 | Discovery to extend | [utils/agents.py](../../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
-| Agent-root derivation | [runtime/filesystem/provisioner.py](../../../src/agents/runtime/filesystem/provisioner.py) | `agent_root` — must be owner-scoped |
+| Agent-root derivation | [harness/filesystem/provisioner.py](../../../src/agents/harness/filesystem/provisioner.py) | `agent_root` — must be owner-scoped |
 | Workspace roots | [core/settings.py](../../../src/agents/core/settings.py) | `FilesystemSettings.workspaces_root` |
 | New user-agent endpoints | `src/agents/router/user_agents.py` *(new)* + `src/agents/utils/user_agents.py` *(new)* | write/validate/delete + cache invalidation |
 | Agent table + cascade trap | [core/database/models.py](../../../src/dialogue_bridge/core/database/models.py) | `AgentTable`, `conversations` cascade |

@@ -99,7 +99,7 @@ The stateless-auth work left three hooks pointing directly at this plan:
 - **Alembic head is `0016_retire_enabled_tools`** ([migrations/versions/0016_retire_enabled_tools.py:34-35](../../src/dialogue_bridge/migrations/versions/0016_retire_enabled_tools.py), `down_revision = "0015_personalization"`). Migrations run automatically in the bridge lifespan.
 - **Routers are mounted flat under `/v1/*`** ([main.py:159-246](../../src/dialogue_bridge/main.py)); user-scoped paths take `{user_id}` as the first segment (e.g. `GET /v1/conversations/{user_id}`).
 - **One endpoint is intentionally unauthenticated** — `GET /v1/shared-conversations/{token}` ([router/shared_conv.py:24](../../src/dialogue_bridge/router/shared_conv.py)). It must stay that way and must not gain an org check that breaks public links.
-- **The agents service has no notion of a tenant.** Its filesystem is keyed `(user_id, agent_slug, conversation_id)` throughout [`runtime/filesystem/provisioner.py`](../../src/agents/runtime/filesystem/provisioner.py) (`user_root` at provisioner.py:89-95, `agent_root` at provisioner.py:118-125), and the YAML agent scan is global-only (`_scan_yaml_agents(settings.filesystem.global_root)` — [utils/agents.py:126](../../src/agents/utils/agents.py)).
+- **The agents service has no notion of a tenant.** Its filesystem is keyed `(user_id, agent_slug, conversation_id)` throughout [`harness/filesystem/provisioner.py`](../../src/agents/harness/filesystem/provisioner.py) (`user_root` at provisioner.py:89-95, `agent_root` at provisioner.py:118-125), and the YAML agent scan is global-only (`_scan_yaml_agents(settings.filesystem.global_root)` — [utils/agents.py:126](../../src/agents/utils/agents.py)).
 - **The frontend has zero permission concept.** No role, capability, `isAdmin`, org, tenant, or membership anywhere in `src/agentic_ui/src`. Gating is binary — `authResolved && isLoggedIn && userId` (`pages/ChatPage.tsx:1532,1539`). `UserProfile.roleTitle` (`shared/lib/types.ts:66`) is a free-text HR field rendered in `AccountTab.tsx:22,36`. The settings nav is a flat concatenation of two groups (`profile_parts/ProfileSidebar.tsx:40-61`) with no conditional entries.
 
 ---
@@ -189,7 +189,7 @@ Refresh (`rotate_session`, session.py:293-296) re-reads membership from the DB a
 
 | `owner_kind` | Columns set | Who sees it | Who edits it |
 | --- | --- | --- | --- |
-| `platform` | both owner FKs `NULL` | every authenticated user | platform admins (today: out-of-band seeding — [agents/runtime/abstractions/agent_seed.py:43](../../src/agents/runtime/abstractions/agent_seed.py)) |
+| `platform` | both owner FKs `NULL` | every authenticated user | platform admins (today: out-of-band seeding — [agents/harness/abstractions/agent_seed.py:43](../../src/agents/harness/abstractions/agent_seed.py)) |
 | `org` | `owner_org_id` set | members of that org | org `admin`/`owner` |
 | `user` | `owner_user_id` + `owner_org_id` set | that user only | that user |
 
@@ -508,7 +508,7 @@ Org budget in `rate_limit.py`; `org_id` in `internal_service_headers` and in the
 | Router registration (new `orgs` router) | [src/dialogue_bridge/main.py](../../src/dialogue_bridge/main.py) | `include_router` block 159-246 |
 | Intentionally public endpoint | [src/dialogue_bridge/router/shared_conv.py](../../src/dialogue_bridge/router/shared_conv.py) | `getSharedConversation` 24 — must stay unauthenticated |
 | Inline ownership filters to convert | `src/dialogue_bridge/utils/` | `attachments.py:99,312` · `conversations.py:285` · `inference_runs.py:63,78,1386` · `scheduled_tasks.py:328` · `search.py:44,77,112` · `shared_conv.py:202` · `suggestions.py:27` · `usage.py:67` |
-| Agent-side tenancy blind spot | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) · [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | `_scan_yaml_agents` 78-115 (global only, called at 126) · `user_root` 89-95, `agent_root` 118-125 |
+| Agent-side tenancy blind spot | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) · [src/agents/harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) | `_scan_yaml_agents` 78-115 (global only, called at 126) · `user_root` 89-95, `agent_root` 118-125 |
 | Frontend identity + gating | `src/agentic_ui/src/shared/lib/types.ts` · `shared/lib/utils.ts` | `UserProfile` 58-71, `AuthResponse` 73-77; `normalizeAuthResponse` |
 | Frontend store slices | `src/agentic_ui/src/shared/stores/workspaceStore.ts` | state type 41-127, init 134-171 |
 | Settings nav (new Organization group) | `src/agentic_ui/src/features/settings/components/profile_parts/ProfileSidebar.tsx` · `ProfilePanel.tsx` | `WORKSPACE_NAV_ITEMS` 54-59, `NAV_ITEMS` 61, group divider 302-303 · `SECTION_META` 43-104, render chain 415-453 |

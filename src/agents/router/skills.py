@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.security.internal_trust import require_internal_caller
 from core.logging import get_logger
-from runtime.skill_registry import (
+from harness.skill_registry import (
     SkillNameConflict,
     add_custom_to_user,
     add_global_to_user,

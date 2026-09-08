@@ -14,7 +14,7 @@ Adds the two per-user personalization preferences (Settings → Personalization)
   while ``enabled`` is true. Default ``'{}'`` = disabled/empty.
 
 Both are threaded by the bridge into each run's ``context.personalization``
-and consumed by the agents service (``runtime/personalization.py``).
+and consumed by the agents service (``harness/personalization.py``).
 
 Non-destructive: two not-null columns with server defaults; no backfill needed
 (the defaults apply to every existing row and mean "feature off").

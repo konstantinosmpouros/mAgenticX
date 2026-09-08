@@ -341,6 +341,6 @@ palette. That is brand, not this tab's decision.
 | Panel shell + left sidebar | `src/agentic_ui/src/features/settings/components/ProfilePanel.tsx` |
 | Agent + tool APIs | `src/agentic_ui/src/shared/lib/api/agents.ts`, `catalog.ts` |
 | Theme tokens | `src/agentic_ui/src/styles/tokens.light.css`, `tokens.dark.css` |
-| Spec the form must express | `src/agents/runtime/abstractions/agent_spec.py` |
-| Approval floor + validation | `src/agents/runtime/abstractions/user_agents.py` |
-| Approval resolution (Phase 5) | `src/agents/runtime/abstractions/deep_agent.py` |
+| Spec the form must express | `src/agents/harness/abstractions/agent_spec.py` |
+| Approval floor + validation | `src/agents/harness/abstractions/user_agents.py` |
+| Approval resolution (Phase 5) | `src/agents/harness/abstractions/deep_agent.py` |

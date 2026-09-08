@@ -30,7 +30,7 @@ A deep agent's live toolset is drawn from four distinct sources. Only one class 
 | Class | Examples | Origin | How it attaches | Disable-able |
 | --- | --- | --- | --- | --- |
 | **framework** | `write_todos`, `ls`, `read_file`, `write_file`, `edit_file`, `task` | Provided by the **deepagents** library — not our code. | Added inside `create_deep_agent(...)`. Names are *reserved*; a colliding MCP tool is dropped. | No — always present |
-| **native · auto-attach** | `remember`, `search_past_conversations`, `render_chart`, `present_artifact`, `create_skill` | **Custom-made, platform-owned.** Registered in `runtime/tools/registry.py` with `auto_attach=True`. | Given to every deep agent via `_builtin_tools()`, each behind a gate. | No via the Agents tab — `remember`/`search_past_conversations` follow the Personalization prefs; `render_chart`, `present_artifact` and `create_skill` are always on |
+| **native · auto-attach** | `remember`, `search_past_conversations`, `render_chart`, `present_artifact`, `create_skill` | **Custom-made, platform-owned.** Registered in `harness/tools/registry.py` with `auto_attach=True`. | Given to every deep agent via `_builtin_tools()`, each behind a gate. | No via the Agents tab — `remember`/`search_past_conversations` follow the Personalization prefs; `render_chart`, `present_artifact` and `create_skill` are always on |
 | **native · opt-in** | *(slot exists; none shipped — the three above are all auto-attach)* | Same registry, `auto_attach=False`. | Declared in `agent.yaml` as `{ native: <name> }`, resolved by `resolve_native_tool()`. | No via the Agents tab (as above) |
 | **MCP** | `tavily/tavily-search`, `arxiv/download_paper` | External servers behind the MCP gateway — a **live manifest**, not code. | Declared in `agent.yaml` (`tool_name` + `server_id`); or **enabled per agent** from the gateway catalog (Agents tab). Filtered from the live manifest at stream time. | Yes — per (user, agent): disable a declared one, or enable any gateway tool |
 
@@ -141,7 +141,7 @@ resolved_interrupt_on = {**native_hitl_defaults(), **(interrupt_on or {})}
 So a native tool that declares itself dangerous is approval-gated by default for
 every deep agent, while a spec can still speak for itself. `create_skill` is the
 first tool to use it, and it is additionally in `_HITL_FLOOR`
-(`runtime/abstractions/user_agents.py`), so a user-authored agent may add gates
+(`harness/abstractions/user_agents.py`), so a user-authored agent may add gates
 but never remove this one.
 
 ## Phase 4 — What a user can change, and how
@@ -211,15 +211,15 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Native-tool registry + builtins + gates | [src/agents/runtime/tools/registry.py](../../src/agents/runtime/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
-| Builtin implementations | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | `remember.py`, `memory_search.py`, `charts.py`, `present_artifact.py`, `create_skill.py` |
-| Assembly + builtins + disable filter | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
-| MCP filter (`attach_tools`, cache keys) | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
-| YAML → spec tools (native + MCP) | [src/agents/runtime/abstractions/yaml_agent.py](../../src/agents/runtime/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
-| Per-(user, agent) disable store | [src/agents/runtime/filesystem/tool_prefs.py](../../src/agents/runtime/filesystem/tool_prefs.py) | `read_disabled_tools`, `set_tool_disabled` |
+| Native-tool registry + builtins + gates | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
+| Builtin implementations | [src/agents/harness/tools/](../../src/agents/harness/tools/) | `remember.py`, `memory_search.py`, `charts.py`, `present_artifact.py`, `create_skill.py` |
+| Assembly + builtins + disable filter | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
+| MCP filter (`attach_tools`, cache keys) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
+| YAML → spec tools (native + MCP) | [src/agents/harness/abstractions/yaml_agent.py](../../src/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
+| Per-(user, agent) disable store | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `read_disabled_tools`, `set_tool_disabled` |
 | Agents-tab list / toggle | [src/agents/utils/agent_tools.py](../../src/agents/utils/agent_tools.py) · [router/agent_tools.py](../../src/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
 | Live MCP manifest load | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) · [router/inference.py](../../src/agents/router/inference.py) | `load_mcp_tools`, `mcp_session_context`, `attach_tools` call |
 | Bridge proxy | [src/dialogue_bridge/router/agent_tools.py](../../src/dialogue_bridge/router/agent_tools.py) | GET list + POST toggle (CSRF) |
-| User-agent spec validation (tool refs, HITL floor, quotas) | [src/agents/runtime/abstractions/user_agents.py](../../src/agents/runtime/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
+| User-agent spec validation (tool refs, HITL floor, quotas) | [src/agents/harness/abstractions/user_agents.py](../../src/agents/harness/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
 | Ownership-aware resolution | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |
 | Frontend Agents tab | [src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | optimistic toggle, `getAgentTools` / `toggleAgentTool` |

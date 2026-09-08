@@ -146,7 +146,7 @@ The state type is assigned to `self.state` in `__init__` — the base class uses
 ```python
 # __init__.py
 from langgraph.graph import StateGraph, START, END
-from runtime.abstractions import LangGraphAgent
+from harness.abstractions import LangGraphAgent
 from .agents import build_my_agents
 from .nodes import MyAgentState, build_my_nodes
 
@@ -196,7 +196,7 @@ Nodes receive the graph state and a `RunnableConfig`. The AG-UI emitter is threa
 from langgraph.config import get_stream_writer
 from dataclasses import dataclass
 from typing import Any
-from runtime.protocols.agui import AGUIEmitter
+from harness.protocols.agui import AGUIEmitter
 
 @dataclass
 class MyNodes:
@@ -268,7 +268,7 @@ src/agents/deep_agents/my_deep_agent/
 # __init__.py
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
-from runtime.abstractions import DeepAgent
+from harness.abstractions import DeepAgent
 from core.settings import settings
 
 class MyDeepAgent(DeepAgent):
@@ -334,11 +334,11 @@ Distinct from the static instructions above, each agent keeps **long-term memory
 
 Memory is **toggleable per run** via the user's `use_memory` preference (default on), which `BaseAgent.__init__` parses into `self.use_memory`. When off: `load_agent_md()` returns `[]`, `_build_composite_backend()` drops the `/memories/` mount, **and** the `remember` tool isn't attached — the agent runs with no persistent memory, no code change. The separate `search_past_conversations` recall tool (pgvector) is gated independently by `search_past_convs`. A `remember` made mid-conversation lands on disk immediately but is injected as context on the *next* conversation (the index is read at build time). See [user-preferences](../flows/user-preferences.md#agent-memory).
 
-The user inspects and corrects this memory in the **ProfilePanel → Memories tab**: drill into a deep agent, see its saved memories (name-sorted), click to preview content, and delete one. The agent owns *writes* (the `remember` tool); the user only reads + deletes. The read/delete operations live in `runtime/filesystem/memory.py` (`list_memories` / `read_memory` / `delete_memory` — delete drops both the `entries/<name>.yml` and its `AGENTS.md` row via the same `index_line_pattern` the write path uses), exposed by `router/memories.py` (`/agents/{slug}/users/{user_id}/memories[...]`, internal-caller gated) and proxied by the bridge's `/v1/memories` router (no cache). There is no create/update endpoint by design.
+The user inspects and corrects this memory in the **ProfilePanel → Memories tab**: drill into a deep agent, see its saved memories (name-sorted), click to preview content, and delete one. The agent owns *writes* (the `remember` tool); the user only reads + deletes. The read/delete operations live in `harness/memory/store.py` (`list_memories` / `read_memory` / `delete_memory` — delete drops both the `entries/<name>.yml` and its `AGENTS.md` row via the same `index_line_pattern` the write path uses), exposed by `router/memories.py` (`/agents/{slug}/users/{user_id}/memories[...]`, internal-caller gated) and proxied by the bridge's `/v1/memories` router (no cache). There is no create/update endpoint by design.
 
 ##### Per-user personalization (personality + custom instructions)
 
-Separate from memory, every run may carry the user's **personalization** — a personality preset plus user-authored custom instructions (Settings → Personalization) — threaded by the bridge as `context.personalization`, present only when effective. The main logic lives in [`runtime/personalization.py`](../../src/agents/runtime/personalization.py):
+Separate from memory, every run may carry the user's **personalization** — a personality preset plus user-authored custom instructions (Settings → Personalization) — threaded by the bridge as `context.personalization`, present only when effective. The main logic lives in [`harness/personalization/personalization.py`](../../src/agents/harness/personalization/personalization.py):
 
 - `_PERSONALITY_DIRECTIVES` — the preset registry (`professional`, `friendly`, `candid`, `quirky`, `efficient`, `cynical`, `nerdy`; `default` means "inject nothing").
 - `parse_personalization(context)` — **fail-closed** re-validation at the service boundary (the bridge already validated, but agents don't trust it): unknown preset → `default`, text stripped of control chars and re-capped.
@@ -450,7 +450,7 @@ All three are created automatically if they do not exist. `FilesystemBackend(roo
 
 #### 7b. Customize the middleware stack
 
-Deep-agent middleware lives in [`src/agents/runtime/middlewares/`](../../src/agents/runtime/middlewares/) — **one module per middleware**:
+Deep-agent middleware lives in [`src/agents/harness/middlewares/`](../../src/agents/harness/middlewares/) — **one module per middleware**:
 
 - `tool_error.py` — `ToolErrorMiddleware`: a tool exception becomes an error `ToolMessage` instead of aborting the run (also injected into every sub-agent via `_inject_tool_error_middleware`).
 - `summarization.py` — `ConfigurableSummarizationMiddleware` + `build_summarization_middleware()` + `exclude_stock_summarization()`.
@@ -550,7 +550,7 @@ Get the writer inside a node and pass it to every emitter call:
 
 ```python
 from langgraph.config import get_stream_writer
-from runtime.protocols.agui import AGUIEmitter
+from harness.protocols.agui import AGUIEmitter
 
 async def my_node(state, config):
     writer = get_stream_writer()
@@ -585,7 +585,7 @@ async def my_node(state, config):
 Emit a plan when the agent has a structured task list to show the user:
 
 ```python
-from runtime.protocols.agui.events import PlanItem
+from harness.protocols.agui.events import PlanItem
 
 agui.plan_snapshot(
     items=[
@@ -658,7 +658,7 @@ class OmniAgent(DeepAgent):
 
 When the user approves/rejects, the bridge POSTs `AgentResumeRequest{thread_id, interrupt_id, decision, reason, value}` to `/agents/{slug}/resume`. The endpoint:
 
-1. Compiles a fresh agent against the shared durable `AsyncPostgresSaver` (`get_checkpointer()` from `runtime/checkpointer/store.py`) and selects the paused state via `run_config.configurable.thread_id` — the same thread the original `/stream` leg wrote. There is no per-thread cache to look up; the saver is process-wide and the thread is durable in the `agent_runtime` DB.
+1. Compiles a fresh agent against the shared durable `AsyncPostgresSaver` (`get_checkpointer()` from `harness/checkpointer/store.py`) and selects the paused state via `run_config.configurable.thread_id` — the same thread the original `/stream` leg wrote. There is no per-thread cache to look up; the saver is process-wide and the thread is durable in the `agent_runtime` DB.
 2. Calls `compiled_graph.aget_state(config)` to inspect `snapshot.interrupts`.
 3. Verifies `snapshot.interrupts[0].id == req.interrupt_id` (when supplied); 409s on a stale click.
 4. Computes `decision_count = len(snapshot.interrupts[0].value.action_requests)` so the resume payload has the exact length the middleware validates against.
@@ -671,14 +671,14 @@ Decision dicts:
 
 #### Durable Postgres checkpointer
 
-Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), but they all compile against **one shared process-wide `AsyncPostgresSaver`** opened in `main._lifespan` over a long-lived `psycopg_pool.AsyncConnectionPool` and installed via `set_checkpointer()`. [`runtime/checkpointer/store.py`](../../src/agents/runtime/checkpointer/store.py) is just the accessor: `set_checkpointer()` / `get_checkpointer()` / `has_checkpointer_initialized()`. There is no per-thread cache and no LRU — checkpoints live durably in the `agent_runtime` Postgres database, keyed by `thread_id`. `.setup()` runs once at startup (advisory-locked). At-rest encryption (`EncryptedSerializer`) is enabled in prod via `LANGGRAPH_AES_KEY_FILE`. Both `LangGraphAgent.build()` and `DeepAgent.build()` compile against this shared saver.
+Each `/stream` and `/resume` request creates a fresh agent instance (`cls(config=config)`), but they all compile against **one shared process-wide `AsyncPostgresSaver`** opened in `main._lifespan` over a long-lived `psycopg_pool.AsyncConnectionPool` and installed via `set_checkpointer()`. [`harness/checkpointer/store.py`](../../src/agents/harness/checkpointer/store.py) is just the accessor: `set_checkpointer()` / `get_checkpointer()` / `has_checkpointer_initialized()`. There is no per-thread cache and no LRU — checkpoints live durably in the `agent_runtime` Postgres database, keyed by `thread_id`. `.setup()` runs once at startup (advisory-locked). At-rest encryption (`EncryptedSerializer`) is enabled in prod via `LANGGRAPH_AES_KEY_FILE`. Both `LangGraphAgent.build()` and `DeepAgent.build()` compile against this shared saver.
 
 **`thread_id` and `run_id` are now two distinct ids.** Previously a single `run.id` was the checkpoint key, the AG-UI `message_id`, and the namespace-binding key. They are now split:
 
 - **`run_config.configurable.thread_id`** is a **branch-scoped `checkpoint_thread_id`** — durable and **shared across every run on a branch** (a continue resumes the same thread; an edit/retry mints a fresh one). This is the LangGraph checkpoint key.
 - **`context.run_id`** is the per-run assistant-message id. The normalizer uses it for the AG-UI `message_id` and for the in-process `_THREAD_NAMESPACE_BINDINGS` key.
 
-**Copy-on-fork for edit/retry.** A fresh thread does not start empty: the bridge passes `fork_from: {thread_id, checkpoint_id}` in the stream config, and `/stream` seeds the new thread from the parent branch's committed checkpoint via [`runtime/checkpointer/fork.py`](../../src/agents/runtime/checkpointer/fork.py) `seed_thread_from_checkpoint()` (`aget_state` → `aupdate_state`) before running — so the new branch inherits the parent's state without mutating it.
+**Copy-on-fork for edit/retry.** A fresh thread does not start empty: the bridge passes `fork_from: {thread_id, checkpoint_id}` in the stream config, and `/stream` seeds the new thread from the parent branch's committed checkpoint via [`harness/checkpointer/fork.py`](../../src/agents/harness/checkpointer/fork.py) `seed_thread_from_checkpoint()` (`aget_state` → `aupdate_state`) before running — so the new branch inherits the parent's state without mutating it.
 
 **Threads persist; the stream no longer wipes them.** Durable threads have no TTL and are reaped only on conversation delete (`adelete_thread`), so the old "release stale entry on `/stream` entry" line was removed — a re-issued run must keep its committed history. At the end of every `/stream` / `/resume` leg [`utils.release_checkpoint_unless_paused`](../../src/agents/utils/checkpointer.py) now probes `compiled.aget_state(run_config).interrupts` (async, since the saver is async) and **only drops the in-process namespace-binding cache** (keyed by `run_id`) when not paused — it **never deletes the Postgres checkpoint**.
 
@@ -769,7 +769,7 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 - **Tool errors don't kill a deep-agent run.** The base `DeepAgent` installs `ToolErrorMiddleware` (`runtime/tool_error_middleware.py`) via `build_deep_agent(middleware=[...])` and injects it into every sub-agent spec (`_inject_tool_error_middleware` — the parent's middleware does not reach sub-agents, which compile their own stack). A tool that raises is caught and returned as a `ToolMessage(status="error")`, so the model can recover and the run continues; it surfaces as a `TOOL_CALL_RESULT` with `error: true` (a failed tool step in the UI) instead of a `RUN_ERROR`. Like the lockdown, this is centralized in the base — never wire it per-agent.
 
-- **The deep-agent workspace lockdown lives in the base class, not per-agent.** `workspace_write_deny(include_reference=...)` (in `runtime/filesystem/workspace.py`) returns the `FilesystemPermission` rules passed to `create_deep_agent(permissions=...)`, so every deep agent inherits the same confinement — never declare permissions in a concrete agent's `__init__`. The rules write-deny the read-only skill library (`/skills/`), the deepagents-managed bookkeeping mounts (`/large_tool_results/`, `/conversation_history/`), user uploads (`/conversation/input/`), and — when mounted — the agent's own definition folder (`/reference/`); reads stay open everywhere (a read-deny would block the agent from reading offloaded tool results). These are tool-level rules, so the library's automatic offload/eviction (which writes through the backend directly, not the `write_file`/`edit_file` tools) is unaffected. Every permission path must map to a mounted `CompositeBackend` route — hence `include_reference` tracking the mount — though deepagents only enforces that once the default backend supports execution. Caveat: tool-level permissions are not yet supported once a `SandboxBackendProtocol` (execute) backend is used.
+- **The deep-agent workspace lockdown lives in the base class, not per-agent.** `workspace_write_deny(include_reference=...)` (in `harness/filesystem/workspace.py`) returns the `FilesystemPermission` rules passed to `create_deep_agent(permissions=...)`, so every deep agent inherits the same confinement — never declare permissions in a concrete agent's `__init__`. The rules write-deny the read-only skill library (`/skills/`), the deepagents-managed bookkeeping mounts (`/large_tool_results/`, `/conversation_history/`), user uploads (`/conversation/input/`), and — when mounted — the agent's own definition folder (`/reference/`); reads stay open everywhere (a read-deny would block the agent from reading offloaded tool results). These are tool-level rules, so the library's automatic offload/eviction (which writes through the backend directly, not the `write_file`/`edit_file` tools) is unaffected. Every permission path must map to a mounted `CompositeBackend` route — hence `include_reference` tracking the mount — though deepagents only enforces that once the default backend supports execution. Caveat: tool-level permissions are not yet supported once a `SandboxBackendProtocol` (execute) backend is used.
 
 - **Duplicate `name` values silently overwrite.** `_discover_agents()` iterates modules in import order. If two agents share a slug, only the last-imported one is reachable. The service logs nothing — the collision is invisible at runtime.
 
@@ -809,27 +809,27 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 
 | Concept | File | What to look for |
 | --- | --- | --- |
-| Base agent class | [src/agents/runtime/abstractions/base_agent.py](../../src/agents/runtime/abstractions/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
-| LangGraph agent base | [src/agents/runtime/abstractions/langgraph_agent.py](../../src/agents/runtime/abstractions/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
-| Deep agent base | [src/agents/runtime/abstractions/deep_agent.py](../../src/agents/runtime/abstractions/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` (delegates to workspace) |
-| Filesystem layout (paths + provisioning) | [src/agents/runtime/filesystem/provisioner.py](../../src/agents/runtime/filesystem/provisioner.py) | path helpers (`memory_root()`, `skills_root()`, `conversation_root()`…), `ensure_user_agent_filesystem()`; deepagents-free |
-| Filesystem workspace (mounts + permissions) | [src/agents/runtime/filesystem/workspace.py](../../src/agents/runtime/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map, incl. the optional read-only `/reference/` definition mount), `workspace_write_deny()`, sandbox-execution guard (`SANDBOX_EXECUTION_ENABLED`, fail-closed) |
-| Workspace retention (TTL caches) | [src/agents/runtime/filesystem/retention.py](../../src/agents/runtime/filesystem/retention.py) | `/conversation/input/` (72h) and `/conversation/output/` (168h) are TTL-erased caches — blobs in Postgres are the source of truth; agents must not treat old workspace files as durable |
-| Memory store ops (list/read/delete + row format) | [src/agents/runtime/filesystem/memory.py](../../src/agents/runtime/filesystem/memory.py) | `index_line()` / `index_line_pattern()`, `list_memories()`, `read_memory()`, `delete_memory()` |
+| Base agent class | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `BaseAgent`, `attach_tools()`, `_validate_config()`, `_encode_run_error()` |
+| LangGraph agent base | [src/agents/harness/abstractions/langgraph_agent.py](../../src/agents/harness/abstractions/langgraph_agent.py) | `LangGraphAgent`, `build()`, `astream()`, abstract method list |
+| Deep agent base | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `DeepAgent`, lifecycle hooks, `default_middleware()`, `build_deep_agent()`, `RESERVED_DEEPAGENT_TOOL_NAMES`, `_apply_live_tools()`, `_build_composite_backend()` (delegates to workspace) |
+| Filesystem layout (paths + provisioning) | [src/agents/harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) | path helpers (`memory_root()`, `skills_root()`, `conversation_root()`…), `ensure_user_agent_filesystem()`; deepagents-free |
+| Filesystem workspace (mounts + permissions) | [src/agents/harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) | `build_workspace_backend()` (CompositeBackend route map, incl. the optional read-only `/reference/` definition mount), `workspace_write_deny()`, sandbox-execution guard (`SANDBOX_EXECUTION_ENABLED`, fail-closed) |
+| Workspace retention (TTL caches) | [src/agents/harness/filesystem/retention.py](../../src/agents/harness/filesystem/retention.py) | `/conversation/input/` (72h) and `/conversation/output/` (168h) are TTL-erased caches — blobs in Postgres are the source of truth; agents must not treat old workspace files as durable |
+| Memory store ops (list/read/delete + row format) | [src/agents/harness/memory/store.py](../../src/agents/harness/memory/store.py) | `index_line()` / `index_line_pattern()`, `list_memories()`, `read_memory()`, `delete_memory()` |
 | Memory inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) → bridge [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) (`/v1/memories`) → UI [MemoriesTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/MemoriesTab.tsx) + [useMemories.ts](../../src/agentic_ui/src/features/settings/hooks/useMemories.ts) | list / preview / delete a (user, agent)'s memories |
-| Agent middleware | [src/agents/runtime/middlewares/](../../src/agents/runtime/middlewares/) | `tool_error.py` (`ToolErrorMiddleware`), `summarization.py` (`ConfigurableSummarizationMiddleware`, `build_summarization_middleware()`, `exclude_stock_summarization()`) |
-| Shared tools | [src/agents/runtime/tools/](../../src/agents/runtime/tools/) | Custom tool definitions attached via `attach_tools()`; `remember.py` (per-agent memory write), `memory_search.py` (`search_past_conversations`) |
+| Agent middleware | [src/agents/harness/middlewares/](../../src/agents/harness/middlewares/) | `tool_error.py` (`ToolErrorMiddleware`), `summarization.py` (`ConfigurableSummarizationMiddleware`, `build_summarization_middleware()`, `exclude_stock_summarization()`) |
+| Shared tools | [src/agents/harness/tools/](../../src/agents/harness/tools/) | Custom tool definitions attached via `attach_tools()`; `remember.py` (per-agent memory write), `memory_search.py` (`search_past_conversations`) |
 | Summarization settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `SummarizationSettings` — `SUMMARIZATION_TRIGGER_FRACTION`, `_KEEP_FRACTION`, `_TRIGGER_TOKENS`, `_KEEP_MESSAGES` |
-| Durable checkpointer accessor | [src/agents/runtime/checkpointer/store.py](../../src/agents/runtime/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` |
-| Copy-on-fork seeding | [src/agents/runtime/checkpointer/fork.py](../../src/agents/runtime/checkpointer/fork.py) | `seed_thread_from_checkpoint()` |
+| Durable checkpointer accessor | [src/agents/harness/checkpointer/store.py](../../src/agents/harness/checkpointer/store.py) | `set_checkpointer()`, `get_checkpointer()`, `has_checkpointer_initialized()` |
+| Copy-on-fork seeding | [src/agents/harness/checkpointer/fork.py](../../src/agents/harness/checkpointer/fork.py) | `seed_thread_from_checkpoint()` |
 | Checkpointer lifespan + setup | [src/agents/main.py](../../src/agents/main.py) | `_lifespan` — pool open, `set_checkpointer`, `.setup()` |
 | Checkpointer settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `CheckpointerSettings` — `AGENT_RUNTIME_DATABASE_URL`, `LANGGRAPH_STRICT_MSGPACK`, `LANGGRAPH_AES_KEY_FILE` |
 | Namespace-cache release | [src/agents/utils/checkpointer.py](../../src/agents/utils/checkpointer.py) | `release_checkpoint_unless_paused()` (RAM cache only; never deletes Postgres) |
 | Agent discovery | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `_discover_agents()`, `AGENT_REGISTRY`, `AgentDefinition` |
 | Tool cache key logic | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `build_tool_cache_key()`, `_TOOL_SERVER_OVERRIDES`, `mcp_session_context()` |
-| AG-UI event emitter | [src/agents/runtime/protocols/agui/emitter.py](../../src/agents/runtime/protocols/agui/emitter.py) | `AGUIEmitter` — all emit methods |
-| AG-UI normalizer | [src/agents/runtime/protocols/agui/normalizer.py](../../src/agents/runtime/protocols/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
-| Custom event types | [src/agents/runtime/protocols/agui/events.py](../../src/agents/runtime/protocols/agui/events.py) | `PlanItem`, `PlanSnapshot`, `TaskSubAgentEvent`, `HITLInterruptEvent` |
+| AG-UI event emitter | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `AGUIEmitter` — all emit methods |
+| AG-UI normalizer | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `AGUIStreamNormalizer.handle_chunk()` |
+| Custom event types | [src/agents/harness/agui/events.py](../../src/agents/harness/agui/events.py) | `PlanItem`, `PlanSnapshot`, `TaskSubAgentEvent`, `HITLInterruptEvent` |
 | Stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{slug}/stream` — full instantiation + attach + stream flow |
 | Agent settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `AgentRegistrySettings.disabled_agent_slugs`, `McpSettings`, `RuntimeModelsSettings` |
 | LangGraph agent exports | [src/agents/langgraph_agents/\_\_init\_\_.py](../../src/agents/langgraph_agents/__init__.py) | `__all__` — agents that will be discovered |

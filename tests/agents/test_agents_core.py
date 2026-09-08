@@ -544,7 +544,7 @@ def test_settings_builds_with_proxy_secret(agents_service):
 
 
 # ---------------------------------------------------------------------------
-# runtime/checkpointer/store.py  (shared durable-saver accessor)
+# harness/checkpointer/store.py  (shared durable-saver accessor)
 # ---------------------------------------------------------------------------
 def test_set_and_get_checkpointer(agents_service):
     store = agents_service.checkpointer_store
@@ -652,7 +652,7 @@ async def test_release_checkpoint_unless_paused_no_aget_state(agents_service, mo
 
 
 # ---------------------------------------------------------------------------
-# runtime/checkpointer/fork.py  (copy-on-fork seeding)
+# harness/checkpointer/fork.py  (copy-on-fork seeding)
 # ---------------------------------------------------------------------------
 class _ForkGraph:
     """Stub graph: records aupdate_state calls; aget_state returns canned snapshots."""
@@ -712,7 +712,7 @@ async def test_fork_returns_false_on_empty_source(agents_service):
 
 
 # ---------------------------------------------------------------------------
-# runtime/abstractions/base_agent.py
+# harness/abstractions/base_agent.py
 # ---------------------------------------------------------------------------
 class _NamedTool:
     # _extract_tool_identity reads only `.name`; server_id is inferred via the
