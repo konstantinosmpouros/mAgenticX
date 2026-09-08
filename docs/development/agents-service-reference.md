@@ -282,7 +282,7 @@ Not abstract; shared plumbing. `AgentType = Literal["deep agent","langgraph agen
 
 Class identity attributes (overridden by subclasses as plain class attrs): `name` (slug — registry key + URL), `agent_id`, `label`, `version`, `type`, `description`, `icon`.
 
-`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), **empty `config_tools`/`config_tool_names`** (no longer seeded from a request tool list — that global model is retired; a deep agent resolves its own tools from `agent.yaml` minus `tool_prefs.json` disables), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True), `personalization` (parsed fail-closed from `context.personalization` by `harness/personalization.py` — unknown preset → `default`, text re-sanitized + re-capped).
+`__init__(config=...)` computes: `run_config` (random `thread_id` UUID if omitted), **empty `config_tools`/`config_tool_names`** (no longer seeded from a request tool list — that global model is retired; a deep agent resolves its own tools from `agent.yaml` minus `tool_prefs.json` disables), empty `tools`/`tools_names` (filled per-request by `attach_tools`), `context`, `use_memory` (default True), `personalization` (parsed fail-closed from `context.personalization` by `harness/personalization/personalization.py` — unknown preset → `default`, text re-sanitized + re-capped).
 
 - `manifest()` (classmethod) → the registry dict; reads class attrs only (no instantiation).
 - `attach_tools(live_tools)` → `_apply_live_tools(_filter_live_tools(...))`. `_filter_live_tools` keeps only live tools whose cache-key is in the agent's resolved set (declared − disabled); logs `agent_tools_missing`/`agent_tools_resolved`.

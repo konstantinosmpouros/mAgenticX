@@ -11,7 +11,6 @@ import from ``harness.filesystem`` rather than reaching into ``provisioner``
 directly.
 """
 from harness.filesystem import layout
-from harness.filesystem.agent_md_template import AGENTS_MD_TEMPLATE
 from harness.filesystem.provisioner import (
     agent_root,
     conversation_input_root,
@@ -22,22 +21,11 @@ from harness.filesystem.provisioner import (
     ensure_user_agent_filesystem,
     ensure_user_workspace,
     list_enabled_skills,
-    memory_entries_root,
-    memory_index_path,
-    memory_root,
     read_output_files,
     resolve_output_file,
     seed_input_files,
     skills_root,
     user_root,
-)
-from harness.filesystem.memory import (
-    MEMORIES_HEADER,
-    delete_memory,
-    index_line,
-    index_line_pattern,
-    list_memories,
-    read_memory,
 )
 from harness.filesystem.retention import (
     run_workspace_retention_loop,
@@ -50,16 +38,9 @@ from harness.filesystem.workspace import (
 )
 
 __all__ = [
-    "AGENTS_MD_TEMPLATE",
-    "MEMORIES_HEADER",
     "WORKSPACE_WRITE_DENY",
     "agent_root",
     "build_workspace_backend",
-    "delete_memory",
-    "index_line",
-    "index_line_pattern",
-    "list_memories",
-    "read_memory",
     "conversation_input_root",
     "conversation_output_root",
     "conversation_root",
@@ -69,9 +50,6 @@ __all__ = [
     "ensure_user_workspace",
     "layout",
     "list_enabled_skills",
-    "memory_entries_root",
-    "memory_index_path",
-    "memory_root",
     "read_output_files",
     "resolve_output_file",
     "run_workspace_retention_loop",

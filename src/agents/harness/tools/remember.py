@@ -1,38 +1,31 @@
 """Agent tool: save a durable memory for this (user, agent) pair.
 
-Bound **per run** (closes over the current run's ``user_id`` + ``agent_slug`` +
-``conversation_id``, which ``BaseAgent`` reads from the request config into
-``self.context``), so it can never write into another (user, agent)'s memory.
+Bound **per run** — it closes over the current run's ``user_id`` +
+``agent_slug`` + conversation/run identity, which ``BaseAgent`` reads from the
+request config into ``self.context`` — so it can never write into another
+(user, agent)'s memory.
 
-Writes directly to the agent's per-(user, agent) filesystem volume — the same
-tree mounted at ``/memories/`` — so each memory is one ``entries/<name>.yml``
-detail file plus a one-line summary in the ``AGENTS.md`` index. The index is
-what the model always sees (injected as always-on context at the next
-conversation's build); it reads the yml on demand. The tool keeps the two in
-sync and is idempotent by name — re-saving the same name updates in place.
+Writes a row in ``agent_memories`` (``harness/memory/``). There is no file I/O:
+``/memories/`` is a virtual route over that table, so the entry the agent reads
+back and the ``AGENTS.md`` index it always sees are both served from the row.
+The index in particular is *derived*, which is why this tool no longer maintains
+it — the old version wrote the entry and patched the index, and the two could
+disagree.
+
+Idempotent by name: re-saving the same name updates in place. That is not a
+convenience — LangGraph checkpoints at super-step boundaries, so a node re-entered
+after an approval pause, a tool retry, or a container restart runs this again.
 """
 from __future__ import annotations
 
-import os
 import re
-from datetime import datetime, timezone
-from pathlib import Path
 
-import yaml
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from core.settings import settings
 from core.logging import get_logger
-from harness.filesystem import (
-    AGENTS_MD_TEMPLATE,
-    MEMORIES_HEADER,
-    ensure_user_agent_filesystem,
-    index_line,
-    index_line_pattern,
-    memory_entries_root,
-    memory_index_path,
-)
+from core.settings import settings
+from harness.memory import AgentMemoryStore, get_memory_pool
 
 logger = get_logger(__name__)
 
@@ -57,42 +50,34 @@ class _RememberArgs(BaseModel):
 
 
 def _slugify(name: str) -> str:
-    """Normalise a memory name into a filesystem-safe slug (``[a-z0-9-]``).
+    """Normalise a memory name into a safe slug (``[a-z0-9-]``).
 
-    Collapsing to this charset also defeats path traversal — the result can
-    contain no slashes or dots, so it can never escape ``entries/``.
+    Still enforced even though nothing touches the filesystem: the slug is the
+    key the agent addresses as ``entries/<slug>.yml``, so collapsing to this
+    charset keeps a name from carrying slashes or dots into a path the model
+    will later try to read.
     """
     return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
-def _atomic_write(path: Path, text: str) -> None:
-    """Write via a sibling temp file + rename so a concurrent reader (or the
-    next run loading the index) never observes a half-written file."""
-    tmp = path.parent / (path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def _upsert_index_line(index_text: str, slug: str, summary: str) -> str:
-    """Return ``index_text`` with the row for ``slug`` inserted or replaced under
-    the Memories header. Idempotent by slug (no duplicates)."""
-    pattern = index_line_pattern(slug)
-    lines = [ln for ln in index_text.splitlines() if not pattern.match(ln)]
-    for i, ln in enumerate(lines):
-        if ln.strip().lower() == MEMORIES_HEADER.lower():
-            lines.insert(i + 1, index_line(slug, summary))
-            break
-    else:
-        lines.extend(["", MEMORIES_HEADER, index_line(slug, summary)])
-    return "\n".join(lines) + "\n"
-
-
 def build_remember_tool(
-    *, user_id: str, agent_slug: str, conversation_id: str | None
+    *,
+    user_id: str,
+    agent_slug: str,
+    conversation_id: str | None,
+    run_id: str | None = None,
+    thread_id: str | None = None,
+    trust_level: str = "unknown",
 ) -> StructuredTool:
-    """Return a ``remember`` tool bound to this run's (user, agent)."""
+    """Return a ``remember`` tool bound to this run's (user, agent).
 
-    def _remember(name: str, summary: str, content: str) -> str:
+    ``trust_level`` is decided by the caller from the run's tool set, not here —
+    the tool cannot see what else the agent has been given. It is recorded so a
+    memory written by a run that could reach external content is findable later;
+    see the column comment for how weak a signal it is.
+    """
+
+    async def _remember(name: str, summary: str, content: str) -> str:
         slug = _slugify(name)
         if not slug:
             return "Could not save: 'name' must contain letters or digits."
@@ -101,72 +86,61 @@ def build_remember_tool(
         if not summary or not content:
             return "Could not save: both 'summary' and 'content' are required."
 
-        # Provision the per-(user, agent) memory tree, then write the detail
-        # file and sync the index. Bound to this run's identity — no traversal.
-        ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
-        entries_dir = memory_entries_root(user_id, agent_slug)
-        index_path = memory_index_path(user_id, agent_slug)
-        entry_path = entries_dir / f"{slug}.yml"
+        store = AgentMemoryStore(get_memory_pool())
 
-        # Hard cap per (user, agent): updates to an existing entry always go
-        # through; only brand-new entries are refused once the limit is hit.
-        if not entry_path.exists():
+        # Hard cap per (user, agent). Updates to an existing entry always go
+        # through; only brand-new entries are refused once the limit is hit, so
+        # a full memory can still be corrected.
+        existing = await store.read_entry(user_id, agent_slug, slug)
+        if existing is None:
             cap = settings.filesystem.memory_max_entries
-            current = len(list(entries_dir.glob("*.yml")))
+            current = await store.count_pair(user_id, agent_slug)
             if current >= cap:
                 return (
                     f"Memory is full ({current}/{cap}). Update an existing memory "
                     "instead, or ask the user to remove some in their memory panel."
                 )
 
-        now = datetime.now(timezone.utc).isoformat()
-        # Preserve the original created_at when updating an existing memory.
-        created_at = now
-        if entry_path.exists():
-            try:
-                prior = yaml.safe_load(entry_path.read_text(encoding="utf-8")) or {}
-                created_at = prior.get("created_at") or now
-            except (yaml.YAMLError, OSError):
-                created_at = now
-
-        record = {
-            "name": slug,
-            "summary": summary,
-            "content": content,
-            "created_at": created_at,
-            "updated_at": now,
-            "source_conversation_id": conversation_id,
-        }
         try:
-            _atomic_write(
-                entry_path,
-                yaml.safe_dump(record, sort_keys=False, allow_unicode=True),
+            await store.upsert(
+                user_id=user_id,
+                agent_slug=agent_slug,
+                name=slug,
+                summary=summary,
+                content=content,
+                source_conversation_id=conversation_id,
+                source_run_id=run_id,
+                source_thread_id=thread_id,
+                created_by="agent",
+                trust_level=trust_level,
             )
-            index_text = (
-                index_path.read_text(encoding="utf-8")
-                if index_path.exists()
-                else AGENTS_MD_TEMPLATE
-            )
-            _atomic_write(index_path, _upsert_index_line(index_text, slug, summary))
-        except OSError as exc:
+        except Exception as exc:
+            # The agent is mid-thought. Report the failure as a tool result it
+            # can reason about rather than raising, which would fail the run.
             logger.warning(
                 "remember_tool_write_failed",
                 "Failed to persist a memory entry",
+                user_id=user_id,
                 agent_slug=agent_slug,
+                memory_name=slug,
                 failure_reason=type(exc).__name__,
+                exc_info=True,
             )
             return "Could not save the memory right now."
 
         logger.info(
             "memory_saved",
             "Saved an agent memory entry",
+            user_id=user_id,
             agent_slug=agent_slug,
             memory_name=slug,
+            trust_level=trust_level,
+            updated=existing is not None,
         )
         return f"Saved memory '{slug}'. It will be available in your future conversations with this user."
 
     return StructuredTool.from_function(
-        func=_remember,
+        coroutine=_remember,
         name="remember",
         description=(
             "Save a durable fact about THIS user to your long-term memory so you "
@@ -178,3 +152,6 @@ def build_remember_tool(
         ),
         args_schema=_RememberArgs,
     )
+
+
+__all__ = ["build_remember_tool"]

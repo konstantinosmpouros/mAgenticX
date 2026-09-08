@@ -1,8 +1,7 @@
 """Per-user, per-agent filesystem provisioner.
 
-Owns the lifecycle of ``<filesystem_root>/<user_id>/...`` — the directory
-tree that backs each user's shared ``AGENT.md`` memory and the per-agent
-``skills/`` directory. The presence of a directory under
+Owns the lifecycle of ``<filesystem_root>/<user_id>/...`` — the directory tree
+that backs each user's skill pool and the per-agent ``skills/`` directory. The presence of a directory under
 ``<filesystem_root>/<user_id>/agents/<agent_slug>/skills/<skill_name>/``
 *is* the "this skill is enabled for this user-agent pair" record — there is
 no database table mirroring the on-disk state.
@@ -11,19 +10,16 @@ Every path comes from :mod:`harness.filesystem.layout`, the single authority for
 the consolidated two-plane layout. This module owns the *lifecycle* (create,
 seed, read back, delete); layout owns *where*.
 
-Layout (structurally-isolated mounts the agent sees as siblings). Memory is
-per-(user, agent) — a sibling of ``skills/`` — so one agent's accumulated
-memory never bleeds into another's context:
+Layout (structurally-isolated mounts the agent sees as siblings). Note what is
+*absent*: the ``/memories/`` route has no directory here. Memory lives in the
+``agent_memories`` table (``harness/memory/``) and is served as a virtual route,
+so this module neither creates nor seeds anything for it:
 
     <workspaces_root>/users/<user_id>/
     ├── skills/                        ← the user's pool (manifest + custom/)
     ├── custom_agents/                 ← the user's own agent.yaml definitions
     └── agents/
         └── <agent_slug>/
-            ├── memory/                ← CompositeBackend route /memories/
-            │   ├── AGENTS.md          ← memory index (injected as always-on context)
-            │   └── entries/
-            │       └── <name>.yml     ← one memory each, read on demand
             ├── skills/                ← CompositeBackend route /skills/
             │   └── <skill_name>/SKILL.md
             ├── tool_prefs.json        ← per-agent tool overrides
@@ -72,7 +68,6 @@ from typing import Dict, List, Tuple
 from core.settings import settings
 from core.logging import get_logger
 from harness.filesystem import layout
-from harness.filesystem.agent_md_template import AGENTS_MD_TEMPLATE
 
 logger = get_logger(__name__)
 
@@ -106,26 +101,6 @@ def user_root(user_id: str) -> Path:
     that need to enumerate a user's siblings (e.g. cleanup tasks).
     """
     return layout.user_workspace(user_id)
-
-
-def memory_root(user_id: str, agent_slug: str) -> Path:
-    """The ``/memories/`` mount root for this (user, agent) pair.
-
-    Holds the ``AGENTS.md`` memory index plus the ``entries/`` detail files.
-    Per-agent (a sibling of ``skills/`` under ``agent_root``) so one agent's
-    memory never surfaces in another agent's context.
-    """
-    return layout.memory_root(user_id, agent_slug)
-
-
-def memory_entries_root(user_id: str, agent_slug: str) -> Path:
-    """The ``entries/`` subdir holding one ``<name>.yml`` per saved memory."""
-    return layout.memory_entries_root(user_id, agent_slug)
-
-
-def memory_index_path(user_id: str, agent_slug: str) -> Path:
-    """The ``AGENTS.md`` index file — injected as the agent's always-on memory."""
-    return layout.memory_index_path(user_id, agent_slug)
 
 
 def agent_root(user_id: str, agent_slug: str) -> Path:
@@ -317,8 +292,6 @@ def ensure_user_agent_filesystem(
     - the user's workspace root + ``custom_agents/`` on first contact
       (:func:`ensure_user_workspace`).
     - ``agents/<agent_slug>/memory/`` (+ ``entries/``) and seeds the
-      ``AGENTS.md`` index from the standard template if it doesn't exist;
-      never overwrites an existing file (the agent's memory is sacred).
     - ``agents/<agent_slug>/skills/`` on first contact (empty —
       assignments are owned by the skill-registry layer).
     - ``agents/<agent_slug>/conversations/<conversation_id>/`` when
@@ -326,20 +299,6 @@ def ensure_user_agent_filesystem(
       CRUD endpoints don't pass it.
     """
     root = ensure_user_workspace(user_id)
-
-    mem = memory_root(user_id, agent_slug)
-    (mem / "entries").mkdir(parents=True, exist_ok=True)
-
-    agents_md = memory_index_path(user_id, agent_slug)
-    if not agents_md.exists():
-        agents_md.write_text(AGENTS_MD_TEMPLATE, encoding="utf-8")
-        logger.info(
-            "agents_md_template_seeded",
-            "Seeded AGENTS.md memory index from template for new (user, agent)",
-            user_id=user_id,
-            agent_slug=agent_slug,
-            path=str(agents_md),
-        )
 
     skills_dir = skills_root(user_id, agent_slug)
     skills_dir.mkdir(parents=True, exist_ok=True)

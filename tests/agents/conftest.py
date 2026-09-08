@@ -256,6 +256,25 @@ def agents_service(_agents_service_loader):
         _reset_service_caches()
 
 
+@pytest.fixture(autouse=True)
+def _memory_pool(agents_service):
+    """Wire a stub pool so building the workspace backend works offline.
+
+    The ``/memories/`` route is a StoreBackend over ``agent_memories``, and it
+    resolves the pool at mount time. Without one the mount raises — which is the
+    correct production behaviour (a mount that silently lost memory would be
+    worse than a loud failure), but it means every test that builds the composite
+    backend needs a pool present. Nothing here executes SQL; the tests that do
+    exercise the store drive it with their own fake.
+    """
+    pool_mod = importlib.import_module("harness.memory.pool")
+    pool_mod.set_memory_pool(object())
+    try:
+        yield
+    finally:
+        pool_mod.set_memory_pool(None)
+
+
 @pytest.fixture
 def internal_headers(agents_service):
     return {

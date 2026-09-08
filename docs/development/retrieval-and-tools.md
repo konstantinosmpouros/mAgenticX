@@ -372,10 +372,10 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | Per-(user, agent) tool disables | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
 | LangGraph agent build & stream | [src/agents/harness/abstractions/langgraph_agent.py](../../src/agents/harness/abstractions/langgraph_agent.py) | `build()`, `astream()` |
 | Deep agent build lifecycle | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
-| Tool call lifecycle events | [src/agents/harness/protocols/agui/emitter.py](../../src/agents/harness/protocols/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
-| Stream normalization & routing | [src/agents/harness/protocols/agui/normalizer.py](../../src/agents/harness/protocols/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
-| Special tool handling | [src/agents/harness/protocols/agui/normalizer.py](../../src/agents/harness/protocols/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |
-| HITL, plan, sub-agent event models | [src/agents/harness/protocols/agui/events.py](../../src/agents/harness/protocols/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
+| Tool call lifecycle events | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
+| Stream normalization & routing | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `handle_chunk()`, `_handle_updates_payload()`, `_handle_messages_payload()` |
+| Special tool handling | [src/agents/harness/agui/normalizer.py](../../src/agents/harness/agui/normalizer.py) | `write_todos` branch, `task` branch, `__interrupt__` priority check |
+| HITL, plan, sub-agent event models | [src/agents/harness/agui/events.py](../../src/agents/harness/agui/events.py) | `HITLInterruptEvent`, `PlanSnapshot`, `TaskSubAgentEvent`, `SubAgentEvent` |
 | Agent stream endpoint | [src/agents/main.py](../../src/agents/main.py) | `POST /agents/{agent_slug}/stream` |
 | Agent catalog endpoints | [src/agents/main.py](../../src/agents/main.py) | `GET /agents`, `GET /tools` |
 | Inference runs (bridge) | [src/dialogue_bridge/router/inference.py](../../src/dialogue_bridge/router/inference.py) | `startInferenceFlow()`, `inference_run_websocket()`, `cancelInferenceRun()` |

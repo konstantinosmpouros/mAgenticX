@@ -89,7 +89,7 @@ The compose files confirm it. `src/docker-compose.yaml` sets `AGENTS_FILESYSTEM_
 
 ### 2.4 Memory, tools, and instructions are all one tier too shallow
 
-- **Memory** — `(user, agent)`. Store ops in [harness/filesystem/memory.py](../../src/agents/harness/filesystem/memory.py) (`list_memories` :68, `read_memory` :88, `delete_memory` :109, index row format `index_line`/`index_line_pattern` :31-43); cap `MEMORY_MAX_ENTRIES` = 60 (settings.py:481). Proxied to the UI through `router/memories.py` on both services ([agent-memory](../flows/agent-memory.md) has the endpoint table).
+- **Memory** — `(user, agent)`. Store ops in [harness/memory/store.py](../../src/agents/harness/memory/store.py) (`list_memories` :68, `read_memory` :88, `delete_memory` :109, index row format `index_line`/`index_line_pattern` :31-43); cap `MEMORY_MAX_ENTRIES` = 60 (settings.py:481). Proxied to the UI through `router/memories.py` on both services ([agent-memory](../flows/agent-memory.md) has the endpoint table).
 - **Tool prefs** — `(user, agent)`, stored at `<agent_root>/tool_prefs.json` (tool_prefs.py:44-45) with the effective set `(declared ∪ user_enabled) − user_disabled` (tool_prefs.py:13-19).
 - **Instructions** — one per user: `user_preferences.custom_instructions` (models.py:129-132), parsed into the run via `parse_personalization(self.context)` (base_agent.py:86).
 - **Skills** — `(user, agent)` by folder presence under `skills/` (provisioner.py:372-382), sourced from the user's pool.
@@ -520,7 +520,7 @@ Types, contracts, api functions, store slices, the sidebar switcher, refetch-on-
 | Scoped query sites | `src/dialogue_bridge/utils/` | `search.py:44,77,112` · `conversations.py:285` · `scheduled_tasks.py:328` · `suggestions.py:27` · `usage.py:67` · `attachments.py:99,312` |
 | **Every filesystem path** | [src/agents/harness/filesystem/provisioner.py](../../src/agents/harness/filesystem/provisioner.py) | Layout docblock 14-24; `_safe_segment` 70-86, `user_root` 89-95, `memory_root` 98-115, `agent_root` 118-125, `skills_root` 128-130, `conversation_root` 133-152, `ensure_user_agent_filesystem` 252-300, `seed_input_files` 303-350, `delete_conversation_files` 353-369, `list_enabled_skills` 372-382 |
 | Mount assembly + write-deny | [src/agents/harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) | `WORKSPACE_WRITE_DENY` 42-48, `build_workspace_backend` 51-157, routes 128-154 |
-| Memory store ops | [src/agents/harness/filesystem/memory.py](../../src/agents/harness/filesystem/memory.py) | `index_line`/`index_line_pattern` 31-43, `list_memories` 68, `read_memory` 88, `delete_memory` 109 |
+| Memory store ops | [src/agents/harness/memory/store.py](../../src/agents/harness/memory/store.py) | `index_line`/`index_line_pattern` 31-43, `list_memories` 68, `read_memory` 88, `delete_memory` 109 |
 | Retention walk (breaks on re-root) | [src/agents/harness/filesystem/retention.py](../../src/agents/harness/filesystem/retention.py) | `_NON_CONVERSATION_DIRS` 47, `_iter_scope_dirs` 70-105, `sweep_workspace_retention_once` 187 |
 | Per-(user, agent) tool prefs | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `_tool_prefs_path` 44-45, effective-set formula 13-19, `read_tool_prefs` 55-77 |
 | Filesystem roots (incl. the dead one) | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `user_root` 426-429, `skills_registry_*` 434-445, `global_root` 455-458, **`workspaces_root` 459-462 (unused)**, TTLs 502-506, `memory_max_entries` 481 |

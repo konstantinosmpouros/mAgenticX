@@ -2,10 +2,10 @@
 
 **Status:** Partially shipped — **Part A** (custom agents, §2) and **Part B** (custom skills,
 pool and assignments, §3) are in, behind migration `0019_persist_user_content`. **Part C**
-(memory, §4) is superseded by [22 · Two-way workspace sync](22-two-way-workspace-sync.md),
-which turns its bespoke reconcile endpoint and tombstone design into shared infrastructure.
+(memory, §4) shipped as a store in `agent_runtime` instead — no mirror, no
+tombstones, no reconciliation; see [agent-memory](../../flows/agent-memory.md).
 **Touches:** `dialogue_bridge` (new tables, new ownership), `agents` (loses read/CRUD surface, gains a hydrator), `agentic_ui` (unchanged contracts)
-**Background:** [state & storage map](../draft/state-and-storage-map.md) §6–§7
+**Background:** [state & storage map](../../draft/state-and-storage-map.md) §6–§7
 
 Three object types a user creates — **custom agents**, **custom skills**, and
 **agent memory** — exist in exactly one place: the agents-service volume. That
@@ -13,8 +13,10 @@ volume has no backup and no mirror, so losing it destroys content no `pg_dump`
 can bring back, and it is what pins the agents service to a single replica.
 
 This plan inverts the ownership: **Postgres holds the truth, the volume becomes
-a materialised cache rebuilt on boot.** It ships in three parts, easiest first,
-because each one proves more of the same machinery.
+a materialised cache rebuilt on boot.** It was scoped as three parts, easiest
+first, because each one proves more of the same machinery. Two shipped here; the
+third (memory) moved to [plan 22](22-two-way-workspace-sync.md) once it became
+clear all three wanted the same reconciliation rather than one each.
 
 ---
 
@@ -150,102 +152,38 @@ by making the data local.
 
 ---
 
-## 4. Part C — memory
+## 4. Part C — memory (superseded)
 
-The special case, and the reason it is last.
+**The design in this section was never built.** Memory was folded into
+[22 · Two-way workspace sync](22-two-way-workspace-sync.md) and then moved out
+of it again; what shipped is a Postgres-backed store in `agent_runtime` with no
+volume copy at all — see
+[docs/flows/agent-memory.md](../../flows/agent-memory.md) for the built behaviour
+and [22 §10](22-two-way-workspace-sync.md) for why the sync shape was dropped. What was here — a bespoke
+`/v1/internal/agent-memory/entries` endpoint pair, its own tombstone design, and
+a reconciliation pass built only for memory — turned out to be a private copy of
+machinery that three object types needed. Plan 22 built that machinery once, so
+memory reduces to a table plus a section on payloads that already exist.
 
-**Memory is not written through the bridge.** The `remember` tool runs
-*inside* an agent, mid-run, and writes `entries/<slug>.yml` + an `AGENTS.md`
-index line straight to the volume. The browser is not involved, so there is no
-request to hang persistence off.
+Two conclusions from this section did survive, and are carried forward there:
 
-### 4.1 How memory is actually read and written today
+- **The write order inverts for memory.** `/memories/` is the runtime read path,
+  so the volume is written first and the database second — the opposite of Parts
+  A and B, and not a preference (the agent's next `read_file` must see what it
+  just wrote).
+- **Reconciliation had to be two-way from the start.** §6 predicted this as a
+  consequence of Part C; it landed as plan 22 Phases 2–4, and the orphan bug it
+  fixed turned out to affect agents and skills too, not just memory.
 
-Worth stating precisely, because the names mislead.
+One observation worth keeping, because it is easy to trip over and belongs to no
+other doc:
 
-| Path | Mechanism | Touches the bridge? |
-| --- | --- | --- |
-| Agent **reads** memory | `create_deep_agent(memory=agent_md_paths)` injects `/memories/AGENTS.md` as always-on context; entries are `read_file`-able because `/memories/` is a **mounted filesystem route** | No |
-| Agent **writes** memory | the `remember` tool writes `entries/<slug>.yml` + an index line, straight to the volume | No |
-| **UI** inspects memory | `agents/router/memories.py` (`list_memories` / `read_memory` / `delete_memory`) → bridge proxy | Yes |
-
-**There is no tool that searches memories.** `search_past_conversations` is a
-different feature entirely: it does semantic search over the user's past
-*conversation messages* via `chat_db`'s pgvector index. Its endpoint is named
-`/v1/internal/memory/search`, which is a misnomer — it searches
-`message_embeddings`, not `agent_memories`.
-
-### 4.2 What we borrow is the pattern, not the feature
-
-`search_past_conversations` is nonetheless the precedent that makes this cheap:
-it proves the **reverse channel** — the agents service calling the bridge on an
-endpoint gated by `require_internal_caller` and blocked at the nginx edge, so
-only the `backend` network can reach it.
-
-Memory writes reuse that shape:
-
-```
-POST   /v1/internal/agent-memory/entries    upsert one entry
-DELETE /v1/internal/agent-memory/entries    remove one
-```
-
-**Namespaced deliberately away from `/v1/internal/memory/`.** Adding
-`/memory/entries` beside `/memory/search` would put message search and agent
-memory under one prefix while they share nothing — different table, different
-feature, different lifecycle. Renaming the existing route to
-`/v1/internal/conversations/search` would be truer still; it is a one-line
-change on both sides and worth folding in here.
-
-No new trust model, no new transport — the pattern is proven and already
-audited.
-
-### 4.3 Schema
-
-```sql
-agent_memories(
-  id, user_id → users.id ON DELETE CASCADE,
-  agent_slug text NOT NULL,
-  name       text NOT NULL,      -- the entry slug
-  summary    text NOT NULL,      -- the AGENTS.md index line
-  content    text NOT NULL,      -- the entry body
-  created_at, updated_at,
-  UNIQUE (user_id, agent_slug, name)
-)
-```
-
-`AGENTS.md` is **derived**, not stored: it is an index over `summary`, and
-regenerating it from rows is what keeps the two from drifting.
-
-### 4.4 Write policy — the decision this part turns on
-
-The tool must not become slower or failure-prone because of persistence.
-
-**Write to the volume first, then mirror to the bridge; a failed mirror is
-logged, never raised.**
-
-Two reasons, and the second is structural rather than a preference:
-
-1. The agent is mid-thought. A bridge blip must not fail a run.
-2. **The agent reads memory from the mount, not from a query** (§4.1). Unlike
-   custom agents and skills — where the volume is a materialised convenience —
-   here the filesystem *is* the runtime read path. The volume cannot stop being
-   authoritative during a run, so writing anywhere else first would mean the
-   agent's next `read_file` misses a memory it just wrote.
-
-The mirror is best-effort, with the gap closed by reconciliation on the next boot
-(volume → Postgres for anything missing) — the same hydrator running in the other
-direction.
-
-That is the opposite of Parts A and B's persist-then-materialise, and
-deliberately so: there, a user is waiting on a response and a lost write is
-visible; here, an agent is mid-run and a raised error is worse than a delayed
-mirror.
-
-### 4.5 What the UI gains
-
-The Memory tab currently proxies to the agents service to list and delete. It
-becomes a `chat_db` query, and `harness/filesystem/memory.py`'s read helpers
-lose their remote caller.
+> **`/v1/internal/memory/search` is a misnomer.** It performs semantic search
+> over the user's past *conversation messages* via `chat_db`'s pgvector index —
+> `message_embeddings`, not agent memory. The two share a prefix and nothing
+> else. Renaming it to `/v1/internal/conversations/search` is a one-line change
+> on both sides with no back-compat concern (internal only), and worth folding
+> into the memory work so the two stop being confusable.
 
 ---
 
@@ -255,7 +193,7 @@ lose their remote caller.
 | --- | --- | --- |
 | **A · custom agents** | Tables + write path + read cutover + hydrator | — |
 | **B · custom skills** | Tables (incl. pool + assignments) + read cutover + cache removal | A's hydrator pattern |
-| **C · memory** | Internal write endpoints + table + reconciliation | The hydrator running both directions |
+| **C · memory** | a store in `agent_runtime`, no volume copy | nothing — the split it would reconcile does not exist |
 
 Each part is independently deployable and leaves the app working, because the
 volume keeps serving the agent throughout — we are adding an owner, not moving
@@ -269,7 +207,10 @@ the runtime's data source.
   memories on the volume with no rows. First boot after each part must
   back-fill *volume → Postgres*, and it must be idempotent — that is the same
   reconciliation Part C needs anyway, so build it as a two-way sync from the
-  start rather than a one-shot import.
+  start rather than a one-shot import. **This is what actually happened**: Parts
+  A and B shipped with five separate one-way adoption paths, none of which could
+  see content the database had never heard of, and plan 22 replaced all five with
+  the two-way exchange this edge called for.
 - **`agents.owner_user_id` stays the discriminator.** `NULL` = platform. The new
   tables hang off user-authored rows only; platform definitions stay in the
   image where they belong.
@@ -311,7 +252,7 @@ run once by hand.
 | Skill proxy + cache (to become queries) | `src/dialogue_bridge/utils/skills.py`, `utils/skills_cache.py` |
 | Reverse-channel precedent | `src/dialogue_bridge/router/internal_memory.py` |
 | The `remember` tool | `src/agents/harness/tools/remember.py` |
-| Memory read helpers | `src/agents/harness/filesystem/memory.py` |
+| Memory read helpers | `src/agents/harness/memory/store.py` |
 | Path authority for materialisation | `src/agents/harness/filesystem/layout.py` |
 | Agent definition CRUD (write side kept) | `src/agents/harness/abstractions/user_agents.py` |
 | Skill registry (write side kept) | `src/agents/harness/skill_registry/user_registry.py` |

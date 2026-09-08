@@ -15,6 +15,12 @@ class MemoryEntry(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     source_conversation_id: Optional[str] = None
+    # Provenance. A durable memory is future context, so an entry written by a
+    # run that could reach external content has to stay identifiable — see the
+    # `trust_level` column comment for how coarse that signal is.
+    source_run_id: Optional[str] = None
+    created_by: str = "agent"
+    trust_level: str = "unknown"
 
 
 class MemoryDetail(MemoryEntry):

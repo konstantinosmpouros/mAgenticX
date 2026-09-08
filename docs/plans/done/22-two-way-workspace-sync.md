@@ -1,10 +1,10 @@
 # 22 — Two-way workspace sync
 
-**Status:** Phases 0–4 shipped — the exchange is live, the one-way hydrator is retired, and the five read-triggered adoption paths are gone. **Remaining:** Phase 5 (memory). Not deployed
+**Status:** Complete as scoped — Phases 0–4 shipped. Phase 5 (memory) was **dropped from this plan**: it ships separately in `agent_runtime` with no volume copy (§10). Not deployed
 **Touches:** `dialogue_bridge` (new sync router, tombstone column, delete-order change), `agents` (sync client replaces the hydrator), `agentic_ui` (unchanged — no contract moves)
 **Depends on:** [21 · Persist user content in Postgres](21-persist-user-content-in-postgres.md) Parts A and B, which are shipped
-**Blocks:** 21 Part C (memory) — this plan absorbs it as a third object type
-**Background:** [state & storage map](../draft/state-and-storage-map.md) §6–§7
+**Blocks:** nothing. 21 Part C (memory) was briefly folded in here and then moved out again — see §10
+**Background:** [state & storage map](../../draft/state-and-storage-map.md) §6–§7
 
 Parts A and B of plan 21 made `chat_db` the owner of custom agents and custom
 skills, with the agents-service volume as a cache. What they did not build is a
@@ -36,7 +36,7 @@ it again:
 
 The two "none" rows are worse than invisible. Retrying the same name hits the
 agents service's conflict check — `409 You already have an agent named 'x'`
-([`router/user_agents.py:119`](../../src/agents/router/user_agents.py)) or
+([`router/user_agents.py:119`](../../../src/agents/router/user_agents.py)) or
 `409 A skill with that name already exists` — so the user can neither see it, nor
 recreate it, nor delete it. Only a manual volume edit clears it.
 
@@ -319,19 +319,50 @@ agree — while an empty inventory correctly offers to restore all five.
 
 ---
 
-## 10. Phase 5 — memory as a third object type
+## 10. Phase 5 — memory (not built; memory left this plan)
 
-This is [plan 21 Part C](21-persist-user-content-in-postgres.md#4-part-c--memory),
-re-scoped. Memory needed a bespoke reconcile endpoint and its own tombstone
-design; both are now shared infrastructure, so it reduces to:
+**Memory is not an object type in this exchange, and never became one.** It ships
+independently, in `agent_runtime`, with no volume copy at all — see
+[docs/flows/agent-memory.md](../../flows/agent-memory.md) for what was actually
+built. This plan therefore **finishes at Phase 4**.
 
-- an `agent_memories` table (with the provenance columns — see §11);
-- a third section in the inventory and content payloads;
-- the `remember` tool unchanged, still writing the volume first.
+The reasoning is worth keeping, because the shape here looked right twice before
+it was wrong.
 
-The per-write mirror becomes **optional**. Without it a memory reaches `chat_db`
-at the next sync instead of immediately; keep it only if that delay matters, and
-it is no longer load-bearing either way.
+Memory was folded into this plan from
+[21 · Part C](21-persist-user-content-in-postgres.md) on a sound argument: it
+needed a reconcile endpoint and a tombstone design, both of which Phases 2–4
+turn into shared infrastructure, so a third object type would have been a table
+plus a payload section.
+
+What that missed is *why* the machinery exists at all. The exchange, the
+inventory protocol and the cross-service content hash are all there because the
+database and the volume sit on **opposite sides of a service boundary** — the
+bridge owns `chat_db`, the agents service owns the volume. Memory has no such
+split: the agent writes it, mid-run, and the agents service already owns a
+database of its own. Putting memory in `agent_runtime` removes the boundary
+rather than reconciling across it, and every piece of machinery it would have
+reused becomes unnecessary:
+
+| | in this plan | as built |
+| --- | --- | --- |
+| Two stores to reconcile | inventory + plan + content exchange | one store |
+| Cross-service content hash | required, load-bearing | none |
+| Tombstones | required (a delete is ambiguous) | none — a delete is a delete |
+| Boot pass | hydration, forever | none |
+| Volume folder | the runtime read path | **does not exist** |
+
+`/memories/` became a virtual route: deepagents' `StoreBackend` over a custom
+`BaseStore` implementation, so the agent still reads `AGENTS.md` and
+`entries/<name>.yml` while there is no filesystem underneath. A custom store
+rather than LangGraph's `AsyncPostgresStore` because that one is a generic
+`(prefix, key, value jsonb)` table, which would have made the provenance columns
+— the whole point of §11's injection-surface finding — unindexed JSON.
+
+Two things this plan got right and memory kept: **the write order inverts**
+(the volume, or rather the store, is the runtime read path, so a failed persist
+must never raise mid-run), and **provenance belongs in the first migration**
+because it cannot be backfilled.
 
 ---
 
@@ -375,10 +406,10 @@ it is no longer load-bearing either way.
 | **2 · sync router** ✅ | inventory/content endpoints + the diff | needs 1 |
 | **3 · sync client** ✅ | boot + interval, user union | needs 2 |
 | **4 · delete adoption** ✅ | five paths removed | needs 3 |
-| **5 · memory** | third object type | needs 4 |
+| **5 · memory** | — dropped; ships separately in `agent_runtime` (§10) | — |
 
-Phases 0–3 fix the orphan bug. Phase 4 is the simplification the plan exists for.
-Phase 5 replaces plan 21 Part C.
+Phases 0–3 fix the orphan bug. Phase 4 is the simplification the plan exists
+for, and is where the plan ends.
 
 ---
 
@@ -404,4 +435,4 @@ container comes up with an empty volume and nothing would ever reconcile it.
 | Sync client + user union | `agents/utils/workspace_sync.py` (replaces `workspace_hydrator.py`) |
 | Volume enumeration | `agents/harness/filesystem/layout.py` |
 | Write side, unchanged | `agents/harness/abstractions/user_agents.py`, `harness/skill_registry/user_registry.py` |
-| Memory (Phase 5) | `agents/harness/tools/remember.py`, `harness/filesystem/memory.py` |
+| Memory (Phase 5) | `agents/harness/tools/remember.py`, `harness/memory/store.py` |

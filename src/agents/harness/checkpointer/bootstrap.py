@@ -21,6 +21,8 @@ from fastapi import FastAPI
 from core.settings import settings
 from core.logging import get_logger
 from harness.checkpointer.store import set_checkpointer
+from harness.memory.pool import set_memory_pool
+from harness.memory.store import AgentMemoryStore
 
 logger = get_logger(__name__)
 
@@ -111,6 +113,14 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
     await pool.open()
     await pool.wait()
     app.state.checkpointer_pool = pool
+
+    # Agent memory lives in this same database, so it borrows this pool rather
+    # than opening a second one for one table — same credentials, same
+    # keepalives, same checkout health check. Installed before the memory table
+    # is created because the store reads the pool from the accessor.
+    set_memory_pool(pool)
+    if cfg.setup_on_startup:
+        await AgentMemoryStore(pool).setup()
 
     serde = None
     aes_key = cfg.aes_key.get_secret_value()

@@ -23,14 +23,19 @@ from pathlib import Path
 from typing import Any, Callable
 
 from deepagents import FilesystemPermission
-from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents.backends import (
+    CompositeBackend,
+    FilesystemBackend,
+    StateBackend,
+    StoreBackend,
+)
 from deepagents.backends.protocol import SandboxBackendProtocol
 
 from core.settings import settings
+from harness.memory import AgentMemoryStore, get_memory_pool
 from harness.filesystem.provisioner import (
     conversation_root,
     ensure_user_agent_filesystem,
-    memory_root,
     skills_root,
 )
 
@@ -140,7 +145,6 @@ def build_workspace_backend(
     ensure_user_agent_filesystem(
         user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id
     )
-    memory_path = memory_root(user_id, agent_slug)
     skills_path = skills_root(user_id, agent_slug)
     conv_path = conversation_root(user_id, agent_slug, conversation_id)
     # Per-conversation, on-disk homes for deepagents' offloaded artifacts.
@@ -173,10 +177,19 @@ def build_workspace_backend(
                 "Workspace default backend is sandbox-capable but SANDBOX_EXECUTION_ENABLED "
                 "is false — refusing to expose an execution path."
             )
-        routes: dict[str, FilesystemBackend] = {}
+        # Every other route is a real directory; this one is not. `/memories/`
+        # is a virtual view over the `agent_memories` table in agent_runtime, so
+        # the agent's read_file/write_file on it are queries. Nothing about how
+        # the agent *uses* memory changes — there is simply no disk to lose.
+        routes: dict[str, Any] = {}
         if use_memory:
-            routes["/memories/"] = FilesystemBackend(
-                root_dir=str(memory_path), virtual_mode=True
+            routes["/memories/"] = StoreBackend(
+                store=AgentMemoryStore(get_memory_pool()),
+                # Per-(user, agent): the namespace is what stops one agent's
+                # accumulated memory reaching another's context. Safe to close
+                # over the identity — a fresh backend is minted per tool call
+                # from this run's own factory.
+                namespace=lambda _rt: (user_id, agent_slug),
             )
         routes.update({
             "/skills/": FilesystemBackend(

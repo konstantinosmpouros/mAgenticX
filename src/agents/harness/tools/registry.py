@@ -41,6 +41,12 @@ class NativeToolContext:
     conversation_id: Optional[str]
     use_memory: bool = True
     search_past_convs: bool = False
+    # Provenance for anything this run writes durably. `run_id`/`thread_id` come
+    # straight from the run config; `trust_level` is decided by the agent, which
+    # is the only layer that can see the whole tool set (a builder cannot).
+    run_id: Optional[str] = None
+    thread_id: Optional[str] = None
+    trust_level: str = "unknown"
 
 
 @dataclass(frozen=True)
@@ -95,6 +101,9 @@ register_native_tool(
                 user_id=ctx.user_id,
                 agent_slug=ctx.agent_slug,
                 conversation_id=ctx.conversation_id,
+                run_id=ctx.run_id,
+                thread_id=ctx.thread_id,
+                trust_level=ctx.trust_level,
             )
             if ctx.use_memory
             else None

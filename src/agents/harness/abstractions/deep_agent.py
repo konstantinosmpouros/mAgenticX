@@ -339,8 +339,27 @@ class DeepAgent(BaseAgent, ABC):
                 conversation_id=ctx.get("conversation_id"),
                 use_memory=self.use_memory,
                 search_past_convs=bool(ctx.get("search_past_convs")),
+                run_id=ctx.get("run_id"),
+                thread_id=ctx.get("thread_id"),
+                trust_level=self._trust_level(),
             )
         )
+
+
+    def _trust_level(self) -> str:
+        """Whether this run could reach content nobody on our side authored.
+
+        A durable memory is future context: an entry written after the agent read
+        a poisoned page behaves like a stored prompt injection. Recording *that a
+        run could have* read external content is what makes such an entry
+        findable afterwards.
+
+        Deliberately coarse. It is per-RUN, not per-turn, and it keys off the MCP
+        tool set (web search, arXiv and the rest) because that is the external
+        surface this service actually exposes. It is a review signal, never an
+        authorization decision — the enforcement, if any, belongs in retrieval.
+        """
+        return "untrusted" if self.tools else "user-derived"
 
 
     def _apply_tool_disables(self, tools: List[Any]) -> List[Any]:

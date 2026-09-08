@@ -159,18 +159,6 @@ def agent_root(user_id: str, agent_slug: str) -> Path:
     return user_agents_root(user_id) / safe_segment(agent_slug)
 
 
-def memory_root(user_id: str, agent_slug: str) -> Path:
-    return agent_root(user_id, agent_slug) / "memory"
-
-
-def memory_entries_root(user_id: str, agent_slug: str) -> Path:
-    return memory_root(user_id, agent_slug) / "entries"
-
-
-def memory_index_path(user_id: str, agent_slug: str) -> Path:
-    return memory_root(user_id, agent_slug) / "AGENTS.md"
-
-
 def agent_skills_root(user_id: str, agent_slug: str) -> Path:
     """Tier ② — skills the user added to this agent, copied from their pool.
     Directory presence is the "enabled" record; there is no DB mirror."""
@@ -224,9 +212,6 @@ __all__ = [
     "user_custom_agent_dir",
     "user_agents_root",
     "agent_root",
-    "memory_root",
-    "memory_entries_root",
-    "memory_index_path",
     "agent_skills_root",
     "agent_default_skills_root",
     "agent_tool_prefs_path",
