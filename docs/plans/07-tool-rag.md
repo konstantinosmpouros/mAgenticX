@@ -67,7 +67,7 @@ kept = [tool for tool in tools if get_tool_cache_key(tool) not in disabled]
 
 Two exemptions are already structural and must stay so. **Native builtins can never be disabled** — native keys are subtracted from the disabled set at [deep_agent.py:336](../../src/agents/harness/abstractions/deep_agent.py) and rejected at the toggle endpoint ([agent_tools.py:127-134](../../src/agents/utils/agent_tools.py)), so `present_artifact` is always on. **Framework builtins can never be disabled either**, because `create_deep_agent` adds `write_todos` / `ls` / `read_file` / `write_file` / `edit_file` / `glob` / `grep` / `execute` / `task` *after* the filter runs; the reserved-name set at [deep_agent.py:37-58](../../src/agents/harness/abstractions/deep_agent.py) also drops any MCP tool that tries to shadow one ([`_apply_live_tools`:644-669](../../src/agents/harness/abstractions/deep_agent.py)).
 
-The invariant, stated once so section 3 can hold it: **`effective = (declared_mcp ∪ user_enabled) − user_disabled`, plus gated natives, plus framework builtins added downstream of every filter.** Persisted in `<agent_root>/tool_prefs.json` v2, read fail-open ([tool_prefs.py:55-77](../../src/agents/harness/filesystem/tool_prefs.py)), written atomically ([tool_prefs.py:93-112](../../src/agents/harness/filesystem/tool_prefs.py)).
+The invariant, stated once so section 3 can hold it: **`effective = (declared_mcp ∪ user_enabled) − user_disabled`, plus gated natives, plus framework builtins added downstream of every filter.** Persisted in `<agent_root>/tool_prefs.json` v2, read fail-open ([tool_prefs.py:55-77](../../src/dialogue_bridge/utils/agent_tool_prefs.py)), written atomically ([tool_prefs.py:93-112](../../src/dialogue_bridge/utils/agent_tool_prefs.py)).
 
 ### What the manifest cache actually holds
 
@@ -226,7 +226,7 @@ On-disk layout on the agents global volume (same volume the skills registry and 
   vectors.npy    # float32 (row_count, dimensions), row order == rows.json
 ```
 
-Written atomically (temp file + `os.replace`, the pattern `write_tool_prefs` already uses — [tool_prefs.py:96-105](../../src/agents/harness/filesystem/tool_prefs.py)). Read fail-open: a missing, truncated, or version-mismatched sidecar means "rebuild", never "crash" and never "silently run with a stale index". If the rebuild itself fails — gateway down, OpenAI down — the run proceeds with `TOOL_RAG` **disabled for that run**, presenting the full authorized set. Fail-*open on presentation* is the right stance here precisely because presentation is not a security boundary; the security boundary is layer one and it is unaffected.
+Written atomically (temp file + `os.replace`, the pattern `write_tool_prefs` already uses — [tool_prefs.py:96-105](../../src/dialogue_bridge/utils/agent_tool_prefs.py)). Read fail-open: a missing, truncated, or version-mismatched sidecar means "rebuild", never "crash" and never "silently run with a stale index". If the rebuild itself fails — gateway down, OpenAI down — the run proceeds with `TOOL_RAG` **disabled for that run**, presenting the full authorized set. Fail-*open on presentation* is the right stance here precisely because presentation is not a security boundary; the security boundary is layer one and it is unaffected.
 
 The one additive schema change is in-memory only: `ToolManifest` ([schemas.py:165-169](../../src/agents/schemas.py)) gains `input_schema: dict = {}`, populated in `_build_manifest` ([mcp_tools.py:83-107](../../src/agents/utils/mcp_tools.py)). `AgentToolRow` and the Agents-tab response are untouched.
 
@@ -335,7 +335,7 @@ The load-bearing security claim is that **Tool RAG cannot change what an agent i
 
 **Endpoints.** All three new endpoints are `require_internal_caller` and must be covered by the nginx `/api/v1/internal/`-style edge deny if they are ever proxied. `POST /tools/retrieve` deliberately takes an explicit `authorizedKeys` array instead of `(user_id, agent_slug)` so that even an internal caller cannot use it to enumerate a user's authorized set. `POST /tools/index/refresh` is a cheap-to-call, expensive-to-serve endpoint and therefore needs a process-level lock plus a minimum interval, so a loop of calls cannot become an OpenAI spend amplifier.
 
-**Fail-closed vs fail-open, stated deliberately.** Authorization fails closed (unchanged: a corrupt `tool_prefs.json` yields the declared baseline, [tool_prefs.py:55-61](../../src/agents/harness/filesystem/tool_prefs.py)). Presentation fails *open* — index missing, embedding provider down, fingerprint stale — because the failure mode of failing closed would be an agent that mysteriously has no tools. Presentation is not a security boundary, and pretending it is would trade a real outage for no security gain.
+**Fail-closed vs fail-open, stated deliberately.** Authorization fails closed (unchanged: a corrupt `tool_prefs.json` yields the declared baseline, [tool_prefs.py:55-61](../../src/dialogue_bridge/utils/agent_tool_prefs.py)). Presentation fails *open* — index missing, embedding provider down, fingerprint stale — because the failure mode of failing closed would be an agent that mysteriously has no tools. Presentation is not a security boundary, and pretending it is would trade a real outage for no security gain.
 
 ---
 
@@ -404,7 +404,7 @@ Two environment realities to respect. The agents test suite needs `deepagents 0.
 | Live-manifest filter + cache keys | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools`:117, `_build_tool_key_from_config`:122-129, `_filter_live_tools`:132-159 |
 | Declared ∪ enabled seeding | [src/agents/harness/abstractions/yaml_agent.py](../../src/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed :67-82, `_resolve_native_tools`:105-116, `register_agent`:149-159 |
 | Spec tool refs | [src/agents/harness/abstractions/agent_spec.py](../../src/agents/harness/abstractions/agent_spec.py) | `ToolRef`:37-72, `AgentSpec.tools`:140, `extra="forbid"`:124 |
-| Two-set override store | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `read_tool_prefs`:55-77, `read_enabled_tools`:86-90, `write_tool_prefs`:93-112 |
+| Two-set override store | [src/dialogue_bridge/utils/agent_tool_prefs.py](../../src/dialogue_bridge/utils/agent_tool_prefs.py) | `read_tool_prefs`:55-77, `read_enabled_tools`:86-90, `write_tool_prefs`:93-112 |
 | Manifest cache + canonical key | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_MCP_TOOL_MANIFEST_CACHE`:18, `_TOOL_SERVER_OVERRIDES`:19-30, `_make_cache_key`:74-80, `_build_manifest`:83-107, `_prime_manifest_cache`:110-127, `list_mcp_tools`:177-191 |
 | Manifest record shape | [src/agents/schemas.py](../../src/agents/schemas.py) | `ToolManifest`:165-169 (gains `input_schema`), `AgentToolRow`:318-330 |
 | Native registry (where `find_tools` lands) | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) | `NativeToolDef`:44-61, `register_native_tool`:70-75, `build_auto_attach_tools`:149-159, `native_catalog`:162-177 |

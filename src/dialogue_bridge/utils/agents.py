@@ -446,33 +446,10 @@ async def fetch_agent_tools(
             upstream_service="agents", operation="agent_tools_fetch",
         )
 
-    rows = payload.get("tools") or []
-
-    # Overrides that pre-date this table still live in the volume's
-    # tool_prefs.json, and the agents service reports them in each row's
-    # `disabled` flag. Adopt them the first time we see a pair — it rides this
-    # call, so it costs nothing extra, and it stops once the pair has any row.
-    if not await agent_tool_prefs.has_adopted(db, user_id, slug):
-        legacy_disabled = [
-            str(r.get("key")) for r in rows
-            if r.get("declared", True) and r.get("disabled") and r.get("key")
-        ]
-        legacy_enabled = [
-            str(r.get("key")) for r in rows
-            if not r.get("declared", True) and not r.get("disabled") and r.get("key")
-        ]
-        # Unconditional: the pass also records that this pair was read, so an
-        # empty file is not re-read forever and a pair that is later cleared back
-        # to its default is not adopted a second time.
-        await agent_tool_prefs.adopt_pair(
-            db, user_id, slug, disabled=legacy_disabled, enabled=legacy_enabled
-        )
-        # `get_db` does not commit on close, so without this the adoption is
-        # silently discarded and re-runs on every listing.
-        await db.commit()
-
     disabled, enabled = await agent_tool_prefs.read_pair(db, user_id, slug)
-    payload["tools"] = agent_tool_prefs.apply_to_rows(rows, disabled, enabled)
+    payload["tools"] = agent_tool_prefs.apply_to_rows(
+        payload.get("tools") or [], disabled, enabled
+    )
     return payload
 
 

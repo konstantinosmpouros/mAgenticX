@@ -3,7 +3,7 @@
 They lived only in ``tool_prefs.json`` on the agents-service volume, which has
 no backup — losing it silently reverted every user's tool choices to the agent's
 declared baseline, a change nobody is told about and which reads as the product
-forgetting a setting.
+forgetting a setting. That file is gone; this table is the only record.
 
 The subtlety worth pinning is that one UI boolean means two different things.
 For a tool the agent *declares* (on by default) "off" is a stored override and
@@ -161,72 +161,3 @@ def test_an_override_for_a_tool_that_no_longer_exists_is_ignored(rows):
     # nothing and the tool may come back) but must not invent a row in the list.
     applied = prefs.apply_to_rows(rows, {"gone/vanished"}, set())
     assert [r["key"] for r in applied] == [r["key"] for r in rows]
-
-
-# ---------------------------------------------------------------------------
-# Adoption — the volume copy that pre-dates this table
-# ---------------------------------------------------------------------------
-@pytest.mark.asyncio
-async def test_adoption_takes_both_sets_from_the_volume(db):
-    # Dennis holds a real one of these: enabledTools ["arxiv/download_paper"].
-    # Losing it silently turns that user's tool back off.
-    n = await prefs.adopt_pair(
-        db, "u1", "omni-yaml-v1",
-        disabled=["rag/sql_query"], enabled=["arxiv/download_paper"],
-    )
-    await db.commit()
-
-    assert n == 2
-    disabled, enabled = await prefs.read_pair(db, "u1", "omni-yaml-v1")
-    assert disabled == {"rag/sql_query"} and enabled == {"arxiv/download_paper"}
-
-
-@pytest.mark.asyncio
-async def test_the_gate_is_the_marker_not_the_presence_of_overrides(db):
-    # An ordinary override must NOT count as "adopted" — otherwise a pair that
-    # never had a legacy file would look adopted, and one that was adopted then
-    # cleared would look un-adopted.
-    assert await prefs.has_adopted(db, "u1", "omni") is False
-    await prefs.set_override(db, "u1", "omni", "rag/sql_query", prefs.STATE_DISABLED)
-    await db.commit()
-    assert await prefs.has_adopted(db, "u1", "omni") is False
-
-    await prefs.adopt_pair(db, "u1", "omni", disabled=[], enabled=[])
-    await db.commit()
-    assert await prefs.has_adopted(db, "u1", "omni") is True
-
-
-@pytest.mark.asyncio
-async def test_clearing_the_last_override_does_not_reopen_adoption(db):
-    # The bug this marker exists for: adopt an enabled gateway tool, let the user
-    # turn it back off (which deletes the row), and the pair must still read as
-    # adopted — otherwise the next tab load re-applies the stale file and
-    # silently undoes the user's change.
-    await prefs.adopt_pair(db, "u1", "omni", disabled=[], enabled=["arxiv/download_paper"])
-    await db.commit()
-    await prefs.apply_toggle(
-        db, "u1", "omni", "arxiv/download_paper", disabled=True, declared=False
-    )
-    await db.commit()
-
-    assert await prefs.read_pair(db, "u1", "omni") == (set(), set())
-    assert await prefs.has_adopted(db, "u1", "omni") is True
-
-
-@pytest.mark.asyncio
-async def test_the_marker_never_leaks_into_a_tool_set(db):
-    await prefs.adopt_pair(db, "u1", "omni", disabled=[], enabled=[])
-    await db.commit()
-    disabled, enabled = await prefs.read_pair(db, "u1", "omni")
-    assert prefs.ADOPTION_KEY not in disabled and prefs.ADOPTION_KEY not in enabled
-
-
-@pytest.mark.asyncio
-async def test_adopting_an_empty_file_writes_nothing(db):
-    # Most tool_prefs.json files are empty. Adoption stays "un-run" for them,
-    # which is harmless: the check rides a call that happens anyway.
-    assert await prefs.adopt_pair(db, "u1", "omni", disabled=[], enabled=[]) == 0
-    await db.commit()
-    # …but it is still recorded as read, so it is not re-read forever.
-    assert await prefs.has_adopted(db, "u1", "omni") is True
-    assert await prefs.read_pair(db, "u1", "omni") == (set(), set())

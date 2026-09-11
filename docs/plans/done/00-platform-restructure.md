@@ -126,7 +126,7 @@ These are the facts later plans keep tripping over, so they are recorded explici
 | Discovery / registry | [utils/agents.py](../../../src/agents/utils/agents.py) | `_scan_yaml_agents`, `_build_registry`, `refresh_registry` |
 | Native tool registry | [harness/tools/registry.py](../../../src/agents/harness/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `native_catalog` |
 | Tool assembly + overrides | [harness/abstractions/deep_agent.py](../../../src/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables` |
-| Per-agent overrides store | [harness/filesystem/tool_prefs.py](../../../src/agents/harness/filesystem/tool_prefs.py) | `read_tool_prefs`, `write_tool_prefs` |
+| Per-agent overrides store | [harness/filesystem/tool_prefs.py](../../../src/dialogue_bridge/utils/agent_tool_prefs.py) | `read_tool_prefs`, `write_tool_prefs` |
 | Agents-tab logic | [utils/agent_tools.py](../../../src/agents/utils/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
 | Built-in agent example | [agents_seed/omni-yaml-v1/agent.yaml](../../../src/agents/harness/agents_seed/omni-yaml-v1/agent.yaml) | the reference spec |
 | Retirement migration | [migrations/versions/0016_retire_enabled_tools.py](../../../src/dialogue_bridge/core/database/migrations/versions/0016_retire_enabled_tools.py) | the three dropped columns |

@@ -554,7 +554,7 @@ An agent declares a baseline tool set and the always-on native builtins sit on t
 | `user_id` | `String` | No | — | FK → `users.id` CASCADE, indexed |
 | `agent_slug` | `String` | No | — | The agent **slug**, indexed — the pairing is meaningful for platform agents too |
 | `tool_key` | `String` | No | — | Canonical tool-cache-key: `<server>/<tool>` for MCP, the bare name for native. Stored **verbatim** — the runtime matches it against live tools by this exact string, so normalising it differently would silently stop matching |
-| `state` | `String` | No | — | `'disabled'` (user turned OFF a default-on tool), `'enabled'` (turned ON a gateway tool the agent did not declare), or `'adopted'` — a marker row (`tool_key='*'`) recording that this pair's legacy `tool_prefs.json` has been read. Temporary; removable with the legacy file |
+| `state` | `String` | No | — | `'disabled'` (user turned OFF a default-on tool) or `'enabled'` (turned ON a gateway tool the agent did not declare) |
 | `updated_at` | `DateTime` | No | `func.now()` | `onupdate=func.now()` |
 
 `UNIQUE (user_id, agent_slug, tool_key)`.

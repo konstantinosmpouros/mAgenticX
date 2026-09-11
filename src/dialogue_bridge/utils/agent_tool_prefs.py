@@ -8,7 +8,9 @@ agent builds with is::
 
 These used to live only in ``<agent_root>/tool_prefs.json`` on the
 agents-service volume, which has no backup: losing it reverted every user's tool
-choices to the declared baseline, silently.
+choices to the declared baseline, silently. That file and every trace of it are
+gone — the agents service now reports only the baseline and this table is the
+sole record of what the user actually chose.
 
 They belong here for the same reason ``use_memory``, ``search_past_convs`` and
 ``personalization`` already do — they are preferences about how an agent
@@ -36,23 +38,6 @@ logger = get_logger(__name__)
 STATE_DISABLED = "disabled"
 STATE_ENABLED = "enabled"
 
-# A marker that this pair's legacy ``tool_prefs.json`` has already been read.
-#
-# Adoption cannot be gated on "the pair has no overrides": that is ambiguous
-# between *never adopted* and *adopted, then cleared back to the default*. The
-# second is an ordinary thing to do — turning an enabled gateway tool back off
-# deletes its row — and re-running adoption there re-applies the stale file,
-# silently reverting the user's choice.
-#
-# The marker is a row like any other, distinguished by its state, so it needs no
-# schema of its own. ``read_pair`` matches the two real states explicitly, so it
-# never leaks into a tool set, and ``ADOPTION_KEY`` is not a legal tool key so it
-# can never collide with one. Both go away with the legacy file:
-# ``DELETE FROM user_agent_tool_prefs WHERE state = 'adopted'``.
-STATE_ADOPTED = "adopted"
-ADOPTION_KEY = "*"
-
-
 async def read_pair(
     db: AsyncSession, user_id: str, agent_slug: str
 ) -> Tuple[Set[str], Set[str]]:
@@ -76,25 +61,6 @@ async def read_pair(
     return disabled, enabled
 
 
-async def has_adopted(db: AsyncSession, user_id: str, agent_slug: str) -> bool:
-    """Whether this pair's legacy file has already been read.
-
-    Deliberately *not* "does the pair have any override": a user who clears their
-    last override is indistinguishable from one who was never adopted, and
-    re-adopting there resurrects the choice they just undid.
-    """
-    found = await db.execute(
-        select(UserAgentToolPrefTable.id)
-        .where(
-            UserAgentToolPrefTable.user_id == user_id,
-            UserAgentToolPrefTable.agent_slug == agent_slug,
-            UserAgentToolPrefTable.state == STATE_ADOPTED,
-        )
-        .limit(1)
-    )
-    return found.scalar_one_or_none() is not None
-
-
 async def set_override(
     db: AsyncSession, user_id: str, agent_slug: str, tool_key: str, state: str
 ) -> None:
@@ -105,7 +71,7 @@ async def set_override(
     column is what makes that impossible to express, rather than a rule two
     tables would have to agree to keep.
     """
-    if state not in (STATE_DISABLED, STATE_ENABLED, STATE_ADOPTED):
+    if state not in (STATE_DISABLED, STATE_ENABLED):
         raise ValueError(f"Unknown tool-pref state {state!r}")
 
     row = (
@@ -182,48 +148,6 @@ async def apply_toggle(
         await set_override(db, user_id, agent_slug, tool_key, STATE_ENABLED)
 
 
-async def adopt_pair(
-    db: AsyncSession,
-    user_id: str,
-    agent_slug: str,
-    *,
-    disabled: Iterable[str],
-    enabled: Iterable[str],
-) -> int:
-    """Take a pair's overrides from the volume copy. Returns how many landed.
-
-    Lazy migration for the ``tool_prefs.json`` files that pre-date this table.
-    It rides the tool-list call the Agents tab already makes, so it costs no
-    extra round trip, and it is skipped entirely once the pair has any row.
-
-    The marker is written **even when the file is empty**, so a pair is read at
-    most once. Without it an empty file would be re-read forever, and — worse —
-    a pair that was adopted and then cleared back to default would be adopted
-    again, undoing the user's change.
-    """
-    count = 0
-    for key in disabled:
-        if key:
-            await set_override(db, user_id, agent_slug, str(key), STATE_DISABLED)
-            count += 1
-    for key in enabled:
-        if key:
-            await set_override(db, user_id, agent_slug, str(key), STATE_ENABLED)
-            count += 1
-
-    await set_override(db, user_id, agent_slug, ADOPTION_KEY, STATE_ADOPTED)
-
-    if count:
-        logger.info(
-            "agent_tool_prefs_adopted",
-            "Adopted volume-only tool overrides into chat_db",
-            user_id=user_id,
-            agent_slug=agent_slug,
-            count=count,
-        )
-    return count
-
-
 def apply_to_rows(
     rows: List[Dict[str, Any]], disabled: Set[str], enabled: Set[str]
 ) -> List[Dict[str, Any]]:
@@ -248,15 +172,11 @@ def apply_to_rows(
 
 
 __all__ = [
-    "ADOPTION_KEY",
-    "STATE_ADOPTED",
     "STATE_DISABLED",
     "STATE_ENABLED",
-    "adopt_pair",
     "apply_to_rows",
     "apply_toggle",
     "clear_override",
-    "has_adopted",
     "read_pair",
     "set_override",
 ]

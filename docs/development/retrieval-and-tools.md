@@ -369,7 +369,7 @@ This is the only point in the pipeline where blob storage is accessed for infere
 | MCP session per request | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `mcp_session_context()`, `load_mcp_tools()` |
 | Tool server ID overrides | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) | `_TOOL_SERVER_OVERRIDES` |
 | Agent base (tool filtering) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools()`; `config_tools`/`config_tool_names` now default empty (no longer seeded from the request config) |
-| Per-(user, agent) tool disables | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
+| Per-(user, agent) tool disables | [src/dialogue_bridge/utils/agent_tool_prefs.py](../../src/dialogue_bridge/utils/agent_tool_prefs.py) | `tool_prefs.json` load/save, `_apply_tool_disables()` (declared − disabled) |
 | LangGraph agent build & stream | [src/agents/harness/abstractions/langgraph_agent.py](../../src/agents/harness/abstractions/langgraph_agent.py) | `build()`, `astream()` |
 | Deep agent build lifecycle | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build()`, `register_agent()`, asset discovery |
 | Tool call lifecycle events | [src/agents/harness/agui/emitter.py](../../src/agents/harness/agui/emitter.py) | `tool_call_start()`, `tool_call_args()`, `tool_call_result()`, `tool_call_end()` |
