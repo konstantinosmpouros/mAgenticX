@@ -177,6 +177,11 @@ The language controls the text injected by the voice instruction builder, not an
 
 ## Tool control moved to the Agents tab
 
+Per-**agent** tool overrides live in `chat_db.user_agent_tool_prefs` (bridge-owned)
+and ride the run config beside `use_memory` and `personalization` — see
+[tool-harness](../development/tool-harness.md). What follows concerns the retired
+*global* tool preference, which was a different thing.
+
 Tool enablement used to be a global user preference: the frontend subtracted a global `tools.disabled` set from the full catalog, computed an `enabledTools` list, and sent it on every inference request. **That model is fully retired.** `user_preferences.tools` no longer exists, the request no longer carries `enabledTools`, and the bridge no longer forwards a `config["tools"]` list to the agents service.
 
 Tools are now owned by the agents service:

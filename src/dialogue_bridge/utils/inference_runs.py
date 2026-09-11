@@ -25,6 +25,7 @@ from core.database import (
 )
 from core.security.internal_trust import internal_service_headers
 from core.settings import settings
+from utils import agent_tool_prefs
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.logging import get_context, get_logger
 from schema import ConversationSummary, InferenceRunOut, MessageOut
@@ -723,6 +724,9 @@ class InferenceRunManager:
                 # its agent prompt is byte-identical to the pre-feature one. The
                 # agents service re-validates the payload fail-closed on its side.
                 personalization = _effective_personalization(prefs_row)
+                tool_disabled, tool_enabled = await agent_tool_prefs.read_pair(
+                    db, str(user_id), agent.slug
+                )
 
                 # Shared config block forwarded to both the initial /stream call
                 # and any /resume legs. thread_id keys the durable saver (branch-
@@ -737,6 +741,12 @@ class InferenceRunManager:
                         "run_id": str(run.id),
                         "search_past_convs": search_past_convs,
                         "use_memory": use_memory,
+                        # The user's per-agent tool choices, from chat_db. They
+                        # ride the run config rather than being materialised on
+                        # the agents volume, exactly like the two above — so the
+                        # agents service holds no copy to keep in step.
+                        "disabled_tools": sorted(tool_disabled),
+                        "enabled_tools": sorted(tool_enabled),
                         # Whose agent this is: absent/None for a platform agent,
                         # the owner's id for a user-authored one. The agents
                         # service resolves the definition from the global

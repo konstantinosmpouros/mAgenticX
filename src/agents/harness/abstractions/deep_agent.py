@@ -30,11 +30,24 @@ from harness.filesystem import (
     ensure_user_agent_filesystem,
     workspace_write_deny,
 )
-from harness.filesystem.tool_prefs import read_disabled_tools
 from utils import get_tool_cache_key
 from core.logging import get_logger
 
 logger = get_logger(__name__)
+
+def _key_set(value: Any) -> Set[str]:
+    """A clean set of non-empty tool keys from whatever the run config carried.
+
+    The overrides cross a service boundary as JSON, so the field can legitimately
+    be absent, null, or a list with junk in it. Coercing here keeps every caller
+    from re-deriving "what counts as a key", and an unparseable value degrades to
+    "no overrides" — the safe default, because it means the agent's declared
+    baseline rather than a silently emptied tool set.
+    """
+    if not isinstance(value, (list, tuple, set)):
+        return set()
+    return {str(k) for k in value if isinstance(k, str) and k}
+
 
 STREAMING_MODES = Literal["updates", "messages"]
 SubAgentsT = Sequence[Any] | Mapping[str, Any] | None
@@ -367,18 +380,22 @@ class DeepAgent(BaseAgent, ABC):
         set.
 
         The user may disable a subset of the agent's MCP tools per agent (the
-        Agents tab → ``harness/filesystem/tool_prefs``). Matching is by canonical
-        cache key (``get_tool_cache_key``). **Native builtins are never dropped**:
-        they aren't managed by this tab (``remember`` / ``search_past_conversations``
-        follow the Personalization prefs; ``present_artifact`` is always on), so
-        native keys are subtracted from the disabled set here — this also neutralizes
-        any legacy pre-model disable of a native. No-op when there's no user
-        context or no disables.
+        Agents tab). Matching is by canonical cache key (``get_tool_cache_key``).
+
+        The set arrives on the run config, threaded in by the bridge from
+        ``chat_db`` — the same way ``use_memory`` and ``personalization`` already
+        do. It used to be read from ``tool_prefs.json`` on this volume, which had
+        no backup: losing it silently reverted every user's tool choices to the
+        declared baseline. Nothing is stored on this side any more.
+
+        **Native builtins are never dropped**: they aren't managed by this tab
+        (``remember`` / ``search_past_conversations`` follow the Personalization
+        prefs; ``present_artifact`` is always on), so native keys are subtracted
+        from the disabled set here — this also neutralizes any legacy pre-model
+        disable of a native. No-op when the run carries no disables.
         """
-        user_id = (self.context or {}).get("user_id")
-        if not user_id:
-            return tools
-        disabled = read_disabled_tools(user_id, self.name) - set(NATIVE_TOOLS)
+        context = self.context or {}
+        disabled = _key_set(context.get("disabled_tools")) - set(NATIVE_TOOLS)
         if not disabled:
             return tools
         kept = [tool for tool in tools if get_tool_cache_key(tool) not in disabled]

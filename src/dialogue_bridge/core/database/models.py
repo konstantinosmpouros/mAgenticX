@@ -616,6 +616,59 @@ class UserSkillPoolTable(Base):
     deleted_at = Column(DateTime, nullable=True)
 
 
+class UserAgentToolPrefTable(Base):
+    """One tool the user turned OFF or ON for a specific agent (Agents tab).
+
+    An agent declares a baseline tool set and the always-on native builtins are
+    added to it. On top of that the user keeps two override sets per agent, and
+    the effective set at build time is::
+
+        effective = (declared u user_enabled) - user_disabled
+
+    Both sets live here, distinguished by ``state``, because they are the same
+    kind of fact about the same pairing — splitting them into two tables would
+    duplicate the key and the lifecycle for nothing.
+
+    **One row per override, not a JSON document.** The volume stored two arrays
+    in a single file, which made one toggle a read-modify-write of the whole
+    thing and made "who disabled this tool" unanswerable. A row makes a toggle a
+    single write and the question a query.
+
+    Keyed by ``agent_slug`` for the same reason as :class:`UserAgentSkillTable`:
+    the pairing is meaningful for platform agents too, and the slug is the stable
+    identifier for it.
+
+    ``tool_key`` is the canonical tool-cache-key (``<server>/<tool>`` for MCP, the
+    bare name for native) — stored verbatim, because it is matched against live
+    tools by that exact string. Normalising it differently here would silently
+    stop matching, and the symptom is a tool that refuses to turn off.
+
+    No tombstone: clearing an override is a real delete. There is no second copy
+    to disambiguate against, which is the only thing a tombstone buys.
+    """
+
+    __tablename__ = "user_agent_tool_prefs"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "agent_slug", "tool_key", name="uq_user_agent_tool_prefs"
+        ),
+    )
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(
+        String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_slug = Column(String, nullable=False, index=True)
+    tool_key = Column(String, nullable=False)
+    # 'disabled' — the user turned OFF a tool that is on by default (a native
+    # builtin or one the agent declares). 'enabled' — turned ON a gateway tool
+    # the agent did not declare.
+    state = Column(String, nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class UserAgentSkillTable(Base):
     """A skill the user assigned to one agent (tier ③) — also a selection.
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
 from core.settings import settings
+from utils import agent_tool_prefs
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
 from core.database import AgentTable, MessageTable, SessionLocal
 from core.security.internal_trust import internal_service_headers
@@ -394,10 +395,20 @@ async def _resolve_agent_slug(agent_id: str) -> str:
     return slug
 
 
-async def fetch_agent_tools(user_id: str, agent_id: str) -> Dict[str, Any]:
-    """Proxy the agents service per-agent tools endpoint (Agents tab): the tools
-    an agent can use with their per-(user, agent) disabled flags. ``agent_id`` is
-    the catalog id from the UI, resolved here to the agents-registry slug."""
+async def fetch_agent_tools(
+    db: AsyncSession, user_id: str, agent_id: str
+) -> Dict[str, Any]:
+    """The tools this agent can use, with the user's overrides applied.
+
+    Split ownership, deliberately: the agents service still answers *which tools
+    exist* — the manifest, the MCP catalogue, whether the agent declared each one
+    — because only it can see them. The user's on/off choices come from
+    ``chat_db`` and are overlaid here, so a slow agents service can no longer
+    make a user's settings look reset.
+
+    ``agent_id`` is the catalog id from the UI, resolved here to the slug the
+    agents registry and the override rows both key on.
+    """
     slug = await _resolve_agent_slug(agent_id)
     timeout = settings.http.agents_timeout
     upstream_headers = internal_service_headers(get_context().get("request_id"))
@@ -426,7 +437,7 @@ async def fetch_agent_tools(user_id: str, agent_id: str) -> Dict[str, Any]:
             upstream_service="agents", operation="agent_tools_fetch",
         )
     try:
-        return resp.json()
+        payload = resp.json()
     except ValueError as exc:
         upstream_error_handler.raise_invalid_response(
             logger, exc, event="agent_tools_invalid_json",
@@ -435,49 +446,82 @@ async def fetch_agent_tools(user_id: str, agent_id: str) -> Dict[str, Any]:
             upstream_service="agents", operation="agent_tools_fetch",
         )
 
+    rows = payload.get("tools") or []
+
+    # Overrides that pre-date this table still live in the volume's
+    # tool_prefs.json, and the agents service reports them in each row's
+    # `disabled` flag. Adopt them the first time we see a pair — it rides this
+    # call, so it costs nothing extra, and it stops once the pair has any row.
+    if not await agent_tool_prefs.has_adopted(db, user_id, slug):
+        legacy_disabled = [
+            str(r.get("key")) for r in rows
+            if r.get("declared", True) and r.get("disabled") and r.get("key")
+        ]
+        legacy_enabled = [
+            str(r.get("key")) for r in rows
+            if not r.get("declared", True) and not r.get("disabled") and r.get("key")
+        ]
+        # Unconditional: the pass also records that this pair was read, so an
+        # empty file is not re-read forever and a pair that is later cleared back
+        # to its default is not adopted a second time.
+        await agent_tool_prefs.adopt_pair(
+            db, user_id, slug, disabled=legacy_disabled, enabled=legacy_enabled
+        )
+        # `get_db` does not commit on close, so without this the adoption is
+        # silently discarded and re-runs on every listing.
+        await db.commit()
+
+    disabled, enabled = await agent_tool_prefs.read_pair(db, user_id, slug)
+    payload["tools"] = agent_tool_prefs.apply_to_rows(rows, disabled, enabled)
+    return payload
+
 
 async def set_agent_tool_disabled(
-    user_id: str, agent_id: str, tool_key: str, disabled: bool
+    db: AsyncSession, user_id: str, agent_id: str, tool_key: str, disabled: bool
 ) -> Dict[str, Any]:
-    """Proxy the agents service toggle endpoint; returns the refreshed tool rows.
-    ``agent_id`` is the catalog id, resolved here to the agents-registry slug."""
+    """Record one tool toggle for this (user, agent); returns refreshed rows.
+
+    Writes only here. The override reaches the agent by riding the run config,
+    the same way ``use_memory`` and ``personalization`` already do, so there is
+    no second copy on the agents volume to keep in step — which is what made this
+    simpler than custom agents and skills rather than harder.
+
+    The refreshed list still comes from upstream, because that is where the tool
+    *manifest* lives; this just re-reads it with the new override applied.
+
+    The refreshed list still comes from upstream because that is where the tool
+    manifest lives — this just re-reads it with the new override applied.
+    """
     slug = await _resolve_agent_slug(agent_id)
-    timeout = settings.http.agents_timeout
-    upstream_headers = internal_service_headers(get_context().get("request_id"))
-    url = f"{_agent_tools_url(user_id, slug)}/toggle"
-    body = {"toolKey": tool_key, "disabled": disabled}
-    try:
-        async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
-            resp = await upstream_error_handler.run_with_retries(
-                logger,
-                lambda: client.post(url, headers=upstream_headers, json=body),
-                upstream_service="agents",
-                operation="agent_tool_toggle",
-            )
-            resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        upstream_error_handler.raise_http_error(
-            logger, exc, event="agent_tool_toggle_failed",
-            message="Agents service returned an HTTP error while toggling an agent tool",
-            public_detail="Could not update the tool. Please try again.",
-            upstream_service="agents", operation="agent_tool_toggle",
+
+    # What the toggle *means* depends on the tool's default, and only the
+    # manifest knows whether this agent declared it. Read first, then decide.
+    current = await fetch_agent_tools(db, user_id, agent_id)
+    row = next(
+        (r for r in (current.get("tools") or []) if str(r.get("key")) == tool_key),
+        None,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="That tool is not available for this agent.",
         )
-    except httpx.RequestError as exc:
-        upstream_error_handler.raise_request_error(
-            logger, exc, event="agent_tool_toggle_unreachable",
-            message="Failed to reach agents service while toggling an agent tool",
-            public_detail="Tool settings are temporarily unavailable. Please try again shortly.",
-            upstream_service="agents", operation="agent_tool_toggle",
-        )
-    try:
-        return resp.json()
-    except ValueError as exc:
-        upstream_error_handler.raise_invalid_response(
-            logger, exc, event="agent_tool_toggle_invalid_json",
-            message="Agents service returned invalid JSON for tool toggle",
-            public_detail="Tool update returned an unexpected response.",
-            upstream_service="agents", operation="agent_tool_toggle",
-        )
+
+    await agent_tool_prefs.apply_toggle(
+        db,
+        user_id,
+        slug,
+        tool_key,
+        disabled=disabled,
+        declared=bool(row.get("declared", True)),
+    )
+    await db.commit()
+
+    disabled_keys, enabled_keys = await agent_tool_prefs.read_pair(db, user_id, slug)
+    current["tools"] = agent_tool_prefs.apply_to_rows(
+        current.get("tools") or [], disabled_keys, enabled_keys
+    )
+    return current
 
 
 async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:

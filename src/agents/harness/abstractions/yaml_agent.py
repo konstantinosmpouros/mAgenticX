@@ -23,11 +23,10 @@ from typing import Any, Mapping, Optional
 
 from deepagents import SubAgent
 
-from harness.abstractions.deep_agent import DeepAgent
+from harness.abstractions.deep_agent import DeepAgent, _key_set
 from harness.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
 from utils.declarative import read_prompt
 from harness.filesystem import layout
-from harness.filesystem.tool_prefs import read_enabled_tools
 from harness.tools.registry import NativeToolContext, resolve_native_tool
 from core.logging import get_logger
 
@@ -76,11 +75,12 @@ class YamlDeepAgent(DeepAgent):
         # this (user, agent) via the Agents tab. Union those keys in so the
         # live-manifest filter (attach_tools) keeps them too; a per-agent disable
         # is still subtracted later by _apply_tool_disables.
-        user_id = (self.context or {}).get("user_id")
-        if user_id:
-            for key in read_enabled_tools(user_id, self.name):
-                if key not in self.config_tool_names:
-                    self.config_tool_names.append(key)
+        #
+        # Threaded in on the run config by the bridge, which owns these choices in
+        # chat_db. Previously read from tool_prefs.json on the agents volume.
+        for key in sorted(_key_set((self.context or {}).get("enabled_tools"))):
+            if key not in self.config_tool_names:
+                self.config_tool_names.append(key)
         self._native_tool_names: list[str] = [t.native for t in spec.tools if t.is_native and t.native]
 
         # The agent's `memory:` is the default `use_memory` — but an explicit

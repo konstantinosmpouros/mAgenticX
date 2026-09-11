@@ -1,4 +1,16 @@
-"""Per-(user, agent) tool overrides — the tools a user has turned OFF or ON for an agent.
+"""LEGACY reader for per-(user, agent) tool overrides. Read-only; delete after rollout.
+
+These overrides now live in ``chat_db`` (``user_agent_tool_prefs``, owned by the
+bridge) and reach the agent on the run config, like ``use_memory``. **Nothing
+writes this file any more** and the runtime no longer reads it.
+
+The one reason it survives: environments that pre-date the table still hold real
+choices here, and :func:`list_agent_tools` reporting them is how the bridge
+adopts them on a user's first visit to the Agents tab. Once every environment has
+been adopted this module, its callers in ``utils/agent_tools.py``, and the
+files themselves can go.
+
+Original contract, still true of what it reads:
 
 An agent declares a baseline tool set (``agent.yaml`` ``tools:`` for YAML agents),
 and the always-on native builtins are added on top. On top of that baseline the
@@ -77,39 +89,4 @@ def read_tool_prefs(user_id: str, agent_slug: str) -> Tuple[Set[str], Set[str]]:
         return set(), set()
 
 
-def read_disabled_tools(user_id: str, agent_slug: str) -> Set[str]:
-    """The keys the user disabled for this (user, agent). Used by the runtime's
-    ``_apply_tool_disables`` to subtract from the built tool set."""
-    return read_tool_prefs(user_id, agent_slug)[0]
-
-
-def read_enabled_tools(user_id: str, agent_slug: str) -> Set[str]:
-    """The catalog MCP keys the user enabled for this (user, agent) beyond what
-    the agent declares. Unioned into ``config_tool_names`` at build time so the
-    live-manifest filter keeps them."""
-    return read_tool_prefs(user_id, agent_slug)[1]
-
-
-def write_tool_prefs(user_id: str, agent_slug: str, disabled: Set[str], enabled: Set[str]) -> None:
-    """Persist both override sets atomically, creating the agent dir as needed."""
-    path = _tool_prefs_path(user_id, agent_slug)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps(
-            {"version": _VERSION, "disabledTools": sorted(disabled), "enabledTools": sorted(enabled)},
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    os.replace(tmp, path)
-    logger.info(
-        "tool_prefs_updated",
-        "Updated per-agent tool overrides",
-        agent_slug=agent_slug,
-        disabled_count=len(disabled),
-        enabled_count=len(enabled),
-    )
-
-
-__all__ = ["read_tool_prefs", "read_disabled_tools", "read_enabled_tools", "write_tool_prefs"]
+__all__ = ["read_tool_prefs"]

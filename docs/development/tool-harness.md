@@ -1,6 +1,6 @@
 # Tool Harness
 
-This document describes every tool a **deep agent** can call: where each tool comes from, how they are assembled at build time, how MCP tools are injected from the live gateway manifest at stream time, and what a user can switch off. It lives entirely in the **agents** service (`runtime/`), with a thin proxy in **dialogue_bridge** for the read/toggle endpoints and an Agents tab in **agentic_ui**. The mental model to hold throughout: tools are declared **per agent** (in `agent.yaml`), never per request — the old client-computed `enabledTools` list was retired in migration `0016` (see [conversation → inference](../flows/inference-streaming.md)). A user can only *disable* a subset of what an agent already declares; they can never add a tool.
+This document describes every tool a **deep agent** can call: where each tool comes from, how they are assembled at build time, how MCP tools are injected from the live gateway manifest at stream time, and what a user can switch off. The tool *manifest* — which tools exist and which the agent declared — lives entirely in the **agents** service (`harness/`). The user's per-agent on/off **choices** are owned by **dialogue_bridge** in `chat_db` and reach the agent on the run config; the Agents tab in **agentic_ui** is their UI. The mental model to hold throughout: tools are declared **per agent** (in `agent.yaml`), never per request — the old client-computed `enabledTools` list was retired in migration `0016` (see [conversation → inference](../flows/inference-streaming.md)). A user can only *disable* a subset of what an agent already declares; they can never add a tool.
 
 The single assembly line, in `DeepAgent.build_deep_agent()`:
 
@@ -18,7 +18,7 @@ flowchart LR
     UI["agentic_ui<br/>Agents tab"] -->|"toggle / list"| BR["dialogue_bridge<br/>/v1/agents proxy"]
     BR -->|"internal mTLS"| AG["agents<br/>tool harness"]
     GW[("MCP gateway")] -->|"live manifest"| AG
-    AG -->|"tool_prefs.json"| FS[("agent filesystem")]
+    BR -->|"user_agent_tool_prefs"| PG[("chat_db")]
 ```
 
 ---
@@ -152,8 +152,8 @@ The Agents tab governs **MCP tools only**, and in two directions: **disable** a 
 flowchart LR
     UI["Settings → Agents tab<br/>toggle an MCP tool"] --> BR["bridge<br/>/v1/agents/.../tools/toggle<br/>CSRF + validate_userId"]
     BR --> AG["agents<br/>POST /agents/{user}/{slug}/tools/toggle"]
-    AG --> TP["write_tool_prefs()<br/>disabled + enabled sets at agent_root"]
-    TP -. next run .-> RD["read_tool_prefs(user, agent)"]
+    BR --> TP["user_agent_tool_prefs<br/>one row per override"]
+    TP -. next run, on the run config .-> RD["context.disabled_tools / enabled_tools"]
     RD --> APD["(declared ∪ enabled) − disabled<br/>YamlDeepAgent + _apply_tool_disables"]
 ```
 
@@ -161,7 +161,7 @@ flowchart LR
 | --- | --- |
 | Effective set | `(declared_mcp ∪ enabled) − disabled` — `enabled` unions into `config_tool_names`; `disabled` is subtracted by `_apply_tool_disables` |
 | Scope | per `(user, agent)` — never bleeds across users or agents |
-| Store | `<agent_root>/tool_prefs.json` → `{"version":2,"disabledTools":[...],"enabledTools":[...]}` (v1 disabled-only files still read) |
+| Store | `chat_db.user_agent_tool_prefs` — one row per override, `state` = `disabled` \| `enabled`, keyed `(user_id, agent_slug, tool_key)`. Migration `0021`. |
 | Catalog source | the *available* rows come from the cached MCP manifest map, which the tools endpoint warms via `list_mcp_tools()` before listing |
 | Natives | never enter either set — `toggle_agent_tool` ignores native keys and `_apply_tool_disables` subtracts native keys, so `present_artifact` can never be disabled |
 | Applies to | deep agents only — the MCP Servers tab is read-only; LangGraph agents expose no tool model |
@@ -177,7 +177,7 @@ flowchart LR
     SPEC["user's agent.yaml<br/>tools: [mcp refs, native names]"] --> VAL["validate_write()<br/>allowlisted model · known natives<br/>HITL floor · quotas · path confinement"]
     VAL --> RES["resolve_agent_definition(slug, owner_user_id)"]
     RES --> BUILD["YamlDeepAgent → build_deep_agent<br/>identical to a platform agent"]
-    BUILD --> OVR["(declared ∪ enabled) − disabled<br/>same tool_prefs.json"]
+    BUILD --> OVR["(declared ∪ enabled) − disabled<br/>from the run config"]
 ```
 
 | Guarantee | How it holds |
@@ -186,7 +186,7 @@ flowchart LR
 | The approval gates can't be removed | `_HITL_FLOOR = (write_file, edit_file, execute, task)` is enforced in `validate_write`, so a spec that omits or falsifies a gate is **rejected**. Without this, authoring an agent would be a one-line bypass of the confirmation gate on `write_file`/`execute`. |
 | Models are allowlisted | `settings.registry.allowed_agent_models`, not free text — a user cannot select something nonexistent or costly. |
 | Definitions are config, never code | `extra="forbid"` on every spec model; the agent folder accepts `.md/.txt/.yaml/.yml` only, ≤20 files, ≤256 KiB each, ≤1 MiB total, depth ≤3. |
-| Overrides work identically | The Agents tab reads and writes the same `<agent_root>/tool_prefs.json` for a user agent as for a platform one; `agent_root` is per-`(user, slug)`, so two users' same-named agents cannot alias. |
+| Overrides work identically | The rows are keyed on `(user_id, agent_slug, tool_key)`, so a user agent and a platform one are handled the same way and two users' same-named agents cannot alias. |
 | Skills are references too | `skills:` must name skills already in the user's pool; they are copied into the read-only `/default_skills/` mount at save time and layered *after* the user-enabled tier, so they can be added to but never removed. See [agent-development](agent-development.md). |
 
 The agent's own definition folder is additionally mounted read-only at `/reference/`, so prompt-adjacent material (notes, checklists, examples) is readable on demand — but a run cannot rewrite its own definition, and therefore cannot edit its next system prompt.
@@ -196,9 +196,13 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 ## Sharp Edges and Behavioral Notes
 
 - **`present_artifact` is always on; native builtins can't be disabled here.** The Agents tab lists MCP tools only. `toggle_agent_tool` ignores native keys and `_apply_tool_disables` subtracts native keys from the disabled set — so even a legacy pre-model disable of a native is neutralized. `remember` / `search_past_conversations` are turned on/off via the Personalization prefs, not this tab.
-- **Framework builtins are un-disable-able.** They enter through `create_deep_agent`, downstream of `_apply_tool_disables`. Neither the Agents tab nor `tool_prefs.json` can touch `write_todos`, `read_file`, etc.
+- **Framework builtins are un-disable-able.** They enter through `create_deep_agent`, downstream of `_apply_tool_disables`. Neither the Agents tab nor an override row can touch `write_todos`, `read_file`, etc. Native builtins are additionally subtracted from the disabled set inside `_apply_tool_disables`, so even a legacy row naming one is inert.
 - **The available catalog needs a warm manifest cache.** `list_agent_tools` reads the cached MCP manifest map (primed only by `list_mcp_tools()`, not the per-stream loader); the tools endpoint calls it before listing. If the gateway is down, the *available* list is empty but declared tools still show.
-- **Overrides are fail-open.** A missing or corrupt `tool_prefs.json` yields empty disabled + enabled sets — a broken file must never silently strip a declared tool nor silently grant a catalog one. The safe default is the agent's declared baseline.
+- **Overrides are fail-open.** A run config that carries no override fields, or junk in them, coerces to two empty sets (`_key_set`) — never a silently emptied tool set. The safe default is the agent's declared baseline.
+- **One UI boolean means two opposite things.** For a tool the agent *declares* (on by default) "off" is a stored row and "on" is the absence of one; for an undeclared gateway tool it is mirrored. Writing back-to-default as a deleted row is what keeps the table proportional to real choices instead of accumulating rows meaning "normal".
+- **The old `tool_prefs.json` is read-only legacy.** Nothing writes it and the runtime no longer reads it. `list_agent_tools` still reports what it holds purely so the bridge can adopt pre-existing choices on a user's first visit to the Agents tab; once every environment has been adopted, the file, its reader, that reporting, and the marker rows (`DELETE … WHERE state = 'adopted'`) can all go.
+- **Adoption is gated on an explicit marker, not on "the pair has no overrides".** Those are not the same question: a user who turns their one enabled gateway tool back off deletes its row and would look un-adopted, so the next tab load would re-apply the stale file and silently undo them. `adopt_pair` therefore writes a marker row (`state='adopted'`, `tool_key='*'`) even when the file is empty. `read_pair` matches the two real states explicitly, so the marker never leaks into a tool set.
+- **A cold MCP gateway yields an empty catalog, and adoption correctly does nothing.** `list_agent_tools` returns no available rows when the gateway is unreachable, so there is nothing to adopt and the pair stays un-adopted for the next attempt — an empty manifest can never be mistaken for "the user disabled everything".
 - **Reserved names win over MCP.** `DeepAgent._apply_live_tools` drops any live MCP tool whose name collides with a reserved deepagents builtin, so a rogue server can't shadow `read_file`.
 - **The request never carries tools.** Since migration `0016`, `config["tools"]` is not sent by the bridge and not read by `BaseAgent`. A `YamlDeepAgent` is the only thing that populates `config_tool_names`, from its spec.
 - **LangGraph agents are unaffected by all of this.** Their RAG retrieval is a graph *node* calling `rag_service` over HTTP, not a bound tool — an empty tool list changes nothing for them. This is why retiring the global tool list was safe.
@@ -216,7 +220,8 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 | Assembly + builtins + disable filter | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
 | MCP filter (`attach_tools`, cache keys) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
 | YAML → spec tools (native + MCP) | [src/agents/harness/abstractions/yaml_agent.py](../../src/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
-| Per-(user, agent) disable store | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `read_disabled_tools`, `set_tool_disabled` |
+| Per-(user, agent) override store | [src/dialogue_bridge/utils/agent_tool_prefs.py](../../src/dialogue_bridge/utils/agent_tool_prefs.py) | `read_pair`, `apply_toggle`, `adopt_pair`, `apply_to_rows` |
+| Legacy volume reader (adoption only) | [src/agents/harness/filesystem/tool_prefs.py](../../src/agents/harness/filesystem/tool_prefs.py) | `read_tool_prefs` |
 | Agents-tab list / toggle | [src/agents/utils/agent_tools.py](../../src/agents/utils/agent_tools.py) · [router/agent_tools.py](../../src/agents/router/agent_tools.py) | `list_agent_tools`, `toggle_agent_tool` |
 | Live MCP manifest load | [src/agents/utils/mcp_tools.py](../../src/agents/utils/mcp_tools.py) · [router/inference.py](../../src/agents/router/inference.py) | `load_mcp_tools`, `mcp_session_context`, `attach_tools` call |
 | Bridge proxy | [src/dialogue_bridge/router/agent_tools.py](../../src/dialogue_bridge/router/agent_tools.py) | GET list + POST toggle (CSRF) |

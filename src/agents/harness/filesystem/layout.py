@@ -172,11 +172,6 @@ def agent_default_skills_root(user_id: str, agent_slug: str) -> Path:
     return agent_root(user_id, agent_slug) / "default_skills"
 
 
-def agent_tool_prefs_path(user_id: str, agent_slug: str) -> Path:
-    """Per-(user, agent) tool overrides (``disabledTools`` + ``enabledTools``)."""
-    return agent_root(user_id, agent_slug) / "tool_prefs.json"
-
-
 def conversations_root(user_id: str, agent_slug: str) -> Path:
     return agent_root(user_id, agent_slug) / CONVERSATIONS_DIRNAME
 
@@ -214,7 +209,6 @@ __all__ = [
     "agent_root",
     "agent_skills_root",
     "agent_default_skills_root",
-    "agent_tool_prefs_path",
     "conversations_root",
     "conversation_root",
     "conversation_input_root",

@@ -16,7 +16,7 @@ and can never be disabled. So they are never listed and never toggle-able —
 ``DeepAgent._apply_tool_disables`` also refuses to drop any native key.
 
 Effective set the runtime builds: ``(declared_mcp ∪ enabled) − disabled`` — the
-two override sets in ``harness.filesystem.tool_prefs``, consumed by
+two override sets, now owned by the bridge in ``chat_db`` and consumed by
 ``YamlDeepAgent`` (enabled → ``config_tool_names``) and
 ``DeepAgent._apply_tool_disables`` (disabled). Tool identity is the canonical
 cache key so a toggle here removes/adds exactly the right live tool there.
@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Set
 
 from core.logging import get_logger
-from harness.filesystem.tool_prefs import read_tool_prefs, write_tool_prefs
+from harness.filesystem.tool_prefs import read_tool_prefs
 from harness.tools.registry import native_catalog
 from schema import AgentToolRow
 from utils.agents import resolve_agent_definition
@@ -112,53 +112,3 @@ def list_agent_tools(user_id: str, agent_slug: str) -> Optional[List[AgentToolRo
     return sorted(rows.values(), key=lambda r: (not r.declared, r.name.lower()))
 
 
-def toggle_agent_tool(
-    user_id: str, agent_slug: str, tool_key: str, disabled: bool
-) -> Optional[List[AgentToolRow]]:
-    """Set one MCP tool's ON/OFF state for (user, agent); return refreshed rows,
-    or ``None`` when the agent is unknown.
-
-    ``disabled`` is the *requested* state (True = turn OFF). Routing depends on
-    whether the tool is ON by default (a declared MCP tool) or OFF by default
-    (an available catalog tool):
-
-    * declared  → OFF adds to ``disabled``; ON removes from ``disabled``.
-    * available → ON adds to ``enabled``;  OFF removes from ``enabled``.
-
-    Native builtins are rejected outright (no-op) — they are not managed here and
-    ``present_artifact`` in particular can never be disabled.
-    """
-    definition = _resolve_for_user(agent_slug, user_id)
-    if definition is None:
-        return None
-
-    key = (tool_key or "").strip()
-    if not key:
-        raise ValueError("tool_key must be a non-empty string")
-
-    # Never let a native builtin enter the override sets.
-    if key in _native_keys():
-        logger.info(
-            "agent_tool_toggle_ignored_native",
-            "Ignored toggle of a native builtin (managed outside the Agents tab)",
-            agent_slug=agent_slug, tool_key=key,
-        )
-        return list_agent_tools(user_id, agent_slug)
-
-    cur_disabled, cur_enabled = read_tool_prefs(user_id, agent_slug)
-    default_on = key in _declared_mcp_rows(definition, cur_disabled)
-
-    if disabled:  # user wants the tool OFF
-        if default_on:
-            cur_disabled.add(key)
-        cur_enabled.discard(key)
-    else:  # user wants the tool ON
-        cur_disabled.discard(key)
-        if not default_on:
-            cur_enabled.add(key)
-
-    write_tool_prefs(user_id, agent_slug, cur_disabled, cur_enabled)
-    return list_agent_tools(user_id, agent_slug)
-
-
-__all__ = ["list_agent_tools", "toggle_agent_tool"]
