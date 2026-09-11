@@ -5,30 +5,34 @@ lifespan, the Redis-backed rate limiting (global per-identity budget +
 per-route ``rate_limit`` dependencies from ``core.security.rate_limit``), and
 the DI caching layer onto the app.
 
-Configuration handling is deliberate: the SDK reads an env-driven,
-``lru_cache``-d ``RedisSettings`` singleton, but our Redis password is a
-file-backed Swarm secret the SDK cannot resolve, and the ``rediss://`` trust
-root is the internal CA. So this module primes the SDK's env from the
-already-resolved ``core.settings`` values, warms the settings singleton once,
-then scrubs the sensitive variable back out of the process environment — the
-secret ends up only inside the cached settings object (a ``SecretStr``), never
-in ``/proc``-visible env or inherited by subprocesses (e.g. the alembic
-migration run).
+Configuration handling is deliberate, and splits in two.
 
-**The SDK is primed in host/port mode, never with a URL, and that is load
-bearing.** Its ``_tls_kwargs()`` drops ``ssl_ca_certs`` unless ``ssl`` is true,
-but passing ``ssl=True`` alongside a ``rediss://`` URL raises
-``TypeError: AbstractConnection.__init__() got an unexpected keyword argument
-'ssl'`` — so with a URL there is no combination that both verifies the server
-and starts. In host/port mode ``ssl=True`` is a valid kwarg, the CA is applied,
-and the separate ``password`` field is honoured (in URL mode it is ignored,
-which is why the credentials used to be embedded in the URL instead).
+**The connection pool is ours, not the SDK's.** ``_build_sdk_pool`` replaces
+``_PoolState.build_async_pool`` before the lifespan runs. That is not a
+preference — the SDK's env-driven settings *cannot* express a working TLS pool.
+Its ``_tls_kwargs()`` drops ``ssl_ca_certs`` unless ``ssl`` is true, and then
+emits a bare ``ssl: True`` alongside it; but redis-py accepts ``ssl=`` only on
+``Redis(...)``, never on the ``ConnectionPool`` the SDK actually builds. So
+every combination the environment can produce fails, in one of two ways:
 
-Getting this wrong fails quietly: ``rediss://`` still connects, TLS is still
-negotiated, and the server certificate is verified against the *system* trust
-store, which does not contain our internal CA. The connection then fails with
-``CERTIFICATE_VERIFY_FAILED`` and, because the stance is fail-open, rate
-limiting is simply absent while the API keeps serving.
+* CA supplied, ``ssl`` true  → ``TypeError: AbstractConnection.__init__() got
+  an unexpected keyword argument 'ssl'`` — in URL *and* host/port mode alike.
+* ``ssl`` false (or unset)   → the CA is silently dropped, the handshake is
+  verified against the *system* trust store, and every connection fails
+  ``CERTIFICATE_VERIFY_FAILED``.
+
+Both were shipped to production in turn. The second is the dangerous one: it
+fails quietly, because ``rediss://`` still connects and TLS is still negotiated
+— and with the fail-open stance below, rate limiting is simply absent while the
+API keeps serving. Owning the pool removes the whole class of problem: the
+trust shape comes from :func:`core.cache.client.redis_tls_kwargs`, the single
+definition this service has, already proven on the raw-Redis consumers.
+
+**The SDK's own settings are primed only with behaviour knobs** — key prefix
+and the two rate-limit flags. It is deliberately never told the Redis
+credentials: it has no connection left to make with them, so the password stays
+out of the SDK's settings object and out of ``/proc``-visible env (and out of
+subprocesses like the alembic migration run).
 
 Failure stance: fail-open (``rate_limit_fail_closed`` False). A Redis outage
 must never take the API down — the same availability-first stance as the
@@ -38,11 +42,14 @@ served.
 from __future__ import annotations
 
 import os
-from urllib.parse import urlsplit
+from typing import Any
 
 from fastapi import FastAPI
+from redis.asyncio import ConnectionPool as AsyncConnectionPool
 from redis_fastapi import FastAPIRedis, get_settings
+from redis_fastapi.deps import _PoolState
 
+from core.cache.client import redis_tls_kwargs
 from core.settings import settings
 from core.security.rate_limit import USER_BUDGET_RATE, exempt_from_budget, verified_identity
 from core.logging import get_logger
@@ -55,70 +62,73 @@ logger = get_logger(__name__)
 SDK_KEY_PREFIX = "mx:sdk"
 
 
-def _prime_sdk_settings() -> None:
-    """Seed, warm, and scrub the SDK's env-driven settings singleton.
+def _build_sdk_pool() -> AsyncConnectionPool:
+    """Build the pool the SDK runs on, with this service's TLS trust applied.
 
-    Values are written to ``os.environ`` (the only injection point the SDK
-    exposes), ``get_settings()`` is called once so the ``lru_cache`` captures
-    them, and the password is removed immediately — the cached settings object
-    holds the only copy.
+    Installed over ``_PoolState.build_async_pool`` so the SDK's own lifespan
+    still owns the pool's life cycle — it is created before the rate-limit
+    capability probe and closed on shutdown, exactly as the library intends.
+    Only the *construction* is ours, because only construction is broken (see
+    the module docstring).
 
-    ``REDIS_URL`` is *unset* for the duration: its mere presence puts the SDK in
-    URL mode, where the CA is unusable (see the module docstring). It is put back
-    afterwards so nothing else that reads the environment is surprised.
+    Connection details come from ``core.settings``, the same values every other
+    Redis consumer in the bridge uses, rather than from the SDK's parallel view
+    of the environment — a second opinion here is precisely what would drift.
     """
-    parts = urlsplit(settings.redis.url)
-    password = settings.redis.password.get_secret_value()
-    is_tls = parts.scheme == "rediss"
-
-    env: dict[str, str] = {
-        "REDIS_HOST": parts.hostname or "redis",
-        "REDIS_PORT": str(parts.port or 6379),
-        # urlsplit gives "/0"; an empty or unparseable path means db 0.
-        "REDIS_DB": (parts.path or "/0").lstrip("/") or "0",
-        "REDIS_PREFIX": SDK_KEY_PREFIX,
-        # The global budget middleware must stay quiet on headers — only the
-        # strict per-route limits advertise X-RateLimit-* (they pass
-        # emit_headers=True explicitly), so clients never see two conflicting
-        # limit families on one response.
-        "REDIS_RATE_LIMIT_EMIT_HEADERS": "false",
-        "REDIS_RATE_LIMIT_FAIL_CLOSED": "false",
+    sdk_settings = get_settings()
+    kwargs: dict[str, Any] = {
+        # `from_url` lets explicit kwargs stand when the URL omits them, and our
+        # URL carries no credentials — the password is a file-backed Swarm
+        # secret resolved by core.settings.
+        "password": settings.redis.password.get_secret_value() or None,
+        **redis_tls_kwargs(),
     }
-    if password:
-        env["REDIS_PASSWORD"] = password
-    # Every TLS field is written on every path, never left to whatever happens to
-    # be in the ambient environment: a stale REDIS_SSL would otherwise make a
-    # plaintext URL attempt TLS and fail to connect at all.
-    env["REDIS_SSL"] = "true" if is_tls else "false"
+    # Pass through the pool knobs the SDK would have applied itself, so
+    # replacing the builder changes trust handling and nothing else.
+    if sdk_settings.max_connections is not None:
+        kwargs["max_connections"] = sdk_settings.max_connections
+    if sdk_settings.socket_timeout is not None:
+        kwargs["socket_timeout"] = sdk_settings.socket_timeout
+    if sdk_settings.socket_connect_timeout is not None:
+        kwargs["socket_connect_timeout"] = sdk_settings.socket_connect_timeout
+    return AsyncConnectionPool.from_url(settings.redis.url, **kwargs)
 
-    previous_url = os.environ.pop("REDIS_URL", None)
-    if is_tls:
-        # Same trust root as core.cache.client. `ssl` must be true for the SDK to
-        # apply the CA at all, and is only a legal kwarg in this mode.
-        env["REDIS_SSL_CA_CERTS"] = settings.tls.ca_cert_path or ""
-        env["REDIS_SSL_CHECK_HOSTNAME"] = "true"
-    else:
-        for key in ("REDIS_SSL_CA_CERTS", "REDIS_SSL_CHECK_HOSTNAME"):
-            os.environ.pop(key, None)
-    os.environ.update(env)
+
+def _prime_sdk_settings() -> None:
+    """Seed and warm the SDK's env-driven settings singleton.
+
+    Only behaviour knobs are written — the SDK builds no connection of its own,
+    so it is never handed the Redis credentials. ``REDIS_PASSWORD`` is lifted
+    out of the environment for the duration of the warm-up so the cached
+    settings object cannot capture a secret it has no use for, then put back
+    for any later reader.
+    """
+    os.environ.update(
+        {
+            "REDIS_PREFIX": SDK_KEY_PREFIX,
+            # The global budget middleware must stay quiet on headers — only the
+            # strict per-route limits advertise X-RateLimit-* (they pass
+            # emit_headers=True explicitly), so clients never see two conflicting
+            # limit families on one response.
+            "REDIS_RATE_LIMIT_EMIT_HEADERS": "false",
+            "REDIS_RATE_LIMIT_FAIL_CLOSED": "false",
+        }
+    )
+
+    previous_password = os.environ.pop("REDIS_PASSWORD", None)
     try:
         get_settings.cache_clear()  # drop anything cached from an earlier import
         sdk_settings = get_settings()  # capture the primed env into the singleton
     finally:
-        # Scrub the secret regardless, and restore the URL the container was
-        # started with so nothing credentialed lingers in the process env (or
-        # leaks into subprocesses like the alembic run).
-        os.environ.pop("REDIS_PASSWORD", None)
-        if previous_url is not None:
-            os.environ["REDIS_URL"] = previous_url
+        if previous_password is not None:
+            os.environ["REDIS_PASSWORD"] = previous_password
 
     logger.info(
         "redis_sdk_settings_primed",
         "fastapi-redis-sdk settings initialized",
-        # tls_verified is the signal that the CA actually landed: a truthy
-        # ssl_ca_certs is the difference between a verified connection and one
-        # that fails closed against the system trust store.
-        tls_verified=bool(sdk_settings.ssl and sdk_settings.ssl_ca_certs),
+        # tls_verified is the signal that the CA actually landed: without it the
+        # handshake falls back to the system trust store and fails closed.
+        tls_verified=bool(redis_tls_kwargs().get("ssl_ca_certs")),
         prefix=sdk_settings.prefix,
         tls=settings.redis.url.startswith("rediss://"),
         fail_closed=sdk_settings.rate_limit_fail_closed,
@@ -139,6 +149,10 @@ def install_redis_sdk(app: FastAPI) -> None:
     ``rate_limit`` dependencies in ``core.security.rate_limit``.
     """
     _prime_sdk_settings()
+    # Must land before the lifespan runs: it is the lifespan that calls this to
+    # create the pool, and the rate-limit capability probe runs against it
+    # immediately afterwards.
+    _PoolState.build_async_pool = staticmethod(_build_sdk_pool)
     (
         FastAPIRedis(app)
         .lifespan()

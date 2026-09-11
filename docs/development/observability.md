@@ -123,7 +123,7 @@ Every event name below is a stable string emitted via `EventLogger`. The `http_r
 | --- | --- | --- |
 | `service_startup` / `service_shutdown` | INFO | lifespan |
 | `database_migrations_started` / `database_migrations_completed` | INFO | alembic subprocess around app start |
-| `redis_sdk_settings_primed` | INFO | fastapi-redis-sdk initialized (`prefix`, `tls`, `fail_closed`) — never the credentials |
+| `redis_sdk_settings_primed` | INFO | fastapi-redis-sdk initialized (`prefix`, `tls`, `tls_verified`, `fail_closed`) — never the credentials. `tls=true` with `tls_verified=false` means the internal CA never reached the connection: the handshake is being checked against the system trust store and every Redis call is failing. Rate limiting is fail-open, so nothing else surfaces it. |
 | SDK `ratelimit_backend` warnings | WARN | Redis unreachable → decision degraded + **failed open**; watch for sustained bursts (limits silently unenforced) |
 | `upstream_request_retrying` | WARN | `UpstreamErrorHandler`, `upstream_service`, `operation`, `attempt`, `failure_reason` |
 | `blob_download_completed` / `_aborted` / `_error` | INFO/WARN | from `StreamMetrics`: `chunk_count`, `bytes_forwarded`, `first_byte_latency_ms`, `total_stream_duration_ms`, `served_bytes`, `partial` |
