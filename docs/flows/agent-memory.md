@@ -152,6 +152,8 @@ flowchart LR
 
 **UI** — the **Memories** tab (`profile_parts/MemoriesTab.tsx`, fed by the `useMemories` hook) lists the user's deep agents; drilling into one (with a Back button) shows that agent's memories **sorted by name**, each clickable to lazily load and preview its content, with a **delete** button behind an inline confirm step. Optimistic delete drops the row immediately and restores it on failure.
 
+**Two caches, and Refresh has to reconcile both.** The list carries name + summary only; the body comes from a second per-memory fetch cached under `${agentId}::${name}`. Refreshing only the list is what made an agent-rewritten memory show its **new summary above its old content** — the body cache was never invalidated, and since `ensureDetail` fires only on expand, an already-open row could never re-request. `refreshAgent` now compares each cached body's `updatedAt` against the freshly listed row: bodies whose row vanished are dropped, bodies whose timestamp moved are re-fetched in place (so an open row updates without being collapsed), and unchanged bodies are left alone. A missing timestamp on either side counts as stale — it cannot prove the body is current. `updated_at` is `NOT NULL` and set to `now()` by the store's `ON CONFLICT DO UPDATE`, so it is a reliable signal.
+
 ---
 
 ## Sharp edges

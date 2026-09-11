@@ -12,6 +12,12 @@ import type { MemoryDetail, MemorySummary } from "@/shared/lib/types";
 //      agent, keyed by agentId.
 //   2. Per-memory detail (full content) — loaded on click, keyed by
 //      `${agentId}::${name}`, so opening a row doesn't refetch every time.
+//      The list carries only name + summary, so this cache is the ONLY source
+//      of the body: a refresh that reloads the list without reconciling it
+//      leaves an updated memory showing its new summary above its old content.
+//      `refreshAgent` therefore drops bodies whose row vanished and re-fetches
+//      those whose `updatedAt` moved — in place, so a row the user has open
+//      updates without needing to be collapsed and reopened.
 //   3. Delete — optimistically drops the row from the list (and detail cache),
 //      then proxies the delete (which removes the yml + its AGENTS.md row).
 type ToastFn = (opts: {
@@ -62,17 +68,19 @@ export function useMemories(ctx: MemoriesCtx): MemoriesHandlers {
   }, [userId]);
 
   const loadAgent = useCallback(
-    async (agentId: string) => {
-      if (!userId || !agentId) return;
+    async (agentId: string): Promise<MemorySummary[] | null> => {
+      if (!userId || !agentId) return null;
       setLoadingAgents((prev) => new Set(prev).add(agentId));
       try {
         const fetched = await listAgentMemories(userId, agentId);
         setMemories((prev) => ({ ...prev, [agentId]: fetched }));
         loadedRef.current.add(agentId);
+        return fetched;
       } catch (error) {
         toastError(toast, "Could not load memories", error, {
           description: error instanceof Error ? error.message : "Please try again.",
         });
+        return null;
       } finally {
         setLoadingAgents((prev) => {
           const next = new Set(prev);
@@ -94,9 +102,61 @@ export function useMemories(ctx: MemoriesCtx): MemoriesHandlers {
 
   const refreshAgent = useCallback(
     async (agentId: string) => {
-      await loadAgent(agentId);
+      const rows = await loadAgent(agentId);
+      if (!rows || !userId) return;
+
+      // `updatedAt` is bumped by the store on every upsert, so comparing it
+      // against the cached body tells us exactly which memories the agent
+      // rewrote — no blanket refetch of bodies that did not move.
+      const listed = new Map(rows.map((row) => [row.name, row]));
+      const prefix = `${agentId}::`;
+      const cachedNames = Object.keys(detail)
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => key.slice(prefix.length));
+
+      const removed = cachedNames.filter((name) => !listed.has(name));
+      const stale = cachedNames.filter((name) => {
+        const row = listed.get(name);
+        if (!row) return false;
+        const cached = detail[detailKey(agentId, name)];
+        // Missing a timestamp on either side means we cannot prove the cached
+        // body is current — refetch rather than risk showing a stale one.
+        if (!row.updatedAt || !cached?.updatedAt) return true;
+        return row.updatedAt !== cached.updatedAt;
+      });
+
+      if (removed.length) {
+        setDetail((prev) => {
+          const next = { ...prev };
+          for (const name of removed) delete next[detailKey(agentId, name)];
+          return next;
+        });
+      }
+      if (!stale.length) return;
+
+      try {
+        const refetched = await Promise.all(
+          stale.map(async (name) => [name, await getAgentMemory(userId, agentId, name)] as const),
+        );
+        setDetail((prev) => {
+          const next = { ...prev };
+          for (const [name, fresh] of refetched) next[detailKey(agentId, name)] = fresh;
+          return next;
+        });
+      } catch (error) {
+        // The body we hold is now known-stale, so drop it rather than leave the
+        // old content sitting under a new summary; reopening the row refetches.
+        setDetail((prev) => {
+          const next = { ...prev };
+          for (const name of stale) delete next[detailKey(agentId, name)];
+          return next;
+        });
+        toastError(toast, "Could not refresh memory content", error, {
+          description: error instanceof Error ? error.message : "Please try again.",
+        });
+      }
     },
-    [loadAgent],
+    [loadAgent, userId, detail, toast],
   );
 
   const isAgentLoading = useCallback(

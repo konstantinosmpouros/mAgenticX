@@ -322,9 +322,24 @@ export default function MemoriesTab({
                                   ) : null}
                                 </>
                               ) : (
-                                <p className="text-xs text-muted-foreground">
-                                  Could not load content.
-                                </p>
+                                // Reachable when the body fetch failed, or when a
+                                // refresh dropped a body it could not replace.
+                                // `ensureDetail` only fires on expand, so without
+                                // this the open row has no way back.
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    Could not load content.
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => void ensureDetail(selectedAgent.id, mem.name)}
+                                    className="h-6 px-2 text-xs"
+                                  >
+                                    Retry
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           ) : null}
