@@ -356,7 +356,9 @@ async def seed_conversation_input_files(
     """Persist user-uploaded files into the conversation's read-only ``input/``.
 
     Called by the bridge before a deep-agent run when the new user turn carries
-    attachments. Idempotent (overwrite by filename); 422 on a bad/oversized file.
+    attachments. A name already taken by different content is suffixed rather
+    than overwritten; re-sending the same bytes is a no-op. 422 on a bad or
+    oversized file.
     """
     try:
         written = seed_input_files(

@@ -527,6 +527,7 @@ export function useChatWorkspace({
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
+    refreshMySkills,
     myAgents,
     busyAgentId,
     getAgentDefinition,
@@ -1389,6 +1390,7 @@ export function useChatWorkspace({
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
+    refreshMySkills,
     // profile/agents (the Agents-tab builder)
     myAgents,
     busyAgentId,

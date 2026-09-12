@@ -371,7 +371,10 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
   const ensureSkillDetail = useCallback(
     async (skillName: string) => {
       if (!userId) return;
-      if (skillDetail[skillName]) return;
+      // No cached short-circuit: a skill's files change whenever an agent
+      // rewrites it, and holding the first read meant showing stale content
+      // until the panel was closed. Opening one is a deliberate act, so paying
+      // for a fetch each time is the honest trade.
       if (loadingDetailKeys.has(skillName)) return;
       setLoadingDetailKeys((prev) => {
         const next = new Set(prev);
@@ -393,7 +396,7 @@ export function useSkills(ctx: SkillsCtx): SkillsHandlers {
         });
       }
     },
-    [userId, skillDetail, loadingDetailKeys, toast],
+    [userId, loadingDetailKeys, toast],
   );
 
   return {

@@ -7,22 +7,17 @@ error handling — every operation degrades to a miss/no-op on a Redis outage,
 so the cache can never break a request. This module owns only the *skills*
 semantics: which key families exist, their TTLs, and when they are evicted.
 
-Every cache entry carries a TTL — nothing is cached forever. All three TTLs
-are driven from ``settings.redis`` (core/settings.py) and tunable per
-environment. Three key families live here (names + groups defined in
-``core.cache.policies`` so writers and evictors can never drift):
+**One key family, deliberately.** ``skills:global`` holds the admin-curated
+catalog — shared by every user, changed only by an admin editing the volume, and
+expensive to rebuild — so caching it is worth a TTL
+(``skills_global_ttl_seconds``, default 24 h; the UI's bypass path refreshes it
+for everyone).
 
-- ``skills:global`` — the admin-curated catalog, shared across all users
-  (``skills_global_ttl_seconds``, default 24 h; refreshed by the UI's
-  bypass-Redis path).
-- ``skills:user:<user_id>:registry`` — the user's personal skill pool
-  manifest (``skills_user_registry_ttl_seconds``, default 2 h; invalidated
-  by every pool mutation).
-- ``skills:user:<user_id>:agent:<agent_id>`` — the per-(user, agent)
-  assignment set (``skills_user_agent_ttl_seconds``, default 2 h). Each entry
-  joins the per-user eviction group ``skills:agents:<user_id>``, so the
-  cascade on pool deletion is a single ``delete_group`` instead of the old
-  hand-rolled SCAN loop.
+The per-user families that used to live here are gone. A user's pool and their
+per-agent assignments are written by an **agent** mid-run, with no event telling
+the bridge it happened, so a TTL meant serving a skill list that was already
+wrong — a tool-created skill stayed invisible for up to two hours. Those reads
+are plain queries now; correctness beat one saved round-trip.
 """
 from __future__ import annotations
 
@@ -66,9 +61,5 @@ class SkillsCache:
         """Delete the global catalog cache entry."""
         backend = await get_cache_backend()
         await backend.delete(SKILLS_GLOBAL_KEY)
-
-    # ------------------------------------------------------------------
-    # Per-user registry pool
-    # ------------------------------------------------------------------
 
 skills_cache = SkillsCache()

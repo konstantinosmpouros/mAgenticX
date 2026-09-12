@@ -171,6 +171,7 @@ type ProfilePanelProps = {
   onAddGlobalSkillToPool?: (skillName: string) => Promise<void>;
   onCreateCustomSkill?: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   onRemoveSkillFromPool?: (skillName: string) => Promise<void>;
+  onRefreshMySkills?: () => Promise<void>;
   // Manage-per-agent skill selection. The Skills tab "Manage" sub-view
   // renders one card per deep agent; ``skillSelections`` is the per-agent
   // enabled set keyed by ``agentId``. The hook lazy-loads selection when
@@ -241,6 +242,7 @@ export default function ProfilePanel({
   onAddGlobalSkillToPool,
   onCreateCustomSkill,
   onRemoveSkillFromPool,
+  onRefreshMySkills,
   myAgents,
   busyAgentId,
   onCreateAgent,
@@ -508,6 +510,7 @@ export default function ProfilePanel({
                         onAddGlobalSkillToPool={onAddGlobalSkillToPool}
                         onCreateCustomSkill={onCreateCustomSkill}
                         onRemoveSkillFromPool={onRemoveSkillFromPool}
+                        onRefreshMySkills={onRefreshMySkills ?? (async () => {})}
                         agents={agents}
                         skillSelections={skillSelections}
                         onLoadAgentSkills={onLoadAgentSkills}

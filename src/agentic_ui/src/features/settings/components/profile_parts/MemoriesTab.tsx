@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Bot, Brain, ChevronDown, FileText, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { Bot, Brain, ChevronDown, FileText, Loader2, Trash2 } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -17,7 +17,6 @@ type MemoriesTabProps = MemoriesHandlers & {
 };
 
 const detailKey = (agentId: string, name: string) => `${agentId}::${name}`;
-const MIN_REFRESH_SPIN_MS = 600;
 
 const formatDate = (iso: string | null): string | null => {
   if (!iso) return null;
@@ -31,11 +30,10 @@ export default function MemoriesTab({
   agents,
   memories,
   isAgentLoading,
-  ensureLoaded,
-  refreshAgent,
+  loadAgent,
   detail,
   isDetailLoading,
-  ensureDetail,
+  loadDetail,
   deleteMemory,
   isDeleting,
 }: MemoriesTabProps) {
@@ -62,7 +60,6 @@ export default function MemoriesTab({
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   const deepAgents = useMemo(
     () => (agents ?? []).filter((agent) => agent.type === "deep agent" && agent.isActive),
@@ -80,9 +77,9 @@ export default function MemoriesTab({
       setSelectedAgentId(agentId);
       setExpanded(new Set());
       setConfirmingDelete(null);
-      void ensureLoaded(agentId);
+      void loadAgent(agentId);
     },
-    [ensureLoaded],
+    [loadAgent],
   );
 
   const toggleMemory = useCallback(
@@ -93,24 +90,13 @@ export default function MemoriesTab({
           next.delete(name);
         } else {
           next.add(name);
-          void ensureDetail(agentId, name);
+          void loadDetail(agentId, name);
         }
         return next;
       });
     },
-    [ensureDetail],
+    [loadDetail],
   );
-
-  const handleRefresh = useCallback(async () => {
-    if (!selectedAgentId || refreshing) return;
-    setRefreshing(true);
-    const minSpin = new Promise((resolve) => setTimeout(resolve, MIN_REFRESH_SPIN_MS));
-    try {
-      await Promise.all([refreshAgent(selectedAgentId), minSpin]);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [selectedAgentId, refreshing, refreshAgent]);
 
   const backToHub = useCallback(() => {
     setSelectedAgentId(null);
@@ -125,12 +111,6 @@ export default function MemoriesTab({
           description: "What this agent remembers about you between conversations.",
           backLabel: "Memory",
           onBack: backToHub,
-          action: {
-            icon: RefreshCw,
-            label: "Refresh memories",
-            busy: refreshing,
-            onClick: () => void handleRefresh(),
-          },
         }
       : null,
   );
@@ -324,7 +304,7 @@ export default function MemoriesTab({
                               ) : (
                                 // Reachable when the body fetch failed, or when a
                                 // refresh dropped a body it could not replace.
-                                // `ensureDetail` only fires on expand, so without
+                                // `loadDetail` only fires on expand, so without
                                 // this the open row has no way back.
                                 <div className="flex items-center gap-2">
                                   <p className="text-xs text-muted-foreground">
@@ -334,7 +314,7 @@ export default function MemoriesTab({
                                     type="button"
                                     size="sm"
                                     variant="ghost"
-                                    onClick={() => void ensureDetail(selectedAgent.id, mem.name)}
+                                    onClick={() => void loadDetail(selectedAgent.id, mem.name)}
                                     className="h-6 px-2 text-xs"
                                   >
                                     Retry

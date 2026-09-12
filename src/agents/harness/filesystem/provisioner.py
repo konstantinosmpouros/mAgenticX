@@ -314,6 +314,38 @@ def ensure_user_agent_filesystem(
     return root
 
 
+def _unique_input_name(in_dir: Path, name: str, raw: bytes) -> str:
+    """A name for ``raw`` that collides with nothing already in ``in_dir``.
+
+    Browsers name every pasted image ``image.png``, so two in one message — or
+    one per turn across a conversation — used to land on the same path and the
+    later write silently destroyed the earlier file. Suffixes disambiguate:
+    ``image.png``, ``image_1.png``, ``image_2.png``.
+
+    An identical file keeps its existing name rather than being duplicated, so
+    re-sending an attachment is still a no-op.
+    """
+    target = in_dir / name
+    if not target.exists():
+        return name
+    if target.read_bytes() == raw:
+        return name
+
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    suffix = f".{ext}" if ext else ""
+    index = 1
+    while True:
+        candidate = f"{stem}_{index}{suffix}"
+        probe = in_dir / candidate
+        if not probe.exists():
+            return candidate
+        if probe.read_bytes() == raw:
+            return candidate
+        index += 1
+
+
 def seed_input_files(
     *,
     user_id: str,
@@ -323,8 +355,11 @@ def seed_input_files(
 ) -> List[str]:
     """Write user-uploaded files into this conversation's read-only ``input/``.
 
-    Idempotent (overwrites by filename — a re-sent attachment is harmless). Each
-    ``file`` is a model with ``filename``/``mime``/``base64``/``size`` fields.
+    A name already taken by *different* content is suffixed rather than
+    overwritten (``image_1.png``), because browsers call every pasted image
+    ``image.png`` and the later write used to destroy the earlier file. Re-sending
+    the same bytes under the same name is still a no-op. Each ``file`` is a model
+    with ``filename``/``mime``/``base64``/``size`` fields.
     Validates base64 strictly and enforces server-side per-file/total/count caps
     (defence in depth — the bridge already capped at upload). Returns the list of
     written virtual paths (``/conversation/input/<name>``).
@@ -350,6 +385,7 @@ def seed_input_files(
             raise ValueError(f"Invalid base64 for input file {name!r}.") from exc
         if len(raw) > max_file_bytes:
             raise ValueError(f"Input file {name!r} exceeds the size limit.")
+        name = _unique_input_name(in_dir, name, raw)
         (in_dir / name).write_bytes(raw)
         written.append(f"/conversation/input/{name}")
 

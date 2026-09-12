@@ -105,6 +105,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
     handleAddGlobalSkill,
     handleCreateCustomSkill,
     handleRemoveSkillFromPool,
+    refreshMySkills,
     myAgents,
     busyAgentId,
     getAgentDefinition,
@@ -292,6 +293,7 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onAddGlobalSkillToPool={handleAddGlobalSkill}
                   onCreateCustomSkill={handleCreateCustomSkill}
                   onRemoveSkillFromPool={handleRemoveSkillFromPool}
+                  onRefreshMySkills={refreshMySkills}
                   myAgents={myAgents}
                   busyAgentId={busyAgentId}
                   onCreateAgent={handleCreateAgent}

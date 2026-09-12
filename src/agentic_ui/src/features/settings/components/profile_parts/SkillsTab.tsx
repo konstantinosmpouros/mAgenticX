@@ -40,6 +40,8 @@ type SkillsTabProps = {
   onAddGlobalSkillToPool?: (skillName: string) => Promise<void>;
   onCreateCustomSkill?: (payload: CustomSkillCreatePayload) => Promise<UserSkill | null>;
   onRemoveSkillFromPool?: (skillName: string) => Promise<void>;
+  /** Re-read the pool from the server. Called on every tab entry. */
+  onRefreshMySkills: () => Promise<void>;
   agents?: Agent[];
   skillSelections?: UserAgentSkillSelection;
   onLoadAgentSkills?: (agentId: string) => Promise<void>;
@@ -58,6 +60,7 @@ export default function SkillsTab({
   onAddGlobalSkillToPool,
   onCreateCustomSkill,
   onRemoveSkillFromPool,
+  onRefreshMySkills,
   agents,
   skillSelections,
   onLoadAgentSkills,
@@ -85,6 +88,15 @@ export default function SkillsTab({
       transition: { duration: 0.3, ease: "easeOut" as const },
     };
   }, [prefersReducedMotion]);
+  // The tab is mounted on entry and unmounted on leave, so this fires every
+  // time it is opened. An agent can write to the pool between visits (the
+  // `create_skill` tool), and nothing tells the client when it does — so the
+  // list is re-read rather than trusted.
+  useEffect(() => {
+    void onRefreshMySkills();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Per-card entrance for skill lists — staggered fade+rise on enter,
   // faster ease-in fade on exit. Transform+opacity only; stagger is capped
   // so a long list doesn't drip in for seconds.
