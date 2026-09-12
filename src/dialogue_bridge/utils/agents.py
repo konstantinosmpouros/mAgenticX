@@ -12,7 +12,7 @@ from sqlalchemy.sql import func
 from core.settings import settings
 from utils import agent_tool_prefs
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
-from core.database import AgentTable, MessageTable, SessionLocal
+from core.database import AgentTable, MessageTable, SessionLocal, UserPreferencesTable
 from core.security.internal_trust import internal_service_headers
 from core.error_handling import upstream_error_handler
 
@@ -375,6 +375,23 @@ async def reap_conversation_runtime(db: AsyncSession, user_id: str, conversation
                 )
 
 
+async def _memory_prefs(db: AsyncSession, user_id: str) -> Dict[str, str]:
+    """The two preference flags that decide whether the memory builtins exist.
+
+    The agents service cannot see them — they live here — so they are passed on
+    the catalog request rather than guessed at on the far side.
+    """
+    row = (
+        await db.execute(
+            select(UserPreferencesTable).where(UserPreferencesTable.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    return {
+        "use_memory": str(bool(row.use_memory) if row else True).lower(),
+        "search_past_convs": str(bool(row.search_past_convs) if row else False).lower(),
+    }
+
+
 def _agent_tools_url(user_id: str, agent_slug: str) -> str:
     base = AGENTS_SERVICE_URL.rstrip("/")
     return f"{base}/agents/{user_id}/{agent_slug}/tools"
@@ -413,11 +430,12 @@ async def fetch_agent_tools(
     timeout = settings.http.agents_timeout
     upstream_headers = internal_service_headers(get_context().get("request_id"))
     url = _agent_tools_url(user_id, slug)
+    prefs = await _memory_prefs(db, user_id)
     try:
         async with httpx.AsyncClient(timeout=timeout, verify=get_httpx_verify(), cert=get_httpx_client_cert()) as client:
             resp = await upstream_error_handler.run_with_retries(
                 logger,
-                lambda: client.get(url, headers=upstream_headers),
+                lambda: client.get(url, headers=upstream_headers, params=prefs),
                 upstream_service="agents",
                 operation="agent_tools_fetch",
             )
@@ -446,33 +464,21 @@ async def fetch_agent_tools(
             upstream_service="agents", operation="agent_tools_fetch",
         )
 
-    disabled, enabled = await agent_tool_prefs.read_pair(db, user_id, slug)
+    disabled, enabled, approvals = await agent_tool_prefs.read_prefs(db, user_id, slug)
     payload["tools"] = agent_tool_prefs.apply_to_rows(
-        payload.get("tools") or [], disabled, enabled
+        payload.get("tools") or [], disabled, enabled, approvals
     )
     return payload
 
 
-async def set_agent_tool_disabled(
-    db: AsyncSession, user_id: str, agent_id: str, tool_key: str, disabled: bool
-) -> Dict[str, Any]:
-    """Record one tool toggle for this (user, agent); returns refreshed rows.
+async def _write_and_refresh(db: AsyncSession, user_id: str, agent_id: str, tool_key: str, write):
+    """Locate the row, let ``write`` record the choice, return refreshed rows.
 
-    Writes only here. The override reaches the agent by riding the run config,
-    the same way ``use_memory`` and ``personalization`` already do, so there is
-    no second copy on the agents volume to keep in step — which is what made this
-    simpler than custom agents and skills rather than harder.
-
-    The refreshed list still comes from upstream, because that is where the tool
-    *manifest* lives; this just re-reads it with the new override applied.
-
-    The refreshed list still comes from upstream because that is where the tool
-    manifest lives — this just re-reads it with the new override applied.
+    Both setters share this because the sequence — resolve the slug, read the
+    manifest to learn what the tool *is*, write, re-overlay — is the same, and
+    only the decision in the middle differs.
     """
     slug = await _resolve_agent_slug(agent_id)
-
-    # What the toggle *means* depends on the tool's default, and only the
-    # manifest knows whether this agent declared it. Read first, then decide.
     current = await fetch_agent_tools(db, user_id, agent_id)
     row = next(
         (r for r in (current.get("tools") or []) if str(r.get("key")) == tool_key),
@@ -484,21 +490,62 @@ async def set_agent_tool_disabled(
             detail="That tool is not available for this agent.",
         )
 
-    await agent_tool_prefs.apply_toggle(
-        db,
-        user_id,
-        slug,
-        tool_key,
-        disabled=disabled,
-        declared=bool(row.get("declared", True)),
-    )
+    await write(slug, row)
     await db.commit()
 
-    disabled_keys, enabled_keys = await agent_tool_prefs.read_pair(db, user_id, slug)
+    disabled, enabled, approvals = await agent_tool_prefs.read_prefs(db, user_id, slug)
     current["tools"] = agent_tool_prefs.apply_to_rows(
-        current.get("tools") or [], disabled_keys, enabled_keys
+        current.get("tools") or [], disabled, enabled, approvals
     )
     return current
+
+
+async def set_agent_tool_enabled(
+    db: AsyncSession, user_id: str, agent_id: str, tool_key: str, enabled: bool
+) -> Dict[str, Any]:
+    """Switch one MCP tool on or off for this (user, agent).
+
+    Refused for a prebuilt tool: the framework builds those downstream of the
+    tool list we hand it, so no stored preference could ever filter one, and
+    accepting the request would show a switch that does nothing.
+    """
+
+    async def write(slug: str, row: Dict[str, Any]) -> None:
+        if row.get("kind") == "builtin":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Built-in tools are always available and cannot be switched off.",
+            )
+        await agent_tool_prefs.set_enabled(
+            db, user_id, slug, tool_key,
+            enabled=enabled, declared=bool(row.get("declared", True)),
+        )
+
+    return await _write_and_refresh(db, user_id, agent_id, tool_key, write)
+
+
+async def set_agent_tool_approval(
+    db: AsyncSession, user_id: str, agent_id: str, tool_key: str, approval: bool
+) -> Dict[str, Any]:
+    """Gate or ungate one tool for this (user, agent).
+
+    A locked gate is refused rather than stored: the runtime re-applies it after
+    every user choice, so accepting would leave the UI showing a gate as off
+    while every call still paused.
+    """
+
+    async def write(slug: str, row: Dict[str, Any]) -> None:
+        if row.get("approvalLocked"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="That tool always requires approval and cannot be changed.",
+            )
+        await agent_tool_prefs.set_approval(
+            db, user_id, slug, tool_key,
+            required=approval, baseline=bool(row.get("approval")),
+        )
+
+    return await _write_and_refresh(db, user_id, agent_id, tool_key, write)
 
 
 async def fetch_tools_from_agents_service() -> List[Dict[str, Any]]:

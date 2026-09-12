@@ -1,4 +1,6 @@
-"""Per-(user, agent) tool-control DTOs (Agents tab), mirroring the agents-service shapes."""
+"""Agents-tab tool DTOs, mirroring the agents-service shapes."""
+from typing import Literal, Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -8,9 +10,14 @@ class AgentToolRow(BaseModel):
     key: str
     name: str
     description: str = ""
-    source: str  # "native" | "mcp"
-    declared: bool = True  # part of the agent's baseline vs an available gateway tool
-    disabled: bool
+    kind: Literal["builtin", "mcp"]
+    group: str
+    declared: bool = True
+    available: bool = True
+    unavailableReason: Optional[str] = None
+    enabled: bool
+    approval: bool = False
+    approvalLocked: bool = False
 
 
 class AgentToolsResponse(BaseModel):
@@ -20,8 +27,15 @@ class AgentToolsResponse(BaseModel):
     tools: list[AgentToolRow] = Field(default_factory=list)
 
 
-class ToolToggleRequest(BaseModel):
+class ToolEnabledRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     toolKey: str
-    disabled: bool
+    enabled: bool
+
+
+class ToolApprovalRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    toolKey: str
+    approval: bool

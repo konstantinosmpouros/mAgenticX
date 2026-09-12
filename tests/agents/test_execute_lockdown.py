@@ -70,10 +70,11 @@ def test_workspace_factory_refuses_sandbox_default_when_disabled(
 def test_execute_stays_a_reserved_tool_name(agents_service):
     """The built-in `execute` is injected by deepagents itself (never via
     self.tools), but dynamically-attached MCP tools are name-filtered against
-    this set — 'execute' must stay in it so an external tool can't smuggle the
-    name in."""
-    deep_agent = importlib.import_module("harness.abstractions.deep_agent")
-    assert "execute" in deep_agent.RESERVED_DEEPAGENT_TOOL_NAMES
+    the builtin roster — 'execute' must stay in it so an external tool can't
+    smuggle the name in."""
+    builtins_mod = importlib.import_module("harness.tools.builtins")
+    assert "execute" in builtins_mod.BUILTIN_BY_NAME
+    assert builtins_mod.BUILTIN_BY_NAME["execute"].locked
 
 
 def test_write_deny_ladder_regressions(agents_service):

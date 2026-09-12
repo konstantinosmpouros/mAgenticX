@@ -242,9 +242,17 @@ export const AgentToolRowSchema = z.object({
   key: z.string(),
   name: z.string(),
   description: z.string().catch(""),
-  source: z.string(), // "native" | "mcp"
-  declared: z.boolean().catch(true), // baseline tool vs an available gateway tool
-  disabled: z.boolean(),
+  // "builtin" tools are prebuilt and always present; only their approval is
+  // configurable. "mcp" tools are configurable on both axes.
+  kind: z.enum(["builtin", "mcp"]).catch("mcp"),
+  // Display grouping: a builtin's family, or the MCP server id.
+  group: z.string().catch("mcp"),
+  declared: z.boolean().catch(true),
+  available: z.boolean().catch(true),
+  unavailableReason: z.string().nullable().catch(null),
+  enabled: z.boolean(),
+  approval: z.boolean().catch(false),
+  approvalLocked: z.boolean().catch(false),
 });
 export const AgentToolsResponseSchema = z.object({
   agentSlug: z.string(),

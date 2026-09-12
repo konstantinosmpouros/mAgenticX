@@ -161,7 +161,7 @@ flowchart LR
 | --- | --- |
 | Effective set | `(declared_mcp ∪ enabled) − disabled` — `enabled` unions into `config_tool_names`; `disabled` is subtracted by `_apply_tool_disables` |
 | Scope | per `(user, agent)` — never bleeds across users or agents |
-| Store | `chat_db.user_agent_tool_prefs` — one row per override, `state` = `disabled` \| `enabled`, keyed `(user_id, agent_slug, tool_key)`. Migration `0021`. |
+| Store | `chat_db.user_agent_tool_prefs` — one row per choice, keyed `(user_id, agent_slug, tool_key)`. `state` = `disabled` \| `enabled` \| `NULL` (**MCP only**); `requires_approval` is tri-state. Migrations `0021`–`0023`. |
 | Catalog source | the *available* rows come from the cached MCP manifest map, which the tools endpoint warms via `list_mcp_tools()` before listing |
 | Natives | never enter either set — `toggle_agent_tool` ignores native keys and `_apply_tool_disables` subtracts native keys, so `present_artifact` can never be disabled |
 | Applies to | deep agents only — the MCP Servers tab is read-only; LangGraph agents expose no tool model |
@@ -227,3 +227,130 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 | User-agent spec validation (tool refs, HITL floor, quotas) | [src/agents/harness/abstractions/user_agents.py](../../src/agents/harness/abstractions/user_agents.py) | `validate_write`, `_HITL_FLOOR`, `_ALLOWED_EXTENSIONS` |
 | Ownership-aware resolution | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |
 | Frontend Agents tab | [src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | optimistic toggle, `getAgentTools` / `toggleAgentTool` |
+
+
+---
+
+## Two kinds of tool
+
+Everything in the Agents tab is one of two kinds, and the distinction decides
+what is configurable:
+
+| Kind | Members | Enable | Approval |
+| --- | --- | --- | --- |
+| `builtin` | **framework (9)** `write_todos` `ls` `read_file` `write_file` `edit_file` `glob` `grep` `execute` `task` — **native (5)** `remember` `search_past_conversations` `render_chart` `present_artifact` `create_skill` | never | configurable |
+| `mcp` | whatever the gateway exposes | configurable | configurable |
+
+**A builtin can never be enable-configured**, and not by policy. The framework
+nine are constructed *inside* `create_deep_agent`, downstream of the `tools=`
+list we hand it — we never hold them, so nothing stored could filter one. The
+native five are ours, but their presence follows the Personalization prefs, not
+this tab. `harness/tools/builtins.py` is the roster: one entry per tool with its
+group, default gate, lock, and what its availability depends on.
+
+### Availability is derived
+
+Four builtins are conditionally present, and the catalog reports that rather
+than dropping the row — a tool that silently disappears reads as a bug:
+
+| Tool | Present when |
+| --- | --- |
+| `remember` | `use_memory` |
+| `search_past_conversations` | `search_past_convs` |
+| `present_artifact` | a conversation exists |
+| `execute` | `SANDBOX_EXECUTION_ENABLED` (**default false**) |
+
+The first two are the user's preferences, which the agents service cannot see —
+the bridge passes them on the catalog request rather than the far side guessing.
+
+## Enablement: one pass
+
+`BaseAgent._filter_live_tools` is the only place MCP selection happens:
+
+```
+(declared ∪ user-enabled) − user-disabled
+```
+
+It lives on the base, not on `YamlDeepAgent`. While it did, a **code-defined**
+deep agent (`OmniAgent`) ignored the user's choices entirely: `config_tool_names`
+stayed empty, the filter short-circuited to `[]`, and the agent ran with no MCP
+tools while the tab showed them switched on — the bridge computes that display
+from the stored rows and cannot see whether the runtime honours them.
+
+Builtins are out of reach here **structurally**: only live gateway tools are
+considered, so the old "never subtract a native" guard is gone rather than
+reimplemented.
+
+## Approval: four layers, locked last
+
+```python
+resolved = {**builtin_hitl_defaults(), **agent_own}
+for name, wanted in user_choices.items():
+    resolved[name] = True if wanted else resolved.pop(name, None)
+resolved.update(locked_gates())
+```
+
+`agent_own` is `DeepAgent.hitl_gates` (code-defined) or `AgentSpec.hitl`
+(spec-driven). The user layer is a **map**, not a set: a prebuilt tool can
+default to gated, so `False` has to mean "clear that default". `locked_gates()`
+is applied last, which is the enforcement point for `execute` — it replaced a
+save-time floor check whose client-side copy drifted and broke every agent save
+twice.
+
+## Sharp edges
+
+- **`interrupt_on` is keyed by the tool's own name, the UI by cache key.** MCP
+  names arrive from the gateway **unprefixed** (`download_paper`), while every
+  UI surface and every stored row uses `arxiv/download_paper`. Writing the cache
+  key straight through matches nothing — and the failure is silent and inverted:
+  the UI shows the gate armed while the tool runs unapproved. MCP keys are
+  therefore resolved against the *live tools*, never parsed; builtin names are
+  their own key and pass through.
+
+- **A code-defined agent must declare its gates as a class attribute.** They
+  used to be an `interrupt_on=` argument inside `register_agent()`, invisible to
+  any catalog listing that does not build the agent — so the tab reported four
+  of Omni's five gates as ungated and configurable while every call paused.
+  `DeepAgent.hitl_gates` is the declarative form.
+
+- **An MCP tool may not shadow a builtin name.** `_apply_live_tools` filters
+  live tools against the roster, so a gateway exposing `write_file` cannot
+  smuggle it in.
+
+- **A gated tool called in a loop interrupts on every call.** Gating something
+  an agent leans on makes it unusable; that is the user's choice, but the UI
+  says so rather than letting them find out mid-run.
+
+- **Headless runs cannot answer a gate.** A scheduled task has no live client,
+  so its resume signal never comes. `reap_timed_out_fires()` cancels at the
+  watchdog timeout and records *"it may have hit an approval gate"*.
+
+## The Agents tab
+
+`AgentDetail` has three sections — Overview, Tools, Approvals. Tools and
+Approvals render the **same rows** through one `ToolList`, parameterised by
+`axis`:
+
+| Axis | Switch reads | Locked rows |
+| --- | --- | --- |
+| `enable` | `row.enabled` | `kind === "builtin"` |
+| `approval` | `row.approval` | `row.approvalLocked` |
+
+One component because the grouping, search, filtering and tallies are identical;
+a near-copy would drift the first time the grouping rules changed.
+
+Browsing the catalog is a separate, read-only surface — the **MCP Servers** tab
+over `GET /catalog/tools`. It has no per-agent state and is not involved here.
+
+## File map
+
+| Concern | File |
+| --- | --- |
+| Prebuilt roster | [src/agents/harness/tools/builtins.py](../../src/agents/harness/tools/builtins.py) |
+| Native builders | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) |
+| MCP selection | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) — `ToolConfig`, `_filter_live_tools` |
+| Gate merge | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) — `_user_hitl_gates`, `build_deep_agent` |
+| Baseline catalog | [src/agents/utils/agent_tools.py](../../src/agents/utils/agent_tools.py) |
+| Stored choices | [src/dialogue_bridge/utils/agent_tool_prefs.py](../../src/dialogue_bridge/utils/agent_tool_prefs.py) |
+| Overlay + guards | [src/dialogue_bridge/utils/agents.py](../../src/dialogue_bridge/utils/agents.py) |
+| UI | [ToolList.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/agents_parts/ToolList.tsx) · [agentTools.ts](../../src/agentic_ui/src/features/settings/lib/agentTools.ts) |

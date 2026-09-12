@@ -11,7 +11,7 @@ per-segment sanitisation, extension allowlist — so nothing can be written
 outside the skill folder.
 
 Scripts are permitted here at the user's explicit instruction, which overrides
-§3.2 of ``docs/plans/12-create-skill-tool.md`` (markdown-only). The risk that
+§3.2 of ``plans/12-create-skill-tool.md`` (markdown-only). The risk that
 section names is real and unchanged: nothing on this platform executes code
 today (``SANDBOX_EXECUTION_ENABLED`` is false and the workspace factory refuses
 to mint a sandbox-capable default), so a script written now is inert — but it

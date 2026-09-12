@@ -332,3 +332,89 @@ def _expect_http(expected_status: int | None = None):
             assert exc.status_code == expected_status, f"expected {expected_status}, got {exc.status_code}"
         return
     raise AssertionError("HTTPException was not raised")
+
+
+# ---------------------------------------------------------------------------
+# What the bridge refuses to store
+# ---------------------------------------------------------------------------
+# Two refusals, both because accepting would leave the UI showing a control that
+# does nothing. A prebuilt tool is constructed downstream of the tool list we
+# hand the framework, so no stored row could switch it off; and a locked gate is
+# re-applied by the runtime after every user choice, so storing "off" for one
+# would show it cleared while every call still paused.
+
+
+@pytest_asyncio.fixture
+async def tool_rows(monkeypatch):
+    """Stub the manifest read + slug resolution that both setters do first,
+    leaving only the decision under test."""
+    rows = [
+        {"key": "rag/sql_query", "name": "sql_query", "kind": "mcp", "group": "rag",
+         "declared": True, "enabled": True, "approval": False, "approvalLocked": False},
+        {"key": "write_file", "name": "write_file", "kind": "builtin", "group": "Filesystem",
+         "declared": True, "enabled": True, "approval": True, "approvalLocked": False},
+        {"key": "execute", "name": "execute", "kind": "builtin", "group": "Execution",
+         "declared": True, "enabled": True, "approval": True, "approvalLocked": True},
+    ]
+
+    async def fake_fetch(db, user_id, agent_id):
+        return {"agentSlug": "omni", "tools": [dict(r) for r in rows]}
+
+    async def fake_slug(agent_id):
+        return "omni"
+
+    monkeypatch.setattr(agents_util, "fetch_agent_tools", fake_fetch)
+    monkeypatch.setattr(agents_util, "_resolve_agent_slug", fake_slug)
+    return rows
+
+
+@pytest.mark.asyncio
+async def test_switching_an_mcp_tool_off_is_stored(tool_rows, session_factory):
+    async with session_factory() as db:
+        payload = await agents_util.set_agent_tool_enabled(
+            db, "u1", "omni", "rag/sql_query", False
+        )
+    row = next(r for r in payload["tools"] if r["key"] == "rag/sql_query")
+    assert row["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_switching_a_builtin_off_is_refused(tool_rows, session_factory):
+    async with session_factory() as db:
+        with _expect_http(400):
+            await agents_util.set_agent_tool_enabled(db, "u1", "omni", "write_file", False)
+
+
+@pytest.mark.asyncio
+async def test_gating_an_ordinary_tool_is_stored(tool_rows, session_factory):
+    async with session_factory() as db:
+        payload = await agents_util.set_agent_tool_approval(
+            db, "u1", "omni", "rag/sql_query", True
+        )
+    row = next(r for r in payload["tools"] if r["key"] == "rag/sql_query")
+    assert row["approval"] is True
+
+
+@pytest.mark.asyncio
+async def test_clearing_a_builtins_default_gate_is_stored(tool_rows, session_factory):
+    # The capability the tri-state exists for.
+    async with session_factory() as db:
+        payload = await agents_util.set_agent_tool_approval(
+            db, "u1", "omni", "write_file", False
+        )
+    row = next(r for r in payload["tools"] if r["key"] == "write_file")
+    assert row["approval"] is False
+
+
+@pytest.mark.asyncio
+async def test_ungating_a_locked_tool_is_refused(tool_rows, session_factory):
+    async with session_factory() as db:
+        with _expect_http(409):
+            await agents_util.set_agent_tool_approval(db, "u1", "omni", "execute", False)
+
+
+@pytest.mark.asyncio
+async def test_a_tool_that_does_not_exist_is_a_404(tool_rows, session_factory):
+    async with session_factory() as db:
+        with _expect_http(404):
+            await agents_util.set_agent_tool_approval(db, "u1", "omni", "gone/missing", True)

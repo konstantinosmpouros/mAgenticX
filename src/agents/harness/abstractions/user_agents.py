@@ -54,9 +54,6 @@ from schema import AgentFile, UserAgentDetail, UserAgentSummary
 logger = get_logger(__name__)
 
 _MANIFEST_FILENAME = "agent.yaml"
-# Approval gates a user's spec may add to but never remove. These are the tools
-# whose misuse is irreversible or escapes the conversation.
-_HITL_FLOOR: Tuple[str, ...] = ("write_file", "edit_file", "execute", "task", "create_skill")
 # An agent folder is prompts + config only — no scripts, no binaries. Narrower
 # than the skill allowlist on purpose.
 _ALLOWED_EXTENSIONS = frozenset({".md", ".txt", ".yaml", ".yml"})
@@ -175,15 +172,6 @@ def validate_write(
                 f"Skill {skill_name!r} is not in your skill pool — add it before "
                 "assigning it to an agent."
             )
-
-    # --- the HITL floor ---------------------------------------------------
-    # A user may add gates, never remove a mandated one. Enforced server-side
-    # because the builder UI is not the authority.
-    missing_gates = [tool for tool in _HITL_FLOOR if not spec.hitl.get(tool, False)]
-    if missing_gates:
-        errors.append(
-            "These tools must stay approval-gated: " + ", ".join(sorted(missing_gates))
-        )
 
     # --- files ------------------------------------------------------------
     if len(files) > _MAX_FILES:

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { getAgentTools, toggleAgentTool } from "@/shared/lib/api";
+import {
+  getAgentTools,
+  getTools,
+  setAgentToolApproval,
+  setAgentToolEnabled,
+} from "@/shared/lib/api";
 import { loadSession } from "@/shared/lib/authStorage";
 import type {
   Agent,
@@ -9,9 +14,9 @@ import type {
   CustomAgentDetail,
   CustomAgentValidation,
   CustomAgentWritePayload,
+  ToolMetadata,
   UserSkill,
 } from "@/shared/lib/types";
-import { ALWAYS_GATED } from "@/features/settings/lib/agentTools";
 import { usePanelHeader } from "@/features/settings/panel-header-context";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import AgentBuilder from "./AgentBuilder";
@@ -77,6 +82,11 @@ export default function AgentsTab({
   // failed fetch simply leaves that row's counts absent rather than erroring —
   // the row is still useful without them.
   const [counts, setCounts] = useState<Record<string, { tools: number; gated: number }>>({});
+  // The gateway's tool catalog, for the builder's Tools picker. Fetched once
+  // and only when the builder is actually opened — the index and detail views
+  // have no use for it, and a cold MCP gateway makes this call slow.
+  const [toolCatalog, setToolCatalog] = useState<ToolMetadata[]>([]);
+  const catalogRequested = useRef(false);
   const countsRequested = useRef<Set<string>>(new Set());
 
   const canAuthor = Boolean(onCreateAgent && onValidateAgent);
@@ -114,6 +124,17 @@ export default function AgentsTab({
     }
   }, [view, selectedId, selectedAgent, load]);
 
+  useEffect(() => {
+    if (view !== "create" && view !== "edit") return;
+    if (catalogRequested.current) return;
+    catalogRequested.current = true;
+    void getTools()
+      .then(setToolCatalog)
+      // Silent: the section explains an empty catalog itself, and an agent can
+      // be saved without tools. A toast here would block a save that is fine.
+      .catch(() => setToolCatalog([]));
+  }, [view]);
+
   // ---- background tallies for the index --------------------------------
   useEffect(() => {
     if (!userId || view !== "index") return;
@@ -126,12 +147,12 @@ export default function AgentsTab({
       pending.map(async (agent) => {
         try {
           const data = await getAgentTools(userId, agent.id);
-          const enabled = data.tools.filter((t) => !t.disabled);
+          const enabled = data.tools.filter((t) => t.enabled);
           return [
             agent.id,
             {
               tools: enabled.length,
-              gated: enabled.filter((t) => ALWAYS_GATED.has(t.name)).length,
+              gated: enabled.filter((t) => t.approval).length,
             },
           ] as const;
         } catch {
@@ -194,22 +215,23 @@ export default function AgentsTab({
   // ---- actions ---------------------------------------------------------
   const onToggle = async (row: AgentToolRow) => {
     if (!userId || !selectedId || togglingKey) return;
+    // A prebuilt tool is built downstream of the tool list we hand the runtime,
+    // so nothing stored could switch it off; the server refuses it.
+    if (row.kind === "builtin") return;
     setTogglingKey(row.key);
     setError(null);
-    const nextDisabled = !row.disabled;
+    const nextEnabled = !row.enabled;
     // Optimistic flip; reconcile with the server response (or roll back).
     setResp((prev) =>
       prev
         ? {
             ...prev,
-            tools: prev.tools.map((t) =>
-              t.key === row.key ? { ...t, disabled: nextDisabled } : t,
-            ),
+            tools: prev.tools.map((t) => (t.key === row.key ? { ...t, enabled: nextEnabled } : t)),
           }
         : prev,
     );
     try {
-      setResp(await toggleAgentTool(userId, selectedId, row.key, nextDisabled));
+      setResp(await setAgentToolEnabled(userId, selectedId, row.key, nextEnabled));
       // The index tally for this agent is now stale; drop it so it refetches.
       countsRequested.current.delete(selectedId);
     } catch (err) {
@@ -218,12 +240,50 @@ export default function AgentsTab({
           ? {
               ...prev,
               tools: prev.tools.map((t) =>
-                t.key === row.key ? { ...t, disabled: row.disabled } : t,
+                t.key === row.key ? { ...t, enabled: row.enabled } : t,
               ),
             }
           : prev,
       );
       setError(err instanceof Error ? err.message : "Failed to update tool.");
+    } finally {
+      setTogglingKey(null);
+    }
+  };
+
+  const onApprovalToggle = async (row: AgentToolRow) => {
+    if (!userId || !selectedId || togglingKey) return;
+    // A mandated gate is re-applied by the runtime after every user choice, so
+    // storing "off" would show it cleared while every call still paused.
+    if (row.approvalLocked) return;
+    setTogglingKey(row.key);
+    setError(null);
+    const nextApproval = !row.approval;
+    setResp((prev) =>
+      prev
+        ? {
+            ...prev,
+            tools: prev.tools.map((t) =>
+              t.key === row.key ? { ...t, approval: nextApproval } : t,
+            ),
+          }
+        : prev,
+    );
+    try {
+      setResp(await setAgentToolApproval(userId, selectedId, row.key, nextApproval));
+      countsRequested.current.delete(selectedId);
+    } catch (err) {
+      setResp((prev) =>
+        prev
+          ? {
+              ...prev,
+              tools: prev.tools.map((t) =>
+                t.key === row.key ? { ...t, approval: row.approval } : t,
+              ),
+            }
+          : prev,
+      );
+      setError(err instanceof Error ? err.message : "Failed to update approval.");
     } finally {
       setTogglingKey(null);
     }
@@ -279,6 +339,7 @@ export default function AgentsTab({
           <AgentBuilder
             agents={agents}
             mySkills={mySkills}
+            toolCatalog={toolCatalog}
             // A duplicate seeds CREATE from an existing definition, so `initial`
             // is not the same question as "are we editing".
             initial={editing}
@@ -309,6 +370,7 @@ export default function AgentsTab({
           error={configurable ? error : null}
           togglingKey={togglingKey}
           onToggleTool={(row) => void onToggle(row)}
+          onToggleApproval={(row) => void onApprovalToggle(row)}
           onEdit={
             mineIds.has(selectedAgent.id) && onLoadAgentDefinition
               ? () => void openEdit(selectedAgent)

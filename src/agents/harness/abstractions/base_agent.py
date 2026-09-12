@@ -1,3 +1,5 @@
+import types
+from dataclasses import dataclass
 from uuid import uuid4
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
@@ -10,6 +12,61 @@ from utils import (
 )
 
 logger = get_logger(__name__)
+
+
+def key_set(value: Any) -> frozenset[str]:
+    """A clean set of non-empty tool keys from whatever the run config carried.
+
+    The config crosses a service boundary as JSON, so a field can legitimately be
+    absent, null, or a list with junk in it. Anything unparseable degrades to
+    empty — the safe default, since it means the agent's declared baseline rather
+    than a silently emptied tool set.
+    """
+    if not isinstance(value, (list, tuple, set)):
+        return frozenset()
+    return frozenset(k for k in value if isinstance(k, str) and k)
+
+
+def approval_map(value: Any) -> Mapping[str, bool]:
+    """A clean ``{tool key: wanted}`` map from whatever the run config carried.
+
+    Same coercion stance as :func:`key_set`: anything unparseable degrades to no
+    opinion, which means the agent's own gating rather than a guess.
+    """
+    if not isinstance(value, Mapping):
+        return types.MappingProxyType({})
+    return types.MappingProxyType(
+        {k: bool(v) for k, v in value.items() if isinstance(k, str) and k and isinstance(v, bool)}
+    )
+
+
+@dataclass(frozen=True)
+class ToolConfig:
+    """The user's per-(user, agent) tool choices, decoded once per run.
+
+    ``enabled``/``disabled`` hold MCP cache keys and are applied only to live
+    gateway tools, so a builtin can never be reached by them.
+
+    ``approvals`` maps a key to the user's explicit choice and mixes both kinds
+    — a key with a ``/`` is an MCP cache key, one without is a builtin name. It
+    is a map and not a set because a prebuilt tool can default to gated, so
+    "the user turned this off" has to be expressible.
+    """
+
+    enabled: frozenset[str] = frozenset()
+    disabled: frozenset[str] = frozenset()
+    approvals: Mapping[str, bool] = types.MappingProxyType({})
+
+    @classmethod
+    def from_context(cls, context: Mapping[str, Any] | None) -> "ToolConfig":
+        raw = (context or {}).get("tool_config")
+        if not isinstance(raw, Mapping):
+            return cls()
+        return cls(
+            enabled=key_set(raw.get("enabled")),
+            disabled=key_set(raw.get("disabled")),
+            approvals=approval_map(raw.get("approvals")),
+        )
 
 
 # The closed set of agent lifecycle types. The bridge persists this string
@@ -71,6 +128,7 @@ class BaseAgent:
         
         # Resolve context parameters from config
         self.context: Dict[str, Any] = self.config.get("context", {})
+        self.tool_config: ToolConfig = ToolConfig.from_context(self.context)
 
         # Per-run memory toggle, parsed from the run context (threaded from the
         # user's `use_memory` preference by the bridge). On by default so an
@@ -130,11 +188,21 @@ class BaseAgent:
 
 
     def _filter_live_tools(self, tools: Sequence[Any]) -> List[Any]:
-        """Filter live LangChain tools against configured server/tool keys."""
-        if not self.config_tool_names:
+        """Resolve which live gateway tools this run attaches, in one pass.
+
+        ``(declared ∪ user-enabled) − user-disabled``. This is the only place MCP
+        selection happens, and it lives on the base rather than on
+        ``YamlDeepAgent`` because it is not a spec concern — while it did, a
+        code-defined deep agent ignored the user's choices entirely and ran with
+        no MCP tools while the Agents tab showed them switched on.
+
+        Builtins are structurally out of reach here: only live gateway tools are
+        considered, so no user choice can drop one.
+        """
+        desired = (set(self.config_tool_names) | self.tool_config.enabled) - self.tool_config.disabled
+        if not desired:
             return []
 
-        desired = set(self.config_tool_names)
         resolved: list[Any] = []
         seen: set[str] = set()
 

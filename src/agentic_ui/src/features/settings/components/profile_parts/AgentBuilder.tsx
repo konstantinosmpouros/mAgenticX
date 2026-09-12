@@ -32,6 +32,7 @@ import type {
   AgentDraftSubAgent,
   CustomAgentWritePayload,
   CustomAgentDetail,
+  ToolMetadata,
   UserSkill,
 } from "@/shared/lib/types";
 import {
@@ -45,6 +46,16 @@ import {
   VoiceSelectorName,
   VoiceSelectorTrigger,
 } from "@/shared/ui/ai-elements/voice-selector";
+import {
+  MODEL_CHOICES,
+  MANIFEST_FILE,
+  PROMPT_FILE,
+  buildAgentPayload,
+  draftFromDetail,
+  emptyDraft,
+  slugify,
+  subagentPromptPath,
+} from "@/features/settings/lib/agentSpec";
 import { SoftPanel, ToggleSwitch } from "./shared";
 import { SectionTabs, type SectionTab } from "./agents_parts/SectionTabs";
 import { useFillAvailableHeight } from "@/features/settings/hooks/useFillAvailableHeight";
@@ -61,15 +72,6 @@ import { useFillAvailableHeight } from "@/features/settings/hooks/useFillAvailab
  * Renders bare — the parent supplies the InfoCard chrome, matching SkillBuilder.
  */
 
-// Models a user may pick. Mirrors the agents service's ALLOWED_AGENT_MODELS; the
-// server re-validates, so a drift here surfaces as a validation error rather
-// than a broken agent.
-const MODEL_CHOICES = [
-  { id: "openai:gpt-5", label: "GPT-5", hint: "Most capable" },
-  { id: "openai:gpt-4o", label: "GPT-4o", hint: "Balanced" },
-  { id: "openai:gpt-4o-mini", label: "GPT-4o mini", hint: "Fastest" },
-] as const;
-
 // A short list of Lucide names, so the icon is a pick rather than free text
 // (mapIcon falls back to Building2 for anything unknown).
 const ICON_CHOICES = [
@@ -84,12 +86,6 @@ const ICON_CHOICES = [
   "PenLine",
   "Wrench",
 ] as const;
-
-// Approval gates the platform mandates. Shown as a locked row so the rule is
-// visible rather than mysterious — the server enforces it regardless.
-// MUST mirror `_HITL_FLOOR` in agents/runtime/abstractions/user_agents.py: a
-// gate present there but missing here makes *every* save fail validation.
-const REQUIRED_GATES = ["write_file", "edit_file", "execute", "task", "create_skill"] as const;
 
 // The actual glyph for each choice — a name-only list makes the user guess
 // what "FlaskConical" looks like. Keyed by the same strings the spec stores.
@@ -106,9 +102,6 @@ const ICON_GLYPHS: Record<string, LucideIcon> = {
   Wrench,
 };
 
-const PROMPT_FILE = "AGENT.md";
-const MANIFEST_FILE = "agent.yaml";
-const SUBAGENT_DIR = "subagents";
 const MAX_PROMPT_CHARS = 20000;
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -123,16 +116,6 @@ const MAX_FILES = 20;
 const MAX_FILE_BYTES = 256 * 1024;
 const MAX_TOTAL_BYTES = 1024 * 1024;
 const MAX_PATH_DEPTH = 3;
-
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-
-const subagentPromptPath = (name: string) => `${SUBAGENT_DIR}/${slugify(name) || "subagent"}.md`;
 
 const extOf = (path: string): string => {
   const base = path.split("/").pop() ?? path;
@@ -188,115 +171,24 @@ const readTextFile = (file: File): Promise<AgentDraftFile | { error: string }> =
     reader.readAsText(file);
   });
 
-const emptyDraft = (): AgentDraft => ({
-  slug: "",
-  name: "",
-  description: "",
-  icon: "Bot",
-  model: MODEL_CHOICES[1].id,
-  prompt: "",
-  memory: true,
-  skills: [],
-  subagents: [],
-  files: [],
-});
-
-/**
- * Assemble the agent.yaml document + its prompt files from the draft.
- *
- * The single place that knows the spec's shape, so the form fields never encode
- * YAML structure. `version` is fixed at 1.0.0 for a first release and `id` is
- * derived from the slug — neither is a user concern.
- */
-export const buildAgentPayload = (draft: AgentDraft): CustomAgentWritePayload => {
-  const named = draft.subagents.filter((sa) => sa.name.trim() && sa.prompt.trim());
-  // Files the form owns, written from the draft's prompt fields.
-  const generated: AgentDraftFile[] = [
-    { path: PROMPT_FILE, content: draft.prompt },
-    ...named.map((sa) => ({ path: subagentPromptPath(sa.name), content: sa.prompt })),
-  ];
-  // Generated paths win: a reference file can never shadow a prompt the form is
-  // responsible for, however the draft got into that state.
-  const owned = new Set(generated.map((file) => file.path));
-  const extras = draft.files.filter((file) => !owned.has(file.path));
-  return {
-    spec: {
-      id: `${draft.slug}-v1`,
-      slug: draft.slug,
-      name: draft.name.trim() || draft.slug,
-      version: "1.0.0",
-      type: "deep_agent",
-      description: draft.description.trim(),
-      icon: draft.icon,
-      prompt: `./${PROMPT_FILE}`,
-      model: { main: draft.model },
-      memory: draft.memory,
-      tools: [],
-      skills: draft.skills,
-      subagents: named.map((sa) => ({
-        name: slugify(sa.name),
-        description: sa.description.trim() || sa.name.trim(),
-        prompt: `./${subagentPromptPath(sa.name)}`,
-      })),
-      hitl: Object.fromEntries(REQUIRED_GATES.map((gate) => [gate, true])),
-    },
-    files: [...generated, ...extras].map((file) => ({
-      path: file.path,
-      content: file.content,
-      encoding: "utf-8" as const,
-    })),
-  };
-};
-
-/**
- * Recover a draft from a saved definition so editing round-trips.
- *
- * Every file must be accounted for: the ones the form generates are folded back
- * into their prompt fields, and everything else becomes a reference file. A save
- * rewrites the whole folder, so a file this function dropped would be deleted by
- * the next edit.
- */
-const draftFromDetail = (detail: CustomAgentDetail): AgentDraft => {
-  const spec = (detail.spec ?? {}) as Record<string, any>;
-  const fileFor = (path: string) => detail.files.find((f) => f.path === path)?.content ?? "";
-  // Paths the form regenerates from prompt fields; the rest are the user's own.
-  const claimed = new Set<string>([PROMPT_FILE, MANIFEST_FILE]);
-  const subagents: AgentDraftSubAgent[] = Array.isArray(spec.subagents)
-    ? spec.subagents.map((sa: any) => {
-        const path = String(sa?.prompt ?? "").replace(/^\.\//, "");
-        claimed.add(path);
-        return {
-          name: String(sa?.name ?? ""),
-          description: String(sa?.description ?? ""),
-          prompt: fileFor(path),
-        };
-      })
-    : [];
-  const files: AgentDraftFile[] = detail.files
-    .filter((file) => !claimed.has(file.path) && file.encoding !== "base64")
-    .map((file) => ({ path: file.path, content: file.content }));
-  return {
-    files,
-    slug: detail.slug,
-    name: detail.name,
-    description: detail.description,
-    icon: detail.icon || "Bot",
-    model: String(spec?.model?.main ?? MODEL_CHOICES[1].id),
-    prompt: fileFor(PROMPT_FILE),
-    memory: spec.memory !== false,
-    skills: Array.isArray(spec.skills) ? spec.skills.map(String) : [],
-    subagents,
-  };
-};
-
 /** The builder's sections, in nav order. */
-type BuilderSection = "identity" | "instructions" | "skills" | "team" | "files" | "approvals";
+type BuilderSection =
+  | "identity"
+  | "instructions"
+  | "tools"
+  | "skills"
+  | "team"
+  | "files"
+  | "approvals";
 
 type AgentBuilderProps = {
   /** Every agent already visible to the user — used for name/slug collisions. */
   agents: Agent[];
   /** The user's skill pool: the only skills an agent may declare. */
   mySkills: UserSkill[];
+  /** Live MCP catalog. Empty when the gateway is down — the section says so
+   *  rather than looking like the agent has nothing to choose from. */
+  toolCatalog: ToolMetadata[];
   /** Present when editing; absent when creating. */
   initial?: CustomAgentDetail | null;
   submitting?: boolean;
@@ -310,6 +202,7 @@ type AgentBuilderProps = {
 export default function AgentBuilder({
   agents,
   mySkills,
+  toolCatalog,
   initial,
   submitting = false,
   onSubmit,
@@ -324,6 +217,7 @@ export default function AgentBuilder({
   const [serverErrors, setServerErrors] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [toolPickerOpen, setToolPickerOpen] = useState(false);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [newFilePath, setNewFilePath] = useState("");
   const [fileError, setFileError] = useState("");
@@ -419,6 +313,7 @@ export default function AgentBuilder({
     () => [
       { id: "identity", label: "Identity", flagged: Boolean(slugError) && slugTouched },
       { id: "instructions", label: "Instructions", flagged: Boolean(promptError) },
+      { id: "tools", label: "Tools", count: draft.tools.length },
       { id: "skills", label: "Skills", count: draft.skills.length },
       {
         id: "team",
@@ -501,6 +396,27 @@ export default function AgentBuilder({
 
   const removeSkill = (name: string) =>
     setDraft((prev) => ({ ...prev, skills: prev.skills.filter((s) => s !== name) }));
+
+  // The catalog keyed the way the spec and every override row key a tool, so
+  // the picker, the chips and the saved document all speak one identifier.
+  const catalogByKey = useMemo(() => {
+    const map = new Map<string, ToolMetadata>();
+    for (const tool of toolCatalog) map.set(`${tool.serverId}/${tool.toolName}`, tool);
+    return map;
+  }, [toolCatalog]);
+
+  const unaddedTools = useMemo(
+    () => [...catalogByKey.keys()].filter((key) => !draft.tools.includes(key)).sort(),
+    [catalogByKey, draft.tools],
+  );
+
+  const addTool = (key: string) =>
+    setDraft((prev) =>
+      prev.tools.includes(key) ? prev : { ...prev, tools: [...prev.tools, key] },
+    );
+
+  const removeTool = (key: string) =>
+    setDraft((prev) => ({ ...prev, tools: prev.tools.filter((t) => t !== key) }));
 
   /**
    * Add reference files, rejecting each bad one with its own reason.
@@ -780,6 +696,126 @@ export default function AgentBuilder({
                 </SoftPanel>
               </div>
             ) : null}
+            {section === "tools" ? (
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={captionClass}>MCP tools</span>
+                    <VoiceSelector open={toolPickerOpen} onOpenChange={setToolPickerOpen}>
+                      <VoiceSelectorTrigger asChild>
+                        <button
+                          type="button"
+                          disabled={unaddedTools.length === 0}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60",
+                            toolPickerOpen && "bg-background/80 text-foreground",
+                          )}
+                        >
+                          <Search size={13} aria-hidden /> Add tool
+                        </button>
+                      </VoiceSelectorTrigger>
+                      <VoiceSelectorContent
+                        title="Add a tool"
+                        className="z-[90] max-w-md overflow-hidden rounded-2xl border border-border/70 bg-background p-0 shadow-2xl"
+                      >
+                        <VoiceSelectorInput placeholder="Search the gateway..." />
+                        <VoiceSelectorList className="max-h-[22rem]">
+                          <VoiceSelectorEmpty>No matching tool.</VoiceSelectorEmpty>
+                          <VoiceSelectorGroup heading="Available tools">
+                            {unaddedTools.map((key) => {
+                              const tool = catalogByKey.get(key);
+                              return (
+                                <VoiceSelectorItem
+                                  key={key}
+                                  value={`${key} ${tool?.description ?? ""}`}
+                                  onSelect={() => {
+                                    addTool(key);
+                                    setToolPickerOpen(false);
+                                  }}
+                                  className="items-center gap-3 rounded-xl px-3 py-3"
+                                >
+                                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40 text-muted-foreground">
+                                    <Wrench className="h-3.5 w-3.5" aria-hidden />
+                                  </span>
+                                  <span className="min-w-0 flex-1">
+                                    <VoiceSelectorName>{tool?.toolName ?? key}</VoiceSelectorName>
+                                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                                      {tool?.serverId ?? ""}
+                                      {tool?.description ? ` · ${tool.description}` : ""}
+                                    </span>
+                                  </span>
+                                </VoiceSelectorItem>
+                              );
+                            })}
+                          </VoiceSelectorGroup>
+                        </VoiceSelectorList>
+                      </VoiceSelectorContent>
+                    </VoiceSelector>
+                  </div>
+
+                  {toolCatalog.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No tools available. The MCP gateway is unreachable, or no servers are
+                      connected — an agent saved now simply declares none, and you can add them
+                      later by editing it.
+                    </p>
+                  ) : draft.tools.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No tools yet. An agent with none can still think, write and use its skills —
+                      add tools to let it reach outside the conversation.
+                    </p>
+                  ) : null}
+
+                  {draft.tools.length > 0 ? (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        On by default whenever this agent runs. Anyone using it can switch one off
+                        for themselves under Agents, and choose which ones ask before running.
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {draft.tools.map((key) => {
+                          const tool = catalogByKey.get(key);
+                          return (
+                            <SoftPanel key={key} className="flex items-center gap-3 px-3 py-2">
+                              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/40 bg-primary/15 text-primary">
+                                <Wrench className="h-3.5 w-3.5" aria-hidden />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium text-foreground">
+                                  {tool?.toolName ?? key}
+                                </span>
+                                {tool ? (
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {tool.serverId}
+                                    {tool.description ? ` · ${tool.description}` : ""}
+                                  </span>
+                                ) : (
+                                  // Kept, not dropped: the gateway may simply be
+                                  // down, and silently discarding a declared tool
+                                  // on save would be a worse answer than saying so.
+                                  <span className="block truncate text-xs text-destructive">
+                                    {key} — not in the catalog right now.
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeTool(key)}
+                                aria-label={`Remove tool ${key}`}
+                                className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+                              >
+                                <Trash2 size={15} aria-hidden />
+                              </button>
+                            </SoftPanel>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             {section === "skills" ? (
               <div className="flex flex-col gap-5">
                 {/* Skills — searched and added from the user's pool */}
@@ -1134,6 +1170,14 @@ export default function AgentBuilder({
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Writing or editing files, running code, delegating work, and creating skills
                     always need your approval. This applies to every agent and cannot be turned off.
+                  </p>
+                </SoftPanel>
+                <SoftPanel className="px-4 py-3">
+                  <p className="text-sm font-semibold text-foreground">Anything else</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Whether a tool asks before running is set per account, not in the definition —
+                    open this agent under Settings → Agents → Approvals. That way it works the
+                    same for an agent you built and one you didn&rsquo;t.
                   </p>
                 </SoftPanel>
               </div>

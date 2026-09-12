@@ -13,12 +13,8 @@ from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import AgentType, BaseAgent
 from harness.checkpointer import get_checkpointer
 from harness.personalization import build_personalization_prompt
-from harness.tools.registry import (
-    NATIVE_TOOLS,
-    NativeToolContext,
-    build_auto_attach_tools,
-    native_hitl_defaults,
-)
+from harness.tools.builtins import BUILTIN_BY_NAME, builtin_hitl_defaults, locked_gates
+from harness.tools.registry import NativeToolContext, build_auto_attach_tools
 from harness.middlewares import (
     ConfigurableSummarizationMiddleware,
     ToolErrorMiddleware,
@@ -35,50 +31,8 @@ from core.logging import get_logger
 
 logger = get_logger(__name__)
 
-def _key_set(value: Any) -> Set[str]:
-    """A clean set of non-empty tool keys from whatever the run config carried.
-
-    The overrides cross a service boundary as JSON, so the field can legitimately
-    be absent, null, or a list with junk in it. Coercing here keeps every caller
-    from re-deriving "what counts as a key", and an unparseable value degrades to
-    "no overrides" — the safe default, because it means the agent's declared
-    baseline rather than a silently emptied tool set.
-    """
-    if not isinstance(value, (list, tuple, set)):
-        return set()
-    return {str(k) for k in value if isinstance(k, str) and k}
-
-
 STREAMING_MODES = Literal["updates", "messages"]
 SubAgentsT = Sequence[Any] | Mapping[str, Any] | None
-
-RESERVED_DEEPAGENT_TOOL_NAMES: Set[str] = {
-    # planning
-    "write_todos",
-
-    # filesystem
-    "ls",
-    "read_file",
-    "write_file",
-    "edit_file",
-    "glob",
-    "grep",
-    "execute",
-
-    # delegation
-    "task",
-
-    # built-in memory
-    "remember",
-
-    # built-in deliverables
-    "present_artifact",
-    "render_chart",
-
-    # built-in skill authoring
-    "create_skill",
-}
-
 
 # Memory-usage instructions appended to a deep agent's system prompt **only when
 # memory is enabled** (see DeepAgent._memory_system_prompt). Kept out of the
@@ -375,40 +329,42 @@ class DeepAgent(BaseAgent, ABC):
         return "untrusted" if self.tools else "user-derived"
 
 
-    def _apply_tool_disables(self, tools: List[Any]) -> List[Any]:
-        """Drop MCP tools the user disabled for this (user, agent) from the built
-        set.
+    def _user_hitl_gates(self, tools: List[Any]) -> dict[str, bool]:
+        """Approval gates this user asked for, keyed the way ``interrupt_on`` is.
 
-        The user may disable a subset of the agent's MCP tools per agent (the
-        Agents tab). Matching is by canonical cache key (``get_tool_cache_key``).
+        The Agents tab speaks in canonical cache keys (``arxiv/download_paper``),
+        but ``interrupt_on`` is keyed by the tool's *own* name — and MCP tool
+        names arrive from the gateway unprefixed. Writing a cache key straight
+        through would match nothing and produce a gate that looks armed in the UI
+        and silently never fires, the worst failure an approval control can have.
 
-        The set arrives on the run config, threaded in by the bridge from
-        ``chat_db`` — the same way ``use_memory`` and ``personalization`` already
-        do. It used to be read from ``tool_prefs.json`` on this volume, which had
-        no backup: losing it silently reverted every user's tool choices to the
-        declared baseline. Nothing is stored on this side any more.
+        So MCP keys are resolved against the live tools rather than parsed, and
+        builtin names — which are their own key, and are never in ``tools``
+        because the framework builds them — pass through.
 
-        **Native builtins are never dropped**: they aren't managed by this tab
-        (``remember`` / ``search_past_conversations`` follow the Personalization
-        prefs; ``present_artifact`` is always on), so native keys are subtracted
-        from the disabled set here — this also neutralizes any legacy pre-model
-        disable of a native. No-op when the run carries no disables.
+        Values are the user's explicit choice, so ``False`` means "clear the
+        gate the baseline sets" — a prebuilt tool can default to gated. Locked
+        gates are re-applied after this, so nothing here can disarm one.
         """
-        context = self.context or {}
-        disabled = _key_set(context.get("disabled_tools")) - set(NATIVE_TOOLS)
-        if not disabled:
-            return tools
-        kept = [tool for tool in tools if get_tool_cache_key(tool) not in disabled]
-        removed = len(tools) - len(kept)
-        if removed:
-            logger.info(
-                "agent_tools_disabled_filtered",
-                "Removed user-disabled tools for (user, agent)",
-                agent_slug=self.name,
-                removed_count=removed,
-            )
-        return kept
+        requested = self.tool_config.approvals
+        if not requested:
+            return {}
 
+        gates = {
+            tool.name: requested[get_tool_cache_key(tool)]
+            for tool in tools
+            if getattr(tool, "name", None) and get_tool_cache_key(tool) in requested
+        }
+        gates.update({n: v for n, v in requested.items() if n in BUILTIN_BY_NAME})
+
+        if gates:
+            logger.info(
+                "agent_tools_user_gated",
+                "Applied user-requested approval gates for (user, agent)",
+                agent_slug=self.name,
+                gated_count=len(gates),
+            )
+        return gates
 
     @staticmethod
     def _ensure_tool_error_middleware(stack: Optional[Sequence[Any]]) -> list[Any]:
@@ -512,16 +468,27 @@ class DeepAgent(BaseAgent, ABC):
                 for spec in subagents
             ]
 
-        # Native tools that declare themselves dangerous are gated by default;
-        # the agent's own spec layers on top and can still speak for itself.
-        # (A user-authored spec additionally cannot lower the _HITL_FLOOR — see
-        # harness/abstractions/user_agents.py.)
-        resolved_interrupt_on = {**native_hitl_defaults(), **(interrupt_on or {})}
+        # Selection already happened in _filter_live_tools; builtins are appended
+        # here and are structurally out of reach of any user disable.
+        resolved_tools = self.tools + self._builtin_tools()
+
+        # Four layers. `is not None` and not truthiness on the agent's own map: a
+        # spec that deliberately declares no gates passes `{}` and must stay
+        # empty rather than falling back to the class attribute. `locked_gates()`
+        # is last so no layer beneath it can clear a mandated gate.
+        own_gates = interrupt_on if interrupt_on is not None else self.hitl_gates
+        resolved_interrupt_on = {**builtin_hitl_defaults(), **(own_gates or {})}
+        for name, wanted in self._user_hitl_gates(resolved_tools).items():
+            if wanted:
+                resolved_interrupt_on[name] = True
+            else:
+                resolved_interrupt_on.pop(name, None)
+        resolved_interrupt_on.update(locked_gates())
 
         return create_deep_agent(
             model=model,
             name=self.name,
-            tools=self._apply_tool_disables(self.tools + self._builtin_tools()),
+            tools=resolved_tools,
             system_prompt=system_prompt,
             subagents=augmented_subagents,
             interrupt_on=resolved_interrupt_on,
@@ -743,7 +710,7 @@ class DeepAgent(BaseAgent, ABC):
         Attach live MCP tools while excluding names reserved by deep-agent internals.
         Keeps BaseAgent behavior via super() after filtering.
         """
-        reserved_names = {name.strip().lower() for name in RESERVED_DEEPAGENT_TOOL_NAMES}
+        reserved_names = {name.lower() for name in BUILTIN_BY_NAME}
         filtered_tools: List[Any] = []
         excluded_names: List[str] = []
 

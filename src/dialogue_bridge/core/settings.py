@@ -119,7 +119,7 @@ class SessionSettings(BaseSettings):
     # On by default. It does keep several live refresh tokens per browser, which
     # widens the blast radius of a stolen session from one account to N — bounded
     # by max_parked_accounts, at-rest encryption and per-switch rotation (see
-    # docs/plans/19). Set false to turn the whole surface off; every
+    # plans/19). Set false to turn the whole surface off; every
     # /v1/auth/accounts* route then 404s.
     multi_account_enabled: bool = Field(True, validation_alias="MULTI_ACCOUNT_ENABLED")
     # Names the browser's parked-session index. Opaque random id, never a user id.

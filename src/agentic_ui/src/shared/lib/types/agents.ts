@@ -69,6 +69,16 @@ export type AgentDraft = {
   model: string;
   prompt: string;
   memory: boolean;
+  /**
+   * MCP tools the agent declares, as canonical cache keys (`server/tool`).
+   *
+   * Stored as keys rather than `{serverId, toolName}` pairs because every other
+   * surface — the catalog, the Agents tab, the override rows — identifies a tool
+   * by that exact string; the spec's two-field shape is assembled on save.
+   * Native tools are not listed here: they are attached by the runtime and are
+   * not the author's to choose.
+   */
+  tools: string[];
   skills: string[];
   subagents: AgentDraftSubAgent[];
   files: AgentDraftFile[];

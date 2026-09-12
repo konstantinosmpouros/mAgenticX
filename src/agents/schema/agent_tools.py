@@ -1,31 +1,35 @@
-"""Per-(user, agent) tool-control DTOs: the Agents-tab tool rows and the
-enable/disable toggle request."""
-from typing import List, Literal
+"""Agents-tab tool DTOs: one row shape for both kinds of tool."""
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
 class AgentToolRow(BaseModel):
-    """One tool an agent can use, with its per-(user, agent) disabled state.
+    """One tool an agent can have, with the baseline this service knows.
 
-    Rendered in the Agents tab; the user toggles ``disabled`` per agent."""
+    ``builtin`` tools are never enable-configurable — the framework ones are
+    constructed inside ``create_deep_agent`` and the native ones follow the
+    Personalization prefs. Only their approval is the user's to set.
+    """
 
     key: str
     name: str
     description: str = ""
-    source: Literal["native", "mcp"]
-    # True = part of the agent's declared baseline (native builtin or agent.yaml
-    # tool). False = an available gateway tool the user can enable for this agent.
+    kind: Literal["builtin", "mcp"]
+    #: Display grouping: a builtin's family, or the MCP server id.
+    group: str
+    #: MCP: part of the agent's declared baseline. Always true for a builtin.
     declared: bool = True
-    disabled: bool
+    #: Whether this run/user actually has the tool (see harness/tools/builtins).
+    available: bool = True
+    unavailableReason: Optional[str] = None
+    enabled: bool
+    approval: bool = False
+    #: Approval cannot be cleared by anyone.
+    approvalLocked: bool = False
 
 
 class AgentToolsResponse(BaseModel):
     """All tools for one agent, resolved for the requesting user."""
+
     agentSlug: str
     tools: List[AgentToolRow] = Field(default_factory=list)
-
-
-class ToolToggleRequest(BaseModel):
-    """Enable/disable one tool for this (user, agent) pair."""
-    toolKey: str
-    disabled: bool

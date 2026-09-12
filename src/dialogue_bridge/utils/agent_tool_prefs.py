@@ -1,33 +1,26 @@
-"""Per-(user, agent) tool overrides, owned by ``chat_db``.
+"""Per-(user, agent) tool choices, owned by ``chat_db``.
 
-An agent declares a baseline tool set and the always-on native builtins sit on
-top of it. The user keeps two override sets per agent, and the effective set the
-agent builds with is::
+Two orthogonal axes on one row, because a tool can be switched on *and* gated:
 
-    effective = (declared ∪ user_enabled) − user_disabled
+* ``state`` — ``'enabled'`` / ``'disabled'`` / ``NULL``. **MCP tools only**: a
+  builtin is constructed by the framework or the native registry and cannot be
+  filtered, so the bridge refuses to write this for one.
+* ``requires_approval`` — either kind, tri-state: ``NULL`` follows the
+  baseline, ``True`` gates, ``False`` clears a gate the baseline sets. A plain
+  boolean could not express the last case, and prebuilt tools default to gated.
 
-These used to live only in ``<agent_root>/tool_prefs.json`` on the
-agents-service volume, which has no backup: losing it reverted every user's tool
-choices to the declared baseline, silently. That file and every trace of it are
-gone — the agents service now reports only the baseline and this table is the
-sole record of what the user actually chose.
+Both reach the agent on the run config, the way ``use_memory`` and
+``personalization`` already do, so there is no copy on the volume to reconcile.
 
-They belong here for the same reason ``use_memory``, ``search_past_convs`` and
-``personalization`` already do — they are preferences about how an agent
-behaves, the user writes them through the bridge, and they reach the agent by
-riding the run config. That is what makes this simpler than custom agents and
-skills: **there is no materialised copy on the volume**, so nothing needs
-reconciling. The row is the only home.
-
-``tool_key`` is the canonical tool-cache-key (``<server>/<tool>`` for MCP, the
-bare name for native tools) and is stored verbatim, because the runtime matches
-it against live tools by that exact string.
+``tool_key`` is stored verbatim — ``<server>/<tool>`` for MCP, the bare name for
+a builtin — because the runtime matches it against live tools by that exact
+string.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import UserAgentToolPrefTable
@@ -38,14 +31,15 @@ logger = get_logger(__name__)
 STATE_DISABLED = "disabled"
 STATE_ENABLED = "enabled"
 
-async def read_pair(
-    db: AsyncSession, user_id: str, agent_slug: str
-) -> Tuple[Set[str], Set[str]]:
-    """Return ``(disabled, enabled)`` key sets for this (user, agent).
 
-    Two empty sets is the correct answer for a pair with no overrides — it means
-    "the agent's declared baseline", which is exactly what the caller should
-    apply. There is no error case worth distinguishing here.
+async def read_prefs(
+    db: AsyncSession, user_id: str, agent_slug: str
+) -> Tuple[Set[str], Set[str], Dict[str, bool]]:
+    """Return ``(disabled, enabled, approvals)`` for this (user, agent).
+
+    ``approvals`` maps a tool key to the user's explicit choice; a key absent
+    from it has none and follows the baseline. Empty throughout is the correct
+    answer for a pair the user never configured.
     """
     rows = (
         await db.execute(
@@ -56,25 +50,27 @@ async def read_pair(
         )
     ).scalars().all()
 
-    disabled = {r.tool_key for r in rows if r.state == STATE_DISABLED}
-    enabled = {r.tool_key for r in rows if r.state == STATE_ENABLED}
-    return disabled, enabled
+    return (
+        {r.tool_key for r in rows if r.state == STATE_DISABLED},
+        {r.tool_key for r in rows if r.state == STATE_ENABLED},
+        {r.tool_key: bool(r.requires_approval) for r in rows if r.requires_approval is not None},
+    )
 
 
-async def set_override(
-    db: AsyncSession, user_id: str, agent_slug: str, tool_key: str, state: str
-) -> None:
-    """Record one override, replacing the opposite state if it is present.
+async def read_config(db: AsyncSession, user_id: str, agent_slug: str) -> Dict[str, Any]:
+    """The run-config object the agent decodes. Sorted for a stable payload."""
+    disabled, enabled, approvals = await read_prefs(db, user_id, agent_slug)
+    return {
+        "enabled": sorted(enabled),
+        "disabled": sorted(disabled),
+        "approvals": dict(sorted(approvals.items())),
+    }
 
-    ``disabled`` and ``enabled`` are mutually exclusive for a key: a tool cannot
-    be both turned off and turned on. Storing them in one table with a ``state``
-    column is what makes that impossible to express, rather than a rule two
-    tables would have to agree to keep.
-    """
-    if state not in (STATE_DISABLED, STATE_ENABLED):
-        raise ValueError(f"Unknown tool-pref state {state!r}")
 
-    row = (
+async def _row_for(
+    db: AsyncSession, user_id: str, agent_slug: str, tool_key: str
+) -> Optional[UserAgentToolPrefTable]:
+    return (
         await db.execute(
             select(UserAgentToolPrefTable).where(
                 UserAgentToolPrefTable.user_id == user_id,
@@ -84,6 +80,35 @@ async def set_override(
         )
     ).scalar_one_or_none()
 
+
+async def _drop_if_empty(db: AsyncSession, row: UserAgentToolPrefTable) -> None:
+    """Delete a row carrying neither axis, so the table stays proportional to the
+    choices a user actually made rather than accumulating rows meaning "normal"."""
+    if row.state is None and row.requires_approval is None:
+        await db.delete(row)
+
+
+async def set_enabled(
+    db: AsyncSession, user_id: str, agent_slug: str, tool_key: str, *, enabled: bool, declared: bool
+) -> None:
+    """Record one MCP on/off choice, or clear it when it matches the default.
+
+    What the choice *means* depends on the tool's default: turning a declared
+    tool off is a stored override and turning it back on is the absence of one;
+    for an undeclared gateway tool it is the mirror image. Writing
+    back-to-default as a deleted row is what keeps the table proportional.
+    """
+    wants_override = (not enabled) if declared else enabled
+    if not wants_override:
+        row = await _row_for(db, user_id, agent_slug, tool_key)
+        if row is None:
+            return
+        row.state = None
+        await _drop_if_empty(db, row)
+        return
+
+    state = STATE_DISABLED if declared else STATE_ENABLED
+    row = await _row_for(db, user_id, agent_slug, tool_key)
     if row is None:
         db.add(
             UserAgentToolPrefTable(
@@ -91,83 +116,77 @@ async def set_override(
                 agent_slug=agent_slug,
                 tool_key=tool_key,
                 state=state,
+                requires_approval=None,
             )
         )
-    else:
-        row.state = state
+        return
+    row.state = state
 
 
-async def clear_override(
-    db: AsyncSession, user_id: str, agent_slug: str, tool_key: str
+async def set_approval(
+    db: AsyncSession, user_id: str, agent_slug: str, tool_key: str, *, required: bool, baseline: bool
 ) -> None:
-    """Drop one override — the tool goes back to whatever the baseline says.
+    """Record one approval choice, or clear it when it matches the baseline.
 
-    A real delete, not a tombstone: there is no second copy to disambiguate
-    against, which is the only thing a tombstone would buy.
+    ``baseline`` is what the agent gates before anyone chooses. Matching it
+    stores nothing, so the table holds real choices only; differing from it
+    stores the explicit value — which is how a prebuilt tool's default gate gets
+    turned off at all.
+
+    A locked gate is never reachable here: the caller refuses it, and the runtime
+    merges locked gates after every user choice regardless.
     """
-    await db.execute(
-        delete(UserAgentToolPrefTable).where(
-            UserAgentToolPrefTable.user_id == user_id,
-            UserAgentToolPrefTable.agent_slug == agent_slug,
-            UserAgentToolPrefTable.tool_key == tool_key,
+    row = await _row_for(db, user_id, agent_slug, tool_key)
+    value = None if required == baseline else required
+
+    if row is None:
+        if value is None:
+            return
+        db.add(
+            UserAgentToolPrefTable(
+                user_id=user_id,
+                agent_slug=agent_slug,
+                tool_key=tool_key,
+                state=None,
+                requires_approval=value,
+            )
         )
-    )
-
-
-async def apply_toggle(
-    db: AsyncSession,
-    user_id: str,
-    agent_slug: str,
-    tool_key: str,
-    *,
-    disabled: bool,
-    declared: bool,
-) -> None:
-    """Translate one UI toggle into the right override — or into none at all.
-
-    The UI sends a single boolean, but what it means depends on the tool's
-    default. Turning a *declared* tool off is a `disabled` override; turning it
-    back on is the absence of one. For an undeclared gateway tool it is the
-    mirror image: on is an `enabled` override, off is the absence of one.
-
-    Writing "back to default" as a deleted row rather than a stored opposite is
-    what keeps the table proportional to real choices — otherwise every tool a
-    user ever glanced at would accumulate a row saying "normal".
-    """
-    if declared:
-        if disabled:
-            await set_override(db, user_id, agent_slug, tool_key, STATE_DISABLED)
-        else:
-            await clear_override(db, user_id, agent_slug, tool_key)
         return
 
-    # Undeclared: the tool is off unless the user turned it on.
-    if disabled:
-        await clear_override(db, user_id, agent_slug, tool_key)
-    else:
-        await set_override(db, user_id, agent_slug, tool_key, STATE_ENABLED)
+    row.requires_approval = value
+    await _drop_if_empty(db, row)
 
 
 def apply_to_rows(
-    rows: List[Dict[str, Any]], disabled: Set[str], enabled: Set[str]
+    rows: List[Dict[str, Any]], disabled: Set[str], enabled: Set[str], approvals: Dict[str, bool]
 ) -> List[Dict[str, Any]]:
-    """Overlay our stored overrides onto the agents service's tool list.
+    """Overlay the user's choices onto the agents service's baseline rows.
 
-    The agents service owns the tool *manifest* — which tools exist, whether the
-    agent declared them, their descriptions — and still answers that. It no
-    longer owns the user's choices, so its ``disabled`` flag is ignored and
-    recomputed here from the rows.
+    That service owns the *manifest* — which tools exist, their kind, what the
+    agent declares, what it gates before anyone chooses. It owns none of the
+    user's choices, so those are recomputed here.
     """
     out: List[Dict[str, Any]] = []
     for row in rows:
         key = str(row.get("key") or "")
-        is_declared = bool(row.get("declared", True))
-        if is_declared:
-            row_disabled = key in disabled
+        is_builtin = row.get("kind") == "builtin"
+        if is_builtin:
+            row_enabled = True
+        elif row.get("declared", True):
+            row_enabled = key not in disabled
         else:
-            # An undeclared gateway tool is off unless the user enabled it.
-            row_disabled = key not in enabled
-        out.append({**row, "disabled": row_disabled})
+            row_enabled = key in enabled
+        # The user's explicit choice wins over the baseline; a locked gate wins
+        # over both, because reporting it off would show a live switch for a
+        # control that does nothing.
+        approval = approvals.get(key, bool(row.get("approval")))
+        out.append(
+            {
+                **row,
+                "enabled": row_enabled,
+                "approval": bool(row.get("approvalLocked")) or approval,
+            }
+        )
     return out
 
 
@@ -175,8 +194,8 @@ __all__ = [
     "STATE_DISABLED",
     "STATE_ENABLED",
     "apply_to_rows",
-    "apply_toggle",
-    "clear_override",
-    "read_pair",
-    "set_override",
+    "read_config",
+    "read_prefs",
+    "set_approval",
+    "set_enabled",
 ]

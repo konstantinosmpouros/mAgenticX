@@ -37,3 +37,6 @@ src/tls/monitoring/
 # DATABASE_URL at import time so settings can load; the file itself is disposable)
 .pytest-bootstrap-*.db
 .pytest_cache/
+
+# Implementation plans — local working notes, not part of the repo history
+plans/

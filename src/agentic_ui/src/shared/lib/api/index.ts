@@ -26,7 +26,8 @@ export {
 export {
   getAgents,
   getAgentTools,
-  toggleAgentTool,
+  setAgentToolApproval,
+  setAgentToolEnabled,
   getMyAgents,
   getMyAgentDetail,
   validateMyAgent,

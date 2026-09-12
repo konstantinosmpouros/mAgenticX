@@ -51,6 +51,13 @@ class OmniAgent(DeepAgent):
     # itself stays memory-free so a memory-off run never advertises /memories/.
     instructions = OMNI_INSTRUCTIONS
 
+    # Declared, not passed at register_agent() time: the Agents tab reports the
+    # always-gated tools from the class, which it can read without building the
+    # agent. Passing these as an argument made them invisible to that listing,
+    # so the UI showed four of them as ungated and user-toggleable when every
+    # call was in fact pausing for approval.
+    hitl_gates = HITL_GATED_TOOLS
+
     # ------------------------------------------------------------------
     # Sub-agents
     # ------------------------------------------------------------------
@@ -88,5 +95,4 @@ class OmniAgent(DeepAgent):
             model=omni.main_model,
             system_prompt=self.instructions,
             subagents=self.sub_agents,
-            interrupt_on=HITL_GATED_TOOLS,
         )

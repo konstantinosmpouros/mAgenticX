@@ -11,7 +11,8 @@ a DTO lives in.
 from schema.agent_tools import (
     AgentToolRow,
     AgentToolsResponse,
-    ToolToggleRequest,
+    ToolApprovalRequest,
+    ToolEnabledRequest,
 )
 from schema.attachments import (
     AttachmentIn,
@@ -208,7 +209,8 @@ __all__ = [
     "TaskTargetMode",
     "TitleOut",
     "ToolManifest",
-    "ToolToggleRequest",
+    "ToolApprovalRequest",
+    "ToolEnabledRequest",
     "UpdateConversationResponse",
     "UsageAgentBreakdown",
     "UsageDailyPoint",

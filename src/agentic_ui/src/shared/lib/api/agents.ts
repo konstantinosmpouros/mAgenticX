@@ -32,9 +32,10 @@ export async function getAgents(): Promise<Agent[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Per-agent tools (Agents tab). List the tools an agent may use with their
-// per-(user, agent) disabled flags, and toggle one. Proxied to the agents
-// service by the bridge; the toggle is CSRF-protected + returns refreshed rows.
+// Per-agent tools (Agents tab). Two kinds of row: prebuilt tools, whose
+// approval alone is configurable, and MCP tools, configurable on both axes.
+// Proxied to the agents service by the bridge; both mutations are
+// CSRF-protected and return refreshed rows.
 // ---------------------------------------------------------------------------
 export async function getAgentTools(userId: string, agentId: string) {
   const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools`;
@@ -44,19 +45,35 @@ export async function getAgentTools(userId: string, agentId: string) {
   });
 }
 
-export async function toggleAgentTool(
+export async function setAgentToolEnabled(
   userId: string,
   agentId: string,
   toolKey: string,
-  disabled: boolean,
+  enabled: boolean,
 ) {
-  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools/toggle`;
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools/enabled`;
   return requestJson(url, {
     method: "POST",
     csrf: true,
-    body: { toolKey, disabled },
+    body: { toolKey, enabled },
     schema: AgentToolsResponseSchema,
     fallbackMessage: "Failed to update tool",
+  });
+}
+
+export async function setAgentToolApproval(
+  userId: string,
+  agentId: string,
+  toolKey: string,
+  approval: boolean,
+) {
+  const url = `${AGENTS_BASE_PATH}/${encodeURIComponent(userId)}/${encodeURIComponent(agentId)}/tools/approval`;
+  return requestJson(url, {
+    method: "POST",
+    csrf: true,
+    body: { toolKey, approval },
+    schema: AgentToolsResponseSchema,
+    fallbackMessage: "Failed to update approval",
   });
 }
 

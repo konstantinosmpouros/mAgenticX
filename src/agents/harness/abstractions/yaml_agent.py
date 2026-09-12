@@ -23,7 +23,7 @@ from typing import Any, Mapping, Optional
 
 from deepagents import SubAgent
 
-from harness.abstractions.deep_agent import DeepAgent, _key_set
+from harness.abstractions.deep_agent import DeepAgent
 from harness.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
 from utils.declarative import read_prompt
 from harness.filesystem import layout
@@ -71,16 +71,9 @@ class YamlDeepAgent(DeepAgent):
         self.config_tool_names = [
             self._build_tool_key_from_config(entry) for entry in self.config_tools
         ]
-        # Beyond the declared set, the user may enable extra gateway MCP tools for
-        # this (user, agent) via the Agents tab. Union those keys in so the
-        # live-manifest filter (attach_tools) keeps them too; a per-agent disable
-        # is still subtracted later by _apply_tool_disables.
-        #
-        # Threaded in on the run config by the bridge, which owns these choices in
-        # chat_db. Previously read from tool_prefs.json on the agents volume.
-        for key in sorted(_key_set((self.context or {}).get("enabled_tools"))):
-            if key not in self.config_tool_names:
-                self.config_tool_names.append(key)
+        # The user's extra gateway tools are NOT unioned here: that happens in
+        # BaseAgent._filter_live_tools, so a code-defined deep agent honours them
+        # too. `config_tool_names` stays exactly what the spec declares.
         self._native_tool_names: list[str] = [t.native for t in spec.tools if t.is_native and t.native]
 
         # The agent's `memory:` is the default `use_memory` — but an explicit

@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from harness.tools.builtins import builtin_hitl_defaults
 from harness.tools.charts import build_render_chart_tool
 from harness.tools.create_skill import build_create_skill_tool
 from harness.tools.memory_search import build_memory_search_tool
@@ -209,14 +210,12 @@ def build_auto_attach_tools(ctx: NativeToolContext) -> list[Any]:
 
 
 def native_hitl_defaults() -> dict[str, bool]:
-    """Approval gates every deep agent starts with, from ``hitl_default``.
+    """Approval gates every deep agent starts with.
 
-    Merged UNDER an agent's own ``interrupt_on`` in ``build_deep_agent``, so a
-    spec can still speak for itself while a tool that declares itself dangerous
-    is gated by default rather than only when someone remembers to list it.
-    Without this the flag was catalog metadata that gated nothing.
+    Delegates to the builtin roster so the defaults and the catalog cannot
+    disagree; the framework tools have no entry here at all.
     """
-    return {d.name: True for d in NATIVE_TOOLS.values() if d.hitl_default}
+    return builtin_hitl_defaults()
 
 
 def native_catalog() -> list[dict[str, Any]]:

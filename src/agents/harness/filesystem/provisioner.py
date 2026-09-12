@@ -247,7 +247,7 @@ def ensure_user_workspace(user_id: str) -> Path:
     agent: the workspace root itself and ``custom_agents/`` (where the user's
     own ``agent.yaml`` definitions will live — provisioned ahead of the feature
     so the location is settled, see
-    ``docs/plans/01-custom-agents-per-user.md``). The skill *pool* is
+    ``plans/01-custom-agents-per-user.md``). The skill *pool* is
     provisioned by the registry layer's ``ensure_user_registry``, which owns
     ``manifest.json``.
 

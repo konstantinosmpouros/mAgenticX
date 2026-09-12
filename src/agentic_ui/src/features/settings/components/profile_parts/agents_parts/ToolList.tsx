@@ -9,7 +9,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shar
 import {
   countEnabled,
   groupTools,
-  isToolEnabled,
+  isToolLocked,
+  isToolOn,
+  type ToolAxis,
   type ToolFilter,
 } from "@/features/settings/lib/agentTools";
 import { SoftPanel, ToggleSwitch } from "../shared";
@@ -27,6 +29,16 @@ import { SoftPanel, ToggleSwitch } from "../shared";
  * a per-group tally so a collapsed group still says whether anything inside is
  * on. Groups with nothing enabled start collapsed, because the common case is
  * scanning what an agent *has*, not what it could have.
+ *
+ * The same list renders either of a tool's two independent switches — whether
+ * the agent may use it (`enable`) or whether it pauses for approval first
+ * (`approval`) — and both kinds of tool. Only the wording, the tally and which
+ * rows are locked differ, so `axis` is a parameter rather than a near-copy of
+ * this file that would drift the first time the grouping rules changed.
+ *
+ * A prebuilt tool is locked on the enable axis (the framework builds it
+ * downstream of the tool list, so nothing could switch it off) and a mandated
+ * gate is locked on the approval axis.
  */
 
 type ToolListProps = {
@@ -35,23 +47,31 @@ type ToolListProps = {
   /** Key of the row currently being written, so only that switch goes busy. */
   togglingKey?: string | null;
   onToggle?: (row: AgentToolRow) => void;
-  /** Tool names that always require approval; rendered with a lock. */
-  gatedNames?: ReadonlySet<string>;
+  /** Which switch this list shows. Defaults to availability. */
+  axis?: ToolAxis;
   emptyHint?: string;
 };
 
-const FILTERS: { id: ToolFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "on", label: "On" },
-  { id: "off", label: "Off" },
-];
+/** Filter labels read differently per axis; the semantics are identical. */
+const FILTERS: Record<ToolAxis, { id: ToolFilter; label: string }[]> = {
+  enable: [
+    { id: "all", label: "All" },
+    { id: "on", label: "On" },
+    { id: "off", label: "Off" },
+  ],
+  approval: [
+    { id: "all", label: "All" },
+    { id: "on", label: "Asks" },
+    { id: "off", label: "Never" },
+  ],
+};
 
 export function ToolList({
   tools,
   loading = false,
   togglingKey = null,
   onToggle,
-  gatedNames,
+  axis = "enable",
   emptyHint = "This agent has no tools to configure right now.",
 }: ToolListProps) {
   const reduceMotion = useReducedMotion();
@@ -62,8 +82,12 @@ export function ToolList({
   // tools are switched rather than freezing whatever state it opened in.
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
-  const groups = useMemo(() => groupTools(tools, { query, filter }), [tools, query, filter]);
-  const totals = useMemo(() => countEnabled(tools), [tools]);
+  const groups = useMemo(
+    () => groupTools(tools, { query, filter, axis }),
+    [tools, query, filter, axis],
+  );
+  const totals = useMemo(() => countEnabled(tools, axis), [tools, axis]);
+  const onWord = axis === "approval" ? "ask first" : "on";
 
   if (loading) {
     return (
@@ -113,7 +137,7 @@ export function ToolList({
             aria-label="Filter tools"
             className="inline-flex items-center gap-0.5 rounded-xl bg-muted/40 p-0.5"
           >
-            {FILTERS.map((f) => (
+            {FILTERS[axis].map((f) => (
               <button
                 key={f.id}
                 type="button"
@@ -133,7 +157,7 @@ export function ToolList({
           </div>
 
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {totals.enabled} of {totals.total} on
+            {totals.enabled} of {totals.total} {onWord}
           </span>
         </div>
 
@@ -172,20 +196,27 @@ export function ToolList({
                 />
                 <span className="text-sm font-semibold text-foreground">{group.id}</span>
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  {group.builtin ? null : "MCP · "}
-                  {group.enabled} of {group.total} on
+                  {group.builtin ? "Built in · " : "MCP · "}
+                  {group.enabled} of {group.total} {onWord}
                 </span>
               </button>
 
               {open ? (
                 <SoftPanel className="divide-y divide-border/30 overflow-hidden">
                   {group.tools.map((row) => {
-                    const enabled = isToolEnabled(row);
-                    const gated = gatedNames?.has(row.name) ?? false;
+                    const on = isToolOn(row, axis);
+                    const locked = isToolLocked(row, axis);
+                    // On the availability axis the lock badge marks a tool that
+                    // asks before running; on the approval axis it IS the
+                    // control, and there is no switch.
+                    const gated = axis === "enable" && row.approval;
                     return (
                       <div
                         key={row.key}
-                        className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/30"
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/30",
+                          !row.available && "opacity-55",
+                        )}
                       >
                         <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
                           <span className="shrink-0 text-sm font-medium text-foreground">
@@ -195,15 +226,25 @@ export function ToolList({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="shrink-0 text-muted-foreground">
-                                  <Lock size={11} aria-label="Always asks for approval" />
+                                  <Lock size={11} aria-label="Asks for approval" />
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent>Always asks for your approval</TooltipContent>
+                              <TooltipContent>Asks for your approval first</TooltipContent>
+                            </Tooltip>
+                          ) : null}
+                          {!row.available && row.unavailableReason ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="shrink-0 rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                  Unavailable
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{row.unavailableReason}</TooltipContent>
                             </Tooltip>
                           ) : null}
                           {row.description ? (
-                            // One line, full text on hover: the stored copy is the
-                            // model's prompt, useful to read but not to scan.
+                            // One line, full text on hover: the stored copy is
+                            // the model's prompt, useful to read but not to scan.
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="truncate text-xs text-muted-foreground">
@@ -229,13 +270,33 @@ export function ToolList({
                             </Tooltip>
                           ) : null}
                         </div>
-                        <ToggleSwitch
-                          size="sm"
-                          checked={enabled}
-                          disabled={togglingKey === row.key || !onToggle}
-                          onToggle={() => onToggle?.(row)}
-                          label={`${enabled ? "Disable" : "Enable"} ${row.name}`}
-                        />
+                        {locked ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                                <Lock size={11} aria-hidden />
+                                {axis === "approval" ? "Always" : "Built in"}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {axis === "approval"
+                                ? "Required by the platform, so it cannot be turned off."
+                                : "A built-in tool: always available, and not switchable."}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <ToggleSwitch
+                            size="sm"
+                            checked={on}
+                            disabled={togglingKey === row.key || !onToggle}
+                            onToggle={() => onToggle?.(row)}
+                            label={
+                              axis === "approval"
+                                ? `${on ? "Stop asking" : "Ask"} before running ${row.name}`
+                                : `${on ? "Disable" : "Enable"} ${row.name}`
+                            }
+                          />
+                        )}
                       </div>
                     );
                   })}

@@ -617,7 +617,7 @@ class UserSkillPoolTable(Base):
 
 
 class UserAgentToolPrefTable(Base):
-    """One tool the user turned OFF or ON for a specific agent (Agents tab).
+    """One tool the user configured for a specific agent (Agents tab).
 
     An agent declares a baseline tool set and the always-on native builtins are
     added to it. On top of that the user keeps two override sets per agent, and
@@ -628,6 +628,16 @@ class UserAgentToolPrefTable(Base):
     Both sets live here, distinguished by ``state``, because they are the same
     kind of fact about the same pairing — splitting them into two tables would
     duplicate the key and the lifecycle for nothing.
+
+    ``requires_approval`` is a **second, orthogonal axis**: whether the tool
+    pauses for human approval. A tool can be on *and* gated, so it cannot be
+    another ``state`` value. Both columns are nullable — a row may carry either
+    axis alone — and a row with neither is deleted, so the table stays
+    proportional to the choices a user actually made.
+
+    ``state`` applies to **MCP tools only**. A prebuilt tool is constructed by
+    the framework or the native registry and cannot be filtered, so only its
+    approval is configurable; the bridge refuses to write ``state`` for one.
 
     **One row per override, not a JSON document.** The volume stored two arrays
     in a single file, which made one toggle a read-modify-write of the whole
@@ -660,10 +670,16 @@ class UserAgentToolPrefTable(Base):
     )
     agent_slug = Column(String, nullable=False, index=True)
     tool_key = Column(String, nullable=False)
-    # 'disabled' — the user turned OFF a tool that is on by default (a native
-    # builtin or one the agent declares). 'enabled' — turned ON a gateway tool
-    # the agent did not declare.
-    state = Column(String, nullable=False)
+    # 'disabled' — the user turned OFF a declared MCP tool. 'enabled' — turned
+    # ON a gateway tool the agent did not declare. NULL — no on/off opinion.
+    state = Column(String, nullable=True)
+    # The user asked this tool to pause for approval before it runs. Merged over
+    # the platform floor and the agent spec's own gates at build time, so it can
+    # only ever add a gate.
+    # Tri-state: NULL follows the baseline, True gates, False clears a gate the
+    # baseline sets. A plain boolean could not express the last case, and
+    # prebuilt tools default to gated.
+    requires_approval = Column(Boolean, nullable=True)
     updated_at = Column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )

@@ -1,93 +1,159 @@
-"""Per-agent tool listing + toggling (Agents-tab business logic).
+"""Per-agent tool listing (Agents-tab business logic).
 
-Scope: **MCP tools only.** The Agents tab is where a user tunes which MCP tools
-an agent may use — two groups of rows:
+Two kinds of tool, one row shape:
 
-* **declared** — the MCP tools the agent's spec declares (``agent.yaml``). ON by
-  default; the user may turn one OFF (added to the per-agent ``disabled`` set).
-* **available** — every other MCP tool the gateway currently exposes. OFF by
-  default; the user may turn one ON for this agent (added to the ``enabled``
-  set). This is how a user grants an agent a tool it did not declare.
+* **builtin** — the prebuilt tools every deep agent has (``harness/tools/builtins.py``).
+  Never enable/disable-able: the framework ones are constructed inside
+  ``create_deep_agent`` where we cannot reach them, and the native ones are
+  governed by the Personalization prefs. Their approval *is* configurable.
+* **mcp** — declared in ``agent.yaml`` or available from the gateway. Both axes
+  configurable.
 
-Native builtins are **deliberately not managed here**: ``remember`` and
-``search_past_conversations`` are controlled by the user's Personalization prefs
-(``use_memory`` / ``search_past_convs``), and ``present_artifact`` is always on
-and can never be disabled. So they are never listed and never toggle-able —
-``DeepAgent._apply_tool_disables`` also refuses to drop any native key.
+This service reports the **baseline**: what exists, what the agent declares, and
+what it gates before any user choice. The user's own choices live in ``chat_db``
+and are overlaid by the bridge.
 
-Effective set the runtime builds: ``(declared_mcp ∪ enabled) − disabled`` — the
-two override sets, owned by the bridge in ``chat_db`` and consumed by
-``YamlDeepAgent`` (enabled → ``config_tool_names``) and
-``DeepAgent._apply_tool_disables`` (disabled). Tool identity is the canonical
-cache key so a toggle here removes/adds exactly the right live tool there.
-
-Only **deep agents** have this tool model; LangGraph agents return no rows.
+Only deep agents have this model; LangGraph agents return no rows.
 """
 from __future__ import annotations
 
 from typing import Dict, List, Optional, Set
 
-from core.logging import get_logger
-from harness.tools.registry import native_catalog
+from core.settings import settings
+from harness.tools.builtins import BUILTIN_TOOLS, resolve_availability
+from harness.tools.registry import NATIVE_TOOLS, native_hitl_defaults
 from schema import AgentToolRow
 from utils.agents import resolve_agent_definition
 from utils.mcp_tools import build_tool_cache_key, get_cached_tool_manifests_map
-
-logger = get_logger(__name__)
 
 
 def _resolve_for_user(agent_slug: str, user_id: str):
     """A platform agent, else one this user authored.
 
-    These endpoints are already scoped to a user and don't carry an explicit
-    owner id (unlike the inference path, where the bridge threads it). Trying
-    platform first is unambiguous because agent creation refuses a slug that
-    collides with a platform agent — see
-    ``docs/plans/01-custom-agents-per-user.md``.
+    Platform first is unambiguous: agent creation refuses a slug that collides
+    with a platform agent (see ``plans/01-custom-agents-per-user.md``).
     """
     return resolve_agent_definition(agent_slug) or resolve_agent_definition(agent_slug, user_id)
-
-
-def _native_keys() -> Set[str]:
-    """Cache keys of the native builtins (bare tool name = their key). Managed
-    outside this tab, so excluded from listing and protected from toggling."""
-    return {n["name"] for n in native_catalog()}
 
 
 def _is_deep(definition) -> bool:
     return (definition.manifest or {}).get("type") == "deep agent"
 
 
-def _declared_mcp_rows(definition, disabled: Set[str]) -> Dict[str, AgentToolRow]:
-    """The agent's declared MCP tools (default-ON), keyed by cache key. Native
-    spec refs are intentionally skipped — natives are not managed here."""
-    rows: Dict[str, AgentToolRow] = {}
+def baseline_gates(definition) -> Set[str]:
+    """Tool names gated before the user has any say.
+
+    Three policy layers: builtins that default to gated, the gates a code-defined
+    agent class declares, and a spec-driven agent's ``agent.yaml`` ``hitl`` map.
+    Keyed by **tool name**, matching ``interrupt_on``.
+
+    Read from the agent *class*, never a built instance — building one needs a
+    model and the full mount stack.
+    """
+    gates = set(native_hitl_defaults())
+    cls = getattr(definition, "cls", None)
+    if cls is not None:
+        gates.update(n for n, on in (getattr(cls, "hitl_gates", None) or {}).items() if on)
     spec = getattr(definition, "spec", None)
-    if spec is None:
-        return rows
-    mcp_map = get_cached_tool_manifests_map()
-    for tool in spec.tools:
-        if getattr(tool, "native", None):
-            continue  # native builtins are controlled in Personalization / always-on
-        key = build_tool_cache_key(tool.server_id or "", tool.tool_name or "")
-        manifest = mcp_map.get(key)
-        rows[key] = AgentToolRow(
-            key=key, name=(tool.tool_name or key),
-            description=(getattr(manifest, "description", "") or "") if manifest else "",
-            source="mcp", declared=True, disabled=key in disabled,
+    if spec is not None:
+        gates.update(n for n, on in (spec.hitl or {}).items() if on)
+    return gates
+
+
+def _builtin_rows(gates: Set[str], *, use_memory: bool, search_past_convs: bool) -> List[AgentToolRow]:
+    """Prebuilt rows, in roster order. Descriptions for native tools come from
+    the registry, which owns them."""
+    rows: List[AgentToolRow] = []
+    for tool in BUILTIN_TOOLS:
+        available, reason = resolve_availability(
+            tool,
+            use_memory=use_memory,
+            search_past_convs=search_past_convs,
+            has_conversation=True,
+            sandbox_enabled=settings.filesystem.sandbox_execution_enabled,
+        )
+        native = NATIVE_TOOLS.get(tool.name)
+        rows.append(
+            AgentToolRow(
+                key=tool.name,
+                name=tool.name,
+                description=tool.description or (native.description if native else ""),
+                kind="builtin",
+                group=tool.group,
+                declared=True,
+                available=available,
+                unavailableReason=reason,
+                enabled=True,
+                approval=tool.name in gates,
+                approvalLocked=tool.locked,
+            )
         )
     return rows
 
 
-def list_agent_tools(user_id: str, agent_slug: str) -> Optional[List[AgentToolRow]]:
-    """MCP tool rows for (user, agent), or ``None`` when the agent is unknown.
+def _mcp_rows(definition, gates: Set[str]) -> List[AgentToolRow]:
+    """Declared MCP tools first, then everything else the gateway exposes.
 
-    Reports the **baseline** only: declared MCP tools ON, every other gateway
-    tool OFF. Native builtins are never included.
+    A cold manifest cache simply yields no available rows; the declared ones
+    still list.
+    """
+    rows: Dict[str, AgentToolRow] = {}
+    manifests = get_cached_tool_manifests_map()
 
-    This service no longer knows anything about the user's choices — those live
-    in ``chat_db`` and the bridge overlays them onto these rows. Keeping a second
-    opinion here would just be a copy to disagree with.
+    spec = getattr(definition, "spec", None)
+    for ref in getattr(spec, "tools", None) or []:
+        if getattr(ref, "native", None):
+            continue
+        key = build_tool_cache_key(ref.server_id or "", ref.tool_name or "")
+        manifest = manifests.get(key)
+        name = ref.tool_name or key
+        rows[key] = AgentToolRow(
+            key=key,
+            name=name,
+            description=(getattr(manifest, "description", "") or "") if manifest else "",
+            kind="mcp",
+            group=ref.server_id or "mcp",
+            declared=True,
+            available=True,
+            unavailableReason=None,
+            enabled=True,
+            approval=name in gates,
+            approvalLocked=False,
+        )
+
+    for key, manifest in manifests.items():
+        if key in rows:
+            continue
+        name = getattr(manifest, "tool_name", "") or key
+        rows[key] = AgentToolRow(
+            key=key,
+            name=name,
+            description=getattr(manifest, "description", "") or "",
+            kind="mcp",
+            group=getattr(manifest, "server_id", "") or "mcp",
+            declared=False,
+            available=True,
+            unavailableReason=None,
+            enabled=False,
+            approval=name in gates,
+            approvalLocked=False,
+        )
+
+    return sorted(rows.values(), key=lambda r: (not r.declared, r.group.lower(), r.name.lower()))
+
+
+def list_agent_tools(
+    user_id: str,
+    agent_slug: str,
+    *,
+    use_memory: bool = True,
+    search_past_convs: bool = False,
+) -> Optional[List[AgentToolRow]]:
+    """Every tool this agent can have, or ``None`` when the agent is unknown.
+
+    ``use_memory`` / ``search_past_convs`` are the caller's preferences; they
+    decide whether two native builtins are present for this user, and are passed
+    in because this service does not own them.
     """
     definition = _resolve_for_user(agent_slug, user_id)
     if definition is None:
@@ -95,21 +161,7 @@ def list_agent_tools(user_id: str, agent_slug: str) -> Optional[List[AgentToolRo
     if not _is_deep(definition):
         return []
 
-    rows = _declared_mcp_rows(definition, set())
-
-    # Available: every gateway MCP tool the agent did not declare, OFF by
-    # default. Relies on the manifest cache being warm (the tools endpoint warms
-    # it) — a cold cache simply yields no available rows.
-    for key, manifest in get_cached_tool_manifests_map().items():
-        if key in rows:
-            continue
-        rows[key] = AgentToolRow(
-            key=key, name=(getattr(manifest, "tool_name", "") or key),
-            description=(getattr(manifest, "description", "") or ""),
-            source="mcp", declared=False, disabled=True,
-        )
-
-    # Declared first, then available alphabetically — stable for the UI.
-    return sorted(rows.values(), key=lambda r: (not r.declared, r.name.lower()))
-
-
+    gates = baseline_gates(definition)
+    return _builtin_rows(
+        gates, use_memory=use_memory, search_past_convs=search_past_convs
+    ) + _mcp_rows(definition, gates)

@@ -1,10 +1,8 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, Lock, Minus, Pencil, Wrench } from "lucide-react";
+import { AlertCircle, Pencil, ShieldCheck, Wrench } from "lucide-react";
 
-import { cn } from "@/shared/lib/utils";
 import type { Agent, AgentToolRow } from "@/shared/lib/types";
-import { ALWAYS_GATED } from "@/features/settings/lib/agentTools";
 import { SectionTabs, type SectionTab } from "./SectionTabs";
 import { ToolList } from "./ToolList";
 import { SoftPanel } from "../shared";
@@ -17,12 +15,25 @@ import { SoftPanel } from "../shared";
  * off) in front of the primary one (seeing what agents exist). Here it is one
  * section of one agent.
  *
- * Sections that need backend work before they can be honest — Approvals over
- * MCP tools especially — render an explicit note instead of a control that
- * silently does nothing.
+ * Tools and Approvals render the same rows through one ToolList, differing only
+ * by axis. Prebuilt tools are locked on the enable axis and mandated gates are
+ * locked on the approval axis, because a live switch for either would be a
+ * control that silently does nothing.
  */
 
 type DetailSection = "overview" | "tools" | "approvals";
+
+/**
+ * The manifest's raw lifecycle type, in sentence case.
+ *
+ * The server speaks in lowercase internal names ("deep agent") because they are
+ * registry keys; rendering them verbatim in a settings panel reads like a leaked
+ * implementation detail.
+ */
+const agentTypeLabel = (raw?: string): string => {
+  if (!raw) return "—";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
 
 export function AgentDetail({
   agent,
@@ -33,6 +44,7 @@ export function AgentDetail({
   error,
   togglingKey,
   onToggleTool,
+  onToggleApproval,
   onEdit,
 }: {
   agent: Agent;
@@ -48,17 +60,19 @@ export function AgentDetail({
   error: string | null;
   togglingKey: string | null;
   onToggleTool: (row: AgentToolRow) => void;
+  onToggleApproval: (row: AgentToolRow) => void;
   onEdit?: () => void;
 }) {
   const reduceMotion = useReducedMotion();
   const [section, setSection] = useState<DetailSection>("tools");
 
-  const enabledCount = useMemo(() => tools.filter((t) => !t.disabled).length, [tools]);
+  const enabledCount = useMemo(() => tools.filter((t) => t.enabled).length, [tools]);
+  const gatedCount = useMemo(() => tools.filter((t) => t.approval).length, [tools]);
 
   const tabs: SectionTab<DetailSection>[] = [
     { id: "overview", label: "Overview" },
     { id: "tools", label: "Tools", count: enabledCount },
-    { id: "approvals", label: "Approvals" },
+    { id: "approvals", label: "Approvals", count: gatedCount },
   ];
 
   return (
@@ -110,73 +124,97 @@ export function AgentDetail({
               loading={loading && tools.length === 0}
               togglingKey={togglingKey}
               onToggle={onToggleTool}
-              gatedNames={ALWAYS_GATED}
               emptyHint="Connect an MCP server, or give this agent tools when you edit it."
             />
           ) : null}
 
           {section === "overview" ? (
-            <SoftPanel className="divide-y divide-border/40 overflow-hidden">
-              {[
-                { label: "Type", value: agent.type ?? "—" },
-                { label: "Version", value: agent.version ?? "—" },
-                { label: "Tools on", value: `${enabledCount} of ${tools.length}` },
-                { label: "Source", value: mine ? "Custom agent" : "Platform agent" },
-              ].map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-center justify-between gap-4 px-5 py-3.5"
-                >
-                  <span className="text-sm text-muted-foreground">{row.label}</span>
-                  <span className="text-sm font-medium tabular-nums text-foreground">
-                    {row.value}
-                  </span>
-                </div>
-              ))}
-            </SoftPanel>
-          ) : null}
-
-          {section === "approvals" ? (
             <div className="space-y-3">
-              <SoftPanel className="divide-y divide-border/30 overflow-hidden">
-                {[...ALWAYS_GATED].map((name) => (
-                  <div key={name} className="flex items-center gap-3 px-4 py-2.5">
-                    <span
-                      className={cn(
-                        "flex-1 text-sm font-medium",
-                        configurable ? "text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {name}
+              {/* Two tiles, not the usual three-across: these are the only two
+                  numbers that change as the user configures the agent, and the
+                  rest is fixed metadata that belongs in a list, not a card. */}
+              {configurable ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <SoftPanel className="px-5 py-4">
+                    <p className="text-xs text-muted-foreground">Tools on</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                      {enabledCount}
+                      <span className="ml-1 text-sm font-normal text-muted-foreground">
+                        of {tools.length}
+                      </span>
+                    </p>
+                  </SoftPanel>
+                  <SoftPanel className="px-5 py-4">
+                    <p className="text-xs text-muted-foreground">Ask before running</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                      {gatedCount}
+                    </p>
+                  </SoftPanel>
+                </div>
+              ) : null}
+
+              <SoftPanel className="divide-y divide-border/40 overflow-hidden">
+                {[
+                  { label: "Type", value: agentTypeLabel(agent.type) },
+                  { label: "Version", value: agent.version ?? "—" },
+                  { label: "Source", value: mine ? "Yours" : "Built in" },
+                  { label: "Status", value: agent.isActive ? "Available" : "Unavailable" },
+                ].map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-center justify-between gap-4 px-5 py-3.5"
+                  >
+                    <span className="text-sm text-muted-foreground">{row.label}</span>
+                    <span className="text-sm font-medium tabular-nums text-foreground">
+                      {row.value}
                     </span>
-                    {configurable ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Lock size={11} aria-hidden /> Always
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/70">
-                        <Minus size={11} aria-hidden /> Not available
-                      </span>
-                    )}
                   </div>
                 ))}
               </SoftPanel>
-              <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-                {configurable ? (
-                  <>
-                    These five always ask before running, on every agent, and cannot be turned off.
-                    Choosing which of an agent&rsquo;s other tools need approval is set when you
-                    edit it.
-                  </>
-                ) : (
-                  <>
-                    These are deep-agent tools, so {agent.name} does not have them and there is
-                    nothing to approve. Any pause it asks for comes from its own graph, not from a
-                    per-tool rule.
-                  </>
-                )}
-              </p>
+
+              {mine && onEdit ? (
+                <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+                  This is your agent — its prompt, model and sub-agents are changed by editing
+                  it. Tools and approvals are set here, per your account.
+                </p>
+              ) : (
+                <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+                  A built-in agent. Its definition is fixed, but the tools it may use and which
+                  of them ask for approval are yours to set, for your account only.
+                </p>
+              )}
             </div>
+          ) : null}
+
+          {section === "approvals" ? (
+            configurable ? (
+              <div className="space-y-2">
+                <ToolList
+                  tools={tools}
+                  axis="approval"
+                  loading={loading && tools.length === 0}
+                  togglingKey={togglingKey}
+                  onToggle={onToggleApproval}
+                  emptyHint="This agent has no tools to gate."
+                />
+                <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+                  A tool set to ask pauses the run every time it is called, so gating one the
+                  agent uses constantly will interrupt you a lot. Scheduled runs have nobody to
+                  ask and will time out instead.
+                </p>
+              </div>
+            ) : (
+              <SoftPanel className="px-6 py-10 text-center">
+                <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-muted/50 text-muted-foreground">
+                  <ShieldCheck size={18} aria-hidden />
+                </span>
+                <p className="text-sm font-semibold text-foreground">Nothing to approve</p>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                  {agent.name} is a {agent.type ?? "non-deep"} agent, so it has no per-tool
+                  approval model. Any pause it asks for comes from its own graph.
+                </p>
+              </SoftPanel>
+            )
           ) : null}
         </motion.div>
       </AnimatePresence>

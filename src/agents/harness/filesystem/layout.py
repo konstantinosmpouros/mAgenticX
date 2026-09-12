@@ -1,7 +1,7 @@
 """Single authority for every path on the agents filesystem.
 
 Two planes under one root — the consolidated layout from
-``docs/plans/18-workspace-filesystem-consolidation.md``::
+``plans/18-workspace-filesystem-consolidation.md``::
 
     $MAGENTICX_GLOBAL_ROOT/                         ← platform-owned, shared
         agents/<agent_slug>/                        agent definition
