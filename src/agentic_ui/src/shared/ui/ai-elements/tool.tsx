@@ -3,7 +3,9 @@
 import { cn } from "@/shared/lib/utils";
 import { parseToolResultImages, type ToolResultImage } from "@/shared/lib/schemas";
 import type { ComponentProps, ReactNode } from "react";
-import { isValidElement } from "react";
+import { isValidElement, useState } from "react";
+
+import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 
 import { CodeBlock } from "./code-block";
 
@@ -40,6 +42,8 @@ export type ToolOutputProps = ComponentProps<"div"> & {
   output: unknown;
   errorText?: string;
   truncated?: boolean;
+  /** Drop the "Result" heading — the payload is the whole point (view_image). */
+  bare?: boolean;
 };
 
 /** Human-readable size, used only to explain an image that could not be shown. */
@@ -60,33 +64,59 @@ const formatBytes = (bytes: number): string =>
  */
 const IMAGE_PLATE = "flex h-52 w-full items-center justify-center rounded-lg bg-muted/60 p-3";
 
-const ToolImages = ({ images }: { images: ToolResultImage[] }) => (
-  <div className="space-y-2">
-    {images.map((image, index) => (
-      <div className={IMAGE_PLATE} key={`${image.mime_type}-${index}`}>
-        {image.omitted || !image.preview_base64 ? (
-          <p className="px-2 text-center text-muted-foreground text-xs">
-            {image.bytes
-              ? `Image too large to preview (${formatBytes(image.bytes)}). The agent saw it in full.`
-              : "Image could not be previewed. The agent saw it in full."}
-          </p>
-        ) : (
-          <img
-            alt={`Tool result ${index + 1}`}
-            className="max-h-full max-w-full rounded-md object-contain"
-            src={`data:${image.mime_type};base64,${image.preview_base64}`}
-          />
-        )}
-      </div>
-    ))}
-  </div>
-);
+const ToolImages = ({ images }: { images: ToolResultImage[] }) => {
+  // Local to this component rather than lifted into the workspace: a tool
+  // result renders inside the shared design system, which cannot reach feature
+  // state. ImageLightbox handles its own Escape, so nothing else is needed.
+  const [expanded, setExpanded] = useState<{ src: string; name: string } | null>(null);
+
+  return (
+    <div className="space-y-2">
+      {images.map((image, index) => {
+        const canShow = !image.omitted && Boolean(image.preview_base64);
+        const src = `data:${image.mime_type};base64,${image.preview_base64}`;
+        return (
+          <div className={IMAGE_PLATE} key={`${image.mime_type}-${index}`}>
+            {canShow ? (
+              <button
+                type="button"
+                className="flex h-full w-full items-center justify-center"
+                onClick={() => setExpanded({ src, name: `tool-result-${index + 1}-preview` })}
+                aria-label={`Expand tool result image ${index + 1}`}
+              >
+                <img
+                  alt={`Tool result ${index + 1}`}
+                  className="max-h-full max-w-full cursor-zoom-in rounded-md object-contain transition-transform hover:scale-[1.02]"
+                  src={src}
+                />
+              </button>
+            ) : (
+              <p className="px-2 text-center text-muted-foreground text-xs">
+                {image.bytes
+                  ? `Image too large to preview (${formatBytes(image.bytes)}). The agent saw it in full.`
+                  : "Image could not be previewed. The agent saw it in full."}
+              </p>
+            )}
+          </div>
+        );
+      })}
+      {expanded && (
+        <ImageLightbox
+          src={expanded.src}
+          filename={expanded.name}
+          onClose={() => setExpanded(null)}
+        />
+      )}
+    </div>
+  );
+};
 
 export const ToolOutput = ({
   className,
   output,
   errorText,
   truncated,
+  bare = false,
   ...props
 }: ToolOutputProps) => {
   if (!(output || errorText)) {
@@ -120,9 +150,11 @@ export const ToolOutput = ({
 
   return (
     <div className={cn("space-y-2", className)} {...props}>
-      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        {errorText ? "Error" : "Result"}
-      </h4>
+      {bare && !errorText ? null : (
+        <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          {errorText ? "Error" : "Result"}
+        </h4>
+      )}
       {images.length > 0 && !errorText ? (
         <ToolImages images={images} />
       ) : (

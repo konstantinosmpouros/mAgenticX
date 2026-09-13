@@ -98,9 +98,10 @@ Each auto-attach builtin's `builder(ctx)` returns the tool **or** `None` when it
 | `search_past_conversations` | Semantic recall across the user's earlier conversations (pgvector). | `search_past_convs` is opted in |
 | `render_chart` | Draws a chart inline in the reply from data the agent supplies — 8 types (`bar`, `line`, `area`, `pie`, `radar`, `radial`, `scatter`, `composed`) and 3 modifiers (`stacked`, `horizontal`, `show_values`). Not HITL-gated — it draws, it does not write. | a `conversation_id` exists (no preference gate) |
 | `present_artifact` | Hands a finished `output/` file to the user as a document card, placed inline at the point of the call — so an agent presents each document as it becomes ready rather than only at the end of the turn. | a `conversation_id` exists (no preference gate) |
+| `view_image` | Shows the model an image from `/conversation/input/` or `/conversation/output/`, whole or zoomed into a pixel `region`. Returns a `ToolMessage` carrying a text note plus an **image content block** — a JSON string of base64 would reach the model as text and be worth nothing. PNG/JPEG/GIF/WebP, capped by `VIEW_IMAGE_MAX_BYTES` (10 MB). Rendered *bare* in the UI: labelled "View image", no Parameters pane, no Result heading — just the picture, or the error. | a `conversation_id` exists (no preference gate) |
 | `create_skill` | Authors a reusable skill into the user's pool (`add_custom_to_user`) and enables it for the calling agent (`assign_user_skill_to_agent`). Writes the **user-managed** tier, so the user can still disable it in Settings → Agents — not the read-only tier `sync_agent_default_skills` fills from an agent's declared `skills:`. | ungated, but **approval-gated by default** (see below) |
 
-Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → present_artifact → create_skill`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
+Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → view_image → present_artifact → create_skill`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
 
 ---
 
@@ -195,6 +196,35 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 
 ## Sharp Edges and Behavioral Notes
 
+- **`view_image` returns a `ToolMessage`, not a string.** It is the only native
+  tool that does, because the image has to reach the model as a content block —
+  which also means it needs the tool call's id, injected via
+  `Annotated[str, InjectedToolCallId]` on the args schema (LangChain strips it
+  from the model-facing schema, so the model never sees or supplies it).
+- **Zooming is a second look, and it depends on the first.** A `region` is in
+  pixels of the full image, which the model cannot guess, so every `view_image`
+  result leads with a text block stating the dimensions. The loop is: view
+  whole → read the size → call again with the region worth reading closely.
+  Region handling is deliberately forgiving in one direction and strict in the
+  other: a region overshooting an edge is **clamped** (a model estimating
+  coordinates off a previous look routinely overshoots, and failing costs a
+  round trip to learn nothing), while one that misses the image entirely is an
+  error naming the real dimensions.
+- **A crop is rescaled, not returned at native size.** Below `MIN_DETAIL_EDGE`
+  (768px) it is enlarged — the point of a zoom is to read something small, and
+  eighty pixels of text is eighty pixels either way — but never past
+  `MAX_UPSCALE` (6x), beyond which there is no information left to recover.
+  A crop over `MAX_DETAIL_EDGE` (2048px) is shrunk, so a zoom cannot return
+  something bigger than the full view. Transparency survives (PNG); everything
+  else re-encodes as JPEG q88.
+- **`view_image` maps extensions to mime types itself**, rather than calling
+  `mimetypes.guess_type`, which reads the host mime database. The agents image
+  does not know `.webp` there, so a format the tool advertises would have been
+  refused depending on where it ran.
+- **A tool renders "bare" only if listed in the frontend's `TOOL_PRESENTATION`**
+  (`shared/lib/consts/tools.ts`). The map is opt-in: an unlisted tool gets the
+  generic name + Parameters + Result treatment, so a new backend tool renders
+  correctly with no frontend change.
 - **`present_artifact` is always on; native builtins can't be disabled here.** The Agents tab lists MCP tools only. `toggle_agent_tool` ignores native keys and `_apply_tool_disables` subtracts native keys from the disabled set — so even a legacy pre-model disable of a native is neutralized. `remember` / `search_past_conversations` are turned on/off via the Personalization prefs, not this tab.
 - **Framework builtins are un-disable-able.** They enter through `create_deep_agent`, downstream of `_apply_tool_disables`. Neither the Agents tab nor an override row can touch `write_todos`, `read_file`, etc. Native builtins are additionally subtracted from the disabled set inside `_apply_tool_disables`, so even a legacy row naming one is inert.
 - **The available catalog needs a warm manifest cache.** `list_agent_tools` reads the cached MCP manifest map (primed only by `list_mcp_tools()`, not the per-stream loader); the tools endpoint calls it before listing. If the gateway is down, the *available* list is empty but declared tools still show.
@@ -216,7 +246,7 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Native-tool registry + builtins + gates | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
-| Builtin implementations | [src/agents/harness/tools/](../../src/agents/harness/tools/) | `remember.py`, `memory_search.py`, `charts.py`, `present_artifact.py`, `create_skill.py` |
+| Builtin implementations | [src/agents/harness/tools/](../../src/agents/harness/tools/) | `remember.py`, `forget.py`, `memory_search.py`, `charts.py`, `view_image.py`, `present_artifact.py`, `create_skill.py` |
 | Assembly + builtins + disable filter | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
 | MCP filter (`attach_tools`, cache keys) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
 | YAML → spec tools (native + MCP) | [src/agents/harness/abstractions/yaml_agent.py](../../src/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |
@@ -238,7 +268,7 @@ what is configurable:
 
 | Kind | Members | Enable | Approval |
 | --- | --- | --- | --- |
-| `builtin` | **framework (9)** `write_todos` `ls` `read_file` `write_file` `edit_file` `glob` `grep` `execute` `task` — **native (6)** `remember` `forget` `search_past_conversations` `render_chart` `present_artifact` `create_skill` | never | configurable |
+| `builtin` | **framework (9)** `write_todos` `ls` `read_file` `write_file` `edit_file` `glob` `grep` `execute` `task` — **native (7)** `remember` `forget` `search_past_conversations` `render_chart` `view_image` `present_artifact` `create_skill` | never | configurable |
 | `mcp` | whatever the gateway exposes | configurable | configurable |
 
 **A builtin can never be enable-configured**, and not by policy. The framework

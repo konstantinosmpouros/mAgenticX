@@ -16,6 +16,7 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtStep,
 } from "@/shared/ui/ai-elements/chain-of-thought";
+import { toolIsBare, toolLabel } from "@/shared/lib/consts";
 import { ToolInput, ToolOutput } from "@/shared/ui/ai-elements/tool";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
@@ -126,9 +127,9 @@ const TimelineToolItem = memo(
           label={
             <CollapsibleTrigger
               className="flex max-w-full items-center gap-2 text-left transition-colors hover:text-foreground"
-              aria-label={`Toggle ${tool.name} details`}
+              aria-label={`Toggle ${toolLabel(tool.name)} details`}
             >
-              <span className="truncate font-medium">{tool.name}</span>
+              <span className="truncate font-medium">{toolLabel(tool.name)}</span>
               {duration ? (
                 <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
                   {duration}
@@ -150,7 +151,9 @@ const TimelineToolItem = memo(
           }
         >
           <CollapsibleContent className="space-y-3 outline-none data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 data-[state=closed]:animate-out data-[state=open]:animate-in">
-            {args !== null && args !== undefined ? <ToolInput input={args} /> : null}
+            {args !== null && args !== undefined && !toolIsBare(tool.name) ? (
+              <ToolInput input={args} />
+            ) : null}
             {face === "pending" ? (
               <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-amber-500 text-xs">
                 Waiting for your approval — respond in the bar below.
@@ -162,7 +165,11 @@ const TimelineToolItem = memo(
                 ran.
               </div>
             ) : null}
-            <ToolOutput output={tool.result} truncated={tool.resultTruncated} />
+            <ToolOutput
+              output={tool.result}
+              truncated={tool.resultTruncated}
+              bare={toolIsBare(tool.name)}
+            />
           </CollapsibleContent>
         </ChainOfThoughtStep>
       </Collapsible>

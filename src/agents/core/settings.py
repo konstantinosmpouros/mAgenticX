@@ -475,6 +475,11 @@ class FilesystemSettings(BaseSettings):
     input_max_file_bytes: int = Field(26214400, validation_alias="INPUT_MAX_FILE_BYTES")
     input_max_files: int = Field(10, validation_alias="INPUT_MAX_FILES")
 
+    # Ceiling on an image handed to the model by `view_image`. Unlike the stream
+    # preview this is the *model's* copy, so the cap guards context cost and a
+    # decode of something pathological — not display size.
+    view_image_max_bytes: int = Field(10485760, validation_alias="VIEW_IMAGE_MAX_BYTES")
+
     # Server-side caps for reading agent-presented deliverables back out of the
     # conversation output/ dir (the present_artifact → generated-attachment
     # path). One run rarely presents many docs, so the count cap is tighter than

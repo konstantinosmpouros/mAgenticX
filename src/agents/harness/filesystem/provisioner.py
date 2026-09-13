@@ -150,6 +150,44 @@ def conversation_output_root(user_id: str, agent_slug: str, conversation_id: str
 CONVERSATION_OUTPUT_PREFIX = "/conversation/output/"
 
 
+# The read-only mount holding this conversation's user uploads. Readable by
+# tools that only *look* at a file; deliberately NOT reachable from
+# `resolve_output_file`, so the deliverable path stays output-only.
+CONVERSATION_INPUT_PREFIX = "/conversation/input/"
+
+
+def resolve_conversation_file(
+    *, user_id: str, agent_slug: str, conversation_id: str, virtual_path: str
+) -> Path:
+    """Resolve a virtual path under either conversation mount to its on-disk file.
+
+    The read-side counterpart to ``resolve_output_file``: a tool that merely
+    reads (``view_image``) may look in ``input/`` as well as ``output/``, while
+    the write-side boundary that governs what can be handed back to the bridge
+    stays output-only. Same ``_safe_segment`` validation on every component, so
+    traversal is defeated identically. Existence is not checked here.
+    """
+    text = (virtual_path or "").strip()
+    for prefix, root in (
+        (CONVERSATION_INPUT_PREFIX, conversation_input_root),
+        (CONVERSATION_OUTPUT_PREFIX, conversation_output_root),
+    ):
+        if not text.startswith(prefix):
+            continue
+        relative = text[len(prefix):].strip("/")
+        if not relative:
+            raise ValueError(f"Path has no filename: {virtual_path!r}")
+        resolved = root(user_id, agent_slug, conversation_id)
+        for segment in relative.split("/"):
+            resolved = resolved / _safe_segment(segment)
+        return resolved
+
+    raise ValueError(
+        f"Path must be under {CONVERSATION_INPUT_PREFIX} or "
+        f"{CONVERSATION_OUTPUT_PREFIX}: {virtual_path!r}"
+    )
+
+
 def resolve_output_file(
     *, user_id: str, agent_slug: str, conversation_id: str, virtual_path: str
 ) -> Path:

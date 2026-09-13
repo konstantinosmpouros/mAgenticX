@@ -30,6 +30,7 @@ from harness.tools.forget import build_forget_tool
 from harness.tools.memory_search import build_memory_search_tool
 from harness.tools.present_artifact import build_present_artifact_tool
 from harness.tools.remember import build_remember_tool
+from harness.tools.view_image import build_view_image_tool
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ def register_native_tool(defn: NativeToolDef) -> NativeToolDef:
 #   forget                 → same gate; HITL-gated (a delete has no undo)
 #   search_past_conversations → attached when the user opted into search_past_convs
 #   present_artifact       → attached whenever there is a conversation to point into
+#   view_image             → same gate; reads from input/ and output/
 #   create_skill           → always attached (HITL-gated; writes to the user's pool)
 #   render_chart           → attached whenever there is a conversation to draw into
 
@@ -154,6 +156,23 @@ register_native_tool(
         # timeline, so there is no side effect for a human to approve.
         builder=lambda ctx: (
             build_render_chart_tool(
+                agent_slug=ctx.agent_slug,
+                conversation_id=ctx.conversation_id,
+            )
+            if ctx.conversation_id
+            else None
+        ),
+    )
+)
+
+register_native_tool(
+    NativeToolDef(
+        name="view_image",
+        description="Look at an image from the conversation's input/ or output/ folder.",
+        auto_attach=True,
+        builder=lambda ctx: (
+            build_view_image_tool(
+                user_id=ctx.user_id,
                 agent_slug=ctx.agent_slug,
                 conversation_id=ctx.conversation_id,
             )

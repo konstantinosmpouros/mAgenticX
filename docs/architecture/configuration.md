@@ -326,6 +326,7 @@ Each built-in workflow agent picks its models per node. All accept `openai:<mode
 | `SKILLS_REGISTRY_GLOBAL_ROOT` | `/var/agents/skills_registry/global` | Admin-curated global skills catalog (seeded at boot). |
 | `SKILLS_REGISTRY_USERS_ROOT` | `/var/agents/skills_registry/users` | Per-user skill registries + manifests. |
 | `INPUT_MAX_FILE_BYTES` | `26214400` (25 MB) | Server-side per-file cap on the conversation-input seeding endpoint (defence in depth; mirrors the bridge). |
+| `VIEW_IMAGE_MAX_BYTES` | `10485760` (10 MB) | Largest image `view_image` will hand to the model. Unlike the AG-UI preview bounds this caps the **model's** copy, so it guards context cost rather than display size. |
 | `INPUT_MAX_FILES` | `10` | Server-side per-turn file cap. |
 | `SANDBOX_EXECUTION_ENABLED` | `false` | Fail-closed kill switch for sandboxed command execution: while false, workspace assembly refuses to mint a sandbox-capable default backend, which is exactly what would make deepagents expose its `execute` tool. Reserved for the future gVisor-class sandbox rollout. |
 | `WORKSPACE_INPUT_TTL_HOURS` | `72` | TTL for conversation `input/` cache files (bridge-seeded copies of DB attachment blobs). `0` disables the input sweep. |

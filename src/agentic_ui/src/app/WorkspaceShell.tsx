@@ -1,6 +1,5 @@
 import { type ReactNode } from "react";
 import { Outlet } from "react-router-dom";
-import { X } from "lucide-react";
 
 import { useChatWorkspace, type ChatWorkspaceOptions } from "@/app/useChatWorkspace";
 import { ChatWorkspaceProvider } from "@/app/workspaceContext";
@@ -21,6 +20,7 @@ import ShortcutsPanel from "@/features/settings/components/ShortcutsPanel";
 import ShareConversationDialog from "@/features/sharing/components/SharePanel";
 
 import ChatView from "@/pages/ChatView";
+import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 
 import { OVERLAY_HOST_ID } from "@/shared/lib/overlay-host";
 import { useWorkspaceStore } from "@/shared/stores/workspaceStore";
@@ -393,27 +393,11 @@ export function WorkspaceShell({ children, ...props }: WorkspaceShellProps = {})
                   onDownload={handleFileDownload}
                 />
 
-                {/* Image Preview Modal */}
                 {attachmentPreview.selectedImage && (
-                  <div
-                    className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                    onClick={handleCloseImagePreview}
-                  >
-                    <div className="relative w-full h-full flex items-center justify-center">
-                      <button
-                        onClick={handleCloseImagePreview}
-                        className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2"
-                      >
-                        <X size={24} />
-                      </button>
-                      <img
-                        src={attachmentPreview.selectedImage}
-                        alt="Full preview"
-                        className="max-w-[95vw] max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                  </div>
+                  <ImageLightbox
+                    src={attachmentPreview.selectedImage}
+                    onClose={handleCloseImagePreview}
+                  />
                 )}
               </div>
             </HitlProvider>

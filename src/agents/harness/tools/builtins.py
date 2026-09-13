@@ -70,6 +70,7 @@ BUILTIN_TOOLS: tuple[BuiltinTool, ...] = (
     BuiltinTool(
         "search_past_conversations", "Memory", availability=Availability.SEARCH_PAST_CONVS
     ),
+    BuiltinTool("view_image", "Filesystem", availability=Availability.CONVERSATION),
     BuiltinTool("render_chart", "Output"),
     BuiltinTool("present_artifact", "Output", availability=Availability.CONVERSATION),
     BuiltinTool("create_skill", "Skills", hitl_default=True),

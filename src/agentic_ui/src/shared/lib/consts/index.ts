@@ -17,6 +17,7 @@
  */
 
 export * from "./icons";
+export * from "./tools";
 export * from "./auth-events";
 export * from "./http-init";
 export * from "./voice";

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Building2, CalendarDays, Home, Send, ShieldCheck, X } from "lucide-react";
+
+import { ImageLightbox } from "@/shared/ui/ImageLightbox";
 import { Button } from "@/shared/ui/button";
 import { Textarea } from "@/shared/ui/textarea";
 import ChatBody from "@/features/chat/components/ChatBody";
@@ -340,24 +342,7 @@ export default function SharedConversationPage() {
       ) : null}
 
       {selectedImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={() => setSelectedImage(null)}
-        >
-          <button
-            onClick={() => setSelectedImage(null)}
-            className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white transition-colors hover:text-gray-300"
-            aria-label="Close image preview"
-          >
-            <X size={24} />
-          </button>
-          <img
-            src={selectedImage}
-            alt="Full preview"
-            className="h-auto max-h-[95vh] w-auto max-w-[95vw] rounded-lg object-contain shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
+        <ImageLightbox src={selectedImage} onClose={() => setSelectedImage(null)} />
       )}
     </div>
   );
