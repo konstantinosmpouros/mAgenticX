@@ -375,7 +375,7 @@ The dialogue bridge parses frames via `_parse_sse_bytes()` and feeds each event 
 
 `_parse_sse_bytes(buffer, chunk)` accumulates bytes into a string buffer, splits on `\n\n` (SSE frame boundary), parses lines starting with `data:`, JSON-decodes each payload, and filters to dicts that have a `"type"` field. The unparsed remainder is returned as the new buffer.
 
-**Log coalescing** (`_append_raw` / `_coalesce_key`): consecutive `TEXT_MESSAGE_CHUNK`/`TEXT_MESSAGE_CONTENT` (same `messageId` + namespace) and `TOOL_CALL_ARGS` (same `toolCallId`) merge into one stored event with a concatenated `delta`, keeping the `seq` of the last merged wire event and gaining `timestampEnd`. `SUBAGENT_EVENT` envelopes merge one level down when they share a `task_id` with mergeable inner deltas. `THINKING_TEXT_MESSAGE_CONTENT` is **never coalesced** — each thinking event is one discrete thought step, and merging would make the hydrated view flatter than the live one. `TOOL_CALL_RESULT` content is truncated at `settings.inference.tool_result_max_chars` with a `"truncated": true` flag.
+**Log coalescing** (`_append_raw` / `_coalesce_key`): consecutive `TEXT_MESSAGE_CHUNK`/`TEXT_MESSAGE_CONTENT` (same `messageId` + namespace) and `TOOL_CALL_ARGS` (same `toolCallId`) merge into one stored event with a concatenated `delta`, keeping the `seq` of the last merged wire event and gaining `timestampEnd`. `SUBAGENT_EVENT` envelopes merge one level down when they share a `task_id` with mergeable inner deltas. `THINKING_TEXT_MESSAGE_CONTENT` is **never coalesced** — each thinking event is one discrete thought step, and merging would make the hydrated view flatter than the live one. `TOOL_CALL_RESULT` content is truncated at `settings.inference.tool_result_max_chars` with a `"truncated": true` flag — except for image results, which the agents service has already bounded (see **Image results** below). Note this runs *before* the event is published, so it caps the live stream as well as what is stored.
 
 Alongside the log, `apply_event()` maintains a few flat aggregates used for previews / search / voice / export and the pause decision — never for the timeline. Plan and sub-agent state are **not** aggregated: they are reconstructed by the UI from the `PLAN_SNAPSHOT` / `TASK_SUBAGENT` / `SUBAGENT_EVENT` entries in `raw_events`, so the bridge keeps no `self.plan`/`self.subagents` and no `messages.plan`/`messages.subagents` columns.
 
@@ -401,6 +401,47 @@ flowchart TD
 `pending_interrupt_ids` (exposed as the `pending_interrupts` count) is what the inference manager inspects after the upstream `/stream` call ends to decide whether the run is genuinely terminal or paused on a HITL checkpoint. It is a set of **interrupt identities** keyed by `interrupt.id`, never a bare counter: a sub-agent interrupt is delivered twice (top-level `HITL_INTERRUPT` with namespace metadata + the same event wrapped in `SUBAGENT_EVENT`), so `register_interrupt` makes the second envelope a no-op, and each resume round-trip (see below) removes exactly one identity — the payload's `interrupt_id`, or the oldest pending entry as a fallback. A counter here double-counts every sub-agent pause, drifts upward across resume legs, and leaves the bridge waiting for a resume after the run has actually finished.
 
 ---
+
+
+## Image results
+
+A tool that returns an image (`read_file` on a PNG) hands back content blocks
+carrying the whole file as base64. The **model** needs that. The event stream
+does not: it is persisted twice — the Redis event log and the message row — so
+the emitter replaces each image block with a thumbnail before emitting.
+
+```json
+[{"type": "image",
+  "mime_type": "image/jpeg",
+  "preview_base64": "…",
+  "bytes": 184320,
+  "omitted": false}]
+```
+
+`base64` is **dropped**, not renamed: nothing downstream should ever see the
+original, and a distinct key makes that unmistakable. `bytes` is the original
+size, so the UI can caption it honestly.
+
+Bounded by `AGUI_IMAGE_PREVIEW_MAX_EDGE` (512 px) and
+`AGUI_IMAGE_PREVIEW_MAX_BYTES` (48 KB). Over the ceiling — or undecodable, or
+Pillow missing — the block is marked `omitted` and the UI says so rather than
+rendering a broken image. A representative screenshot shrinks from ~146,000
+payload chars to ~10,000.
+
+Sharp edges:
+
+- **The shrink lives in the emitter, never in the tool result.** The emitter
+  observes the run; the tool result is the model's input. Touching it would
+  silently blind the agent to images it can read today, and nothing in the UI
+  would look wrong. `test_agui_previews.py` asserts the output object handed to
+  the emitter is unchanged.
+- **It never raises.** This is the streaming path — an exception would abort the
+  run mid-answer. Every failure degrades to `omitted`.
+- **Previews are exempt from the bridge's length cap.** They are already
+  bounded, and cutting a base64 string only makes it undecodable — which is
+  precisely what used to reach the UI.
+- **A preview is user content in the event log.** Small, but it is there; the
+  retention sweeper and redaction rules apply to it like any other stored event.
 
 ## Phase 6.5 — HITL Resume Round-Trip
 

@@ -18,6 +18,7 @@ from harness.memory.store import (
     entry_name,
     parse_entry,
     render_entry,
+    slugify_name,
 )
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "parse_entry",
     "render_entry",
     "set_memory_pool",
+    "slugify_name",
 ]

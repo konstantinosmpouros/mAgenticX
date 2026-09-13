@@ -2,11 +2,11 @@
 
 Every deep agent keeps **per-(user, agent) long-term memory** — durable facts it learns about a user (preferences, ongoing projects, key people, decisions, dates) that persist across conversations and are injected into its context at the start of each new chat. Memory is scoped to the **(user, agent) pair**: one agent's memory never bleeds into another's, mirroring how skills are scoped.
 
-The shape follows the skills progressive-disclosure pattern: a compact **`AGENTS.md` index** (one summary line per memory) is always injected, and the full body of each memory lives in an **`entries/<name>.yml`** detail file the agent reads on demand. The agent **writes** memory through its built-in `remember` tool; the **user** inspects and deletes it through the ProfilePanel **Memories** tab. There is no user-facing create/update — writes are the agent's job.
+The shape follows the skills progressive-disclosure pattern: a compact **`AGENTS.md` index** (one summary line per memory) is always injected, and the full body of each memory lives in an **`entries/<name>.yml`** detail file the agent reads on demand. The agent **writes** memory through its built-in `remember` tool and **deletes** one through `forget`; the **user** inspects and deletes through the ProfilePanel **Memories** tab. There is no user-facing create/update — writes are the agent's job.
 
 Two independent preference gates govern memory (see [user-preferences](user-preferences.md#agent-memory)):
 
-- **`use_memory`** (default **on**) — mounts the `/memories/` route (`AGENTS.md` + `entries/`) and attaches the `remember` tool. Off ⇒ the agent runs with no persistent memory at all.
+- **`use_memory`** (default **on**) — mounts the `/memories/` route (`AGENTS.md` + `entries/`) and attaches the `remember` and `forget` tools. Off ⇒ the agent runs with no persistent memory at all.
 - **`search_past_convs`** (default **off**, opt-in) — a *separate* capability: the `search_past_conversations` pgvector recall tool over the user's past messages (see [conversation-embeddings](conversation-embeddings.md)). Not part of this memory store.
 
 ---
@@ -123,6 +123,32 @@ Attached only when `use_memory` is on (gated in `DeepAgent._builtin_tools`), and
 listed in `RESERVED_DEEPAGENT_TOOL_NAMES` so an MCP tool cannot shadow it.
 
 ---
+
+
+## Delete path — the `forget` tool
+
+`harness/tools/forget.py` (`build_forget_tool`, bound per run to this
+(user, agent)) slugifies the name the same way `remember` does and deletes the
+row. Both call `slugify_name` from `harness/memory/` rather than each carrying
+its own copy — the slug *is* the key, so two implementations would let the pair
+disagree about which memory they meant.
+
+**Approval-gated by default** (`hitl_default=True` in the builtin roster). There
+is no tombstone and no second copy, so the user cannot undo it from the Memories
+tab either — there is nothing left to restore. It is not *locked*, so a user who
+wants it ungated can say so under Agents → Approvals.
+
+Sharp edges:
+
+- **Deleting something already gone is success, not an error.** The agent asked
+  for an end state that already holds, and LangGraph re-runs a node after an
+  approval pause or a restart. It reports "nothing to forget" and continues.
+- **Nothing here raises.** Like `remember`, it runs mid-turn, so a store failure
+  returns a string the model can reason about instead of failing the run.
+- **A name that slugs to nothing is refused before the delete**, so an empty
+  name can never become a delete for `""`.
+- **To correct a memory, call `remember` with the same name** — the upsert is
+  idempotent by name. `forget` is for facts that should stop existing.
 
 ## Read / delete path — the Memory inspector
 

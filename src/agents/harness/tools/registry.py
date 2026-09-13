@@ -26,6 +26,7 @@ from typing import Any, Callable, Optional
 from harness.tools.builtins import builtin_hitl_defaults
 from harness.tools.charts import build_render_chart_tool
 from harness.tools.create_skill import build_create_skill_tool
+from harness.tools.forget import build_forget_tool
 from harness.tools.memory_search import build_memory_search_tool
 from harness.tools.present_artifact import build_present_artifact_tool
 from harness.tools.remember import build_remember_tool
@@ -87,6 +88,7 @@ def register_native_tool(defn: NativeToolDef) -> NativeToolDef:
 # --- Built-in native tools --------------------------------------------------
 # Gate logic mirrors the previous DeepAgent._builtin_tools exactly:
 #   remember               → attached when use_memory is on
+#   forget                 → same gate; HITL-gated (a delete has no undo)
 #   search_past_conversations → attached when the user opted into search_past_convs
 #   present_artifact       → attached whenever there is a conversation to point into
 #   create_skill           → always attached (HITL-gated; writes to the user's pool)
@@ -106,6 +108,20 @@ register_native_tool(
                 thread_id=ctx.thread_id,
                 trust_level=ctx.trust_level,
             )
+            if ctx.use_memory
+            else None
+        ),
+    )
+)
+
+register_native_tool(
+    NativeToolDef(
+        name="forget",
+        description="Delete one memory from this (user, agent)'s long-term memory.",
+        auto_attach=True,
+        hitl_default=True,
+        builder=lambda ctx: (
+            build_forget_tool(user_id=ctx.user_id, agent_slug=ctx.agent_slug)
             if ctx.use_memory
             else None
         ),
@@ -150,7 +166,7 @@ register_native_tool(
 register_native_tool(
     NativeToolDef(
         name="present_artifact",
-        description="Designate a finished output/ file as a user-facing deliverable.",
+        description="Hand a finished output/ file to the user as a document card in the reply.",
         auto_attach=True,
         builder=lambda ctx: (
             build_present_artifact_tool(

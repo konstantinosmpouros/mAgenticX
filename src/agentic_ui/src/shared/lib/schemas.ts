@@ -416,3 +416,45 @@ export const AccountListSchema = z.record(z.unknown()).transform((raw) => ({
   maxAccounts: typeof raw.maxAccounts === "number" ? raw.maxAccounts : 0,
 }));
 export type AccountList = z.infer<typeof AccountListSchema>;
+
+// ---------------------------------------------------------------------------
+// Tool-result image blocks
+// ---------------------------------------------------------------------------
+// A tool that returns an image (`read_file` on a PNG) hands back content blocks.
+// The agents service replaces the original base64 with a bounded thumbnail
+// before emitting — the model still gets the full image — so what arrives here
+// is `preview_base64` plus the original size, or `omitted` when it could not be
+// shrunk. The raw `base64` key never reaches the client.
+export const ToolResultImageSchema = z.object({
+  type: z.literal("image"),
+  mime_type: z.string().catch("image/png"),
+  preview_base64: z.string().optional(),
+  bytes: z.number().optional(),
+  omitted: z.boolean().catch(false),
+});
+export type ToolResultImage = z.infer<typeof ToolResultImageSchema>;
+
+/**
+ * Pull image blocks out of a tool result, if it is one.
+ *
+ * Returns an empty array for every other shape, so the caller can fall back to
+ * rendering the payload as JSON. Parsing is best-effort by design: a tool
+ * result is semi-trusted content and a malformed one must not throw inside a
+ * message render.
+ */
+export const parseToolResultImages = (output: unknown): ToolResultImage[] => {
+  let blocks: unknown = output;
+  if (typeof output === "string") {
+    if (!output.includes('"image"')) return [];
+    try {
+      blocks = JSON.parse(output);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(blocks)) return [];
+  return blocks.flatMap((block) => {
+    const parsed = ToolResultImageSchema.safeParse(block);
+    return parsed.success ? [parsed.data] : [];
+  });
+};

@@ -18,14 +18,12 @@ after an approval pause, a tool retry, or a container restart runs this again.
 """
 from __future__ import annotations
 
-import re
-
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from core.logging import get_logger
 from core.settings import settings
-from harness.memory import AgentMemoryStore, get_memory_pool
+from harness.memory import AgentMemoryStore, get_memory_pool, slugify_name
 
 logger = get_logger(__name__)
 
@@ -49,17 +47,6 @@ class _RememberArgs(BaseModel):
     )
 
 
-def _slugify(name: str) -> str:
-    """Normalise a memory name into a safe slug (``[a-z0-9-]``).
-
-    Still enforced even though nothing touches the filesystem: the slug is the
-    key the agent addresses as ``entries/<slug>.yml``, so collapsing to this
-    charset keeps a name from carrying slashes or dots into a path the model
-    will later try to read.
-    """
-    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-
-
 def build_remember_tool(
     *,
     user_id: str,
@@ -78,7 +65,7 @@ def build_remember_tool(
     """
 
     async def _remember(name: str, summary: str, content: str) -> str:
-        slug = _slugify(name)
+        slug = slugify_name(name)
         if not slug:
             return "Could not save: 'name' must contain letters or digits."
         summary = summary.strip()[:_MAX_SUMMARY]

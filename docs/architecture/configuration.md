@@ -462,3 +462,13 @@ These flip behavior at boot; all are **fail-closed by default** (secure unless e
 | `SESSION_DEVICE_COOKIE_NAME` | `__Host-mx_device` / `mx_device` | Cookie holding the opaque parked-session index id. Follows the same `__Host-` rule as the session cookies. |
 
 See [authentication-and-session § Phase 10](../flows/authentication-and-session.md) for the flow and threat model.
+
+### AG-UI image previews (`agents`)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AGUI_IMAGE_PREVIEW_MAX_EDGE` | `512` | Longest edge, in px, of the thumbnail that replaces an image in a tool result |
+| `AGUI_IMAGE_PREVIEW_MAX_BYTES` | `49152` | Hard ceiling on the encoded thumbnail; over it the image is reported as omitted rather than shipped |
+
+The model always receives the full image — these bound only what the event
+stream carries. See [agui-protocol](../development/agui-protocol.md#image-results).

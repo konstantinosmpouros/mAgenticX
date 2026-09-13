@@ -548,6 +548,22 @@ class SummarizationSettings(BaseSettings):
     keep_messages: int = Field(20, validation_alias="SUMMARIZATION_KEEP_MESSAGES")
 
 
+class AguiSettings(BaseSettings):
+    """Bounds on what the AG-UI event stream carries.
+
+    An image tool result is shrunk to a thumbnail before it is emitted, because
+    the stream is persisted (Redis event log + the message row) and a raw image
+    would put megabytes there per call. The model keeps the full image — the
+    emitter only observes the run.
+    """
+    model_config = _BASE_MODEL_CONFIG
+
+    image_preview_max_edge: int = Field(512, validation_alias="AGUI_IMAGE_PREVIEW_MAX_EDGE")
+    # Hard ceiling on the encoded thumbnail. Over it the image is reported as
+    # omitted rather than shipped, so one pathological file cannot bloat a run.
+    image_preview_max_bytes: int = Field(49152, validation_alias="AGUI_IMAGE_PREVIEW_MAX_BYTES")
+
+
 class BridgeSettings(BaseSettings):
     """Connection back to the dialogue_bridge for the rare agent → bridge call.
 
@@ -620,6 +636,7 @@ class Settings(BaseSettings):
     deep_agents: DeepAgentsSettings = Field(default_factory=DeepAgentsSettings)
     filesystem: FilesystemSettings = Field(default_factory=FilesystemSettings)
     summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)
+    agui: AguiSettings = Field(default_factory=AguiSettings)
 
     @model_validator(mode="after")
     def _require_proxy_secret(self) -> "Settings":

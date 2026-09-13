@@ -2,6 +2,7 @@ import json
 import time
 from typing import Any, Dict, Optional, Sequence
 
+from harness.agui.previews import shrink_image_blocks
 from harness.agui.events import (
     # Human-in-the-loop interrupt event
     HITL_INTERRUPT_EVENT_TYPE,
@@ -182,11 +183,15 @@ class AGUIEmitter:
         # Final result wrapper. `error=True` rides as an extra field (the event
         # model allows extras) so the UI renders the tool step as failed.
         message_id = thread_id or tool_call_id
+        content = output if isinstance(output, str) else json.dumps(output, ensure_ascii=False)
+        # Images are shrunk to a thumbnail for the stream only — `output` is the
+        # model's and is not touched. See harness/agui/previews.py.
+        content = shrink_image_blocks(content)
         tool_results = ToolCallResultEvent(
             type=EventType.TOOL_CALL_RESULT,
             tool_call_id=tool_call_id,
             message_id=message_id,
-            content=output if isinstance(output, str) else json.dumps(output, ensure_ascii=False),
+            content=content,
             **({"error": True} if error else {}),
         )
         return self._emit(tool_results, writer, namespace)

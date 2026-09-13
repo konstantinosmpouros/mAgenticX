@@ -795,3 +795,49 @@ async def test_fail_stale_queued_runs_skips_recent(session_factory, seeded_user,
         run = await session.get(MessageTable, recent_id)
         # Not past the stale cutoff -> left untouched.
         assert run.streaming_status == "queued"
+
+
+# ---------------------------------------------------------------------------
+# Tool-result truncation
+# ---------------------------------------------------------------------------
+# The cap runs inside record_event, before the event is sequenced and published,
+# so it bounds the live stream as well as what is stored. That is fine for text
+# and fatal for an image: cutting a base64 string mid-way leaves something no
+# browser can decode, which is exactly what used to reach the UI. The agents
+# service now ships a bounded thumbnail instead, and those are exempt.
+
+
+def _truncate(event):
+    from utils.inference_runs import _truncate_tool_result
+
+    return _truncate_tool_result(event)
+
+
+def test_an_oversized_text_result_is_still_cut():
+    from core.settings import settings
+
+    limit = settings.inference.tool_result_max_chars
+    out = _truncate({"type": "TOOL_CALL_RESULT", "content": "x" * (limit + 50)})
+    assert out["truncated"] is True
+    assert len(out["content"]) == limit
+
+
+def test_a_result_within_the_limit_is_untouched():
+    event = {"type": "TOOL_CALL_RESULT", "content": "short"}
+    assert _truncate(event) is event
+
+
+def test_an_image_preview_survives_however_long_it_is():
+    from core.settings import settings
+
+    # Already bounded upstream; re-cutting it could only corrupt it.
+    limit = settings.inference.tool_result_max_chars
+    content = '[{"type":"image","preview_base64":"' + "A" * (limit + 500) + '"}]'
+    out = _truncate({"type": "TOOL_CALL_RESULT", "content": content})
+    assert "truncated" not in out
+    assert out["content"] == content
+
+
+def test_non_string_content_is_untouched():
+    event = {"type": "TOOL_CALL_RESULT", "content": {"not": "a string"}}
+    assert _truncate(event) is event

@@ -1,11 +1,18 @@
 """Agent tool: designate a finished file as a user-facing deliverable.
 
-The single explicit act that promotes ONE document out of the agent's scratch
-and helper files into something the user actually receives. Everything an agent
-(or its sub-agents) writes to ``/conversation/output/`` stays invisible; only a
-file passed to ``present_artifact`` is surfaced — as a live artifact card during
-the run and, once the run finalizes, as a downloadable/previewable attachment on
-the assistant message.
+The single explicit act that promotes a document out of the agent's scratch and
+helper files into something the user actually receives. Everything an agent (or
+its sub-agents) writes to ``/conversation/output/`` stays invisible; only a file
+passed to ``present_artifact`` is surfaced — as a live artifact card during the
+run and, once the run finalizes, as a downloadable/previewable attachment on the
+assistant message.
+
+The card lands **at the position of the call**, not at the end of the turn: the
+timeline closes the open content block so any text the model writes afterwards
+starts below it. That makes the tool a mid-reply move ("here is the summary" →
+card → "and the detail is in section 3"), which is what the description steers
+towards. Presenting several distinct files in one turn is safe — each gets its
+own card, and the bridge dedupes the finalize fetch by path.
 
 The tool itself does NOT emit the AG-UI event (deep agents don't stream the
 custom channel — see ``harness.agui.normalizer``). It validates the file exists
@@ -84,22 +91,30 @@ def build_present_artifact_tool(
             filename=resolved.name,
         )
         return (
-            f"Presented '{title}' to the user. The document is now attached to "
-            "your reply — do not paste its full contents into the chat."
+            f"'{title}' is now a document card in the conversation, which the "
+            "user can open or download. Carry on in the same reply — whatever "
+            "you write next appears below the card. Do not paste the document's "
+            "contents into the chat."
         )
 
     return StructuredTool.from_function(
         func=_present_artifact,
         name="present_artifact",
         description=(
-            "Hand a finished document to the user. Call this ONCE for each final "
-            "deliverable you want the user to receive (a report, export, or "
-            "written document) after you have saved it under "
-            "'/conversation/output/' with write_file. The file is shown to the "
-            "user as a downloadable, previewable attachment on your reply. Do "
-            "NOT present scratch notes, intermediate drafts, or helper files — "
-            "only the finished artifact(s). Provide the file 'path', a short "
-            "'title', and an optional one-line 'summary'."
+            "Hand a finished document to the user, right where you are in the "
+            "reply. The moment you call this, a document card appears in the "
+            "conversation at that point — the user can preview or download it, "
+            "and anything you write afterwards continues below it. So use it "
+            "mid-answer, as you go: hand over each document as it becomes "
+            "ready and keep talking around it, rather than saving every "
+            "delivery for a sign-off at the end. A file written to "
+            "'/conversation/output/' stays invisible until you present it, so "
+            "write it there first with write_file. Present as many separate "
+            "documents as you genuinely produced — each gets its own card — "
+            "but present a given file once, and only when it is finished: "
+            "never scratch notes, intermediate drafts, or helper files. "
+            "Provide the file 'path', a short 'title', and an optional "
+            "one-line 'summary' shown under the title on the card."
         ),
         args_schema=_PresentArtifactArgs,
     )

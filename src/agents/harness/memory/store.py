@@ -31,6 +31,7 @@ cannot be edited out of step with the entries it indexes.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
@@ -106,6 +107,18 @@ def normalise_key(key: str) -> str:
 def entry_key(name: str) -> str:
     """The mount path an entry answers to."""
     return f"{ENTRY_PREFIX}{name}{ENTRY_SUFFIX}"
+
+
+def slugify_name(name: str) -> str:
+    """Normalise a memory name into the slug used as its key (``[a-z0-9-]``).
+
+    Lives here rather than in a tool because the slug *is* the key: it is the
+    third component of the row's primary key, the ``entries/<slug>.yml`` path
+    the agent reads back, and the anchor the index row is matched by. Two tools
+    write and delete by it, and a second implementation would let them disagree
+    about which memory they meant.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
 def entry_name(key: str) -> Optional[str]:

@@ -244,11 +244,19 @@ def _merge_delta_into(last: dict[str, Any], incoming: dict[str, Any]) -> bool:
 
 
 def _truncate_tool_result(event: dict[str, Any]) -> dict[str, Any]:
+    """Cap an oversized tool result, live and stored.
+
+    Image results are exempt: the agents service already replaced the original
+    with a bounded thumbnail, and cutting a base64 string mid-way only makes it
+    undecodable — which is exactly what used to reach the UI.
+    """
     content = event.get("content")
+    if not isinstance(content, str):
+        return event
     limit = settings.inference.tool_result_max_chars
-    if isinstance(content, str) and len(content) > limit:
-        return {**event, "content": content[:limit], "truncated": True}
-    return event
+    if len(content) <= limit or "preview_base64" in content:
+        return event
+    return {**event, "content": content[:limit], "truncated": True}
 
 
 class InferenceRunRuntime:

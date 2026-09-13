@@ -97,7 +97,7 @@ Each auto-attach builtin's `builder(ctx)` returns the tool **or** `None` when it
 | `remember` | Writes a durable fact to this (user, agent)'s long-term memory. | `use_memory` is on (same flag that mounts `/memories/`) |
 | `search_past_conversations` | Semantic recall across the user's earlier conversations (pgvector). | `search_past_convs` is opted in |
 | `render_chart` | Draws a chart inline in the reply from data the agent supplies — 8 types (`bar`, `line`, `area`, `pie`, `radar`, `radial`, `scatter`, `composed`) and 3 modifiers (`stacked`, `horizontal`, `show_values`). Not HITL-gated — it draws, it does not write. | a `conversation_id` exists (no preference gate) |
-| `present_artifact` | Marks a finished `output/` file as a user-facing deliverable. | a `conversation_id` exists (no preference gate) |
+| `present_artifact` | Hands a finished `output/` file to the user as a document card, placed inline at the point of the call — so an agent presents each document as it becomes ready rather than only at the end of the turn. | a `conversation_id` exists (no preference gate) |
 | `create_skill` | Authors a reusable skill into the user's pool (`add_custom_to_user`) and enables it for the calling agent (`assign_user_skill_to_agent`). Writes the **user-managed** tier, so the user can still disable it in Settings → Agents — not the read-only tier `sync_agent_default_skills` fills from an agent's declared `skills:`. | ungated, but **approval-gated by default** (see below) |
 
 Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → present_artifact → create_skill`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
@@ -238,7 +238,7 @@ what is configurable:
 
 | Kind | Members | Enable | Approval |
 | --- | --- | --- | --- |
-| `builtin` | **framework (9)** `write_todos` `ls` `read_file` `write_file` `edit_file` `glob` `grep` `execute` `task` — **native (5)** `remember` `search_past_conversations` `render_chart` `present_artifact` `create_skill` | never | configurable |
+| `builtin` | **framework (9)** `write_todos` `ls` `read_file` `write_file` `edit_file` `glob` `grep` `execute` `task` — **native (6)** `remember` `forget` `search_past_conversations` `render_chart` `present_artifact` `create_skill` | never | configurable |
 | `mcp` | whatever the gateway exposes | configurable | configurable |
 
 **A builtin can never be enable-configured**, and not by policy. The framework

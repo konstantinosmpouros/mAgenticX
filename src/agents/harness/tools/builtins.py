@@ -66,6 +66,7 @@ BUILTIN_TOOLS: tuple[BuiltinTool, ...] = (
     ),
     BuiltinTool("task", "Delegation", "Delegate to a sub-agent.", hitl_default=True),
     BuiltinTool("remember", "Memory", availability=Availability.USE_MEMORY),
+    BuiltinTool("forget", "Memory", hitl_default=True, availability=Availability.USE_MEMORY),
     BuiltinTool(
         "search_past_conversations", "Memory", availability=Availability.SEARCH_PAST_CONVS
     ),
