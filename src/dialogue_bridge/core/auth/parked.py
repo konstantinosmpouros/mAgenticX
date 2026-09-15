@@ -32,7 +32,6 @@ import base64
 import binascii
 import os
 import secrets
-from typing import Iterable
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
@@ -129,7 +128,7 @@ def _hkdf32(material: bytes) -> bytes:
 
 def _aad(device_id: str, user_id: str) -> bytes:
     """Bind a sealed token to exactly one (device, user) pair."""
-    return f"{device_id}:{user_id}".encode("utf-8")
+    return f"{device_id}:{user_id}".encode()
 
 
 def _seal(device_id: str, user_id: str, token: str) -> str:

@@ -187,7 +187,7 @@ async def run_embedding_sweeper(stop_event: asyncio.Event) -> None:
                 "Embedding pass failed against the agents service; will retry",
                 failure_reason=type(exc).__name__,
             )
-        except Exception:  # noqa: BLE001 — a daemon loop must survive any DB/runtime hiccup
+        except Exception:
             logger.error(
                 "embedding_sweeper_unexpected_error",
                 "Unexpected error in embedding sweeper; will retry",

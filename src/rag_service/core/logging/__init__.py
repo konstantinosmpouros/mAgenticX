@@ -6,14 +6,14 @@ from core.logging.middleware import RequestLoggingMiddleware
 from core.logging.operations import elapsed_ms, logged_operation
 
 __all__ = [
+    "EventLogger",
+    "RequestLoggingMiddleware",
     "clear_context",
     "configure_logging",
     "elapsed_ms",
-    "EventLogger",
     "get_context",
     "get_logger",
     "logged_operation",
     "register_exception_handlers",
-    "RequestLoggingMiddleware",
     "set_context",
 ]

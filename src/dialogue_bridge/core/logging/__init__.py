@@ -8,20 +8,20 @@ from core.logging.redaction import scrub_url_credentials
 from core.logging.stream_metrics import StreamMetrics, iter_tracked_stream, log_stream_outcome
 
 __all__ = [
+    "EventLogger",
+    "RequestLoggingMiddleware",
+    "StreamMetrics",
     "clear_context",
     "configure_logging",
     "elapsed_ms",
-    "EventLogger",
     "get_context",
     "get_logger",
     "iter_tracked_stream",
-    "log_stream_outcome",
     "log_event",
+    "log_stream_outcome",
     "logged_db_operation",
     "register_exception_handlers",
     "scrub_url_credentials",
-    "RequestLoggingMiddleware",
     "set_context",
     "shutdown_logging",
-    "StreamMetrics",
 ]

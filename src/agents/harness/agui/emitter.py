@@ -7,12 +7,12 @@ from harness.agui.events import (
     # Human-in-the-loop interrupt event
     HITL_INTERRUPT_EVENT_TYPE,
     HITLInterruptEvent,
-    
+
     # Planning snapshot event
     PLAN_SNAPSHOT_EVENT_TYPE,
     PlanItem,
     PlanSnapshot,
-    
+
     # Task -> sub-agent assignment
     TASK_SUBAGENT_EVENT_TYPE,
     TaskSubAgentEvent,
@@ -41,28 +41,28 @@ from harness.agui.events import (
 )
 from ag_ui.core import (
     EventType,
-    
+
     # General run events
     RunStartedEvent,
     RunFinishedEvent,
-    
+
     # Text message events (assistant responses)
     TextMessageStartEvent,
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageChunkEvent,
-    
+
     # Thinking events
     ThinkingStartEvent,
     ThinkingEndEvent,
     ThinkingTextMessageContentEvent,
-    
+
     # Tool-call events
     ToolCallStartEvent,
     ToolCallArgsEvent,
     ToolCallEndEvent,
     ToolCallResultEvent,
-    
+
     # Safer metrics carrier
     CustomEvent
 )

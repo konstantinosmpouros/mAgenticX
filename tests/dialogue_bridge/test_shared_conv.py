@@ -13,14 +13,12 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-import pytest_asyncio
 from fastapi import HTTPException
 from sqlalchemy import select
 
 from core.database import (
     AttachmentTable,
     ConversationShareTable,
-    ConversationTable,
     MessageTable,
     b64_encode,
 )

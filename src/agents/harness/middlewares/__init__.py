@@ -6,8 +6,8 @@ from harness.middlewares.summarization import (
 from harness.middlewares.tool_error import ToolErrorMiddleware
 
 __all__ = [
-    "ToolErrorMiddleware",
     "ConfigurableSummarizationMiddleware",
+    "ToolErrorMiddleware",
     "build_summarization_middleware",
     "exclude_stock_summarization",
 ]

@@ -246,7 +246,8 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 | Concept | File | What to look for |
 | --- | --- | --- |
 | Native-tool registry + builtins + gates | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) | `NATIVE_TOOLS`, `build_auto_attach_tools`, `resolve_native_tool`, `native_catalog` |
-| Builtin implementations | [src/agents/harness/tools/](../../src/agents/harness/tools/) | `remember.py`, `forget.py`, `memory_search.py`, `charts.py`, `view_image.py`, `present_artifact.py`, `create_skill.py` |
+| Gate + selection rules | [src/agents/harness/tools/gates.py](../../src/agents/harness/tools/gates.py) | `resolve_interrupt_on` (the four-layer merge, locked last), `user_gates` (cache key → tool name), `strip_reserved_names` (an MCP tool may not shadow a prebuilt one), `trust_level`, `key_set`/`approval_map` |
+| Builtin implementations | [src/agents/harness/tools/](../../src/agents/harness/tools/) | One folder per tool — `<name>/tool.py` plus a barrel fixing `harness.tools.<name>` as the import path: `remember/`, `forget/`, `memory_search/`, `charts/`, `view_image/`, `present_artifact/`, `create_skill/`. The two cross-cutting modules stay at the package level: `builtins.py` and `registry.py`. |
 | Assembly + builtins + disable filter | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) | `build_deep_agent`, `_builtin_tools`, `_apply_tool_disables`, `_apply_live_tools` |
 | MCP filter (`attach_tools`, cache keys) | [src/agents/harness/abstractions/base_agent.py](../../src/agents/harness/abstractions/base_agent.py) | `attach_tools`, `_filter_live_tools`, `_build_tool_key_from_config` |
 | YAML → spec tools (native + MCP) | [src/agents/harness/abstractions/yaml_agent.py](../../src/agents/harness/abstractions/yaml_agent.py) | `config_tool_names` seed, `_resolve_native_tools` |

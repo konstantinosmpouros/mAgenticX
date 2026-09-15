@@ -253,7 +253,7 @@ async def list_custom_agent_definitions(db: AsyncSession, user_id: str) -> List[
     """
     result = await db.execute(
         select(AgentTable)
-        .where(AgentTable.owner_user_id == user_id, AgentTable.is_active == True)  # noqa: E712
+        .where(AgentTable.owner_user_id == user_id, AgentTable.is_active == True)
         .order_by(AgentTable.name)
     )
     return [_summary_from_row(row) for row in result.scalars().all()]
@@ -442,7 +442,7 @@ async def _require_owned_row(db: AsyncSession, user_id: str, agent_id: str) -> A
         select(AgentTable).where(
             AgentTable.id == agent_id,
             AgentTable.owner_user_id == user_id,
-            AgentTable.is_active == True,  # noqa: E712
+            AgentTable.is_active == True,
         )
     )
     row = result.scalar_one_or_none()
@@ -452,10 +452,10 @@ async def _require_owned_row(db: AsyncSession, user_id: str, agent_id: str) -> A
 
 
 __all__ = [
-    "list_custom_agent_definitions",
-    "get_custom_agent_definition",
-    "validate_custom_agent_definition",
     "create_custom_agent",
-    "update_custom_agent",
     "delete_custom_agent",
+    "get_custom_agent_definition",
+    "list_custom_agent_definitions",
+    "update_custom_agent",
+    "validate_custom_agent_definition",
 ]

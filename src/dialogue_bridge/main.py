@@ -183,89 +183,89 @@ async def health():
 # Include API routers
 app.include_router(
     auth_router,
-    prefix=f"/v1/auth",
+    prefix="/v1/auth",
     tags=["Auth"]
 )
 app.include_router(
     inference_router,
-    prefix=f"/v1/inference",
+    prefix="/v1/inference",
     tags=["Inference"],
 )
 app.include_router(
     speech_router,
-    prefix=f"/v1/speech",
+    prefix="/v1/speech",
     tags=["Speech"],
 )
 app.include_router(
     voice_router,
-    prefix=f"/v1/voice",
+    prefix="/v1/voice",
     tags=["Voice"],
 )
 app.include_router(
     catalog_router,
-    prefix=f"/v1/catalog",
+    prefix="/v1/catalog",
     tags=["Catalog"]
 )
 app.include_router(
     # Registered before the tools router so the literal "custom" path segment is
     # matched ahead of the `{agent_id}` parameter.
     user_agents_router,
-    prefix=f"/v1/agents",
+    prefix="/v1/agents",
     tags=["Custom Agents"],
 )
 app.include_router(
     agent_tools_router,
-    prefix=f"/v1/agents",
+    prefix="/v1/agents",
     tags=["Agent Tools"],
 )
 app.include_router(
     preferences_router,
-    prefix=f"/v1/preferences",
+    prefix="/v1/preferences",
     tags=["Preferences"]
 )
 app.include_router(
     conversations_router,
-    prefix=f"/v1/conversations",
+    prefix="/v1/conversations",
     tags=["Conversations"],
 )
 app.include_router(
     messages_router,
-    prefix=f"/v1/messages",
+    prefix="/v1/messages",
     tags=["Messages"],
 )
 app.include_router(
     attachments_router,
-    prefix=f"/v1/attachments",
+    prefix="/v1/attachments",
     tags=["Attachments"],
 )
 app.include_router(
     shared_conv_router,
-    prefix=f"/v1/shared-conversations",
+    prefix="/v1/shared-conversations",
     tags=["Shared Conversations"],
 )
 app.include_router(
     search_router,
-    prefix=f"/v1/search",
+    prefix="/v1/search",
     tags=["Search"],
 )
 app.include_router(
     skills_router,
-    prefix=f"/v1/skills",
+    prefix="/v1/skills",
     tags=["Skills"],
 )
 app.include_router(
     memories_router,
-    prefix=f"/v1/memories",
+    prefix="/v1/memories",
     tags=["Memories"],
 )
 app.include_router(
     scheduled_tasks_router,
-    prefix=f"/v1/scheduled-tasks",
+    prefix="/v1/scheduled-tasks",
     tags=["Scheduled Tasks"],
 )
 app.include_router(
     usage_router,
-    prefix=f"/v1/usage",
+    prefix="/v1/usage",
     tags=["Usage"],
 )
 # Service-to-service only. Guarded by require_internal_caller AND denied at the
@@ -273,7 +273,7 @@ app.include_router(
 # backend network. Backs the agent's search_past_conversations tool.
 app.include_router(
     internal_memory_router,
-    prefix=f"/v1/internal",
+    prefix="/v1/internal",
     tags=["Internal"],
 )
 
@@ -285,6 +285,6 @@ app.include_router(
 # had not heard of — the state a half-failed create leaves behind.
 app.include_router(
     internal_sync_router,
-    prefix=f"/v1/internal",
+    prefix="/v1/internal",
     tags=["Internal"],
 )

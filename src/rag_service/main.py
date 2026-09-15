@@ -105,7 +105,7 @@ async def retrieve(request: Query, collection_name: str):
         collection_name=collection_name,
         embedding_function=embeddings_model,
     )
-    
+
     retriever = vectordb.as_retriever(search_kwargs={"k": request.k})
     started_at = time.perf_counter()
     try:
@@ -156,7 +156,7 @@ async def get_schema(table: str):
 async def query_sql(body: ExcelSQLQuery, table: str):
     """Run arbitrary SQL and return result rows as JSON. The SQL *must* reference the table name provided in the path parameter."""
     logger.info("sql_query_started", "DuckDB SQL query started", table=table, sql_length=len(body.sql))
-    if not table in TABLES.keys():
+    if table not in TABLES.keys():
         logger.warning("sql_table_not_found", "SQL query requested for unknown table", table=table)
         raise HTTPException(status_code=404, detail="Table not found.")
     sql = _validate_read_only_sql(body.sql)

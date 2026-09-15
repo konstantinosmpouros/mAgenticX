@@ -496,4 +496,4 @@ async def sync_workspaces(stop_event: asyncio.Event) -> None:
             continue
 
 
-__all__ = ["sync_workspaces", "build_inventory", "content_hash", "GENERATED_MANIFEST"]
+__all__ = ["GENERATED_MANIFEST", "build_inventory", "content_hash", "sync_workspaces"]

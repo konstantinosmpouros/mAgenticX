@@ -3,7 +3,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import httpx
-import pytest
 
 
 def _custom_body(name: str, description: str = "from api", extra_files=None):
@@ -355,7 +354,7 @@ class _FakeResumeAgent:
         yield b"data: resumed\n\n"
 
     def _encode_run_error(self, exc):
-        return f"data: error {exc}\n\n".encode("utf-8")
+        return f"data: error {exc}\n\n".encode()
 
 
 class _NoInterruptResumeAgent(_FakeResumeAgent):

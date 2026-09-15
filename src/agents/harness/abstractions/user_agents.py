@@ -388,9 +388,9 @@ def delete_user_agent(user_id: str, slug: str) -> bool:
 
 __all__ = [
     "AgentValidationError",
-    "validate_write",
-    "list_user_agents",
-    "get_user_agent",
-    "write_user_agent",
     "delete_user_agent",
+    "get_user_agent",
+    "list_user_agents",
+    "validate_write",
+    "write_user_agent",
 ]

@@ -63,7 +63,7 @@ async def embed(req: EmbedRequest) -> EmbedResponse:
 
     try:
         vectors = await client.aembed_documents(req.texts)
-    except Exception as exc:  # noqa: BLE001 — re-raised below as a typed HTTP error
+    except Exception as exc:
         provider_error_handler.raise_provider_error(
             logger,
             exc,

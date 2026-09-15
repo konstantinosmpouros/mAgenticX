@@ -344,7 +344,7 @@ Separate from memory, every run may carry the user's **personalization** — a p
 - `parse_personalization(context)` — **fail-closed** re-validation at the service boundary (the bridge already validated, but agents don't trust it): unknown preset → `default`, text stripped of control chars and re-capped.
 - `build_personalization_prompt(...)` — composes the `## User Personalization` block: a framing preamble pinning the trust boundary (user preferences are *data* — tone/style only, never overriding tool policy, filesystem permissions, or the rest of the prompt), the preset's directive, and the custom-instruction fields inside `<user_custom_instructions>` fences (the closing fence is filtered from user text so the block can't be terminated early).
 
-`BaseAgent.__init__` parses it into `self.personalization` (both agent families get it); `DeepAgent.build_deep_agent()` appends the block via `_personalization_system_prompt()` — final prompt order: **static instructions → personalization → memory**. It applies to the **main agent only**, never sub-agents, and returns `""` when inactive so a default run's prompt is byte-identical to the pre-feature one. Override `_personalization_system_prompt()` to suppress or reposition it for a specific agent. LangGraph agents parse but don't consume it yet. See [user-preferences](../flows/user-preferences.md#personalization-personality--custom-instructions).
+`BaseAgent.__init__` parses it into `self.personalization` (both agent families get it); `DeepAgent.build_deep_agent()` hands it to the prompt composer as one section among several — see [§ System-prompt composition](#system-prompt-composition). It applies to the **main agent only**, never sub-agents, and is `""` when inactive so a default run's prompt is byte-identical to the pre-feature one. Override `prompt_context()` to suppress or alter it for a specific agent. LangGraph agents parse but don't consume it yet. See [user-preferences](../flows/user-preferences.md#personalization-personality--custom-instructions).
 
 #### 4. Create skills
 
@@ -491,6 +491,64 @@ __all__ = ["MyDeepAgent", ...]
 ```
 
 ---
+
+
+## System-prompt composition
+
+A deep agent's system prompt is **its own instructions plus platform sections
+appended underneath** — assembled by `harness/prompt_engineering`, the
+counterpart to `harness/tools`. One decides which tools a run has; the other
+decides what the run is *told* it has, from the same flags.
+
+```text
+harness/prompt_engineering/
+├── context.py              PromptContext — the facts a section may depend on
+├── composer.py             compose_system_prompt() + the fixed section order
+└── prompts/
+    ├── filesystem_prompt.py     which mounts exist, which refuse writes
+    ├── capabilities_prompt.py   view_image / present_artifact / render_chart
+    ├── memory_prompt.py         /memories/, remember, forget, past-conv search
+    └── temporal_prompt.py       today's date and time
+```
+
+Order is fixed in the composer, not at call sites:
+
+1. the agent's own instructions (`AGENT.md`, or a code agent's constant)
+2. personalization
+3. the workspace
+4. the platform verbs
+5. long-term memory
+6. the current date and time
+
+**Stable first, volatile last.** Sections 1–5 are fixed for a given agent and
+run, so a provider can cache that prompt prefix; section 6 changes every
+minute. Putting the clock any earlier would invalidate the cache on every
+request — which is also why the stamp has no seconds.
+
+### The rule the package exists to enforce
+
+A section may only describe something the run actually has. `PromptContext` is
+filled from the same flags that build the mounts and attach the tools, so
+`/reference/` is described only when `reference_dir` is mounted, `execute` only
+when the sandbox is on, `/memories/` only when `use_memory` is set. Advertising
+a capability that is absent is worse than silence: the agent tries it, fails,
+and then distrusts the rest of its prompt.
+
+Every section returns `""` when its feature is off, so an agent with nothing
+enabled composes to exactly the instructions it was given.
+
+### Why it is not optional
+
+A user-authored agent inherits nothing. One whose entire prompt was *"You are a
+good friend that helps me with whatever l want"* told its user it could not
+browse a filesystem — while holding every mount and every file tool. Platform
+agents never hit this because their hand-written prompts documented the layout;
+that documentation now lives here instead, so a 56-byte prompt still knows what
+it is.
+
+Override `DeepAgent.prompt_context()` to change what an agent is told; override
+nothing to get the defaults. The agent's instructions are never rewritten or
+trimmed by the composer.
 
 ## Phase 4 — Tool Integration
 

@@ -16,7 +16,7 @@ import {
   ChainOfThoughtHeader,
   ChainOfThoughtStep,
 } from "@/shared/ui/ai-elements/chain-of-thought";
-import { toolIsBare, toolLabel } from "@/shared/lib/consts";
+import { toolIcon, toolIsBare, toolLabel } from "@/shared/lib/consts";
 import { ToolInput, ToolOutput } from "@/shared/ui/ai-elements/tool";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/ui/collapsible";
 import { ShimmeringText } from "@/shared/ui/shadcn-io/shimmering-text";
@@ -89,10 +89,14 @@ const PendingApprovalIcon = ({ className }: { className?: string }) => (
 type ToolApprovalFace = "pending" | "decision-sent" | "approved" | "rejected" | null;
 
 const toolStepIcon = (tool: TimelineToolExecution, face: ToolApprovalFace) => {
+  // Approval and failure outrank identity: a rejected `ls` must not read as a
+  // successful one at a glance, so those states keep their own glyph.
   if (face === "pending") return PendingApprovalIcon;
   if (face === "rejected") return ShieldX;
   if (tool.state === "output-error") return XCircle;
-  if (tool.state === "output-available") return Wrench;
+  // A settled call shows what it *did* where we have a glyph for it — a column
+  // of identical wrenches gives the eye nothing to scan by.
+  if (tool.state === "output-available") return toolIcon(tool.name) ?? Wrench;
   return RunningToolIcon;
 };
 

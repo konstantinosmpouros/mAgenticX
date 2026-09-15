@@ -1,19 +1,17 @@
-import asyncio
-import inspect
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence, Set
+from typing import Any, Callable, List, Mapping, Optional, Literal, Sequence
 from abc import abstractmethod, ABC
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import AgentType, BaseAgent
-from harness.checkpointer import get_checkpointer
 from harness.personalization import build_personalization_prompt
-from harness.tools.builtins import BUILTIN_BY_NAME, builtin_hitl_defaults, locked_gates
+from harness.prompt_engineering import PromptContext, compose_system_prompt, describe_sections
+from harness.tools.gates import resolve_interrupt_on, strip_reserved_names, trust_level
 from harness.tools.registry import NativeToolContext, build_auto_attach_tools
 from harness.middlewares import (
     ConfigurableSummarizationMiddleware,
@@ -26,39 +24,13 @@ from harness.filesystem import (
     ensure_user_agent_filesystem,
     workspace_write_deny,
 )
-from utils import get_tool_cache_key
 from core.logging import get_logger
+from core.settings import settings
 
 logger = get_logger(__name__)
 
 STREAMING_MODES = Literal["updates", "messages"]
 SubAgentsT = Sequence[Any] | Mapping[str, Any] | None
-
-# Memory-usage instructions appended to a deep agent's system prompt **only when
-# memory is enabled** (see DeepAgent._memory_system_prompt). Kept out of the
-# agents' static prompts so a use_memory=False run never advertises a /memories/
-# mount it doesn't have. Describes the per-(user, agent) AGENTS.md index + entries
-# progressive-disclosure pattern and the `remember` write tool.
-_MEMORY_SYSTEM_PROMPT = """\
-## Your Long-Term Memory
-
-You have a persistent memory about THIS user, private to you and carried across
-every conversation you have with them:
-
-- `/memories/AGENTS.md` — your memory **index**, loaded into your context
-  automatically at the start of each conversation. Each row is
-  `- **<name>** — <summary>`, one per saved memory.
-- When a row looks relevant, read its full detail with
-  `read_file /memories/entries/<name>.yml`.
-- To save something durable (a preference, an ongoing project, a key person, a
-  decision, an important date), call the `remember` tool with a short `name`, a
-  one-line `summary`, and the full `content`. Re-using a `name` updates that
-  memory in place.
-
-Save only durable, reusable facts — never transient chatter. This memory is the
-only thing that outlives the current conversation (your `/conversation/`
-workspace does not carry over)."""
-
 
 class DeepAgent(BaseAgent, ABC):
     """
@@ -72,18 +44,17 @@ class DeepAgent(BaseAgent, ABC):
     Build lifecycle (invoked automatically by ``astream()`` on first run):
 
         load_skills()        → self.skills_paths   (auto-discovered: ["./skills/"])
-        load_memory()        → self.memory          (long-term memory store, if any)
         load_agent_md()      → self.agent_md_paths  (per-(user,agent): ["/memories/AGENTS.md"])
         register_subagents() → self.sub_agents       (nested agents, if any)
         register_agent()  ★  → self.agent            (the final runnable)
 
-    Convention-based asset discovery (all paths relative to the concrete
-    subclass file, resolved via inspect at runtime):
+    Assets are **virtual mount routes**, not paths on the subclass's package —
+    ``harness.filesystem.workspace`` maps them to this (user, agent,
+    conversation)'s tree:
 
         /memories/AGENTS.md      — per-(user, agent) memory index (→ self.agent_md_paths)
-        <impl_dir>/skills/       — skill subdirectories      (→ self.skills_paths)
-        <impl_dir>/store/        — persistent file workspace (→ self.store_dir)
-        <impl_dir>/memory/       — long-term memory root     (→ self.memory_dir)
+        /skills/                 — skills the user enabled       (→ self.skills_paths)
+        /default_skills/         — skills the agent ships with   (when declared)
 
     Skills follow the ``skills/<name>/SKILL.md`` convention expected by
     ``create_deep_agent(skills=[...])``.  Each skill is a subdirectory
@@ -108,6 +79,8 @@ class DeepAgent(BaseAgent, ABC):
     # Default streaming mode
     stream_mode: List[STREAMING_MODES] = ["messages", "updates"]
 
+    _log_domain: str = "deep_agent"
+
     # Every concrete DeepAgent IS a deep agent; the bridge persists this in
     # agents.type and the UI shows the skill panel only for it.
     type: AgentType = "deep agent"
@@ -126,9 +99,6 @@ class DeepAgent(BaseAgent, ABC):
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         super().__init__(config=config)
 
-        # Directory of the concrete subclass file — source assets live here
-        self._impl_dir: Path = Path(inspect.getfile(type(self))).parent
-
         # Per-request cache of the resolved per-user filesystem root (set on
         # first use; avoids re-resolving across the build hooks).
         self._user_filesystem_root: Optional[Path] = None
@@ -138,7 +108,6 @@ class DeepAgent(BaseAgent, ABC):
         # (route, label) tuple. Labels render as "**<label> Skills**" in the prompt.
         self.skills_paths: list[str | tuple[str, str]] = []
         self.agent_md_paths: list[str] = []     # /memories/AGENTS.md — for create_deep_agent(memory=[...])
-        self.memory: Any = None
         # Bound lazily in ensure_built() so a HITL resume picks up the paused
         # checkpoint instead of a fresh saver.
         self.checkpointer: MemorySaver | None = None
@@ -155,37 +124,16 @@ class DeepAgent(BaseAgent, ABC):
 
 
 
-    # ---------------------------------------------------------------------
-    # Persistent path properties
-    # ---------------------------------------------------------------------
-    @property
-    def filesystem_dir(self) -> Path:
-        """Root dir for the FilesystemBackend — all files the agent creates go here."""
-        path = self._impl_dir / "filesystem"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
-
-
-    @property
-    def store_dir(self) -> Path:
-        """Persistent file workspace: ``<impl_dir>/store/``."""
-        path = self._impl_dir / "store"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
-
-
-    @property
-    def memory_dir(self) -> Path:
-        """Long-term memory root: ``<impl_dir>/memory/``."""
-        path = self._impl_dir / "memory"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
-
-
     @property
     def compiled(self) -> Any:
-        """The compiled runnable produced by ``build()``. ``None`` until built."""
+        """The runnable assembled by ``register_agent()``. ``None`` until built."""
         return self.agent
+
+
+    def _stream_kwargs(self) -> dict[str, Any]:
+        """``subgraphs=True`` so a sub-agent's chunks arrive namespaced — the
+        normalizer keys its AG-UI bindings on that namespace."""
+        return {"subgraphs": True}
 
 
 
@@ -308,63 +256,10 @@ class DeepAgent(BaseAgent, ABC):
                 search_past_convs=bool(ctx.get("search_past_convs")),
                 run_id=ctx.get("run_id"),
                 thread_id=ctx.get("thread_id"),
-                trust_level=self._trust_level(),
+                trust_level=trust_level(self.tools),
             )
         )
 
-
-    def _trust_level(self) -> str:
-        """Whether this run could reach content nobody on our side authored.
-
-        A durable memory is future context: an entry written after the agent read
-        a poisoned page behaves like a stored prompt injection. Recording *that a
-        run could have* read external content is what makes such an entry
-        findable afterwards.
-
-        Deliberately coarse. It is per-RUN, not per-turn, and it keys off the MCP
-        tool set (web search, arXiv and the rest) because that is the external
-        surface this service actually exposes. It is a review signal, never an
-        authorization decision — the enforcement, if any, belongs in retrieval.
-        """
-        return "untrusted" if self.tools else "user-derived"
-
-
-    def _user_hitl_gates(self, tools: List[Any]) -> dict[str, bool]:
-        """Approval gates this user asked for, keyed the way ``interrupt_on`` is.
-
-        The Agents tab speaks in canonical cache keys (``arxiv/download_paper``),
-        but ``interrupt_on`` is keyed by the tool's *own* name — and MCP tool
-        names arrive from the gateway unprefixed. Writing a cache key straight
-        through would match nothing and produce a gate that looks armed in the UI
-        and silently never fires, the worst failure an approval control can have.
-
-        So MCP keys are resolved against the live tools rather than parsed, and
-        builtin names — which are their own key, and are never in ``tools``
-        because the framework builds them — pass through.
-
-        Values are the user's explicit choice, so ``False`` means "clear the
-        gate the baseline sets" — a prebuilt tool can default to gated. Locked
-        gates are re-applied after this, so nothing here can disarm one.
-        """
-        requested = self.tool_config.approvals
-        if not requested:
-            return {}
-
-        gates = {
-            tool.name: requested[get_tool_cache_key(tool)]
-            for tool in tools
-            if getattr(tool, "name", None) and get_tool_cache_key(tool) in requested
-        }
-        gates.update({n: v for n, v in requested.items() if n in BUILTIN_BY_NAME})
-
-        if gates:
-            logger.info(
-                "agent_tools_user_gated",
-                "Applied user-requested approval gates for (user, agent)",
-                agent_slug=self.name,
-                gated_count=len(gates),
-            )
-        return gates
 
     @staticmethod
     def _ensure_tool_error_middleware(stack: Optional[Sequence[Any]]) -> list[Any]:
@@ -379,27 +274,26 @@ class DeepAgent(BaseAgent, ABC):
         return items
 
 
-    def _memory_system_prompt(self) -> str:
-        """The memory-usage block appended to the system prompt when memory is on.
+    def prompt_context(self, *, has_subagents: bool = False) -> PromptContext:
+        """What this run has, for the prompt composer to describe.
 
-        Empty when ``self.use_memory`` is off, so a run with memory disabled is
-        never told it has a ``/memories/`` mount it doesn't actually have (the
-        cause of the agent claiming access to ``/memories/AGENTS.md`` with the
-        toggle off). Override to customise the wording.
+        Every field is read from the same flag that builds the thing it names,
+        so a section can never advertise a mount or tool the run lacks. Override
+        to suppress a section for one agent — returning a context with
+        ``use_memory=False`` drops the memory block without touching the mount.
         """
-        return _MEMORY_SYSTEM_PROMPT if self.use_memory else ""
-
-
-    def _personalization_system_prompt(self) -> str:
-        """The user-personalization block (personality preset + custom
-        instructions) appended to the system prompt.
-
-        Empty when the run carries no effective personalization, so a default
-        run's prompt is identical to the pre-feature one. The block itself is
-        composed and hardened in ``harness.personalization`` — override this to
-        customise placement or suppress personalization for a specific agent.
-        """
-        return build_personalization_prompt(self.personalization)
+        ctx = self.context or {}
+        return PromptContext(
+            use_memory=self.use_memory,
+            has_subagents=has_subagents,
+            has_conversation=bool(ctx.get("conversation_id")),
+            has_reference=self.reference_dir is not None,
+            has_default_skills=self.default_skills_dir is not None,
+            search_past_convs=bool(ctx.get("search_past_convs")),
+            sandbox_enabled=settings.filesystem.sandbox_execution_enabled,
+            now=datetime.now(timezone.utc),
+            personalization=build_personalization_prompt(self.personalization),
+        )
 
 
     def build_deep_agent(
@@ -433,29 +327,20 @@ class DeepAgent(BaseAgent, ABC):
         stack = self._ensure_tool_error_middleware(stack)  # guarantee on the main agent
         exclude_stock_summarization(model if isinstance(model, str) else "")
 
-        # Append the user-personalization block (personality preset + custom
-        # instructions, threaded from preferences by the bridge) right after the
-        # agent's static instructions, then the memory-usage block. Both are
-        # empty when inactive, so a default run's prompt is unchanged.
-        personalization_prompt = self._personalization_system_prompt()
-        if personalization_prompt:
-            system_prompt = (
-                f"{system_prompt}\n\n{personalization_prompt}" if system_prompt else personalization_prompt
-            )
-            logger.info(
-                "deep_agent_personalization_applied",
-                "Applied user personalization to the system prompt",
-                agent_slug=self.name,
-                personality=self.personalization.personality,
-                has_custom_instructions=self.personalization.has_custom_instructions,
-            )
-
-        # Append the memory-usage instructions only when memory is enabled, so the
-        # agent is told about /memories/ exactly when the mount + remember tool
-        # are actually present (keep memory wording out of the static prompt).
-        memory_prompt = self._memory_system_prompt()
-        if memory_prompt:
-            system_prompt = f"{system_prompt}\n\n{memory_prompt}" if system_prompt else memory_prompt
+        # The agent's own instructions lead; the platform sections are appended
+        # by the composer, which owns their order. Every section is empty when
+        # its feature is off, so an agent with nothing enabled composes to
+        # exactly the instructions it was given.
+        prompt_context = self.prompt_context(has_subagents=bool(subagents))
+        system_prompt = compose_system_prompt(system_prompt, prompt_context)
+        logger.info(
+            "deep_agent_prompt_composed",
+            "Composed the system prompt from the agent's instructions",
+            agent_slug=self.name,
+            sections=describe_sections(prompt_context),
+            personality=self.personalization.personality,
+            has_custom_instructions=self.personalization.has_custom_instructions,
+        )
 
         # Sub-agents get the same guarantee separately (parent middleware doesn't
         # reach them); pre-compiled "runnable" specs pass through untouched.
@@ -472,18 +357,15 @@ class DeepAgent(BaseAgent, ABC):
         # here and are structurally out of reach of any user disable.
         resolved_tools = self.tools + self._builtin_tools()
 
-        # Four layers. `is not None` and not truthiness on the agent's own map: a
-        # spec that deliberately declares no gates passes `{}` and must stay
-        # empty rather than falling back to the class attribute. `locked_gates()`
-        # is last so no layer beneath it can clear a mandated gate.
-        own_gates = interrupt_on if interrupt_on is not None else self.hitl_gates
-        resolved_interrupt_on = {**builtin_hitl_defaults(), **(own_gates or {})}
-        for name, wanted in self._user_hitl_gates(resolved_tools).items():
-            if wanted:
-                resolved_interrupt_on[name] = True
-            else:
-                resolved_interrupt_on.pop(name, None)
-        resolved_interrupt_on.update(locked_gates())
+        # `is not None` and not truthiness: a spec that deliberately declares no
+        # gates passes `{}` and must stay empty rather than falling back to the
+        # class attribute. The layer order itself lives in harness.tools.gates.
+        resolved_interrupt_on = resolve_interrupt_on(
+            resolved_tools,
+            own_gates=interrupt_on if interrupt_on is not None else self.hitl_gates,
+            approvals=self.tool_config.approvals,
+            agent_slug=self.name,
+        )
 
         return create_deep_agent(
             model=model,
@@ -552,16 +434,6 @@ class DeepAgent(BaseAgent, ABC):
         return None
 
 
-    def load_memory(self) -> Any:
-        """
-        Override to open and return a long-term memory store for this agent.
-
-        Use ``self.memory_dir`` as the root path.  The returned value is stored
-        on ``self.memory`` before ``register_agent()`` is called.
-        """
-        return None
-
-
     def load_agent_md(self) -> list[str]:
         """This (user, agent)'s memory index file.
 
@@ -595,22 +467,14 @@ class DeepAgent(BaseAgent, ABC):
         All lifecycle state is populated before this is called:
             self.skills_paths    — paths for create_deep_agent(skills=[...])
             self.agent_md_paths  — paths for create_deep_agent(memory=[...])
-            self.memory          — long-term memory store (or None)
             self.checkpointer    — ephemeral InMemorySaver for HITL
             self.sub_agents      — nested agents (or None)
             self.tools           — filtered live MCP tools
 
-        Minimal example::
-
-            def register_agent(self) -> Any:
-                return create_deep_agent(
-                    tools=self.tools,
-                    memory=self.agent_md_paths,
-                    skills=self.skills_paths,
-                    subagents=self.sub_agents,
-                    checkpointer=self.checkpointer,
-                    backend=FilesystemBackend(root_dir=self._impl_dir, virtual_mode=True),
-                )
+        Call ``self.build_deep_agent(...)`` rather than ``create_deep_agent``
+        directly — it injects the workspace backend, its permission ladder, the
+        builtins, the composed system prompt and the approval gates, none of
+        which a subclass should assemble by hand.
         """
         return None
 
@@ -628,18 +492,16 @@ class DeepAgent(BaseAgent, ABC):
         so it can read ``self.compiled.get_state(...)`` before issuing the resume
         command; ``astream`` calls it too, sharing the same build path.
         """
-        thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
-        if self.checkpointer is None and thread_id:
-            # Bind the process-wide durable saver (shared across all threads).
-            # Thread-less runs fall back to the ephemeral MemorySaver below.
-            self.checkpointer = get_checkpointer()
+        if self.checkpointer is None:
+            # Durable saver when this run has a thread; None otherwise, and the
+            # ephemeral MemorySaver below takes over.
+            self.checkpointer = self._durable_checkpointer()
         if self.agent is not None:
             return
         logger.info("deep_agent_build_started", "Deep agent build started", agent_slug=self.name)
         if self.checkpointer is None:
             self.checkpointer = MemorySaver()
         self.skills_paths   = self.load_skills()
-        self.memory         = self.load_memory()
         self.agent_md_paths = self.load_agent_md()
         self.sub_agents     = self.register_subagents()
         self.agent          = self.register_agent()
@@ -649,56 +511,8 @@ class DeepAgent(BaseAgent, ABC):
             agent_slug=self.name,
             skills_count=len(self.skills_paths),
             agent_md_count=len(self.agent_md_paths),
-            has_memory=self.memory is not None,
             has_subagents=self.sub_agents is not None,
         )
-
-
-
-    # ---------------------------------------------------------------------
-    # Streaming interface
-    # ---------------------------------------------------------------------
-    async def astream(self, payload: Mapping[str, Any], *, command: Optional[Command] = None) -> Any:
-        """
-        Build on demand and stream agent outputs in AG-UI format.
-
-        Args:
-            payload: Input mapping for the agent. Expected key: ``messages``.
-            command: Optional ``langgraph.types.Command``. When provided it is
-                fed to the underlying agent in place of ``payload`` so a
-                previously paused HITL run can be resumed from its saved
-                checkpoint.
-        Yields:
-            Streamed SSE bytes in AG-UI format.
-        """
-        try:
-            await self.ensure_built()
-            logger.info(
-                "deep_agent_execution_started",
-                "Deep agent execution started",
-                agent_slug=self.name,
-                stream_mode=self.stream_mode,
-                resumed=command is not None,
-            )
-
-            agent_input: Any = command if command is not None else payload
-            async for chunk in self.agent.astream(
-                agent_input,
-                config=self.run_config,
-                stream_mode=self.stream_mode,
-                subgraphs=True,
-            ):
-                if isinstance(chunk, (str, bytes)):
-                    yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                else:
-                    for agui_event in self.agui_normalizer.handle_chunk(chunk):
-                        yield agui_event
-            logger.info("deep_agent_execution_completed", "Deep agent execution completed", agent_slug=self.name)
-        except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
-            logger.info("deep_agent_execution_cancelled", "Deep agent execution cancelled", agent_slug=self.name)
-            return
-        except Exception as exc:
-            yield self._encode_run_error(exc)
 
 
 
@@ -706,28 +520,5 @@ class DeepAgent(BaseAgent, ABC):
     # Tool management
     # ---------------------------------------------------------------------
     def _apply_live_tools(self, tools: Sequence[Any]) -> None:
-        """
-        Attach live MCP tools while excluding names reserved by deep-agent internals.
-        Keeps BaseAgent behavior via super() after filtering.
-        """
-        reserved_names = {name.lower() for name in BUILTIN_BY_NAME}
-        filtered_tools: List[Any] = []
-        excluded_names: List[str] = []
-
-        for tool in tools:
-            raw_name = getattr(tool, "name", "")
-            tool_name = raw_name.strip() if isinstance(raw_name, str) else str(raw_name or "").strip()
-            if tool_name.lower() in reserved_names:
-                excluded_names.append(tool_name)
-                continue
-            filtered_tools.append(tool)
-
-        if excluded_names:
-            logger.info(
-                "deep_agent_reserved_tools_excluded",
-                "Deep agent excluded reserved internal tools from MCP attachment",
-                agent_slug=self.name,
-                excluded_tools=sorted(set(excluded_names)),
-            )
-
-        super()._apply_live_tools(filtered_tools)
+        """Attach live MCP tools, minus any whose name a prebuilt tool owns."""
+        super()._apply_live_tools(strip_reserved_names(tools, agent_slug=self.name))

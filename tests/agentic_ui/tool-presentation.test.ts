@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { TOOL_PRESENTATION, toolIsBare, toolLabel } from "@/shared/lib/consts";
+import { TOOL_PRESENTATION, toolIcon, toolIsBare, toolLabel } from "@/shared/lib/consts";
 
 describe("tool labels", () => {
   it("gives view_image a human label", () => {
@@ -44,10 +44,51 @@ describe("bare presentation", () => {
   });
 });
 
+describe("icons", () => {
+  it("gives every builtin verb a glyph of its own", () => {
+    // A column of identical wrenches gives the eye nothing to scan by.
+    for (const name of [
+      "read_file",
+      "ls",
+      "grep",
+      "glob",
+      "write_file",
+      "edit_file",
+      "execute",
+      "remember",
+      "forget",
+      "search_past_conversations",
+      "view_image",
+    ]) {
+      expect(toolIcon(name), `${name} should have an icon`).toBeTruthy();
+    }
+  });
+
+  it("shares one glyph across tools that do the same kind of thing", () => {
+    // Scanning is by action, not by name: two searches, two writes, three
+    // memory verbs.
+    expect(toolIcon("glob")).toBe(toolIcon("grep"));
+    expect(toolIcon("edit_file")).toBe(toolIcon("write_file"));
+    expect(toolIcon("forget")).toBe(toolIcon("remember"));
+    expect(toolIcon("search_past_conversations")).toBe(toolIcon("remember"));
+  });
+
+  it("leaves an unlisted tool without one, so the caller keeps its default", () => {
+    expect(toolIcon("write_todos")).toBeUndefined();
+    expect(toolIcon("tavily/tavily-search")).toBeUndefined();
+  });
+});
+
 describe("the map itself", () => {
-  it("gives every entry a label", () => {
+  it("lets each field stand alone", () => {
+    // An icon-only entry needs no label: `toolLabel` already falls back to the
+    // tool's own name, so repeating it here would be noise that can drift.
     for (const [name, presentation] of Object.entries(TOOL_PRESENTATION)) {
-      expect(presentation.label, `${name} needs a label`).toBeTruthy();
+      const hasSomething =
+        presentation.label !== undefined ||
+        presentation.bare !== undefined ||
+        presentation.icon !== undefined;
+      expect(hasSomething, `${name} entry does nothing`).toBe(true);
     }
   });
 });

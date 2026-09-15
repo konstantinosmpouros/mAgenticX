@@ -15,7 +15,7 @@ import pytest
 import pytest_asyncio
 
 import utils.skills as skills_mod
-from core.database import UserAgentSkillTable, UserSkillPoolTable
+from core.database import UserSkillPoolTable
 from schema import SyncInventory
 from utils.workspace_sync import build_plan
 from sqlalchemy import select

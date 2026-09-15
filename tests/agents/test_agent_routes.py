@@ -34,7 +34,7 @@ class _FakeAgent:
         yield b"data: done\n\n"
 
     def _encode_run_error(self, exc):
-        return f"data: error {exc}\n\n".encode("utf-8")
+        return f"data: error {exc}\n\n".encode()
 
 
 class _FailingStreamAgent(_FakeAgent):

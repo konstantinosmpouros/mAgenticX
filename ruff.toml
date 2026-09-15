@@ -1,0 +1,73 @@
+# Python linting for the three backend services.
+#
+# The frontend has run against an ESLint warning ceiling for a long time; the
+# backend had no linter at all, which is how two typing conventions and stray
+# trailing whitespace came to coexist inside one package. This is the backend's
+# equivalent, and it is ratcheted the same way: `scripts/ruff_ceiling.py` fails
+# above the current count, and the number only ever goes down.
+
+target-version = "py312"
+
+# Not 88: the codebase's p95 line is 84 and its p99 is 114, so 88 would flag
+# working code by the hundred while 120 would flag almost nothing. 100 sits
+# where the real outliers are.
+line-length = 100
+
+extend-exclude = [
+    # Vendored skill content — third-party scripts shipped inside SKILL folders.
+    # Ours to distribute, not ours to restyle.
+    "src/agents/harness/skill_registry",
+    # Alembic revisions are generated and then frozen: an applied migration must
+    # never be edited (see CLAUDE.md § Schema Changes), so linting them would
+    # produce findings that cannot be acted on.
+    "src/dialogue_bridge/core/database/migrations/versions",
+]
+
+[lint]
+# Chosen for signal over volume. Each of these catches something real:
+#   F   unused imports/names, f-strings with no placeholders
+#   E/W pycodestyle — whitespace, bare except, comparison style
+#   B   bugbear — mutable default args, loop-variable capture, silent `except`
+#   UP  pyupgrade — PEP 585/604 typing, which is the split this repo already has
+#   I   import sorting, so "where does this come from" stops being a search
+#   SIM obvious simplifications
+#   RUF ruff's own checks (mutable class defaults, unused noqa)
+select = ["F", "E", "W", "B", "UP", "I", "SIM", "RUF"]
+
+ignore = [
+    # Long lines are reported but not enforced: the worst offenders are prose
+    # docstrings and log-event strings where a wrap hurts readability. Kept out
+    # of the ceiling so it measures real defects, not formatting taste.
+    "E501",
+    # `zip(..., strict=)` — worth adopting deliberately, not in a lint sweep.
+    "B905",
+]
+
+[lint.per-file-ignores]
+# A barrel exists to re-export; unused imports are the point.
+"**/__init__.py" = ["F401"]
+# Tests assert on internals and shadow names freely.
+"tests/**" = ["B011"]
+# Each service puts its own package root on sys.path before importing anything
+# first-party. The ordering is load-bearing, not a style slip.
+"src/*/main.py" = ["E402"]
+
+[lint.flake8-bugbear]
+# FastAPI's whole dependency-injection API is a call in a default argument.
+# Without this, every `= Depends(...)` reads as a bugbear finding — 161 of them,
+# none actionable.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Security",
+]
+
+[lint.isort]
+# Each service runs with its own root on sys.path, so `core`, `harness`,
+# `utils`, `schema` and `router` are first-party in every one of them.
+known-first-party = ["core", "harness", "utils", "schema", "router", "deep_agents", "langgraph_agents"]

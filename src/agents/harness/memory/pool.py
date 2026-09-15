@@ -39,4 +39,4 @@ def has_memory_pool() -> bool:
     return _pool is not None
 
 
-__all__ = ["set_memory_pool", "get_memory_pool", "has_memory_pool"]
+__all__ = ["get_memory_pool", "has_memory_pool", "set_memory_pool"]

@@ -20,7 +20,7 @@ from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import Connection
 
 # Importing core.database registers every ORM model on Base.metadata.
-from core.database import Base, _build_pg_ssl_context  # noqa: F401
+from core.database import Base, _build_pg_ssl_context
 from core.settings import settings
 
 

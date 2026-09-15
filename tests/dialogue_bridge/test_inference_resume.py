@@ -128,7 +128,7 @@ async def parked_manager_run():
         task.cancel()
         try:
             await task
-        except (asyncio.CancelledError, BaseException):  # noqa: BLE001
+        except (asyncio.CancelledError, BaseException):
             pass
         inference_run_manager._tasks.pop(run_id, None)
         inference_run_manager._resume_events.pop(run_id, None)

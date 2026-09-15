@@ -192,7 +192,7 @@ def _describe(raw: bytes) -> str:
     try:
         with Image.open(io.BytesIO(raw)) as img:
             width, height = img.size
-    except Exception:  # noqa: BLE001 - a decode failure must not fail the view
+    except Exception:
         return "Showing the whole image."
     return (
         f"Showing the whole image, {width}x{height} pixels. To read a detail, "
@@ -265,7 +265,7 @@ def build_view_image_tool(
                 )
             try:
                 cropped = _crop(raw, region)
-            except Exception as exc:  # noqa: BLE001 - a bad decode is the model's problem to route around
+            except Exception as exc:
                 logger.warning(
                     "view_image_crop_failed",
                     "Could not crop an image for view_image",

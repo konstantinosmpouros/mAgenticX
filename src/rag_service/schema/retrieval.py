@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class Query(BaseModel):
     """Model for a simple text query to retrieve from a vector store."""

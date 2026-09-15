@@ -53,7 +53,7 @@ async def list_user_agents(db: AsyncSession, user_id: str) -> List[AgentTable]:
     :func:`prime_agent_cache`)."""
     result = await db.execute(
         select(AgentTable)
-        .where(AgentTable.owner_user_id == user_id, AgentTable.is_active == True)  # noqa: E712
+        .where(AgentTable.owner_user_id == user_id, AgentTable.is_active == True)
         .order_by(AgentTable.name)
     )
     return list(result.scalars().all())
@@ -67,7 +67,7 @@ def build_agent_stream_url(agent: AgentTable) -> str:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Agent metadata unavailable for this conversation",
         )
-    
+
     slug = getattr(agent, "slug", None)
     if not slug:
         logger.error(
@@ -148,7 +148,7 @@ async def _load_active_agents(db: AsyncSession) -> List[AgentTable]:
     # must never hold a user-owned row (see prime_agent_cache).
     result = await db.execute(
         select(AgentTable).where(
-            AgentTable.is_active == True,  # noqa: E712
+            AgentTable.is_active == True,
             AgentTable.owner_user_id.is_(None),
         )
     )
@@ -310,7 +310,7 @@ async def get_agent_by_id(agent_id: str) -> AgentTable | None:
             result = await db.execute(
                 select(AgentTable).where(
                     AgentTable.id == agent_id,
-                    AgentTable.is_active == True,  # noqa: E712
+                    AgentTable.is_active == True,
                 )
             )
             return result.scalar_one_or_none()

@@ -213,7 +213,7 @@ export default function AgentBuilder({
   const [draft, setDraft] = useState<AgentDraft>(() =>
     initial ? draftFromDetail(initial) : emptyDraft(),
   );
-  const [slugTouched, setSlugTouched] = useState(isEdit);
+  const [nameTouched, setNameTouched] = useState(isEdit);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
   const [checking, setChecking] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
@@ -239,13 +239,19 @@ export default function AgentBuilder({
     setServerErrors([]);
   }, []);
 
-  // The slug follows the name until the user edits it directly — then it is
-  // theirs. On edit it is immutable (the backend rejects a rename outright).
+  // On create the slug always follows the name; on edit it is frozen, because
+  // the backend rejects a rename outright.
+  //
+  // It used to stop following once `slugTouched` was set — but that flag is
+  // raised by BLURRING the name field, not by editing a slug (this form has no
+  // slug input), so the identifier froze after the first blur. A first name
+  // that yields no slug then froze it empty, and no later edit could recover:
+  // the form insisted "A name is required" over a filled-in name field.
   const onNameChange = (value: string) => {
     setDraft((prev) => ({
       ...prev,
       name: value,
-      slug: slugTouched ? prev.slug : slugify(value),
+      slug: isEdit ? prev.slug : slugify(value),
     }));
     setServerErrors([]);
   };
@@ -257,11 +263,17 @@ export default function AgentBuilder({
   );
 
   const slugError = useMemo(() => {
-    if (!draft.slug) return "A name is required.";
+    if (!draft.name.trim()) return "A name is required.";
+    // A name in a non-Latin script leaves nothing to build an identifier from.
+    // Saying "a name is required" over a filled field sends the user hunting
+    // for an empty box that isn't there.
+    if (!draft.slug) {
+      return "The identifier is built from the name, so it needs at least one Latin letter (a–z) or digit.";
+    }
     if (!SLUG_RE.test(draft.slug)) return "Use lowercase letters, numbers and single hyphens.";
     if (!isEdit && takenSlugs.has(draft.slug)) return "An agent with that name already exists.";
     return null;
-  }, [draft.slug, isEdit, takenSlugs]);
+  }, [draft.name, draft.slug, isEdit, takenSlugs]);
 
   const promptError = !draft.prompt.trim()
     ? "Instructions are required — this is the agent's system prompt."
@@ -311,7 +323,7 @@ export default function AgentBuilder({
   // is visible on its tab instead of only surfacing when you press Save.
   const sectionTabs: SectionTab<BuilderSection>[] = useMemo(
     () => [
-      { id: "identity", label: "Identity", flagged: Boolean(slugError) && slugTouched },
+      { id: "identity", label: "Identity", flagged: Boolean(slugError) && (nameTouched || attempted) },
       { id: "instructions", label: "Instructions", flagged: Boolean(promptError) },
       { id: "tools", label: "Tools", count: draft.tools.length },
       { id: "skills", label: "Skills", count: draft.skills.length },
@@ -326,7 +338,8 @@ export default function AgentBuilder({
     ],
     [
       slugError,
-      slugTouched,
+      nameTouched,
+      attempted,
       promptError,
       subagentError,
       fileLimitError,
@@ -580,19 +593,24 @@ export default function AgentBuilder({
                       Name <Required />
                     </span>
                     <input
-                      className={cn(inputClass, slugError && slugTouched && "border-destructive")}
+                      className={cn(inputClass, slugError && (nameTouched || attempted) && "border-destructive")}
                       value={draft.name}
                       onChange={(event) => onNameChange(event.target.value)}
-                      onBlur={() => setSlugTouched(true)}
+                      onBlur={() => setNameTouched(true)}
                       placeholder="Research Bot"
-                      aria-invalid={Boolean(slugError) && slugTouched}
+                      aria-invalid={Boolean(slugError) && (nameTouched || attempted)}
                     />
-                    {/* The slug is derived, so it appears only once there is one —
-                    an "Identifier: —" line reads as a broken field, not as a hint. */}
+                    {/* Shown once the name is non-empty, even when nothing could be
+                    derived: an identifier that stays blank while the name is filled
+                    is exactly the state the user needs to see to understand the error. */}
                     {draft.slug ? (
                       <span className="text-[0.7rem] text-muted-foreground">
                         <code className="font-mono">{draft.slug}</code>
                         {isEdit ? " · cannot change" : null}
+                      </span>
+                    ) : draft.name.trim() ? (
+                      <span className="text-[0.7rem] text-destructive">
+                        No identifier could be built from this name.
                       </span>
                     ) : null}
                   </label>

@@ -42,10 +42,10 @@ def _extract_tool_identity(tool: types.Tool) -> tuple[str, str, str]:
             tool_name = str(tool_name)
         except Exception:
             tool_name = ""
-    
+
     # Always preserve the tool name as-is.
     server_id = _map_server_id("", tool_name)
-    
+
     return str(server_id), str(tool_name)
 
 
@@ -182,12 +182,12 @@ async def list_mcp_tools(*, force_refresh: bool = False) -> List[types.Tool]:
     if settings.mcp.manifest_cache_enabled and _MCP_TOOL_MANIFEST_CACHE and not force_refresh:
         logger.info("mcp_tools_cache_hit", "Using cached MCP tool manifests", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
         return []
-    
+
     tools = await _fetch_tools_from_gateway()
     if settings.mcp.manifest_cache_enabled:
         _prime_manifest_cache(tools)
         logger.info("mcp_tools_cache_refreshed", "MCP tool manifest cache refreshed", tool_count=len(_MCP_TOOL_MANIFEST_CACHE))
-    
+
     return tools
 
 

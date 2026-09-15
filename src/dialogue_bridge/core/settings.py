@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import httpx
-from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

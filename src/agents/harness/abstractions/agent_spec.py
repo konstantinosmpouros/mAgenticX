@@ -190,4 +190,4 @@ class AgentSpec(BaseModel):
         return errors
 
 
-__all__ = ["ToolRef", "SubAgentSpec", "ModelSpec", "AgentSpec", "AgentSpecType"]
+__all__ = ["AgentSpec", "AgentSpecType", "ModelSpec", "SubAgentSpec", "ToolRef"]

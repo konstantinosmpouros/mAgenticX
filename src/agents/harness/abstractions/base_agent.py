@@ -1,10 +1,15 @@
+import asyncio
 import types
 from dataclasses import dataclass
 from uuid import uuid4
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
+from langgraph.types import Command
+
 from core.error_handling import agent_stream_error_handler
 from core.logging import get_logger
+from harness.checkpointer import get_checkpointer
+from harness.tools.gates import approval_map, key_set
 from harness.personalization import Personalization, parse_personalization
 from utils import (
     build_tool_cache_key,
@@ -12,32 +17,6 @@ from utils import (
 )
 
 logger = get_logger(__name__)
-
-
-def key_set(value: Any) -> frozenset[str]:
-    """A clean set of non-empty tool keys from whatever the run config carried.
-
-    The config crosses a service boundary as JSON, so a field can legitimately be
-    absent, null, or a list with junk in it. Anything unparseable degrades to
-    empty — the safe default, since it means the agent's declared baseline rather
-    than a silently emptied tool set.
-    """
-    if not isinstance(value, (list, tuple, set)):
-        return frozenset()
-    return frozenset(k for k in value if isinstance(k, str) and k)
-
-
-def approval_map(value: Any) -> Mapping[str, bool]:
-    """A clean ``{tool key: wanted}`` map from whatever the run config carried.
-
-    Same coercion stance as :func:`key_set`: anything unparseable degrades to no
-    opinion, which means the agent's own gating rather than a guess.
-    """
-    if not isinstance(value, Mapping):
-        return types.MappingProxyType({})
-    return types.MappingProxyType(
-        {k: bool(v) for k, v in value.items() if isinstance(k, str) and k and isinstance(v, bool)}
-    )
 
 
 @dataclass(frozen=True)
@@ -110,22 +89,29 @@ class BaseAgent:
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         # Configuration
         self.config: Dict[str, Any] = self._validate_config(config) if config else {}
-        
-        # Runtime configuration
-        default_run_config: Dict[str, Any] = {'configurable': {"thread_id": str(uuid4())}}
-        self.run_config: Optional[Mapping[str, Any]] = self.config.get("run_config", default_run_config)
-        
+
+        # Runtime configuration. NOT Optional: four call sites dereference this
+        # without a guard, and `.get(key, default)` returns None when the key is
+        # present and null — so a config carrying `"run_config": None` used to
+        # pass validation and then fail with AttributeError at stream time.
+        # An explicit None check keeps the default reachable in that case.
+        default_run_config: Dict[str, Any] = {"configurable": {"thread_id": str(uuid4())}}
+        configured_run_config = self.config.get("run_config")
+        self.run_config: Mapping[str, Any] = (
+            configured_run_config if configured_run_config is not None else default_run_config
+        )
+
         # Configured tool selectors. Tools are declared per agent, not per request:
         # a deep agent overrides these from its spec (see YamlDeepAgent), and the
         # platform no longer accepts a per-request tool list. The base therefore
         # seeds them empty instead of reading config["tools"].
         self.config_tools: Sequence[Mapping[str, Any]] = []
         self.config_tool_names: List[str] = []
-        
+
         # Resolved tools (populated per-stream after loading from MCP)
         self.tools: List[Any] = []
         self.tools_names: List[str] = []
-        
+
         # Resolve context parameters from config
         self.context: Dict[str, Any] = self.config.get("context", {})
         self.tool_config: ToolConfig = ToolConfig.from_context(self.context)
@@ -238,18 +224,25 @@ class BaseAgent:
     # Internal helpers
     # ---------------------------------------------------------------------
     def _validate_config(self, config: Mapping[str, Any]) -> Dict[str, Any]:
-        """Validate and normalise a config mapping coming from the UI/backend."""
-        # Validate run config
-        run_config = config.get("run_config")
+        """Validate and normalise a config mapping coming from the UI/backend.
+
+        Returns a new dict. It used to assign into ``config`` and hand the same
+        object back — which contradicts the ``Mapping`` in its own signature
+        (read-only), worked only because every caller happened to pass a
+        ``dict``, and silently mutated the caller's object on the way through.
+        A ``MappingProxyType`` would have raised ``TypeError``.
+        """
+        normalised = dict(config)
+
+        run_config = normalised.get("run_config")
         if run_config is not None:
-            config["run_config"] = self._validate_run_config(run_config)
+            normalised["run_config"] = self._validate_run_config(run_config)
 
-        # Validate context
-        context = config.get("context")
+        context = normalised.get("context")
         if context is not None:
-            config["context"] = self._validate_context_config(context)
+            normalised["context"] = self._validate_context_config(context)
 
-        return config
+        return normalised
 
 
     @staticmethod
@@ -276,6 +269,106 @@ class BaseAgent:
                 raise ValueError(f"Agent config 'context' must include a non-empty '{key}' string.")
             normalised[key] = val.strip()
         return normalised
+
+
+
+    # ---------------------------------------------------------------------
+    # Build + streaming, shared by both agent families
+    # ---------------------------------------------------------------------
+    #: Prefix for this family's execution log events. Per-family because the
+    #: names are queried telemetry — ``deep_agent_execution_started`` and
+    #: ``langgraph_execution_started`` predate this shared implementation and
+    #: must keep their spellings.
+    _log_domain: str = "agent"
+
+
+    @property
+    def compiled(self) -> Any:
+        """The compiled runnable. ``None`` until :meth:`ensure_built` has run.
+
+        Each family stores it under its own name (a deep agent's ``self.agent``,
+        a LangGraph agent's ``self.graph``); this is the one name the shared
+        stream loop knows.
+        """
+        raise NotImplementedError
+
+
+    async def ensure_built(self) -> None:
+        """Assemble the runnable. Must be idempotent — ``astream`` and the HITL
+        ``/resume`` endpoint both call it, and resume calls it first so it can
+        read ``self.compiled.get_state(...)`` before issuing the command."""
+        raise NotImplementedError
+
+
+    def _stream_kwargs(self) -> Dict[str, Any]:
+        """Extra keyword arguments for the runnable's ``astream``.
+
+        Empty by default; a deep agent adds ``subgraphs=True`` so its sub-agent
+        chunks arrive namespaced.
+        """
+        return {}
+
+
+    def _durable_checkpointer(self) -> Any:
+        """The process-wide durable saver, or ``None`` for a thread-less run.
+
+        One shared saver serves every thread — the thread is selected per call
+        via ``config=self.run_config`` — so a run with no ``thread_id`` has
+        nothing to resume and falls back to an ephemeral saver in the caller.
+        """
+        thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
+        return get_checkpointer() if thread_id else None
+
+
+    async def astream(self, payload: Mapping[str, Any], *, command: Optional[Command] = None) -> Any:
+        """Build on demand and stream the run as AG-UI SSE bytes.
+
+        Args:
+            payload: Input mapping for the runnable. Expected key: ``messages``.
+            command: A ``langgraph.types.Command`` that replaces ``payload`` so a
+                previously paused HITL run resumes from its saved checkpoint.
+
+        Yields:
+            AG-UI frames as bytes.
+        """
+        try:
+            await self.ensure_built()
+            logger.info(
+                f"{self._log_domain}_execution_started",
+                "Agent execution started",
+                agent_slug=self.name,
+                stream_mode=self.stream_mode,
+                resumed=command is not None,
+            )
+
+            stream_input: Any = command if command is not None else payload
+            async for chunk in self.compiled.astream(
+                stream_input,
+                config=self.run_config,
+                stream_mode=self.stream_mode,
+                **self._stream_kwargs(),
+            ):
+                if isinstance(chunk, (str, bytes)):
+                    yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                else:
+                    for agui_event in self.agui_normalizer.handle_chunk(chunk):
+                        yield agui_event
+            logger.info(
+                f"{self._log_domain}_execution_completed",
+                "Agent execution completed",
+                agent_slug=self.name,
+            )
+        # A disconnected client is the normal way a stream ends early; it is not
+        # an error and must not be encoded as one.
+        except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
+            logger.info(
+                f"{self._log_domain}_execution_cancelled",
+                "Agent execution cancelled",
+                agent_slug=self.name,
+            )
+            return
+        except Exception as exc:
+            yield self._encode_run_error(exc)
 
 
 

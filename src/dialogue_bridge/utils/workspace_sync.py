@@ -310,4 +310,4 @@ async def apply_content(
     return {"agents": agents, "skills": skills}
 
 
-__all__ = ["build_plan", "apply_content", "content_hash", "GENERATED_MANIFEST"]
+__all__ = ["GENERATED_MANIFEST", "apply_content", "build_plan", "content_hash"]

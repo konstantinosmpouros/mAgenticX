@@ -29,23 +29,23 @@ QUERY_TIMEOUT_SECONDS = settings.workflows.retail.query_timeout_seconds
 
 class RetailV1_State(BaseModel):
     """Data model representing the state of a retail agent process in version 1."""
-    
+
     message_id: str | None = None
     messages: Any
     db_schema_json: Any = None
     table_name: str = TABLE
-    
+
     analysis_results: Any = None
     analysis_str: str | None = None
-    
+
     error_message: str | None = None
     sql_query: str | None = None
     sql_results: Any = None
-    
+
     response: str | None = None
-    
+
     sql_cycle: int = 0
-    
+
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
 

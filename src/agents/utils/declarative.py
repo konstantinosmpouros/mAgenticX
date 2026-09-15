@@ -68,4 +68,4 @@ def manifest_from_spec(spec: "AgentSpec") -> dict[str, Any]:
     }
 
 
-__all__ = ["read_prompt", "manifest_from_spec"]
+__all__ = ["manifest_from_spec", "read_prompt"]

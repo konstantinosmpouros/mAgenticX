@@ -23,7 +23,6 @@ are extracted, anything else is ignored):
 """
 from __future__ import annotations
 
-from pathlib import Path
 from typing import List
 
 from core.logging import get_logger

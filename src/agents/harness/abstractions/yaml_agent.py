@@ -59,7 +59,6 @@ class YamlDeepAgent(DeepAgent):
 
         # Convention-based asset discovery (agent-bundled skills/) resolves under
         # the agent's own folder, not the yaml_agent.py file.
-        self._impl_dir = self._source_dir
 
         # The agent's declared tools come from the spec, NOT the request. MCP
         # refs seed the config-tool filter so `attach_tools` keeps only these

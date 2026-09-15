@@ -78,7 +78,7 @@ def _shrink_block(block: dict[str, Any]) -> dict[str, Any]:
     out["bytes"] = len(raw)
     try:
         encoded = _encode_thumbnail(raw, mime)
-    except Exception as exc:  # noqa: BLE001 - streaming path, must not abort the run
+    except Exception as exc:
         logger.warning(
             "agui_image_preview_failed",
             "Could not build an image preview for a tool result",

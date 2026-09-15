@@ -22,8 +22,8 @@ from harness.memory.store import (
 )
 
 __all__ = [
-    "AgentMemoryStore",
     "INDEX_KEY",
+    "AgentMemoryStore",
     "build_index",
     "entry_key",
     "entry_name",

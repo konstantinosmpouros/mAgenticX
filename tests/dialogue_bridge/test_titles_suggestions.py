@@ -9,7 +9,6 @@ title pin ``random.randrange`` to a fixed index.
 from __future__ import annotations
 
 import httpx
-import pytest
 
 import utils.titles as titles_mod
 import utils.suggestions as suggestions_mod

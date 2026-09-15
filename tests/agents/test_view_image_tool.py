@@ -25,7 +25,9 @@ from PIL import Image
 
 @pytest.fixture
 def view_image(agents_service):
-    return importlib.import_module("harness.tools.view_image")
+    # The leaf, not the package barrel: these tests monkeypatch names the
+    # implementation reads, and patching the re-export would change nothing.
+    return importlib.import_module("harness.tools.view_image.tool")
 
 
 # A 1x1 PNG — small, real, and decodable.
@@ -84,7 +86,7 @@ def tool(view_image, conversation):
 
 
 def view_image_module():
-    return importlib.import_module("harness.tools.view_image")
+    return importlib.import_module("harness.tools.view_image.tool")
 
 
 def _invoke_region(tool, path, x, y, width, height, call_id="call-1"):

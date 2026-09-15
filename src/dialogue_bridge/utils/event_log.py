@@ -151,7 +151,7 @@ class RedisEventLog:
         if self._client is not None:
             try:
                 await self._client.aclose()
-            except Exception:  # noqa: BLE001 — best-effort cleanup on shutdown
+            except Exception:
                 logger.warning("redis_close_failed", "Redis client close failed", exc_info=True)
             finally:
                 self._client = None

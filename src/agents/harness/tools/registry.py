@@ -20,7 +20,7 @@ platform-owned: adding one is a code change here, never a user upload.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from harness.tools.builtins import builtin_hitl_defaults
@@ -272,12 +272,12 @@ def native_catalog() -> list[dict[str, Any]]:
 
 
 __all__ = [
+    "NATIVE_TOOLS",
     "NativeToolContext",
     "NativeToolDef",
-    "NATIVE_TOOLS",
-    "register_native_tool",
-    "is_known_native_tool",
-    "resolve_native_tool",
     "build_auto_attach_tools",
+    "is_known_native_tool",
     "native_catalog",
+    "register_native_tool",
+    "resolve_native_tool",
 ]

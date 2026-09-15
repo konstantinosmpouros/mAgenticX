@@ -60,24 +60,24 @@ os.environ.setdefault("SUGGESTIONS_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("REFRESH_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 os.environ.setdefault("WS_CONNECT_RATE_LIMIT_MAX_ATTEMPTS", "1000000")
 
-from main import app as bridge_app  # noqa: E402
+from main import app as bridge_app
 
 # The fastapi-redis-sdk pool is normally created by the app lifespan, which
 # these tests never run (they drive the ASGI app directly). Seed the SDK's
 # pool state with an in-process fakeredis client so the global rate-limit
 # middleware and per-route rate_limit dependencies execute their real code
 # path — get_async_client demands both the pool and a client bound to it.
-from fakeredis import aioredis as _fake_aioredis  # noqa: E402
-from redis_fastapi.deps import _PoolState  # noqa: E402
+from fakeredis import aioredis as _fake_aioredis
+from redis_fastapi.deps import _PoolState
 
 _sdk_fake_redis = _fake_aioredis.FakeRedis(decode_responses=True)
 _sdk_pool_state = _PoolState()
 _sdk_pool_state.async_pool = _sdk_fake_redis.connection_pool
 _sdk_pool_state._async_client = _sdk_fake_redis
 bridge_app.state._redis = _sdk_pool_state
-import core.auth.tokens as _jwt_tokens  # noqa: E402
-from core.auth.session import require_csrf_protection  # noqa: E402
-from core.database import (  # noqa: E402
+import core.auth.tokens as _jwt_tokens
+from core.auth.session import require_csrf_protection
+from core.database import (
     AgentTable,
     Base,
     ConversationReportTable,
@@ -86,7 +86,7 @@ from core.database import (  # noqa: E402
     UserTable,
     get_db,
 )
-from utils.validators import validate_userId  # noqa: E402
+from utils.validators import validate_userId
 
 
 def utcnow() -> datetime:

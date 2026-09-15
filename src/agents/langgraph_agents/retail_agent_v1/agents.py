@@ -44,12 +44,12 @@ def build_retail_agents(*, tools: Sequence[Any] | None = None) -> RetailAgents:
     # Build runnable chains
     merge_runnable = RunnableLambda(make_merge_with_template(analyzer_template))
     analysis_agent = merge_runnable | init_chat_model(workflow.analysis_model).with_structured_output(AnalysisOutput)
-    
+
     simple_gen_agent = react_agent(model=init_chat_model(workflow.simple_generation_model), tools=tools)
     sql_gen_agent = sql_gen_template | init_chat_model(workflow.sql_generation_model).with_structured_output(SQLQueryOutput)
     sql_error_gen_agent = sql_error_gen_template | init_chat_model(workflow.sql_error_generation_model).with_structured_output(SQLQueryOutput)
     answer_agent = react_agent(model=init_chat_model(workflow.answer_generation_model), tools=tools)
-    
+
     return RetailAgents(
         analysis_agent=analysis_agent,
         simple_gen_agent=simple_gen_agent,

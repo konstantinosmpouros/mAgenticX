@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from fastapi import HTTPException
 
 
 async def test_tools_route_uses_cached_manifests(client, agents_service, internal_headers, monkeypatch):

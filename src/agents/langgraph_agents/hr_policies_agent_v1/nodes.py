@@ -28,21 +28,21 @@ RETRIEVE_TOP_K = settings.workflows.hr.retrieve_top_k
 
 class HRPoliciesV1_State(BaseModel):
     messages: Any
-    
+
     message_id: str | None = None
-    
+
     analysis_results: Any = None
     analysis_str: str | None = None
-    
+
     vector_queries: List[str] | None = None
     retrieved_content: List[List[Dict[str, Any]]] = Field(default_factory=list)
     ranking_flags: List[List[bool]] = Field(default_factory=list)
-    
+
     reflection: Any = None
     reflection_str: str | None = None
     cycle_numbers: int = 0
     formatted_docs_str: str | None = None
-    
+
     summarization: str | None = None
     response: str | None = None
 
@@ -161,24 +161,24 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                             tool_msg.content,
                             writer,
                         )
-                        
+
         agui.response_end(state["message_id"], writer)
         return {"response": response}
 
     async def query_gen(state: HRPoliciesV1_State, config: RunnableConfig):
         writer = get_stream_writer()
         agui.thought("Generating queries for the HR policies database...", writer)
-        
+
         analysis_str = state["analysis_str"]
         reflection_str = state["reflection_str"]
-        
+
         if reflection_str:
             payload = {"analysis_results": analysis_str, "reflection": reflection_str}
             response = await agents.query_reflective_agent.ainvoke(payload, config)
         else:
             payload = {"analysis_results": analysis_str}
             response = await agents.query_no_reflective_agent.ainvoke(payload, config)
-        
+
         lines = ["I perform research in the database for the following fields:"]
         for idx, q in enumerate(response.queries, start=1):
             lines.append(f"{idx}. {q}")
@@ -191,7 +191,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         tcid = str(uuid4())
         queries = state["vector_queries"] or []
         retrieved_docs: List[Dict[str, Any]] = []
-        
+
         async def fetch_single(query: str):
             request_id = get_context().get("request_id")
             headers = internal_service_headers(request_id)
@@ -203,7 +203,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                 )
                 resp.raise_for_status()
                 retrieved_docs.extend(resp.json()["documents"])
-        
+
         agui.tool_call_start(tcid, "vector_db.search", writer)
         if queries:
             await asyncio.gather(*(fetch_single(q) for q in queries))
@@ -213,7 +213,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
             writer,
         )
         agui.thought(f"Retrieved {len(retrieved_docs)} documents from the database.", writer)
-        
+
         state_docs = list(state.retrieved_content)
         state_docs.append(retrieved_docs)
         return {"retrieved_content": state_docs}
@@ -221,25 +221,25 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
     async def doc_ranking(state: HRPoliciesV1_State, config: RunnableConfig):
         writer = get_stream_writer()
         agui.thought("Ranking the retrieved documents based on relevance...", writer)
-        
+
         if not state["retrieved_content"]:
             return {}
-        
+
         latest_docs = state["retrieved_content"][-1]
         formatted_docs = []
         for idx, doc in enumerate(latest_docs, start=1):
             metadata = json.dumps(doc.get("metadata", {}), ensure_ascii=False)
             content = doc.get("content", "").strip()
             formatted_docs.append(f"Document {idx}\n Metadata: {metadata}\n Content: {content}\n")
-        
+
         formatted_docs_str = "\n\n".join(formatted_docs)
-        
+
         payload = {
             "formatted_docs": formatted_docs_str,
             "analysis_str": state["analysis_str"],
         }
         ranking_flags = await agents.doc_ranking_agent.ainvoke(payload, config)
-        
+
         state_flags = list(state.ranking_flags)
         state_flags.append(ranking_flags.relevance_flags)
         return {"ranking_flags": state_flags}
@@ -247,27 +247,27 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
     async def reflection(state: HRPoliciesV1_State, config: RunnableConfig):
         writer = get_stream_writer()
         agui.thought("Reasoning if we need more data to answer...", writer)
-        
+
         all_docs_cycles = state["retrieved_content"]
         all_flags_cycles = state["ranking_flags"]
         analysis_str = state["analysis_str"]
-        
+
         filtered_docs = []
         for docs, flags in zip(all_docs_cycles, all_flags_cycles):
             for doc, flag in zip(docs, flags):
                 if flag:
                     filtered_docs.append(doc)
-        
+
         formatted_docs_str = "\n\n".join(
             f"Document {i+1}\n Metadata: {doc.get('metadata')} \nContent: {doc.get('content', '').strip()}"
             for i, doc in enumerate(filtered_docs)
         )
-        
+
         payload = {
             "analysis_results": analysis_str,
             "retrieved_docs": formatted_docs_str,
         }
-        
+
         reflection = await agents.reflection_agent.ainvoke(payload, config)
         if reflection.requires_additional_retrieval:
             reflection_str = (
@@ -277,7 +277,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
             )
         else:
             reflection_str = "No additional retrieval is required."
-            
+
         return {
             "reflection": reflection,
             "reflection_str": reflection_str,
@@ -294,12 +294,12 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
     async def summarization(state: HRPoliciesV1_State, config: RunnableConfig):
         writer = get_stream_writer()
         agui.thought("Summarizing the retrieved documents...", writer)
-        
+
         payload = {
             "retrieved_docs": state["formatted_docs_str"],
             "analysis_results": state["analysis_str"],
         }
-        
+
         summary = await agents.summarizer_agent.ainvoke(payload, config)
         agui.thought("Preparing the response...", writer)
         return {"summarization": summary.content if hasattr(summary, "content") else summary}
@@ -308,14 +308,14 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
         writer = get_stream_writer()
         agui.thinking_end(writer)
         agui.response_start(state["message_id"], writer)
-        
+
         payload = {
             "summarization": state["summarization"],
             "analysis_results": state["analysis_str"],
             "user_input_json": json.dumps(state["messages"], ensure_ascii=False),
         }
         prompt = hr_gen_template.invoke(payload)
-        
+
         response = ""
         last_tool_call_id: str | None = None
         async for mode, chunk in agents.complex_gen_agent.astream(prompt, stream_mode=["messages", "updates"]):
@@ -344,7 +344,7 @@ def build_hr_nodes(*, agents: HRAgents, agui: AGUIEmitter) -> HRNodes:
                             tool_msg.content,
                             writer,
                         )
-        
+
         agui.response_end(state["message_id"], writer)
         return {"response": response}
 

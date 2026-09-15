@@ -14,7 +14,9 @@ import pytest
 
 @pytest.fixture
 def remember(agents_service):
-    return importlib.import_module("harness.tools.remember")
+    # The leaf, not the package barrel: these tests monkeypatch names the
+    # implementation reads, and patching the re-export would change nothing.
+    return importlib.import_module("harness.tools.remember.tool")
 
 
 class FakeStore:

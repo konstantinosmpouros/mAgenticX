@@ -49,8 +49,19 @@ export const PROMPT_FILE = "AGENT.md";
 export const MANIFEST_FILE = "agent.yaml";
 export const SUBAGENT_DIR = "subagents";
 
+/**
+ * Derive an agent's identifier from its display name.
+ *
+ * NFKD-normalised first so accented Latin survives as its base letter —
+ * without it "Café" slugged to "caf", silently dropping the last character.
+ * A name in a non-Latin script (Greek, Cyrillic, CJK) still has no ASCII to
+ * recover and yields "", which callers must treat as "ask the user", not as
+ * "the name is missing".
+ */
 export const slugify = (value: string): string =>
   value
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")

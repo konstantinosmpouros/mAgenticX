@@ -97,7 +97,7 @@ flowchart LR
     D --> E[index re-derives itself<br/>on the next read]
 ```
 
-`harness/tools/remember.py` (`build_remember_tool`, bound per run to
+`harness/tools/remember/tool.py` (`build_remember_tool`, bound per run to
 `user_id`/`agent_slug`/`conversation_id` plus the run identity):
 
 1. **Slugify** `name` → `[a-z0-9-]`. Still enforced with nothing on disk: the
@@ -127,7 +127,7 @@ listed in `RESERVED_DEEPAGENT_TOOL_NAMES` so an MCP tool cannot shadow it.
 
 ## Delete path — the `forget` tool
 
-`harness/tools/forget.py` (`build_forget_tool`, bound per run to this
+`harness/tools/forget/tool.py` (`build_forget_tool`, bound per run to this
 (user, agent)) slugifies the name the same way `remember` does and deletes the
 row. Both call `slugify_name` from `harness/memory/` rather than each carrying
 its own copy — the slug *is* the key, so two implementations would let the pair
@@ -215,9 +215,10 @@ flowchart LR
 | `AGENTS.md` template (the prose the model reads) | [src/agents/harness/memory/template.py](../../src/agents/harness/memory/template.py) |
 | The `/memories/` route wiring | [src/agents/harness/filesystem/workspace.py](../../src/agents/harness/filesystem/workspace.py) |
 | Pool install + table creation on boot | [src/agents/harness/checkpointer/bootstrap.py](../../src/agents/harness/checkpointer/bootstrap.py) |
-| `remember` write tool (slugify, cap, upsert) | [src/agents/harness/tools/remember.py](../../src/agents/harness/tools/remember.py) |
+| `remember` write tool (slugify, cap, upsert) | [src/agents/harness/tools/remember/tool.py](../../src/agents/harness/tools/remember/tool.py) |
 | Provenance plumbing (`run_id`, `thread_id`, `trust_level`) | [src/agents/harness/tools/registry.py](../../src/agents/harness/tools/registry.py) · [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) (`_trust_level`) |
-| Memory gating + system-prompt block | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `_memory_system_prompt`) |
+| Memory gating | [src/agents/harness/abstractions/deep_agent.py](../../src/agents/harness/abstractions/deep_agent.py) (`_builtin_tools`, `load_agent_md`, `prompt_context`) |
+| Memory system-prompt block | [src/agents/harness/prompt_engineering/prompts/memory_prompt.py](../../src/agents/harness/prompt_engineering/prompts/memory_prompt.py) |
 | Cap setting (`MEMORY_MAX_ENTRIES`) | [src/agents/core/settings.py](../../src/agents/core/settings.py) (`FilesystemSettings`) |
 | Agents inspector endpoints | [src/agents/router/memories.py](../../src/agents/router/memories.py) |
 | Bridge proxy + router | [src/dialogue_bridge/utils/memories.py](../../src/dialogue_bridge/utils/memories.py) · [src/dialogue_bridge/router/memories.py](../../src/dialogue_bridge/router/memories.py) |

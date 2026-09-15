@@ -35,7 +35,7 @@ def normalize_voice_mode_language(language: str | None) -> str:
 
 
 async def load_realtime_agent(db: AsyncSession, agent_id: str) -> AgentTable:
-    result = await db.execute(select(AgentTable).where(AgentTable.id == agent_id, AgentTable.is_active == True))  # noqa: E712
+    result = await db.execute(select(AgentTable).where(AgentTable.id == agent_id, AgentTable.is_active == True))
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive agent.")

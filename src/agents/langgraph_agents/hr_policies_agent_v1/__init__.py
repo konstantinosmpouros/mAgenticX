@@ -53,7 +53,7 @@ class HRPoliciesAgentV1(LangGraphAgent):
             },
         )
         graph.add_edge("simple_generation", END)
-        
+
         graph.add_edge("query_gen", "retrieval")
         graph.add_edge("retrieval", "doc_ranking")
         graph.add_edge("doc_ranking", "reflectioner")

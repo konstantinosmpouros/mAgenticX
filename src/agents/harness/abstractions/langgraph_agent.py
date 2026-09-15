@@ -1,15 +1,12 @@
-import asyncio
 from typing import Any, Mapping, Optional, Type, Literal
 from abc import abstractmethod, ABC
 from pydantic import BaseModel
 
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.types import Command
 
 from harness.agui import AGUIEmitter, AGUIStreamNormalizer
 from harness.abstractions.base_agent import BaseAgent
-from harness.checkpointer import get_checkpointer
 from core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,17 +29,19 @@ class LangGraphAgent(BaseAgent, ABC):
     # Default streaming mode for LangGraph inference
     stream_mode: STREAMING_MODES = "custom"
 
+    _log_domain: str = "langgraph"
+
     def __init__(self, *, config: Optional[Mapping[str, Any]] = None) -> None:
         # Configuration
         super().__init__(config=config)
-        
+
         # Agent components
         self.state: Type[BaseModel] | None = None
         self.agents: Any = None
         self.nodes: Any = None
         self.graph = None
         self.memory_saver: InMemorySaver | None = None  # created lazily at build time
-        
+
         # AGUI components. The normalizer stamps AG-UI message_id + keys its
         # sub-agent namespace bindings on the per-RUN id (the assistant message
         # id), NOT the checkpointer thread_id — which is now branch-scoped and
@@ -136,13 +135,10 @@ class LangGraphAgent(BaseAgent, ABC):
         before issuing the resume command; ``astream`` also calls it to share
         the same cache-then-build path.
         """
-        thread_id = self.run_config.get("configurable", {}).get("thread_id") or ""
-        if self.memory_saver is None and thread_id:
-            # Bind the process-wide durable saver. The thread is selected at
-            # astream time via config=self.run_config — one shared saver, many
-            # threads. Thread-less runs fall back to an ephemeral InMemorySaver
-            # in build().
-            self.memory_saver = get_checkpointer()
+        if self.memory_saver is None:
+            # Durable saver when this run has a thread; None otherwise, and
+            # build() falls back to an ephemeral InMemorySaver.
+            self.memory_saver = self._durable_checkpointer()
         self.build()
 
 
@@ -150,53 +146,3 @@ class LangGraphAgent(BaseAgent, ABC):
     def compiled(self) -> Any:
         """The compiled runnable produced by ``build()``. ``None`` until built."""
         return self.graph
-
-
-
-    # ---------------------------------------------------------------------
-    # Async inference function
-    # ---------------------------------------------------------------------
-    async def astream(self, payload: Mapping[str, Any], *, command: Optional[Command] = None) -> Any:
-        """
-        Stream LangGraph chunks as SSE bytes using the configured stream mode.
-
-        Builds the graph on demand, routes interrupts to AG-UI HITL frames, and
-        normalizes other chunks through ``self.agui_normalizer`` before yielding.
-        Args:
-            payload: Input mapping for the graph execution.
-            command: Optional ``langgraph.types.Command``. When provided it is
-                fed to the graph in place of ``payload`` so a previously paused
-                HITL run can be resumed from its saved checkpoint.
-        Yields:
-            Streamed chunks in AG-UI format.
-        """
-        try:
-            await self.ensure_built()
-            logger.info(
-                "langgraph_execution_started",
-                "LangGraph execution started",
-                agent_slug=self.name,
-                stream_mode=self.stream_mode,
-                resumed=command is not None,
-            )
-
-            graph_input: Any = command if command is not None else payload
-            # Stream graph execution results
-            async for chunk in self.graph.astream(
-                graph_input,
-                config=self.run_config,
-                stream_mode=self.stream_mode
-            ):
-                if isinstance(chunk, (str, bytes)):
-                    yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                else:
-                    for agui_event in self.agui_normalizer.handle_chunk(chunk):
-                        yield agui_event
-            logger.info("langgraph_execution_completed", "LangGraph execution completed", agent_slug=self.name)
-        except (BrokenPipeError, ConnectionResetError, asyncio.CancelledError):
-            logger.info("langgraph_execution_cancelled", "LangGraph execution cancelled", agent_slug=self.name)
-            return
-        except Exception as exc:
-            yield self._encode_run_error(exc)
-
-

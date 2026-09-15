@@ -12,6 +12,6 @@ from harness.personalization.personalization import (
 
 __all__ = [
     "Personalization",
-    "parse_personalization",
     "build_personalization_prompt",
+    "parse_personalization",
 ]

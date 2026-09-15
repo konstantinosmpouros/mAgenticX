@@ -42,7 +42,7 @@ class ToolErrorMiddleware(AgentMiddleware):
         except GraphBubbleUp:
             # Control flow (interrupt / parent command) — must reach the runner.
             raise
-        except Exception as exc:  # noqa: BLE001 — deliberate: never abort the run on a tool error
+        except Exception as exc:
             return self._error_message(request, exc)
 
     async def awrap_tool_call(
@@ -55,7 +55,7 @@ class ToolErrorMiddleware(AgentMiddleware):
         except GraphBubbleUp:
             # Control flow (interrupt / parent command) — must reach the runner.
             raise
-        except Exception as exc:  # noqa: BLE001 — deliberate: never abort the run on a tool error
+        except Exception as exc:
             return self._error_message(request, exc)
 
     @staticmethod

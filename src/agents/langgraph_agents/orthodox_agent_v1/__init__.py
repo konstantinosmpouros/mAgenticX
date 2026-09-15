@@ -51,12 +51,12 @@ class OrthodoxAgentV1(LangGraphAgent):
             },
         )
         graph.add_edge("simple_generation", END)
-        
+
         graph.add_edge("query_gen", "retrieval")
         graph.add_edge("retrieval", "summarizer")
         graph.add_edge("summarizer", "complex_generation")
         graph.add_edge("complex_generation", "reflectioner")
-        
+
         graph.add_conditional_edges(
             "reflectioner",
             self.nodes.check_reflection,

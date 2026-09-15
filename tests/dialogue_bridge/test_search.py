@@ -9,8 +9,6 @@ the real SQLite session and is also exercised end-to-end through the
 
 from __future__ import annotations
 
-import pytest
-import pytest_asyncio
 from sqlalchemy import select
 
 from core.database import (

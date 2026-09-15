@@ -3,13 +3,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from core.logging import get_logger, set_context
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import UserTable, get_db, upsert_user_from_identity, IdentityConflictError
+from core.database import get_db, upsert_user_from_identity, IdentityConflictError
 from schema import (
     AccountListResponse,
-    AccountSummary,
     AuthRequest,
     AuthResponse,
     SwitchAccountRequest,
@@ -27,7 +25,6 @@ from core.auth.session import (
     clear_session_cookies,
     issue_session_cookies,
     logout_denylist,
-    mint_login_session,
     refresh_guard,
     require_csrf_protection,
     require_refresh_session,
@@ -36,9 +33,7 @@ from core.auth.session import (
     rotate_session,
 )
 from core.auth.parked import (
-    ParkedAccountLimit,
     ParkedSessionError,
-    new_device_id,
     parked_sessions,
 )
 from utils.auth import (

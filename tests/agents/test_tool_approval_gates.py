@@ -33,41 +33,38 @@ def base_agent_module(agents_service):
     return importlib.import_module("harness.abstractions.base_agent")
 
 
+@pytest.fixture
+def gates_module(agents_service):
+    return importlib.import_module("harness.tools.gates")
+
+
+@pytest.fixture
+def prompt_engineering(agents_service):
+    return importlib.import_module("harness.prompt_engineering")
+
+
+@pytest.fixture
+def personalization_module(agents_service):
+    return importlib.import_module("harness.personalization")
+
+
 class FakeTool:
     def __init__(self, name: str):
         self.name = name
 
 
-def _stub_agent(deep_agent_module, base_agent_module, approvals):
-    """A concrete DeepAgent carrying only what `_user_hitl_gates` reads.
-
-    DeepAgent is abstract, so `__new__` on it directly raises; a throwaway
-    subclass is the smallest thing that satisfies that without dragging in a
-    model and the whole mount stack.
-    """
-
-    class Agent(deep_agent_module.DeepAgent):
-        name = "stub"
-
-        def register_agent(self):  # pragma: no cover
-            raise NotImplementedError
-
-    agent = Agent.__new__(Agent)
-    agent.tool_config = base_agent_module.ToolConfig(approvals=dict(approvals))
-    return agent
-
-
 @pytest.fixture
-def resolve(deep_agent_module, base_agent_module, monkeypatch):
-    """Run the real ``_user_hitl_gates`` for a given set of approvals."""
+def resolve(gates_module, monkeypatch):
+    """Run the real key-to-name resolution for a given set of approvals."""
     keys = {"download_paper": "arxiv/download_paper", "search_papers": "arxiv/search_papers"}
     monkeypatch.setattr(
-        deep_agent_module, "get_tool_cache_key", lambda tool: keys.get(tool.name, tool.name)
+        gates_module, "get_tool_cache_key", lambda tool: keys.get(tool.name, tool.name)
     )
 
     def _resolve(approvals: dict, tool_names=("download_paper", "search_papers")):
-        agent = _stub_agent(deep_agent_module, base_agent_module, approvals)
-        return agent._user_hitl_gates([FakeTool(n) for n in tool_names])
+        return gates_module.user_gates(
+            [FakeTool(n) for n in tool_names], approvals, agent_slug="stub"
+        )
 
     return _resolve
 
@@ -113,19 +110,25 @@ def test_junk_decodes_to_no_approvals(base_agent_module, carried):
     assert dict(cfg.approvals) == {}
 
 
-def test_a_tool_without_a_name_is_skipped(deep_agent_module, base_agent_module, monkeypatch):
+def test_a_tool_without_a_name_is_skipped(gates_module, monkeypatch):
     # A malformed tool object must not raise inside agent build, which would
     # fail the user's run outright.
-    monkeypatch.setattr(deep_agent_module, "get_tool_cache_key", lambda tool: "x/y")
-    agent = _stub_agent(deep_agent_module, base_agent_module, {"x/y": True})
-    assert agent._user_hitl_gates([FakeTool("")]) == {}
+    monkeypatch.setattr(gates_module, "get_tool_cache_key", lambda tool: "x/y")
+    assert gates_module.user_gates([FakeTool("")], {"x/y": True}, agent_slug="stub") == {}
 
 
 # ---------------------------------------------------------------------------
 # The full merge, through the real build_deep_agent
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def built(deep_agent_module, base_agent_module, monkeypatch):
+def built(
+    deep_agent_module,
+    base_agent_module,
+    gates_module,
+    prompt_engineering,
+    personalization_module,
+    monkeypatch,
+):
     """Run the real ``build_deep_agent`` and return the ``interrupt_on`` it built.
 
     Everything expensive is stubbed, but the resolution itself is the real code
@@ -141,8 +144,10 @@ def built(deep_agent_module, base_agent_module, monkeypatch):
     monkeypatch.setattr(deep_agent_module, "create_deep_agent", fake_create)
     monkeypatch.setattr(deep_agent_module, "exclude_stock_summarization", lambda _m: None)
     monkeypatch.setattr(deep_agent_module, "workspace_write_deny", lambda *a, **k: {})
-    monkeypatch.setattr(deep_agent_module, "builtin_hitl_defaults", lambda: {"write_file": True})
-    monkeypatch.setattr(deep_agent_module, "locked_gates", lambda: {"execute": True})
+    # The baseline and the locked set are read by the gates module, which owns
+    # the layer order; deep_agent only hands it the agent's own map.
+    monkeypatch.setattr(gates_module, "builtin_hitl_defaults", lambda: {"write_file": True})
+    monkeypatch.setattr(gates_module, "locked_gates", lambda: {"execute": True})
 
     def _build(*, class_gates=None, interrupt_on=None, approvals=None, tool_names=()):
         class Agent(deep_agent_module.DeepAgent):
@@ -162,11 +167,19 @@ def built(deep_agent_module, base_agent_module, monkeypatch):
         agent.checkpointer = None
         agent.agent_md_paths = None
         agent.skills_paths = None
+        # A real attribute of every agent; `build_deep_agent` logs the preset it
+        # composed with, so a half-built stub still has to carry one.
+        agent.personalization = personalization_module.parse_personalization({})
         monkeypatch.setattr(type(agent), "_build_composite_backend", lambda self: object())
         monkeypatch.setattr(type(agent), "default_middleware", lambda self, m, b: [])
         monkeypatch.setattr(type(agent), "_builtin_tools", lambda self: [])
-        monkeypatch.setattr(type(agent), "_personalization_system_prompt", lambda self: "")
-        monkeypatch.setattr(type(agent), "_memory_system_prompt", lambda self: "")
+        # One hook now, not two: the prompt composer reads everything it needs
+        # from this context, so an empty one composes to no platform sections.
+        monkeypatch.setattr(
+            type(agent),
+            "prompt_context",
+            lambda self, **kwargs: prompt_engineering.PromptContext(),
+        )
         monkeypatch.setattr(type(agent), "reference_dir", property(lambda self: None))
         monkeypatch.setattr(type(agent), "default_skills_dir", property(lambda self: None))
         agent.build_deep_agent(model="stub-model", interrupt_on=interrupt_on)
@@ -200,9 +213,9 @@ def test_an_explicit_empty_map_stays_empty(built):
     assert built(class_gates={"task": True}, interrupt_on={}).get("task") is None
 
 
-def test_a_user_gate_is_added_on_top(built, deep_agent_module, monkeypatch):
+def test_a_user_gate_is_added_on_top(built, gates_module, monkeypatch):
     monkeypatch.setattr(
-        deep_agent_module,
+        gates_module,
         "get_tool_cache_key",
         lambda t: "arxiv/download_paper" if t.name == "download_paper" else t.name,
     )
