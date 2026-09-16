@@ -99,7 +99,7 @@ Each auto-attach builtin's `builder(ctx)` returns the tool **or** `None` when it
 | `render_chart` | Draws a chart inline in the reply from data the agent supplies — 8 types (`bar`, `line`, `area`, `pie`, `radar`, `radial`, `scatter`, `composed`) and 3 modifiers (`stacked`, `horizontal`, `show_values`). Not HITL-gated — it draws, it does not write. | a `conversation_id` exists (no preference gate) |
 | `present_artifact` | Hands a finished `output/` file to the user as a document card, placed inline at the point of the call — so an agent presents each document as it becomes ready rather than only at the end of the turn. | a `conversation_id` exists (no preference gate) |
 | `view_image` | Shows the model an image from `/conversation/input/` or `/conversation/output/`, whole or zoomed into a pixel `region`. Returns a `ToolMessage` carrying a text note plus an **image content block** — a JSON string of base64 would reach the model as text and be worth nothing. PNG/JPEG/GIF/WebP, capped by `VIEW_IMAGE_MAX_BYTES` (10 MB). Rendered *bare* in the UI: labelled "View image", no Parameters pane, no Result heading — just the picture, or the error. | a `conversation_id` exists (no preference gate) |
-| `create_skill` | Authors a reusable skill into the user's pool (`add_custom_to_user`) and enables it for the calling agent (`assign_user_skill_to_agent`). Writes the **user-managed** tier, so the user can still disable it in Settings → Agents — not the read-only tier `sync_agent_default_skills` fills from an agent's declared `skills:`. | ungated, but **approval-gated by default** (see below) |
+| `create_skill` | Authors a reusable skill into the user's pool (`add_custom_to_user`) and enables it for the calling agent (`assign_user_skill_to_agent`). Both are writes to `agent_runtime`, so the skill is readable by the *next* tool call in the same run. Writes the **user-managed** tier (tier ②), so the user can still disable it in Settings → Agents — not the read-only tier ① an agent's declared `skills:` resolves to. | ungated, but **approval-gated by default** (see below) |
 
 Registration order in `registry.py` is the attach order: `remember → search_past_conversations → render_chart → view_image → present_artifact → create_skill`. These are **not** toggled in the Agents tab: `remember` and `search_past_conversations` follow the Personalization prefs above, while `render_chart`, `present_artifact` and `create_skill` are always on.
 
@@ -187,9 +187,33 @@ flowchart LR
 | Models are allowlisted | `settings.registry.allowed_agent_models`, not free text — a user cannot select something nonexistent or costly. |
 | Definitions are config, never code | `extra="forbid"` on every spec model; the agent folder accepts `.md/.txt/.yaml/.yml` only, ≤20 files, ≤256 KiB each, ≤1 MiB total, depth ≤3. |
 | Overrides work identically | The rows are keyed on `(user_id, agent_slug, tool_key)`, so a user agent and a platform one are handled the same way and two users' same-named agents cannot alias. |
-| Skills are references too | `skills:` must name skills already in the user's pool; they are copied into the read-only `/default_skills/` mount at save time and layered *after* the user-enabled tier, so they can be added to but never removed. See [agent-development](agent-development.md). |
+| Skills are references too | `skills:` must name skills already in the user's pool. Nothing is copied: the names ride in the `/default_skills/` mount's store namespace and resolve against the pool on each read, so the mount cannot drift from what the user actually holds. It is write-denied and layered *after* the user-enabled tier, so skills can be added to but never removed. See [agent-development](agent-development.md). |
 
 The agent's own definition folder is additionally mounted read-only at `/reference/`, so prompt-adjacent material (notes, checklists, examples) is readable on demand — but a run cannot rewrite its own definition, and therefore cannot edit its next system prompt.
+
+---
+
+## Where skills come from
+
+Skills reach an agent through two mounts, and the split is by *when the content was authored*, not by which agent is running:
+
+| Mount | Tier | Backed by | Writable |
+| --- | --- | --- | --- |
+| `/default_skills/` (platform agent) | ① | the image, at `global/agents/<slug>/skills/` | no |
+| `/default_skills/` (user-authored agent) | ① | `agent_runtime`, resolved from the spec's `skills:` against the author's pool | no |
+| `/skills/` | ② | `agent_runtime`, the `agent_skills` rows for this (user, agent) | no |
+
+**The rule is build-time content on the volume, runtime content in the database of the service that consumes it.** A platform agent's bundled skills ship in its image: identical for every user, never written at runtime, and not tamperable — so they stay a directory. Everything a *user* owns is a row.
+
+Both database-backed mounts are one `StoreBackend` over one `SkillStore`, namespaced `(user_id, agent_slug, tier)`; only the tier keeps them apart. The store dispatches **per skill**: a `custom` pool entry reads its `skill_files` rows, a `global` one reads the shared catalogue on the volume. Doing that inside the store is what lets the mount stay a plain `StoreBackend` and inherit its directory synthesis — `ls` splits keys on `/` and reports the first segment as a directory, which is exactly what `SkillsMiddleware` discovery needs.
+
+### What this replaced
+
+Skills used to exist twice — as rows in `chat_db` and as directories copied per (user, agent) on the agents volume — with a 900-second pass reconciling both for every user whether or not anything had changed. That is `O(content × users)`, so it degrades linearly with signups. Enabling a skill copied a folder; saving an agent resolved its `skills:` into another folder; removing one cascaded `rmtree` across every agent. All of it is gone: there is one copy, so there is nothing to copy and nothing to compare.
+
+The bridge keeps proxying the Skills tab upstream (it already did for writes; now for reads too). One behaviour change follows: those reads **fail when the agents service is down**, where they used to serve a possibly-stale local row. Deliberate — a stale answer about which skills an agent is running with is worse than no answer.
+
+See [database-schema](../architecture/database-schema.md#agent_runtime-tables) for the three tables.
 
 ---
 

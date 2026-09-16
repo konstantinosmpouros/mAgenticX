@@ -42,13 +42,13 @@ async def test_get_global_skills_bypass_cache_reindexes(client, skills_fs, inter
 # ---------------------------------------------------------------------------
 # GET /users/{user_id}/skills
 # ---------------------------------------------------------------------------
-async def test_get_user_skill_pool_empty(client, skills_fs, internal_headers):
+async def test_get_user_skill_pool_empty(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.get("/users/user-1/skills", headers=internal_headers)
     assert response.status_code == 200
     assert response.json() == []
 
 
-async def test_get_user_skill_pool_after_add(client, skills_fs, internal_headers):
+async def test_get_user_skill_pool_after_add(client, skill_store_memory, skills_fs, internal_headers):
     add = await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
     assert add.status_code == 204
 
@@ -62,7 +62,7 @@ async def test_get_user_skill_pool_after_add(client, skills_fs, internal_headers
 # ---------------------------------------------------------------------------
 # GET /users/{user_id}/skills/{skill_name}
 # ---------------------------------------------------------------------------
-async def test_get_user_skill_detail_success(client, skills_fs, internal_headers):
+async def test_get_user_skill_detail_success(client, skill_store_memory, skills_fs, internal_headers):
     await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
     response = await client.get("/users/user-1/skills/deep-research", headers=internal_headers)
     assert response.status_code == 200
@@ -72,7 +72,7 @@ async def test_get_user_skill_detail_success(client, skills_fs, internal_headers
     assert "deep research" in body["content"]
 
 
-async def test_get_user_skill_detail_404(client, skills_fs, internal_headers):
+async def test_get_user_skill_detail_404(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.get("/users/user-1/skills/missing", headers=internal_headers)
     assert response.status_code == 404
 
@@ -80,17 +80,17 @@ async def test_get_user_skill_detail_404(client, skills_fs, internal_headers):
 # ---------------------------------------------------------------------------
 # POST /users/{user_id}/skills/global/{skill_name}
 # ---------------------------------------------------------------------------
-async def test_add_global_skill_204(client, skills_fs, internal_headers):
+async def test_add_global_skill_204(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.post("/users/user-1/skills/global/design-system", headers=internal_headers)
     assert response.status_code == 204
 
 
-async def test_add_global_skill_unknown_404(client, skills_fs, internal_headers):
+async def test_add_global_skill_unknown_404(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.post("/users/user-1/skills/global/no-such", headers=internal_headers)
     assert response.status_code == 404
 
 
-async def test_add_global_skill_conflict_409(client, skills_fs, internal_headers):
+async def test_add_global_skill_conflict_409(client, skill_store_memory, skills_fs, internal_headers):
     await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
     response = await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
     assert response.status_code == 409
@@ -99,7 +99,7 @@ async def test_add_global_skill_conflict_409(client, skills_fs, internal_headers
 # ---------------------------------------------------------------------------
 # POST /users/{user_id}/skills/custom
 # ---------------------------------------------------------------------------
-async def test_create_custom_skill_201(client, skills_fs, internal_headers):
+async def test_create_custom_skill_201(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.post(
         "/users/user-1/skills/custom",
         headers=internal_headers,
@@ -111,7 +111,7 @@ async def test_create_custom_skill_201(client, skills_fs, internal_headers):
     assert body["type"] == "custom"
 
 
-async def test_create_custom_skill_conflict_with_global_409(client, skills_fs, internal_headers):
+async def test_create_custom_skill_conflict_with_global_409(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.post(
         "/users/user-1/skills/custom",
         headers=internal_headers,
@@ -120,13 +120,13 @@ async def test_create_custom_skill_conflict_with_global_409(client, skills_fs, i
     assert response.status_code == 409
 
 
-async def test_create_custom_skill_conflict_with_pool_409(client, skills_fs, internal_headers):
+async def test_create_custom_skill_conflict_with_pool_409(client, skill_store_memory, skills_fs, internal_headers):
     await client.post("/users/user-1/skills/custom", headers=internal_headers, json=_custom_body("dup"))
     response = await client.post("/users/user-1/skills/custom", headers=internal_headers, json=_custom_body("dup"))
     assert response.status_code == 409
 
 
-async def test_create_custom_skill_missing_skill_md_422(client, skills_fs, internal_headers):
+async def test_create_custom_skill_missing_skill_md_422(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.post(
         "/users/user-1/skills/custom",
         headers=internal_headers,
@@ -135,7 +135,7 @@ async def test_create_custom_skill_missing_skill_md_422(client, skills_fs, inter
     assert response.status_code == 422
 
 
-async def test_create_custom_skill_bad_base64_422(client, skills_fs, internal_headers):
+async def test_create_custom_skill_bad_base64_422(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.post(
         "/users/user-1/skills/custom",
         headers=internal_headers,
@@ -147,7 +147,7 @@ async def test_create_custom_skill_bad_base64_422(client, skills_fs, internal_he
 # ---------------------------------------------------------------------------
 # DELETE /users/{user_id}/skills/{skill_name}
 # ---------------------------------------------------------------------------
-async def test_delete_user_skill_204(client, skills_fs, internal_headers):
+async def test_delete_user_skill_204(client, skill_store_memory, skills_fs, internal_headers):
     await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
     response = await client.delete("/users/user-1/skills/deep-research", headers=internal_headers)
     assert response.status_code == 204
@@ -156,7 +156,7 @@ async def test_delete_user_skill_204(client, skills_fs, internal_headers):
     assert pool.json() == []
 
 
-async def test_delete_missing_user_skill_is_idempotent_204(client, skills_fs, internal_headers):
+async def test_delete_missing_user_skill_is_idempotent_204(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.delete("/users/user-1/skills/never-existed", headers=internal_headers)
     assert response.status_code == 204
 
@@ -164,13 +164,13 @@ async def test_delete_missing_user_skill_is_idempotent_204(client, skills_fs, in
 # ---------------------------------------------------------------------------
 # GET/PUT/DELETE /agents/{slug}/users/{user_id}/skills[/{skill_name}]
 # ---------------------------------------------------------------------------
-async def test_get_user_agent_skills_empty(client, skills_fs, internal_headers):
+async def test_get_user_agent_skills_empty(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.get("/agents/omni/users/user-1/skills", headers=internal_headers)
     assert response.status_code == 200
     assert response.json() == []
 
 
-async def test_enable_and_list_user_agent_skill(client, skills_fs, internal_headers):
+async def test_enable_and_list_user_agent_skill(client, skill_store_memory, skills_fs, internal_headers):
     await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
 
     enable = await client.put("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
@@ -181,12 +181,12 @@ async def test_enable_and_list_user_agent_skill(client, skills_fs, internal_head
     assert listing.json() == ["deep-research"]
 
 
-async def test_enable_user_agent_skill_not_in_pool_404(client, skills_fs, internal_headers):
+async def test_enable_user_agent_skill_not_in_pool_404(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.put("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
     assert response.status_code == 404
 
 
-async def test_disable_user_agent_skill_204(client, skills_fs, internal_headers):
+async def test_disable_user_agent_skill_204(client, skill_store_memory, skills_fs, internal_headers):
     await client.post("/users/user-1/skills/global/deep-research", headers=internal_headers)
     await client.put("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
 
@@ -197,12 +197,12 @@ async def test_disable_user_agent_skill_204(client, skills_fs, internal_headers)
     assert listing.json() == []
 
 
-async def test_disable_unassigned_user_agent_skill_is_idempotent_204(client, skills_fs, internal_headers):
+async def test_disable_unassigned_user_agent_skill_is_idempotent_204(client, skill_store_memory, skills_fs, internal_headers):
     response = await client.delete("/agents/omni/users/user-1/skills/deep-research", headers=internal_headers)
     assert response.status_code == 204
 
 
-async def test_skill_routes_require_internal_caller(client, skills_fs):
+async def test_skill_routes_require_internal_caller(client, skill_store_memory, skills_fs):
     response = await client.get("/skills/global")
     assert response.status_code == 403
 

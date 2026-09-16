@@ -146,13 +146,14 @@ src/agents/
 
 **Lifespan** — `_lifespan` (`main.py:185-209`), in strict order:
 1. Install the loop exception handler.
-2. `seed_global_registry()` — copy the in-image skills seed (`/opt/skills_registry_seed`) into the mounted global volume (`cp -rn` semantics; existing folders win).
-3. `rebuild_global_manifest()` — scan the global registry → write `manifest.json`.
-4. `reconcile_all_user_manifests()` — heal each user's manifest vs disk.
+2. `seed_global_registry()` — copy the in-image skills **catalogue** seed (`/opt/skills_registry_seed`) into the mounted global volume (`cp -rn` semantics; existing folders win).
+3. `rebuild_global_manifest()` — scan the global catalogue → write `manifest.json`.
+4. `seed_global_agents()` then `refresh_registry()` — seed the built-in declarative agents onto the volume and re-scan so they join `AGENT_REGISTRY` (they are invisible at import, before the seed).
 5. `await init_durable_checkpointer(app)` (`harness/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
 6. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `harness/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
-7. `yield`.
-8. Shutdown: cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
+7. Spawn the **workspace-sync task** (`sync_workspaces`) — reconciles **agent definitions** against `chat_db` in both directions. Backgrounded: a bridge that is slow or still starting must not hold up serving. Skills no longer travel this exchange.
+8. `yield`.
+9. Shutdown: stop the sync task → cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
 
 **Durable checkpointer init** — `init_durable_checkpointer` (`harness/checkpointer/bootstrap.py`), heavy deps imported lazily:
 - `_ensure_checkpointer_database(conninfo)` (same module) — idempotently `CREATE DATABASE agent_runtime` via the `postgres` maintenance DB (returns early for empty/`postgres` target; **10 retries, 2s apart** on `OperationalError`; race-safe against `DuplicateDatabase`). Needed because `POSTGRES_DB` bootstraps only one DB and `setup()` creates tables, not the database.
@@ -457,7 +458,7 @@ Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a d
 
 ## 14. Skills & memory systems
 
-**Global skills registry** (boot, on-disk, three steps in the lifespan): `seed_global_registry()` copies the in-image seed into the `SKILLS_REGISTRY_GLOBAL_ROOT` volume (existing folders win) → `rebuild_global_manifest()` scans `<category>/<skill>/SKILL.md`, parses frontmatter (`name`, `description`), writes `manifest.json` atomically → `reconcile_all_user_manifests()`.
+**Global skills catalogue** (boot, on-disk, two steps in the lifespan): `seed_global_registry()` copies the in-image seed into the `SKILLS_REGISTRY_GLOBAL_ROOT` volume (existing folders win) → `rebuild_global_manifest()` scans `<category>/<skill>/SKILL.md`, parses frontmatter (`name`, `description`), writes `manifest.json` atomically. There is no per-user step: a user's pool, their custom skill files and their per-agent assignments are rows in `agent_runtime`, so there are no per-user manifests to reconcile. The catalogue stays on the volume because it is build-time content — shipped in the image, identical for every user, never written at runtime.
 
 **Two tiers at *runtime*** (`/default_skills/` = what the agent ships with, `/skills/` = what the user enabled; defaults are loaded last so they win a name clash, and both mounts are write-denied — see [agent-development](agent-development.md)). **Three tiers in the *management* flow:** a global catalog (`GET /skills/global`) → a per-user **pool** (`/users/{uid}/skills`, add-global or create-custom) → per-(user, agent) **enablement** (`/agents/{slug}/users/{uid}/skills` — enabling copies the skill folder into the `/skills/` mount; **the folder's presence *is* the enabled record**, no DB row).
 

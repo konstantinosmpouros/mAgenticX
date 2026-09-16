@@ -1,27 +1,22 @@
 """Per-user, per-agent filesystem provisioner.
 
-Owns the lifecycle of ``<filesystem_root>/<user_id>/...`` — the directory tree
-that backs each user's skill pool and the per-agent ``skills/`` directory. The presence of a directory under
-``<filesystem_root>/<user_id>/agents/<agent_slug>/skills/<skill_name>/``
-*is* the "this skill is enabled for this user-agent pair" record — there is
-no database table mirroring the on-disk state.
-
-Every path comes from :mod:`harness.filesystem.layout`, the single authority for
-the consolidated two-plane layout. This module owns the *lifecycle* (create,
-seed, read back, delete); layout owns *where*.
+Owns the lifecycle of ``<workspaces_root>/users/<user_id>/...`` — the directory
+tree that backs each user's own agent definitions and every conversation's
+working area. Every path comes from :mod:`harness.filesystem.layout`, the single
+authority for the consolidated two-plane layout. This module owns the
+*lifecycle* (create, seed, read back, delete); layout owns *where*.
 
 Layout (structurally-isolated mounts the agent sees as siblings). Note what is
-*absent*: the ``/memories/`` route has no directory here. Memory lives in the
-``agent_memories`` table (``harness/memory/``) and is served as a virtual route,
-so this module neither creates nor seeds anything for it:
+*absent*: neither ``/memories/`` nor ``/skills/`` has a directory here. Memory
+lives in the ``agent_memories`` table (``harness/memory/``) and skills in the
+``skill_pool`` / ``skill_files`` / ``agent_skills`` tables
+(``harness/skill_registry/``); both are served as virtual routes over
+``agent_runtime``, so this module neither creates nor seeds anything for them:
 
     <workspaces_root>/users/<user_id>/
-    ├── skills/                        ← the user's pool (manifest + custom/)
     ├── custom_agents/                 ← the user's own agent.yaml definitions
     └── agents/
         └── <agent_slug>/
-            ├── skills/                ← CompositeBackend route /skills/
-            │   └── <skill_name>/SKILL.md
             ├── tool_prefs.json        ← per-agent tool overrides
             └── conversations/
                 └── <conversation_id>/ ← CompositeBackend route /conversation/
@@ -36,22 +31,13 @@ Each mount lives in a distinct, non-overlapping subtree so no
   next chat. Cross-conversation persistence is the job of the per-agent
   ``/memories/`` tree (``AGENTS.md`` index + ``entries/*.yml``), which the
   agent maintains via the ``remember`` tool.
-* The ``/skills/`` mount sees only the assigned-skill directories — not
-  the conversation work area, not the global registry.
 * Other deep agents for the same user live at ``agents/<other_slug>/``,
-  which is not mounted into this agent's view — including their memory.
+  which is not mounted into this agent's view.
 
-Two jobs:
-    1. Idempotently create the parent tree the first time a (user, agent) is
-       seen (``ensure_user_agent_filesystem``).
-    2. Read the current assigned-skills set for a (user, agent) pair
-       (``list_enabled_skills``).
-
-Writes to the skills directory are owned by
-``harness.skill_registry.user_registry.assign_user_skill_to_agent`` (which
-resolves the source folder via the user's manifest) and the cascade in
-``remove_from_user``. The provisioner only ensures the parent directory
-tree exists; the registry layer owns the skill set inside it.
+One job: idempotently create the parent tree the first time a (user, agent) is
+seen (``ensure_user_agent_filesystem``). Everything else the agent reads is
+either a conversation directory this module also mints, or a virtual mount over
+``agent_runtime`` that never touches disk.
 
 All ID segments are validated with ``_safe_segment`` before they become
 path components, defending against path-traversal injected through the
@@ -94,7 +80,7 @@ defined outside your workspace and are not editable here.
 
 
 def user_root(user_id: str) -> Path:
-    """This user's workspace root — parent of the pool, custom agents and the
+    """This user's workspace root — parent of their custom agents and the
     per-agent trees.
 
     Not used as a FilesystemBackend root anywhere — exposed for callers
@@ -104,18 +90,13 @@ def user_root(user_id: str) -> Path:
 
 
 def agent_root(user_id: str, agent_slug: str) -> Path:
-    """Parent of the agent's ``skills/`` directory and its ``conversations/``.
+    """Parent of this (user, agent) pair's ``conversations/`` and its
+    ``tool_prefs.json``.
 
     Not itself mounted — the agent never sees this level directly. Used
-    internally to compute ``skills_root`` and ``conversation_root`` and by
-    the bridge endpoints when copying skills from the registry.
+    internally to compute ``conversation_root``.
     """
     return layout.agent_root(user_id, agent_slug)
-
-
-def skills_root(user_id: str, agent_slug: str) -> Path:
-    """The ``/skills/`` mount root — enabled-skill directories live here."""
-    return layout.agent_skills_root(user_id, agent_slug)
 
 
 def conversation_root(user_id: str, agent_slug: str, conversation_id: str) -> Path:
@@ -285,9 +266,8 @@ def ensure_user_workspace(user_id: str) -> Path:
     agent: the workspace root itself and ``custom_agents/`` (where the user's
     own ``agent.yaml`` definitions will live — provisioned ahead of the feature
     so the location is settled, see
-    ``plans/01-custom-agents-per-user.md``). The skill *pool* is
-    provisioned by the registry layer's ``ensure_user_registry``, which owns
-    ``manifest.json``.
+    ``plans/01-custom-agents-per-user.md``). The skill pool is not provisioned
+    here at all: it is rows in ``agent_runtime``, not a directory.
 
     The README is written only when the directory is first created, so an admin
     who deletes it is not fighting the service on every boot.
@@ -329,17 +309,16 @@ def ensure_user_agent_filesystem(
 
     - the user's workspace root + ``custom_agents/`` on first contact
       (:func:`ensure_user_workspace`).
-    - ``agents/<agent_slug>/memory/`` (+ ``entries/``) and seeds the
-    - ``agents/<agent_slug>/skills/`` on first contact (empty —
-      assignments are owned by the skill-registry layer).
     - ``agents/<agent_slug>/conversations/<conversation_id>/`` when
-      ``conversation_id`` is supplied (agent invocation path). Bridge skill
-      CRUD endpoints don't pass it.
+      ``conversation_id`` is supplied (agent invocation path).
+
+    Neither memory nor skills appear here — both are tables in
+    ``agent_runtime`` served as virtual mounts, so there is nothing on disk to
+    create for them. ``agent_slug`` is still validated even when no directory
+    bearing it is created, so a bad slug fails here rather than deeper in.
     """
     root = ensure_user_workspace(user_id)
-
-    skills_dir = skills_root(user_id, agent_slug)
-    skills_dir.mkdir(parents=True, exist_ok=True)
+    _safe_segment(agent_slug)
 
     if conversation_id is not None:
         conv_dir = conversation_root(user_id, agent_slug, conversation_id)
@@ -454,50 +433,4 @@ def delete_conversation_files(*, user_id: str, agent_slug: str, conversation_id:
         user_id=user_id,
         agent_slug=agent_slug,
         conversation_id=conversation_id,
-    )
-
-
-def list_enabled_skills(user_id: str, agent_slug: str) -> List[str]:
-    """Return the sorted list of skill names currently assigned to the pair.
-
-    Source of truth is the filesystem — ``os.listdir`` on the skills
-    directory. Returns an empty list if the directory doesn't exist yet
-    (the user hasn't assigned any skill to this agent yet).
-    """
-    skills_dir = agent_root(user_id, agent_slug) / "skills"
-    if not skills_dir.is_dir():
-        return []
-    return sorted(entry.name for entry in skills_dir.iterdir() if entry.is_dir())
-
-
-def disable_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
-    """Remove the user-agent's copy of ``skill_name``.
-
-    Idempotent: removing a non-existent skill is a no-op.
-
-    NOTE: kept here (not moved to ``harness.skill_registry``) because it
-    only touches the per-(user, agent) filesystem and is the inverse of
-    ``assign_user_skill_to_agent`` — symmetric ops live with the dir tree
-    they mutate. The Phase B remove-from-pool path uses an in-line
-    ``shutil.rmtree`` cascade instead of calling this so the cascade can
-    iterate over every agent without an extra dependency layer.
-    """
-    target = agent_root(user_id, agent_slug) / "skills" / _safe_segment(skill_name)
-    if not target.exists():
-        logger.info(
-            "skill_already_disabled",
-            "Skill not assigned — disable is a no-op",
-            user_id=user_id,
-            agent_slug=agent_slug,
-            skill_name=skill_name,
-        )
-        return
-
-    shutil.rmtree(target)
-    logger.info(
-        "skill_disabled",
-        "Skill assignment removed for user-agent pair",
-        user_id=user_id,
-        agent_slug=agent_slug,
-        skill_name=skill_name,
     )

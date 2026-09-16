@@ -2,14 +2,18 @@
 
 The global registry lives on a mounted volume at
 ``$SKILLS_REGISTRY_GLOBAL_ROOT`` and is indexed by ``manifest.json``
-regenerated on agents-service boot (see ``harness.skill_registry``). This
-module exposes:
+regenerated on agents-service boot (see ``harness.skill_registry``). It is
+build-time content, so it stays on the volume; this module exposes the one
+read over it:
 
-- ``list_registry_skills()`` — the catalogue served by ``GET /skills`` to
-  the bridge. Reads the cached global manifest, joins each entry with its
-  SKILL.md body, returns ``list[SkillManifest]``.
-- Per-(user, agent) selection wrappers re-exporting the filesystem
-  primitives so the FastAPI handlers stay imports-free of runtime internals.
+``list_registry_skills()`` — the catalogue served by ``GET /skills/global`` to
+the bridge. Reads the cached global manifest, joins each entry with its
+SKILL.md body, returns ``list[SkillManifest]``.
+
+A user's *pool*, their custom skill files and their per-agent assignments are
+deliberately absent: those are runtime content and live in ``agent_runtime``,
+read through ``harness.skill_registry.user_registry``, which the skills router
+calls directly.
 
 SKILL.md frontmatter contract (parsed loosely; only ``name`` and ``description``
 are extracted, anything else is ignored):
@@ -27,15 +31,7 @@ from typing import List
 
 from core.logging import get_logger
 from harness.filesystem import layout
-from harness.filesystem import (
-    disable_skill as _disable_skill_fs,
-    ensure_user_agent_filesystem,
-    list_enabled_skills as _list_enabled_skills_fs,
-)
-from harness.skill_registry import (
-    assign_user_skill_to_agent as _assign_user_skill_to_agent,
-    get_global_manifest,
-)
+from harness.skill_registry import get_global_manifest
 from schema import SkillManifest
 
 logger = get_logger(__name__)
@@ -96,41 +92,3 @@ def list_registry_skills() -> List[SkillManifest]:
             )
         )
     return skills
-
-
-# ---------------------------------------------------------------------------
-# Per-(user, agent) selection helpers
-# ---------------------------------------------------------------------------
-# These thin wrappers re-export the filesystem-level primitives so the FastAPI
-# handlers in ``main.py`` can stay imports-free of runtime internals. The
-# provisioner is the single writer of the on-disk skill set after first run.
-
-
-def list_user_agent_skills(user_id: str, agent_slug: str) -> List[str]:
-    """Return enabled skill names for a (user, agent) pair, sorted."""
-    ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
-    return _list_enabled_skills_fs(user_id, agent_slug)
-
-
-def enable_user_agent_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
-    """Copy a user-pool skill into the user-agent's skills directory.
-
-    Source is resolved via the user's manifest (global ref → global volume;
-    custom entry → user volume). Raises ``FileNotFoundError`` if the skill
-    is not in the user's pool — the HTTP layer maps to 404.
-    """
-    ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
-    _assign_user_skill_to_agent(
-        user_id=user_id,
-        agent_slug=agent_slug,
-        skill_name=skill_name,
-    )
-
-
-def disable_user_agent_skill(*, user_id: str, agent_slug: str, skill_name: str) -> None:
-    """Remove the named skill from the user-agent's skills directory.
-
-    Idempotent: no error when the skill isn't enabled.
-    """
-    ensure_user_agent_filesystem(user_id=user_id, agent_slug=agent_slug)
-    _disable_skill_fs(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)

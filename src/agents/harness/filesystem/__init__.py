@@ -1,10 +1,11 @@
 """Per-user / per-(user, agent) / per-conversation filesystem subsystem.
 
 Owns the directory tree under ``<workspaces_root>/users/<user_id>/...`` that
-backs each user's skill pool, their own agent definitions, per-agent
-``AGENTS.md`` memory, the per-agent enabled-skills set, and each conversation's
-working area. ``layout`` is the single authority for *where* things live;
-``provisioner`` owns their lifecycle. See both for the full layout doc.
+backs each user's own agent definitions, their per-agent tool preferences and
+each conversation's working area. Memory and skills are deliberately absent —
+they are tables in ``agent_runtime`` served as virtual mounts. ``layout`` is the
+single authority for *where* things live; ``provisioner`` owns their lifecycle.
+See both for the full layout doc.
 
 Re-exports the public surface so the bridge / agents-service / runtime can
 import from ``harness.filesystem`` rather than reaching into ``provisioner``
@@ -17,15 +18,12 @@ from harness.filesystem.provisioner import (
     conversation_output_root,
     conversation_root,
     delete_conversation_files,
-    disable_skill,
     ensure_user_agent_filesystem,
     ensure_user_workspace,
-    list_enabled_skills,
     read_output_files,
     resolve_conversation_file,
     resolve_output_file,
     seed_input_files,
-    skills_root,
     user_root,
 )
 from harness.filesystem.retention import (
@@ -46,17 +44,14 @@ __all__ = [
     "conversation_output_root",
     "conversation_root",
     "delete_conversation_files",
-    "disable_skill",
     "ensure_user_agent_filesystem",
     "ensure_user_workspace",
     "layout",
-    "list_enabled_skills",
     "read_output_files",
     "resolve_conversation_file",
     "resolve_output_file",
     "run_workspace_retention_loop",
     "seed_input_files",
-    "skills_root",
     "sweep_workspace_retention_once",
     "user_root",
     "workspace_write_deny",

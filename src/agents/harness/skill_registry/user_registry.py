@@ -28,7 +28,7 @@ import base64
 import binascii
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -203,12 +203,17 @@ async def list_user_skill_names(user_id: str) -> list[str]:
     return [entry["name"] for entry in await _store().list_pool(user_id)]
 
 
-async def get_user_skill_detail(user_id: str, skill_name: str) -> Optional[UserSkillDetail]:
-    """One pool entry joined with its file inventory, or ``None`` if absent."""
+async def get_user_skill_detail(user_id: str, skill_name: str) -> UserSkillDetail:
+    """One pool entry joined with its file inventory.
+
+    Raises ``FileNotFoundError`` when the user does not hold the skill — the
+    route maps that to 404. Returning ``None`` instead would fail response
+    validation against a non-Optional model and surface as a 500.
+    """
     store = _store()
     entry = await store.get_pool_entry(user_id, skill_name)
     if entry is None:
-        return None
+        raise FileNotFoundError(f"Skill is not in the pool: {skill_name!r}")
 
     files = await store.read_files(user_id, skill_name)
     raw_entry = files.get(SKILL_ENTRY_FILE, ("", "utf-8"))[0]
@@ -241,7 +246,10 @@ async def add_global_to_user(user_id: str, skill_name: str) -> SkillManifestEntr
     manifest = get_global_manifest()
     match = next((s for s in manifest.skills if s.name == skill_name), None)
     if match is None:
-        raise SkillNameConflict(f"Unknown global skill: {skill_name!r}")
+        # Not a conflict: `SkillNameConflict` is a ValueError and the route maps
+        # that to 409, so a name the catalogue never had would answer "already
+        # in the pool". A miss is a miss — 404.
+        raise FileNotFoundError(f"Unknown global skill: {skill_name!r}")
 
     store = _store()
     existing = await store.get_pool_entry(user_id, skill_name)
@@ -393,7 +401,7 @@ async def assign_user_skill_to_agent(user_id: str, agent_slug: str, skill_name: 
     """
     store = _store()
     if await store.get_pool_entry(user_id, skill_name) is None:
-        raise SkillNameConflict(f"Skill is not in the pool: {skill_name!r}")
+        raise FileNotFoundError(f"Skill is not in the pool: {skill_name!r}")
     await store.assign(user_id, agent_slug, skill_name)
 
 

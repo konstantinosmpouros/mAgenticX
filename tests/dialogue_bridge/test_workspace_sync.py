@@ -5,6 +5,10 @@ each one has a failure mode of its own: a missed *write* leaves a wiped volume
 empty, a missed *send* leaves an orphan invisible forever, and a wrong *remove*
 destroys content. These pin the branch conditions, none of which is reachable
 from the HTTP surface without a live agents service.
+
+**Agent definitions only.** Skills travelled this exchange too until they moved
+into ``agent_runtime``; with one copy there is nothing to compare, so both the
+plan fields and these tests went with it.
 """
 from __future__ import annotations
 
@@ -15,13 +19,11 @@ from sqlalchemy import select
 from core.database import AgentTable
 from schema import (
     ContentAgent,
-    ContentSkill,
     InventoryAgent,
-    InventorySkill,
     SyncContent,
     SyncInventory,
 )
-from utils import skill_store, user_agents, workspace_sync
+from utils import user_agents, workspace_sync
 from utils.workspace_sync import build_plan, content_hash
 
 SPEC = {"slug": "research-bot", "name": "Research Bot", "version": "1", "description": "d"}
@@ -139,35 +141,6 @@ async def test_a_row_without_a_definition_asks_for_content_not_a_write(db, uid):
     assert plan.send_agents == ["research-bot"] and plan.write_agents == []
 
 
-@pytest.mark.asyncio
-async def test_a_pool_entry_without_bodies_asks_for_content(db, uid):
-    await skill_store.add_to_pool(db, uid, "note-taker", pool_type="custom")
-    await db.commit()
-    inv = SyncInventory(skills=[InventorySkill(name="note-taker", hash="h")])
-    plan = await build_plan(db, uid, inv)
-    assert plan.send_skills == ["note-taker"] and plan.write_skills == []
-
-
-@pytest.mark.asyncio
-async def test_a_skill_folder_with_no_pool_row_is_requested(db, uid):
-    inv = SyncInventory(skills=[InventorySkill(name="orphan-skill", hash="h")])
-    plan = await build_plan(db, uid, inv)
-    assert plan.send_skills == ["orphan-skill"]
-
-
-@pytest.mark.asyncio
-async def test_a_global_entry_compares_by_presence_only(db, uid):
-    # The catalogue owns the content, so there is no per-user copy to hash.
-    await skill_store.add_to_pool(db, uid, "web-research", pool_type="global")
-    await db.commit()
-    plan = await build_plan(db, uid, SyncInventory())
-    assert [s.name for s in plan.write_skills] == ["web-research"]
-    assert plan.write_skills[0].type == "global" and plan.write_skills[0].files == []
-
-    inv = SyncInventory(skills=[InventorySkill(name="web-research", type="global")])
-    assert (await build_plan(db, uid, inv)).write_skills == []
-
-
 # ---------------------------------------------------------------------------
 # remove — a tombstone means finish the deletion
 # ---------------------------------------------------------------------------
@@ -178,44 +151,6 @@ async def test_a_deleted_agent_still_on_the_volume_is_removed(db, uid):
     plan = await build_plan(db, uid, inv)
     assert plan.remove_agents == ["research-bot"]
     assert plan.write_agents == [] and plan.send_agents == []
-
-
-@pytest.mark.asyncio
-async def test_a_tombstoned_skill_still_on_the_volume_is_removed(db, uid):
-    await skill_store.store_custom_skill(db, uid, name="note-taker", files=FILES)
-    await skill_store.tombstone_pool_entry(db, uid, "note-taker")
-    await db.commit()
-    inv = SyncInventory(skills=[InventorySkill(name="note-taker", hash="h")])
-    plan = await build_plan(db, uid, inv)
-    assert plan.remove_skills == ["note-taker"]
-    assert plan.write_skills == [] and plan.send_skills == []
-
-
-# ---------------------------------------------------------------------------
-# assignments — adopted inline, no second round trip
-# ---------------------------------------------------------------------------
-@pytest.mark.asyncio
-async def test_volume_only_assignments_are_adopted_and_returned(db, uid):
-    await skill_store.add_to_pool(db, uid, "note-taker", pool_type="custom")
-    await db.commit()
-    inv = SyncInventory(assignments={"omni": ["note-taker"]})
-    plan = await build_plan(db, uid, inv)
-    await db.commit()
-
-    assert plan.assignments == {"omni": ["note-taker"]}
-    assert await skill_store.list_agent_skills(db, uid, "omni") == ["note-taker"]
-
-
-@pytest.mark.asyncio
-async def test_an_assignment_for_a_removed_skill_is_not_adopted(db, uid):
-    await skill_store.store_custom_skill(db, uid, name="note-taker", files=FILES)
-    await skill_store.tombstone_pool_entry(db, uid, "note-taker")
-    await db.commit()
-
-    plan = await build_plan(db, uid, SyncInventory(assignments={"omni": ["note-taker"]}))
-    await db.commit()
-    assert plan.assignments == {}
-    assert await skill_store.list_agent_skills(db, uid, "omni") == []
 
 
 # ---------------------------------------------------------------------------
@@ -250,52 +185,6 @@ async def test_adoption_will_not_revive_a_deleted_agent(db, uid):
         await db.execute(select(AgentTable).where(AgentTable.slug == "research-bot"))
     ).scalar_one()
     assert row.is_active is False
-
-
-@pytest.mark.asyncio
-async def test_adoption_will_not_revive_a_removed_skill(db, uid):
-    await skill_store.store_custom_skill(db, uid, name="note-taker", files=FILES)
-    await skill_store.tombstone_pool_entry(db, uid, "note-taker")
-    await db.commit()
-
-    counts = await workspace_sync.apply_content(
-        db, uid, SyncContent(skills=[ContentSkill(name="note-taker", files=FILES)])
-    )
-    await db.commit()
-
-    assert counts["skills"] == 0
-    assert await skill_store.list_pool(db, uid) == []
-
-
-@pytest.mark.asyncio
-async def test_adopting_a_skill_makes_it_visible_and_hashable(db, uid):
-    await workspace_sync.apply_content(
-        db, uid, SyncContent(skills=[ContentSkill(name="note-taker", description="d", files=FILES)])
-    )
-    await db.commit()
-
-    assert [p["name"] for p in await skill_store.list_pool(db, uid)] == ["note-taker"]
-    # And the next pass sees it as settled rather than re-sending it.
-    inv = SyncInventory(
-        skills=[InventorySkill(name="note-taker", hash=content_hash([("AGENT.md", FILES[0]["content"])]))]
-    )
-    plan = await build_plan(db, uid, inv)
-    assert plan.send_skills == [] and plan.write_skills == []
-
-
-@pytest.mark.asyncio
-async def test_an_entry_with_no_content_on_either_side_is_dropped(db, uid):
-    # A name we hold with no files, and no folder on the volume: the skill
-    # exists nowhere, so the entry can only ever 404. The read-triggered
-    # stale-prune used to clean this up, but only if somebody opened it.
-    await skill_store.add_to_pool(db, uid, "ghost-skill", pool_type="custom")
-    await db.commit()
-
-    plan = await build_plan(db, uid, SyncInventory())
-    await db.commit()
-
-    assert plan.send_skills == [] and plan.write_skills == []
-    assert await skill_store.list_pool(db, uid) == []
 
 
 # ---------------------------------------------------------------------------

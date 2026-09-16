@@ -1,6 +1,6 @@
 """Reconcile this volume against ``chat_db``, in both directions.
 
-``chat_db`` owns user-authored agents and skills; this volume is the copy the
+``chat_db`` owns user-authored agent definitions; this volume is the copy the
 *runtime* reads. Normal operation keeps them in step because every save writes
 both. This module handles everything operation does not cover, in one pass:
 

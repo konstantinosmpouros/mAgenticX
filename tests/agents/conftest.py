@@ -5,6 +5,7 @@ import importlib
 import os
 import sys
 from pathlib import Path
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +22,9 @@ if str(SERVICE_ROOT) not in sys.path:
 os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
 os.environ.setdefault("TRUSTED_PROXY_SECRET", "agents-test-secret")
 os.environ.setdefault("MCP_GATEWAY_URL", "http://mcp.test/sse")
+
+#: Fixed timestamp for fake store rows — the shape matters, the value does not.
+STORE_NOW = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
 
 
 def _purge_modules_under_paths(*roots: str | Path) -> None:
@@ -88,6 +92,7 @@ def _load_agents_service(monkeypatch):
         # skill registry + filesystem
         user_registry=importlib.import_module("harness.skill_registry.user_registry"),
         global_manifest=importlib.import_module("harness.skill_registry.global_manifest"),
+        skill_store=importlib.import_module("harness.skill_registry.store"),
         provisioner=importlib.import_module("harness.filesystem.provisioner"),
         # other utils
         suggestions=importlib.import_module("utils.suggestions"),
@@ -297,6 +302,104 @@ async def client(agents_service):
         yield async_client
 
 
+# ---------------------------------------------------------------------------
+# The skill store, in memory
+# ---------------------------------------------------------------------------
+# Skills live in `agent_runtime`, and the registry reaches them through
+# `user_registry._store()`. Tests get a dict-backed twin instead of a database:
+# it keeps the suite about the rules the service enforces, and it is what lets
+# the HTTP-level skill routes be exercised end to end with no Postgres.
+class FakeSkillStore:
+    """Mirrors ``SkillStore``'s semantics with dicts.
+
+    The one behaviour deliberately kept real is the **global dispatch**: a
+    ``type='global'`` entry reads the catalogue off disk, so it delegates to the
+    store module's own reader. That is the branch least worth faking — a global
+    pool entry carrying no files of its own is the sharp edge of the whole model.
+    """
+
+    def __init__(self, store_module):
+        self._read_catalogue = store_module._read_catalogue_files
+        self.pool: dict[tuple[str, str], dict] = {}
+        self.files: dict[tuple[str, str], dict[str, tuple[str, str]]] = {}
+        self.assignments: set[tuple[str, str, str]] = set()
+
+    async def list_pool(self, user_id):
+        return [v for (u, _n), v in sorted(self.pool.items()) if u == user_id]
+
+    async def get_pool_entry(self, user_id, skill_name):
+        return self.pool.get((user_id, skill_name))
+
+    async def add_global(self, user_id, skill_name, *, category, description=""):
+        self.pool[(user_id, skill_name)] = {
+            "name": skill_name, "type": "global", "category": category,
+            "description": description, "origin": "user",
+            "created_by_agent": None, "added_at": STORE_NOW,
+        }
+
+    async def add_custom(self, user_id, skill_name, *, files, description="",
+                         origin="user", created_by_agent=None):
+        self.pool[(user_id, skill_name)] = {
+            "name": skill_name, "type": "custom", "category": "",
+            "description": description, "origin": origin,
+            "created_by_agent": created_by_agent, "added_at": STORE_NOW,
+        }
+        # Replace, never merge — a save carries the whole folder.
+        self.files[(user_id, skill_name)] = dict(files)
+
+    async def remove(self, user_id, skill_name):
+        held = self.pool.pop((user_id, skill_name), None) is not None
+        self.files.pop((user_id, skill_name), None)
+        self.assignments = {a for a in self.assignments
+                            if not (a[0] == user_id and a[2] == skill_name)}
+        return held
+
+    async def list_agent_skills(self, user_id, agent_slug):
+        return sorted(n for (u, a, n) in self.assignments
+                      if u == user_id and a == agent_slug)
+
+    async def assign(self, user_id, agent_slug, skill_name):
+        self.assignments.add((user_id, agent_slug, skill_name))
+
+    async def unassign(self, user_id, agent_slug, skill_name):
+        self.assignments.discard((user_id, agent_slug, skill_name))
+
+    async def read_files(self, user_id, skill_name):
+        entry = self.pool.get((user_id, skill_name))
+        if entry is None:
+            return {}
+        if entry["type"] == "global":
+            return self._read_catalogue(entry["category"], skill_name)
+        return dict(self.files.get((user_id, skill_name), {}))
+
+
+@pytest.fixture()
+def ur(skills_fs, monkeypatch):
+    """The registry module with a dict-backed store behind it.
+
+    ``.store`` is hung off the module so a test can assert on what was actually
+    written — the point of several of these is that nothing was.
+    """
+    module = skills_fs.service.user_registry
+    fake = FakeSkillStore(skills_fs.service.skill_store)
+    monkeypatch.setattr(module, "_store", lambda: fake)
+    monkeypatch.setattr(module, "store", fake, raising=False)
+    return module
+
+
+
+@pytest.fixture()
+def skill_store_memory(agents_service, monkeypatch):
+    """Install the in-memory store behind the registry for this test.
+
+    Returned so a test can inspect what was written — several assert that
+    *nothing* was.
+    """
+    fake = FakeSkillStore(agents_service.skill_store)
+    monkeypatch.setattr(agents_service.user_registry, "_store", lambda: fake)
+    return fake
+
+
 def _write_global_skill(global_root: Path, category: str, name: str, description: str, body: str) -> None:
     skill_dir = global_root / category / name
     skill_dir.mkdir(parents=True, exist_ok=True)
@@ -319,8 +422,11 @@ def skills_fs(agents_service, tmp_path):
 
     * ``global_root`` — the *catalogue* dir (``<plane>/skills``), so
       ``global_root / <category> / <skill>`` addresses a skill folder.
-    * ``pool(user)`` — that user's skill pool (``manifest.json`` + ``custom/``).
     * ``workspace(user)`` / ``agent_dir(user, slug)`` — the per-user tree.
+
+    There is deliberately no ``pool(user)`` any more: a user's skills are rows
+    in ``agent_runtime``, not a directory, so nothing on this tmp tree backs
+    them. Only the *catalogue* — build-time content — is still on disk.
     """
     fs = agents_service.settings_module.settings.filesystem
     layout = agents_service.filesystem_layout
@@ -343,7 +449,6 @@ def skills_fs(agents_service, tmp_path):
     return SimpleNamespace(
         global_root=catalogue,
         users_root=layout.users_root(),
-        pool=layout.user_skills_pool_root,
         workspace=layout.user_workspace,
         agent_dir=layout.agent_root,
         service=agents_service,

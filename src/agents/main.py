@@ -83,9 +83,9 @@ async def _lifespan(app: FastAPI):
     sync_stop = asyncio.Event()
     try:
         logger.info("service_startup", "Agents service startup initiated")
-        # Bootstrap the global skills registry volume from the image seed,
-        # index it into manifest.json, then heal per-user manifests against
-        # filesystem state.
+        # Bootstrap the global skills catalogue volume from the image seed and
+        # index it into manifest.json. Build-time content, so it lives on the
+        # volume; everything per-user is rows in agent_runtime.
         seed_global_registry()
         rebuild_global_manifest()
         # Seed built-in declarative (YAML) agents into the global volume, then

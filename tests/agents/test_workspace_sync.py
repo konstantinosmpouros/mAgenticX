@@ -5,6 +5,11 @@ Both halves are dangerous in their own way — a wrong inventory makes the bridg
 plan the wrong repair, and applying a plan is the only path in the system that
 deletes a user's authored content — so the branch conditions are pinned here
 rather than left to the live pass.
+
+**Agent definitions only.** Skills used to travel this exchange too; they now
+live in ``agent_runtime`` with exactly one copy, so there is no second copy to
+compare and nothing for that half of the loop to do. The loop itself survives
+only until plan 26 moves definitions as well.
 """
 from __future__ import annotations
 
@@ -89,26 +94,6 @@ def test_inventory_reports_an_agent_with_its_hash(sync, skills_fs, spec_for):
     assert inv["agents"][0]["hash"] == sync.content_hash([("AGENT.md", "Hello.")])
 
 
-def test_inventory_reports_a_global_entry_without_a_hash(sync, skills_fs):
-    from harness.skill_registry.user_registry import add_global_to_user
-
-    add_global_to_user("u1", "deep-research")
-    inv = sync.build_inventory("u1")
-    entry = next(s for s in inv["skills"] if s["name"] == "deep-research")
-    assert entry["type"] == "global" and entry["hash"] == ""
-
-
-def test_inventory_reports_assignments_per_agent(sync, skills_fs):
-    from harness.skill_registry.user_registry import (
-        add_global_to_user,
-        assign_user_skill_to_agent,
-    )
-
-    add_global_to_user("u1", "deep-research")
-    assign_user_skill_to_agent(user_id="u1", agent_slug="omni", skill_name="deep-research")
-    assert sync.build_inventory("u1")["assignments"] == {"omni": ["deep-research"]}
-
-
 # ---------------------------------------------------------------------------
 # Applying a plan
 # ---------------------------------------------------------------------------
@@ -127,41 +112,16 @@ def test_an_unparseable_spec_is_skipped_not_raised(sync, skills_fs):
     assert sync._write_agent("u1", {"slug": "bad", "spec": {"nonsense": True}, "files": []}) is False
 
 
-def test_writing_a_skill_that_already_exists_replaces_it(sync, skills_fs):
-    from harness.skill_registry.user_registry import get_user_skill_detail
-
-    item = {"name": "note-taker", "type": "custom", "description": "d",
-            "files": [{"path": "SKILL.md", "content": "v1"}]}
-    assert sync._write_skill("u1", item, set()) is True
-
-    # `add_custom_to_user` refuses a name already in the pool, so a rewrite has
-    # to remove first — otherwise a diverged skill could never be repaired.
-    item["files"] = [{"path": "SKILL.md", "content": "v2"}]
-    assert sync._write_skill("u1", item, {"note-taker"}) is True
-    body = get_user_skill_detail("u1", "note-taker").files[0].content
-    assert "v2" in body
-
-
-def test_a_skill_with_no_files_is_not_written(sync, skills_fs):
-    # Metadata with no bodies would create an empty folder over content the
-    # volume may still hold.
-    assert sync._write_skill("u1", {"name": "empty", "type": "custom", "files": []}, set()) is False
-
-
 def test_removing_finishes_a_deletion(sync, skills_fs, spec_for):
     from harness.abstractions import AgentSpec
     from harness.abstractions.user_agents import list_user_agents, write_user_agent
-    from harness.skill_registry.user_registry import add_global_to_user, read_user_manifest
     from schema import AgentFile
 
     write_user_agent("u1", AgentSpec.model_validate(spec_for("probe-bot")),
                      [AgentFile(path="AGENT.md", content="x", encoding="utf-8")])
-    add_global_to_user("u1", "deep-research")
 
     assert sync._remove_agent("u1", "probe-bot") is True
-    assert sync._remove_skill("u1", "deep-research") is True
     assert list_user_agents("u1") == []
-    assert [e.name for e in read_user_manifest("u1").skills] == []
 
 
 def test_removing_something_already_gone_is_not_an_error(sync, skills_fs):
@@ -183,24 +143,3 @@ def test_collecting_agent_content_returns_spec_and_files(sync, skills_fs, spec_f
     assert [a["slug"] for a in out] == ["probe-bot"]
     assert out[0]["spec"]["slug"] == "probe-bot"
     assert [f["path"] for f in out[0]["files"]] == ["AGENT.md"]
-
-
-def test_collecting_skill_content_skips_globals(sync, skills_fs):
-    # A global has no per-user body to hand over; the catalogue owns it and the
-    # bridge records membership from the inventory alone.
-    from harness.skill_registry.user_registry import add_global_to_user
-
-    add_global_to_user("u1", "deep-research")
-    assert sync._collect_skill_content("u1", ["deep-research"]) == []
-
-
-def test_collecting_skill_content_returns_the_bodies(sync, skills_fs):
-    sync._write_skill(
-        "u1",
-        {"name": "note-taker", "type": "custom", "description": "d",
-         "files": [{"path": "SKILL.md", "content": "body"}]},
-        set(),
-    )
-    out = sync._collect_skill_content("u1", ["note-taker"])
-    assert len(out) == 1 and out[0]["name"] == "note-taker"
-    assert any(f["path"] == "SKILL.md" for f in out[0]["files"])

@@ -5,8 +5,8 @@ from message-attachment blobs before each run, and presented ``output/`` files
 are read back at run finalize and persisted as generated-attachment blobs
 (see ``provisioner.seed_input_files`` / ``read_output_files``). Erasing them
 after a TTL therefore never loses user data; it only trims the on-disk cache.
-Everything else in the workspace (``memory/``, ``skills/``, offload dirs,
-loose ``/conversation/`` files) is deliberately out of scope.
+Everything else in the workspace (the user's own agent definitions, the offload
+dirs, loose ``/conversation/`` files) is deliberately out of scope.
 
 Security posture — this module deletes files, so it is written defensively:
 
@@ -49,6 +49,8 @@ logger = get_logger(__name__)
 # identified by position. The old name-based skip (`memory`, `skills`) had to be
 # updated every time a new sibling appeared under the agent root — `tool_prefs.json`
 # only escaped it by being a file, and `default_skills/` would not have.
+# Both of those names are gone from the volume now, which is precisely why
+# position beats a name list: the sweep needed no edit when they went.
 # Per-pass safety budgets (hardcoded on purpose — not worth config surface).
 _MAX_DELETES_PER_PASS = 10_000
 _MAX_PASS_SECONDS = 30.0
@@ -79,9 +81,8 @@ def _iter_scope_dirs(root: Path):
     symlinked directory anywhere on the path is simply not descended into.
 
     Because conversations sit under their own ``conversations/`` parent, every
-    directory reached at the deepest level *is* a conversation: no sibling of
-    ``memory/`` or ``skills/`` can be mistaken for one, and adding a new sibling
-    under the agent root cannot silently widen this sweep.
+    directory reached at the deepest level *is* a conversation, and adding a new
+    sibling under the agent root cannot silently widen this sweep.
     """
     try:
         user_entries = list(os.scandir(root))

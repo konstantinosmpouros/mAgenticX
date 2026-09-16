@@ -10,16 +10,19 @@ Two planes under one root — the consolidated layout from
         skills/<category>/<skill_name>/SKILL.md     browsable catalogue
 
     $MAGENTICX_WORKSPACES_ROOT/users/<user_id>/     ← one user's everything
-        skills/
-            manifest.json                           the user's pool
-            custom/<skill_name>/SKILL.md            user-authored skills
         custom_agents/<agent_slug>/agent.yaml       user-authored agent definitions
         agents/<agent_slug>/
-            memory/{AGENTS.md, entries/*.yml}
-            skills/<skill_name>/                    ADDED skills (tier ②, copied from pool)
-            default_skills/<skill_name>/            tier ① for user-authored agents
             tool_prefs.json
             conversations/<conversation_id>/{input,output}
+
+Both planes are here because the split between them is the point: the global
+plane is **build-time** content — baked into the image, identical for every
+user, never written at runtime — while the user plane holds only what a run
+actually produces. Runtime content that used to sit in the user plane now lives
+in ``agent_runtime`` instead: memory in ``agent_memories``, and the skill pool,
+custom skill files and per-agent assignments in ``skill_pool`` / ``skill_files``
+/ ``agent_skills``. Neither has a path here, which is why the user tree is as
+thin as it looks.
 
 Why this module exists: the same user's data used to be split across three
 volumes with path construction scattered over the provisioner, the skill
@@ -110,26 +113,6 @@ def user_workspace(user_id: str) -> Path:
     return users_root() / safe_segment(user_id)
 
 
-def user_skills_pool_root(user_id: str) -> Path:
-    """The user's skill pool (``manifest.json`` + ``custom/``)."""
-    return user_workspace(user_id) / "skills"
-
-
-def user_manifest_path(user_id: str) -> Path:
-    """The authoritative list of skills in this user's pool."""
-    return user_skills_pool_root(user_id) / "manifest.json"
-
-
-def user_custom_skills_root(user_id: str) -> Path:
-    """Folders backing ``type="custom"`` pool entries. ``type="global"``
-    entries are references and have no folder here."""
-    return user_skills_pool_root(user_id) / "custom"
-
-
-def user_custom_skill_dir(user_id: str, skill_name: str) -> Path:
-    return user_custom_skills_root(user_id) / safe_segment(skill_name)
-
-
 def user_custom_agents_root(user_id: str) -> Path:
     """Where a user's own ``agent.yaml`` definitions live.
 
@@ -154,22 +137,9 @@ def user_agents_root(user_id: str) -> Path:
 
 
 def agent_root(user_id: str, agent_slug: str) -> Path:
-    """Parent of this (user, agent) pair's memory, skills and conversations.
+    """Parent of this (user, agent) pair's conversations and tool preferences.
     Never itself mounted — the agent never sees this level."""
     return user_agents_root(user_id) / safe_segment(agent_slug)
-
-
-def agent_skills_root(user_id: str, agent_slug: str) -> Path:
-    """Tier ② — skills the user added to this agent, copied from their pool.
-    Directory presence is the "enabled" record; there is no DB mirror."""
-    return agent_root(user_id, agent_slug) / "skills"
-
-
-def agent_default_skills_root(user_id: str, agent_slug: str) -> Path:
-    """Tier ① for a *user-authored* agent: resolved from the user's own pool
-    when they save the agent. Platform agents use
-    :func:`global_agent_default_skills_root` instead."""
-    return agent_root(user_id, agent_slug) / "default_skills"
 
 
 def conversations_root(user_id: str, agent_slug: str) -> Path:
@@ -191,9 +161,7 @@ def conversation_output_root(user_id: str, agent_slug: str, conversation_id: str
 __all__ = [
     "CONVERSATIONS_DIRNAME",
     "CUSTOM_AGENTS_DIRNAME",
-    "agent_default_skills_root",
     "agent_root",
-    "agent_skills_root",
     "conversation_input_root",
     "conversation_output_root",
     "conversation_root",
@@ -207,10 +175,6 @@ __all__ = [
     "user_agents_root",
     "user_custom_agent_dir",
     "user_custom_agents_root",
-    "user_custom_skill_dir",
-    "user_custom_skills_root",
-    "user_manifest_path",
-    "user_skills_pool_root",
     "user_workspace",
     "users_root",
 ]

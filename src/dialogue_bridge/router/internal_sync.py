@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import AgentTable, UserSkillPoolTable, get_db
+from core.database import AgentTable, get_db
 from core.logging import get_logger, set_context
 from core.security.internal_trust import require_internal_caller
 from schema import SyncAccepted, SyncContent, SyncInventory, SyncPlan
@@ -51,15 +51,15 @@ async def listSyncUsers(db: AsyncSession = Depends(get_db)) -> list[str]:
     Tombstoned pool rows count: a pending removal is work the pass still has to
     finish on the volume.
     """
+    # Agent owners only: skills moved to `agent_runtime`, so a user with a
+    # skill pool but no custom agent is no longer knowable — or relevant — here.
+    # The sync plans agent definitions and nothing else.
     agent_users = (
         await db.execute(
             select(AgentTable.owner_user_id).where(AgentTable.owner_user_id.isnot(None))
         )
     ).scalars().all()
-    pool_users = (
-        await db.execute(select(UserSkillPoolTable.user_id))
-    ).scalars().all()
-    return sorted({u for u in (*agent_users, *pool_users) if u})
+    return sorted({u for u in agent_users if u})
 
 
 @router.post(
@@ -104,7 +104,7 @@ async def acceptWorkspaceContent(
     """Take the bodies a plan asked for.
 
     Idempotent by name: every write is an upsert keyed on
-    ``(user, slug)`` / ``(user, skill_name)``, so a retried pass costs a
+    ``(user, slug)``, so a retried pass costs a
     rewrite rather than a duplicate.
     """
     set_context(user_id=user_id)

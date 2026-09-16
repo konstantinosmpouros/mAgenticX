@@ -361,20 +361,25 @@ skills/
 
 | Tier | Route | Contents | Writable? |
 | --- | --- | --- | --- |
-| ② user-enabled | `/skills/` | what the user turned on for this (user, agent) pair — the folder's presence *is* the record | no |
+| ② user-enabled | `/skills/` | what the user turned on for this (user, agent) pair — the `agent_skills` rows in `agent_runtime` | no |
 | ① built-in | `/default_skills/` | the skills the agent **ships with**, from its spec's `skills:` | no |
 
 Each source is a `(route, label)` tuple; the label renders as `**<label> Skills**` in the system prompt (`Your` / `Built-in`). Pass explicit labels — deepagents otherwise derives one from the path, and a bare `/skills/` derives `Skills`, rendering as the duplicative "Skills Skills" its own docs warn about.
 
 **Order is load-bearing.** deepagents merges sources left to right and *later sources win* on a name clash (`all_skills[skill["name"]] = skill` in `before_agent`), so the defaults go **last**: a user cannot neutralise a skill the agent ships with by putting a same-named one in their pool. Combined with the read-only mount, "the user may add skills but never remove the built-in ones" is **structural** — the enable/disable endpoint only ever touches `/skills/`, so no code path can drop a default.
 
-Tier ① is optional: `DeepAgent.default_skills_dir` returns `None` (an agent written in Python declares its skills in code) and the route is simply absent, so an agent never advertises an empty tier. `YamlDeepAgent` resolves it from where the agent was defined — a **platform** agent mounts `global/agents/<slug>/skills/` directly (never copied per user), a **user-authored** one mounts the copy made in its workspace by `sync_agent_default_skills()` when the agent was saved (re-copied and pruned on every save, so editing the spec's `skills:` is reflected on the next run).
+Tier ① is optional: `DeepAgent.default_skills_dir` returns `None` (an agent written in Python declares its skills in code) and the route is simply absent, so an agent never advertises an empty tier. `YamlDeepAgent` resolves it from where the agent was defined:
+
+* a **platform** agent mounts `global/agents/<slug>/skills/` straight from the image — build-time content, identical for every user and not writable at runtime;
+* a **user-authored** agent has no image folder, so its tier ① is its spec's `skills:` list resolved against the author's own pool in `agent_runtime`. The names ride in the store namespace, so editing the spec changes the mount on the next run with nothing to re-copy or prune — and the mount cannot drift from what the user actually holds.
+
+`PromptContext.has_default_skills` therefore derives from *the resolver returned a tier ① set*, not from a directory existing — otherwise the prompt would stop advertising a tier the agent still has.
 
 One consequence of the middleware: `skills_metadata` is loaded **once per session** and skipped when already in state, so a skill change applies to the *next* conversation — the same caveat as `AGENTS.md` memory.
 
 ##### User-authored custom skills (multi-file)
 
-End users author their own skills from the **Skills** tab in the profile panel. Unlike the admin-curated global catalog, a custom skill is created at runtime and written to the per-user registry at `$SKILLS_REGISTRY_USERS_ROOT/<user_id>/custom/<name>/`.
+End users author their own skills from the **Skills** tab in the profile panel. Unlike the admin-curated global catalogue — build-time content that ships on the volume — a custom skill is created at runtime and stored as rows in `agent_runtime` (`skill_pool` + `skill_files`). There is no per-user directory: the pool used to live at `$SKILLS_REGISTRY_USERS_ROOT/<user_id>/custom/<name>/` and be reconciled against a `chat_db` copy every 900 seconds, which is the cost this removed. See [database-schema](../architecture/database-schema.md#agent_runtime-tables).
 
 A custom skill is a **folder of files**, not a single `SKILL.md`. `POST /v1/users/{user_id}/skills/custom` accepts a file list:
 
@@ -390,13 +395,13 @@ A custom skill is a **folder of files**, not a single `SKILL.md`. `POST /v1/user
 }
 ```
 
-Exactly one file must be `SKILL.md`; its body is wrapped with canonical frontmatter (`name` + `description`) server-side. Every other file is written verbatim — UTF-8 text or base64-decoded binary. `add_custom_to_user` validates and decodes the **entire payload before writing a single byte** (and `rmtree`s the folder on any I/O error mid-write), enforcing:
+Exactly one file must be `SKILL.md`; its body is wrapped with canonical frontmatter (`name` + `description`) serialised with `yaml.safe_dump` rather than interpolated — interpolation only stripped newlines, leaving every other YAML indicator free to change how the block parses, which matters more now that `create_skill` lets an *agent* supply both values. Every other file is stored verbatim, with its encoding travelling alongside so a binary asset round-trips. `add_custom_to_user` validates and decodes the **entire payload before writing anything**, enforcing:
 
 - ≤ 30 files, ≤ 1 MiB per file, ≤ 5 MiB total, ≤ 4 path segments deep.
 - Allowed extensions only (text: `.md/.txt/.py/.js/.ts/.json/.yaml/.csv/...`; binary: `.png/.jpg/.svg/.pdf/...`).
 - Each path segment passes `_safe_segment` (no `..`, leading dot, or separators).
 
-A structural failure raises `SkillValidationError` → **422** with the specific reason; a name collision raises `SkillNameConflict` → **409**. When the skill is later assigned to an agent, the whole folder is copied via `shutil.copytree`, so multi-file custom skills propagate to the per-(user, agent) skills dir unchanged. `GET /v1/users/{user_id}/skills/{name}` returns the manifest row plus a `files` inventory — text files inline, binary/oversized files as metadata only (`content: ""`).
+A structural failure raises `SkillValidationError` → **422** with the specific reason; a name collision raises `SkillNameConflict` → **409**; a name the catalogue does not have, or a skill the user does not hold, raises `FileNotFoundError` → **404**. Assigning a skill to an agent inserts one `agent_skills` row — nothing is copied, so a multi-file skill reaches the mount unchanged by construction rather than by a correct `copytree`. Removing one from the pool cascades to every assignment, because an assignment outliving its entry would mount a skill folder that resolves to no files. `GET /v1/users/{user_id}/skills/{name}` returns the pool row plus a `files` inventory.
 
 #### 5. Register sub-agents (optional)
 

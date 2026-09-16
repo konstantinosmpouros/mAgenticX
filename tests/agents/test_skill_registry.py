@@ -1,19 +1,26 @@
+"""The skill registry: the catalogue index, and the validation that guards a pool.
+
+Two halves, split by what each still owns now that storage moved into
+``agent_runtime``:
+
+* **``global_manifest``** still walks a real directory. The catalogue is
+  build-time content, seeded from the image and shared by every user, so it
+  stays on the volume — these tests keep using the ``skills_fs`` tmp tree.
+* **``user_registry``** owns no files any more. What is left is the part that was
+  never about storage: path/size/type validation, strict base64, name conflicts
+  and canonical frontmatter assembly. Those run against an in-memory stand-in
+  for the store, so every rule is pinned with no database involved.
+
+The store's own behaviour is pinned in ``test_skill_store.py``; the SQL behind it
+is exercised against real Postgres by the integration check in the same commit.
+"""
 from __future__ import annotations
 
 import base64
+import shutil
 
 import pytest
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-def _custom_payload(service, name: str, description: str = "A custom skill", extra_files=None):
-    schemas = service.schemas
-    files = [schemas.SkillFile(path="SKILL.md", content="custom body", encoding="utf-8")]
-    for path, content, encoding in extra_files or []:
-        files.append(schemas.SkillFile(path=path, content=content, encoding=encoding))
-    return schemas.CustomSkillCreate(name=name, description=description, files=files)
+import yaml
 
 
 # ---------------------------------------------------------------------------
@@ -99,140 +106,169 @@ def test_parse_frontmatter_read_failure_returns_dir_name(skills_fs):
 
 
 # ---------------------------------------------------------------------------
-# user_registry — add global / list / detail
+# The registry, over the in-memory store from conftest
 # ---------------------------------------------------------------------------
-def test_add_global_to_user_appends_reference(skills_fs):
-    ur = skills_fs.service.user_registry
-    entry = ur.add_global_to_user("user-1", "deep-research")
+def _payload(service, name, description="A custom skill", extra_files=None):
+    schemas = service.schemas
+    files = [schemas.SkillFile(path="SKILL.md", content="custom body", encoding="utf-8")]
+    for path, content, encoding in extra_files or []:
+        files.append(schemas.SkillFile(path=path, content=content, encoding=encoding))
+    return schemas.CustomSkillCreate(name=name, description=description, files=files)
+
+
+# ---------------------------------------------------------------------------
+# The pool — global entries
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_adding_a_global_skill_stores_a_pointer_not_a_copy(ur):
+    entry = await ur.add_global_to_user("user-1", "deep-research")
     assert entry.type == "global"
     assert entry.source_path == "global/research/deep-research"
 
-    names = [s.name for s in ur.list_user_skills("user-1")]
-    assert names == ["deep-research"]
-    assert list(ur.list_user_skill_names("user-1")) == ["deep-research"]
+    # The point of the model: no content was written for it anywhere.
+    assert ur.store.files == {}
+    assert [s.name for s in await ur.list_user_skills("user-1")] == ["deep-research"]
+    assert await ur.list_user_skill_names("user-1") == ["deep-research"]
 
 
-def test_add_global_to_user_unknown_skill_raises(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_a_catalogue_skill_that_does_not_exist_is_a_miss_not_a_conflict(ur):
+    """The route maps ``FileNotFoundError`` to 404 and every other ``ValueError``
+    to 409 — and ``SkillNameConflict`` is a ``ValueError``. Raising one here
+    answered "already in your pool" for a name the catalogue never had."""
     with pytest.raises(FileNotFoundError):
-        ur.add_global_to_user("user-1", "no-such-skill")
+        await ur.add_global_to_user("user-1", "no-such-skill")
 
 
-def test_add_global_to_user_duplicate_raises(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.add_global_to_user("user-1", "deep-research")
-    with pytest.raises(ValueError):
-        ur.add_global_to_user("user-1", "deep-research")
+@pytest.mark.asyncio
+async def test_adding_the_same_global_twice_is_a_conflict(ur):
+    await ur.add_global_to_user("user-1", "deep-research")
+    with pytest.raises(ur.SkillNameConflict):
+        await ur.add_global_to_user("user-1", "deep-research")
 
 
-def test_get_user_skill_detail_for_global(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.add_global_to_user("user-1", "deep-research")
-    detail = ur.get_user_skill_detail("user-1", "deep-research")
+@pytest.mark.asyncio
+async def test_a_global_entry_reads_its_body_from_the_catalogue(ur):
+    await ur.add_global_to_user("user-1", "deep-research")
+    detail = await ur.get_user_skill_detail("user-1", "deep-research")
     assert detail.type == "global"
     assert detail.category == "research"
     assert "deep research" in detail.content
     assert any(f.path == "SKILL.md" for f in detail.files)
 
 
-def test_get_user_skill_detail_missing_raises(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.ensure_user_registry("user-1")
+@pytest.mark.asyncio
+async def test_opening_a_skill_the_user_does_not_hold_is_a_404_not_a_500(ur):
+    """Returning ``None`` fails response validation against a non-Optional
+    ``response_model``, so a missing skill surfaced as a 500."""
     with pytest.raises(FileNotFoundError):
-        ur.get_user_skill_detail("user-1", "deep-research")
+        await ur.get_user_skill_detail("user-1", "deep-research")
 
 
-def test_resolve_skill_path_global_folder_missing(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.add_global_to_user("user-1", "deep-research")
-    # Remove the backing global folder on disk.
-    import shutil
-
+@pytest.mark.asyncio
+async def test_a_global_entry_whose_catalogue_folder_vanished_still_lists(ur, skills_fs):
+    # A catalogue entry can disappear between image builds while a user still
+    # references it. The pool row must survive with no files rather than raise.
+    await ur.add_global_to_user("user-1", "deep-research")
     shutil.rmtree(skills_fs.global_root / "research" / "deep-research")
-    with pytest.raises(FileNotFoundError):
-        ur.resolve_skill_path("user-1", "deep-research")
+
+    detail = await ur.get_user_skill_detail("user-1", "deep-research")
+    assert detail.files == []
 
 
 # ---------------------------------------------------------------------------
-# user_registry — custom skills
+# The pool — custom skills
 # ---------------------------------------------------------------------------
-def test_add_custom_to_user_creates_folder_and_entry(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_creating_a_custom_skill_stores_every_file_with_its_encoding(ur, skills_fs):
     png_b64 = base64.b64encode(b"\x89PNG fake").decode("ascii")
-    payload = _custom_payload(
-        skills_fs.service,
-        "my-skill",
-        extra_files=[
-            ("references/notes.md", "some notes", "utf-8"),
-            ("assets/logo.png", png_b64, "base64"),
-        ],
-    )
-    entry = ur.add_custom_to_user("user-1", payload)
+    payload = _payload(skills_fs.service, "my-skill", extra_files=[
+        ("references/notes.md", "some notes", "utf-8"),
+        ("assets/logo.png", png_b64, "base64"),
+    ])
+    entry = await ur.add_custom_to_user("user-1", payload)
     assert entry.type == "custom"
     assert entry.source_path == "users/user-1/custom/my-skill"
 
-    skill_dir = skills_fs.pool("user-1") / "custom" / "my-skill"
-    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8").startswith("---\nname: my-skill")
-    assert (skill_dir / "references" / "notes.md").is_file()
-    assert (skill_dir / "assets" / "logo.png").read_bytes() == b"\x89PNG fake"
-
-    detail = ur.get_user_skill_detail("user-1", "my-skill")
+    detail = await ur.get_user_skill_detail("user-1", "my-skill")
     assert "custom body" in detail.content
-    paths = {f.path for f in detail.files}
-    assert {"SKILL.md", "references/notes.md", "assets/logo.png"} <= paths
+    assert {"SKILL.md", "references/notes.md", "assets/logo.png"} <= {f.path for f in detail.files}
+    # The binary asset keeps its encoding rather than being decoded as text.
+    logo = next(f for f in detail.files if f.path == "assets/logo.png")
+    assert logo.encoding == "base64"
+    assert base64.b64decode(logo.content) == b"\x89PNG fake"
 
 
-def test_add_custom_to_user_name_conflict_with_existing_pool(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "dup"))
+@pytest.mark.asyncio
+async def test_frontmatter_is_rebuilt_from_the_name_and_description(ur, skills_fs):
+    """Assembled with ``yaml.safe_dump``, not interpolated: a description holding
+    a colon or a quote would otherwise change how the whole block parses — and
+    ``create_skill`` lets an *agent* supply both values."""
+    schemas = skills_fs.service.schemas
+    payload = schemas.CustomSkillCreate(
+        name="tricky",
+        description='Reads: "notes" and more',
+        files=[schemas.SkillFile(
+            path="SKILL.md",
+            content="---\nname: lies\ndescription: lies\n---\n\nReal body.",
+            encoding="utf-8",
+        )],
+    )
+    await ur.add_custom_to_user("user-1", payload)
+
+    raw = ur.store.files[("user-1", "tricky")]["SKILL.md"][0]
+    front = yaml.safe_load(raw.split("---")[1])
+    assert front == {"name": "tricky", "description": 'Reads: "notes" and more'}
+    # The author's body survives; only the frontmatter is replaced.
+    assert "Real body." in raw
+
+
+@pytest.mark.asyncio
+async def test_a_name_already_in_the_pool_is_refused(ur, skills_fs):
+    await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "dup"))
     with pytest.raises(ur.SkillNameConflict):
-        ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "dup"))
+        await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "dup"))
 
 
-def test_add_custom_to_user_name_conflict_with_global(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_a_name_that_shadows_a_catalogue_skill_is_refused(ur, skills_fs):
+    # Shadowing would make the same name resolve differently per user.
     with pytest.raises(ur.SkillNameConflict):
-        ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "deep-research"))
+        await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "deep-research"))
 
 
-def test_add_custom_to_user_folder_already_exists(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.ensure_user_registry("user-1")
-    (skills_fs.pool("user-1") / "custom" / "ghost").mkdir(parents=True, exist_ok=True)
-    with pytest.raises(ur.SkillNameConflict):
-        ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "ghost"))
-
-
-def test_add_custom_to_user_requires_files(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_a_skill_with_no_files_is_refused(ur, skills_fs):
     schemas = skills_fs.service.schemas
     with pytest.raises(ur.SkillValidationError):
-        ur.add_custom_to_user("user-1", schemas.CustomSkillCreate(name="empty", files=[]))
+        await ur.add_custom_to_user("user-1", schemas.CustomSkillCreate(name="empty", files=[]))
 
 
-def test_add_custom_to_user_requires_skill_md(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_a_skill_without_a_skill_md_is_refused(ur, skills_fs):
+    # SKILL.md is the only file discovery reads; without it the skill is a folder
+    # the agent can see and can never act on.
     schemas = skills_fs.service.schemas
     payload = schemas.CustomSkillCreate(
         name="no-entry",
         files=[schemas.SkillFile(path="notes.md", content="x", encoding="utf-8")],
     )
     with pytest.raises(ur.SkillValidationError):
-        ur.add_custom_to_user("user-1", payload)
+        await ur.add_custom_to_user("user-1", payload)
 
 
-def test_add_custom_to_user_too_many_files(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_too_many_files_is_refused(ur, skills_fs):
     schemas = skills_fs.service.schemas
     files = [schemas.SkillFile(path="SKILL.md", content="body", encoding="utf-8")]
-    files += [schemas.SkillFile(path=f"f{i}.md", content="x", encoding="utf-8") for i in range(ur._MAX_SKILL_FILES)]
-    payload = schemas.CustomSkillCreate(name="too-many", files=files)
+    files += [schemas.SkillFile(path=f"f{i}.md", content="x", encoding="utf-8")
+              for i in range(ur._MAX_SKILL_FILES)]
     with pytest.raises(ur.SkillValidationError):
-        ur.add_custom_to_user("user-1", payload)
+        await ur.add_custom_to_user("user-1", schemas.CustomSkillCreate(name="too-many", files=files))
 
 
-def test_add_custom_to_user_duplicate_path(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_a_duplicate_path_in_one_payload_is_refused(ur, skills_fs):
     schemas = skills_fs.service.schemas
     payload = schemas.CustomSkillCreate(
         name="dup-path",
@@ -243,132 +279,107 @@ def test_add_custom_to_user_duplicate_path(skills_fs):
         ],
     )
     with pytest.raises(ur.SkillValidationError):
-        ur.add_custom_to_user("user-1", payload)
+        await ur.add_custom_to_user("user-1", payload)
 
 
-def test_add_custom_to_user_invalid_base64(skills_fs):
-    ur = skills_fs.service.user_registry
-    payload = _custom_payload(
-        skills_fs.service,
-        "bad-b64",
-        extra_files=[("img.png", "!!!not base64!!!", "base64")],
-    )
+@pytest.mark.asyncio
+async def test_malformed_base64_is_refused_rather_than_silently_truncated(ur, skills_fs):
+    payload = _payload(skills_fs.service, "bad-b64",
+                       extra_files=[("img.png", "!!!not base64!!!", "base64")])
     with pytest.raises(ur.SkillValidationError):
-        ur.add_custom_to_user("user-1", payload)
+        await ur.add_custom_to_user("user-1", payload)
 
 
-def test_validate_skill_relpath_rejections(skills_fs):
-    ur = skills_fs.service.user_registry
+@pytest.mark.asyncio
+async def test_a_bad_skill_name_is_refused(ur, skills_fs):
+    with pytest.raises(ur.SkillValidationError):
+        await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "../escape"))
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_written_when_one_file_in_the_payload_is_bad(ur, skills_fs):
+    """Validation runs over the whole payload before the first write, so a bad
+    file cannot leave a half-created skill in the pool."""
+    payload = _payload(skills_fs.service, "partial",
+                       extra_files=[("ok.md", "fine", "utf-8"), ("bad.png", "@@@", "base64")])
+    with pytest.raises(ur.SkillValidationError):
+        await ur.add_custom_to_user("user-1", payload)
+    assert ur.store.pool == {}
+    assert ur.store.files == {}
+
+
+def test_relative_paths_are_validated_before_they_become_keys(ur):
     for bad in ["", "../escape.md", "a/b/c/d/e/f.md", "script.exe", "../../etc/passwd"]:
         with pytest.raises(ur.SkillValidationError):
             ur._validate_skill_relpath(bad)
-    # Backslashes normalize and a valid nested path is accepted.
-    ok = ur._validate_skill_relpath("references\\api.md")
-    assert ok.as_posix() == "references/api.md"
-
-
-def test_add_custom_to_user_bad_name(skills_fs):
-    ur = skills_fs.service.user_registry
-    with pytest.raises(ur.SkillValidationError):
-        ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "../escape"))
+    # Backslashes normalise, and a valid nested path is accepted.
+    assert ur._validate_skill_relpath("references\\api.md").as_posix() == "references/api.md"
 
 
 # ---------------------------------------------------------------------------
-# user_registry — removal + cascade
+# Assignment (tier ②) and removal
 # ---------------------------------------------------------------------------
-def test_remove_custom_skill_deletes_folder_and_cascades(skills_fs):
-    ur = skills_fs.service.user_registry
-    prov = skills_fs.service.provisioner
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "my-skill"))
-    ur.assign_user_skill_to_agent(user_id="user-1", agent_slug="omni", skill_name="my-skill")
-
-    assigned = prov.agent_root("user-1", "omni") / "skills" / "my-skill"
-    assert assigned.is_dir()
-
-    ur.remove_from_user("user-1", "my-skill")
-
-    assert [s.name for s in ur.list_user_skills("user-1")] == []
-    assert not (skills_fs.pool("user-1") / "custom" / "my-skill").exists()
-    assert not assigned.exists()
+@pytest.mark.asyncio
+async def test_assigning_a_skill_the_user_does_not_hold_is_a_miss(ur):
+    """A 404, not a 400: the route maps ``ValueError`` to 400, and "you do not
+    have this skill" is the same answer as "there is no such skill"."""
+    with pytest.raises(FileNotFoundError):
+        await ur.assign_user_skill_to_agent("user-1", "omni", "never-added")
 
 
-def test_remove_global_skill_keeps_global_folder(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.add_global_to_user("user-1", "deep-research")
-    ur.remove_from_user("user-1", "deep-research")
-    assert [s.name for s in ur.list_user_skills("user-1")] == []
-    # The shared global folder is never deleted by a per-user removal.
-    assert (skills_fs.global_root / "research" / "deep-research").is_dir()
+@pytest.mark.asyncio
+async def test_assignment_is_per_agent(ur, skills_fs):
+    await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "my-skill"))
+    await ur.assign_user_skill_to_agent("user-1", "omni", "my-skill")
+
+    assert await ur.list_user_agent_skills("user-1", "omni") == ["my-skill"]
+    assert await ur.list_user_agent_skills("user-1", "other") == []
 
 
-def test_remove_missing_skill_is_idempotent(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.ensure_user_registry("user-1")
-    ur.remove_from_user("user-1", "never-existed")  # no raise
-    assert [s.name for s in ur.list_user_skills("user-1")] == []
+@pytest.mark.asyncio
+async def test_unassigning_leaves_the_pool_entry_alone(ur, skills_fs):
+    # Switching a skill off for one agent must not remove it from the pool — the
+    # user still holds it and can switch it on elsewhere.
+    await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "my-skill"))
+    await ur.assign_user_skill_to_agent("user-1", "omni", "my-skill")
+    await ur.unassign_user_skill_from_agent("user-1", "omni", "my-skill")
+
+    assert await ur.list_user_agent_skills("user-1", "omni") == []
+    assert [s.name for s in await ur.list_user_skills("user-1")] == ["my-skill"]
 
 
-# ---------------------------------------------------------------------------
-# user_registry — manifest persistence + reconciliation
-# ---------------------------------------------------------------------------
-def test_read_user_manifest_missing_returns_empty(skills_fs):
-    ur = skills_fs.service.user_registry
-    manifest = ur.read_user_manifest("never-seen")
-    assert manifest.skills == []
+@pytest.mark.asyncio
+async def test_removing_from_the_pool_cascades_to_every_assignment(ur, skills_fs):
+    """An assignment outliving its pool entry would mount a skill folder that
+    resolves to no files — visible to the agent, unreadable."""
+    await ur.add_custom_to_user("user-1", _payload(skills_fs.service, "my-skill"))
+    await ur.assign_user_skill_to_agent("user-1", "omni", "my-skill")
+    await ur.assign_user_skill_to_agent("user-1", "other", "my-skill")
+
+    await ur.remove_from_user("user-1", "my-skill")
+
+    assert [s.name for s in await ur.list_user_skills("user-1")] == []
+    assert await ur.list_user_agent_skills("user-1", "omni") == []
+    assert await ur.list_user_agent_skills("user-1", "other") == []
 
 
-def test_read_user_manifest_corrupt_returns_empty(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.ensure_user_registry("user-1")
-    (skills_fs.pool("user-1") / "manifest.json").write_text("{ not json", encoding="utf-8")
-    manifest = ur.read_user_manifest("user-1")
-    assert manifest.skills == []
+@pytest.mark.asyncio
+async def test_removing_a_global_entry_never_touches_the_shared_catalogue(ur, skills_fs):
+    await ur.add_global_to_user("user-1", "deep-research")
+    await ur.remove_from_user("user-1", "deep-research")
+
+    assert [s.name for s in await ur.list_user_skills("user-1")] == []
+    assert (skills_fs.global_root / "research" / "deep-research" / "SKILL.md").is_file()
 
 
-def test_reconcile_adopts_orphan_and_drops_missing(skills_fs):
-    ur = skills_fs.service.user_registry
-    # Custom entry in the pool whose folder we then delete (should be dropped).
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "vanishing"))
-    import shutil
-
-    shutil.rmtree(skills_fs.pool("user-1") / "custom" / "vanishing")
-
-    # Orphan folder on disk not present in the manifest (should be adopted).
-    orphan = skills_fs.pool("user-1") / "custom" / "orphan"
-    orphan.mkdir(parents=True, exist_ok=True)
-    (orphan / "SKILL.md").write_text("---\nname: orphan\ndescription: found\n---\nbody", encoding="utf-8")
-
-    healed = ur.reconcile_user_manifest("user-1")
-    names = {s.name for s in healed.skills}
-    assert names == {"orphan"}
-
-
-def test_reconcile_all_user_manifests_walks_users(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.add_global_to_user("user-1", "deep-research")
-    ur.add_custom_to_user("user-2", _custom_payload(skills_fs.service, "k2"))
-    # A stray file at the users-root level must be ignored (not a user dir).
-    (skills_fs.users_root / "stray.txt").write_text("x", encoding="utf-8")
-
-    ur.reconcile_all_user_manifests()  # no raise
-
-    assert [s.name for s in ur.list_user_skills("user-1")] == ["deep-research"]
-    assert [s.name for s in ur.list_user_skills("user-2")] == ["k2"]
-
-
-def test_reconcile_all_user_manifests_creates_root_when_missing(skills_fs):
-    ur = skills_fs.service.user_registry
-    # A fresh workspaces plane: its `users/` root must be created on demand.
-    fresh_plane = skills_fs.users_root.parent.parent / "fresh-workspaces"
-    skills_fs.service.settings_module.settings.filesystem.workspaces_root = fresh_plane
-    fresh = fresh_plane / "users"
-    assert not fresh.exists()
-    ur.reconcile_all_user_manifests()
-    assert fresh.is_dir()
+@pytest.mark.asyncio
+async def test_removing_a_skill_the_user_never_held_is_not_an_error(ur):
+    # Idempotent: the Skills tab can fire a delete the user already completed.
+    await ur.remove_from_user("user-1", "ghost")
 
 
 # ---------------------------------------------------------------------------
-# provisioner
+# The provisioner, now that skills are not directories
 # ---------------------------------------------------------------------------
 def test_safe_segment_rejects_traversal(skills_fs):
     prov = skills_fs.service.provisioner
@@ -378,106 +389,28 @@ def test_safe_segment_rejects_traversal(skills_fs):
     assert prov._safe_segment("ok-id") == "ok-id"
 
 
-def test_ensure_user_agent_filesystem_creates_no_memory_tree(skills_fs):
-    # Memory moved into `agent_memories`; the provisioner used to create
-    # `memory/entries/` and seed AGENTS.md from a template here. Both are gone —
-    # the index is derived from rows, so there is nothing on disk to seed.
+def test_first_contact_creates_no_memory_or_skill_tree(skills_fs):
+    """Both moved into ``agent_runtime``. The provisioner used to mint an empty
+    ``skills/`` here and seed ``memory/entries/``; a directory it still created
+    would be re-created after every prune and read by nothing."""
     prov = skills_fs.service.provisioner
     prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="omni")
 
-    assert prov.skills_root("user-1", "omni").is_dir()
-    assert not (prov.agent_root("user-1", "omni") / "memory").exists()
+    agent_dir = prov.agent_root("user-1", "omni")
+    assert not (agent_dir / "skills").exists()
+    assert not (agent_dir / "default_skills").exists()
+    assert not (agent_dir / "memory").exists()
 
 
-def test_ensure_user_agent_filesystem_with_conversation(skills_fs):
+def test_a_bad_agent_slug_is_rejected_even_though_no_directory_bears_it(skills_fs):
+    # The slug stopped being a path component on this call; validating it anyway
+    # keeps the failure here rather than deeper in, where it becomes a DB key.
+    prov = skills_fs.service.provisioner
+    with pytest.raises(ValueError):
+        prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="../escape")
+
+
+def test_first_contact_with_a_conversation_creates_its_working_dir(skills_fs):
     prov = skills_fs.service.provisioner
     prov.ensure_user_agent_filesystem(user_id="user-1", agent_slug="omni", conversation_id="conv-1")
     assert prov.conversation_root("user-1", "omni", "conv-1").is_dir()
-
-
-def test_list_enabled_skills_reflects_assignments(skills_fs):
-    ur = skills_fs.service.user_registry
-    prov = skills_fs.service.provisioner
-
-    # No skills assigned yet → empty (directory does not exist).
-    assert prov.list_enabled_skills("user-1", "omni") == []
-
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "beta"))
-    ur.assign_user_skill_to_agent(user_id="user-1", agent_slug="omni", skill_name="beta")
-    ur.assign_user_skill_to_agent(user_id="user-1", agent_slug="omni", skill_name="alpha")
-
-    assert prov.list_enabled_skills("user-1", "omni") == ["alpha", "beta"]
-
-    # Idempotent re-assign is a no-op.
-    ur.assign_user_skill_to_agent(user_id="user-1", agent_slug="omni", skill_name="alpha")
-    assert prov.list_enabled_skills("user-1", "omni") == ["alpha", "beta"]
-
-
-def test_disable_skill_removes_and_is_idempotent(skills_fs):
-    ur = skills_fs.service.user_registry
-    prov = skills_fs.service.provisioner
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
-    ur.assign_user_skill_to_agent(user_id="user-1", agent_slug="omni", skill_name="alpha")
-
-    prov.disable_skill(user_id="user-1", agent_slug="omni", skill_name="alpha")
-    assert prov.list_enabled_skills("user-1", "omni") == []
-
-    # Removing again is a no-op.
-    prov.disable_skill(user_id="user-1", agent_slug="omni", skill_name="alpha")
-
-
-def test_assign_unknown_skill_raises_file_not_found(skills_fs):
-    ur = skills_fs.service.user_registry
-    ur.ensure_user_registry("user-1")
-    with pytest.raises(FileNotFoundError):
-        ur.assign_user_skill_to_agent(user_id="user-1", agent_slug="omni", skill_name="not-in-pool")
-
-
-# ---------------------------------------------------------------------------
-# sync_agent_default_skills — tier ① for a user-authored agent
-# ---------------------------------------------------------------------------
-def test_sync_default_skills_copies_from_the_pool(skills_fs):
-    ur = skills_fs.service.user_registry
-    layout = skills_fs.service.filesystem_layout
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
-
-    resolved = ur.sync_agent_default_skills(
-        user_id="user-1", agent_slug="styler", skill_names=["alpha"]
-    )
-
-    assert resolved == ["alpha"]
-    root = layout.agent_default_skills_root("user-1", "styler")
-    assert (root / "alpha" / "SKILL.md").is_file()
-
-
-def test_sync_default_skills_is_separate_from_the_enabled_tier(skills_fs):
-    """The two tiers must not share a directory — that separation is what makes a
-    default skill impossible to remove via the per-agent disable endpoint."""
-    ur = skills_fs.service.user_registry
-    prov = skills_fs.service.provisioner
-    layout = skills_fs.service.filesystem_layout
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
-    ur.sync_agent_default_skills(user_id="user-1", agent_slug="styler", skill_names=["alpha"])
-
-    # The default is not an "enabled" skill, and disabling it cannot touch it.
-    assert prov.list_enabled_skills("user-1", "styler") == []
-    prov.disable_skill(user_id="user-1", agent_slug="styler", skill_name="alpha")
-    assert (layout.agent_default_skills_root("user-1", "styler") / "alpha").is_dir()
-
-
-def test_sync_default_skills_prunes_undeclared_and_skips_missing(skills_fs):
-    ur = skills_fs.service.user_registry
-    layout = skills_fs.service.filesystem_layout
-    ur.add_custom_to_user("user-1", _custom_payload(skills_fs.service, "alpha"))
-    ur.sync_agent_default_skills(user_id="user-1", agent_slug="styler", skill_names=["alpha"])
-
-    # Re-saving with a different list prunes the old copy; a name that is not in
-    # the pool is skipped rather than failing the save.
-    resolved = ur.sync_agent_default_skills(
-        user_id="user-1", agent_slug="styler", skill_names=["not-in-pool"]
-    )
-
-    assert resolved == []
-    root = layout.agent_default_skills_root("user-1", "styler")
-    assert sorted(p.name for p in root.iterdir()) == []

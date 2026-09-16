@@ -18,7 +18,6 @@ import pytest
 import pytest_asyncio
 
 import utils.skills as skills_mod
-from utils import skill_store
 from utils.skills import (
     add_global_skill_to_user_pool,
     create_custom_skill_in_pool,
@@ -247,190 +246,187 @@ async def test_list_skills_request_error_raises_503(monkeypatch, fake_cache):
 # ---------------------------------------------------------------------------
 # list_user_skills
 # ---------------------------------------------------------------------------
-async def test_list_user_skills_served_from_chat_db_without_upstream(monkeypatch, db):
-    # Once we hold a pool, the agents service is not consulted at all — this is
-    # what removes the two-hour staleness window a tool-created skill used to sit in.
-    await skill_store.add_to_pool(db, "u1", "pool-skill", pool_type="global")
-    await db.commit()
+async def test_list_user_skills_reads_upstream_every_time(monkeypatch):
+    """The pool is not mirrored here any more, and not cached either.
 
-    def handler(method, url, kwargs):  # pragma: no cover
-        raise AssertionError("must not hit upstream")
+    The cache is what made a skill created by the ``create_skill`` tool invisible
+    in the Skills tab for up to two hours; with the hop now *being* the read,
+    caching it would put that window straight back.
+    """
+    calls = []
+    install_fake_client(
+        monkeypatch,
+        lambda m, u, k: FakeResponse(json_data=[{"name": "pool-skill", "type": "global"}]),
+        calls=calls,
+    )
+    first = await list_user_skills(user_id="u1")
+    second = await list_user_skills(user_id="u1")
 
-    install_fake_client(monkeypatch, handler)
-    result = await list_user_skills(db=db, user_id="u1")
-    assert [r["name"] for r in result] == ["pool-skill"]
-    assert result[0]["type"] == "global"
+    assert [r["name"] for r in first] == ["pool-skill"]
+    assert first == second
+    assert len(calls) == 2            # no read-through cache in between
 
 
-async def test_list_user_skills_non_list_returns_empty(monkeypatch, fake_cache, db):
+async def test_list_user_skills_non_list_returns_empty(monkeypatch, fake_cache):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data="not a list"))
-    result = await list_user_skills(db=db, user_id="u3")
+    result = await list_user_skills(user_id="u3")
     assert result == []
 
 
 # ---------------------------------------------------------------------------
 # get_user_skill_detail
 # ---------------------------------------------------------------------------
-async def test_get_user_skill_detail_returns_dict(monkeypatch, db):
+async def test_get_user_skill_detail_returns_dict(monkeypatch):
     detail = {"name": "s", "type": "custom", "files": []}
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=detail))
-    result = await get_user_skill_detail(db=db, user_id="u", skill_name="s")
+    result = await get_user_skill_detail(user_id="u", skill_name="s")
     assert result == detail
 
 
-async def test_get_user_skill_detail_404(monkeypatch, db):
+async def test_get_user_skill_detail_404(monkeypatch):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=404))
     with pytest.raises(Exception) as exc:
-        await get_user_skill_detail(db=db, user_id="u", skill_name="missing")
+        await get_user_skill_detail(user_id="u", skill_name="missing")
     assert getattr(exc.value, "status_code", None) == 404
 
 
-async def test_get_user_skill_detail_malformed_payload_502(monkeypatch, db):
+async def test_get_user_skill_detail_malformed_payload_502(monkeypatch):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=["list", "not", "dict"]))
     with pytest.raises(Exception) as exc:
-        await get_user_skill_detail(db=db, user_id="u", skill_name="s")
+        await get_user_skill_detail(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_get_user_skill_detail_http_error_502(monkeypatch, db):
+async def test_get_user_skill_detail_http_error_502(monkeypatch):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=500, raise_status=True))
     with pytest.raises(Exception) as exc:
-        await get_user_skill_detail(db=db, user_id="u", skill_name="s")
+        await get_user_skill_detail(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 502
 
 
 # ---------------------------------------------------------------------------
 # add_global_skill_to_user_pool
 # ---------------------------------------------------------------------------
-async def test_add_global_skill_records_pool_membership(monkeypatch, db):
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=204))
-    await add_global_skill_to_user_pool(db=db, user_id="u", skill_name="s")
-    pool = await skill_store.list_pool(db, "u")
-    assert [(p["name"], p["type"]) for p in pool] == [("s", "global")]
+async def test_add_global_skill_is_a_pure_proxy(monkeypatch):
+    """Nothing is recorded locally — the agents service is the only writer, so
+    there is no second copy that can disagree with it."""
+    calls = []
+    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=204), calls=calls)
+    await add_global_skill_to_user_pool(user_id="u", skill_name="s")
+    assert [c[0] for c in calls] == ["POST"]
 
 
-async def test_add_global_skill_404(monkeypatch, fake_cache, db):
+async def test_add_global_skill_404(monkeypatch, fake_cache):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=404))
     with pytest.raises(Exception) as exc:
-        await add_global_skill_to_user_pool(db=db, user_id="u", skill_name="s")
+        await add_global_skill_to_user_pool(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 404
-    # Upstream refused, so nothing is recorded here either.
-    assert await skill_store.list_pool(db, "u") == []
 
 
-async def test_add_global_skill_409_conflict(monkeypatch, fake_cache, db):
+async def test_add_global_skill_409_conflict(monkeypatch, fake_cache):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=409))
     with pytest.raises(Exception) as exc:
-        await add_global_skill_to_user_pool(db=db, user_id="u", skill_name="s")
+        await add_global_skill_to_user_pool(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 409
 
 
-async def test_add_global_skill_request_error(monkeypatch, fake_cache, db):
+async def test_add_global_skill_request_error(monkeypatch, fake_cache):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ConnectError("x", request=httpx.Request("POST", "http://agents.test")),
     )
     with pytest.raises(Exception) as exc:
-        await add_global_skill_to_user_pool(db=db, user_id="u", skill_name="s")
+        await add_global_skill_to_user_pool(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 503
 
 
 # ---------------------------------------------------------------------------
 # create_custom_skill_in_pool
 # ---------------------------------------------------------------------------
-async def test_create_custom_skill_success(monkeypatch, fake_cache, db):
+async def test_create_custom_skill_success(monkeypatch, fake_cache):
     created = {"name": "new", "type": "custom", "source_path": "p"}
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=201, json_data=created))
     result = await create_custom_skill_in_pool(
-        db=db, user_id="u", payload={"name": "new", "files": [{"path": "SKILL.md", "content": "# New"}]}
+        user_id="u", payload={"name": "new", "files": [{"path": "SKILL.md", "content": "# New"}]}
     )
+    # The upstream entry is returned verbatim — nothing is stored on this side,
+    # so there is no second copy that can disagree about what the user has.
     assert result == created
-    # The submitted files are the content that survives losing the volume.
-    stored = await skill_store.get_custom_skill(db, "u", "new")
-    assert stored is not None
-    # The full contract shape — `encoding` and `size` are part of SkillFile.
-    assert stored["files"] == [
-        {"path": "SKILL.md", "content": "# New", "encoding": "utf-8", "size": 5}
-    ]
-    assert [p["name"] for p in await skill_store.list_pool(db, "u")] == ["new"]
 
 
-async def test_create_custom_skill_409(monkeypatch, fake_cache, db):
+async def test_create_custom_skill_409(monkeypatch, fake_cache):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=409))
     with pytest.raises(Exception) as exc:
-        await create_custom_skill_in_pool(db=db, user_id="u", payload={"name": "dup"})
+        await create_custom_skill_in_pool(user_id="u", payload={"name": "dup"})
     assert getattr(exc.value, "status_code", None) == 409
 
 
-async def test_create_custom_skill_422_forwards_upstream_detail(monkeypatch, fake_cache, db):
+async def test_create_custom_skill_422_forwards_upstream_detail(monkeypatch, fake_cache):
     body = {"detail": "SKILL.md is required."}
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=422, json_data=body))
     with pytest.raises(Exception) as exc:
-        await create_custom_skill_in_pool(db=db, user_id="u", payload={"name": "bad"})
+        await create_custom_skill_in_pool(user_id="u", payload={"name": "bad"})
     assert getattr(exc.value, "status_code", None) == 422
     assert exc.value.detail == "SKILL.md is required."
 
 
-async def test_create_custom_skill_400_with_unparseable_body(monkeypatch, fake_cache, db):
+async def test_create_custom_skill_400_with_unparseable_body(monkeypatch, fake_cache):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: FakeResponse(status_code=400, json_data=ValueError("no json")),
     )
     with pytest.raises(Exception) as exc:
-        await create_custom_skill_in_pool(db=db, user_id="u", payload={"name": "bad"})
+        await create_custom_skill_in_pool(user_id="u", payload={"name": "bad"})
     assert getattr(exc.value, "status_code", None) == 422
     # falls back to the generic detail when the upstream body cannot be parsed
     assert "could not be created" in exc.value.detail
 
 
-async def test_create_custom_skill_malformed_success_payload_502(monkeypatch, fake_cache, db):
+async def test_create_custom_skill_malformed_success_payload_502(monkeypatch, fake_cache):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=201, json_data=["bad"]))
     with pytest.raises(Exception) as exc:
-        await create_custom_skill_in_pool(db=db, user_id="u", payload={"name": "x"})
+        await create_custom_skill_in_pool(user_id="u", payload={"name": "x"})
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_create_custom_skill_request_error(monkeypatch, fake_cache, db):
+async def test_create_custom_skill_request_error(monkeypatch, fake_cache):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ConnectError("x", request=httpx.Request("POST", "http://agents.test")),
     )
     with pytest.raises(Exception) as exc:
-        await create_custom_skill_in_pool(db=db, user_id="u", payload={"name": "x"})
+        await create_custom_skill_in_pool(user_id="u", payload={"name": "x"})
     assert getattr(exc.value, "status_code", None) == 503
 
 
 # ---------------------------------------------------------------------------
 # remove_skill_from_user_pool
 # ---------------------------------------------------------------------------
-async def test_remove_skill_drops_pool_entry_and_its_assignments(monkeypatch, db):
-    # Assignments go too: a removed skill must not keep showing as enabled on an
-    # agent, and the next hydrate must not try to materialise it.
-    await skill_store.add_to_pool(db, "u", "s", pool_type="custom")
-    await skill_store.set_agent_skill(db, "u", "agent-a", "s", enabled=True)
-    await db.commit()
-
-    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=204))
-    await remove_skill_from_user_pool(db=db, user_id="u", skill_name="s")
-
-    assert await skill_store.list_pool(db, "u") == []
-    assert await skill_store.list_agent_skills(db, "u", "agent-a") == []
+async def test_remove_skill_is_a_pure_proxy(monkeypatch):
+    """The cascade to per-agent assignments happens in ``agent_runtime``, where
+    the rows are — this side just forwards the delete."""
+    calls: list = []
+    install_fake_client(
+        monkeypatch, lambda m, u, k: FakeResponse(status_code=204), calls=calls
+    )
+    await remove_skill_from_user_pool(user_id="u", skill_name="s")
+    assert [c[0] for c in calls] == ["DELETE"]
 
 
-async def test_remove_skill_http_error_502(monkeypatch, fake_cache, db):
+async def test_remove_skill_http_error_502(monkeypatch, fake_cache):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=500, raise_status=True))
     with pytest.raises(Exception) as exc:
-        await remove_skill_from_user_pool(db=db, user_id="u", skill_name="s")
+        await remove_skill_from_user_pool(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_remove_skill_request_error_503(monkeypatch, fake_cache, db):
+async def test_remove_skill_request_error_503(monkeypatch, fake_cache):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ReadError("x", request=httpx.Request("DELETE", "http://agents.test")),
     )
     with pytest.raises(Exception) as exc:
-        await remove_skill_from_user_pool(db=db, user_id="u", skill_name="s")
+        await remove_skill_from_user_pool(user_id="u", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 503
 
 
@@ -468,162 +464,115 @@ async def test_resolve_agent_slug_500_when_no_slug(monkeypatch):
 # ---------------------------------------------------------------------------
 # get_user_agent_skills (read-through cache)
 # ---------------------------------------------------------------------------
-async def test_get_user_agent_skills_served_from_chat_db(monkeypatch, patch_slug, db):
-    await skill_store.set_agent_skill(db, "u", "test-slug", "skill-x", enabled=True)
-    await db.commit()
-
-    def handler(method, url, kwargs):  # pragma: no cover
-        raise AssertionError("must not hit upstream once we hold assignments")
-
-    install_fake_client(monkeypatch, handler)
-    assert await get_user_agent_skills(db=db, user_id="u", agent_id="a") == ["skill-x"]
-
-
-async def test_get_user_agent_skills_non_list_returns_empty(monkeypatch, fake_cache, patch_slug, db):
+async def test_get_user_agent_skills_non_list_returns_empty(monkeypatch, fake_cache, patch_slug):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data={"x": 1}))
-    result = await get_user_agent_skills(db=db, user_id="u", agent_id="a")
+    result = await get_user_agent_skills(user_id="u", agent_id="a")
     assert result == []
 
 
 # ---------------------------------------------------------------------------
 # enable / disable per-(user, agent) skill (shared _proxy_skill_mutation)
 # ---------------------------------------------------------------------------
-async def test_enable_user_agent_skill_uses_put_and_records_it(monkeypatch, patch_slug, db):
+async def test_enable_user_agent_skill_uses_put(monkeypatch, patch_slug):
     calls: list = []
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=204), calls)
-    await enable_user_agent_skill(db=db, user_id="u", agent_id="a", skill_name="s")
+    await enable_user_agent_skill(user_id="u", agent_id="a", skill_name="s")
     assert calls[0][0] == "PUT"
-    assert await skill_store.list_agent_skills(db, "u", "test-slug") == ["s"]
 
 
-async def test_disable_user_agent_skill_uses_delete_and_removes_it(monkeypatch, patch_slug, db):
-    await skill_store.set_agent_skill(db, "u", "test-slug", "s", enabled=True)
-    await db.commit()
+async def test_disable_user_agent_skill_uses_delete(monkeypatch, patch_slug):
     calls: list = []
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=204), calls)
-    await disable_user_agent_skill(db=db, user_id="u", agent_id="a", skill_name="s")
+    await disable_user_agent_skill(user_id="u", agent_id="a", skill_name="s")
     assert calls[0][0] == "DELETE"
-    assert await skill_store.list_agent_skills(db, "u", "test-slug") == []
 
 
-async def test_proxy_skill_mutation_404_not_in_pool(monkeypatch, fake_cache, patch_slug, db):
+async def test_proxy_skill_mutation_404_not_in_pool(monkeypatch, fake_cache, patch_slug):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=404))
     with pytest.raises(Exception) as exc:
-        await enable_user_agent_skill(db=db, user_id="u", agent_id="a", skill_name="s")
+        await enable_user_agent_skill(user_id="u", agent_id="a", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 404
-    # Upstream refused, so the assignment is not recorded here either.
-    assert await skill_store.list_agent_skills(db, "u", "test-slug") == []
 
 
-async def test_proxy_skill_mutation_http_error_502(monkeypatch, fake_cache, patch_slug, db):
+async def test_proxy_skill_mutation_http_error_502(monkeypatch, fake_cache, patch_slug):
     install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(status_code=500, raise_status=True))
     with pytest.raises(Exception) as exc:
-        await disable_user_agent_skill(db=db, user_id="u", agent_id="a", skill_name="s")
+        await disable_user_agent_skill(user_id="u", agent_id="a", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 502
 
 
-async def test_proxy_skill_mutation_request_error_503(monkeypatch, fake_cache, patch_slug, db):
+async def test_proxy_skill_mutation_request_error_503(monkeypatch, fake_cache, patch_slug):
     install_fake_client(
         monkeypatch,
         lambda m, u, k: httpx.ConnectError("x", request=httpx.Request("PUT", "http://agents.test")),
     )
     with pytest.raises(Exception) as exc:
-        await enable_user_agent_skill(db=db, user_id="u", agent_id="a", skill_name="s")
+        await enable_user_agent_skill(user_id="u", agent_id="a", skill_name="s")
     assert getattr(exc.value, "status_code", None) == 503
 
 
 # ---------------------------------------------------------------------------
-# The store's output must satisfy the response contracts
+# The upstream payload must satisfy the response contracts
 # ---------------------------------------------------------------------------
-# Three separate outages came from the same shape: chat_db grew a reader, the
-# reader returned a dict, and the dict was missing a field the Pydantic
-# response model requires (`source_path`) or sent None where a str is declared
-# (`category`). Nothing catches that until a real request 500s, because the
-# store and the schema are only connected at the router. These validate the
-# store's output against the real models.
-async def test_list_pool_output_satisfies_the_user_skill_contract(db):
+# Three separate outages came from the same shape: a reader returned a dict, and
+# the dict was missing a field the Pydantic response model requires
+# (`source_path`) or sent None where a str is declared (`category`). Nothing
+# catches that until a real request 500s, because the payload and the schema are
+# only connected at the router. The producer moved upstream; the gap did not, so
+# these validate what the agents service actually sends against the real models.
+async def test_the_pool_payload_satisfies_the_user_skill_contract(monkeypatch):
     from schema import UserSkill
 
-    await skill_store.add_to_pool(
-        db, "uc", "global-one", pool_type="global", source_path="global/x/global-one",
-        category="x",
-    )
-    await skill_store.store_custom_skill(db, "uc", name="custom-one", files=[])
-    await db.commit()
+    # Exactly what `GET /users/{uid}/skills` returns — one global entry and one
+    # custom, which is where `category` and `source_path` differ.
+    upstream = [
+        {"name": "global-one", "type": "global", "description": "d",
+         "source_path": "global/x/global-one", "category": "x",
+         "origin": "user", "created_by_agent": None, "created_at": None},
+        {"name": "custom-one", "type": "custom", "description": "d",
+         "source_path": "users/uc/custom/custom-one", "category": "",
+         "origin": "user", "created_by_agent": None, "created_at": None},
+    ]
+    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=upstream))
 
-    for item in await skill_store.list_pool(db, "uc"):
+    for item in await list_user_skills(user_id="uc"):
         UserSkill.model_validate(item)
 
 
-async def test_get_custom_skill_output_satisfies_the_detail_contract(db):
+async def test_the_detail_payload_satisfies_the_detail_contract(monkeypatch):
     from schema import UserSkillDetail
 
-    await skill_store.store_custom_skill(
-        db,
-        "ud",
-        name="custom-two",
-        description="d",
-        files=[{"path": "SKILL.md", "content": "# Body"}, {"path": "run.py", "content": "x"}],
-    )
-    await db.commit()
+    upstream = {
+        "name": "custom-two", "type": "custom", "description": "d",
+        "source_path": "users/ud/custom/custom-two", "category": "",
+        "content": "# Body",
+        "files": [
+            {"path": "SKILL.md", "content": "body", "encoding": "utf-8", "size": 0},
+            {"path": "run.py", "content": "x", "encoding": "utf-8", "size": 0},
+        ],
+    }
+    install_fake_client(monkeypatch, lambda m, u, k: FakeResponse(json_data=upstream))
 
-    stored = await skill_store.get_custom_skill(db, "ud", "custom-two")
-    model = UserSkillDetail.model_validate(stored)
+    model = UserSkillDetail.model_validate(
+        await get_user_skill_detail(user_id="ud", skill_name="custom-two")
+    )
     assert model.source_path == "users/ud/custom/custom-two"
-    # `content` is the SKILL.md body, read from the stored file so the preview
-    # and the file inventory cannot disagree.
+    # `content` is the SKILL.md body, so the preview and the file inventory
+    # cannot disagree.
     assert model.content == "# Body"
     assert [f.path for f in model.files] == ["SKILL.md", "run.py"]
 
 
 # ---------------------------------------------------------------------------
-# Reads are local — the whole point of the persistence work
+# Per-agent assignments are read upstream too
 # ---------------------------------------------------------------------------
-# These used to import from the agents service on a cache/row miss. Five such
-# paths existed, each with its own trigger, and none could see content chat_db
-# had never heard of. Reconciliation replaced them, so a read that reaches
-# upstream is now a regression, not a fallback.
-
-
-@pytest_asyncio.fixture
-def no_upstream(monkeypatch):
-    """Make any outbound HTTP from utils.skills an immediate test failure."""
-
-    def _explode(*args, **kwargs):  # pragma: no cover - must never run
-        raise AssertionError("a per-user skills read must not call upstream")
-
-    monkeypatch.setattr(skills_mod.httpx, "AsyncClient", _explode)
-
-
-@pytest.mark.asyncio
-async def test_listing_the_pool_never_calls_upstream(db, no_upstream):
-    await skill_store.add_to_pool(db, "u", "note-taker", pool_type="custom")
-    await db.commit()
-    assert [s["name"] for s in await list_user_skills(db=db, user_id="u")] == ["note-taker"]
-
-
-@pytest.mark.asyncio
-async def test_an_empty_pool_stays_empty_rather_than_importing(db, no_upstream):
-    # The old check fired only when the pool was *entirely* empty, which is both
-    # too eager (a wasted hop for a user with no skills) and too narrow (it
-    # never saw anything added to a non-empty pool).
-    assert await list_user_skills(db=db, user_id="nobody") == []
-
-
-@pytest.mark.asyncio
-async def test_agent_assignments_never_call_upstream(db, patch_slug, no_upstream):
-    await skill_store.set_agent_skill(db, "u", "test-slug", "note-taker", enabled=True)
-    await db.commit()
-    names = await get_user_agent_skills(db=db, user_id="u", agent_id="a1")
-    assert names == ["note-taker"]
-
-
-@pytest.mark.asyncio
-async def test_a_stored_custom_skill_is_served_locally(db, no_upstream):
-    await skill_store.store_custom_skill(
-        db, "u", name="note-taker", files=[{"path": "SKILL.md", "content": "body"}]
+async def test_agent_assignments_are_read_from_the_owning_service(monkeypatch, patch_slug):
+    """They used to be a ``chat_db`` table imported by the reconciliation pass.
+    The trade taken here is deliberate: this read now fails when the agents
+    service is down, where it used to serve a possibly-stale local row."""
+    calls = []
+    install_fake_client(
+        monkeypatch, lambda m, u, k: FakeResponse(json_data=["note-taker"]), calls=calls
     )
-    await db.commit()
-    detail = await get_user_skill_detail(db=db, user_id="u", skill_name="note-taker")
-    assert detail["name"] == "note-taker"
-    assert [f["path"] for f in detail["files"]] == ["SKILL.md"]
+    assert await get_user_agent_skills(user_id="u", agent_id="a1") == ["note-taker"]
+    assert calls[0][0] == "GET"

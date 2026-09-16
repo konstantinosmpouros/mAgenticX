@@ -134,3 +134,73 @@ def test_default_skills_are_read_only(workspace):
 
     assert not has_default_skills_deny(workspace.workspace_write_deny())
     assert has_default_skills_deny(workspace.workspace_write_deny(include_default_skills=True))
+
+
+# ---------------------------------------------------------------------------
+# The skill routes, now that skills are rows
+# ---------------------------------------------------------------------------
+def test_skills_is_a_store_route_not_a_directory(workspace, skills_fs):
+    """``/skills/`` resolves per read against ``agent_runtime`` instead of a
+    per-user folder. A ``FilesystemBackend`` here would mean the copy-and-
+    reconcile the migration removed had quietly come back."""
+    from deepagents.backends import FilesystemBackend, StoreBackend
+
+    route = _backend(workspace).routes["/skills/"]
+    assert isinstance(route, StoreBackend)
+    assert not isinstance(route, FilesystemBackend)
+
+
+def test_a_platform_agents_tier_one_is_mounted_straight_from_its_image_folder(
+    workspace, skills_fs, tmp_path
+):
+    # Build-time content: identical for every user and not tamperable at
+    # runtime, so it stays a directory rather than becoming rows.
+    from deepagents.backends import FilesystemBackend
+
+    defaults = tmp_path / "default_skills"
+    defaults.mkdir()
+    route = _backend(workspace, default_skills_dir=defaults).routes["/default_skills/"]
+    assert isinstance(route, FilesystemBackend)
+
+
+def test_a_user_authored_agents_tier_one_resolves_through_the_store(workspace, skills_fs):
+    """A custom agent has no image folder, so its declared skills resolve out of
+    the author's own pool. The names ride in the namespace, which is what lets
+    the store answer without ever reading an agent definition."""
+    from deepagents.backends import StoreBackend
+
+    factory = workspace.build_workspace_backend(
+        user_id="user-1", agent_slug="nova", conversation_id="conv-1",
+        use_memory=False, declared_skills=("note-taker", "planner"),
+    )
+    route = factory(None).routes["/default_skills/"]
+    assert isinstance(route, StoreBackend)
+    assert route._namespace(None)[2:] == ("declared", "note-taker", "planner")
+
+
+def test_the_two_skill_mounts_cannot_see_each_others_entries(workspace, skills_fs):
+    """One store, two mounts: only the tier in the namespace separates tier ①
+    from tier ②. If they collided, a user-authored agent's read-only declared
+    skills and its user-toggled ones would be the same set."""
+    factory = workspace.build_workspace_backend(
+        user_id="user-1", agent_slug="nova", conversation_id="conv-1",
+        use_memory=False, declared_skills=("planner",),
+    )
+    routes = factory(None).routes
+    assigned = routes["/skills/"]._namespace(None)
+    declared = routes["/default_skills/"]._namespace(None)
+    assert assigned[2] != declared[2]
+
+
+def test_a_declared_set_does_not_override_a_bundled_folder(workspace, skills_fs, tmp_path):
+    # A platform agent that also carries declared names must keep reading its
+    # image folder — the folder is the stronger claim.
+    from deepagents.backends import FilesystemBackend
+
+    defaults = tmp_path / "default_skills"
+    defaults.mkdir()
+    factory = workspace.build_workspace_backend(
+        user_id="user-1", agent_slug="omni", conversation_id="conv-1",
+        use_memory=False, default_skills_dir=defaults, declared_skills=("planner",),
+    )
+    assert isinstance(factory(None).routes["/default_skills/"], FilesystemBackend)

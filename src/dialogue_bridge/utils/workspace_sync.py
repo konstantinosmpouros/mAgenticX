@@ -1,7 +1,7 @@
 """Reconcile ``chat_db`` against the agents-service volume, in both directions.
 
-Plan 21 made ``chat_db`` the owner of custom agents and custom skills, but left
-five separate adoption paths — each with its own trigger, none able to see
+Plan 21 made ``chat_db`` the owner of custom agents, but left five separate
+adoption paths — each with its own trigger, none able to see
 content the database has never heard of. That last gap is not theoretical: a
 create whose upstream call succeeds and whose persist fails leaves a folder on
 the volume with no row, invisible in the UI and impossible to recreate (the
@@ -35,7 +35,7 @@ from core.database import (
 )
 from core.logging import get_logger
 from schema import PlanAgent, SyncContent, SyncInventory, SyncPlan
-from utils import skill_store, user_agents
+from utils import user_agents
 
 logger = get_logger(__name__)
 
@@ -156,33 +156,13 @@ async def apply_content(
         ):
             agents += 1
 
-    removed = await skill_store.tombstoned_names(db, user_id)
-    skills = 0
-    for item in content.skills:
-        if item.name in removed:
-            # Removed while the exchange was in flight. Adopting now would
-            # revive it, and the next pass would then have to delete it again.
-            continue
-        await skill_store.store_custom_skill(
-            db,
-            user_id,
-            name=item.name,
-            description=item.description,
-            category=item.category,
-            origin=item.origin,
-            created_by_agent=item.createdByAgent,
-            files=item.files,
-        )
-        skills += 1
-
     logger.info(
         "workspace_sync_content_adopted",
-        "Adopted volume-only content into chat_db",
+        "Adopted volume-only agent definitions into chat_db",
         user_id=user_id,
         agent_count=agents,
-        skill_count=skills,
     )
-    return {"agents": agents, "skills": skills}
+    return {"agents": agents}
 
 
 __all__ = ["GENERATED_MANIFEST", "apply_content", "build_plan", "content_hash"]
