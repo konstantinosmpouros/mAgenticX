@@ -105,7 +105,6 @@ Registration order in `registry.py` is the attach order: `remember → search_pa
 
 ---
 
-
 ### Provenance on agent-authored skills
 
 `create_skill` passes `created_by_agent=<slug>` into `add_custom_to_user`, which
@@ -259,7 +258,6 @@ The agent's own definition folder is additionally mounted read-only at `/referen
 | Ownership-aware resolution | [src/agents/utils/agents.py](../../src/agents/utils/agents.py) | `resolve_agent_definition`, `_load_user_agent`, `_USER_AGENT_CACHE` |
 | Frontend Agents tab | [src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx](../../src/agentic_ui/src/features/settings/components/profile_parts/AgentsTab.tsx) | optimistic toggle, `getAgentTools` / `toggleAgentTool` |
 
-
 ---
 
 ## Two kinds of tool
@@ -298,7 +296,7 @@ the bridge passes them on the catalog request rather than the far side guessing.
 
 `BaseAgent._filter_live_tools` is the only place MCP selection happens:
 
-```
+```text
 (declared ∪ user-enabled) − user-disabled
 ```
 

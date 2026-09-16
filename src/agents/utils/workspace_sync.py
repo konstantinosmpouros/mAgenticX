@@ -42,16 +42,7 @@ from harness.abstractions.user_agents import (
     write_user_agent,
 )
 from harness.filesystem import layout
-from harness.skill_registry.user_registry import (
-    add_custom_to_user,
-    add_global_to_user,
-    assign_user_skill_to_agent,
-    get_user_skill_detail,
-    read_user_manifest,
-    remove_from_user,
-)
-from schema import AgentFile, CustomSkillCreate, SkillFile
-from utils.skills import list_user_agent_skills
+from schema import AgentFile
 
 logger = get_logger(__name__)
 
@@ -105,67 +96,10 @@ def _agent_inventory(user_id: str) -> List[Dict[str, str]]:
     return out
 
 
-def _skill_inventory(user_id: str) -> List[Dict[str, str]]:
-    out: List[Dict[str, str]] = []
-    for entry in read_user_manifest(user_id).skills:
-        if entry.type == "global":
-            # The catalogue owns the content; there is no per-user copy to hash.
-            out.append({"name": entry.name, "type": "global", "hash": ""})
-            continue
-        try:
-            detail = get_user_skill_detail(user_id, entry.name)
-            files = [(f.path, f.content) for f in detail.files]
-        except Exception:
-            # A manifest row whose folder is unreadable. Report it with an empty
-            # hash so the bridge treats it as diverged and rewrites it, rather
-            # than dropping it from the inventory and having it look deleted.
-            logger.warning(
-                "workspace_sync_skill_unreadable",
-                "Could not read a pool skill's files; reporting it as diverged",
-                user_id=user_id,
-                skill_name=entry.name,
-                exc_info=True,
-            )
-            files = []
-        out.append({"name": entry.name, "type": "custom", "hash": content_hash(files)})
-    return out
-
-
-def _assignment_inventory(user_id: str) -> Dict[str, List[str]]:
-    """Enabled skills per agent, read from directory presence.
-
-    Covers platform agents as well as authored ones: the pairing is meaningful
-    for both, and the per-agent directory is the only record either has.
-    """
-    root = layout.user_agents_root(user_id)
-    if not root.is_dir():
-        return {}
-    out: Dict[str, List[str]] = {}
-    for entry in sorted(root.iterdir()):
-        if not entry.is_dir():
-            continue
-        try:
-            names = list_user_agent_skills(user_id, entry.name)
-        except Exception:
-            logger.warning(
-                "workspace_sync_assignments_unreadable",
-                "Could not read a (user, agent) skill directory",
-                user_id=user_id,
-                agent_slug=entry.name,
-                exc_info=True,
-            )
-            continue
-        if names:
-            out[entry.name] = sorted(names)
-    return out
-
-
 def build_inventory(user_id: str) -> Dict[str, Any]:
-    return {
-        "agents": _agent_inventory(user_id),
-        "skills": _skill_inventory(user_id),
-        "assignments": _assignment_inventory(user_id),
-    }
+    # Skills and their per-agent assignments live in `agent_runtime` with one
+    # copy, so there is nothing on this volume to inventory for them any more.
+    return {"agents": _agent_inventory(user_id)}
 
 
 # ---------------------------------------------------------------------------
@@ -194,41 +128,6 @@ def _write_agent(user_id: str, item: Dict[str, Any]) -> bool:
     return True
 
 
-def _write_skill(user_id: str, item: Dict[str, Any], existing: set[str]) -> bool:
-    name = str(item.get("name") or "").strip()
-    if not name:
-        return False
-    if item.get("type") == "global":
-        if name in existing:
-            return False
-        add_global_to_user(user_id, name)
-        return True
-
-    files = [
-        SkillFile(path=f["path"], content=f.get("content") or "", encoding="utf-8")
-        for f in item.get("files") or []
-        if f.get("path")
-    ]
-    if not files:
-        return False
-    if name in existing:
-        # add_custom_to_user refuses a name already in the pool, so a rewrite has
-        # to replace the folder. Removing first also drops the assignment copies,
-        # which the plan's assignment set restores on the same pass.
-        remove_from_user(user_id, name)
-    add_custom_to_user(
-        user_id,
-        CustomSkillCreate(
-            name=name,
-            description=str(item.get("description") or ""),
-            category=item.get("category"),
-            files=files,
-        ),
-        created_by_agent=item.get("createdByAgent"),
-    )
-    return True
-
-
 def _remove_agent(user_id: str, slug: str) -> bool:
     """Finish a deletion whose volume half never landed."""
     removed = delete_user_agent(user_id, slug)
@@ -240,27 +139,6 @@ def _remove_agent(user_id: str, slug: str) -> bool:
             agent_slug=slug,
         )
     return removed
-
-
-def _remove_skill(user_id: str, name: str) -> bool:
-    try:
-        remove_from_user(user_id, name)
-    except Exception:
-        logger.warning(
-            "workspace_sync_skill_remove_failed",
-            "Could not remove a skill chat_db holds as deleted",
-            user_id=user_id,
-            skill_name=name,
-            exc_info=True,
-        )
-        return False
-    logger.info(
-        "workspace_sync_skill_removed",
-        "Removed a skill folder chat_db holds as deleted",
-        user_id=user_id,
-        skill_name=name,
-    )
-    return True
 
 
 def _collect_agent_content(user_id: str, slugs: List[str]) -> List[Dict[str, Any]]:
@@ -279,67 +157,6 @@ def _collect_agent_content(user_id: str, slugs: List[str]) -> List[Dict[str, Any
     return out
 
 
-def _collect_skill_content(user_id: str, names: List[str]) -> List[Dict[str, Any]]:
-    manifest = {e.name: e for e in read_user_manifest(user_id).skills}
-    out: List[Dict[str, Any]] = []
-    for name in names:
-        entry = manifest.get(name)
-        if entry is None or entry.type == "global":
-            # A global has no per-user body to send; the bridge records
-            # membership from the inventory alone.
-            continue
-        try:
-            detail = get_user_skill_detail(user_id, name)
-        except Exception:
-            logger.warning(
-                "workspace_sync_skill_content_unreadable",
-                "Could not read a skill the bridge asked for",
-                user_id=user_id,
-                skill_name=name,
-                exc_info=True,
-            )
-            continue
-        out.append(
-            {
-                "name": name,
-                "description": detail.description,
-                "category": detail.category or None,
-                "origin": getattr(entry, "origin", "user") or "user",
-                "createdByAgent": getattr(entry, "created_by_agent", None),
-                "files": [{"path": f.path, "content": f.content} for f in detail.files],
-            }
-        )
-    return out
-
-
-def _apply_assignments(user_id: str, assignments: Dict[str, List[str]]) -> int:
-    """Make the per-agent skill directories match the authoritative set."""
-    applied = 0
-    for agent_slug, names in (assignments or {}).items():
-        for name in names:
-            try:
-                assign_user_skill_to_agent(
-                    user_id=user_id, agent_slug=agent_slug, skill_name=name
-                )
-                applied += 1
-            except Exception:
-                # Usually the skill is not in this volume's pool yet — the same
-                # pass may be about to write it. Not fatal: the assignment row
-                # survives in chat_db and the next pass retries.
-                logger.warning(
-                    "workspace_sync_assignment_skipped",
-                    "Could not assign a skill during sync; will retry next pass",
-                    user_id=user_id,
-                    agent_slug=agent_slug,
-                    skill_name=name,
-                    exc_info=True,
-                )
-    return applied
-
-
-# ---------------------------------------------------------------------------
-# The exchange
-# ---------------------------------------------------------------------------
 def _base_url() -> str:
     return settings.bridge.base_url.rstrip("/")
 
@@ -357,32 +174,19 @@ async def _sync_user(client: httpx.AsyncClient, user_id: str) -> Dict[str, int]:
     plan = resp.json()
 
     def _apply() -> Dict[str, int]:
-        existing = {e.name for e in read_user_manifest(user_id).skills}
         written = sum(1 for a in plan.get("write_agents") or [] if _write_agent(user_id, a))
-        for item in plan.get("write_skills") or []:
-            if _write_skill(user_id, item, existing):
-                existing.add(str(item.get("name") or ""))
-                written += 1
         removed = sum(1 for s in plan.get("remove_agents") or [] if _remove_agent(user_id, s))
-        removed += sum(1 for n in plan.get("remove_skills") or [] if _remove_skill(user_id, n))
-        # Assignments last: a skill written above has to exist in the pool
-        # before it can be copied into an agent's directory.
-        _apply_assignments(user_id, plan.get("assignments") or {})
         return {"written": written, "removed": removed}
 
     counts = await asyncio.to_thread(_apply)
 
     send_agents = plan.get("send_agents") or []
-    send_skills = plan.get("send_skills") or []
     sent = 0
-    if send_agents or send_skills:
+    if send_agents:
         payload = await asyncio.to_thread(
-            lambda: {
-                "agents": _collect_agent_content(user_id, send_agents),
-                "skills": _collect_skill_content(user_id, send_skills),
-            }
+            lambda: {"agents": _collect_agent_content(user_id, send_agents)}
         )
-        sent = len(payload["agents"]) + len(payload["skills"])
+        sent = len(payload["agents"])
         if sent:
             reply = await client.post(
                 f"{_base_url()}/v1/internal/sync/{user_id}/content",

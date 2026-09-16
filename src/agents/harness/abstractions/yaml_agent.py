@@ -99,26 +99,38 @@ class YamlDeepAgent(DeepAgent):
     def default_skills_dir(self) -> Optional[Path]:
         """The skills this agent ships with, resolved from where it was defined.
 
-        A platform agent's live in its own global folder and are mounted straight
-        from there — never copied into a user's tree, so they cost nothing per
-        user and cannot be tampered with. A user-authored agent's were resolved
-        out of the author's pool when the agent was saved, into the read-only
-        ``default_skills/`` dir in their workspace.
+        A **platform** agent's live in its own global folder and are mounted
+        straight from there — build-time content, identical for every user and
+        impossible to tamper with.
 
-        ``None`` when the spec declares none, when the directory is empty, or
-        during registry warmup (no ``user_id`` yet) — mounting an empty route
-        would advertise a tier the agent hasn't got.
+        A **user-authored** agent has no such folder. Its tier ① is its spec's
+        ``skills:`` list resolved against the author's own pool, which the store
+        serves; :attr:`declared_skills` carries those names instead. Returning
+        ``None`` here is therefore correct for a custom agent, not a gap.
         """
         if not self._spec.skills:
             return None
         if self._source_dir.parent.name == layout.CUSTOM_AGENTS_DIRNAME:
-            user_id = (self.context or {}).get("user_id")
-            if not user_id:
-                return None
-            path = layout.agent_default_skills_root(user_id, self.name)
-        else:
-            path = layout.global_agent_default_skills_root(self.name)
+            return None
+        path = layout.global_agent_default_skills_root(self.name)
         return path if path.is_dir() and any(path.iterdir()) else None
+
+
+    @property
+    def declared_skills(self) -> tuple[str, ...]:
+        """Tier ① skill names for a user-authored agent, resolved from the pool.
+
+        Empty for a platform agent — its tier ① is a directory, not pool names —
+        and empty during registry warmup, where there is no user whose pool the
+        names could be resolved against.
+        """
+        if not self._spec.skills:
+            return ()
+        if self._source_dir.parent.name != layout.CUSTOM_AGENTS_DIRNAME:
+            return ()
+        if not (self.context or {}).get("user_id"):
+            return ()
+        return tuple(self._spec.skills)
 
 
     def _native_ctx(self) -> Optional[NativeToolContext]:

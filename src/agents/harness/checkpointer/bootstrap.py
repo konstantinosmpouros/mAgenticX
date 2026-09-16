@@ -22,6 +22,7 @@ from core.settings import settings
 from core.logging import get_logger
 from harness.checkpointer.store import set_checkpointer
 from harness.memory.pool import set_memory_pool
+from harness.skill_registry.store import SkillStore
 from harness.memory.store import AgentMemoryStore
 
 logger = get_logger(__name__)
@@ -121,6 +122,10 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
     set_memory_pool(pool)
     if cfg.setup_on_startup:
         await AgentMemoryStore(pool).setup()
+        # Skills share the same database and the same reasoning: the agents
+        # service is their consumer, so it owns the store and the mount is a
+        # virtual route over it rather than a per-user directory tree.
+        await SkillStore(pool).setup()
 
     serde = None
     aes_key = cfg.aes_key.get_secret_value()

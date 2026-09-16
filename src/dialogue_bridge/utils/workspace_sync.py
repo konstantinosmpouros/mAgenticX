@@ -32,13 +32,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import (
     AgentDefinitionFileTable,
     AgentTable,
-    UserAgentSkillTable,
-    UserSkillFileTable,
-    UserSkillPoolTable,
-    UserSkillTable,
 )
 from core.logging import get_logger
-from schema import PlanAgent, PlanSkill, SyncContent, SyncInventory, SyncPlan
+from schema import PlanAgent, SyncContent, SyncInventory, SyncPlan
 from utils import skill_store, user_agents
 
 logger = get_logger(__name__)
@@ -72,17 +68,6 @@ async def _agent_files(db: AsyncSession, agent_id: str) -> List[Dict[str, str]]:
             select(AgentDefinitionFileTable)
             .where(AgentDefinitionFileTable.agent_id == agent_id)
             .order_by(AgentDefinitionFileTable.path)
-        )
-    ).scalars().all()
-    return [{"path": r.path, "content": r.content} for r in rows]
-
-
-async def _skill_files(db: AsyncSession, skill_id: str) -> List[Dict[str, str]]:
-    rows = (
-        await db.execute(
-            select(UserSkillFileTable)
-            .where(UserSkillFileTable.skill_id == skill_id)
-            .order_by(UserSkillFileTable.path)
         )
     ).scalars().all()
     return [{"path": r.path, "content": r.content} for r in rows]
@@ -142,130 +127,20 @@ async def _plan_agents(
             plan.send_agents.append(slug)
 
 
-async def _plan_skills(
-    db: AsyncSession, user_id: str, inventory: SyncInventory, plan: SyncPlan
-) -> None:
-    on_volume = {s.name: s for s in inventory.skills}
-
-    pool = (
-        await db.execute(
-            select(UserSkillPoolTable).where(UserSkillPoolTable.user_id == user_id)
-        )
-    ).scalars().all()
-    customs = {
-        row.name: row
-        for row in (
-            await db.execute(
-                select(UserSkillTable).where(UserSkillTable.user_id == user_id)
-            )
-        ).scalars().all()
-    }
-
-    for entry in pool:
-        name = entry.skill_name
-        present = name in on_volume
-        if entry.deleted_at is not None:
-            if present:
-                plan.remove_skills.append(name)
-            continue
-        if entry.type == skill_store.POOL_TYPE_GLOBAL:
-            # No per-user content — the catalogue owns it. Membership is the
-            # only thing to materialise, so presence is the whole comparison.
-            if not present:
-                plan.write_skills.append(PlanSkill(name=name, type="global"))
-            continue
-
-        skill = customs.get(name)
-        files = await _skill_files(db, skill.id) if skill is not None else []
-        if not files:
-            if present:
-                # A name we hold with no content behind it, and the volume has
-                # the files: fetch them rather than writing an empty folder.
-                plan.send_skills.append(name)
-            else:
-                # No content here, no folder there — the skill exists nowhere.
-                # The entry can only ever 404, so drop it. This is the state the
-                # read-triggered stale-prune used to clean up, and doing it here
-                # is strictly better: that path only fired if somebody happened
-                # to open the skill.
-                await skill_store.reap_pool_entry(db, user_id, name)
-                logger.info(
-                    "workspace_sync_dangling_entry_reaped",
-                    "Dropped a pool entry with no content on either side",
-                    user_id=user_id,
-                    skill_name=name,
-                )
-            continue
-        if not present or on_volume[name].hash != content_hash(_hashable(files)):
-            plan.write_skills.append(
-                PlanSkill(
-                    name=name,
-                    type="custom",
-                    description=(skill.description if skill else "") or "",
-                    category=skill.category if skill else None,
-                    origin=(skill.origin if skill else "user") or "user",
-                    createdByAgent=skill.created_by_agent if skill else None,
-                    files=files,
-                )
-            )
-
-    known = {entry.skill_name for entry in pool}
-    for name in on_volume:
-        if name not in known:
-            plan.send_skills.append(name)
-
-
-async def _reconcile_assignments(
-    db: AsyncSession, user_id: str, inventory: SyncInventory, plan: SyncPlan
-) -> int:
-    """Adopt volume-only assignments and return the authoritative map.
-
-    Assignments are just names, so they need no second round trip — adopting
-    them here is what keeps the exchange at two calls. Tombstoned skills are
-    skipped: re-adding an assignment for a removed skill would show it as still
-    enabled on the agent.
-    """
-    removed = await skill_store.tombstoned_names(db, user_id)
-    adopted = 0
-    for agent_slug, names in (inventory.assignments or {}).items():
-        held = set(await skill_store.list_agent_skills(db, user_id, agent_slug))
-        for name in names:
-            if name in held or name in removed:
-                continue
-            await skill_store.set_agent_skill(
-                db, user_id, agent_slug, name, enabled=True
-            )
-            adopted += 1
-
-    rows = (
-        await db.execute(
-            select(UserAgentSkillTable).where(UserAgentSkillTable.user_id == user_id)
-        )
-    ).scalars().all()
-    merged: Dict[str, List[str]] = {}
-    for row in rows:
-        merged.setdefault(row.agent_slug, []).append(row.skill_name)
-    plan.assignments = {k: sorted(v) for k, v in merged.items()}
-    return adopted
-
-
 async def build_plan(
     db: AsyncSession, user_id: str, inventory: SyncInventory
 ) -> SyncPlan:
     """Compare one user's volume inventory against ``chat_db``."""
     plan = SyncPlan()
     await _plan_agents(db, user_id, inventory, plan)
-    await _plan_skills(db, user_id, inventory, plan)
-    adopted = await _reconcile_assignments(db, user_id, inventory, plan)
 
     logger.info(
         "workspace_sync_planned",
         "Built a workspace sync plan",
         user_id=user_id,
-        write_count=len(plan.write_agents) + len(plan.write_skills),
-        send_count=len(plan.send_agents) + len(plan.send_skills),
-        remove_count=len(plan.remove_agents) + len(plan.remove_skills),
-        assignments_adopted=adopted,
+        write_count=len(plan.write_agents),
+        send_count=len(plan.send_agents),
+        remove_count=len(plan.remove_agents),
     )
     return plan
 

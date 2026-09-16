@@ -47,7 +47,6 @@ from core.settings import settings
 from core.logging import get_logger
 from harness.abstractions.agent_spec import AgentSpec
 from harness.filesystem import layout
-from harness.skill_registry.user_registry import sync_agent_default_skills
 from harness.tools.registry import is_known_native_tool
 from schema import AgentFile, UserAgentDetail, UserAgentSummary
 
@@ -341,15 +340,10 @@ def write_user_agent(user_id: str, spec: AgentSpec, files: List[AgentFile]) -> U
     if replaced:
         shutil.rmtree(backup, ignore_errors=True)
 
-    # Saving is the sync point for the agent's tier-① skills: resolve the spec's
-    # declared `skills:` out of the user's pool into the read-only
-    # `default_skills/` mount, so the agent ships with them and the per-agent
-    # enable/disable endpoint (which only touches `skills/`) cannot remove them.
-    # Deliberately after the folder swap — a failed sync must not roll back a
-    # definition that is otherwise valid and written.
-    synced = sync_agent_default_skills(
-        user_id=user_id, agent_slug=spec.slug, skill_names=spec.skills
-    )
+    # The spec's `skills:` list IS the agent's tier-① set — it used to be
+    # copied into a read-only `default_skills/` folder here, but the mount
+    # now resolves those names against the user's pool at build time, so the
+    # copy (and the reconciliation that kept it honest) is gone.
 
     logger.info(
         "user_agent_written",
@@ -358,7 +352,7 @@ def write_user_agent(user_id: str, spec: AgentSpec, files: List[AgentFile]) -> U
         agent_slug=spec.slug,
         file_count=len(files),
         replaced=replaced,
-        default_skills=len(synced),
+        default_skills=len(spec.skills),
     )
     return _summary_from_spec(spec.model_dump(mode="json"), spec.slug)
 

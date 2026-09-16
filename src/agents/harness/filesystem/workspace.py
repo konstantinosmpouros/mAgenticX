@@ -20,7 +20,7 @@ only here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from deepagents import FilesystemPermission
 from deepagents.backends import (
@@ -33,10 +33,10 @@ from deepagents.backends.protocol import SandboxBackendProtocol
 
 from core.settings import settings
 from harness.memory import AgentMemoryStore, get_memory_pool
+from harness.skill_registry.store import TIER_ASSIGNED, TIER_DECLARED, SkillStore
 from harness.filesystem.provisioner import (
     conversation_root,
     ensure_user_agent_filesystem,
-    skills_root,
 )
 
 
@@ -98,6 +98,7 @@ def build_workspace_backend(
     use_memory: bool,
     reference_dir: Path | None = None,
     default_skills_dir: Path | None = None,
+    declared_skills: Sequence[str] = (),
 ) -> Callable[[Any], CompositeBackend]:
     """Provision the tree and return a factory minting a fresh ``CompositeBackend``
     per tool call.
@@ -145,7 +146,6 @@ def build_workspace_backend(
     ensure_user_agent_filesystem(
         user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id
     )
-    skills_path = skills_root(user_id, agent_slug)
     conv_path = conversation_root(user_id, agent_slug, conversation_id)
     # Per-conversation, on-disk homes for deepagents' offloaded artifacts.
     # Created eagerly so `ls` works before the first offload write.
@@ -192,8 +192,13 @@ def build_workspace_backend(
                 namespace=lambda _rt: (user_id, agent_slug),
             )
         routes.update({
-            "/skills/": FilesystemBackend(
-                root_dir=str(skills_path), virtual_mode=True
+            # Tier ②, resolved rather than copied: the store dispatches per
+            # skill — a custom one reads its rows, a global one reads the
+            # catalogue on the volume — so no per-user directory exists to
+            # write, hash or reconcile.
+            "/skills/": StoreBackend(
+                store=SkillStore(get_memory_pool()),
+                namespace=lambda _rt: (user_id, agent_slug, TIER_ASSIGNED),
             ),
             "/conversation/input/": FilesystemBackend(
                 root_dir=str(input_path), virtual_mode=True
@@ -214,8 +219,21 @@ def build_workspace_backend(
             ),
         })
         if default_skills_dir is not None:
+            # A platform agent's tier ① ships in its image folder, so it is
+            # mounted straight from there — build-time content, identical for
+            # every user, and impossible to tamper with.
             routes["/default_skills/"] = FilesystemBackend(
                 root_dir=str(default_skills_dir), virtual_mode=True
+            )
+        elif declared_skills:
+            # A user-authored agent's tier ① is its spec's `skills:` list
+            # resolved against the author's own pool. The names ride in the
+            # namespace so the store never has to read an agent definition.
+            routes["/default_skills/"] = StoreBackend(
+                store=SkillStore(get_memory_pool()),
+                namespace=lambda _rt: (
+                    user_id, agent_slug, TIER_DECLARED, *declared_skills
+                ),
             )
         if reference_dir is not None:
             routes["/reference/"] = FilesystemBackend(

@@ -20,22 +20,19 @@ from harness.skill_registry.global_manifest import (
     rebuild_global_manifest,
 )
 from harness.skill_registry.seed_global_registry import seed_global_registry
+from harness.skill_registry.store import SkillStore
 from harness.skill_registry.user_registry import (
-    sync_agent_default_skills,
     SkillNameConflict,
     SkillValidationError,
     add_custom_to_user,
     add_global_to_user,
     assign_user_skill_to_agent,
-    ensure_user_registry,
     get_user_skill_detail,
+    list_user_agent_skills,
     list_user_skill_names,
     list_user_skills,
-    read_user_manifest,
-    reconcile_all_user_manifests,
-    reconcile_user_manifest,
     remove_from_user,
-    resolve_skill_path,
+    unassign_user_skill_from_agent,
 )
 
 __all__ = [
@@ -48,14 +45,11 @@ __all__ = [
     "add_custom_to_user",
     "add_global_to_user",
     "assign_user_skill_to_agent",
-    "ensure_user_registry",
     "get_user_skill_detail",
+    "list_user_agent_skills",
     "list_user_skill_names",
     "list_user_skills",
-    "read_user_manifest",
-    "reconcile_all_user_manifests",
-    "reconcile_user_manifest",
     "remove_from_user",
-    "resolve_skill_path",
-    "sync_agent_default_skills",
+    "unassign_user_skill_from_agent",
+    "SkillStore",
 ]

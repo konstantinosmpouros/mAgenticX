@@ -1,7 +1,6 @@
 # Change Plan — Context-window & cost indicator in the composer (superseded)
 
 > **Superseded 2026-09-08:** Plan 16 was rescoped to an estimated-cost-only UI. No context-window indicator, occupancy signal, or percentage ring will be implemented. See `plans/16-context-usage-ui.md` (local working notes, not tracked).
-
 > **Status:** draft / not started. WIP note, not authoritative.
 > **Owner:** —  **Target branch:** `feat/context-usage` (this is a cross-service
 > feature with a DB migration, not a UI bug — it doesn't belong on

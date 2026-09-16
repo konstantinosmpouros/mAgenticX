@@ -23,7 +23,6 @@ from core.logging import (
 )
 from harness.skill_registry import (
     rebuild_global_manifest,
-    reconcile_all_user_manifests,
     seed_global_registry,
 )
 from harness.abstractions import seed_global_agents
@@ -89,7 +88,6 @@ async def _lifespan(app: FastAPI):
         # filesystem state.
         seed_global_registry()
         rebuild_global_manifest()
-        reconcile_all_user_manifests()
         # Seed built-in declarative (YAML) agents into the global volume, then
         # re-scan so they join AGENT_REGISTRY (invisible at import, before seed).
         seed_global_agents()

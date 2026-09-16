@@ -95,7 +95,7 @@ class _CreateSkillArgs(BaseModel):
 def build_create_skill_tool(*, user_id: str, agent_slug: str) -> StructuredTool:
     """Return a ``create_skill`` tool bound to this run's (user, agent)."""
 
-    def _create_skill(
+    async def _create_skill(
         name: str,
         description: str,
         instructions: str,
@@ -130,7 +130,7 @@ def build_create_skill_tool(*, user_id: str, agent_slug: str) -> StructuredTool:
         try:
             # Stamped as agent-authored so the user can always tell what their
             # agent wrote from what they uploaded themselves.
-            entry = add_custom_to_user(user_id, payload, created_by_agent=agent_slug)
+            entry = await add_custom_to_user(user_id, payload, created_by_agent=agent_slug)
         except SkillNameConflict as exc:
             # Expected and actionable — the model should pick another name
             # rather than treat this as a failure of the tool.
@@ -148,7 +148,7 @@ def build_create_skill_tool(*, user_id: str, agent_slug: str) -> StructuredTool:
 
         skill_name = entry.name
         try:
-            assign_user_skill_to_agent(
+            await assign_user_skill_to_agent(
                 user_id=user_id, agent_slug=agent_slug, skill_name=skill_name
             )
         except (SkillNameConflict, SkillValidationError, OSError) as exc:
@@ -182,7 +182,7 @@ def build_create_skill_tool(*, user_id: str, agent_slug: str) -> StructuredTool:
         )
 
     return StructuredTool.from_function(
-        func=_create_skill,
+        coroutine=_create_skill,
         name="create_skill",
         description=(
             "Author a NEW reusable skill and add it to this user's skill pool, "

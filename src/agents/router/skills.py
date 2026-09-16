@@ -8,10 +8,13 @@ from harness.skill_registry import (
     SkillNameConflict,
     add_custom_to_user,
     add_global_to_user,
+    assign_user_skill_to_agent,
     get_user_skill_detail,
     list_user_skills,
     rebuild_global_manifest,
+    list_user_agent_skills,
     remove_from_user,
+    unassign_user_skill_from_agent,
 )
 from schema import (
     CustomSkillCreate,
@@ -20,10 +23,7 @@ from schema import (
     UserSkillDetail,
 )
 from utils import (
-    disable_user_agent_skill,
-    enable_user_agent_skill,
     list_registry_skills,
-    list_user_agent_skills,
 )
 
 logger = get_logger(__name__)
@@ -80,7 +80,7 @@ async def get_global_skills(bypass_cache: bool = False) -> List[SkillManifest]:
 async def get_user_skill_pool(user_id: str) -> List[SkillManifestEntry]:
     """Return the user's manifest entries (no SKILL.md content, descriptions only)."""
     try:
-        entries = list_user_skills(user_id)
+        entries = await list_user_skills(user_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     logger.info(
@@ -101,7 +101,7 @@ async def get_user_skill_pool(user_id: str) -> List[SkillManifestEntry]:
 async def get_user_skill_detail_endpoint(user_id: str, skill_name: str) -> UserSkillDetail:
     """Return one skill from the user's pool with its SKILL.md content."""
     try:
-        return get_user_skill_detail(user_id, skill_name)
+        return await get_user_skill_detail(user_id, skill_name)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
@@ -116,7 +116,7 @@ async def get_user_skill_detail_endpoint(user_id: str, skill_name: str) -> UserS
 async def add_global_skill_to_user(user_id: str, skill_name: str) -> None:
     """Append a reference to a global skill into the user's pool (manifest-only)."""
     try:
-        add_global_to_user(user_id, skill_name)
+        await add_global_to_user(user_id, skill_name)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
@@ -137,7 +137,7 @@ async def create_user_custom_skill(user_id: str, payload: CustomSkillCreate) -> 
     invalid base64, or a missing SKILL.md).
     """
     try:
-        return add_custom_to_user(user_id, payload)
+        return await add_custom_to_user(user_id, payload)
     except SkillNameConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
@@ -152,7 +152,7 @@ async def create_user_custom_skill(user_id: str, payload: CustomSkillCreate) -> 
 async def delete_user_skill(user_id: str, skill_name: str) -> None:
     """Remove a skill from the user's pool and cascade-remove from per-agent assignments."""
     try:
-        remove_from_user(user_id, skill_name)
+        await remove_from_user(user_id, skill_name)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -174,7 +174,7 @@ async def delete_user_skill(user_id: str, skill_name: str) -> None:
 async def get_user_agent_skills(agent_slug: str, user_id: str) -> List[str]:
     """Return the sorted list of skill names enabled for this (user, agent)."""
     try:
-        skills = list_user_agent_skills(user_id=user_id, agent_slug=agent_slug)
+        skills = await list_user_agent_skills(user_id=user_id, agent_slug=agent_slug)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     logger.info(
@@ -195,7 +195,7 @@ async def get_user_agent_skills(agent_slug: str, user_id: str) -> List[str]:
 async def enable_skill_for_user_agent(agent_slug: str, user_id: str, skill_name: str) -> None:
     """Enable ``skill_name`` for this (user, agent) by copying it from the registry."""
     try:
-        enable_user_agent_skill(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)
+        await assign_user_skill_to_agent(user_id, agent_slug, skill_name)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
@@ -210,6 +210,6 @@ async def enable_skill_for_user_agent(agent_slug: str, user_id: str, skill_name:
 async def disable_skill_for_user_agent(agent_slug: str, user_id: str, skill_name: str) -> None:
     """Disable ``skill_name`` for this (user, agent) by removing its directory."""
     try:
-        disable_user_agent_skill(user_id=user_id, agent_slug=agent_slug, skill_name=skill_name)
+        await unassign_user_skill_from_agent(user_id, agent_slug, skill_name)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

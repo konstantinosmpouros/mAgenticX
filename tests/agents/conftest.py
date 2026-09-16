@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,13 @@ from httpx import ASGITransport, AsyncClient
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE_ROOT = ROOT / "src" / "agents"
+
+if str(SERVICE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SERVICE_ROOT))
+
+os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
+os.environ.setdefault("TRUSTED_PROXY_SECRET", "agents-test-secret")
+os.environ.setdefault("MCP_GATEWAY_URL", "http://mcp.test/sse")
 
 
 def _purge_modules_under_paths(*roots: str | Path) -> None:

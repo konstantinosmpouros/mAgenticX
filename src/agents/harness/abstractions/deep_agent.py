@@ -188,6 +188,7 @@ class DeepAgent(BaseAgent, ABC):
             use_memory=self.use_memory,
             reference_dir=self.reference_dir,
             default_skills_dir=self.default_skills_dir,
+            declared_skills=self.declared_skills,
         )
 
 
@@ -288,7 +289,7 @@ class DeepAgent(BaseAgent, ABC):
             has_subagents=has_subagents,
             has_conversation=bool(ctx.get("conversation_id")),
             has_reference=self.reference_dir is not None,
-            has_default_skills=self.default_skills_dir is not None,
+            has_default_skills=self._has_default_skills,
             search_past_convs=bool(ctx.get("search_past_convs")),
             sandbox_enabled=settings.filesystem.sandbox_execution_enabled,
             now=datetime.now(timezone.utc),
@@ -383,7 +384,7 @@ class DeepAgent(BaseAgent, ABC):
             # at a route this run didn't mount.
             permissions=workspace_write_deny(
                 include_reference=self.reference_dir is not None,
-                include_default_skills=self.default_skills_dir is not None,
+                include_default_skills=self._has_default_skills,
             ),
             context_schema=self.context,
             checkpointer=self.checkpointer,
@@ -416,9 +417,33 @@ class DeepAgent(BaseAgent, ABC):
         """
         self._resolve_user_filesystem_root()  # ensure tree exists
         sources: list[str | tuple[str, str]] = [("/skills/", "Your")]
-        if self.default_skills_dir is not None:
+        if self._has_default_skills:
             sources.append(("/default_skills/", "Built-in"))
         return sources
+
+
+    @property
+    def _has_default_skills(self) -> bool:
+        """Whether this run mounts ``/default_skills/`` at all.
+
+        Two sources satisfy it — a bundled directory for a platform agent, pool
+        names for a user-authored one — so the mount, the write-deny rule and
+        the prompt section all derive from this single answer. Testing the
+        directory alone would drop a custom agent's whole tier ① and, worse,
+        leave the prompt advertising a route the run did not mount.
+        """
+        return self.default_skills_dir is not None or bool(self.declared_skills)
+
+
+    @property
+    def declared_skills(self) -> tuple[str, ...]:
+        """Tier ① skill names resolved from the user's pool, for agents whose
+        shipped skills are pool entries rather than a bundled directory.
+
+        Empty by default: an agent defined in code declares its skills in code.
+        Declarative agents override it.
+        """
+        return ()
 
 
     @property
