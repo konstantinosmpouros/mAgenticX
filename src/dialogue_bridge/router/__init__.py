@@ -16,7 +16,6 @@ from router.memories import router as memories_router
 from router.scheduled_tasks import router as scheduled_tasks_router
 from router.usage import router as usage_router
 from router.internal_memory import router as internal_memory_router
-from router.internal_sync import router as internal_sync_router
 
 __all__ = [
     "agent_tools_router",
@@ -26,7 +25,6 @@ __all__ = [
     "conversations_router",
     "inference_router",
     "internal_memory_router",
-    "internal_sync_router",
     "memories_router",
     "messages_router",
     "preferences_router",

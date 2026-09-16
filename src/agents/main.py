@@ -27,7 +27,6 @@ from harness.skill_registry import (
 )
 from harness.abstractions import seed_global_agents
 from utils.agents import refresh_registry
-from utils.workspace_sync import sync_workspaces
 from router.catalog import router as catalog_router
 from router.embeddings import router as embeddings_router
 from router.generation import router as generation_router
@@ -79,8 +78,6 @@ async def _lifespan(app: FastAPI):
     loop.set_exception_handler(_make_loop_exception_handler(old))
     pool = None
     retention_task: asyncio.Task | None = None
-    sync_task: asyncio.Task | None = None
-    sync_stop = asyncio.Event()
     try:
         logger.info("service_startup", "Agents service startup initiated")
         # Bootstrap the global skills catalogue volume from the image seed and
@@ -102,23 +99,8 @@ async def _lifespan(app: FastAPI):
         retention_task = asyncio.create_task(
             run_workspace_retention_loop(), name="workspace-retention"
         )
-        # Reconcile authored agents/skills against chat_db, which owns them —
-        # in both directions: write back what this volume is missing, and hand
-        # over content that exists only here (a create whose persist failed).
-        # Backgrounded on purpose: a bridge that is slow or still starting must
-        # not hold up serving, and an unsynced volume is a recoverable state the
-        # next pass fixes.
-        sync_task = asyncio.create_task(
-            sync_workspaces(sync_stop), name="workspace-sync"
-        )
         yield
     finally:
-        sync_stop.set()
-        if sync_task is not None:
-            try:
-                await asyncio.wait_for(sync_task, timeout=5)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                sync_task.cancel()
         if retention_task is not None:
             retention_task.cancel()
             # Swallow only the cancellation we just requested.

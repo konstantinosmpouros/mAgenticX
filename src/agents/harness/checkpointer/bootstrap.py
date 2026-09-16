@@ -22,6 +22,7 @@ from core.settings import settings
 from core.logging import get_logger
 from harness.checkpointer.store import set_checkpointer
 from harness.memory.pool import set_memory_pool
+from harness.agent_registry.store import AgentDefinitionStore
 from harness.skill_registry.store import SkillStore
 from harness.memory.store import AgentMemoryStore
 
@@ -126,6 +127,11 @@ async def init_durable_checkpointer(app: FastAPI) -> None:
         # service is their consumer, so it owns the store and the mount is a
         # virtual route over it rather than a per-user directory tree.
         await SkillStore(pool).setup()
+        # Agent definitions, for the same reason again: the definition is read
+        # on every run to build the agent and mount `/reference/`, so the
+        # consumer owns it. Only the catalog row (id, name, is_active) stays in
+        # `chat_db`, where the bridge lists and routes agents without a hop.
+        await AgentDefinitionStore(pool).setup()
 
     serde = None
     aes_key = cfg.aes_key.get_secret_value()

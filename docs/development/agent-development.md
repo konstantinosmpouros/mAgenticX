@@ -897,3 +897,56 @@ Each lifecycle hook runs exactly once per instance. Exceptions in `register_agen
 | Agent settings | [src/agents/core/settings.py](../../src/agents/core/settings.py) | `AgentRegistrySettings.disabled_agent_slugs`, `McpSettings`, `RuntimeModelsSettings` |
 | LangGraph agent exports | [src/agents/langgraph_agents/\_\_init\_\_.py](../../src/agents/langgraph_agents/__init__.py) | `__all__` — agents that will be discovered |
 | Deep agent exports | [src/agents/deep_agents/\_\_init\_\_.py](../../src/agents/deep_agents/__init__.py) | `__all__` — agents that will be discovered |
+
+---
+
+## Where a user-authored agent lives
+
+A custom agent is split across two databases, by who reads which half:
+
+| Part | Home | Read by |
+| --- | --- | --- |
+| Catalog row — id, slug, name, icon, `owner_user_id`, `is_active` | `chat_db.agents` | the **bridge**, on every page load; `conversations.agent_id` points at it |
+| Definition — spec, `AGENT.md`, `subagents/*.md`, reference files | `agent_runtime.agent_definitions` + `agent_definition_files` | the **agents service**, on every run |
+
+Nothing is on the volume. A definition used to be a folder under
+`users/<uid>/custom_agents/<slug>/` *and* a copy in `chat_db`, reconciled every
+900 seconds; both are gone, along with the reconciliation itself.
+
+### What that changed in the runtime
+
+`YamlDeepAgent` serves both kinds of declarative agent and now distinguishes
+them **explicitly**, with `owner_user_id`:
+
+* `None` → a **platform** agent. Its folder ships in the image, so `source_dir`
+  is set, prompts are read off disk, and `/reference/` is a `FilesystemBackend`.
+* set → a **user-authored** agent. Its files arrive already loaded as
+  `definition_files`, prompts resolve against that map, and `/reference/` is a
+  `StoreBackend` namespaced `(user_id, agent_slug)`.
+
+That used to be inferred from `source_dir.parent.name == "custom_agents"`. The
+inference had to go — a user agent has no directory to inspect — and it was
+never safe: it decided whether tier ① skills came from a folder or from the
+pool, so a moved directory would have silently changed an agent's skill
+resolution.
+
+Two consequences worth knowing:
+
+* **`__init__` does no I/O.** The loader fetches the spec and its files together
+  in one call, which is what lets construction stay synchronous now that the
+  definition sits behind an async store. `resolve_agent_definition` is async in
+  turn; the platform branch is still an in-memory dict hit.
+* **The definition cache keys on `updated_at`**, not a file mtime. A save moves
+  the timestamp, so an edit invalidates the cached agent naturally — the same
+  property, read off a different clock.
+
+### Saving
+
+`write_user_agent` persists the spec and every file in **one transaction**. That
+replaced a staging directory plus an atomic rename, and it closes a gap that
+dance could not: across two separate writes there was a window where a spec's
+`prompt:` pointed at a file that had not been written yet — an agent that lists
+in the UI and fails the moment you run it.
+
+`agent.yaml` is never stored. It is rendered from the spec on demand, so what
+runs is exactly what passed validation; uploading one is rejected.

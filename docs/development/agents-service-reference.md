@@ -151,9 +151,16 @@ src/agents/
 4. `seed_global_agents()` then `refresh_registry()` — seed the built-in declarative agents onto the volume and re-scan so they join `AGENT_REGISTRY` (they are invisible at import, before the seed).
 5. `await init_durable_checkpointer(app)` (`harness/checkpointer/bootstrap.py`) — **fail fast/loud** if `agent_runtime` is unreachable.
 6. Spawn the **workspace-retention task** (`run_workspace_retention_loop`, `harness/filesystem/retention.py`) — TTL-erases conversation `input/`/`output/` cache files (both are copies of DB attachment blobs: input is bridge-seeded per run, presented outputs are blob-persisted at finalize). Sweeps every `WORKSPACE_SWEEP_INTERVAL_MINUTES` (jittered) in a worker thread with hard per-pass budgets; symlinks are deleted-as-links and logged as security events; a conversation with writes in the last 30 min is skipped (in-flight run protection); best-effort — failures log and retry, never kill the service.
-7. Spawn the **workspace-sync task** (`sync_workspaces`) — reconciles **agent definitions** against `chat_db` in both directions. Backgrounded: a bridge that is slow or still starting must not hold up serving. Skills no longer travel this exchange.
-8. `yield`.
-9. Shutdown: stop the sync task → cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
+7. `yield`.
+8. Shutdown: cancel the retention task → `pool.close()` → restore loop handler → `shutdown_logging()`.
+
+> **There is no workspace-sync task any more.** A 900-second pass used to
+> reconcile this volume against `chat_db` in both directions, because custom
+> agents and skills existed in both places. Plans 25 and 26 gave each a single
+> copy in `agent_runtime`, so there is nothing to compare: the loop, the
+> inventory/plan exchange, the boot hydrator, the `/v1/internal/sync/*`
+> endpoints and both `workspace_sync.py` modules are deleted, along with the
+> five `WORKSPACE_SYNC_*` settings.
 
 **Durable checkpointer init** — `init_durable_checkpointer` (`harness/checkpointer/bootstrap.py`), heavy deps imported lazily:
 - `_ensure_checkpointer_database(conninfo)` (same module) — idempotently `CREATE DATABASE agent_runtime` via the `postgres` maintenance DB (returns early for empty/`postgres` target; **10 retries, 2s apart** on `OperationalError`; race-safe against `DuplicateDatabase`). Needed because `POSTGRES_DB` bootstraps only one DB and `setup()` creates tables, not the database.
@@ -432,14 +439,22 @@ flowchart TD
 
 ## 13. Filesystem / workspace model
 
-Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. On-disk tree under `MAGENTICX_WORKSPACES_ROOT` (all paths come from `harness/filesystem/layout.py`, the single path authority):
+Deep agents get a per-(user, agent, conversation) **virtual** filesystem via a deepagents `CompositeBackend`. **Most of it is not on disk.** Memory, skills and a user-authored agent's own definition are rows in `agent_runtime`, served as `StoreBackend` routes; the volume holds the platform's build-time content and this conversation's working files. On-disk paths all come from `harness/filesystem/layout.py`, the single path authority:
 ```
+agent_runtime (rows)                → mount
+  agent_memories                    → /memories/         (AGENTS.md + entries/<name>.yml)
+  skill_pool + skill_files          → /skills/           (tier 2, read-only)
+                                    → /default_skills/   (tier 1, custom agents)
+  agent_definition_files            → /reference/        (custom agents, read-only)
+
+<global_root>/ (image, build-time)
+  agents/<slug>/                    → /reference/        (platform agents, read-only)
+  agents/<slug>/skills/             → /default_skills/   (tier 1, platform agents)
+  skills/<category>/<skill>/          the catalogue (not mounted; resolved per read)
+
 <workspaces_root>/users/<user_id>/
-├── skills/                      the user's skill pool (not mounted)
-├── custom_agents/<slug>/      → mount /reference/     (the user's own agent definitions)
 └── agents/<agent_slug>/
-    ├── memory/                → mount /memories/      (AGENTS.md + entries/<name>.yml)
-    ├── skills/                → mount /skills/        (<skill>/SKILL.md, UI-managed, read-only)
+    ├── tool_prefs.json              per-agent tool overrides (not mounted)
     └── conversations/<conversation_id>/ → mount /conversation/
         ├── input/             → /conversation/input/  (read-only uploads)
         └── output/            → /conversation/output/ (agent artifacts)

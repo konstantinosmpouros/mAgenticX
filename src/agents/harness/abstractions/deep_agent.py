@@ -187,6 +187,7 @@ class DeepAgent(BaseAgent, ABC):
             conversation_id=ctx["conversation_id"],
             use_memory=self.use_memory,
             reference_dir=self.reference_dir,
+            reference_namespace=self.reference_namespace,
             default_skills_dir=self.default_skills_dir,
             declared_skills=self.declared_skills,
         )
@@ -199,10 +200,39 @@ class DeepAgent(BaseAgent, ABC):
         A hook for definition-bundled material the agent should be able to read
         on demand. ``None`` by default: an agent written in code has no such
         folder, and its package directory holds source, which must never be
-        readable from a run. Declarative agents override this with their own
-        definition directory.
+        readable from a run. **Platform** declarative agents override this with
+        their own image directory.
         """
         return None
+
+
+    @property
+    def reference_namespace(self) -> tuple[str, ...] | None:
+        """Store namespace to mount read-only at ``/reference/``, or ``None``.
+
+        The database-backed twin of :attr:`reference_dir`, for a **user-authored**
+        agent: its definition is rows in ``agent_runtime``, not a folder, so the
+        mount is a ``StoreBackend`` over ``(user_id, agent_slug)``.
+
+        Exactly one of the two is ever set. Kept as separate hooks rather than
+        one polymorphic "source" because they mount different backend classes,
+        and collapsing them would hide which agents can still be tampered with
+        on disk and which cannot.
+        """
+        return None
+
+
+    @property
+    def _has_reference(self) -> bool:
+        """Whether this run mounts ``/reference/`` at all, from either source.
+
+        The mount, the write-deny rule and the prompt section all derive from
+        this one answer — testing only the directory would leave the prompt
+        advertising a route a custom agent's run did not mount, and the deny
+        rule pointing at nothing. Same shape as :attr:`_has_default_skills`, for
+        the same reason.
+        """
+        return self.reference_dir is not None or self.reference_namespace is not None
 
 
     def default_middleware(self, model: Any, backend: Any) -> list[Any]:
@@ -288,7 +318,7 @@ class DeepAgent(BaseAgent, ABC):
             use_memory=self.use_memory,
             has_subagents=has_subagents,
             has_conversation=bool(ctx.get("conversation_id")),
-            has_reference=self.reference_dir is not None,
+            has_reference=self._has_reference,
             has_default_skills=self._has_default_skills,
             search_past_convs=bool(ctx.get("search_past_convs")),
             sandbox_enabled=settings.filesystem.sandbox_execution_enabled,
@@ -383,7 +413,7 @@ class DeepAgent(BaseAgent, ABC):
             # Derived from the same flag as the mount, so a rule can never point
             # at a route this run didn't mount.
             permissions=workspace_write_deny(
-                include_reference=self.reference_dir is not None,
+                include_reference=self._has_reference,
                 include_default_skills=self._has_default_skills,
             ),
             context_schema=self.context,
@@ -451,10 +481,9 @@ class DeepAgent(BaseAgent, ABC):
         """Directory of skills this agent ships with, or ``None`` for none.
 
         A policy hook, like :attr:`reference_dir`. ``None`` by default: an agent
-        defined in code declares its skills in code. Declarative agents resolve
-        it from their spec — platform agents straight out of their global folder,
-        user-authored ones from the copy made in their workspace when the agent
-        was saved.
+        defined in code declares its skills in code. A **platform** declarative
+        agent resolves it straight out of its global folder; a user-authored one
+        has no folder and uses :attr:`declared_skills` instead.
         """
         return None
 

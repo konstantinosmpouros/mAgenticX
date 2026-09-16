@@ -2,12 +2,19 @@
 :class:`~harness.abstractions.agent_spec.AgentSpec` instead of a bespoke Python
 subclass.
 
-This is what makes agents declarative: the discoverer parses a folder's
-``agent.yaml`` into an ``AgentSpec`` and hands it (plus the folder) to this
-class, which reads its identity, prompt, models, tools, sub-agents, and HITL
-gates from the spec and feeds them into the same ``build_deep_agent()`` every
-Python deep agent uses. No per-agent Python. See
+This is what makes agents declarative: a spec is parsed into an ``AgentSpec``
+and handed to this class, which reads its identity, prompt, models, tools,
+sub-agents and HITL gates from it and feeds them into the same
+``build_deep_agent()`` every Python deep agent uses. No per-agent Python. See
 ``docs/draft/platform-restructure-change-plan.md`` §4.
+
+**One class, two homes.** A *platform* agent's definition is a folder in the
+image, so it arrives as ``source_dir`` and its prompts are read off disk. A
+*user-authored* one is rows in ``agent_runtime``, so it arrives as
+``owner_user_id`` plus an already-loaded ``definition_files`` map. Which of the
+two applies used to be inferred from the parent directory's name; it is now
+stated, because a user agent has no directory to inspect. Everything downstream
+— the ``/reference/`` mount, tier ① skills — branches on that one answer.
 
 Identity (``name``/``agent_id``/``label``/…) is set per **instance** (a single
 class serves every YAML agent), so ``self.name`` — read throughout the base for
@@ -25,7 +32,7 @@ from deepagents import SubAgent
 
 from harness.abstractions.deep_agent import DeepAgent
 from harness.abstractions.agent_spec import AgentSpec, SubAgentSpec, ToolRef
-from utils.declarative import read_prompt
+from utils.declarative import read_prompt, resolve_prompt
 from harness.filesystem import layout
 from harness.tools.registry import NativeToolContext, resolve_native_tool
 from core.logging import get_logger
@@ -39,13 +46,21 @@ class YamlDeepAgent(DeepAgent):
     def __init__(
         self,
         spec: AgentSpec,
-        source_dir: Path,
+        source_dir: Path | None = None,
         *,
+        owner_user_id: str | None = None,
+        definition_files: Mapping[str, str] | None = None,
         config: Optional[Mapping[str, Any]] = None,
     ) -> None:
         super().__init__(config=config)
         self._spec = spec
-        self._source_dir = Path(source_dir)
+        self._source_dir = Path(source_dir) if source_dir is not None else None
+        # The one thing that decides where this agent's definition lives.
+        # Previously inferred from `source_dir.parent.name == "custom_agents"`,
+        # which stopped being knowable once a user agent had no directory — and
+        # was always a fragile way to ask "who owns this?".
+        self._owner_user_id = owner_user_id
+        self._definition_files = dict(definition_files or {})
 
         # Per-instance identity (overrides the shared class attributes) so every
         # `self.name`/`self.label`/… read across the base resolves to this spec.
@@ -55,10 +70,7 @@ class YamlDeepAgent(DeepAgent):
         self.version = spec.version
         self.description = spec.description
         self.icon = spec.icon
-        self.instructions = read_prompt(spec.prompt, self._source_dir)
-
-        # Convention-based asset discovery (agent-bundled skills/) resolves under
-        # the agent's own folder, not the yaml_agent.py file.
+        self.instructions = self._read_prompt(spec.prompt)
 
         # The agent's declared tools come from the spec, NOT the request. MCP
         # refs seed the config-tool filter so `attach_tools` keeps only these
@@ -82,17 +94,52 @@ class YamlDeepAgent(DeepAgent):
 
     # ------------------------------------------------------------------
     @property
-    def reference_dir(self) -> Path:
-        """Mount the agent's own definition folder read-only at ``/reference/``.
+    def is_user_authored(self) -> bool:
+        """Whether this agent's definition belongs to a user rather than the image."""
+        return self._owner_user_id is not None
 
-        A declarative agent's folder is prompts and config — the loader accepts
-        no other file type — so exposing it costs nothing and makes bundled
-        material (notes, checklists, examples the prompt refers to) actually
-        readable. Without this, a file sitting next to ``AGENT.md`` is inert:
-        only ``prompt`` and the sub-agent prompts are ever read, and those are
-        read once at build time.
+    def _read_prompt(self, value: str) -> str:
+        """Resolve a prompt reference against whichever store this agent uses.
+
+        Both branches treat a non-path value as an inline prompt, so a spec means
+        the same thing either way; only the lookup differs. Constructing the
+        agent does **no I/O** for a user-authored one — the files were fetched
+        once, with the spec, by the loader — which is what lets ``__init__`` stay
+        synchronous now that the definition lives behind an async store.
         """
-        return self._source_dir
+        if self.is_user_authored:
+            return resolve_prompt(value, self._definition_files)
+        if self._source_dir is None:
+            return value
+        return read_prompt(value, self._source_dir)
+
+    @property
+    def reference_dir(self) -> Path | None:
+        """``/reference/`` for a **platform** agent — its folder in the image.
+
+        A declarative agent's definition is prompts and config — the loader
+        accepts no other file type — so exposing it costs nothing and makes
+        bundled material (notes, checklists, examples the prompt refers to)
+        actually readable. Without it, a file sitting next to ``AGENT.md`` is
+        inert: only ``prompt`` and the sub-agent prompts are ever read, and those
+        are read once at build time.
+
+        ``None`` for a user-authored agent, which has no folder — see
+        :attr:`reference_namespace`.
+        """
+        return None if self.is_user_authored else self._source_dir
+
+    @property
+    def reference_namespace(self) -> tuple[str, ...] | None:
+        """``/reference/`` for a **user-authored** agent — its rows.
+
+        Same read-only mount, resolved per read from ``agent_definition_files``
+        rather than from a directory that would have to be kept in step with the
+        database.
+        """
+        if not self.is_user_authored:
+            return None
+        return (self._owner_user_id or "", self.name)
 
 
     @property
@@ -108,9 +155,7 @@ class YamlDeepAgent(DeepAgent):
         serves; :attr:`declared_skills` carries those names instead. Returning
         ``None`` here is therefore correct for a custom agent, not a gap.
         """
-        if not self._spec.skills:
-            return None
-        if self._source_dir.parent.name == layout.CUSTOM_AGENTS_DIRNAME:
+        if not self._spec.skills or self.is_user_authored:
             return None
         path = layout.global_agent_default_skills_root(self.name)
         return path if path.is_dir() and any(path.iterdir()) else None
@@ -124,9 +169,7 @@ class YamlDeepAgent(DeepAgent):
         and empty during registry warmup, where there is no user whose pool the
         names could be resolved against.
         """
-        if not self._spec.skills:
-            return ()
-        if self._source_dir.parent.name != layout.CUSTOM_AGENTS_DIRNAME:
+        if not self._spec.skills or not self.is_user_authored:
             return ()
         if not (self.context or {}).get("user_id"):
             return ()
@@ -180,7 +223,7 @@ class YamlDeepAgent(DeepAgent):
                     model=self._resolve_subagent_model(sa),
                     name=sa.name,
                     description=sa.description,
-                    system_prompt=read_prompt(sa.prompt, self._source_dir),
+                    system_prompt=self._read_prompt(sa.prompt),
                     tools=self._resolve_native_tools(sa.tools),
                 )
             )

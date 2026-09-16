@@ -91,8 +91,10 @@ def _load_agents_service(monkeypatch):
         checkpointer_util=importlib.import_module("utils.checkpointer"),
         # skill registry + filesystem
         user_registry=importlib.import_module("harness.skill_registry.user_registry"),
+        user_agents=importlib.import_module("harness.abstractions.user_agents"),
         global_manifest=importlib.import_module("harness.skill_registry.global_manifest"),
         skill_store=importlib.import_module("harness.skill_registry.store"),
+        definition_store=importlib.import_module("harness.agent_registry.store"),
         provisioner=importlib.import_module("harness.filesystem.provisioner"),
         # other utils
         suggestions=importlib.import_module("utils.suggestions"),
@@ -397,6 +399,70 @@ def skill_store_memory(agents_service, monkeypatch):
     """
     fake = FakeSkillStore(agents_service.skill_store)
     monkeypatch.setattr(agents_service.user_registry, "_store", lambda: fake)
+    return fake
+
+
+class FakeAgentDefinitionStore:
+    """Dict-backed twin of ``AgentDefinitionStore``.
+
+    Same trade as :class:`FakeSkillStore`: definitions live in ``agent_runtime``,
+    so without this every test that writes or reads one would need a live
+    Postgres. What it must mirror exactly is the *replace, never merge* rule — a
+    save carries the whole definition, so a file the user deleted must not
+    survive as a row the agent goes on reading.
+    """
+
+    def __init__(self):
+        self.specs: dict[tuple[str, str], dict] = {}
+        self.files: dict[tuple[str, str], dict[str, tuple[str, str]]] = {}
+        self.updated: dict[tuple[str, str], int] = {}
+        self._clock = 0
+
+    async def list_specs(self, user_id):
+        return [{"slug": slug, "spec": spec}
+                for (u, slug), spec in sorted(self.specs.items()) if u == user_id]
+
+    async def get_spec(self, user_id, agent_slug):
+        return self.specs.get((user_id, agent_slug))
+
+    async def get_row(self, user_id, agent_slug):
+        spec = self.specs.get((user_id, agent_slug))
+        if spec is None:
+            return None
+        return {"spec": spec, "updated_at": self.updated[(user_id, agent_slug)]}
+
+    async def get_definition(self, user_id, agent_slug):
+        spec = self.specs.get((user_id, agent_slug))
+        if spec is None:
+            return None
+        return spec, dict(self.files.get((user_id, agent_slug), {}))
+
+    async def read_files(self, user_id, agent_slug):
+        return dict(self.files.get((user_id, agent_slug), {}))
+
+    async def save(self, user_id, agent_slug, *, spec, files):
+        key = (user_id, agent_slug)
+        replaced = key in self.specs
+        self._clock += 1
+        self.specs[key] = spec
+        self.files[key] = dict(files)      # replace, never merge
+        self.updated[key] = self._clock
+        return replaced
+
+    async def delete(self, user_id, agent_slug):
+        key = (user_id, agent_slug)
+        removed = self.specs.pop(key, None) is not None
+        self.files.pop(key, None)
+        self.updated.pop(key, None)
+        return removed
+
+
+@pytest.fixture()
+def definition_store_memory(agents_service, monkeypatch):
+    """Install the in-memory definition store behind the agent CRUD and loader."""
+    fake = FakeAgentDefinitionStore()
+    monkeypatch.setattr(agents_service.user_agents, "_store", lambda: fake)
+    monkeypatch.setattr(agents_service.agents_utils, "_definition_store", lambda: fake)
     return fake
 
 

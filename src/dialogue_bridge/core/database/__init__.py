@@ -14,7 +14,6 @@ from core.database.engine import (
     get_db,
 )
 from core.database.models import (
-    AgentDefinitionFileTable,
     AgentTable,
     AttachmentTable,
     BlobTable,
@@ -33,7 +32,6 @@ from core.database.models import (
 )
 
 __all__ = [
-    "AgentDefinitionFileTable",
     "AgentTable",
     "AttachmentTable",
     "Base",

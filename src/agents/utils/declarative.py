@@ -21,6 +21,7 @@ exists for type checkers only, and there is no cycle to trip over at runtime.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -49,6 +50,39 @@ def read_prompt(value: str, source_dir: Path) -> str:
     if target != root and root not in target.parents:
         raise ValueError(f"prompt path {value!r} escapes the agent directory {root}")
     return target.read_text(encoding="utf-8")
+
+
+def resolve_prompt(value: str, files: Mapping[str, str]) -> str:
+    """The store-backed twin of :func:`read_prompt`.
+
+    A user-authored agent has no directory, so a path-shaped prompt reference is
+    looked up in the definition's own file map instead of on disk. Same two
+    branches as ``read_prompt`` — a value that does not look like a path is an
+    inline prompt — so a spec means the same thing whichever kind of agent
+    carries it.
+
+    Confinement is structural rather than checked: the map only ever holds this
+    agent's own files, so there is no parent directory to escape into and no
+    traversal guard to get wrong. A reference to a file that is not there raises,
+    because an agent whose system prompt silently resolved to an empty string is
+    far worse than one that fails to build — and ``validate_write`` already
+    refuses a spec whose prompt is not among the uploaded files.
+    """
+    candidate = value.strip()
+    looks_like_path = (
+        candidate.startswith("./")
+        or candidate.startswith("../")
+        or candidate.endswith(".md")
+    )
+    if not looks_like_path:
+        return value
+
+    key = candidate.replace("\\", "/").lstrip("./").lstrip("/")
+    if key not in files:
+        raise ValueError(
+            f"prompt path {value!r} is not among this agent's definition files"
+        )
+    return files[key]
 
 
 def manifest_from_spec(spec: "AgentSpec") -> dict[str, Any]:

@@ -1,33 +1,25 @@
-"""The authored definition of a custom agent lives in chat_db.
+"""What the bridge still owns about a custom agent: its catalog row.
 
-It used to exist only on the agents-service volume, which has no backup: losing
-it left the catalog row pointing at nothing — an agent that listed in the UI and
-failed at run time. These pin the properties that make Postgres the owner, since
-none of them is visible from the HTTP surface alone.
+A custom agent is deliberately split. Its **identity** — the row in ``agents``
+carrying ``owner_user_id``, the id the UI keys off, the target of every
+conversation's foreign key — lives here, because the bridge reads it on every
+page load and that must not become a cross-service hop. Its **definition** —
+spec, ``AGENT.md``, sub-agent prompts, reference files — lives in
+``agent_runtime``, because the agents service reads it on every run.
+
+These pin the half that stayed, and the seam itself: the list is a pure query,
+the detail is a join across the two.
+
+The definition used to be mirrored here as ``agents.definition_spec`` plus
+``agent_definition_files``, kept in step with a folder on the agents volume by a
+900-second reconciliation pass. Both the copy and the pass are gone, and the
+tests for them went with them.
 """
 
 import pytest
-from sqlalchemy import select
 
-from core.database import AgentDefinitionFileTable, AgentTable
+from core.database import AgentTable
 from utils import user_agents as ua
-
-
-@pytest.fixture
-def payload():
-    return {
-        "spec": {
-            "id": "research-bot-v1",
-            "slug": "research-bot",
-            "name": "Research Bot",
-            "type": "deep_agent",
-            "prompt": "./AGENT.md",
-        },
-        "files": [
-            {"path": "AGENT.md", "content": "You are Research Bot.", "encoding": "utf-8"},
-            {"path": "subagents/writer.md", "content": "You write.", "encoding": "utf-8"},
-        ],
-    }
 
 
 @pytest.fixture
@@ -50,103 +42,22 @@ def owned_agent_factory(session_factory, seeded_user):
     return _make
 
 
-async def _files_for(session_factory, agent_id: str):
-    async with session_factory() as session:
-        result = await session.execute(
-            select(AgentDefinitionFileTable)
-            .where(AgentDefinitionFileTable.agent_id == agent_id)
-            .order_by(AgentDefinitionFileTable.path)
-        )
-        return [(r.path, r.content) for r in result.scalars().all()]
-
-
+# ---------------------------------------------------------------------------
+# The list stays local
+# ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_store_definition_persists_every_submitted_file(
-    session_factory, owned_agent_factory, payload
-):
-    agent_id = await owned_agent_factory()
-    async with session_factory() as session:
-        await ua._store_definition(session, agent_id, payload)
-        await session.commit()
-
-    assert await _files_for(session_factory, agent_id) == [
-        ("AGENT.md", "You are Research Bot."),
-        ("subagents/writer.md", "You write."),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_store_definition_replaces_rather_than_merges(
-    session_factory, owned_agent_factory, payload
-):
-    # A save rewrites the whole agent folder upstream, so a file the user did
-    # not re-send is deleted there. Merging here would leave chat_db holding
-    # files the volume no longer has — the two stores would diverge on edit.
-    agent_id = await owned_agent_factory()
-    async with session_factory() as session:
-        await ua._store_definition(session, agent_id, payload)
-        await session.commit()
-
-    async with session_factory() as session:
-        await ua._store_definition(
-            session,
-            agent_id,
-            {"files": [{"path": "AGENT.md", "content": "Rewritten."}]},
-        )
-        await session.commit()
-
-    assert await _files_for(session_factory, agent_id) == [("AGENT.md", "Rewritten.")]
-
-
-@pytest.mark.asyncio
-async def test_store_definition_skips_entries_with_no_path(
-    session_factory, owned_agent_factory
-):
-    agent_id = await owned_agent_factory()
-    async with session_factory() as session:
-        await ua._store_definition(
-            session,
-            agent_id,
-            {"files": [{"path": "  ", "content": "x"}, {"content": "y"}]},
-        )
-        await session.commit()
-
-    assert await _files_for(session_factory, agent_id) == []
-
-
-@pytest.mark.asyncio
-async def test_detail_is_assembled_without_calling_the_agents_service(
-    session_factory, seeded_user, owned_agent_factory, payload, monkeypatch
-):
-    # The point of the change: opening an agent in the builder must not depend
-    # on the agents service being reachable.
-    async def _explode(*args, **kwargs):  # pragma: no cover - must never run
-        raise AssertionError("detail must not call upstream")
-
-    monkeypatch.setattr(ua, "_proxy", _explode)
-
-    agent_id = await owned_agent_factory()
-    async with session_factory() as session:
-        row = await session.get(AgentTable, agent_id)
-        row.definition_spec = payload["spec"]
-        await ua._store_definition(session, agent_id, payload)
-        await session.commit()
-
-    async with session_factory() as session:
-        detail = await ua.get_custom_agent_definition(session, seeded_user.id, agent_id)
-
-    assert detail["id"] == agent_id
-    assert detail["slug"] == "research-bot"
-    assert detail["spec"] == payload["spec"]
-    assert [f["path"] for f in detail["files"]] == ["AGENT.md", "subagents/writer.md"]
-
-
-@pytest.mark.asyncio
-async def test_list_reads_rows_only(
+async def test_listing_agents_never_calls_upstream(
     session_factory, seeded_user, owned_agent_factory, monkeypatch
 ):
+    """The whole reason the catalog row did not move.
+
+    This runs on every page load; making it a cross-service hop would mean a
+    slow or restarting agents service made a user's own agents disappear from
+    their settings.
+    """
+
     async def _explode(*args, **kwargs):  # pragma: no cover - must never run
-        raise AssertionError("list must not call upstream")
+        raise AssertionError("listing agents must not call upstream")
 
     monkeypatch.setattr(ua, "_proxy", _explode)
     await owned_agent_factory("research-bot")
@@ -185,89 +96,53 @@ async def test_another_users_agent_is_not_listed(
     assert items == []
 
 
+# ---------------------------------------------------------------------------
+# The detail is a join across the seam
+# ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_reads_never_call_the_agents_service(
+async def test_detail_joins_the_local_row_with_the_upstream_definition(
     session_factory, seeded_user, owned_agent_factory, monkeypatch
 ):
-    # Reads are pure queries now. A row with no definition returns an empty form
-    # rather than reaching upstream for it: reconciliation owns that repair, and
-    # unlike a read it can also see definitions no row points at.
+    """The row resolves the id to a slug and proves ownership; the definition
+    comes from the service that owns it. The builder still receives one object."""
+    calls = []
+
+    async def _fake_proxy(method, url, **kwargs):
+        calls.append((method, url))
+        return {
+            "spec": {"slug": "research-bot", "prompt": "./AGENT.md"},
+            "files": [{"path": "AGENT.md", "content": "You are Research Bot."}],
+        }
+
+    monkeypatch.setattr(ua, "_proxy", _fake_proxy)
+    agent_id = await owned_agent_factory()
+
+    async with session_factory() as session:
+        detail = await ua.get_custom_agent_definition(session, seeded_user.id, agent_id)
+
+    assert detail["slug"] == "research-bot"          # from the local row
+    assert detail["spec"]["prompt"] == "./AGENT.md"  # from upstream
+    assert [f["path"] for f in detail["files"]] == ["AGENT.md"]
+    assert calls and calls[0][0] == "GET"
+    # Addressed by slug, not by the catalog id: the agents service has never
+    # heard of chat_db's ids.
+    assert calls[0][1].endswith("/research-bot")
+
+
+@pytest.mark.asyncio
+async def test_another_users_agent_cannot_be_opened(
+    session_factory, seeded_user, owned_agent_factory, monkeypatch
+):
+    """Ownership is checked against the local row *before* anything is fetched,
+    so a wrong owner never reaches the definition at all."""
+
     async def _explode(*args, **kwargs):  # pragma: no cover - must never run
-        raise AssertionError("a read must not call upstream")
+        raise AssertionError("ownership must be refused before fetching")
 
     monkeypatch.setattr(ua, "_proxy", _explode)
     agent_id = await owned_agent_factory()
 
-    async with session_factory() as session:
-        detail = await ua.get_custom_agent_definition(session, seeded_user.id, agent_id)
-
-    assert detail["spec"] == {}
-    assert detail["files"] == []
-
-
-# ---------------------------------------------------------------------------
-# One transaction — the catalog row and its definition are never half-written
-# ---------------------------------------------------------------------------
-# `_upsert_row` used to commit on its own, making the definition a second unit
-# of work. A failure between them left the catalog row current while chat_db
-# still held the *previous* definition — the volume had the new files, Postgres
-# the old ones. A reconciliation pass trusting Postgres would then revert the
-# user's edit, so the window is closed rather than handled.
-
-
-@pytest.mark.asyncio
-async def test_a_failed_definition_write_leaves_no_catalog_row(
-    session_factory, seeded_user, payload, monkeypatch
-):
-    async def _fake_proxy(method, url, **kwargs):
-        return {"slug": "research-bot", "name": "Research Bot", "description": "", "icon": "Bot"}
-
-    async def _explode(*args, **kwargs):
-        raise RuntimeError("definition write failed")
-
-    monkeypatch.setattr(ua, "_proxy", _fake_proxy)
-    monkeypatch.setattr(ua, "_store_definition", _explode)
-
-    async with session_factory() as session:
-        with pytest.raises(RuntimeError):
-            await ua.create_custom_agent(session, seeded_user.id, payload)
-
-    # Nothing committed, so the agent never half-exists: the user sees the error
-    # and can retry the same slug rather than being blocked by a 409 on a row
-    # they cannot see.
-    async with session_factory() as session:
-        assert await ua.list_custom_agent_definitions(session, seeded_user.id) == []
-
-
-@pytest.mark.asyncio
-async def test_a_failed_definition_write_leaves_the_previous_version_intact(
-    session_factory, seeded_user, owned_agent_factory, payload, monkeypatch
-):
-    agent_id = await owned_agent_factory()
-    async with session_factory() as session:
-        row = await session.get(AgentTable, agent_id)
-        row.definition_spec = payload["spec"]
-        await ua._store_definition(session, agent_id, payload)
-        await session.commit()
-
-    async def _fake_proxy(method, url, **kwargs):
-        return {"slug": "research-bot", "name": "Renamed", "description": "", "icon": "Bot"}
-
-    async def _explode(*args, **kwargs):
-        raise RuntimeError("definition write failed")
-
-    monkeypatch.setattr(ua, "_proxy", _fake_proxy)
-    monkeypatch.setattr(ua, "_store_definition", _explode)
-
-    async with session_factory() as session:
-        with pytest.raises(RuntimeError):
-            await ua.update_custom_agent(
-                session, seeded_user.id, agent_id, {"spec": {"slug": "research-bot"}, "files": []}
-            )
-
-    # The row's name must not have moved either — it is part of the same unit.
-    async with session_factory() as session:
-        detail = await ua.get_custom_agent_definition(session, seeded_user.id, agent_id)
-    assert detail["name"] == "Research Bot"
-    assert detail["spec"] == payload["spec"]
-    assert [f["path"] for f in detail["files"]] == ["AGENT.md", "subagents/writer.md"]
+    with pytest.raises(Exception) as exc:
+        async with session_factory() as session:
+            await ua.get_custom_agent_definition(session, "some-other-user", agent_id)
+    assert getattr(exc.value, "status_code", None) in (403, 404)

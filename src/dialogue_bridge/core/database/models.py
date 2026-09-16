@@ -75,23 +75,8 @@ class AgentTable(Base):
     # features only deep agents support (e.g. per-user skill selection).
     type = Column(String, nullable=False, server_default="langgraph agent")
     is_active = Column(Boolean, nullable=False, server_default="true")
-    # The authored AgentSpec, for user-authored agents only (NULL = platform,
-    # whose definition ships in the agents-service image).
-    #
-    # Stored as the JSON the builder submitted rather than the generated
-    # `agent.yaml`: that file is produced by the agents service from this spec
-    # and uploading it is explicitly rejected, so the spec is the real input.
-    # It also keeps the bridge free of a YAML dependency it otherwise has no
-    # reason to carry.
-    definition_spec = Column(JSON, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    definition_files = relationship(
-        "AgentDefinitionFileTable",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
 
     conversations = relationship(
         "ConversationTable",
@@ -490,36 +475,6 @@ class ScheduledTaskTable(Base):
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
-
-class AgentDefinitionFileTable(Base):
-    """One file of a user-authored agent's definition, owned by ``chat_db``.
-
-    The definition used to live only on the agents-service volume, which has no
-    backup: losing it left the ``agents`` row pointing at nothing — the agent
-    listed in the UI and could not run. Postgres is now the source of truth and
-    the volume is a materialised cache the agents service rebuilds on boot.
-
-    ``content`` is TEXT, not bytea, because the server-side allowlist for an
-    agent definition is ``.md/.txt/.yaml/.yml`` — there is no binary case, so
-    base64 would be dead weight. Rows exist only for user-authored agents;
-    platform definitions ship in the image.
-    """
-
-    __tablename__ = "agent_definition_files"
-    __table_args__ = (UniqueConstraint("agent_id", "path", name="uq_agent_definition_files_path"),)
-
-    id = Column(String, primary_key=True, default=gen_uuid)
-    agent_id = Column(
-        String, ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    # Relative to the agent folder: 'agent.yaml', 'AGENT.md', 'subagents/x.md'.
-    path = Column(String, nullable=False)
-    content = Column(Text, nullable=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
-
 
 
 class UserAgentToolPrefTable(Base):

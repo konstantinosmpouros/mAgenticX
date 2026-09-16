@@ -48,7 +48,7 @@ async def get_agent_tools(
             "MCP gateway unavailable while listing agent tools; catalog will be empty",
             agent_slug=agent_slug,
         )
-    rows = list_agent_tools(
+    rows = await list_agent_tools(
         user_id,
         agent_slug,
         use_memory=use_memory,

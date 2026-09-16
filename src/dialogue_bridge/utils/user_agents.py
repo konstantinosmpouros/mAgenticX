@@ -1,23 +1,21 @@
 """User-authored agents — owned by ``chat_db``, materialised to the agents service.
 
-A custom agent has three parts:
+A custom agent has **two** parts, split by who reads them:
 
-* its **catalog row** in ``agents``, carrying ``owner_user_id`` — the authority
-  on ownership and the id the UI keys off;
-* its **definition**, now stored here as ``agents.definition_spec`` plus
-  ``agent_definition_files``; and
-* a **materialised copy** on the agents-service volume
-  (``custom_agents/<slug>/agent.yaml`` + prompt files), which that service
-  generates, validates and loads at run time.
+* its **catalog row** in ``chat_db.agents``, carrying ``owner_user_id`` — the
+  authority on ownership, the id the UI keys off, and the target of every
+  conversation's foreign key. Read here on every page load, so it stays local;
+* its **definition** — spec, ``AGENT.md``, sub-agent prompts, reference files —
+  owned by the agents service in ``agent_runtime``, because that service reads
+  it on every run.
 
-Postgres is the source of truth. The volume used to be the *only* copy, and it
-has no backup: losing it left the row pointing at nothing — an agent that listed
-in the UI and failed at run time. The volume is now a cache the agents service
-reconciles against these rows at boot and on an interval.
+There used to be a third: a copy of the definition in ``chat_db`` *and* a folder
+on the agents volume, reconciled every 900 seconds. Both are gone; this module
+proxies the definition rather than mirroring it, so there is nothing to keep in
+step and no window where the two disagree.
 
 Order on create/update: call the agents service **first**, because that call is
-what validates the spec, then persist. Persisting first would admit an invalid
-definition that reconciliation would keep trying to write. Reads do not call
+what validates the spec *and* persists it, then write the catalog row. Reads do not call
 upstream at all — the row and its files answer them — so a slow or restarting
 agents service no longer makes a user's own agents vanish from settings, and a
 definition the volume alone holds is repaired by the sync pass rather than by a
@@ -43,7 +41,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
-from core.database import AgentDefinitionFileTable, AgentTable
+from core.database import AgentTable
 from core.error_handling import upstream_error_handler
 from core.security.internal_trust import internal_service_headers
 from core.security.tls import get_httpx_client_cert, get_httpx_verify
@@ -191,42 +189,6 @@ async def _upsert_row(
 # real input, and storing it keeps the bridge free of a YAML dependency.
 
 
-async def _store_definition(
-    db: AsyncSession, agent_id: str, payload: Dict[str, Any]
-) -> None:
-    """Replace this agent's stored definition with the submitted payload.
-
-    Replace, never merge: a save rewrites the whole agent folder upstream, so
-    any file the user did not re-send is deleted there. Merging here would leave
-    Postgres holding files the volume no longer has.
-    """
-    await db.execute(
-        delete(AgentDefinitionFileTable).where(AgentDefinitionFileTable.agent_id == agent_id)
-    )
-    for item in payload.get("files") or []:
-        path = str(item.get("path") or "").strip()
-        if not path:
-            continue
-        db.add(
-            AgentDefinitionFileTable(
-                agent_id=agent_id, path=path, content=str(item.get("content") or "")
-            )
-        )
-
-
-async def _load_definition_files(db: AsyncSession, agent_id: str) -> List[Dict[str, Any]]:
-    """The stored files, in a stable order so an edit round-trip is diffable."""
-    result = await db.execute(
-        select(AgentDefinitionFileTable)
-        .where(AgentDefinitionFileTable.agent_id == agent_id)
-        .order_by(AgentDefinitionFileTable.path)
-    )
-    return [
-        {"path": row.path, "content": row.content, "encoding": "utf-8"}
-        for row in result.scalars().all()
-    ]
-
-
 def _summary_from_row(row: AgentTable) -> Dict[str, Any]:
     """The list-shape a client expects, assembled from the row alone."""
     return {
@@ -264,21 +226,22 @@ async def get_custom_agent_definition(
 ) -> Dict[str, Any]:
     """One agent's full definition, keyed by its catalog id.
 
-    Assembled here rather than fetched: the spec is on the row and the files are
-    in ``agent_definition_files``, so opening an agent in the builder does not
-    depend on the agents service being reachable at all.
+    The **catalog row** resolves the id to a slug and proves ownership, which is
+    why this still takes a session; the **definition** comes from the agents
+    service, which owns it in ``agent_runtime``. The two are joined here so the
+    builder keeps receiving one object.
 
-    A row whose definition is missing returns an empty spec rather than reaching
-    upstream for it. Reconciliation owns that repair now — it sees the volume
-    directly, so it also catches definitions no row points at, which a read
-    triggered *from a row* never could.
+    The trade is deliberate: opening an agent in the builder now fails when the
+    agents service is down, where it used to serve a possibly-stale local copy.
+    A stale definition is worse than none — the user would edit one thing and
+    save another.
     """
     row = await _require_owned_row(db, user_id, agent_id)
-    files = await _load_definition_files(db, row.id)
+    detail = await _proxy("GET", f"{_base_url(user_id)}/{row.slug}", user_id=user_id)
     return {
         **_summary_from_row(row),
-        "spec": row.definition_spec or {},
-        "files": files,
+        "spec": (detail or {}).get("spec") or {},
+        "files": (detail or {}).get("files") or [],
     }
 
 
@@ -322,14 +285,11 @@ The sync exchange's write-back path, and the only one left. It **creates**
         "version": spec.get("version"),
     }
     row = await _upsert_row(db, user_id, summary)
-    row.definition_spec = spec
-    await _store_definition(db, row.id, {"files": files})
     logger.info(
-        "custom_agent_definition_adopted_from_volume",
-        "Adopted a volume-only agent definition into chat_db",
+        "custom_agent_catalog_row_adopted",
+        "Created a catalog row for an agent only the agents service knew about",
         agent_id=row.id,
         agent_slug=slug,
-        file_count=len(files or []),
     )
     return True
 
@@ -356,15 +316,12 @@ async def create_custom_agent(
         public_detail="The agent could not be created. Please try again.",
         json_body=payload,
     )
+    # Only the catalog row lands here. The definition was persisted by the call
+    # above, in the database the agents service owns — which is also what
+    # validated it, so there is no window where this side holds a definition
+    # upstream has refused.
     row = await _upsert_row(db, user_id, summary or {})
-    # Store the authored definition beside the row. Done after the upstream call
-    # because that call is what validates the spec — persisting first would let
-    # an invalid definition into chat_db, and reconciliation would then keep
-    # rewriting a folder the agents service refuses.
-    row.definition_spec = payload.get("spec") or {}
-    await _store_definition(db, row.id, payload)
-    # One commit for the row and its definition. `get_db` does not commit on
-    # close, so this is also what makes either of them durable at all.
+    # `get_db` does not commit on close, so this is what makes the row durable.
     await db.commit()
     logger.info(
         "custom_agent_created",
@@ -387,8 +344,6 @@ async def update_custom_agent(
         json_body=payload,
     )
     updated = await _upsert_row(db, user_id, summary or {})
-    updated.definition_spec = payload.get("spec") or {}
-    await _store_definition(db, updated.id, payload)
     await db.commit()
     logger.info(
         "custom_agent_updated",
@@ -413,15 +368,11 @@ async def delete_custom_agent(db: AsyncSession, user_id: str, agent_id: str) -> 
         public_detail="The agent could not be deleted. Please try again.",
         expect_json=False,
     )
+    # The definition is already gone upstream. The row only *deactivates* (see
+    # the docstring): conversations hold a foreign key to it, and a dormant row
+    # is also what stops a stale write-back resurrecting a deleted agent.
     row.is_active = False
     row.updated_at = func.now()
-    # The definition is gone upstream, so drop the stored copy too — keeping it
-    # would leave reconciliation able to resurrect a deleted agent's folder. The
-    # row itself only deactivates (see the docstring).
-    await db.execute(
-        delete(AgentDefinitionFileTable).where(AgentDefinitionFileTable.agent_id == row.id)
-    )
-    row.definition_spec = None
     await db.commit()
     logger.info(
         "custom_agent_deleted",

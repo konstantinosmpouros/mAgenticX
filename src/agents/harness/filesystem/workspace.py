@@ -32,6 +32,7 @@ from deepagents.backends import (
 from deepagents.backends.protocol import SandboxBackendProtocol
 
 from core.settings import settings
+from harness.agent_registry.store import AgentDefinitionStore
 from harness.memory import AgentMemoryStore, get_memory_pool
 from harness.skill_registry.store import TIER_ASSIGNED, TIER_DECLARED, SkillStore
 from harness.filesystem.provisioner import (
@@ -97,6 +98,7 @@ def build_workspace_backend(
     conversation_id: str,
     use_memory: bool,
     reference_dir: Path | None = None,
+    reference_namespace: tuple[str, ...] | None = None,
     default_skills_dir: Path | None = None,
     declared_skills: Sequence[str] = (),
 ) -> Callable[[Any], CompositeBackend]:
@@ -108,14 +110,18 @@ def build_workspace_backend(
     runtime. FilesystemBackends are mounted at structurally disjoint roots so no
     route can resolve into another's tree:
 
-        /memories/            → <user_root>/agents/<slug>/memory/    (AGENTS.md + entries/)
-        /skills/              → <user_root>/agents/<slug>/skills/    (user-enabled skills)
+        /memories/            → agent_runtime rows                  (AGENTS.md + entries/)
+        /skills/              → agent_runtime rows                  (user-enabled skills)
         /conversation/input/  → <conv_id>/input/                     (user uploads, read-only)
         /conversation/output/ → <conv_id>/output/                    (agent artifacts, read-write)
         /conversation/        → <user_root>/agents/<slug>/<conv_id>/ (this chat only)
-        /default_skills/      → the skills the agent ships with      (read-only, optional)
-        /reference/           → the agent's definition folder        (read-only, optional)
+        /default_skills/      → image folder OR agent_runtime rows   (read-only, optional)
+        /reference/           → image folder OR agent_runtime rows   (read-only, optional)
         default               → StateBackend(rt)                     (ephemeral scratch)
+
+    Only the ``/conversation/`` family is a real directory. Everything a *user*
+    authored is a virtual route over ``agent_runtime``; everything the platform
+    ships is a directory in the image.
 
     Per-conversation isolation: ``/conversation/`` is rooted at a single
     ``<conv_id>`` directory, so files written in one chat are not visible from
@@ -132,16 +138,18 @@ def build_workspace_backend(
     entries. Safe to omit standalone — no ``WORKSPACE_WRITE_DENY`` rule targets
     ``/memories/``, so the permission ladder needs no change.
 
-    The central skills registry is intentionally **not mounted** — the agent
-    only ever sees the skills the user has explicitly enabled, copied into
-    ``skills/`` by the bridge's PUT endpoint.
+    The central skills catalogue is intentionally **not mounted** — the agent
+    only ever sees the skills the user has explicitly enabled, resolved per read
+    from their ``agent_skills`` rows.
 
-    ``reference_dir`` mounts the agent's own definition folder read-only at
-    ``/reference/``, so material shipped alongside the prompt (notes, checklists,
-    examples) is readable on demand instead of being inlined into every turn's
-    context. Declarative agents pass their source directory; agents defined in
-    code pass nothing and the route is simply absent. Keep the write-deny in
-    step via :func:`workspace_write_deny`.
+    ``/reference/`` mounts the agent's own definition read-only, so material
+    shipped alongside the prompt (notes, checklists, examples) is readable on
+    demand instead of being inlined into every turn's context. It arrives by one
+    of two routes and never both: ``reference_dir`` for a **platform** agent,
+    whose definition is a directory in the image, and ``reference_namespace`` for
+    a **user-authored** one, whose definition is rows in ``agent_runtime``. An
+    agent defined in code passes neither and the route is simply absent. Keep the
+    write-deny in step via :func:`workspace_write_deny`.
     """
     ensure_user_agent_filesystem(
         user_id=user_id, agent_slug=agent_slug, conversation_id=conversation_id
@@ -236,8 +244,17 @@ def build_workspace_backend(
                 ),
             )
         if reference_dir is not None:
+            # A platform agent's definition ships in the image — build-time
+            # content, identical for every user and not writable at runtime.
             routes["/reference/"] = FilesystemBackend(
                 root_dir=str(reference_dir), virtual_mode=True
+            )
+        elif reference_namespace is not None:
+            # A user-authored agent's definition is rows. Same read-only mount,
+            # no directory to keep in step with the database.
+            routes["/reference/"] = StoreBackend(
+                store=AgentDefinitionStore(get_memory_pool()),
+                namespace=lambda _rt, ns=reference_namespace: ns,
             )
         return CompositeBackend(default=default_backend, routes=routes)
 

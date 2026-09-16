@@ -7,14 +7,15 @@ authority for the consolidated two-plane layout. This module owns the
 *lifecycle* (create, seed, read back, delete); layout owns *where*.
 
 Layout (structurally-isolated mounts the agent sees as siblings). Note what is
-*absent*: neither ``/memories/`` nor ``/skills/`` has a directory here. Memory
-lives in the ``agent_memories`` table (``harness/memory/``) and skills in the
-``skill_pool`` / ``skill_files`` / ``agent_skills`` tables
-(``harness/skill_registry/``); both are served as virtual routes over
-``agent_runtime``, so this module neither creates nor seeds anything for them:
+*absent*: nothing a user **authored** has a directory here. Memory lives in
+``agent_memories``, skills in ``skill_pool`` / ``skill_files`` / ``agent_skills``,
+and a custom agent's definition in ``agent_definitions`` /
+``agent_definition_files`` — all in ``agent_runtime``, all served as virtual
+routes, so this module neither creates nor seeds anything for them. What is left
+on disk is conversation working files, which are per-run scratch backed by
+attachment blobs in the database:
 
     <workspaces_root>/users/<user_id>/
-    ├── custom_agents/                 ← the user's own agent.yaml definitions
     └── agents/
         └── <agent_slug>/
             ├── tool_prefs.json        ← per-agent tool overrides
@@ -60,24 +61,6 @@ logger = get_logger(__name__)
 # Canonical path-segment validator lives in `layout`; re-exported here because
 # the skill registry imports it from this module.
 _safe_segment = layout.safe_segment
-
-# Explanatory file dropped into a freshly-created custom_agents/ dir so anyone
-# inspecting the volume knows what belongs there before the feature ships.
-_CUSTOM_AGENTS_README = """\
-# Your agents
-
-Each subdirectory here is one agent you define, named after its slug:
-
-    <agent-slug>/
-        agent.yaml          identity, prompt, models, tools, sub-agents, HITL gates
-        AGENT.md            the system prompt
-        subagents/*.md      sub-agent prompts (optional)
-
-Authoring these from the UI is not wired up yet — the folder is provisioned in
-advance so the definitions have a home the moment it is. Platform agents are
-defined outside your workspace and are not editable here.
-"""
-
 
 def user_root(user_id: str) -> Path:
     """This user's workspace root — parent of their custom agents and the
@@ -262,38 +245,14 @@ def read_output_files(
 def ensure_user_workspace(user_id: str) -> Path:
     """Idempotent user-level scaffold. Returns the workspace root.
 
-    Creates the directories that belong to the *user* rather than to any one
-    agent: the workspace root itself and ``custom_agents/`` (where the user's
-    own ``agent.yaml`` definitions will live — provisioned ahead of the feature
-    so the location is settled, see
-    ``plans/01-custom-agents-per-user.md``). The skill pool is not provisioned
-    here at all: it is rows in ``agent_runtime``, not a directory.
-
-    The README is written only when the directory is first created, so an admin
-    who deletes it is not fighting the service on every boot.
+    Creates only the root. Everything a user *authors* — their agent
+    definitions, their skills, their memory — is rows in ``agent_runtime``, so
+    there is no per-user content directory left to provision. What survives on
+    the volume is conversation working files, and those are minted per
+    conversation by :func:`ensure_user_agent_filesystem`.
     """
     root = layout.user_workspace(user_id)
     root.mkdir(parents=True, exist_ok=True)
-
-    custom_agents = layout.user_custom_agents_root(user_id)
-    if not custom_agents.exists():
-        custom_agents.mkdir(parents=True, exist_ok=True)
-        try:
-            (custom_agents / "README.md").write_text(_CUSTOM_AGENTS_README, encoding="utf-8")
-        except OSError:
-            # Explanatory only — never fail provisioning over it.
-            logger.warning(
-                "custom_agents_readme_write_failed",
-                "Could not write the custom_agents README",
-                exc_info=True,
-                user_id=user_id,
-            )
-        logger.info(
-            "custom_agents_dir_provisioned",
-            "Created the user's custom-agents directory",
-            user_id=user_id,
-            path=str(custom_agents),
-        )
     return root
 
 

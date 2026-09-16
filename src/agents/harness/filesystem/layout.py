@@ -10,7 +10,6 @@ Two planes under one root — the consolidated layout from
         skills/<category>/<skill_name>/SKILL.md     browsable catalogue
 
     $MAGENTICX_WORKSPACES_ROOT/users/<user_id>/     ← one user's everything
-        custom_agents/<agent_slug>/agent.yaml       user-authored agent definitions
         agents/<agent_slug>/
             tool_prefs.json
             conversations/<conversation_id>/{input,output}
@@ -19,10 +18,12 @@ Both planes are here because the split between them is the point: the global
 plane is **build-time** content — baked into the image, identical for every
 user, never written at runtime — while the user plane holds only what a run
 actually produces. Runtime content that used to sit in the user plane now lives
-in ``agent_runtime`` instead: memory in ``agent_memories``, and the skill pool,
+in ``agent_runtime`` instead: memory in ``agent_memories``, the skill pool,
 custom skill files and per-agent assignments in ``skill_pool`` / ``skill_files``
-/ ``agent_skills``. Neither has a path here, which is why the user tree is as
-thin as it looks.
+/ ``agent_skills``, and user-authored agent definitions in
+``agent_definitions`` / ``agent_definition_files``. None of them has a path
+here, which is why the user tree is as thin as it looks — what remains is
+conversation scratch, and every byte of it is backed by a database blob.
 
 Why this module exists: the same user's data used to be split across three
 volumes with path construction scattered over the provisioner, the skill
@@ -45,9 +46,6 @@ from core.settings import settings
 # sweeper used to skip `memory`/`skills` by name, which broke every time a new
 # sibling was added under the agent root.
 CONVERSATIONS_DIRNAME = "conversations"
-# Named so callers can recognise a *definition* path without a magic string
-# (e.g. a declarative agent deciding whether it is user-authored or platform).
-CUSTOM_AGENTS_DIRNAME = "custom_agents"
 
 
 def safe_segment(value: str) -> str:
@@ -113,22 +111,6 @@ def user_workspace(user_id: str) -> Path:
     return users_root() / safe_segment(user_id)
 
 
-def user_custom_agents_root(user_id: str) -> Path:
-    """Where a user's own ``agent.yaml`` definitions live.
-
-    Deliberately separate from
-    ``agents/`` — that holds per-agent *state* for every agent the user talks
-    to, platform or custom, while this holds *definitions* the user owns. The
-    split mirrors the global plane, where ``global/agents/<slug>/`` is a
-    definition and the user's state lives elsewhere.
-    """
-    return user_workspace(user_id) / CUSTOM_AGENTS_DIRNAME
-
-
-def user_custom_agent_dir(user_id: str, agent_slug: str) -> Path:
-    return user_custom_agents_root(user_id) / safe_segment(agent_slug)
-
-
 # ---------------------------------------------------------------------------
 # Per-(user, agent) state
 # ---------------------------------------------------------------------------
@@ -160,7 +142,6 @@ def conversation_output_root(user_id: str, agent_slug: str, conversation_id: str
 
 __all__ = [
     "CONVERSATIONS_DIRNAME",
-    "CUSTOM_AGENTS_DIRNAME",
     "agent_root",
     "conversation_input_root",
     "conversation_output_root",
@@ -173,8 +154,6 @@ __all__ = [
     "global_skills_root",
     "safe_segment",
     "user_agents_root",
-    "user_custom_agent_dir",
-    "user_custom_agents_root",
     "user_workspace",
     "users_root",
 ]

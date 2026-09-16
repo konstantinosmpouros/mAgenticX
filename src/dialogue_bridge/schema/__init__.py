@@ -2,8 +2,7 @@
 
 One module per concept/router — auth, catalog, conversations, messages,
 attachments, sharing, inference, voice, skills, memories, preferences,
-usage, search, scheduled_tasks, agent_tools, user_agents, internal_memory,
-internal_sync —
+usage, search, scheduled_tasks, agent_tools, user_agents, internal_memory —
 on the shared building blocks in ``base``. Re-exported so callers keep the
 stable ``from schema import ...`` import surface regardless of which module
 a DTO lives in.
@@ -60,15 +59,6 @@ from schema.inference import (
 from schema.internal_memory import (
     MemoryMessageMatch,
     MemorySearchRequest,
-)
-from schema.internal_sync import (
-    ContentAgent,
-    InventoryAgent,
-    PlanAgent,
-    SyncAccepted,
-    SyncContent,
-    SyncInventory,
-    SyncPlan,
 )
 from schema.memories import (
     MemoryDetail,
@@ -145,7 +135,6 @@ __all__ = [
     "AuthRequest",
     "AuthResponse",
     "BlobOut",
-    "ContentAgent",
     "ConversationDetail",
     "ConversationForkIn",
     "ConversationIn",
@@ -169,7 +158,6 @@ __all__ = [
     "InferenceRunResumeIn",
     "InferenceStartPayload",
     "InferenceStartResponse",
-    "InventoryAgent",
     "MemoryDetail",
     "MemoryEntry",
     "MemoryMessageMatch",
@@ -177,7 +165,6 @@ __all__ = [
     "MessageIn",
     "MessageOut",
     "MessageUpdate",
-    "PlanAgent",
     "ReadAloudPreviewRequest",
     "RealtimeVoiceConversationEventIn",
     "RealtimeVoiceEndIn",
@@ -195,10 +182,6 @@ __all__ = [
     "SkillFile",
     "SuggestionsOut",
     "SwitchAccountRequest",
-    "SyncAccepted",
-    "SyncContent",
-    "SyncInventory",
-    "SyncPlan",
     "TaskStatus",
     "TaskTargetMode",
     "TitleOut",

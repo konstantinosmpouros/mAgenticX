@@ -204,3 +204,53 @@ def test_a_declared_set_does_not_override_a_bundled_folder(workspace, skills_fs,
         use_memory=False, default_skills_dir=defaults, declared_skills=("planner",),
     )
     assert isinstance(factory(None).routes["/default_skills/"], FilesystemBackend)
+
+
+# ---------------------------------------------------------------------------
+# /reference/ — a folder for a platform agent, rows for a user-authored one
+# ---------------------------------------------------------------------------
+def test_a_platform_agents_reference_is_mounted_from_its_image_folder(
+    workspace, skills_fs, tmp_path
+):
+    from deepagents.backends import FilesystemBackend
+
+    definition = tmp_path / "definition"
+    definition.mkdir()
+    route = _backend(workspace, reference_dir=definition).routes["/reference/"]
+    assert isinstance(route, FilesystemBackend)
+
+
+def test_a_user_authored_agents_reference_resolves_through_the_store(workspace, skills_fs):
+    """Its definition is rows in ``agent_runtime``, so the mount is a store route
+    namespaced by ``(user_id, agent_slug)`` — no directory to keep in step with
+    the database, and nothing on disk a run could tamper with."""
+    from deepagents.backends import StoreBackend
+
+    factory = workspace.build_workspace_backend(
+        user_id="user-1", agent_slug="nova", conversation_id="conv-1",
+        use_memory=False, reference_namespace=("user-1", "nova"),
+    )
+    route = factory(None).routes["/reference/"]
+    assert isinstance(route, StoreBackend)
+    assert route._namespace(None) == ("user-1", "nova")
+
+
+def test_an_image_folder_wins_over_a_namespace(workspace, skills_fs, tmp_path):
+    # Exactly one of the two is ever set, but if both arrive the folder is the
+    # stronger claim: a platform agent must never read a user's rows.
+    from deepagents.backends import FilesystemBackend
+
+    definition = tmp_path / "definition"
+    definition.mkdir()
+    factory = workspace.build_workspace_backend(
+        user_id="user-1", agent_slug="omni", conversation_id="conv-1",
+        use_memory=False, reference_dir=definition,
+        reference_namespace=("user-1", "omni"),
+    )
+    assert isinstance(factory(None).routes["/reference/"], FilesystemBackend)
+
+
+def test_no_reference_route_when_neither_source_is_given(workspace, skills_fs):
+    # An agent defined in code has no definition to expose, and its package dir
+    # holds source, which must never be readable from a run.
+    assert "/reference/" not in _backend(workspace).routes

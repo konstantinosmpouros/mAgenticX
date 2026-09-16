@@ -52,7 +52,7 @@ async def stream_agent(agent_slug: str, req: Request):
     try:
         # Platform agent, or one this user authored in their own workspace —
         # `agent_owner_id` is set by the bridge from the agents table.
-        definition = resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
+        definition = await resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
         if definition is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -174,7 +174,7 @@ async def resume_agent(agent_slug: str, req: AgentResumeRequest):
             detail="Checkpointer is not ready.",
         )
 
-    definition = resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
+    definition = await resolve_agent_definition(agent_slug, context_data.get("agent_owner_id"))
     if definition is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

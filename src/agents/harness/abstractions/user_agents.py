@@ -1,11 +1,13 @@
 """User-authored agent definitions — validate, write, read, delete.
 
-A user's agents live in their own workspace, one folder per agent::
+A user's agents are rows in ``agent_runtime``: the validated ``AgentSpec`` in
+``agent_definitions`` and its authored files in ``agent_definition_files``. They
+used to be a folder per agent on the volume *and* a copy in ``chat_db``, kept in
+step by a reconciliation pass; this module now writes exactly one of them.
 
-    <workspaces_root>/users/<user_id>/custom_agents/<slug>/
-        agent.yaml          the AgentSpec document
-        AGENT.md            the system prompt
-        subagents/*.md      sub-agent prompts (optional)
+``agent.yaml`` is **never stored**. It is rendered from the spec whenever the
+YAML form is wanted, so what runs is always exactly what passed validation — a
+stale or uploaded manifest cannot describe an agent that no longer matches it.
 
 The same :class:`~harness.abstractions.agent_spec.AgentSpec` that governs built-in
 agents governs these, so a user agent cannot express anything a platform agent
@@ -28,31 +30,30 @@ user data, but the capability surface must stay platform-governed:
   slug would make the per-user tools endpoint ambiguous).
 * **Quotas** cap agents per user, files, and bytes.
 
-Writes are staged into a sibling temp directory and swapped into place, so a
-failed or partial write never leaves a half-formed agent that discovery would
-try to load.
+A save is **one transaction**: the spec and its files land together or not at
+all. That replaces the staging-directory-and-rename dance the folder layout
+needed, and it closes a gap that dance could not — a spec whose ``prompt:``
+points at a file that was not written is an agent that fails to build, and
+across two separate writes there was a window where exactly that was true.
 """
 from __future__ import annotations
 
 import base64
 import binascii
-import os
-import shutil
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
-
-import yaml
 
 from core.settings import settings
 from core.logging import get_logger
 from harness.abstractions.agent_spec import AgentSpec
+from harness.agent_registry.store import MANIFEST_FILENAME, AgentDefinitionStore
 from harness.filesystem import layout
+from harness.memory import get_memory_pool
 from harness.tools.registry import is_known_native_tool
 from schema import AgentFile, UserAgentDetail, UserAgentSummary
 
 logger = get_logger(__name__)
 
-_MANIFEST_FILENAME = "agent.yaml"
 # An agent folder is prompts + config only — no scripts, no binaries. Narrower
 # than the skill allowlist on purpose.
 _ALLOWED_EXTENSIONS = frozenset({".md", ".txt", ".yaml", ".yml"})
@@ -185,9 +186,9 @@ def validate_write(
         except AgentValidationError as exc:
             errors.append(str(exc))
             continue
-        if rel == _MANIFEST_FILENAME:
+        if rel == MANIFEST_FILENAME:
             errors.append(
-                f"{_MANIFEST_FILENAME} is generated from the definition — do not upload it."
+                f"{MANIFEST_FILENAME} is generated from the definition — do not upload it."
             )
             continue
         if rel in seen:
@@ -220,11 +221,13 @@ def validate_write(
 # ---------------------------------------------------------------------------
 # Read
 # ---------------------------------------------------------------------------
-def _read_spec(manifest_path: Path) -> Optional[Dict[str, Any]]:
-    try:
-        return yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        return None
+def _store() -> AgentDefinitionStore:
+    """The definition store on this service's ``agent_runtime`` pool.
+
+    Borrowed from the same accessor memory and skills use — one pool for one
+    database, rather than another for two more tables.
+    """
+    return AgentDefinitionStore(get_memory_pool())
 
 
 def _summary_from_spec(raw: Dict[str, Any], slug: str) -> UserAgentSummary:
@@ -239,57 +242,30 @@ def _summary_from_spec(raw: Dict[str, Any], slug: str) -> UserAgentSummary:
     )
 
 
-def list_user_agents(user_id: str) -> List[UserAgentSummary]:
-    """Every agent this user has authored. A folder whose manifest is missing or
-    unreadable is skipped rather than failing the listing."""
-    root = layout.user_custom_agents_root(user_id)
-    if not root.is_dir():
-        return []
-    out: List[UserAgentSummary] = []
-    for entry in sorted(root.iterdir()):
-        if not entry.is_dir():
-            continue
-        raw = _read_spec(entry / _MANIFEST_FILENAME)
-        if raw is None:
-            logger.warning(
-                "user_agent_unreadable",
-                "Skipping a user agent whose manifest could not be read",
-                agent_dir=str(entry),
-            )
-            continue
-        out.append(_summary_from_spec(raw, entry.name))
-    return out
+async def list_user_agents(user_id: str) -> List[UserAgentSummary]:
+    """Every agent this user has authored."""
+    return [
+        _summary_from_spec(row["spec"], row["slug"])
+        for row in await _store().list_specs(user_id)
+    ]
 
 
-def get_user_agent(user_id: str, slug: str) -> Optional[UserAgentDetail]:
-    """One agent's full definition (spec + prompt files) for editing."""
-    try:
-        agent_dir = layout.user_custom_agent_dir(user_id, slug)
-    except ValueError:
+async def get_user_agent(user_id: str, slug: str) -> Optional[UserAgentDetail]:
+    """One agent's full definition (spec + authored files) for editing.
+
+    ``agent.yaml`` is absent from ``files`` because it is never stored — the
+    builder must not offer a generated manifest as an editable file, and
+    :func:`validate_write` refuses one on the way back in.
+    """
+    loaded = await _store().get_definition(user_id, slug)
+    if loaded is None:
         return None
-    raw = _read_spec(agent_dir / _MANIFEST_FILENAME)
-    if raw is None:
-        return None
+    raw, stored = loaded
 
-    files: List[AgentFile] = []
-    for path in sorted(agent_dir.rglob("*")):
-        if not path.is_file() or path.name == _MANIFEST_FILENAME:
-            continue
-        rel = path.relative_to(agent_dir).as_posix()
-        try:
-            files.append(
-                AgentFile(
-                    path=rel,
-                    content=path.read_text(encoding="utf-8"),
-                    encoding="utf-8",
-                    size=path.stat().st_size,
-                )
-            )
-        except (OSError, UnicodeDecodeError):
-            # Prompt folders are text-only; anything unreadable is reported as
-            # empty rather than breaking the edit view.
-            files.append(AgentFile(path=rel, content="", encoding="utf-8", size=0))
-
+    files = [
+        AgentFile(path=path, content=content, encoding=encoding, size=len(content))
+        for path, (content, encoding) in sorted(stored.items())
+    ]
     summary = _summary_from_spec(raw, slug)
     return UserAgentDetail(**summary.model_dump(), spec=raw, files=files)
 
@@ -297,87 +273,60 @@ def get_user_agent(user_id: str, slug: str) -> Optional[UserAgentDetail]:
 # ---------------------------------------------------------------------------
 # Write / delete
 # ---------------------------------------------------------------------------
-def write_user_agent(user_id: str, spec: AgentSpec, files: List[AgentFile]) -> UserAgentSummary:
-    """Write a validated agent folder, replacing any previous version atomically.
+async def write_user_agent(
+    user_id: str, spec: AgentSpec, files: List[AgentFile]
+) -> UserAgentSummary:
+    """Persist a validated definition, replacing any previous version.
 
-    Staged into a sibling ``.tmp`` directory and swapped in, so discovery never
-    observes a half-written agent. Assumes :func:`validate_write` already passed —
-    it does not re-validate.
+    Assumes :func:`validate_write` already passed — it does not re-validate, but
+    it does re-run the path check on the way in, because the value that reaches
+    the database must be the one that was checked and not a second reading of
+    the payload.
+
+    The spec is stored as the **validated** model dump rather than the raw
+    request, so what runs is exactly what passed validation. ``agent.yaml`` is
+    not written anywhere; it is rendered from this spec when the YAML form is
+    wanted.
     """
-    agent_dir = layout.user_custom_agent_dir(user_id, spec.slug)
-    staging = agent_dir.with_name(f".{spec.slug}.tmp")
-    backup = agent_dir.with_name(f".{spec.slug}.old")
-
-    if staging.exists():
-        shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True, exist_ok=True)
-
-    # agent.yaml is generated from the validated spec, never taken from the
-    # upload — so what runs is exactly what passed validation.
-    (staging / _MANIFEST_FILENAME).write_text(
-        yaml.safe_dump(spec.model_dump(mode="json"), sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    staged: Dict[str, tuple[str, str]] = {}
     for item in files:
-        rel = _validate_relpath(item.path)
-        target = staging / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(_decode(item, str(rel)))
+        rel = str(_validate_relpath(item.path))
+        raw = _decode(item, rel)
+        # Stored as text: the extension allowlist admits prompts and config
+        # only, so there is no binary case to carry an encoding for.
+        staged[rel] = (raw.decode("utf-8"), "utf-8")
 
-    agent_dir.parent.mkdir(parents=True, exist_ok=True)
-    if backup.exists():
-        shutil.rmtree(backup, ignore_errors=True)
-    replaced = agent_dir.exists()
-    if replaced:
-        os.replace(agent_dir, backup)
-    try:
-        os.replace(staging, agent_dir)
-    except OSError:
-        # Put the previous version back rather than leaving the user with nothing.
-        if replaced:
-            os.replace(backup, agent_dir)
-        raise
-    if replaced:
-        shutil.rmtree(backup, ignore_errors=True)
-
-    # The spec's `skills:` list IS the agent's tier-① set — it used to be
-    # copied into a read-only `default_skills/` folder here, but the mount
-    # now resolves those names against the user's pool at build time, so the
-    # copy (and the reconciliation that kept it honest) is gone.
-
+    replaced = await _store().save(
+        user_id, spec.slug, spec=spec.model_dump(mode="json"), files=staged
+    )
     logger.info(
         "user_agent_written",
         "Wrote a user-authored agent definition",
         user_id=user_id,
         agent_slug=spec.slug,
-        file_count=len(files),
+        file_count=len(staged),
         replaced=replaced,
-        default_skills=len(spec.skills),
+        declared_skills=len(spec.skills),
     )
     return _summary_from_spec(spec.model_dump(mode="json"), spec.slug)
 
 
-def delete_user_agent(user_id: str, slug: str) -> bool:
-    """Remove an agent's definition folder. True when something was removed.
+async def delete_user_agent(user_id: str, slug: str) -> bool:
+    """Remove an agent's definition. True when something was removed.
 
-    Only the *definition* goes: the per-agent state tree (memory, enabled skills,
-    conversation files) lives elsewhere and is retained, so deleting an agent
-    never destroys conversation history.
+    Only the *definition* goes: the per-agent state — conversations, memory
+    rows, tool preferences — is keyed separately and survives, so deleting an
+    agent never destroys conversation history.
     """
-    try:
-        agent_dir = layout.user_custom_agent_dir(user_id, slug)
-    except ValueError:
-        return False
-    if not agent_dir.is_dir():
-        return False
-    shutil.rmtree(agent_dir)
-    logger.info(
-        "user_agent_deleted",
-        "Removed a user-authored agent definition",
-        user_id=user_id,
-        agent_slug=slug,
-    )
-    return True
+    removed = await _store().delete(user_id, slug)
+    if removed:
+        logger.info(
+            "user_agent_deleted",
+            "Removed a user-authored agent definition",
+            user_id=user_id,
+            agent_slug=slug,
+        )
+    return removed
 
 
 __all__ = [

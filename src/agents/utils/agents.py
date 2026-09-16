@@ -20,14 +20,16 @@ It mutates ``AGENT_REGISTRY`` **in place** so modules that did
 """
 import inspect
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 import yaml
 
 import langgraph_agents
 import deep_agents
 from harness.abstractions import AgentSpec, DeepAgent, LangGraphAgent, YamlDeepAgent
+from harness.agent_registry.store import AgentDefinitionStore
 from harness.filesystem import layout
+from harness.memory import get_memory_pool
 from harness.tools.registry import is_known_native_tool
 from utils.declarative import manifest_from_spec
 from core.settings import settings
@@ -159,47 +161,56 @@ AGENT_REGISTRY: Dict[str, AgentDefinition] = _build_registry()
 # ---------------------------------------------------------------------------
 # User-authored agents — resolved per request, never registered
 # ---------------------------------------------------------------------------
-# A user's agents live in their own workspace, so they cannot go in
-# AGENT_REGISTRY: that dict is process-global and keyed by slug alone, so two
-# users owning the same slug would collide and one user's definition would be
-# reachable by another. They are resolved on demand and memoised by
-# (user_id, slug) together with the manifest's mtime — an edit to agent.yaml
-# invalidates the entry naturally, with no explicit cache-busting to forget.
-_USER_AGENT_CACHE: Dict[tuple[str, str], tuple[float, AgentDefinition]] = {}
+# A user's agents live in their own rows, so they cannot go in AGENT_REGISTRY:
+# that dict is process-global and keyed by slug alone, so two users owning the
+# same slug would collide and one user's definition would be reachable by
+# another. They are resolved on demand and memoised by (user_id, slug) together
+# with the definition's `updated_at` — a save moves the timestamp, so an edit
+# invalidates the entry naturally with no explicit cache-busting to forget.
+#
+# That used to be the manifest file's mtime. Same property, different clock: the
+# definition no longer has a file to stat.
+_USER_AGENT_CACHE: Dict[tuple[str, str], tuple[Any, AgentDefinition]] = {}
 
 
-def _load_user_agent(user_id: str, slug: str) -> Optional[AgentDefinition]:
-    """Parse + validate one user-authored agent from their workspace.
+def _definition_store() -> AgentDefinitionStore:
+    """The definition store on this service's ``agent_runtime`` pool.
 
-    Returns ``None`` when the folder or manifest is absent, or when the spec is
+    Borrowed from the same accessor memory and skills use — one pool for one
+    database, rather than a fourth pool for two more tables.
+    """
+    return AgentDefinitionStore(get_memory_pool())
+
+
+async def _load_user_agent(user_id: str, slug: str) -> AgentDefinition | None:
+    """Parse + validate one user-authored agent from ``agent_runtime``.
+
+    Returns ``None`` when the user has no such agent, or when the spec is
     invalid — an unusable definition must read as "no such agent" (a 404) rather
     than take the request down with a 500.
-    """
-    try:
-        agent_dir = layout.user_custom_agent_dir(user_id, slug)
-    except ValueError:
-        # Illegal path segment in user_id/slug — treat as not found, never as a
-        # path to probe.
-        return None
-    manifest_path = agent_dir / "agent.yaml"
-    if not manifest_path.is_file():
-        return None
 
-    try:
-        mtime = manifest_path.stat().st_mtime
-    except OSError:
+    The spec and its files are fetched **together**, which is what lets
+    ``YamlDeepAgent.__init__`` stay synchronous: by the time the factory runs,
+    every prompt it needs is already in memory.
+    """
+    store = _definition_store()
+    row = await store.get_row(user_id, slug)
+    if row is None:
         return None
+    updated_at = row.get("updated_at")
 
     cached = _USER_AGENT_CACHE.get((user_id, slug))
-    if cached is not None and cached[0] == mtime:
+    if cached is not None and cached[0] == updated_at:
         return cached[1]
 
+    files = {path: content for path, (content, _enc) in
+             (await store.read_files(user_id, slug)).items()}
     try:
-        raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-        spec = AgentSpec.model_validate(raw)
+        spec = AgentSpec.model_validate(row.get("spec") or {})
         if spec.slug != slug:
             raise ValueError(
-                f"Agent slug {spec.slug!r} does not match its folder name {slug!r}."
+                f"Agent slug {spec.slug!r} does not match the slug it is stored under "
+                f"({slug!r})."
             )
         ref_errors = spec.reference_errors(
             is_known_model=_is_known_model,
@@ -211,7 +222,8 @@ def _load_user_agent(user_id: str, slug: str) -> Optional[AgentDefinition]:
         logger.error(
             "user_agent_invalid",
             "Skipping invalid user-authored agent",
-            agent_dir=str(agent_dir),
+            user_id=user_id,
+            agent_slug=slug,
             exc_info=True,
         )
         return None
@@ -219,29 +231,36 @@ def _load_user_agent(user_id: str, slug: str) -> Optional[AgentDefinition]:
     definition = AgentDefinition(
         slug=spec.slug,
         manifest=manifest_from_spec(spec),
-        factory=(lambda cfg, s=spec, sd=agent_dir: YamlDeepAgent(s, sd, config=cfg)),
+        factory=(
+            lambda cfg, s=spec, uid=user_id, f=files: YamlDeepAgent(
+                s, owner_user_id=uid, definition_files=f, config=cfg
+            )
+        ),
         spec=spec,
     )
-    _USER_AGENT_CACHE[(user_id, slug)] = (mtime, definition)
+    _USER_AGENT_CACHE[(user_id, slug)] = (updated_at, definition)
     return definition
 
 
-def resolve_agent_definition(
-    slug: str, owner_user_id: Optional[str] = None
-) -> Optional[AgentDefinition]:
+async def resolve_agent_definition(
+    slug: str, owner_user_id: str | None = None
+) -> AgentDefinition | None:
     """The single lookup for "give me this agent".
 
     ``owner_user_id`` comes from the run context and is set by the bridge from
     the agents table, which is the authority on ownership:
 
-    * ``None`` → a platform agent; served from ``AGENT_REGISTRY``.
-    * set      → that user's own agent, loaded from their workspace.
+    * ``None`` → a platform agent; served from ``AGENT_REGISTRY`` in memory.
+    * set      → that user's own agent, read from ``agent_runtime``.
 
     The two namespaces are disjoint lookups, so a user-authored agent can never
     shadow a platform one regardless of what they named it.
+
+    Async because of the second branch only; the platform lookup stays a dict
+    hit with no await behind it.
     """
     if owner_user_id:
-        return _load_user_agent(owner_user_id, slug)
+        return await _load_user_agent(owner_user_id, slug)
     return AGENT_REGISTRY.get(slug)
 
 

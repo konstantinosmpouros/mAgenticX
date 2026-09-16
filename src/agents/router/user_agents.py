@@ -44,17 +44,26 @@ def _reserved_slugs() -> frozenset[str]:
     return frozenset(AGENT_REGISTRY.keys())
 
 
-def _known_skills(user_id: str) -> frozenset[str]:
-    return frozenset(list_user_skill_names(user_id))
+async def _known_skills(user_id: str) -> frozenset[str]:
+    """The names this user may reference in a spec's ``skills:``.
+
+    Async because the pool is rows in ``agent_runtime`` rather than a manifest
+    on disk. Awaiting it is not optional: ``frozenset()`` over an un-awaited
+    coroutine raises ``TypeError``, which the handler turns into a 500 — so a
+    missed ``await`` here breaks every create and update rather than degrading.
+    """
+    return frozenset(await list_user_skill_names(user_id))
 
 
-def _validate(user_id: str, payload: CustomAgentWrite, existing_slug: str | None = None):
+async def _validate(
+    user_id: str, payload: CustomAgentWrite, existing_slug: str | None = None
+):
     return validate_write(
         user_id,
         payload.spec,
         payload.files,
         reserved_slugs=_reserved_slugs(),
-        known_skills=_known_skills(user_id),
+        known_skills=await _known_skills(user_id),
         existing_slug=existing_slug,
     )
 
@@ -67,7 +76,7 @@ def _validate(user_id: str, payload: CustomAgentWrite, existing_slug: str | None
 )
 async def list_custom_agents(user_id: str) -> list[UserAgentSummary]:
     """Every agent this user has authored."""
-    agents = list_user_agents(user_id)
+    agents = await list_user_agents(user_id)
     logger.info("user_agents_listed", "Listed user-authored agents", count=len(agents))
     return agents
 
@@ -80,7 +89,7 @@ async def list_custom_agents(user_id: str) -> list[UserAgentSummary]:
 )
 async def get_custom_agent(user_id: str, agent_slug: str) -> UserAgentDetail:
     """One agent's full definition (spec + prompt files), for editing."""
-    detail = get_user_agent(user_id, agent_slug)
+    detail = await get_user_agent(user_id, agent_slug)
     if detail is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
     return detail
@@ -94,7 +103,7 @@ async def get_custom_agent(user_id: str, agent_slug: str) -> UserAgentDetail:
 )
 async def validate_custom_agent(user_id: str, payload: CustomAgentWrite) -> CustomAgentValidation:
     """Dry run: report every problem with a definition and write nothing."""
-    _, errors = _validate(user_id, payload)
+    _, errors = await _validate(user_id, payload)
     return CustomAgentValidation(valid=not errors, errors=errors)
 
 
@@ -107,13 +116,13 @@ async def validate_custom_agent(user_id: str, payload: CustomAgentWrite) -> Cust
 async def create_custom_agent(user_id: str, payload: CustomAgentWrite) -> UserAgentSummary:
     """Create an agent. 409 if the slug is already taken by this user, 422 on an
     invalid definition, 429 when the per-user cap is reached."""
-    spec, errors = _validate(user_id, payload)
+    spec, errors = await _validate(user_id, payload)
     if errors or spec is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors)
         )
 
-    existing = list_user_agents(user_id)
+    existing = await list_user_agents(user_id)
     if any(item.slug == spec.slug for item in existing):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -126,7 +135,7 @@ async def create_custom_agent(user_id: str, payload: CustomAgentWrite) -> UserAg
             detail=f"You have reached the limit of {cap} agents.",
         )
 
-    summary = write_user_agent(user_id, spec, payload.files)
+    summary = await write_user_agent(user_id, spec, payload.files)
     logger.info("user_agent_created", "Created a user-authored agent", agent_slug=summary.slug)
     return summary
 
@@ -142,16 +151,16 @@ async def update_custom_agent(
 ) -> UserAgentSummary:
     """Replace an existing definition. The slug is immutable — a rename is a
     create plus a delete, so the folder name and the spec can never disagree."""
-    if get_user_agent(user_id, agent_slug) is None:
+    if await get_user_agent(user_id, agent_slug) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent.")
 
-    spec, errors = _validate(user_id, payload, existing_slug=agent_slug)
+    spec, errors = await _validate(user_id, payload, existing_slug=agent_slug)
     if errors or spec is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors)
         )
 
-    summary = write_user_agent(user_id, spec, payload.files)
+    summary = await write_user_agent(user_id, spec, payload.files)
     logger.info("user_agent_updated", "Updated a user-authored agent", agent_slug=summary.slug)
     return summary
 
@@ -164,4 +173,4 @@ async def update_custom_agent(
 async def delete_custom_agent(user_id: str, agent_slug: str) -> None:
     """Remove a definition. Idempotent, and it removes only the definition — the
     agent's memory, enabled skills and conversation files are left untouched."""
-    delete_user_agent(user_id, agent_slug)
+    await delete_user_agent(user_id, agent_slug)

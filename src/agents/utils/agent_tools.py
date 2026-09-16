@@ -27,13 +27,17 @@ from utils.agents import resolve_agent_definition
 from utils.mcp_tools import build_tool_cache_key, get_cached_tool_manifests_map
 
 
-def _resolve_for_user(agent_slug: str, user_id: str):
+async def _resolve_for_user(agent_slug: str, user_id: str):
     """A platform agent, else one this user authored.
 
     Platform first is unambiguous: agent creation refuses a slug that collides
-    with a platform agent (see ``plans/01-custom-agents-per-user.md``).
+    with a platform agent (see ``plans/01-custom-agents-per-user.md``) — and it
+    costs no round trip, since the platform lookup is an in-memory dict hit.
     """
-    return resolve_agent_definition(agent_slug) or resolve_agent_definition(agent_slug, user_id)
+    return (
+        await resolve_agent_definition(agent_slug)
+        or await resolve_agent_definition(agent_slug, user_id)
+    )
 
 
 def _is_deep(definition) -> bool:
@@ -142,7 +146,7 @@ def _mcp_rows(definition, gates: Set[str]) -> List[AgentToolRow]:
     return sorted(rows.values(), key=lambda r: (not r.declared, r.group.lower(), r.name.lower()))
 
 
-def list_agent_tools(
+async def list_agent_tools(
     user_id: str,
     agent_slug: str,
     *,
@@ -155,7 +159,7 @@ def list_agent_tools(
     decide whether two native builtins are present for this user, and are passed
     in because this service does not own them.
     """
-    definition = _resolve_for_user(agent_slug, user_id)
+    definition = await _resolve_for_user(agent_slug, user_id)
     if definition is None:
         return None
     if not _is_deep(definition):

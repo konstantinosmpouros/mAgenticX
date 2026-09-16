@@ -47,14 +47,19 @@ def _patch_agent_resolver(agents_service, monkeypatch, registry):
     """Point the inference router's agent lookup at a fake registry.
 
     The router resolves through `resolve_agent_definition(slug, owner_user_id)`
-    so a user-authored agent can be loaded from its owner's workspace, so tests
-    patch that seam rather than a module-level registry dict. `owner_user_id` is
+    so a user-authored agent can be loaded from its owner's rows, so tests patch
+    that seam rather than a module-level registry dict. `owner_user_id` is
     ignored here — these tests exercise platform agents.
+
+    The seam is **async**: a user-authored definition is a database read, so the
+    lookup awaits even though the platform branch it serves here is a dict hit.
     """
+
+    async def _resolve(slug, owner_user_id=None):
+        return registry.get(slug)
+
     monkeypatch.setattr(
-        agents_service.router_inference,
-        "resolve_agent_definition",
-        lambda slug, owner_user_id=None: registry.get(slug),
+        agents_service.router_inference, "resolve_agent_definition", _resolve
     )
 
 
