@@ -25,6 +25,7 @@ from core.auth.session import (
     clear_session_cookies,
     issue_session_cookies,
     logout_denylist,
+    is_stale,
     refresh_guard,
     require_csrf_protection,
     require_refresh_session,
@@ -37,6 +38,8 @@ from core.auth.parked import (
     parked_sessions,
 )
 from utils.auth import (
+    revocation_watermark,
+    revoke_all_sessions,
     account_summary,
     finalize_login,
     guard_add_account,
@@ -203,6 +206,22 @@ async def refresh_session(
         clear_session_cookies(response)
         logger.warning("refresh_user_invalid", "Refresh belongs to a missing or inactive user")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+
+    # Revoke-all, read from the DURABLE column rather than the cache. The row is
+    # already loaded, so this costs nothing — and it is what makes a Redis outage
+    # bound a stolen token to its remaining access lifetime instead of letting it
+    # renew indefinitely. The access path is fail-open by necessity (no DB
+    # session on that hot path); this one is not.
+    if ctx.issued_at is not None and is_stale(
+        {"iat": ctx.issued_at}, revocation_watermark(user)
+    ):
+        clear_session_cookies(response)
+        logger.info(
+            "refresh_revoked_by_logout_all",
+            "Refresh rejected: the session predates a log-out-everywhere",
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+
     issued = await rotate_session(ctx, is_active=user.is_active)
     # Advance the tracked jti to the freshly-minted one and grace the old jti, so a
     # legitimate concurrent/retried refresh in flight isn't misread as reuse.
@@ -234,6 +253,54 @@ async def logout(
     if device_id and revoked_user_id:
         await parked_sessions.drop(device_id, revoked_user_id)
     logger.info("logout_completed", "Logout completed", had_session=sid is not None)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@router.post("/sessions/revoke-all", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_all_sessions_endpoint(
+    request: Request,
+    response: Response,
+    _: None = Depends(require_csrf_protection),
+    ctx: AuthContext = Depends(require_session),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """End every session this user holds, on every device, including this one.
+
+    Not to be confused with ``/accounts/logout-all`` just below, which is the
+    orthogonal one: that ends every *account* on this *browser*, this ends every
+    *browser* for this *account*. The names are deliberately different shapes so
+    a caller cannot reach for the wrong one by autocomplete.
+
+    Sessions are stateless JWTs, so there is nothing to delete — a watermark on
+    the user makes every token issued before now unacceptable
+    (``utils.auth.revoke_all_sessions``).
+
+    **This device is included, deliberately.** "Everywhere" that quietly spared
+    the browser you pressed it in is a surprise, and the button is usually
+    pressed because the user believes they are compromised — which is exactly
+    when a surviving session is worst.
+
+    This user's parked entry on this device is dropped too — parked accounts are
+    the one other place a session survives, and leaving it would let the account
+    switcher restore what was just ended. Other users parked on the same device
+    are untouched; the watermark is keyed on the user, not the browser.
+    """
+    await revoke_all_sessions(db, ctx.user_id)
+
+    # This user's parked entry only. A device can hold several accounts parked,
+    # and revoking one user's sessions must not sign the others out — their
+    # tokens are untouched by a watermark keyed on somebody else.
+    device_id = get_device_id(request)
+    if device_id:
+        await parked_sessions.drop(device_id, ctx.user_id)
+    clear_session_cookies(response)
+
+    logger.info(
+        "logout_all_completed",
+        "All sessions revoked for the user",
+        had_device=device_id is not None,
+    )
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
 

@@ -80,6 +80,116 @@ class LogoutDenylist:
 logout_denylist = LogoutDenylist()
 
 
+_REVOKE_ALL_KEY_PREFIX = "auth:revoke_all:user:"
+
+
+class SessionRevocation:
+    """Redis-backed "log out of all devices", keyed by user id (``sub``).
+
+    :class:`LogoutDenylist` retires one ``sid``. This retires **every** session a
+    user holds, and it cannot work the same way: nothing in the system maps a
+    user to their session ids. ``sid`` is minted at login and never recorded
+    against its owner, so there is no set to iterate.
+
+    A **watermark** needs no such index. Tokens already carry ``iat``, so one
+    timestamp per user answers the question for every token ever issued:
+
+        iat < watermark  ->  this token predates the revoke, reject it
+
+    Postgres (``users.sessions_revoked_at``) is the durable record; this is the
+    read cache, because the auth hot path has no database session and must not
+    grow one. The key expires after the absolute refresh lifetime, by which point
+    every token predating the watermark has expired on its own.
+
+    **Failure stance differs by caller, deliberately.** :meth:`revoked_at` fails
+    OPEN like the denylist beside it — a Redis blip must not sign out the
+    platform. The *refresh* path compensates by also reading Postgres and
+    treating an unreadable cache as revoked, so an outage bounds a stolen token
+    to its remaining access lifetime instead of granting it a renewable one.
+    """
+
+    def __init__(self) -> None:
+        self._client: aioredis.Redis | None = None
+        self._lock = asyncio.Lock()
+
+    async def _get_client(self) -> aioredis.Redis:
+        if self._client is not None:
+            return self._client
+        async with self._lock:
+            if self._client is None:
+                self._client = create_redis_client()
+        return self._client
+
+    async def revoke_all(self, user_id: str, at: datetime) -> None:
+        """Publish the watermark. Best-effort — Postgres is the durable half."""
+        if not user_id:
+            return
+        ttl = settings.jwt.refresh_absolute_ttl_seconds
+        try:
+            client = await self._get_client()
+            await client.setex(
+                f"{_REVOKE_ALL_KEY_PREFIX}{user_id}", ttl, str(int(at.timestamp()))
+            )
+        except Exception:
+            logger.warning(
+                "revoke_all_cache_write_failed",
+                "Could not cache the revoke-all watermark; the database row still holds it",
+            )
+
+    async def revoked_at(self, user_id: str) -> int | None:
+        """The cached watermark as an epoch int, or ``None``.
+
+        Fails OPEN: an unreachable Redis reads as "never revoked" so a cache
+        outage does not log every user out. The refresh path does not rely on
+        this alone — see the class docstring.
+        """
+        if not user_id:
+            return None
+        try:
+            client = await self._get_client()
+            raw = await client.get(f"{_REVOKE_ALL_KEY_PREFIX}{user_id}")
+        except Exception:
+            logger.warning(
+                "revoke_all_cache_unavailable",
+                "Revoke-all check failed; allowing the request (fail-open)",
+            )
+            return None
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            # A corrupt value must not authenticate anyone by accident; treat it
+            # as absent and let the durable row decide on the next refresh.
+            return None
+
+
+session_revocation = SessionRevocation()
+
+
+def is_stale(claims: dict, watermark: int | None) -> bool:
+    """Whether a token predates a revoke-all watermark.
+
+    The one place the comparison lives, so the access path and the refresh path
+    cannot drift on it.
+
+    **No leeway.** Token verification allows ``leeway_seconds`` on ``exp``/``iat``
+    to absorb clock skew between issuers; applying it here would let a token
+    minted moments before the revoke survive the revoke. Strictly ``<``, so a
+    token minted in the same second the watermark was written is kept — which is
+    what makes signing straight back in work.
+    """
+    if watermark is None:
+        return False
+    issued = claims.get("iat")
+    if not isinstance(issued, int):
+        # A token without a usable `iat` cannot be placed relative to the
+        # watermark. `verify` requires the claim, so reaching here means the
+        # token is malformed — refuse rather than guess.
+        return True
+    return issued < watermark
+
+
 _REFRESH_CUR_PREFIX = "auth:refresh:cur:sid:"
 _REFRESH_USED_PREFIX = "auth:refresh:used:"
 
@@ -187,6 +297,11 @@ class AuthContext:
     expires_at: datetime
     login_at: Optional[int] = None
     jti: Optional[str] = None
+    # When THIS token was minted. Distinct from `login_at`, which is pinned to
+    # the original sign-in and slides forward for nobody: `issued_at` moves on
+    # every rotation. The revoke-all watermark compares against this one, so a
+    # refresh issued after the revoke is honoured while its predecessors are not.
+    issued_at: int | None = None
 
 
 @dataclass(slots=True)
@@ -343,6 +458,11 @@ async def resolve_parked_refresh(token: str) -> AuthContext:
     sid = claims["sid"]
     if await logout_denylist.is_revoked(sid):
         raise SessionAuthenticationError("Session has been logged out.")
+    # A parked account is a *second* place a session can survive, so revoke-all
+    # has to reach it too — otherwise switching accounts would restore a session
+    # the user just ended everywhere.
+    if is_stale(claims, await session_revocation.revoked_at(claims["sub"])):
+        raise SessionAuthenticationError("Session has been logged out.")
     return AuthContext(
         id=sid,
         user_id=claims["sub"],
@@ -350,6 +470,7 @@ async def resolve_parked_refresh(token: str) -> AuthContext:
         expires_at=_claim_expiry(int(claims["exp"])),
         login_at=claims.get("lat"),
         jti=claims.get("jti"),
+        issued_at=claims.get("iat"),
     )
 
 
@@ -363,6 +484,11 @@ async def _resolve(request: Request, token: str | None, expected_type: str) -> A
     sid = claims["sid"]
     if await logout_denylist.is_revoked(sid):
         raise SessionAuthenticationError("Session has been logged out.")
+    # Redis only, and fail-open with it: this runs on every authenticated
+    # request, so it cannot afford a database round trip. The refresh path is
+    # stricter — see `SessionRevocation`.
+    if is_stale(claims, await session_revocation.revoked_at(claims["sub"])):
+        raise SessionAuthenticationError("Session has been logged out.")
     is_active = bool(claims.get("act", True))
     if expected_type == ACCESS_TYPE and not is_active:
         raise SessionAuthenticationError("User is inactive.")
@@ -373,6 +499,7 @@ async def _resolve(request: Request, token: str | None, expected_type: str) -> A
         expires_at=_claim_expiry(int(claims["exp"])),
         login_at=claims.get("lat"),
         jti=claims.get("jti"),
+        issued_at=claims.get("iat"),
     )
 
 

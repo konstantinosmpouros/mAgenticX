@@ -13,6 +13,7 @@
 
 export {
   authenticate,
+  revokeAllSessions,
   restoreSession,
   logoutSession,
   getAccounts,

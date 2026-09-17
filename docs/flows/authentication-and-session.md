@@ -2,7 +2,7 @@
 
 The platform uses HashiCorp Vault as both the **identity authority** (it verifies credentials at login) and the **cryptographic signer** of session tokens (it holds the RS256 private key and signs JWTs via its Transit engine — the key never leaves Vault). The dialogue bridge is a thin **token issuer**: after Vault confirms the credential, the bridge mints a short-lived access JWT and a longer-lived refresh JWT, both signed by Vault, and hands them to the browser as HttpOnly cookies.
 
-Sessions are **stateless**. There is no session row in the database; every request is authorised by verifying the JWT signature against Vault's public key (cached in-process) — no per-request database or Vault call. This is what lets the bridge scale horizontally behind a gateway: any instance on any VM can validate any token on its own. The only shared state is a small Redis **logout denylist** that makes sign-out (and a stolen-token replay) take effect instantly; it is empty in the normal case and fails open.
+Sessions are **stateless**. There is no session row in the database; every request is authorised by verifying the JWT signature against Vault's public key (cached in-process) — no per-request database or Vault call. This is what lets the bridge scale horizontally behind a gateway: any instance on any VM can validate any token on its own. The only shared state is small and Redis-backed: a **logout denylist** that makes sign-out (and a stolen-token replay) take effect instantly, and a per-user **revoke-all watermark** behind "log out of all devices". Both are empty in the normal case and both fail open on the request hot path.
 
 > **Future-proofing:** because the *app* only ever verifies "a bridge-issued JWT", swapping the upstream credential check from Vault userpass to Keycloak/Entra ID later changes only the login step — the token format and every verifier stay the same.
 
@@ -576,3 +576,78 @@ holding dormant logins.
 | 401 refresh-and-retry interceptor | [magenticx/agentic_ui/src/shared/lib/http.ts](../../magenticx/agentic_ui/src/shared/lib/http.ts) | `requestRaw` (reactive trigger; `skipAuthRetry` opt-out) |
 | Auto-refresh scheduling | [magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts](../../magenticx/agentic_ui/src/features/auth/hooks/useSessionEffects.ts) | `useSessionAutoRefreshEffect` (proactive trigger, 10-min buffer) |
 | Login / logout handlers | [magenticx/agentic_ui/src/features/auth/handlers/auth.ts](../../magenticx/agentic_ui/src/features/auth/handlers/auth.ts) | `handleLogin`, `handleLogout` |
+
+---
+
+## Log out of all devices
+
+Per-device sign-out denylists one `sid`. Ending **every** session a user holds
+cannot work that way: nothing maps a user to their session ids. `sid` is minted
+at login and never recorded against its owner, so there is no set to iterate —
+and building one (a Redis set per user, written at login, pruned on expiry) would
+be new state existing only to be read on a rare action.
+
+A **watermark** needs no index. Tokens already carry `iat`, so one timestamp per
+user answers the question for every token ever issued:
+
+```text
+revoke at T   →  users.sessions_revoked_at = T        (durable, chat_db)
+              →  auth:revoke_all:user:<sub> = T       (cache, Redis, TTL 20d)
+
+verify        →  iat < watermark  →  401
+```
+
+`POST /v1/auth/sessions/revoke-all` writes the column, commits, then publishes
+the cache key. **That order is load-bearing:** a crash between the two leaves the
+revocation *applied* (the durable row is what the refresh path reads) rather than
+silently lost. Reversed, a crash would leave the cache rejecting sessions the
+database has no record of — which evaporates on the next Redis flush.
+
+### Two speeds, on purpose
+
+| Path | Frequency | Reads | Redis unavailable |
+| --- | --- | --- | --- |
+| Access token (`_resolve`) | every request | Redis watermark | **fail open** |
+| Refresh (`/v1/auth/refresh`) | ~every 8 h | the `users` row | **fail closed** |
+
+The access path has no database session — `require_current_user` takes only an
+`AuthContext`, and authenticating a request is a signature check plus one Redis
+lookup. Adding a query there would put Postgres on the hottest path in the
+service, so it stays fail-open exactly like the denylist beside it.
+
+The refresh path already loads the user row to check `is_active`, so reading the
+durable watermark there is free — and it is what bounds the damage: during a
+Redis outage a stolen access token survives **at most its remaining 8 hours** and
+can never be renewed past that.
+
+### Sharp edges
+
+- **No leeway on the comparison.** Token verification allows `leeway_seconds` on
+  `exp`/`iat` to absorb clock skew. Applying it to the watermark would let a
+  token minted moments *before* the revoke survive it — the precise thing the
+  button exists to prevent. `is_stale()` is the one place the comparison lives,
+  so the two paths cannot drift on this.
+- **Strictly `iat < watermark`.** A token minted in the same second as the revoke
+  is kept. It has to be: signing straight back in can land in that second, and if
+  that token were rejected so would its replacement be — the account would be
+  unreachable forever.
+- **The current device is included.** "Everywhere" that spared the browser you
+  pressed it in is a surprise, and the button is usually pressed because the user
+  believes they are compromised.
+- **Parked accounts are a second home for a session.** `core/auth/parked.py`
+  holds AES-GCM encrypted refresh tokens for multi-account sign-in, and
+  `resolve_parked_refresh` checks the watermark too — otherwise the account
+  switcher could restore a session that was just ended. The endpoint drops
+  **this user's** parked entry on this device; other users parked in the same
+  browser are untouched, because the watermark is keyed on the user.
+- **`sessions_revoked_at` moves only on an explicit revoke.** If a login wrote
+  it, every sign-in would log the user out of every other device.
+
+### Not the same as `/v1/auth/accounts/logout-all`
+
+Two routes, orthogonal scopes, easy to confuse:
+
+| Route | Ends |
+| --- | --- |
+| `/v1/auth/accounts/logout-all` | every **account** on this **browser** |
+| `/v1/auth/sessions/revoke-all` | every **browser** for this **account** |

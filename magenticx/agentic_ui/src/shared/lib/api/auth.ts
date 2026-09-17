@@ -135,6 +135,22 @@ export async function logoutAccount(userId: string): Promise<void> {
   });
 }
 
+// Revoke every session for THIS account, on every browser and device — the
+// orthogonal twin of `logoutAllAccounts`, which ends every account on THIS
+// browser. The two are one word apart and do opposite things, so reach for the
+// one whose name matches the scope you mean.
+//
+// Includes the caller's own session: the server clears these cookies too, and
+// the UI is expected to send the user back to sign-in afterwards.
+export async function revokeAllSessions(): Promise<void> {
+  await requestVoid(`${AUTH_BASE_PATH}/sessions/revoke-all`, {
+    method: "POST",
+    csrf: true,
+    ignoreStatuses: [401],
+    fallbackMessage: "Failed to sign out of all devices",
+  });
+}
+
 // Sign out of every account on this browser, not just the active one.
 export async function logoutAllAccounts(): Promise<void> {
   await requestVoid(`${AUTH_BASE_PATH}/accounts/logout-all`, {

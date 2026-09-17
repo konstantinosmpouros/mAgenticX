@@ -109,6 +109,16 @@ class UserTable(Base):
     department = Column(String, nullable=True)
     role_title = Column(String, nullable=True)
     last_login_at = Column(DateTime, nullable=True)
+    # "Log out of all devices" watermark: every session token issued before this
+    # instant is rejected. Auth is stateless, so there is no session row to
+    # delete — one timestamp retires every token the user holds, on every device,
+    # without the system ever needing a `sid -> user` index.
+    #
+    # NULL means *never revoked*, which is a different statement from *revoked at
+    # the epoch* — and keeps the comparison honest for accounts that have never
+    # used the feature. Moved ONLY by an explicit revoke: if a login wrote it,
+    # every sign-in would log the user out everywhere else.
+    sessions_revoked_at = Column(DateTime, nullable=True)
 
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

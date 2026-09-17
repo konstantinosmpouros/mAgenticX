@@ -10,8 +10,10 @@ service's request-shaped helpers that compose it.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +26,7 @@ from core.auth.parked import (
 )
 from core.auth.session import (
     get_device_id,
+    session_revocation,
     issue_device_cookie,
     issue_session_cookies,
     mint_login_session,
@@ -199,3 +202,39 @@ __all__ = [
     "oidc_redirect_uri",
     "require_multi_account",
 ]
+
+
+async def revoke_all_sessions(db: AsyncSession, user_id: str) -> datetime:
+    """End every session this user holds. Returns the watermark that was set.
+
+    Durable half first, cache second, and the order is not arbitrary: a crash
+    between them leaves the revocation **applied** (the row is authoritative and
+    the refresh path reads it) rather than silently lost. Reversed, a crash would
+    leave the cache rejecting sessions the database has no record of — which
+    evaporates on the next Redis flush.
+
+    The instant comes from the database clock so it cannot disagree with the
+    ``updated_at`` written in the same statement.
+    """
+    at = datetime.now(UTC).replace(tzinfo=None)
+    await db.execute(
+        update(UserTable).where(UserTable.id == user_id).values(sessions_revoked_at=at)
+    )
+    await db.commit()
+    await session_revocation.revoke_all(user_id, at.replace(tzinfo=UTC))
+    return at
+
+
+def revocation_watermark(user: UserTable | None) -> int | None:
+    """A loaded user row's watermark as an epoch int, or ``None``.
+
+    Reads the durable column rather than the cache, for the paths that already
+    hold the row — the refresh handler loads it anyway, so the strict check there
+    costs no extra round trip.
+    """
+    at = getattr(user, "sessions_revoked_at", None) if user is not None else None
+    if at is None:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    return int(at.timestamp())

@@ -29,3 +29,4 @@
   - **Stub sections** (full ComingSoon pages): Notifications (lands with the Notification system + PWA item above), Plugins (OAuth app connectors — distinct from MCP Servers), Storage (attachment/artifact quotas + cleanup), Safety (content-safety / moderation preferences).
   - **Stub rows** inside real tabs: General → Accent color, UI language; Data controls → improve-the-model opt-in, Export data, Delete account; Security → Multi-factor authentication, Log out of all devices (needs a revoke-all path in the stateless-JWT auth).
   - **Edit profile dialog** is read-only (fields come from the IdP) — avatar upload + display-name editing need a bridge profile-update endpoint.
+- Refactor the conversation rail (`ConversationRail` — the right-edge scroll-rail / thread minimap) to work like the Codex app's: hovering a tick should preview that message's text in a card, instead of only highlighting a bare tick.
